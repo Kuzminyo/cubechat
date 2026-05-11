@@ -42,7 +42,7 @@
   "bleUnknownPeer": "Unidentified peer",
   "bleBroadcasting": "Broadcasting",
   "bleConnectedCount": "{n, plural, =0{No centrals} =1{1 central connected} other{{n} centrals connected}}",
-  "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } }
+  "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } },
 
   "chatInputHint": "Message",
   "chatSend": "Send",
