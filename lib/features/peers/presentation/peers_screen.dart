@@ -1,80 +1,460 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
+import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
+import '../data/peer_discovery_controller.dart';
+import '../models/discovered_peer.dart';
+import 'widgets/signal_bars.dart';
 
-/// Placeholder. Real BLE peer discovery lands in M1.
-class PeersScreen extends StatelessWidget {
+class PeersScreen extends ConsumerStatefulWidget {
   const PeersScreen({super.key});
 
-  // Throwaway sample peers — visual only.
-  static const _samples = [
-    ('pk_orion', 'Orion', 1),
-    ('pk_lyra', 'Lyra', 2),
-    ('pk_atlas', 'Atlas', 3),
-  ];
+  @override
+  ConsumerState<PeersScreen> createState() => _PeersScreenState();
+}
+
+class _PeersScreenState extends ConsumerState<PeersScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Defer past the build pass so providers are stable.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(peerDiscoveryControllerProvider.notifier).start();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final state = ref.watch(peerDiscoveryControllerProvider);
+    final controller = ref.read(peerDiscoveryControllerProvider.notifier);
 
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-            child: Text(
-              t.peersTitle,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.5,
-                color: AppColors.textPrimary,
+          _Header(title: t.peersTitle, subtitle: t.peersSubtitle, state: state),
+          const SizedBox(height: 12),
+          ..._buildBody(context, t, state, controller),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildBody(
+    BuildContext context,
+    AppLocalizations t,
+    PeerDiscoveryState state,
+    PeerDiscoveryController controller,
+  ) {
+    switch (state.status) {
+      case PeerDiscoveryStatus.unsupported:
+        return [
+          _StatusCard(
+            icon: Icons.bluetooth_disabled,
+            tone: _StatusTone.warning,
+            title: t.bleUnsupportedTitle,
+            hint: t.bleUnsupportedHint,
+          ),
+        ];
+
+      case PeerDiscoveryStatus.permissionsUnknown:
+      case PeerDiscoveryStatus.permissionsDenied:
+        return [
+          _StatusCard(
+            icon: Icons.shield_outlined,
+            tone: _StatusTone.brand,
+            title: t.blePermissionTitle,
+            hint: state.status == PeerDiscoveryStatus.permissionsDenied
+                ? t.blePermissionDeniedHint
+                : t.blePermissionHint,
+            actionLabel: t.blePermissionGrant,
+            onAction: controller.requestPermissions,
+          ),
+        ];
+
+      case PeerDiscoveryStatus.permissionsPermanentlyDenied:
+        return [
+          _StatusCard(
+            icon: Icons.shield_outlined,
+            tone: _StatusTone.danger,
+            title: t.blePermissionTitle,
+            hint: t.blePermissionDeniedHint,
+            actionLabel: t.blePermissionOpenSettings,
+            onAction: controller.openSettings,
+          ),
+        ];
+
+      case PeerDiscoveryStatus.adapterOff:
+        return [
+          _StatusCard(
+            icon: Icons.bluetooth_disabled,
+            tone: _StatusTone.warning,
+            title: t.bleAdapterOffTitle,
+            hint: t.bleAdapterOffHint,
+            actionLabel: t.bleRetry,
+            onAction: controller.start,
+          ),
+        ];
+
+      case PeerDiscoveryStatus.idle:
+      case PeerDiscoveryStatus.scanning:
+        if (state.peers.isEmpty) {
+          return [_EmptyScanning(label: t.peersEmpty)];
+        }
+        return [
+          for (var i = 0; i < state.peers.length; i++)
+            AppearAnimation(
+              delay: Duration(milliseconds: 40 * i),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PeerCard(peer: state.peers[i]),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-            child: Text(
-              t.peersSubtitle,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-            ),
-          ),
-          for (final (id, name, hops) in _samples) ...[
-            GlassCard(
-              child: Row(
-                children: [
-                  IdentityAvatar(seed: id, label: name, size: 44, online: true),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: TextStyle(
-                            color: AppColors.textOnGlass,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          hops == 1 ? t.peersHopsOne(hops) : t.peersHopsOther(hops),
-                          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-                        ),
-                      ],
-                    ),
+        ];
+    }
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.title, required this.subtitle, required this.state});
+
+  final String title;
+  final String subtitle;
+  final PeerDiscoveryState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final scanning = state.status == PeerDiscoveryStatus.scanning;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.5,
+                    color: AppColors.textPrimary,
                   ),
-                  Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
-                ],
+                ),
+              ),
+              if (scanning) _ScanningPulse(label: t.bleScanning),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanningPulse extends StatefulWidget {
+  const _ScanningPulse({required this.label});
+
+  final String label;
+
+  @override
+  State<_ScanningPulse> createState() => _ScanningPulseState();
+}
+
+class _ScanningPulseState extends State<_ScanningPulse>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final glow = 0.35 + 0.35 * _c.value;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary.withValues(alpha: 0.12),
+            border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.brandPrimary.withValues(alpha: glow * 0.4),
+                blurRadius: 10 + 6 * _c.value,
+                spreadRadius: -1,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.brandPrimary.withValues(alpha: glow),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+enum _StatusTone { brand, warning, danger }
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.hint,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final _StatusTone tone;
+  final String title;
+  final String hint;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  Color get _toneColor => switch (tone) {
+        _StatusTone.brand => AppColors.brandPrimary,
+        _StatusTone.warning => AppColors.warning,
+        _StatusTone.danger => AppColors.danger,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return AppearAnimation(
+      child: GlassCard(
+        strong: true,
+        padding: const EdgeInsets.all(20),
+        borderRadius: 22,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _toneColor.withValues(alpha: 0.18),
+                border: Border.all(color: _toneColor.withValues(alpha: 0.4)),
+              ),
+              child: Icon(icon, color: _toneColor, size: 20),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13, height: 1.4),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 14),
+              PillButton(label: actionLabel!, active: true, onTap: onAction),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyScanning extends StatelessWidget {
+  const _EmptyScanning({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppearAnimation(
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(vertical: 36),
+        child: Center(
+          child: Column(
+            children: [
+              const _RadarSpinner(),
+              const SizedBox(height: 14),
+              Text(
+                label,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RadarSpinner extends StatefulWidget {
+  const _RadarSpinner();
+
+  @override
+  State<_RadarSpinner> createState() => _RadarSpinnerState();
+}
+
+class _RadarSpinnerState extends State<_RadarSpinner>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) {
+          return CustomPaint(
+            painter: _RadarPainter(progress: _c.value),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RadarPainter extends CustomPainter {
+  _RadarPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final maxR = size.shortestSide / 2;
+
+    // Outer ring
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = AppColors.brandPrimary.withValues(alpha: 0.25);
+    canvas.drawCircle(c, maxR - 1, ring);
+    canvas.drawCircle(c, maxR * 0.6, ring..color = AppColors.brandPrimary.withValues(alpha: 0.18));
+
+    // Expanding pulse
+    final pulseR = maxR * progress;
+    final pulse = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = AppColors.brandPrimary.withValues(alpha: (1 - progress) * 0.8);
+    canvas.drawCircle(c, pulseR, pulse);
+
+    // Center dot
+    final dot = Paint()..color = AppColors.brandPrimary;
+    canvas.drawCircle(c, 3, dot);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RadarPainter old) => old.progress != progress;
+}
+
+class _PeerCard extends StatelessWidget {
+  const _PeerCard({required this.peer});
+
+  final DiscoveredPeer peer;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final displayName = peer.advertisedName.isNotEmpty
+        ? peer.advertisedName
+        : t.bleUnknownPeer;
+    return GlassCard(
+      child: Row(
+        children: [
+          IdentityAvatar(
+            seed: peer.id,
+            label: displayName,
+            size: 44,
+            online: true,
+            heroTag: 'avatar-${peer.id}',
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${peer.rssi} dBm · ${peer.id}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SignalBars(strength: peer.signalStrength),
         ],
       ),
     );

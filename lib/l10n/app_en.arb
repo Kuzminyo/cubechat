@@ -24,6 +24,23 @@
   "@peersHopsOne": { "placeholders": { "n": { "type": "int" } } },
   "@peersHopsOther": { "placeholders": { "n": { "type": "int" } } },
 
+  "blePermissionTitle": "Bluetooth permission needed",
+  "blePermissionHint": "Cubechat needs Bluetooth to find peers and send messages — no internet required.",
+  "blePermissionGrant": "Grant permission",
+  "blePermissionOpenSettings": "Open settings",
+  "blePermissionDeniedHint": "Permission was denied. Open settings to allow Bluetooth access.",
+  "bleAdapterOffTitle": "Bluetooth is off",
+  "bleAdapterOffHint": "Turn Bluetooth on to see peers nearby.",
+  "bleUnsupportedTitle": "Bluetooth LE not available",
+  "bleUnsupportedHint": "This device or platform doesn't expose Bluetooth Low Energy. Try it on a phone.",
+  "bleScanning": "Scanning…",
+  "bleRetry": "Retry",
+  "bleSignal": "Signal",
+  "bleConnect": "Connect",
+  "bleConnected": "Connected",
+  "bleVerified": "Verified",
+  "bleUnknownPeer": "Unidentified peer"
+
   "chatInputHint": "Message",
   "chatSend": "Send",
   "chatToday": "Today",
