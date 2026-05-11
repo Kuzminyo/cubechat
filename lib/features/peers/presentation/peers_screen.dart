@@ -8,6 +8,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/peer_discovery_controller.dart';
+import '../data/peripheral_controller.dart';
 import '../models/discovered_peer.dart';
 import 'widgets/signal_bars.dart';
 
@@ -32,13 +33,19 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final state = ref.watch(peerDiscoveryControllerProvider);
+    final peripheral = ref.watch(peripheralControllerProvider);
     final controller = ref.read(peerDiscoveryControllerProvider.notifier);
 
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         children: [
-          _Header(title: t.peersTitle, subtitle: t.peersSubtitle, state: state),
+          _Header(
+            title: t.peersTitle,
+            subtitle: t.peersSubtitle,
+            state: state,
+            peripheral: peripheral,
+          ),
           const SizedBox(height: 12),
           ..._buildBody(context, t, state, controller),
         ],
@@ -122,16 +129,23 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.subtitle, required this.state});
+  const _Header({
+    required this.title,
+    required this.subtitle,
+    required this.state,
+    required this.peripheral,
+  });
 
   final String title;
   final String subtitle;
   final PeerDiscoveryState state;
+  final PeripheralState peripheral;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final scanning = state.status == PeerDiscoveryStatus.scanning;
+    final broadcasting = peripheral.status == PeripheralStatus.broadcasting;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
       child: Column(
@@ -157,6 +171,65 @@ class _Header extends StatelessWidget {
           Text(
             subtitle,
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: SizeTransition(sizeFactor: anim, child: child),
+            ),
+            child: broadcasting
+                ? Padding(
+                    key: const ValueKey('broadcast-on'),
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _BroadcastChip(
+                      label: t.bleBroadcasting,
+                      detail: t.bleConnectedCount(peripheral.connectedCount),
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('broadcast-off')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BroadcastChip extends StatelessWidget {
+  const _BroadcastChip({required this.label, required this.detail});
+
+  final String label;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.brandPrimary.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.podcasts, color: AppColors.brandPrimary, size: 14),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            '  ·  ',
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          ),
+          Text(
+            detail,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
         ],
       ),

@@ -13,20 +13,28 @@ Bluetooth mesh transport and Noise Protocol encryption land in the next mileston
 - [x] M0 — Flutter scaffold, glass design system, EN/UK i18n, mock chat UI
 - [x] M0.5 — Smooth animation pass (aurora drift, hero avatars, bubble entrance, sliding nav)
 - [x] M1 — BLE central scanning (`flutter_blue_plus`), permissions, peer discovery UI
-- [ ] M1.5 — Native peripheral mode (Swift + Kotlin via MethodChannel)
+- [x] M1.5 — Native peripheral mode (Swift + Kotlin via MethodChannel)
 - [ ] M2 — Noise Protocol XX handshake + ChaCha20-Poly1305 transport
 - [ ] M3 — Multi-hop mesh relay + message dedup + LZ4 compression
 - [ ] M4 — Local message store (Hive), key storage (flutter_secure_storage)
 - [ ] M5 — Emergency wipe, IRC-style commands, image transfer
 - [ ] M6 — Nostr fallback transport (NIP-17)
 
-### Why M1.5 exists
+### Peripheral mode (M1.5)
 
-`flutter_blue_plus` is central-only — it can scan and connect to other devices
-acting as peripherals, but cannot advertise its own GATT server. For a real
-mesh every node must do *both*. The peripheral side lives in `lib/core/ble/
-ble_peripheral.dart` as a `MethodChannel` interface; the Swift and Kotlin
-implementations land in M1.5.
+`flutter_blue_plus` is central-only. We added the peripheral side as a thin
+`MethodChannel` bridge talking to native code:
+
+- **Android**: `android/app/src/main/kotlin/com/cubechat/cubechat/CubechatBlePeripheralPlugin.kt`
+  uses `BluetoothLeAdvertiser` + `BluetoothGattServer` to advertise the service
+  UUID (in the primary packet) plus the device name (in scan response) and
+  exposes the three characteristics. Registered in `MainActivity.kt`.
+- **iOS**: `ios/Runner/CubechatBlePeripheralPlugin.swift` does the same with
+  `CBPeripheralManager`. Registered in `AppDelegate.swift`.
+
+The peripheral starts automatically when the user opens the Peers screen and
+permissions / adapter are OK. Status surfaces as a "Broadcasting · N centrals
+connected" chip in the screen header.
 
 ## Run (first time)
 

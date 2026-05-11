@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
 import '../models/discovered_peer.dart';
+import 'peripheral_controller.dart';
 
 /// All the things that can be wrong with BLE on the current device.
 enum PeerDiscoveryStatus {
@@ -118,6 +119,22 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
 
     if (!scanner.isRunning) {
       await scanner.start();
+    }
+
+    // Bring up the peripheral side too so other devices can find us.
+    // Pulled into a microtask so a failure here doesn't block the scanner UI.
+    unawaited(_bootPeripheral());
+  }
+
+  Future<void> _bootPeripheral() async {
+    try {
+      final peripheral = ref.read(peripheralControllerProvider.notifier);
+      // Use the device's advertised name for now. M2 swaps this for the
+      // user's Noise nickname + pubkey fingerprint.
+      final defaultName = Platform.isIOS ? 'iPhone' : 'Android';
+      await peripheral.start(peerName: defaultName);
+    } catch (e, st) {
+      debugPrint('peripheral boot failed: $e\n$st');
     }
   }
 

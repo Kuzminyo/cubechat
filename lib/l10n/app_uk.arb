@@ -39,7 +39,10 @@
   "bleConnect": "З'єднатися",
   "bleConnected": "З'єднано",
   "bleVerified": "Перевірено",
-  "bleUnknownPeer": "Невідомий пристрій"
+  "bleUnknownPeer": "Невідомий пристрій",
+  "bleBroadcasting": "В ефірі",
+  "bleConnectedCount": "{n, plural, =0{Немає з'єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",
+  "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } }
 
   "chatInputHint": "Повідомлення",
   "chatSend": "Надіслати",
