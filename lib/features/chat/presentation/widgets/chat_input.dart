@@ -103,7 +103,7 @@ class _ChatInputState extends State<ChatInput> {
   }
 }
 
-class _SendButton extends StatelessWidget {
+class _SendButton extends StatefulWidget {
   const _SendButton({required this.enabled, required this.tooltip, required this.onTap});
 
   final bool enabled;
@@ -111,25 +111,55 @@ class _SendButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: tooltip,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 150),
-        opacity: enabled ? 1 : 0.5,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: enabled ? onTap : null,
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.brandGradient,
-              ),
-              child: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+      message: widget.tooltip,
+      child: GestureDetector(
+        onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapUp: widget.enabled ? (_) => setState(() => _pressed = false) : null,
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.enabled ? widget.onTap : null,
+        child: AnimatedScale(
+          scale: _pressed ? 0.90 : (widget.enabled ? 1.0 : 0.88),
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: widget.enabled
+                  ? AppColors.brandGradient
+                  : LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.18),
+                        Colors.white.withValues(alpha: 0.10),
+                      ],
+                    ),
+              boxShadow: widget.enabled
+                  ? [
+                      BoxShadow(
+                        color: AppColors.brandPrimary.withValues(alpha: 0.45),
+                        blurRadius: 16,
+                        spreadRadius: -2,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
+              Icons.arrow_upward,
+              color: widget.enabled
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.55),
+              size: 20,
             ),
           ),
         ),

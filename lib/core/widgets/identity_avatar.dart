@@ -10,12 +10,16 @@ class IdentityAvatar extends StatelessWidget {
     required this.label,
     this.size = 44,
     this.online = false,
+    this.heroTag,
   });
 
   final String seed;
   final String label;
   final double size;
   final bool online;
+
+  /// When non-null, wraps the avatar in a Hero for shared-element transitions.
+  final String? heroTag;
 
   static const List<List<Color>> _palettes = [
     [Color(0xFF2EDB8F), Color(0xFF7FD9A6)],
@@ -29,7 +33,7 @@ class IdentityAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _palettes[seed.hashCode.abs() % _palettes.length];
     final initials = _initials(label);
-    return SizedBox(
+    final body = SizedBox(
       width: size,
       height: size,
       child: Stack(
@@ -63,18 +67,22 @@ class IdentityAvatar extends StatelessWidget {
             Positioned(
               right: 0,
               bottom: 0,
-              child: Container(
-                width: size * 0.28,
-                height: size * 0.28,
-                decoration: BoxDecoration(
-                  color: AppColors.online,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.bgDeep, width: 2),
-                ),
-              ),
+              child: _OnlineDot(size: size * 0.28),
             ),
         ],
       ),
+    );
+
+    if (heroTag == null) return body;
+    return Hero(
+      tag: heroTag!,
+      flightShuttleBuilder: (_, animation, __, ___, ____) {
+        return ScaleTransition(
+          scale: Tween<double>(begin: 1.0, end: 1.0).animate(animation),
+          child: body,
+        );
+      },
+      child: body,
     );
   }
 
@@ -83,5 +91,53 @@ class IdentityAvatar extends StatelessWidget {
     if (parts.isEmpty || parts.first.isEmpty) return '?';
     if (parts.length == 1) return parts.first.characters.first.toUpperCase();
     return (parts.first.characters.first + parts[1].characters.first).toUpperCase();
+  }
+}
+
+class _OnlineDot extends StatefulWidget {
+  const _OnlineDot({required this.size});
+
+  final double size;
+
+  @override
+  State<_OnlineDot> createState() => _OnlineDotState();
+}
+
+class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final glow = 0.35 + 0.25 * _c.value;
+        return Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: AppColors.online,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.bgDeep, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.online.withValues(alpha: glow),
+                blurRadius: 8 + 4 * _c.value,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

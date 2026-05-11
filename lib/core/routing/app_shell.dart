@@ -86,16 +86,61 @@ class _GlassNavBar extends StatelessWidget {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    for (var i = 0; i < tabs.length; i++)
-                      _NavItem(
-                        spec: tabs[i],
-                        active: i == currentIndex,
-                        onTap: () => onTap(i),
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    final segmentWidth = c.maxWidth / tabs.length;
+                    return SizedBox(
+                      height: 56,
+                      child: Stack(
+                        children: [
+                          // Sliding pill indicator
+                          AnimatedPositioned(
+                            duration: const Duration(milliseconds: 360),
+                            curve: Curves.easeOutCubic,
+                            left: currentIndex * segmentWidth + 8,
+                            top: 4,
+                            bottom: 4,
+                            width: segmentWidth - 16,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    AppColors.brandPrimary.withValues(alpha: 0.22),
+                                    AppColors.brandSecondary.withValues(alpha: 0.18),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.brandPrimary.withValues(alpha: 0.35),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.brandPrimary.withValues(alpha: 0.18),
+                                    blurRadius: 14,
+                                    spreadRadius: -2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Tab buttons
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              for (var i = 0; i < tabs.length; i++)
+                                _NavItem(
+                                  spec: tabs[i],
+                                  active: i == currentIndex,
+                                  onTap: () => onTap(i),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
-                  ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -126,19 +171,31 @@ class _NavItem extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  active ? spec.activeIcon : spec.icon,
-                  size: 22,
-                  color: active ? AppColors.brandPrimary : AppColors.textOnGlassDim,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: Tween<double>(begin: 0.85, end: 1).animate(
+                      CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                    ),
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: Icon(
+                    active ? spec.activeIcon : spec.icon,
+                    key: ValueKey(active),
+                    size: 22,
+                    color: active ? AppColors.brandPrimary : AppColors.textOnGlassDim,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  spec.label,
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
                   style: TextStyle(
                     fontSize: 11,
                     color: active ? AppColors.textOnGlass : AppColors.textOnGlassDim,
                     fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   ),
+                  child: Text(spec.label),
                 ),
               ],
             ),

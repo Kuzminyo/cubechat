@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
@@ -112,12 +113,15 @@ class ChatsListScreen extends ConsumerWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) {
                   final chat = filtered[i];
-                  return GlassCard(
-                    padding: EdgeInsets.zero,
-                    borderRadius: 18,
-                    child: ChatTile(
-                      chat: chat,
-                      onTap: () => context.push('/chat/${chat.id}', extra: chat),
+                  return AppearAnimation(
+                    delay: Duration(milliseconds: 40 * i),
+                    child: GlassCard(
+                      padding: EdgeInsets.zero,
+                      borderRadius: 18,
+                      child: ChatTile(
+                        chat: chat,
+                        onTap: () => context.push('/chat/${chat.id}', extra: chat),
+                      ),
                     ),
                   );
                 },

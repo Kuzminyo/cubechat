@@ -28,6 +28,7 @@ class ChatTile extends StatelessWidget {
                 label: chat.peerName,
                 size: 48,
                 online: chat.isOnline,
+                heroTag: 'avatar-${chat.peerId}',
               ),
               const SizedBox(width: 12),
               Expanded(

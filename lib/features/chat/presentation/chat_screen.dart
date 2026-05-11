@@ -34,6 +34,7 @@ class ChatScreen extends ConsumerWidget {
               label: chat.peerName,
               size: 36,
               online: chat.isOnline,
+              heroTag: 'avatar-${chat.peerId}',
             ),
             const SizedBox(width: 10),
             Expanded(

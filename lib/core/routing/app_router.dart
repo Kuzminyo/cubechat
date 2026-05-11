@@ -8,6 +8,7 @@ import '../../features/peers/presentation/peers_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
+import 'page_transitions.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 final _shellNavKey = GlobalKey<NavigatorState>();
@@ -42,20 +43,32 @@ GoRouter buildRouter() {
           );
         },
         routes: [
-          GoRoute(path: '/chats', builder: (_, __) => const ChatsListScreen()),
-          GoRoute(path: '/peers', builder: (_, __) => const PeersScreen()),
-          GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+          GoRoute(
+            path: '/chats',
+            pageBuilder: (context, state) =>
+                crossFadePage(child: const ChatsListScreen(), state: state),
+          ),
+          GoRoute(
+            path: '/peers',
+            pageBuilder: (context, state) =>
+                crossFadePage(child: const PeersScreen(), state: state),
+          ),
+          GoRoute(
+            path: '/profile',
+            pageBuilder: (context, state) =>
+                crossFadePage(child: const ProfileScreen(), state: state),
+          ),
         ],
       ),
       GoRoute(
         path: '/chat/:id',
         parentNavigatorKey: _rootNavKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final chat = state.extra as Chat?;
-          if (chat == null) {
-            return const AuroraBackground(child: Scaffold(backgroundColor: Colors.transparent));
-          }
-          return AuroraBackground(child: ChatScreen(chat: chat));
+          final screen = chat == null
+              ? const AuroraBackground(child: Scaffold(backgroundColor: Colors.transparent))
+              : AuroraBackground(child: ChatScreen(chat: chat));
+          return fadeSlidePage(child: screen, state: state);
         },
       ),
     ],
