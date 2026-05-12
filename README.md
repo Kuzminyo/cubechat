@@ -60,19 +60,22 @@ After that, day-to-day:
 flutter run
 ```
 
-### Branding (one-time)
+### Branding
 
-Drop the cube logo at `assets/logo/cube.png` (PNG, transparent background,
-≥1024×1024 — see `assets/logo/README.md`), then:
+The logo is **drawn programmatically** by `CubeLogoPainter` so the in-app
+brand mark scales perfectly at every size and stays automatic. For
+launcher icons / splash (where the platform requires real PNG files),
+generate them once with:
 
 ```bash
+flutter run -t tool/export_logo.dart -d windows
 dart run flutter_launcher_icons
 dart run flutter_native_splash:create
 ```
 
-This generates launcher icons for both platforms and the splash screen.
-The in-app `CubeLogo` widget picks up the file at runtime — no rebuild
-needed for code, just hot restart.
+The exporter rasterizes the painter to `assets/logo/cube.png` (solid bg,
+for iOS) and `assets/logo/cube_transparent.png` (transparent, for Android
+adaptive foreground). Detail in `assets/logo/README.md`.
 
 `flutter gen-l10n` re-runs automatically as part of `flutter pub get` thanks to `generate: true` in pubspec.
 

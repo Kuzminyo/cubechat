@@ -1,39 +1,42 @@
-# Logo asset
+# Logo assets
 
-Drop the brand logo here as `cube.png`.
+The cubechat brand mark is **drawn programmatically** by
+`CubeLogoPainter` (in `lib/core/widgets/cube_logo.dart`). For in-app use
+no asset file is required — the painter scales crisply at every size and
+stays in sync with the brand palette automatically.
 
-## Requirements
+This directory exists for the **rasterized variants** that the platform
+needs as actual PNG files (launcher icons, splash screen). They are
+generated, not hand-edited.
 
-- **Filename:** `cube.png` (lowercase)
-- **Format:** PNG with **transparent background** (the cube only — no white box around it)
-- **Size:** at least 1024×1024 px (the launcher-icon generator downsamples for every density)
-- **Aspect:** square; the cube centered with ~5% margin on each side
+## Generated files
 
-## What gets generated from it
-
-| Output | Tool | Trigger |
+| File | Purpose | Background |
 |---|---|---|
-| Android launcher icons (mipmap-* + adaptive) | `flutter_launcher_icons` | `dart run flutter_launcher_icons` |
-| iOS app icons (Assets.xcassets) | `flutter_launcher_icons` | same |
-| Android 12 / iOS splash screen | `flutter_native_splash` | `dart run flutter_native_splash:create` |
-| In-app `CubeLogo` widget (chats / peers / profile headers) | `Image.asset` direct | nothing — picked up at runtime |
+| `cube.png` | iOS launcher icon, splash foreground | solid `#06140D` |
+| `cube_transparent.png` | Android adaptive icon foreground | transparent |
 
-## Setup commands after placing the file
+## How to regenerate
 
-```powershell
+```bash
 cd Y:\projects\cubechat
 flutter pub get
-dart run flutter_launcher_icons
-dart run flutter_native_splash:create
-flutter run
+flutter run -t tool/export_logo.dart -d windows
 ```
 
-## Transparency note
+(On macOS use `-d macos`, on Linux `-d linux`. The window opens for ~1s
+showing the cube and the status line, writes both PNGs, then exits.)
 
-If the source PNG has a white background, the in-app logo will show a white
-square against the dark aurora theme — looks broken. Strip the background
-first (any image editor, or `https://www.remove.bg/` for a one-shot).
+After that, rebuild the platform icons + splash from the freshly-generated
+PNGs:
 
-For iOS launcher icons specifically App Store rejects transparent PNGs;
-`remove_alpha_ios: true` in `pubspec.yaml` handles that automatically by
-compositing onto the dark brand background.
+```bash
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+```
+
+## Want a different design?
+
+Edit `CubeLogoPainter` in `lib/core/widgets/cube_logo.dart` — the colours,
+face geometry, edge highlights, shadow, and glow all live there. Re-run
+the exporter and the icon pipeline to propagate the change.
