@@ -60,6 +60,20 @@ After that, day-to-day:
 flutter run
 ```
 
+### Branding (one-time)
+
+Drop the cube logo at `assets/logo/cube.png` (PNG, transparent background,
+≥1024×1024 — see `assets/logo/README.md`), then:
+
+```bash
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+```
+
+This generates launcher icons for both platforms and the splash screen.
+The in-app `CubeLogo` widget picks up the file at runtime — no rebuild
+needed for code, just hot restart.
+
 `flutter gen-l10n` re-runs automatically as part of `flutter pub get` thanks to `generate: true` in pubspec.
 
 ## Project layout

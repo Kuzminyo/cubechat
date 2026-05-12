@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
+import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
@@ -53,7 +54,16 @@ class ChatsListScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.chatsTitle, style: AppTypography.display()),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const CubeLogo(size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(t.chatsTitle, style: AppTypography.display()),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     t.chatsSubtitle,

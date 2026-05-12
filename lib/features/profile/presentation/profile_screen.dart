@@ -6,6 +6,7 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
@@ -35,7 +36,13 @@ class ProfileScreen extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-            child: Text(t.profileTitle, style: AppTypography.display()),
+            child: Row(
+              children: [
+                const CubeLogo(size: 32),
+                const SizedBox(width: 12),
+                Expanded(child: Text(t.profileTitle, style: AppTypography.display())),
+              ],
+            ),
           ),
 
           // Identity
@@ -138,19 +145,23 @@ class ProfileScreen extends ConsumerWidget {
           GlassCard(
             child: Row(
               children: [
+                const CubeLogo(size: 36),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    'Cubechat',
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cubechat',
+                        style: AppTypography.heading(size: 15, color: AppColors.textOnGlass),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        t.profileVersion(_appVersion),
+                        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                      ),
+                    ],
                   ),
-                ),
-                Text(
-                  t.profileVersion(_appVersion),
-                  style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
               ],
             ),
