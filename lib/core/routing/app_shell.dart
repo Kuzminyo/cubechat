@@ -50,16 +50,11 @@ class _TabSpec {
   final String label;
 }
 
-/// Liquid-glass bottom nav.
+/// Liquid-glass bottom nav — Telegram-style.
 ///
-/// Composition:
-///   1. heavy BackdropFilter blur (real frosted glass — chat content is
-///      visible through it, just diffused)
-///   2. soft white→transparent vertical gradient (lens refraction)
-///   3. 1px upper specular highlight (the bright "edge of the glass")
-///   4. 1px lower inner shadow (the dark "back edge" — sells thickness)
-///   5. hairline outer border + outer drop shadow
-///   6. tab content on top
+/// The bar is essentially a thin glass frame. Behind it: a strong blur of
+/// whatever is scrolling. On top: only a hairline border and a barely-there
+/// specular line. No white milky fill — the content shows through clearly.
 class _LiquidGlassNavBar extends StatelessWidget {
   const _LiquidGlassNavBar({
     required this.tabs,
@@ -71,21 +66,21 @@ class _LiquidGlassNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  static const double _radius = 30;
+  static const double _radius = 34;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: DecoratedBox(
-        // Outer drop shadow lives outside the clip so it isn't blurred away.
+        // Outer drop shadow lives outside the clip so it isn't blurred.
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(_radius),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -93,74 +88,48 @@ class _LiquidGlassNavBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(_radius),
           child: Stack(
             children: [
-              // (1) Frosted-glass blur of whatever is behind the bar.
+              // Heavy backdrop blur — frosted, but with almost no white tint.
               Positioned.fill(
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                  filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                   child: const SizedBox.shrink(),
                 ),
               ),
 
-              // (2) Lens refraction tint — top of the glass catches more light.
+              // Whisper-thin white veil so the bar separates from the bg
+              // but reads as glass, not as a panel. 4% is the magic number —
+              // less and it disappears, more and it goes milky.
               Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.14),
-                        Colors.white.withValues(alpha: 0.03),
-                        Colors.white.withValues(alpha: 0.06),
-                      ],
-                      stops: const [0.0, 0.55, 1.0],
-                    ),
-                  ),
-                ),
+                child: ColoredBox(color: Colors.white.withValues(alpha: 0.04)),
               ),
 
-              // (3) Bright specular line along the top edge — the signature
-              //     liquid-glass "wet rim".
+              // Specular line along the top — "wet rim" of liquid glass.
               Positioned(
                 top: 0,
-                left: 1,
-                right: 1,
-                height: 1.2,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.0),
-                        Colors.white.withValues(alpha: 0.55),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // (4) Subtle dark edge along the bottom — sells the thickness
-              //     of the glass.
-              Positioned(
-                bottom: 0,
                 left: 1,
                 right: 1,
                 height: 1,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.18),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.35),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
                   ),
                 ),
               ),
 
-              // (5) Outer hairline border.
+              // Hairline outer border.
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(_radius),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
+                        color: Colors.white.withValues(alpha: 0.12),
                         width: 1,
                       ),
                     ),
@@ -168,7 +137,7 @@ class _LiquidGlassNavBar extends StatelessWidget {
                 ),
               ),
 
-              // (6) Tab content.
+              // Tab content.
               SafeArea(
                 top: false,
                 child: Padding(
