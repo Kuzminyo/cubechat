@@ -50,13 +50,11 @@ class _TabSpec {
   final String label;
 }
 
-/// Bottom nav — pure see-through glass.
+/// Bottom nav — Telegram-style glass pill.
 ///
-/// Strips every white tint, every specular line, every gradient. Only two
-/// effects remain: a backdrop blur (chats are visible diffused behind the
-/// bar) and a single hairline border (so the pill shape is readable).
-/// This is as close as Flutter can get to Telegram's translucent bar
-/// without writing a custom GLSL shader.
+/// The bar reads as a tangible piece of glass (visible pill outline + soft
+/// inner glow) but stays translucent enough that diffused chat content shows
+/// through. Whites are kept low so it doesn't go milky.
 class _LiquidGlassNavBar extends StatelessWidget {
   const _LiquidGlassNavBar({
     required this.tabs,
@@ -73,33 +71,87 @@ class _LiquidGlassNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
       child: DecoratedBox(
-        // Soft drop shadow so the bar lifts off the content.
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(_radius),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 22,
-              offset: const Offset(0, 8),
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 28,
+              offset: const Offset(0, 10),
+              spreadRadius: -4,
             ),
           ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(_radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                // No fill — content stays visible behind the blur.
-                borderRadius: BorderRadius.circular(_radius),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  width: 1,
+          child: Stack(
+            children: [
+              // (1) Backdrop blur — diffuses whatever scrolls behind.
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                  child: const SizedBox.shrink(),
                 ),
               ),
-              child: SafeArea(
+
+              // (2) Glass body — vertical gradient. Brighter at top (lit edge),
+              //     darker at the centre (refracted shadow zone). White tint
+              //     stays under 8% so it never feels milky.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.10),
+                        Colors.white.withValues(alpha: 0.02),
+                        Colors.white.withValues(alpha: 0.05),
+                      ],
+                      stops: const [0.0, 0.55, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // (3) Top wet-rim specular line.
+              Positioned(
+                top: 0,
+                left: 6,
+                right: 6,
+                height: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.55),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // (4) Visible pill border so the shape is unambiguous.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(_radius),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.20),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // (5) Tab content.
+              SafeArea(
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
@@ -116,7 +168,7 @@ class _LiquidGlassNavBar extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
