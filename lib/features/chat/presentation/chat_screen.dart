@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/theme/typography.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
@@ -44,11 +45,7 @@ class ChatScreen extends ConsumerWidget {
                 children: [
                   Text(
                     chat.peerName,
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
                   ),
                   Text(
                     chat.isOnline ? t.profileTransportMesh : t.chatEncryptedNotice,

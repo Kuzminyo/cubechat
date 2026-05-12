@@ -29,15 +29,7 @@ class ProfileScreen extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-            child: Text(
-              t.profileTitle,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.5,
-                color: AppColors.textPrimary,
-              ),
-            ),
+            child: Text(t.profileTitle, style: AppTypography.display()),
           ),
 
           // Identity
@@ -51,11 +43,7 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(height: 14),
                 Text(
                   _mockNickname,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppTypography.heading(size: 20, color: AppColors.textOnGlass),
                 ),
                 const SizedBox(height: 4),
                 Text(

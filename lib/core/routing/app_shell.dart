@@ -71,9 +71,9 @@ class _GlassNavBar extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.10),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.3),
@@ -85,62 +85,17 @@ class _GlassNavBar extends StatelessWidget {
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                child: LayoutBuilder(
-                  builder: (context, c) {
-                    final segmentWidth = c.maxWidth / tabs.length;
-                    return SizedBox(
-                      height: 56,
-                      child: Stack(
-                        children: [
-                          // Sliding pill indicator
-                          AnimatedPositioned(
-                            duration: const Duration(milliseconds: 360),
-                            curve: Curves.easeOutCubic,
-                            left: currentIndex * segmentWidth + 8,
-                            top: 4,
-                            bottom: 4,
-                            width: segmentWidth - 16,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    AppColors.brandPrimary.withValues(alpha: 0.22),
-                                    AppColors.brandSecondary.withValues(alpha: 0.18),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: AppColors.brandPrimary.withValues(alpha: 0.35),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                                    blurRadius: 14,
-                                    spreadRadius: -2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Tab buttons
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              for (var i = 0; i < tabs.length; i++)
-                                _NavItem(
-                                  spec: tabs[i],
-                                  active: i == currentIndex,
-                                  onTap: () => onTap(i),
-                                ),
-                            ],
-                          ),
-                        ],
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    for (var i = 0; i < tabs.length; i++)
+                      _NavItem(
+                        spec: tabs[i],
+                        active: i == currentIndex,
+                        onTap: () => onTap(i),
                       ),
-                    );
-                  },
+                  ],
                 ),
               ),
             ),
@@ -167,7 +122,7 @@ class _NavItem extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -182,7 +137,7 @@ class _NavItem extends StatelessWidget {
                   child: Icon(
                     active ? spec.activeIcon : spec.icon,
                     key: ValueKey(active),
-                    size: 22,
+                    size: 24,
                     color: active ? AppColors.brandPrimary : AppColors.textOnGlassDim,
                   ),
                 ),
@@ -196,6 +151,27 @@ class _NavItem extends StatelessWidget {
                     fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   ),
                   child: Text(spec.label),
+                ),
+                const SizedBox(height: 4),
+                // Small dot indicator instead of the old gradient pill.
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  width: active ? 18 : 0,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.brandPrimary,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: AppColors.brandPrimary.withValues(alpha: 0.5),
+                              blurRadius: 6,
+                              spreadRadius: -1,
+                            ),
+                          ]
+                        : null,
+                  ),
                 ),
               ],
             ),
