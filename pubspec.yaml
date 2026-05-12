@@ -28,9 +28,11 @@ dependencies:
   flutter_blue_plus: ^1.34.5
   permission_handler: ^11.3.1
 
+  # Crypto (M2)
+  cryptography: ^2.7.0            # X25519, ChaCha20-Poly1305, BLAKE2s, HKDF
+  flutter_secure_storage: ^9.2.2  # private key in Keychain / Keystore
+
   # --- Reserved for upcoming layers ---
-  # cryptography: ^2.7.0            # M2: Noise / X25519 / ChaCha20-Poly1305
-  # flutter_secure_storage: ^9.2.2  # M2: private key storage
   # hive: ^2.2.3                    # M4: message store
   # hive_flutter: ^1.1.0
   # uuid: ^4.5.1

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/crypto/identity_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -11,9 +12,8 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 
 const _appVersion = '0.1.0';
-// Placeholder until Noise key generation lands.
-const _mockNickname = 'Anonymous';
-const _mockFingerprint = '8a3f 19c2 7e5b 4d09 a1f4 2c88 6b3d 0e57';
+// Nickname is still placeholder — nickname management lands in M5.
+const _defaultNickname = 'Anonymous';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -22,6 +22,12 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final locale = ref.watch(localeControllerProvider);
+    final fingerprintAsync = ref.watch(identityFingerprintProvider);
+    final fingerprint = fingerprintAsync.maybeWhen(
+      data: (v) => v,
+      orElse: () => '… … … …  … … … …',
+    );
+    final fingerprintReady = fingerprintAsync.hasValue;
 
     return SafeArea(
       child: ListView(
@@ -39,10 +45,10 @@ class ProfileScreen extends ConsumerWidget {
             borderRadius: 22,
             child: Column(
               children: [
-                const IdentityAvatar(seed: _mockFingerprint, label: _mockNickname, size: 72),
+                IdentityAvatar(seed: fingerprint, label: _defaultNickname, size: 72),
                 const SizedBox(height: 14),
                 Text(
-                  _mockNickname,
+                  _defaultNickname,
                   style: AppTypography.heading(size: 20, color: AppColors.textOnGlass),
                 ),
                 const SizedBox(height: 4),
@@ -51,7 +57,11 @@ class ProfileScreen extends ConsumerWidget {
                   style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
                 const SizedBox(height: 18),
-                _FingerprintRow(label: t.profileFingerprint, value: _mockFingerprint),
+                _FingerprintRow(
+                  label: t.profileFingerprint,
+                  value: fingerprint,
+                  ready: fingerprintReady,
+                ),
               ],
             ),
           ),
@@ -179,10 +189,15 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _FingerprintRow extends StatelessWidget {
-  const _FingerprintRow({required this.label, required this.value});
+  const _FingerprintRow({
+    required this.label,
+    required this.value,
+    this.ready = true,
+  });
 
   final String label;
   final String value;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
@@ -207,7 +222,10 @@ class _FingerprintRow extends StatelessWidget {
               Expanded(
                 child: SelectableText(
                   value,
-                  style: AppTypography.mono(size: 12.5, color: AppColors.textOnGlass),
+                  style: AppTypography.mono(
+                    size: 12.5,
+                    color: ready ? AppColors.textOnGlass : AppColors.textOnGlassFaint,
+                  ),
                 ),
               ),
               IconButton(
@@ -215,17 +233,20 @@ class _FingerprintRow extends StatelessWidget {
                 splashRadius: 18,
                 icon: Icon(Icons.copy, size: 16, color: AppColors.textOnGlassDim),
                 tooltip: t.copy,
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: value));
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: Colors.white.withValues(alpha: 0.12),
-                      content: Text(t.copied, style: TextStyle(color: AppColors.textOnGlass)),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
+                onPressed: ready
+                    ? () async {
+                        await Clipboard.setData(ClipboardData(text: value));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: Colors.white.withValues(alpha: 0.12),
+                            content: Text(t.copied,
+                                style: TextStyle(color: AppColors.textOnGlass)),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    : null,
               ),
             ],
           ),
@@ -280,9 +301,9 @@ class _LangPill extends StatelessWidget {
   }
 }
 
-class _EmergencyWipeCard extends StatelessWidget {
+class _EmergencyWipeCard extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     return GlassCard(
       child: Row(
@@ -321,14 +342,14 @@ class _EmergencyWipeCard extends StatelessWidget {
           const SizedBox(width: 10),
           PillButton(
             label: t.profileEmergencyWipeAction,
-            onTap: () => _confirmWipe(context, t),
+            onTap: () => _confirmWipe(context, ref, t),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _confirmWipe(BuildContext context, AppLocalizations t) async {
+  Future<void> _confirmWipe(BuildContext context, WidgetRef ref, AppLocalizations t) async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -351,7 +372,13 @@ class _EmergencyWipeCard extends StatelessWidget {
             child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () async {
+              await ref.read(identityServiceProvider).wipe();
+              // Re-fetch identity — provider will mint a fresh keypair.
+              ref.invalidate(identityProvider);
+              if (!ctx.mounted) return;
+              Navigator.of(ctx).pop();
+            },
             child: Text(t.profileEmergencyWipeAction, style: const TextStyle(color: AppColors.danger)),
           ),
         ],
