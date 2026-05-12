@@ -50,11 +50,13 @@ class _TabSpec {
   final String label;
 }
 
-/// Liquid-glass bottom nav — Telegram-style.
+/// Bottom nav — pure see-through glass.
 ///
-/// The bar is essentially a thin glass frame. Behind it: a strong blur of
-/// whatever is scrolling. On top: only a hairline border and a barely-there
-/// specular line. No white milky fill — the content shows through clearly.
+/// Strips every white tint, every specular line, every gradient. Only two
+/// effects remain: a backdrop blur (chats are visible diffused behind the
+/// bar) and a single hairline border (so the pill shape is readable).
+/// This is as close as Flutter can get to Telegram's translucent bar
+/// without writing a custom GLSL shader.
 class _LiquidGlassNavBar extends StatelessWidget {
   const _LiquidGlassNavBar({
     required this.tabs,
@@ -73,72 +75,31 @@ class _LiquidGlassNavBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: DecoratedBox(
-        // Outer drop shadow lives outside the clip so it isn't blurred.
+        // Soft drop shadow so the bar lifts off the content.
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(_radius),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 24,
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 22,
               offset: const Offset(0, 8),
             ),
           ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(_radius),
-          child: Stack(
-            children: [
-              // Heavy backdrop blur — frosted, but with almost no white tint.
-              Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                  child: const SizedBox.shrink(),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                // No fill — content stays visible behind the blur.
+                borderRadius: BorderRadius.circular(_radius),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  width: 1,
                 ),
               ),
-
-              // Whisper-thin white veil so the bar separates from the bg
-              // but reads as glass, not as a panel. 4% is the magic number —
-              // less and it disappears, more and it goes milky.
-              Positioned.fill(
-                child: ColoredBox(color: Colors.white.withValues(alpha: 0.04)),
-              ),
-
-              // Specular line along the top — "wet rim" of liquid glass.
-              Positioned(
-                top: 0,
-                left: 1,
-                right: 1,
-                height: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.0),
-                        Colors.white.withValues(alpha: 0.35),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Hairline outer border.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(_radius),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Tab content.
-              SafeArea(
+              child: SafeArea(
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
@@ -155,7 +116,7 @@ class _LiquidGlassNavBar extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
