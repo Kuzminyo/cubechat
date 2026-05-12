@@ -40,7 +40,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
         children: [
           _Header(
             title: t.peersTitle,

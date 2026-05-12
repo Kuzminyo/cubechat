@@ -32,7 +32,7 @@ class ProfileScreen extends ConsumerWidget {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
