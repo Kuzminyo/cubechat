@@ -32,7 +32,7 @@ class AppShell extends StatelessWidget {
         backgroundColor: Colors.transparent,
         extendBody: true,
         body: body,
-        bottomNavigationBar: _GlassNavBar(
+        bottomNavigationBar: _LiquidGlassNavBar(
           tabs: tabs,
           currentIndex: currentIndex,
           onTap: onTabChanged,
@@ -50,8 +50,18 @@ class _TabSpec {
   final String label;
 }
 
-class _GlassNavBar extends StatelessWidget {
-  const _GlassNavBar({
+/// Liquid-glass bottom nav.
+///
+/// Composition:
+///   1. heavy BackdropFilter blur (real frosted glass — chat content is
+///      visible through it, just diffused)
+///   2. soft white→transparent vertical gradient (lens refraction)
+///   3. 1px upper specular highlight (the bright "edge of the glass")
+///   4. 1px lower inner shadow (the dark "back edge" — sells thickness)
+///   5. hairline outer border + outer drop shadow
+///   6. tab content on top
+class _LiquidGlassNavBar extends StatelessWidget {
+  const _LiquidGlassNavBar({
     required this.tabs,
     required this.currentIndex,
     required this.onTap,
@@ -61,44 +71,122 @@ class _GlassNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
+  static const double _radius = 30;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 24,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+      child: DecoratedBox(
+        // Outer drop shadow lives outside the clip so it isn't blurred away.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(_radius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 28,
+              offset: const Offset(0, 10),
             ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    for (var i = 0; i < tabs.length; i++)
-                      _NavItem(
-                        spec: tabs[i],
-                        active: i == currentIndex,
-                        onTap: () => onTap(i),
-                      ),
-                  ],
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(_radius),
+          child: Stack(
+            children: [
+              // (1) Frosted-glass blur of whatever is behind the bar.
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                  child: const SizedBox.shrink(),
                 ),
               ),
-            ),
+
+              // (2) Lens refraction tint — top of the glass catches more light.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.14),
+                        Colors.white.withValues(alpha: 0.03),
+                        Colors.white.withValues(alpha: 0.06),
+                      ],
+                      stops: const [0.0, 0.55, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // (3) Bright specular line along the top edge — the signature
+              //     liquid-glass "wet rim".
+              Positioned(
+                top: 0,
+                left: 1,
+                right: 1,
+                height: 1.2,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.55),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // (4) Subtle dark edge along the bottom — sells the thickness
+              //     of the glass.
+              Positioned(
+                bottom: 0,
+                left: 1,
+                right: 1,
+                height: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.18),
+                  ),
+                ),
+              ),
+
+              // (5) Outer hairline border.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(_radius),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // (6) Tab content.
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      for (var i = 0; i < tabs.length; i++)
+                        _NavItem(
+                          spec: tabs[i],
+                          active: i == currentIndex,
+                          onTap: () => onTap(i),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -120,7 +208,7 @@ class _NavItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Column(
@@ -153,7 +241,7 @@ class _NavItem extends StatelessWidget {
                   child: Text(spec.label),
                 ),
                 const SizedBox(height: 4),
-                // Small dot indicator instead of the old gradient pill.
+                // Small dot indicator under active tab.
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 240),
                   curve: Curves.easeOutCubic,
@@ -165,8 +253,8 @@ class _NavItem extends StatelessWidget {
                     boxShadow: active
                         ? [
                             BoxShadow(
-                              color: AppColors.brandPrimary.withValues(alpha: 0.5),
-                              blurRadius: 6,
+                              color: AppColors.brandPrimary.withValues(alpha: 0.55),
+                              blurRadius: 8,
                               spreadRadius: -1,
                             ),
                           ]
