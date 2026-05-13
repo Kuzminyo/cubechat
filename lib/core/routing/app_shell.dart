@@ -71,52 +71,64 @@ class _GlassNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(_radius),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.40),
-              blurRadius: 30,
-              offset: const Offset(0, 12),
-              spreadRadius: -6,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(_radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                // Dark glass tint — sits slightly darker than aurora rather
-                // than lighter, which is what makes Telegram's bar read as
-                // glass rather than as a panel.
-                color: Colors.black.withValues(alpha: 0.32),
-                borderRadius: BorderRadius.circular(_radius),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  width: 1,
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Center(
+          // Cap the width so the bar reads as a floating island even on
+          // wide desktop windows — on a mobile screen this constraint is
+          // a no-op (it'll just match the available width).
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_radius),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.40),
+                      blurRadius: 30,
+                      offset: const Offset(0, 12),
+                      spreadRadius: -6,
+                    ),
+                  ],
                 ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      for (var i = 0; i < tabs.length; i++)
-                        Expanded(
-                          child: _NavItem(
-                            spec: tabs[i],
-                            active: i == currentIndex,
-                            onTap: () => onTabChanged(i),
-                          ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_radius),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        // Dark glass tint — slightly darker than the aurora
+                        // behind so refraction reads as glass, not panel.
+                        // Lowered from 32% to 22% to let more of the chat
+                        // colour bleed through.
+                        color: Colors.black.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(_radius),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          width: 1,
                         ),
-                    ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            for (var i = 0; i < tabs.length; i++)
+                              Expanded(
+                                child: _NavItem(
+                                  spec: tabs[i],
+                                  active: i == currentIndex,
+                                  onTap: () => onTabChanged(i),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
