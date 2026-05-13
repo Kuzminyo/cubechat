@@ -50,11 +50,17 @@ class _TabSpec {
   final String label;
 }
 
-/// Bottom nav — Telegram-style glass pill.
+/// Bottom nav — invisible holder, blur only.
 ///
-/// The bar reads as a tangible piece of glass (visible pill outline + soft
-/// inner glow) but stays translucent enough that diffused chat content shows
-/// through. Whites are kept low so it doesn't go milky.
+/// There is no panel. The bar's only job is to:
+///   * clip a pill-shaped region
+///   * apply a backdrop blur inside that region (so chat tiles that scroll
+///     under it appear diffused)
+///   * lay the three tab buttons on top
+///
+/// No fill, no border, no specular, no shadow. When nothing is behind the
+/// bar, the only thing visible are the buttons. When chats scroll under it,
+/// you see them blurred — and only the blur betrays where the bar is.
 class _LiquidGlassNavBar extends StatelessWidget {
   const _LiquidGlassNavBar({
     required this.tabs,
@@ -72,103 +78,26 @@ class _LiquidGlassNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(_radius),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-              spreadRadius: -4,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    _NavItem(
+                      spec: tabs[i],
+                      active: i == currentIndex,
+                      onTap: () => onTap(i),
+                    ),
+                ],
+              ),
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(_radius),
-          child: Stack(
-            children: [
-              // (1) Backdrop blur — diffuses whatever scrolls behind.
-              Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-                  child: const SizedBox.shrink(),
-                ),
-              ),
-
-              // (2) Glass body — vertical gradient. Brighter at top (lit edge),
-              //     darker at the centre (refracted shadow zone). White tint
-              //     stays under 8% so it never feels milky.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.10),
-                        Colors.white.withValues(alpha: 0.02),
-                        Colors.white.withValues(alpha: 0.05),
-                      ],
-                      stops: const [0.0, 0.55, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-
-              // (3) Top wet-rim specular line.
-              Positioned(
-                top: 0,
-                left: 6,
-                right: 6,
-                height: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.0),
-                        Colors.white.withValues(alpha: 0.55),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // (4) Visible pill border so the shape is unambiguous.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(_radius),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.20),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // (5) Tab content.
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      for (var i = 0; i < tabs.length; i++)
-                        _NavItem(
-                          spec: tabs[i],
-                          active: i == currentIndex,
-                          onTap: () => onTap(i),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),
