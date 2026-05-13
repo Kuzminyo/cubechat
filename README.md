@@ -38,26 +38,29 @@ connected" chip in the screen header.
 
 ## Run (first time)
 
-Requires Flutter SDK ≥ 3.27.
+Requires Flutter SDK ≥ 3.27. Platform folders for `android/`, `ios/`,
+`windows/` and `web/` are checked in — just pull dependencies and run.
 
 ```bash
-# 1. Generate android/ and ios/ platform folders (only once)
-flutter create . --platforms=android,ios --org com.cubechat --project-name cubechat
-
-# 2. Pull dependencies
 flutter pub get
-
-# 3. Generate localization (lib/l10n/app_localizations.dart)
 flutter gen-l10n
-
-# 4. Run on a connected device or emulator
 flutter run
 ```
 
-After that, day-to-day:
+### Targets
+
+| Target | Command | BLE works? | Notes |
+|---|---|---|---|
+| **Android device** | `flutter run -d <id>` | ✅ central + peripheral | full mesh demo, two phones see each other |
+| **iOS device** | `flutter run -d <id>` | ✅ central + peripheral | requires Mac for build |
+| **Web (Chrome)** | `flutter run -d chrome` | ❌ unsupported by browser | UI demo only, the Peers screen shows "Bluetooth LE not available" |
+| **Windows desktop** | `flutter run -d windows` | ❌ central only | needs Visual Studio 2022 with C++ workload |
+
+### Build static web bundle
 
 ```bash
-flutter run
+flutter build web --release
+# Output in build/web/ — drop on any static host (GitHub Pages, Netlify, S3)
 ```
 
 ### Branding

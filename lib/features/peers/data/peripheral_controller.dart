@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_peripheral.dart';
 import '../../../core/ble/ble_permissions.dart';
+import '../../../core/util/platform_info.dart';
 
 enum PeripheralStatus {
   /// Not started yet.
@@ -82,7 +82,7 @@ class PeripheralController extends Notifier<PeripheralState> {
   /// [peerName] is the human-readable label shown in scan results. Will be
   /// replaced with the Noise pubkey nickname once M2 lands.
   Future<void> start({required String peerName, String? pubkeyFingerprint}) async {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!PlatformInfo.isMobile) {
       state = state.copyWith(status: PeripheralStatus.unsupported);
       return;
     }

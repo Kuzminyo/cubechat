@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
+import '../../../core/util/platform_info.dart';
 import '../models/discovered_peer.dart';
 import 'peripheral_controller.dart';
 
@@ -88,9 +88,9 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   Future<void> start() async {
     final scanner = ref.read(bleScannerProvider);
 
-    // Windows/Linux/macOS don't have meaningful BLE peripheral support yet,
-    // and central support varies. Bail with a clear status.
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    // Web/desktop don't have meaningful BLE peripheral support yet, and
+    // central support varies. Bail with a clear status.
+    if (!PlatformInfo.isMobile) {
       state = state.copyWith(status: PeerDiscoveryStatus.unsupported);
       return;
     }
@@ -131,7 +131,7 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       final peripheral = ref.read(peripheralControllerProvider.notifier);
       // Use the device's advertised name for now. M2 swaps this for the
       // user's Noise nickname + pubkey fingerprint.
-      final defaultName = Platform.isIOS ? 'iPhone' : 'Android';
+      final defaultName = PlatformInfo.isIOS ? 'iPhone' : 'Android';
       await peripheral.start(peerName: defaultName);
     } catch (e, st) {
       debugPrint('peripheral boot failed: $e\n$st');

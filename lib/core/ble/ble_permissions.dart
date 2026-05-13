@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:permission_handler/permission_handler.dart';
+
+import '../util/platform_info.dart';
 
 /// What BLE-related permissions look like right now.
 enum BlePermissionState {
@@ -13,7 +13,7 @@ enum BlePermissionState {
   /// User checked "Don't ask again"; only Settings can flip this.
   permanentlyDenied,
 
-  /// Platform doesn't surface these permissions (e.g. desktop). Treat as granted.
+  /// Platform doesn't surface these permissions (e.g. desktop, web). Treat as granted.
   notApplicable,
 }
 
@@ -27,10 +27,10 @@ class BlePermissions {
   const BlePermissions();
 
   Future<BlePermissionState> check() async {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!PlatformInfo.isMobile) {
       return BlePermissionState.notApplicable;
     }
-    if (Platform.isIOS) {
+    if (PlatformInfo.isIOS) {
       // CoreBluetooth triggers the prompt on first use; nothing to pre-flight.
       return BlePermissionState.granted;
     }
@@ -45,10 +45,10 @@ class BlePermissions {
   }
 
   Future<BlePermissionState> request() async {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!PlatformInfo.isMobile) {
       return BlePermissionState.notApplicable;
     }
-    if (Platform.isIOS) {
+    if (PlatformInfo.isIOS) {
       return BlePermissionState.granted;
     }
     final results = await [
