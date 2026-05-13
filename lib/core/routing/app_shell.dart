@@ -50,12 +50,7 @@ class _TabSpec {
   final String label;
 }
 
-/// One floating glass pill containing all the tabs.
-///
-/// Telegram-style: a single rounded container with a dark translucent fill
-/// and a hairline border. Chat content above shows through, diffused by the
-/// backdrop blur. The dark tint (rather than white) keeps the bar from
-/// going milky on the dark aurora theme.
+/// Floating glass-island bottom nav (Telegram style).
 class _GlassNavBar extends StatelessWidget {
   const _GlassNavBar({
     required this.tabs,
@@ -74,63 +69,86 @@ class _GlassNavBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Center(
-          // Cap the width so the bar reads as a floating island even on
-          // wide desktop windows — on a mobile screen this constraint is
-          // a no-op (it'll just match the available width).
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        // Horizontal-only centering — Row keeps the bar's height tight to
+        // its content. (Earlier I used Center here, which expanded
+        // vertically and ate the body.)
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: _GlassPill(
+                  tabs: tabs,
+                  currentIndex: currentIndex,
+                  onTabChanged: onTabChanged,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassPill extends StatelessWidget {
+  const _GlassPill({
+    required this.tabs,
+    required this.currentIndex,
+    required this.onTabChanged,
+  });
+
+  final List<_TabSpec> tabs;
+  final int currentIndex;
+  final ValueChanged<int> onTabChanged;
+
+  static const double _radius = 36;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_radius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.40),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
+            spreadRadius: -6,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              // Dark glass tint at 22% — chat content shows through clearly
+              // while the pill still reads as glass.
+              color: Colors.black.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(_radius),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
+              ),
+            ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(_radius),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.40),
-                      blurRadius: 30,
-                      offset: const Offset(0, 12),
-                      spreadRadius: -6,
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(_radius),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        // Dark glass tint — slightly darker than the aurora
-                        // behind so refraction reads as glass, not panel.
-                        // Lowered from 32% to 22% to let more of the chat
-                        // colour bleed through.
-                        color: Colors.black.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(_radius),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          width: 1,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            for (var i = 0; i < tabs.length; i++)
-                              Expanded(
-                                child: _NavItem(
-                                  spec: tabs[i],
-                                  active: i == currentIndex,
-                                  onTap: () => onTabChanged(i),
-                                ),
-                              ),
-                          ],
-                        ),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    Expanded(
+                      child: _NavItem(
+                        spec: tabs[i],
+                        active: i == currentIndex,
+                        onTap: () => onTabChanged(i),
                       ),
                     ),
-                  ),
-                ),
+                ],
               ),
             ),
           ),
