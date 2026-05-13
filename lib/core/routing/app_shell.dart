@@ -111,12 +111,15 @@ class _GlassPill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(_radius),
+        // Tight shadow tucked directly under the pill — no side halo.
+        // The big spread-blur from before was bleeding ~24px each way,
+        // which read as a horizontal darker band on the aurora.
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-            spreadRadius: -6,
+            color: Colors.black.withValues(alpha: 0.30),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+            spreadRadius: -8,
           ),
         ],
       ),
