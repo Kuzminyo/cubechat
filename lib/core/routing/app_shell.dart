@@ -105,14 +105,27 @@ class _NavPill extends StatelessWidget {
       borderRadius: BorderRadius.circular(26),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
+        // Minimum-presence DecoratedBox: a hairline border + a whisper of
+        // fill so the pill is always discernible from the aurora, even when
+        // nothing is scrolling underneath. When chats *are* behind the pill,
+        // the backdrop blur kicks in and shows them diffused.
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(26),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              child: Column(
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.14),
+              width: 1,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(26),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AnimatedSwitcher(
@@ -161,7 +174,8 @@ class _NavPill extends StatelessWidget {
                           : null,
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
