@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/locale/locale_controller.dart';
@@ -165,6 +166,40 @@ class ProfileScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Diagnostics
+          GlassCard(
+            onTap: () => context.push('/diagnostics'),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                  ),
+                  child: Icon(Icons.bug_report_outlined,
+                      color: AppColors.textOnGlass, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Diagnostics',
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
               ],
             ),
           ),

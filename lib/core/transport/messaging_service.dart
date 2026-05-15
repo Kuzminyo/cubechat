@@ -9,6 +9,7 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
+import '../util/debug_log.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
@@ -92,11 +93,21 @@ class MessagingService {
     // Fire HS1.
     final hs1 = await session.nextHandshakeFrame();
     if (hs1 == null) {
-      debugPrint('initiator could not produce HS1');
+      DebugLog.instance.log('NOISE', 'initiator could not produce HS1');
       return;
     }
+    DebugLog.instance.log('NOISE', 'TX HS1 (${hs1.payload.length}B payload)');
     await client.writeOutbound(hs1.encode());
     manager.touch(peerId);
+
+    // Surface MTU-too-small immediately — HS2 is ~97B + 1 byte type, so we
+    // need ≥ ~100B effective payload. With Android default MTU of 23 that
+    // gives only 20B of usable notify space, which silently truncates HS2
+    // and the handshake stalls forever.
+    if (client.negotiatedMtu < 100) {
+      DebugLog.instance.log('NOISE', 'WARNING: MTU=${client.negotiatedMtu} '
+          'is too small for handshake frames — handshake may stall');
+    }
   }
 
   /// Starts a one-shot timer that marks the session failed if the handshake
@@ -110,7 +121,8 @@ class MessagingService {
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
       if (session == null || session.isEstablished) return;
-      debugPrint('handshake timeout for $peerId (status=${session.status})');
+      DebugLog.instance.log('NOISE',
+          'handshake TIMEOUT for $peerId (status=${session.status})');
       session.markFailed();
       manager.touch(peerId);
       // Tear down the BLE link so a Retry rebuilds it cleanly.
@@ -178,9 +190,11 @@ class MessagingService {
     try {
       frame = Frame.decode(bytes);
     } catch (e) {
-      debugPrint('drop malformed frame from $peerId: $e');
+      DebugLog.instance.log('NOISE', 'drop malformed frame from $peerId: $e');
       return;
     }
+    DebugLog.instance.log('NOISE', 'RX ${frame.type.name} from $peerId '
+        '(${frame.payload.length}B)');
     await _handleFrame(peerId, frame, fromCentral: false);
   }
 
@@ -247,17 +261,24 @@ class MessagingService {
     Frame frame, {
     required bool fromCentral,
   }) async {
+    final bytes = frame.encode();
+    DebugLog.instance.log('NOISE',
+        'TX ${frame.type.name} (${bytes.length}B) via ${fromCentral ? "peripheral notify" : "central write"}');
     if (fromCentral) {
       // The remote is a central — we're the peripheral, push via notify.
-      await _ref.read(blePeripheralProvider).notifyInbound(frame.encode());
+      final ok = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+      if (!ok) {
+        DebugLog.instance.log('NOISE',
+            'notifyInbound returned false (no subscribers? adapter off? data > MTU?)');
+      }
     } else {
       // We are the central — write to peer's outbound characteristic.
       final c = _clients[peerId];
       if (c == null) {
-        debugPrint('no client for $peerId, cannot write back');
+        DebugLog.instance.log('NOISE', 'no client for $peerId, cannot write back');
         return;
       }
-      await c.writeOutbound(frame.encode());
+      await c.writeOutbound(bytes);
     }
   }
 
@@ -266,18 +287,25 @@ class MessagingService {
   void _wirePeripheralEvents() {
     final peripheral = _ref.read(blePeripheralProvider);
     _peripheralEventsSub = peripheral.events().listen((event) async {
-      if (event is PeripheralWrite) {
+      if (event is PeripheralCentralConnected) {
+        DebugLog.instance.log('BLE-PERIPH',
+            'central connected: ${event.centralId}');
+      } else if (event is PeripheralWrite) {
+        DebugLog.instance.log('BLE-PERIPH',
+            'write from ${event.centralId} (${event.data.length}B)');
         // A central has written to our outbound characteristic — treat it as
         // an inbound frame for the responder side.
         final Frame frame;
         try {
           frame = Frame.decode(event.data);
         } catch (e) {
-          debugPrint('peripheral write decode failed: $e');
+          DebugLog.instance.log('BLE-PERIPH', 'decode failed: $e');
           return;
         }
         await _handleFrame(event.centralId, frame, fromCentral: true);
       } else if (event is PeripheralCentralDisconnected) {
+        DebugLog.instance.log('BLE-PERIPH',
+            'central disconnected: ${event.centralId}');
         _ref.read(chatSessionManagerProvider.notifier).drop(event.centralId);
       }
     });

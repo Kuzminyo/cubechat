@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../ble/ble_constants.dart';
+import '../util/debug_log.dart';
 
 /// Central-side wrapper around a single [BluetoothDevice] that speaks the
 /// cubechat GATT protocol.
@@ -30,8 +31,10 @@ class BleGattClient {
   final _connection = StreamController<BluetoothConnectionState>.broadcast();
 
   bool _running = false;
+  int _negotiatedMtu = 23;
 
   String get peerId => _device.remoteId.str;
+  int get negotiatedMtu => _negotiatedMtu;
   Stream<Uint8List> get inboundFrames => _frames.stream;
   Stream<BluetoothConnectionState> get connectionState => _connection.stream;
   bool get isConnected =>
@@ -43,24 +46,30 @@ class BleGattClient {
     if (_running) return;
     _running = true;
 
+    final log = DebugLog.instance;
+    log.log('BLE-CENTRAL', 'connect → ${_device.remoteId.str}');
+
     _connectionSub = _device.connectionState.listen((s) {
       _connection.add(s);
+      log.log('BLE-CENTRAL', 'state=$s');
       if (s == BluetoothConnectionState.disconnected) {
         _running = false;
       }
     });
 
     await _device.connect(timeout: timeout, autoConnect: false);
+    log.log('BLE-CENTRAL', 'connected, requesting MTU ${BleConstants.preferredMtu}');
 
-    // Request a beefier MTU — defaults to 23 on iOS which is unusable.
     try {
-      await _device.requestMtu(BleConstants.preferredMtu);
+      _negotiatedMtu = await _device.requestMtu(BleConstants.preferredMtu);
+      log.log('BLE-CENTRAL', 'MTU negotiated = $_negotiatedMtu');
     } catch (e) {
-      // iOS doesn't expose MTU negotiation; CoreBluetooth picks one. Fine.
-      debugPrint('BleGattClient.requestMtu skipped: $e');
+      log.log('BLE-CENTRAL', 'requestMtu failed: $e — staying at default 23');
     }
 
+    log.log('BLE-CENTRAL', 'discoverServices…');
     final services = await _device.discoverServices();
+    log.log('BLE-CENTRAL', 'discovered ${services.length} services');
     BluetoothService? cubechatService;
     for (final s in services) {
       if (s.uuid.str.toLowerCase() == BleConstants.serviceUuid.toLowerCase()) {
@@ -69,9 +78,12 @@ class BleGattClient {
       }
     }
     if (cubechatService == null) {
+      DebugLog.instance.log('BLE-CENTRAL', 'cubechat service NOT FOUND on peer');
       await disconnect();
       throw StateError('peer does not expose the cubechat service');
     }
+    DebugLog.instance.log('BLE-CENTRAL', 'cubechat service found, '
+        '${cubechatService.characteristics.length} characteristics');
 
     for (final ch in cubechatService.characteristics) {
       final uuid = ch.uuid.str.toLowerCase();
@@ -85,15 +97,20 @@ class BleGattClient {
     }
 
     if (_inbound == null || _outbound == null) {
+      DebugLog.instance.log('BLE-CENTRAL', 'characteristics missing: '
+          'inbound=${_inbound != null} outbound=${_outbound != null}');
       await disconnect();
       throw StateError('peer is missing the cubechat characteristics');
     }
 
+    DebugLog.instance.log('BLE-CENTRAL', 'subscribing to inbound notifications…');
     await _inbound!.setNotifyValue(true);
     _inboundSub = _inbound!.onValueReceived.listen((bytes) {
       if (bytes.isEmpty) return;
+      DebugLog.instance.log('BLE-CENTRAL', 'inbound notify (${bytes.length}B)');
       _frames.add(Uint8List.fromList(bytes));
     });
+    DebugLog.instance.log('BLE-CENTRAL', 'ready');
   }
 
   /// Writes one frame to the peer's outbound characteristic.
@@ -102,10 +119,14 @@ class BleGattClient {
     if (ch == null) {
       throw StateError('outbound characteristic not ready');
     }
-    // Write-without-response is fire-and-forget; faster, no ack. For
-    // handshake frames we want acked delivery, so we use the default
-    // write-with-response.
-    await ch.write(bytes, withoutResponse: false);
+    DebugLog.instance.log('BLE-CENTRAL', 'write ${bytes.length}B → outbound');
+    try {
+      await ch.write(bytes, withoutResponse: false);
+      DebugLog.instance.log('BLE-CENTRAL', 'write OK');
+    } catch (e) {
+      DebugLog.instance.log('BLE-CENTRAL', 'write FAILED: $e');
+      rethrow;
+    }
   }
 
   Future<void> disconnect() async {

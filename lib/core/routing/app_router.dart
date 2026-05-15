@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/peers/presentation/peers_screen.dart';
+import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
@@ -72,6 +73,14 @@ GoRouter buildRouter() {
             state: state,
           );
         },
+      ),
+      GoRoute(
+        path: '/diagnostics',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
       ),
     ],
   );
