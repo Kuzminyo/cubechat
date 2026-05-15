@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_peripheral.dart';
 import '../../../core/ble/ble_permissions.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 
 enum PeripheralStatus {
@@ -82,19 +83,24 @@ class PeripheralController extends Notifier<PeripheralState> {
   /// [peerName] is the human-readable label shown in scan results. Will be
   /// replaced with the Noise pubkey nickname once M2 lands.
   Future<void> start({required String peerName, String? pubkeyFingerprint}) async {
+    final log = DebugLog.instance;
+    log.log('PERIPH-CTL', 'start(peerName=$peerName)');
     if (!PlatformInfo.isMobile) {
+      log.log('PERIPH-CTL', 'unsupported platform');
       state = state.copyWith(status: PeripheralStatus.unsupported);
       return;
     }
 
     final peripheral = ref.read(blePeripheralProvider);
     if (!await peripheral.isSupported()) {
+      log.log('PERIPH-CTL', 'native isSupported = false');
       state = state.copyWith(status: PeripheralStatus.unsupported);
       return;
     }
 
     final perms = await const BlePermissions().check();
     if (perms != BlePermissionState.granted && perms != BlePermissionState.notApplicable) {
+      log.log('PERIPH-CTL', 'perms not granted: $perms');
       state = state.copyWith(status: PeripheralStatus.notReady);
       return;
     }
@@ -103,14 +109,17 @@ class PeripheralController extends Notifier<PeripheralState> {
 
     final adapter = await FlutterBluePlus.adapterState.first;
     if (adapter != BluetoothAdapterState.on) {
+      log.log('PERIPH-CTL', 'adapter is $adapter, not starting');
       state = state.copyWith(status: PeripheralStatus.notReady);
       return;
     }
 
+    log.log('PERIPH-CTL', 'calling native start…');
     final ok = await peripheral.start(
       peerName: peerName,
       pubkeyFingerprint: pubkeyFingerprint,
     );
+    log.log('PERIPH-CTL', 'native start returned $ok');
     state = state.copyWith(
       status: ok ? PeripheralStatus.broadcasting : PeripheralStatus.failed,
     );
@@ -131,21 +140,26 @@ class PeripheralController extends Notifier<PeripheralState> {
     _eventsSub = peripheral.events().listen((event) {
       switch (event) {
         case PeripheralCentralConnected(:final centralId):
+          DebugLog.instance.log('PERIPH-CTL', 'central connected: $centralId');
           state = state.copyWith(
             connectedCentralIds: {...state.connectedCentralIds, centralId},
           );
         case PeripheralCentralDisconnected(:final centralId):
+          DebugLog.instance.log('PERIPH-CTL', 'central disconnected: $centralId');
           state = state.copyWith(
             connectedCentralIds: {...state.connectedCentralIds}..remove(centralId),
           );
-        case PeripheralWrite():
-          // Inbound frame from a central — will be routed to the mesh layer in M3.
+        case PeripheralWrite(:final centralId, :final data):
+          DebugLog.instance.log('PERIPH-CTL',
+              'write from $centralId (${data.length}B) — MessagingService handles');
+        case PeripheralLog():
+          // Already logged by MessagingService; don't double-print.
           break;
         case PeripheralUnknown():
-          break;
+          DebugLog.instance.log('PERIPH-CTL', 'unknown event');
       }
     }, onError: (Object e, StackTrace st) {
-      debugPrint('peripheral events error: $e\n$st');
+      DebugLog.instance.log('PERIPH-CTL', 'events stream error: $e');
     });
 
     await _adapterSub?.cancel();

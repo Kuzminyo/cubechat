@@ -287,7 +287,9 @@ class MessagingService {
   void _wirePeripheralEvents() {
     final peripheral = _ref.read(blePeripheralProvider);
     _peripheralEventsSub = peripheral.events().listen((event) async {
-      if (event is PeripheralCentralConnected) {
+      if (event is PeripheralLog) {
+        DebugLog.instance.log('PERIPH-NATIVE', event.message);
+      } else if (event is PeripheralCentralConnected) {
         DebugLog.instance.log('BLE-PERIPH',
             'central connected: ${event.centralId}');
       } else if (event is PeripheralWrite) {

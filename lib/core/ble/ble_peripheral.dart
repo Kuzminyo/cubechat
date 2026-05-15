@@ -107,6 +107,8 @@ class MethodChannelBlePeripheral implements BlePeripheral {
             charUuid: map['charUuid'] as String,
             data: map['data'] as Uint8List,
           );
+        case 'log':
+          return PeripheralEvent.log(map['message'] as String? ?? '');
         default:
           return const PeripheralEvent.unknown();
       }
@@ -129,6 +131,7 @@ sealed class PeripheralEvent {
     required String charUuid,
     required Uint8List data,
   }) = PeripheralWrite;
+  const factory PeripheralEvent.log(String message) = PeripheralLog;
   const factory PeripheralEvent.unknown() = PeripheralUnknown;
 }
 
@@ -151,6 +154,11 @@ class PeripheralWrite extends PeripheralEvent {
   final String centralId;
   final String charUuid;
   final Uint8List data;
+}
+
+class PeripheralLog extends PeripheralEvent {
+  const PeripheralLog(this.message);
+  final String message;
 }
 
 class PeripheralUnknown extends PeripheralEvent {

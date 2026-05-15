@@ -145,17 +145,43 @@ class CubechatBlePeripheralPlugin(
     }
 
     private fun startPeripheral(): Boolean {
-        if (running) return true
-        if (!isSupported() || !ensurePermissions()) return false
+        if (running) {
+            emitLog("startPeripheral: already running")
+            return true
+        }
+        if (!isSupported()) {
+            emitLog("startPeripheral: not supported (no BT LE / advertiser / multi-advertisement)")
+            return false
+        }
+        if (!ensurePermissions()) {
+            emitLog("startPeripheral: missing permissions BLUETOOTH_ADVERTISE/CONNECT")
+            return false
+        }
 
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = mgr.adapter ?: return false
-        if (!adapter.isEnabled) return false
+        val adapter = mgr.adapter
+        if (adapter == null) {
+            emitLog("startPeripheral: no BT adapter")
+            return false
+        }
+        if (!adapter.isEnabled) {
+            emitLog("startPeripheral: BT adapter is OFF")
+            return false
+        }
 
-        advertiser = adapter.bluetoothLeAdvertiser ?: return false
+        advertiser = adapter.bluetoothLeAdvertiser
+        if (advertiser == null) {
+            emitLog("startPeripheral: bluetoothLeAdvertiser is null")
+            return false
+        }
 
         // 1. GATT server with our service.
-        val server = mgr.openGattServer(context, gattCallback) ?: return false
+        val server = mgr.openGattServer(context, gattCallback)
+        if (server == null) {
+            emitLog("startPeripheral: openGattServer returned null")
+            return false
+        }
+        emitLog("startPeripheral: gatt server opened")
         val service = BluetoothGattService(
             serviceUuid,
             BluetoothGattService.SERVICE_TYPE_PRIMARY,
@@ -190,9 +216,11 @@ class CubechatBlePeripheralPlugin(
         service.addCharacteristic(outbound)
         service.addCharacteristic(peerInfo)
         if (!server.addService(service)) {
+            emitLog("addService returned false synchronously")
             server.close()
             return false
         }
+        emitLog("addService queued, awaiting onServiceAdded…")
 
         gattServer = server
         inboundChar = inbound
@@ -218,10 +246,11 @@ class CubechatBlePeripheralPlugin(
 
         return try {
             advertiser?.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
+            emitLog("advertiser.startAdvertising called")
             running = true
             true
         } catch (e: SecurityException) {
-            Log.w(TAG, "advertise denied", e)
+            emitLog("advertise denied (SecurityException): ${e.message}")
             stopPeripheral()
             false
         }
@@ -307,17 +336,27 @@ class CubechatBlePeripheralPlugin(
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+            emitLog("advertise onStartSuccess: $settingsInEffect")
             emit(mapOf("type" to "advertising", "ok" to true))
         }
 
         override fun onStartFailure(errorCode: Int) {
             running = false
+            emitLog("advertise onStartFailure code=$errorCode " +
+                "(1=DATA_TOO_LARGE 2=TOO_MANY_ADVERTISERS 3=ALREADY_STARTED " +
+                "4=INTERNAL_ERROR 5=FEATURE_UNSUPPORTED)")
             emit(mapOf("type" to "advertising", "ok" to false, "errorCode" to errorCode))
         }
     }
 
     private val gattCallback = object : BluetoothGattServerCallback() {
+        override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+            emitLog("onServiceAdded status=$status service=${service.uuid} " +
+                "(0=SUCCESS, other = registration FAILED)")
+        }
+
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            emitLog("connection state change ${device.address}: status=$status newState=$newState")
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     emit(mapOf("type" to "connected", "centralId" to device.address))
@@ -408,6 +447,16 @@ class CubechatBlePeripheralPlugin(
 
     private fun emit(map: Map<String, Any?>) {
         mainHandler.post { eventSink?.success(map) }
+    }
+
+    /// Emit a free-form log line that the Dart side prints into DebugLog with
+    /// the [PERIPH-NATIVE] tag — much more useful than Log.d() which only lives
+    /// in adb logcat.
+    private fun emitLog(message: String) {
+        Log.d(TAG, message)
+        mainHandler.post {
+            eventSink?.success(mapOf("type" to "log", "message" to message))
+        }
     }
 
     companion object {
