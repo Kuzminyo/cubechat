@@ -166,6 +166,13 @@ class ChatSession {
     return utf8.decode(plain);
   }
 
+  /// Marks the session as failed without zeroing the keys — used by the
+  /// handshake watchdog so the UI can show a "retry" affordance instead
+  /// of just blanking the conversation header.
+  void markFailed() {
+    _status = ChatSessionStatus.failed;
+  }
+
   void destroy() {
     _noise.destroy();
     _status = ChatSessionStatus.failed;

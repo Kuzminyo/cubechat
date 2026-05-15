@@ -13,6 +13,7 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
@@ -245,18 +246,44 @@ class CubechatBlePeripheralPlugin(
     }
 
     private fun notifyInbound(data: ByteArray): Boolean {
-        val server = gattServer ?: return false
-        val ch = inboundChar ?: return false
-        if (subscribers.isEmpty()) return false
-        ch.value = data
+        val server = gattServer ?: run {
+            Log.w(TAG, "notifyInbound: no gattServer")
+            return false
+        }
+        val ch = inboundChar ?: run {
+            Log.w(TAG, "notifyInbound: no inboundChar")
+            return false
+        }
+        if (subscribers.isEmpty()) {
+            Log.w(TAG, "notifyInbound: no subscribers (central did not enable CCCD)")
+            return false
+        }
         var anySuccess = false
         for (dev in subscribers.toList()) {
             try {
-                @Suppress("DEPRECATION")
-                val ok = server.notifyCharacteristicChanged(dev, ch, false)
+                val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    // Atomic value+notify required on Android 13+; the deprecated
+                    // ch.value=... + notifyCharacteristicChanged(dev, ch, false)
+                    // pair stopped being atomic and would race or send stale bytes.
+                    val res = server.notifyCharacteristicChanged(dev, ch, false, data)
+                    if (res != BluetoothStatusCodes.SUCCESS) {
+                        Log.w(TAG, "notifyCharacteristicChanged returned status=$res for ${dev.address}")
+                    }
+                    res == BluetoothStatusCodes.SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    val ok = run {
+                        ch.value = data
+                        server.notifyCharacteristicChanged(dev, ch, false)
+                    }
+                    if (!ok) {
+                        Log.w(TAG, "notifyCharacteristicChanged returned false for ${dev.address}")
+                    }
+                    ok
+                }
                 if (ok) anySuccess = true
-            } catch (_: SecurityException) {
-                // permission lost between checks — bail.
+            } catch (e: SecurityException) {
+                Log.w(TAG, "notifyInbound permission denied for ${dev.address}", e)
                 return false
             }
         }
@@ -328,6 +355,7 @@ class CubechatBlePeripheralPlugin(
             offset: Int,
             value: ByteArray,
         ) {
+            Log.d(TAG, "write from ${device.address} on ${characteristic.uuid} (${value.size}B)")
             if (characteristic.uuid == outboundCharUuid) {
                 emit(
                     mapOf(
@@ -362,8 +390,10 @@ class CubechatBlePeripheralPlugin(
                     value.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
                 ) {
                     subscribers.add(device)
+                    Log.d(TAG, "central ${device.address} subscribed (subscribers=${subscribers.size})")
                 } else {
                     subscribers.remove(device)
+                    Log.d(TAG, "central ${device.address} unsubscribed")
                 }
             }
             if (responseNeeded) {

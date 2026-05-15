@@ -14,6 +14,12 @@ import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'frame.dart';
 
+/// Wall-clock deadline for the full Noise XX exchange — initiator + responder
+/// together. If a session is still handshaking after this, we tear it down and
+/// surface a failed state to the UI so the user can retry instead of staring
+/// at a "secure channel forming" spinner indefinitely.
+const _handshakeTimeout = Duration(seconds: 15);
+
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
 ///
@@ -40,6 +46,7 @@ class MessagingService {
 
   final Ref _ref;
   final _clients = <String, BleGattClient>{}; // central-side clients
+  final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
 
   /// Tap-to-connect: the user picked a peer in the Nearby list. We're the
@@ -80,6 +87,8 @@ class MessagingService {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     final session = await manager.startInitiator(peerId, peerLabel: displayName);
 
+    _armHandshakeWatchdog(peerId);
+
     // Fire HS1.
     final hs1 = await session.nextHandshakeFrame();
     if (hs1 == null) {
@@ -88,6 +97,29 @@ class MessagingService {
     }
     await client.writeOutbound(hs1.encode());
     manager.touch(peerId);
+  }
+
+  /// Starts a one-shot timer that marks the session failed if the handshake
+  /// hasn't reached `established` within [_handshakeTimeout]. The timer is
+  /// auto-cancelled when [_clearHandshakeWatchdog] fires (which the frame
+  /// dispatcher calls on every state advance).
+  void _armHandshakeWatchdog(String peerId) {
+    _handshakeTimers[peerId]?.cancel();
+    _handshakeTimers[peerId] = Timer(_handshakeTimeout, () {
+      _handshakeTimers.remove(peerId);
+      final manager = _ref.read(chatSessionManagerProvider.notifier);
+      final session = manager.sessionFor(peerId);
+      if (session == null || session.isEstablished) return;
+      debugPrint('handshake timeout for $peerId (status=${session.status})');
+      session.markFailed();
+      manager.touch(peerId);
+      // Tear down the BLE link so a Retry rebuilds it cleanly.
+      _clients.remove(peerId)?.dispose();
+    });
+  }
+
+  void _clearHandshakeWatchdog(String peerId) {
+    _handshakeTimers.remove(peerId)?.cancel();
   }
 
   /// Send an encrypted text message to [peerId]. Returns the local Message
@@ -163,9 +195,11 @@ class MessagingService {
       case FrameType.noiseHandshake1:
         // Only valid when we're acting as responder (peripheral side received
         // a fresh HS1 from a central we don't yet have a session with).
+        _armHandshakeWatchdog(peerId);
         final session = await manager.startResponder(peerId);
         final reply = await session.handleHandshakeFrame(frame);
         manager.touch(peerId);
+        if (session.isEstablished) _clearHandshakeWatchdog(peerId);
         if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.noiseHandshake2:
@@ -177,6 +211,7 @@ class MessagingService {
         }
         final reply = await session.handleHandshakeFrame(frame);
         manager.touch(peerId);
+        if (session.isEstablished) _clearHandshakeWatchdog(peerId);
         if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.transport:
@@ -250,6 +285,10 @@ class MessagingService {
 
   Future<void> dispose() async {
     await _peripheralEventsSub?.cancel();
+    for (final t in _handshakeTimers.values) {
+      t.cancel();
+    }
+    _handshakeTimers.clear();
     for (final c in _clients.values) {
       await c.dispose();
     }

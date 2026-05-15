@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
@@ -69,6 +70,30 @@ class ChatScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          if (session?.status == ChatSessionStatus.failed)
+            IconButton(
+              icon: Icon(Icons.refresh, color: AppColors.brandPrimary),
+              tooltip: t.bleRetry,
+              onPressed: () async {
+                final manager = ref.read(chatSessionManagerProvider.notifier);
+                manager.drop(peerId);
+                try {
+                  await ref.read(messagingServiceProvider).connectAsInitiator(
+                        BluetoothDevice.fromId(peerId),
+                        displayName: peerLabel,
+                      );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+                      content:
+                          Text('$e', style: const TextStyle(color: Colors.white)),
+                    ),
+                  );
+                }
+              },
+            ),
           IconButton(
             icon: Icon(Icons.shield_outlined, color: AppColors.textOnGlass),
             onPressed: () => _showFingerprint(context, session, t),
