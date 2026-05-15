@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -122,7 +125,12 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
               delay: Duration(milliseconds: 40 * i),
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _PeerCard(peer: state.peers[i]),
+                child: Consumer(
+                  builder: (context, ref, _) => _PeerCard(
+                    peer: state.peers[i],
+                    onTap: () => _connectAndOpen(context, ref, state.peers[i], t),
+                  ),
+                ),
               ),
             ),
         ];
@@ -471,10 +479,43 @@ class _RadarPainter extends CustomPainter {
   bool shouldRepaint(covariant _RadarPainter old) => old.progress != progress;
 }
 
+Future<void> _connectAndOpen(
+  BuildContext context,
+  WidgetRef ref,
+  DiscoveredPeer peer,
+  AppLocalizations t,
+) async {
+  final messaging = ref.read(messagingServiceProvider);
+  final label = peer.advertisedName.isNotEmpty
+      ? peer.advertisedName
+      : t.bleUnknownPeer;
+
+  // Reconstruct the BluetoothDevice handle from the scan-time peer id.
+  final device = BluetoothDevice.fromId(peer.id);
+
+  // Navigate immediately so the user sees the "handshaking..." UI; the
+  // connect/handshake happens in the background and Riverpod will repaint
+  // the chat screen as the session progresses.
+  context.push('/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}');
+
+  try {
+    await messaging.connectAsInitiator(device, displayName: label);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+        content: Text('$e', style: const TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+}
+
 class _PeerCard extends StatelessWidget {
-  const _PeerCard({required this.peer});
+  const _PeerCard({required this.peer, required this.onTap});
 
   final DiscoveredPeer peer;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -483,6 +524,7 @@ class _PeerCard extends StatelessWidget {
         ? peer.advertisedName
         : t.bleUnknownPeer;
     return GlassCard(
+      onTap: onTap,
       child: Row(
         children: [
           IdentityAvatar(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/chat/presentation/chat_screen.dart';
-import '../../features/chats/models/chat.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/peers/presentation/peers_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
@@ -61,14 +60,17 @@ GoRouter buildRouter() {
         ],
       ),
       GoRoute(
-        path: '/chat/:id',
+        path: '/chat/:peerId',
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) {
-          final chat = state.extra as Chat?;
-          final screen = chat == null
-              ? const AuroraBackground(child: Scaffold(backgroundColor: Colors.transparent))
-              : AuroraBackground(child: ChatScreen(chat: chat));
-          return fadeSlidePage(child: screen, state: state);
+          final peerId = state.pathParameters['peerId']!;
+          final peerLabel = state.uri.queryParameters['name'] ?? 'Peer';
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: ChatScreen(peerId: peerId, peerLabel: peerLabel),
+            ),
+            state: state,
+          );
         },
       ),
     ],

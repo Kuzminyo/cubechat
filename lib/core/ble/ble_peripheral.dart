@@ -16,6 +16,12 @@ abstract class BlePeripheral {
   Future<bool> start({required String peerName, String? pubkeyFingerprint});
   Future<void> stop();
   Stream<PeripheralEvent> events();
+
+  /// Push a single frame to every subscribed central via the inbound (notify)
+  /// characteristic. Returns true if at least one central received it.
+  /// Returns false if there are no subscribers, the radio is off, or the
+  /// native plugin isn't loaded.
+  Future<bool> notifyInbound(Uint8List data);
 }
 
 /// Default implementation: talks to the (yet-to-be-written) platform channel.
@@ -69,6 +75,19 @@ class MethodChannelBlePeripheral implements BlePeripheral {
       // No-op until M1.5.
     } catch (e, st) {
       debugPrint('BlePeripheral.stop failed: $e\n$st');
+    }
+  }
+
+  @override
+  Future<bool> notifyInbound(Uint8List data) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('notifyInbound', {'data': data});
+      return ok ?? false;
+    } on MissingPluginException {
+      return false;
+    } catch (e, st) {
+      debugPrint('BlePeripheral.notifyInbound failed: $e\n$st');
+      return false;
     }
   }
 

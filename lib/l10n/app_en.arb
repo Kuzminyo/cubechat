@@ -52,6 +52,12 @@
   "chatRead": "Read",
   "chatSending": "Sending",
   "chatEncryptedNotice": "Messages are end-to-end encrypted with the Noise Protocol.",
+  "chatSessionHandshaking": "Establishing secure channel…",
+  "chatSessionEstablished": "Secured · Noise XX",
+  "chatSessionFailed": "Connection failed",
+  "chatSessionFingerprintPending": "Fingerprint will appear once the handshake completes.",
+  "chatEmptyEstablished": "The secure channel is up. Send a message to start the conversation.",
+  "chatEmptyHandshaking": "Waiting for the other side to finish the handshake…",
 
   "profileTitle": "Profile",
   "profileNickname": "Nickname",

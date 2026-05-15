@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/platform_info.dart';
 import '../models/discovered_peer.dart';
 import 'peripheral_controller.dart';
@@ -86,6 +87,10 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   /// Top-level entry point. Idempotent — safe to call from initState every time
   /// the Peers screen is built.
   Future<void> start() async {
+    // Eagerly construct the messaging service so its peripheral-event
+    // subscription is up before we start advertising.
+    ref.read(messagingServiceProvider);
+
     final scanner = ref.read(bleScannerProvider);
 
     // Web/desktop don't have meaningful BLE peripheral support yet, and

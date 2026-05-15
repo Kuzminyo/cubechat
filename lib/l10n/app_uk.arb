@@ -52,6 +52,12 @@
   "chatRead": "Прочитано",
   "chatSending": "Надсилається",
   "chatEncryptedNotice": "Повідомлення зашифровано наскрізно за протоколом Noise.",
+  "chatSessionHandshaking": "Встановлюється захищений канал…",
+  "chatSessionEstablished": "Захищено · Noise XX",
+  "chatSessionFailed": "З'єднання не вдалося",
+  "chatSessionFingerprintPending": "Відбиток з'явиться після завершення рукостискання.",
+  "chatEmptyEstablished": "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
+  "chatEmptyHandshaking": "Очікуємо, поки інший бік завершить рукостискання…",
 
   "profileTitle": "Профіль",
   "profileNickname": "Нікнейм",

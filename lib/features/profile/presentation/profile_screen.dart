@@ -6,8 +6,10 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../chat/data/messages_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
@@ -384,8 +386,16 @@ class _EmergencyWipeCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
+              // Wipe order: messages first (so we don't try to render
+              // stale messages while the session map is changing),
+              // then sessions, then the identity key itself.
+              ref.read(messagesControllerProvider.notifier).clearAll();
+              final sessions = ref.read(chatSessionManagerProvider);
+              final manager = ref.read(chatSessionManagerProvider.notifier);
+              for (final peerId in sessions.keys.toList()) {
+                manager.drop(peerId);
+              }
               await ref.read(identityServiceProvider).wipe();
-              // Re-fetch identity — provider will mint a fresh keypair.
               ref.invalidate(identityProvider);
               if (!ctx.mounted) return;
               Navigator.of(ctx).pop();

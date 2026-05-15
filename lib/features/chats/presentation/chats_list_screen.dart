@@ -4,12 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
-import '../data/mock_chats.dart';
+import '../../chat/data/messages_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 
@@ -17,7 +18,35 @@ enum ChatsFilter { all, unread, mesh, favorites }
 
 final chatsFilterProvider = StateProvider<ChatsFilter>((_) => ChatsFilter.all);
 final chatsQueryProvider = StateProvider<String>((_) => '');
-final chatsProvider = Provider<List<Chat>>((_) => mockChats());
+
+/// Real chat list — one entry per peer we have a session with, ordered by
+/// the timestamp of the last message (newest first).
+final chatsProvider = Provider<List<Chat>>((ref) {
+  final sessions = ref.watch(chatSessionManagerProvider);
+  final messagesByPeer = ref.watch(messagesControllerProvider);
+  final entries = sessions.entries.map((e) {
+    final peerId = e.key;
+    final session = e.value;
+    final msgs = messagesByPeer[peerId] ?? const [];
+    final last = msgs.isNotEmpty ? msgs.last : null;
+    final unread = msgs.where((m) => !m.isMine).length; // crude; real read-state in M5
+    return Chat(
+      id: peerId,
+      peerId: peerId,
+      peerName: session.peerLabel,
+      lastMessage: last?.text ??
+          (session.isEstablished
+              ? 'Secured · Noise XX'
+              : 'Establishing secure channel…'),
+      lastTime: last?.sentAt ?? DateTime.now(),
+      unreadCount: unread,
+      isMesh: true,
+      isOnline: session.isEstablished,
+    );
+  }).toList();
+  entries.sort((a, b) => b.lastTime.compareTo(a.lastTime));
+  return entries;
+});
 
 class ChatsListScreen extends ConsumerWidget {
   const ChatsListScreen({super.key});
@@ -123,7 +152,10 @@ class ChatsListScreen extends ConsumerWidget {
                       borderRadius: 18,
                       child: ChatTile(
                         chat: chat,
-                        onTap: () => context.push('/chat/${chat.id}', extra: chat),
+                        onTap: () => context.push(
+                          '/chat/${Uri.encodeComponent(chat.peerId)}'
+                          '?name=${Uri.encodeQueryComponent(chat.peerName)}',
+                        ),
                       ),
                     ),
                   );
