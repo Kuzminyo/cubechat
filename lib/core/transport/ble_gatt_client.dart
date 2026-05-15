@@ -104,7 +104,9 @@ class BleGattClient {
     }
 
     DebugLog.instance.log('BLE-CENTRAL', 'subscribing to inbound notifications…');
-    await _inbound!.setNotifyValue(true);
+    final subscribed = await _inbound!.setNotifyValue(true);
+    DebugLog.instance.log('BLE-CENTRAL',
+        'setNotifyValue returned $subscribed (true means CCCD write acked)');
     _inboundSub = _inbound!.onValueReceived.listen((bytes) {
       if (bytes.isEmpty) return;
       DebugLog.instance.log('BLE-CENTRAL', 'inbound notify (${bytes.length}B)');

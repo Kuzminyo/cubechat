@@ -35,10 +35,12 @@ class DebugLog extends ChangeNotifier {
 
   /// Add a line that didn't come through debugPrint (e.g. an EventChannel
   /// callback). Tag is a short label like "BLE-CENTRAL" or "NOISE".
+  ///
+  /// Just routes through [debugPrint], which is hooked by [install] to push
+  /// into the buffer exactly once. Pushing here directly would double every
+  /// entry because the hook fires too.
   void log(String tag, String message) {
-    final line = '[$tag] $message';
-    _push(line);
-    debugPrint(line);
+    debugPrint('[$tag] $message');
   }
 
   void _push(String line) {
