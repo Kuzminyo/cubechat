@@ -64,18 +64,34 @@ final peripheralControllerProvider =
     NotifierProvider<PeripheralController, PeripheralState>(PeripheralController.new);
 
 class PeripheralController extends Notifier<PeripheralState> {
-  StreamSubscription<PeripheralEvent>? _eventsSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
 
   @override
   PeripheralState build() {
     ref.onDispose(() {
-      _eventsSub?.cancel();
       _adapterSub?.cancel();
       // Best-effort stop; native side handles a missing plugin gracefully.
       unawaited(ref.read(blePeripheralProvider).stop());
     });
     return PeripheralState.initial;
+  }
+
+  /// Called by MessagingService when a central completes a GATT connection
+  /// to our peripheral. We don't subscribe to peripheral.events() ourselves
+  /// because EventChannel.receiveBroadcastStream() has a known
+  /// quirk: each new Dart-side listener resets the channel's message
+  /// handler, and the previous listener stops receiving. MessagingService
+  /// is the sole consumer; it pushes us the events we care about.
+  void onCentralConnected(String centralId) {
+    state = state.copyWith(
+      connectedCentralIds: {...state.connectedCentralIds, centralId},
+    );
+  }
+
+  void onCentralDisconnected(String centralId) {
+    state = state.copyWith(
+      connectedCentralIds: {...state.connectedCentralIds}..remove(centralId),
+    );
   }
 
   /// Boot the peripheral. Idempotent — safe to call multiple times.
@@ -105,7 +121,7 @@ class PeripheralController extends Notifier<PeripheralState> {
       return;
     }
 
-    await _wireEvents();
+    await _wireAdapterWatcher();
 
     final adapter = await FlutterBluePlus.adapterState.first;
     if (adapter != BluetoothAdapterState.on) {
@@ -133,35 +149,8 @@ class PeripheralController extends Notifier<PeripheralState> {
     );
   }
 
-  Future<void> _wireEvents() async {
+  Future<void> _wireAdapterWatcher() async {
     final peripheral = ref.read(blePeripheralProvider);
-
-    await _eventsSub?.cancel();
-    _eventsSub = peripheral.events().listen((event) {
-      switch (event) {
-        case PeripheralCentralConnected(:final centralId):
-          DebugLog.instance.log('PERIPH-CTL', 'central connected: $centralId');
-          state = state.copyWith(
-            connectedCentralIds: {...state.connectedCentralIds, centralId},
-          );
-        case PeripheralCentralDisconnected(:final centralId):
-          DebugLog.instance.log('PERIPH-CTL', 'central disconnected: $centralId');
-          state = state.copyWith(
-            connectedCentralIds: {...state.connectedCentralIds}..remove(centralId),
-          );
-        case PeripheralWrite(:final centralId, :final data):
-          DebugLog.instance.log('PERIPH-CTL',
-              'write from $centralId (${data.length}B) — MessagingService handles');
-        case PeripheralLog():
-          // Already logged by MessagingService; don't double-print.
-          break;
-        case PeripheralUnknown():
-          DebugLog.instance.log('PERIPH-CTL', 'unknown event');
-      }
-    }, onError: (Object e, StackTrace st) {
-      DebugLog.instance.log('PERIPH-CTL', 'events stream error: $e');
-    });
-
     await _adapterSub?.cancel();
     _adapterSub = FlutterBluePlus.adapterState.listen((s) async {
       if (s == BluetoothAdapterState.on) {

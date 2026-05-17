@@ -286,12 +286,19 @@ class MessagingService {
 
   void _wirePeripheralEvents() {
     final peripheral = _ref.read(blePeripheralProvider);
+    // SOLE subscriber to peripheral.events() — see comment on PeripheralController
+    // about why EventChannel.receiveBroadcastStream() doesn't tolerate multiple
+    // Dart listeners. We mirror connected/disconnected changes into
+    // PeripheralController via direct method calls.
     _peripheralEventsSub = peripheral.events().listen((event) async {
       if (event is PeripheralLog) {
         DebugLog.instance.log('PERIPH-NATIVE', event.message);
       } else if (event is PeripheralCentralConnected) {
         DebugLog.instance.log('BLE-PERIPH',
             'central connected: ${event.centralId}');
+        _ref
+            .read(peripheralControllerProvider.notifier)
+            .onCentralConnected(event.centralId);
       } else if (event is PeripheralWrite) {
         DebugLog.instance.log('BLE-PERIPH',
             'write from ${event.centralId} (${event.data.length}B)');
@@ -308,6 +315,9 @@ class MessagingService {
       } else if (event is PeripheralCentralDisconnected) {
         DebugLog.instance.log('BLE-PERIPH',
             'central disconnected: ${event.centralId}');
+        _ref
+            .read(peripheralControllerProvider.notifier)
+            .onCentralDisconnected(event.centralId);
         _ref.read(chatSessionManagerProvider.notifier).drop(event.centralId);
       }
     });
