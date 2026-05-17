@@ -193,8 +193,6 @@ class MessagingService {
       DebugLog.instance.log('NOISE', 'drop malformed frame from $peerId: $e');
       return;
     }
-    DebugLog.instance.log('NOISE', 'RX ${frame.type.name} from $peerId '
-        '(${frame.payload.length}B)');
     await _handleFrame(peerId, frame, fromCentral: false);
   }
 
@@ -203,6 +201,10 @@ class MessagingService {
     Frame frame, {
     required bool fromCentral,
   }) async {
+    DebugLog.instance.log('NOISE',
+        'RX ${frame.type.name} from $peerId (${frame.payload.length}B, '
+        '${fromCentral ? "peripheral side" : "central side"})');
+
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
     switch (frame.type) {
@@ -231,29 +233,81 @@ class MessagingService {
       case FrameType.transport:
         final session = manager.sessionFor(peerId);
         if (session == null || !session.isEstablished) {
-          debugPrint('drop transport: no established session for $peerId');
+          DebugLog.instance.log('NOISE',
+              'drop transport: no established session for $peerId');
           return;
         }
         try {
           final plaintext = await session.decryptText(frame);
-          _ref.read(messagesControllerProvider.notifier).append(
-                peerId,
-                Message(
-                  id: 'm${DateTime.now().microsecondsSinceEpoch}',
-                  chatId: peerId,
-                  text: plaintext,
-                  sentAt: DateTime.now(),
-                  isMine: false,
-                ),
-              );
+          DebugLog.instance.log('NOISE',
+              'decrypt OK from $peerId, ${plaintext.length} chars');
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+          );
+          // BLE Privacy: the same logical peer can have different transport-
+          // level addresses depending on direction (central vs peripheral
+          // role). Fan the decrypted message out to every session in the
+          // manager that shares the same authenticated static pubkey, so the
+          // chat UI sees it no matter which transport-side handshake
+          // delivered it.
+          _appendToAllSessionsForSamePeer(session.remoteStaticPublicKey,
+              fallbackPeerId: peerId, message: message);
         } catch (e, st) {
-          debugPrint('decrypt failed for $peerId: $e\n$st');
+          DebugLog.instance.log('NOISE',
+              'decrypt FAILED for $peerId: $e');
+          debugPrint('$st');
         }
 
       case FrameType.reset:
         manager.drop(peerId);
         _clients.remove(peerId)?.dispose();
     }
+  }
+
+  /// Pushes [message] into MessagesController for every established session
+  /// whose authenticated remoteStaticPublicKey matches [pubkey]. If no such
+  /// session is found (which should be impossible if the caller passed a
+  /// pubkey from an established session), falls back to appending under
+  /// [fallbackPeerId] so the message at least lands somewhere.
+  void _appendToAllSessionsForSamePeer(
+    Uint8List? pubkey, {
+    required String fallbackPeerId,
+    required Message message,
+  }) {
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final sessions = _ref.read(chatSessionManagerProvider);
+    if (pubkey == null) {
+      messages.append(fallbackPeerId, message);
+      return;
+    }
+    final targets = <String>[];
+    for (final entry in sessions.entries) {
+      final other = entry.value.remoteStaticPublicKey;
+      if (other != null && _pubkeyEquals(other, pubkey)) {
+        targets.add(entry.key);
+      }
+    }
+    if (targets.isEmpty) {
+      messages.append(fallbackPeerId, message);
+      return;
+    }
+    for (final id in targets) {
+      messages.append(id, message);
+    }
+    DebugLog.instance.log('NOISE',
+        'appended to ${targets.length} chat(s): $targets');
+  }
+
+  static bool _pubkeyEquals(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<void> _writeBack(
