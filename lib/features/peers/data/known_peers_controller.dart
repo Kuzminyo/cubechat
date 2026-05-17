@@ -14,22 +14,37 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   Map<String, KnownPeer> build() => <String, KnownPeer>{};
 
   /// Register a peer (or refresh display name / lastSeen on an existing one).
+  ///
+  /// `displayName` precedence: a real BLE-advertised name beats the responder
+  /// placeholder `Peer XX:XX:`. Without this, whichever handshake direction
+  /// finishes last would overwrite the proper name with the placeholder.
   void upsert({
     required String pubkeyHex,
     required String displayName,
   }) {
     final now = DateTime.now();
     final existing = state[pubkeyHex];
-    final entry = existing == null
-        ? KnownPeer(
-            pubkeyHex: pubkeyHex,
-            displayName: displayName,
-            lastSeen: now,
-          )
-        : existing.copyWith(
-            displayName: displayName.isNotEmpty ? displayName : existing.displayName,
-            lastSeen: now,
-          );
+
+    final newIsPlaceholder = displayName.startsWith('Peer ');
+    final String resolvedName;
+    if (existing == null) {
+      resolvedName = displayName;
+    } else if (newIsPlaceholder && existing.displayName.isNotEmpty &&
+        !existing.displayName.startsWith('Peer ')) {
+      // Existing name is real, incoming is the responder placeholder — keep
+      // the real one.
+      resolvedName = existing.displayName;
+    } else if (displayName.isEmpty) {
+      resolvedName = existing.displayName;
+    } else {
+      resolvedName = displayName;
+    }
+
+    final entry = KnownPeer(
+      pubkeyHex: pubkeyHex,
+      displayName: resolvedName,
+      lastSeen: now,
+    );
     state = {...state, pubkeyHex: entry};
   }
 
