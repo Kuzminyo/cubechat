@@ -66,8 +66,16 @@ class NoiseSession {
     return IdentityKeys.formatFingerprint(Uint8List.fromList(digest.bytes));
   }
 
-  Future<Uint8List> writeHandshake([Uint8List? payload]) {
-    return _handshake.writeMessage(payload);
+  Future<Uint8List> writeHandshake([Uint8List? payload]) async {
+    final bytes = await _handshake.writeMessage(payload);
+    // For the XX initiator the handshake finishes on the *write* of HS3
+    // (not on a subsequent read), so we must promote here too — otherwise
+    // the initiator can't encrypt the first transport message.
+    if (_handshake.handshakeFinished) {
+      _sendCs = _handshake.sendCipherState;
+      _recvCs = _handshake.receiveCipherState;
+    }
+    return bytes;
   }
 
   Future<Uint8List> readHandshake(Uint8List message) async {
@@ -79,8 +87,8 @@ class NoiseSession {
     return payload;
   }
 
-  /// Convenience: drive the loop without manual readMessage/writeMessage
-  /// after writes also might finish the handshake on the writer side.
+  /// Convenience: idempotent CipherState promotion. Useful for callers that
+  /// drive the state machine manually.
   void promoteIfFinished() {
     if (_handshake.handshakeFinished) {
       _sendCs ??= _handshake.sendCipherState;

@@ -71,9 +71,17 @@ class NoiseCipherState {
     _nonce = 0;
   }
 
+  // Per Noise spec, nonce exhaustion is at 2^64 - 1. In Dart, `int` is a
+  // signed 64-bit value, so the literal `0xFFFFFFFFFFFFFFFF` evaluates to -1
+  // (the two's-complement bit pattern is the same). A naive
+  // `_nonce >= 0xFFFFFFFFFFFFFFFF` therefore reads as `_nonce >= -1`, which
+  // is true for every non-negative nonce — meaning the *first* encryption
+  // always threw. We cap well below the signed limit instead; 2^62 ≈ 4.6e18
+  // uses is many orders of magnitude beyond anything cubechat will ever need.
+  static const int _maxNonce = 1 << 62;
+
   int _consumeNonce() {
-    // 2^64 - 1 is reserved as "nonce exhausted" sentinel per spec.
-    if (_nonce >= 0xFFFFFFFFFFFFFFFF) {
+    if (_nonce >= _maxNonce) {
       throw const NoiseException('Noise CipherState nonce exhausted');
     }
     return _nonce++;
