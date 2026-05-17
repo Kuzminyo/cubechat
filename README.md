@@ -63,6 +63,27 @@ flutter build web --release
 # Output in build/web/ — drop on any static host (GitHub Pages, Netlify, S3)
 ```
 
+### iOS build without a Mac (GitHub Actions + Sideloadly)
+
+The repo ships `.github/workflows/ios.yml`, which runs Flutter on a
+GitHub-hosted macOS runner and produces an unsigned `.ipa` you can
+install with [Sideloadly](https://sideloadly.io/) or
+[AltStore](https://altstore.io/) using a free Apple ID (7-day
+re-sign cycle).
+
+1. Push a commit to `main` (or run the workflow manually from the
+   Actions tab via "Run workflow")
+2. Wait ~10 minutes for the macOS runner to build
+3. Open the finished run → Summary → Artifacts → download
+   `cubechat-ios-unsigned-<sha>.zip`
+4. Unzip → `cubechat-unsigned.ipa`
+5. Open Sideloadly on Windows, plug iPhone via USB, drag the IPA in,
+   sign with your free Apple ID
+6. On iPhone: `Settings → General → VPN & Device Management` → trust
+   the new profile
+
+App expires after 7 days; rerun Sideloadly to refresh.
+
 ### Branding
 
 The logo is **drawn programmatically** by `CubeLogoPainter` so the in-app

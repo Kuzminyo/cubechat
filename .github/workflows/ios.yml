@@ -1,0 +1,87 @@
+name: iOS build (unsigned IPA for sideloading)
+
+# Triggers:
+# - every push to main (so each commit produces a fresh IPA)
+# - manual run from the Actions tab (Run workflow button)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    # GitHub-hosted macOS runner — counts at 10× the minute rate but
+    # public repos get unlimited minutes, private repos get 200 free
+    # macOS minutes / month (2000 base × 1/10).
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Pin to the same minor we develop against on Windows so the
+          # Dart SDK matches pubspec's `sdk: ^3.6.0`.
+          flutter-version: '3.27.x'
+          cache: true
+
+      - name: Show Flutter doctor
+        run: flutter doctor -v
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install --repo-update
+
+      # The actual build. --no-codesign produces an unsigned .app inside
+      # build/ios/iphoneos/Runner.app — perfect for Sideloadly to re-sign
+      # with a free Apple ID on the user's machine.
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      # Sideloadly accepts .ipa, not .app. Wrap the Runner.app in the
+      # standard Payload/ directory and zip it.
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          mv Runner.app Payload/
+          zip -qr cubechat-unsigned.ipa Payload/
+          ls -lh cubechat-unsigned.ipa
+
+      - name: Upload IPA as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubechat-ios-unsigned-${{ github.sha }}
+          path: build/ios/iphoneos/cubechat-unsigned.ipa
+          # Keep IPAs for 30 days; bump if needed.
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "## ✅ iOS build succeeded"
+            echo ""
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo ""
+            echo "**Artifact:** \`cubechat-ios-unsigned-${{ github.sha }}\`"
+            echo ""
+            echo "### How to install on iPhone"
+            echo "1. Download the artifact from this run (Summary tab → Artifacts)"
+            echo "2. Unzip — you'll get \`cubechat-unsigned.ipa\`"
+            echo "3. Open Sideloadly on Windows, plug iPhone via USB"
+            echo "4. Drag the IPA into Sideloadly, enter your Apple ID, click Start"
+            echo "5. On iPhone: Settings → General → VPN & Device Management → trust the new profile"
+            echo "6. App is valid for 7 days, repeat to refresh"
+          } >> "$GITHUB_STEP_SUMMARY"
