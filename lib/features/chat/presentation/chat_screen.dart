@@ -29,8 +29,27 @@ class ChatScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final messagesMap = ref.watch(messagesControllerProvider);
-    final messages = messagesMap[peerId] ?? const [];
-    final session = ref.watch(chatSessionManagerProvider)[peerId];
+    final sessions = ref.watch(chatSessionManagerProvider);
+
+    // `peerId` from the URL can be either a BLE transport id (when we got
+    // here from a Nearby tap) or a pubkey-hex chat id (when re-entered from
+    // the main Chats list). Resolve to a live session by either route.
+    ChatSession? session = sessions[peerId];
+    if (session == null) {
+      for (final s in sessions.values) {
+        if (s.remotePubkeyHex == peerId) {
+          session = s;
+          break;
+        }
+      }
+    }
+
+    // Prefer the canonical pubkey-keyed bucket; fall back to the transport
+    // id (for chats that are still on the BLE-address URL).
+    final canonicalId = session?.remotePubkeyHex ?? peerId;
+    final messages = messagesMap[canonicalId] ??
+        messagesMap[peerId] ??
+        const [];
     final canSend = session?.isEstablished ?? false;
 
     return Scaffold(

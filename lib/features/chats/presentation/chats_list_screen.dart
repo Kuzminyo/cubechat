@@ -11,6 +11,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../peers/data/known_peers_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 
@@ -19,29 +20,36 @@ enum ChatsFilter { all, unread, mesh, favorites }
 final chatsFilterProvider = StateProvider<ChatsFilter>((_) => ChatsFilter.all);
 final chatsQueryProvider = StateProvider<String>((_) => '');
 
-/// Real chat list — one entry per peer we have a session with, ordered by
-/// the timestamp of the last message (newest first).
+/// Real chat list — one entry per **authenticated peer ever seen**, keyed by
+/// the peer's static pubkey (stable across BLE Privacy address rotation).
+/// The entry sticks around in the list after the peer disconnects, so the
+/// user can revisit the conversation and see history.
+///
+/// "Online" is derived from whether any live ChatSessionManager session has
+/// the same pubkey — i.e. a transport handshake is currently up.
 final chatsProvider = Provider<List<Chat>>((ref) {
+  final known = ref.watch(knownPeersControllerProvider);
+  final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
-  final messagesByPeer = ref.watch(messagesControllerProvider);
-  final entries = sessions.entries.map((e) {
-    final peerId = e.key;
-    final session = e.value;
-    final msgs = messagesByPeer[peerId] ?? const [];
+
+  final onlinePubkeys = <String>{
+    for (final s in sessions.values)
+      if (s.isEstablished && s.remotePubkeyHex != null) s.remotePubkeyHex!,
+  };
+
+  final entries = known.values.map((peer) {
+    final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
-    final unread = msgs.where((m) => !m.isMine).length; // crude; real read-state in M5
+    final unread = msgs.where((m) => !m.isMine).length;
     return Chat(
-      id: peerId,
-      peerId: peerId,
-      peerName: session.peerLabel,
-      lastMessage: last?.text ??
-          (session.isEstablished
-              ? 'Secured · Noise XX'
-              : 'Establishing secure channel…'),
-      lastTime: last?.sentAt ?? DateTime.now(),
+      id: peer.pubkeyHex,
+      peerId: peer.pubkeyHex,
+      peerName: peer.displayName,
+      lastMessage: last?.text ?? 'Secured · Noise XX',
+      lastTime: last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,
       isMesh: true,
-      isOnline: session.isEstablished,
+      isOnline: onlinePubkeys.contains(peer.pubkeyHex),
     );
   }).toList();
   entries.sort((a, b) => b.lastTime.compareTo(a.lastTime));

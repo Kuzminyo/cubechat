@@ -61,6 +61,19 @@ class ChatSession {
 
   Uint8List? get remoteStaticPublicKey => _noise.remoteStaticPublicKey;
 
+  /// Lowercase hex of the remote peer's static pubkey. Stable across BLE
+  /// Privacy address rotations — this is the canonical chat identity for
+  /// the UI and the message store.
+  String? get remotePubkeyHex {
+    final pk = remoteStaticPublicKey;
+    if (pk == null) return null;
+    final sb = StringBuffer();
+    for (final b in pk) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
+  }
+
   /// BLAKE2s fingerprint of the remote peer's pubkey (only available after
   /// the handshake has completed).
   Future<String?> remoteFingerprint() => _noise.remoteFingerprint();

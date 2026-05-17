@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/models/message.dart';
+import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
 import '../util/debug_log.dart';
@@ -137,28 +138,45 @@ class MessagingService {
   /// Send an encrypted text message to [peerId]. Returns the local Message
   /// object that was appended to the store (with `status: sending` initially
   /// and bumped to `delivered` once the BLE write resolves).
-  Future<Message> sendText(String peerId, String text) async {
+  /// Send an encrypted text message. [chatId] is either a BLE transport id
+  /// (when the user is in an already-open ChatScreen from a tap on the
+  /// Nearby tab) OR a pubkeyHex (when the user re-entered the chat from the
+  /// main Chats list). We resolve to a live, established session by
+  /// searching first by transport id, then by pubkeyHex.
+  Future<Message> sendText(String chatId, String text) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
-    final session = manager.sessionFor(peerId);
+
+    ChatSession? session = manager.sessionFor(chatId);
+    session ??= _findSessionByPubkeyHex(chatId);
+
     if (session == null || !session.isEstablished) {
-      throw StateError('cannot send: session not established for $peerId');
+      throw StateError('cannot send: no established session for $chatId');
     }
+
+    // Canonical key for storage: pubkeyHex of the authenticated peer.
+    final canonicalId = session.remotePubkeyHex ?? chatId;
 
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
-      chatId: peerId,
+      chatId: canonicalId,
       text: text,
       sentAt: DateTime.now(),
       isMine: true,
       status: MessageStatus.sending,
     );
-    _ref.read(messagesControllerProvider.notifier).append(peerId, msg);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(canonicalId, msg);
+    // Also append under the transport id if the caller passed one (so an
+    // open ChatScreen routed via /chat/<bleId> sees the outgoing message
+    // until we migrate it to the pubkey-keyed route).
+    if (chatId != canonicalId) {
+      messages.append(chatId, msg);
+    }
 
     try {
       final frame = await session.encryptText(text);
-      // Prefer central-side write if available; otherwise this peer connected
-      // to *us* and we notify back via the peripheral channel.
-      final client = _clients[peerId];
+      final transportId = session.peerId;
+      final client = _clients[transportId];
       if (client != null && client.isConnected) {
         await client.writeOutbound(frame.encode());
       } else {
@@ -167,14 +185,29 @@ class MessagingService {
           throw StateError('peripheral notify returned false');
         }
       }
-      _ref.read(messagesControllerProvider.notifier)
-          .updateStatus(peerId, msg.id, MessageStatus.delivered);
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+      }
     } catch (e, st) {
       debugPrint('sendText failed: $e\n$st');
-      _ref.read(messagesControllerProvider.notifier)
-          .updateStatus(peerId, msg.id, MessageStatus.failed);
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+      }
     }
     return msg;
+  }
+
+  /// Linear scan through active sessions for the one whose authenticated
+  /// pubkey matches [pubkeyHex]. Returns null if no live session for that
+  /// peer (e.g. the user is browsing chat history while the peer is offline).
+  ChatSession? _findSessionByPubkeyHex(String pubkeyHex) {
+    final sessions = _ref.read(chatSessionManagerProvider);
+    for (final s in sessions.values) {
+      if (s.remotePubkeyHex == pubkeyHex) return s;
+    }
+    return null;
   }
 
   Future<void> disconnect(String peerId) async {
@@ -215,7 +248,10 @@ class MessagingService {
         final session = await manager.startResponder(peerId);
         final reply = await session.handleHandshakeFrame(frame);
         manager.touch(peerId);
-        if (session.isEstablished) _clearHandshakeWatchdog(peerId);
+        if (session.isEstablished) {
+          _clearHandshakeWatchdog(peerId);
+          _registerKnownPeer(session);
+        }
         if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.noiseHandshake2:
@@ -227,7 +263,10 @@ class MessagingService {
         }
         final reply = await session.handleHandshakeFrame(frame);
         manager.touch(peerId);
-        if (session.isEstablished) _clearHandshakeWatchdog(peerId);
+        if (session.isEstablished) {
+          _clearHandshakeWatchdog(peerId);
+          _registerKnownPeer(session);
+        }
         if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.transport:
@@ -268,38 +307,61 @@ class MessagingService {
     }
   }
 
-  /// Pushes [message] into MessagesController for every established session
-  /// whose authenticated remoteStaticPublicKey matches [pubkey]. If no such
-  /// session is found (which should be impossible if the caller passed a
-  /// pubkey from an established session), falls back to appending under
-  /// [fallbackPeerId] so the message at least lands somewhere.
+  /// Appends [message] into the canonical pubkey-keyed message bucket, plus
+  /// any legacy peerId-keyed buckets that already exist (so a chat opened
+  /// before the handshake completed still sees the messages). The chats list
+  /// reads from KnownPeersController + the pubkey bucket — the peerId
+  /// fan-out is purely for the open-screen case.
   void _appendToAllSessionsForSamePeer(
     Uint8List? pubkey, {
     required String fallbackPeerId,
     required Message message,
   }) {
     final messages = _ref.read(messagesControllerProvider.notifier);
-    final sessions = _ref.read(chatSessionManagerProvider);
     if (pubkey == null) {
       messages.append(fallbackPeerId, message);
       return;
     }
-    final targets = <String>[];
+    final pubkeyHex = _hexOf(pubkey);
+    // Canonical key (lives forever, used by chats list).
+    messages.append(pubkeyHex, message);
+
+    // Fan-out to transport-id keys for any currently open ChatScreen that
+    // was navigated to via a BLE address.
+    final sessions = _ref.read(chatSessionManagerProvider);
+    final extras = <String>[];
     for (final entry in sessions.entries) {
       final other = entry.value.remoteStaticPublicKey;
       if (other != null && _pubkeyEquals(other, pubkey)) {
-        targets.add(entry.key);
+        extras.add(entry.key);
       }
     }
-    if (targets.isEmpty) {
-      messages.append(fallbackPeerId, message);
-      return;
-    }
-    for (final id in targets) {
+    for (final id in extras) {
       messages.append(id, message);
     }
     DebugLog.instance.log('NOISE',
-        'appended to ${targets.length} chat(s): $targets');
+        'appended to canonical=$pubkeyHex and ${extras.length} transport id(s)');
+  }
+
+  /// Adds (or refreshes) the authenticated peer in the in-memory roster so
+  /// the main Chats list shows them even after the BLE session drops.
+  void _registerKnownPeer(ChatSession session) {
+    final pubkeyHex = session.remotePubkeyHex;
+    if (pubkeyHex == null) return;
+    _ref.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: pubkeyHex,
+          displayName: session.peerLabel,
+        );
+    DebugLog.instance.log('NOISE',
+        'registered known peer: ${session.peerLabel} ($pubkeyHex)');
+  }
+
+  static String _hexOf(Uint8List bytes) {
+    final sb = StringBuffer();
+    for (final b in bytes) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
   }
 
   static bool _pubkeyEquals(Uint8List a, Uint8List b) {

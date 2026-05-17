@@ -11,6 +11,7 @@ import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../peers/data/known_peers_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
@@ -425,6 +426,7 @@ class _EmergencyWipeCard extends ConsumerWidget {
               // stale messages while the session map is changing),
               // then sessions, then the identity key itself.
               ref.read(messagesControllerProvider.notifier).clearAll();
+              ref.read(knownPeersControllerProvider.notifier).clear();
               final sessions = ref.read(chatSessionManagerProvider);
               final manager = ref.read(chatSessionManagerProvider.notifier);
               for (final peerId in sessions.keys.toList()) {
