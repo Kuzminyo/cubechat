@@ -47,26 +47,40 @@ jobs:
       - name: Pre-cache iOS artifacts
         run: flutter precache --ios
 
-      # Build a Release .ipa with no signing identity. The output lands at
-      # build/ios/ipa/*.ipa. Flutter handles Podfile creation, pod install,
-      # and the Xcode archive internally — no manual pod install step needed.
-      - name: Build unsigned IPA
-        run: flutter build ipa --release --no-codesign --export-method=development
+      # Build the unsigned .app bundle. `flutter build ipa --no-codesign`
+      # only produces an .xcarchive (not an .ipa) because IPA packaging
+      # normally happens via xcodebuild -exportArchive which requires a
+      # signing identity. So we build with `flutter build ios` and then
+      # manually wrap the resulting Runner.app in the Payload/ directory
+      # convention that .ipa files use, and zip it. Sideloadly / AltStore
+      # accept this format and re-sign with the user's free Apple ID.
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
 
       - name: Show build output
         run: |
           set -e
-          echo "Listing build/ios/ipa:"
-          ls -lh build/ios/ipa/ || echo "(no ipa directory)"
-          echo ""
-          echo "Listing build/ios:"
-          ls -lh build/ios/ || true
+          echo "build/ios/iphoneos:"
+          ls -lh build/ios/iphoneos/ || echo "(missing)"
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          cd build/ios/iphoneos
+          if [ ! -d Runner.app ]; then
+            echo "Runner.app missing — flutter build did not produce a .app"
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -R Runner.app Payload/
+          zip -qr cubechat-unsigned.ipa Payload
+          ls -lh cubechat-unsigned.ipa
 
       - name: Upload IPA as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
-          path: build/ios/ipa/*.ipa
+          path: build/ios/iphoneos/cubechat-unsigned.ipa
           retention-days: 30
           if-no-files-found: error
 
