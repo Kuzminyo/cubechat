@@ -8,8 +8,10 @@
 build/
 .metadata
 
-# Generated localization
-lib/l10n/app_localizations*.dart
+# Generated localization — intentionally committed so CI doesn't have to
+# regenerate before building. Run `flutter gen-l10n` after editing any
+# .arb files and commit the result.
+# (was: lib/l10n/app_localizations*.dart)
 
 # IDE
 .idea/
