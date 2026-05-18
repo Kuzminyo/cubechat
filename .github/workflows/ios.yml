@@ -11,25 +11,29 @@ on:
 jobs:
   build:
     name: Build unsigned IPA
-    # GitHub-hosted macOS runner — counts at 10× the minute rate but
-    # public repos get unlimited minutes, private repos get 200 free
-    # macOS minutes / month (2000 base × 1/10).
+    # GitHub-hosted macOS runner — 10× minute multiplier but public repos
+    # get unlimited minutes, private repos get 200 free macOS minutes/month.
     runs-on: macos-14
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # Pin Flutter to stable. The version-file mode would point at
+      # pubspec.yaml's environment.flutter constraint, but subosito/flutter-
+      # action doesn't parse that constraint robustly — explicit version is
+      # safer.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          # Pin to the same minor we develop against on Windows so the
-          # Dart SDK matches pubspec's `sdk: ^3.6.0`.
-          flutter-version: '3.27.x'
+          flutter-version: '3.27.1'
           cache: true
 
-      - name: Show Flutter doctor
+      - name: Flutter doctor
         run: flutter doctor -v
 
       - name: Pull pub dependencies
@@ -38,37 +42,34 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
-      - name: Install CocoaPods dependencies
-        working-directory: ios
-        run: pod install --repo-update
+      - name: Pre-cache iOS artifacts
+        run: flutter precache --ios
 
-      # The actual build. --no-codesign produces an unsigned .app inside
-      # build/ios/iphoneos/Runner.app — perfect for Sideloadly to re-sign
-      # with a free Apple ID on the user's machine.
-      - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
+      # Build a Release .ipa with no signing identity. The output lands at
+      # build/ios/ipa/*.ipa. Flutter handles Podfile creation, pod install,
+      # and the Xcode archive internally — no manual pod install step needed.
+      - name: Build unsigned IPA
+        run: flutter build ipa --release --no-codesign --export-method=development
 
-      # Sideloadly accepts .ipa, not .app. Wrap the Runner.app in the
-      # standard Payload/ directory and zip it.
-      - name: Package unsigned IPA
+      - name: Show build output
         run: |
           set -e
-          cd build/ios/iphoneos
-          mkdir -p Payload
-          mv Runner.app Payload/
-          zip -qr cubechat-unsigned.ipa Payload/
-          ls -lh cubechat-unsigned.ipa
+          echo "Listing build/ios/ipa:"
+          ls -lh build/ios/ipa/ || echo "(no ipa directory)"
+          echo ""
+          echo "Listing build/ios:"
+          ls -lh build/ios/ || true
 
       - name: Upload IPA as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
-          path: build/ios/iphoneos/cubechat-unsigned.ipa
-          # Keep IPAs for 30 days; bump if needed.
+          path: build/ios/ipa/*.ipa
           retention-days: 30
           if-no-files-found: error
 
       - name: Summary
+        if: success()
         run: |
           {
             echo "## ✅ iOS build succeeded"
@@ -77,11 +78,11 @@ jobs:
             echo ""
             echo "**Artifact:** \`cubechat-ios-unsigned-${{ github.sha }}\`"
             echo ""
-            echo "### How to install on iPhone"
+            echo "### How to install on iPhone (free Apple ID, 7-day re-sign)"
             echo "1. Download the artifact from this run (Summary tab → Artifacts)"
-            echo "2. Unzip — you'll get \`cubechat-unsigned.ipa\`"
+            echo "2. Unzip — you'll get \`cubechat.ipa\`"
             echo "3. Open Sideloadly on Windows, plug iPhone via USB"
-            echo "4. Drag the IPA into Sideloadly, enter your Apple ID, click Start"
+            echo "4. Drag the IPA into Sideloadly, enter your free Apple ID, click Start"
             echo "5. On iPhone: Settings → General → VPN & Device Management → trust the new profile"
             echo "6. App is valid for 7 days, repeat to refresh"
           } >> "$GITHUB_STEP_SUMMARY"
