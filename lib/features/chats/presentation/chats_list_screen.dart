@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -9,6 +10,7 @@ import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
+import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -94,7 +96,10 @@ class ChatsListScreen extends ConsumerWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const CubeLogo(size: 32),
+                      TripleTapDetector(
+                        onTripleTap: () => _confirmWipe(context, ref, t),
+                        child: const CubeLogo(size: 32),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(t.chatsTitle, style: AppTypography.display()),
@@ -271,4 +276,53 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Triple-tap on the cube logo lands here — the bitchat-style emergency
+/// wipe gesture. We still ask for confirmation; the gesture is the secret
+/// shortcut, not a way to skip the confirmation.
+Future<void> _confirmWipe(
+  BuildContext context,
+  WidgetRef ref,
+  AppLocalizations t,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      title: Text(
+        t.profileEmergencyWipeConfirm,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Text(
+        t.profileEmergencyWipeConfirmHint,
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () async {
+            await emergencyWipe(ref);
+            if (!ctx.mounted) return;
+            Navigator.of(ctx).pop();
+          },
+          child: Text(
+            t.profileEmergencyWipeAction,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
 }

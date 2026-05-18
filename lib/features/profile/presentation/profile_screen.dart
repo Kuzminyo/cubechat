@@ -5,15 +5,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/nickname_controller.dart';
+import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
-import '../../../core/storage/hive_init.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
-import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../chat/data/messages_controller.dart';
-import '../../peers/data/known_peers_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
@@ -420,23 +417,7 @@ class _EmergencyWipeCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
-              // Wipe order: messages first (so we don't try to render
-              // stale messages while the session map is changing),
-              // then sessions, then the identity key itself.
-              // Drop in-memory state first so providers don't try to
-              // reload anything during the wipe.
-              await ref.read(messagesControllerProvider.notifier).clearAll();
-              await ref.read(knownPeersControllerProvider.notifier).clear();
-              await ref.read(nicknameControllerProvider.notifier).reset();
-              final sessions = ref.read(chatSessionManagerProvider);
-              final manager = ref.read(chatSessionManagerProvider.notifier);
-              for (final peerId in sessions.keys.toList()) {
-                manager.drop(peerId);
-              }
-              // Now nuke the on-disk persistence (Hive boxes + identity key).
-              await HiveInit.wipeAll();
-              await ref.read(identityServiceProvider).wipe();
-              ref.invalidate(identityProvider);
+              await emergencyWipe(ref);
               if (!ctx.mounted) return;
               Navigator.of(ctx).pop();
             },
