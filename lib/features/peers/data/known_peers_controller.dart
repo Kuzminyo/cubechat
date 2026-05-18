@@ -1,17 +1,51 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
+
+import '../../../core/storage/hive_init.dart';
 import '../models/known_peer.dart';
 
-/// Persistent (within app lifetime — disk persistence lands in M4) roster of
-/// peers we have successfully authenticated through Noise XX.
+/// Roster of peers we have authenticated through Noise XX.
 ///
-/// Keyed by pubkeyHex (the hex of the peer's X25519 static public key) — that
-/// id stays stable across BLE Privacy address rotations and transport
-/// disconnects, so a chat with a friend stays put in the main Chats list even
-/// after they walk out of range.
+/// Backed by Hive (M4) — the roster survives app restarts. Each peer is
+/// stored as a plain `Map<String, dynamic>` so we don't need code-gen for
+/// a TypeAdapter (the schema is two strings + an ISO timestamp).
 class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
+  Box<Map<dynamic, dynamic>>? _box;
+
   @override
-  Map<String, KnownPeer> build() => <String, KnownPeer>{};
+  Map<String, KnownPeer> build() {
+    // Kick off the async load; UI updates as soon as the box is ready.
+    unawaited(_loadFromDisk());
+    return <String, KnownPeer>{};
+  }
+
+  Future<void> _loadFromDisk() async {
+    try {
+      final box = await Hive.openBox<Map<dynamic, dynamic>>(HiveBoxes.knownPeers);
+      _box = box;
+      final loaded = <String, KnownPeer>{};
+      for (final key in box.keys) {
+        final raw = box.get(key);
+        if (raw == null) continue;
+        try {
+          loaded[key as String] = _decode(raw);
+        } catch (e) {
+          debugPrint('skip corrupt known peer "$key": $e');
+        }
+      }
+      if (loaded.isNotEmpty) {
+        // Merge with any in-memory upserts that happened before we finished
+        // loading (race: the first handshake may complete while disk is
+        // still being read).
+        state = {...loaded, ...state};
+      }
+    } catch (e, st) {
+      debugPrint('KnownPeers load failed: $e\n$st');
+    }
+  }
 
   /// Register a peer (or refresh display name / lastSeen on an existing one).
   ///
@@ -29,10 +63,9 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     final String resolvedName;
     if (existing == null) {
       resolvedName = displayName;
-    } else if (newIsPlaceholder && existing.displayName.isNotEmpty &&
+    } else if (newIsPlaceholder &&
+        existing.displayName.isNotEmpty &&
         !existing.displayName.startsWith('Peer ')) {
-      // Existing name is real, incoming is the responder placeholder — keep
-      // the real one.
       resolvedName = existing.displayName;
     } else if (displayName.isEmpty) {
       resolvedName = existing.displayName;
@@ -46,17 +79,53 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       lastSeen: now,
     );
     state = {...state, pubkeyHex: entry};
+    _persist(entry);
   }
 
   /// Forget every known peer — used by the Emergency Wipe flow.
-  void clear() {
+  Future<void> clear() async {
     state = <String, KnownPeer>{};
+    try {
+      await _box?.clear();
+    } catch (e) {
+      debugPrint('KnownPeers box clear failed: $e');
+    }
   }
 
-  /// Drop a single peer (the user removed a chat from the list).
-  void forget(String pubkeyHex) {
+  /// Drop a single peer.
+  Future<void> forget(String pubkeyHex) async {
     if (!state.containsKey(pubkeyHex)) return;
     state = {...state}..remove(pubkeyHex);
+    try {
+      await _box?.delete(pubkeyHex);
+    } catch (e) {
+      debugPrint('KnownPeers delete($pubkeyHex) failed: $e');
+    }
+  }
+
+  Future<void> _persist(KnownPeer peer) async {
+    final box = _box;
+    if (box == null) return; // not yet loaded; will rewrite on next upsert
+    try {
+      await box.put(peer.pubkeyHex, _encode(peer));
+    } catch (e) {
+      debugPrint('KnownPeers persist failed: $e');
+    }
+  }
+
+  static Map<String, dynamic> _encode(KnownPeer p) => {
+        'pubkeyHex': p.pubkeyHex,
+        'displayName': p.displayName,
+        'lastSeenIso': p.lastSeen.toIso8601String(),
+      };
+
+  static KnownPeer _decode(Map<dynamic, dynamic> m) {
+    return KnownPeer(
+      pubkeyHex: m['pubkeyHex'] as String,
+      displayName: (m['displayName'] as String?) ?? '',
+      lastSeen: DateTime.tryParse((m['lastSeenIso'] as String?) ?? '') ??
+          DateTime.now(),
+    );
   }
 }
 

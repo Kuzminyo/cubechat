@@ -1,22 +1,58 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
+
+import '../../../core/storage/hive_init.dart';
 import '../models/message.dart';
 
-/// In-memory store of messages, keyed by peerId.
+/// Per-peer message store, keyed by the canonical chat id (the peer's
+/// pubkeyHex once the handshake has authenticated them).
 ///
-/// Lives for the app's lifetime — no disk persistence yet (lands with M4).
-/// Each chat is opened with the BLE-level peerId; once a Noise handshake
-/// completes we *could* re-key the chat under the peer's pubkey fingerprint
-/// instead, but for v0 we keep it simple and use the transport id.
+/// Backed by Hive (M4) so chat history survives app restarts. Each entry in
+/// the box is a `List<Map<String, dynamic>>` of messages — simple, schema-
+/// stable, no codegen TypeAdapter required.
 class MessagesController extends Notifier<Map<String, List<Message>>> {
+  Box<List<dynamic>>? _box;
+
   @override
-  Map<String, List<Message>> build() => <String, List<Message>>{};
+  Map<String, List<Message>> build() {
+    unawaited(_loadFromDisk());
+    return <String, List<Message>>{};
+  }
+
+  Future<void> _loadFromDisk() async {
+    try {
+      final box = await Hive.openBox<List<dynamic>>(HiveBoxes.messages);
+      _box = box;
+      final loaded = <String, List<Message>>{};
+      for (final key in box.keys) {
+        final raw = box.get(key);
+        if (raw == null) continue;
+        try {
+          loaded[key as String] = raw
+              .map((dynamic m) => _decode((m as Map).cast<String, dynamic>()))
+              .toList();
+        } catch (e) {
+          debugPrint('skip corrupt messages bucket "$key": $e');
+        }
+      }
+      if (loaded.isNotEmpty) {
+        state = {...loaded, ...state};
+      }
+    } catch (e, st) {
+      debugPrint('Messages load failed: $e\n$st');
+    }
+  }
 
   List<Message> forPeer(String peerId) => state[peerId] ?? const <Message>[];
 
   void append(String peerId, Message msg) {
     final current = state[peerId] ?? const <Message>[];
-    state = {...state, peerId: [...current, msg]};
+    final next = [...current, msg];
+    state = {...state, peerId: next};
+    _persist(peerId, next);
   }
 
   void updateStatus(String peerId, String msgId, MessageStatus status) {
@@ -34,10 +70,53 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     );
     final list = [...current]..[idx] = updated;
     state = {...state, peerId: list};
+    _persist(peerId, list);
   }
 
-  void clearAll() {
+  /// Erase every conversation — used by Emergency Wipe.
+  Future<void> clearAll() async {
     state = <String, List<Message>>{};
+    try {
+      await _box?.clear();
+    } catch (e) {
+      debugPrint('Messages box clear failed: $e');
+    }
+  }
+
+  Future<void> _persist(String peerId, List<Message> msgs) async {
+    final box = _box;
+    if (box == null) return;
+    try {
+      await box.put(peerId, msgs.map(_encode).toList());
+    } catch (e) {
+      debugPrint('Messages persist($peerId) failed: $e');
+    }
+  }
+
+  static Map<String, dynamic> _encode(Message m) => {
+        'id': m.id,
+        'chatId': m.chatId,
+        'text': m.text,
+        'sentAtIso': m.sentAt.toIso8601String(),
+        'isMine': m.isMine,
+        'status': m.status.name,
+      };
+
+  static Message _decode(Map<String, dynamic> m) {
+    final statusName = m['status'] as String? ?? 'delivered';
+    final status = MessageStatus.values.firstWhere(
+      (s) => s.name == statusName,
+      orElse: () => MessageStatus.delivered,
+    );
+    return Message(
+      id: m['id'] as String,
+      chatId: m['chatId'] as String,
+      text: m['text'] as String,
+      sentAt: DateTime.tryParse((m['sentAtIso'] as String?) ?? '') ??
+          DateTime.now(),
+      isMine: (m['isMine'] as bool?) ?? false,
+      status: status,
+    );
   }
 }
 

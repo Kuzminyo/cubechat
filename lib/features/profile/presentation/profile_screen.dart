@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/locale/locale_controller.dart';
+import '../../../core/storage/hive_init.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -425,13 +426,17 @@ class _EmergencyWipeCard extends ConsumerWidget {
               // Wipe order: messages first (so we don't try to render
               // stale messages while the session map is changing),
               // then sessions, then the identity key itself.
-              ref.read(messagesControllerProvider.notifier).clearAll();
-              ref.read(knownPeersControllerProvider.notifier).clear();
+              // Drop in-memory state first so providers don't try to
+              // reload anything during the wipe.
+              await ref.read(messagesControllerProvider.notifier).clearAll();
+              await ref.read(knownPeersControllerProvider.notifier).clear();
               final sessions = ref.read(chatSessionManagerProvider);
               final manager = ref.read(chatSessionManagerProvider.notifier);
               for (final peerId in sessions.keys.toList()) {
                 manager.drop(peerId);
               }
+              // Now nuke the on-disk persistence (Hive boxes + identity key).
+              await HiveInit.wipeAll();
               await ref.read(identityServiceProvider).wipe();
               ref.invalidate(identityProvider);
               if (!ctx.mounted) return;
