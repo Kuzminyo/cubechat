@@ -77,9 +77,33 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       pubkeyHex: pubkeyHex,
       displayName: resolvedName,
       lastSeen: now,
+      // Preserve a prior verification across name / lastSeen refreshes —
+      // verification is tied to the pubkey, which by definition hasn't
+      // changed if we're upserting under the same pubkeyHex.
+      verifiedAt: existing?.verifiedAt,
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
+  }
+
+  /// Stamp a peer as verified (the user compared fingerprints out-of-band).
+  /// No-op if the peer isn't in the roster yet.
+  Future<void> markVerified(String pubkeyHex) async {
+    final existing = state[pubkeyHex];
+    if (existing == null) return;
+    final updated = existing.copyWith(verifiedAt: DateTime.now());
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
+  /// Revoke a previously-granted verification (the user changed their mind
+  /// or suspects a MITM compromise).
+  Future<void> revokeVerification(String pubkeyHex) async {
+    final existing = state[pubkeyHex];
+    if (existing == null || !existing.isVerified) return;
+    final updated = existing.copyWith(clearVerifiedAt: true);
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
   }
 
   /// Forget every known peer — used by the Emergency Wipe flow.
@@ -117,14 +141,17 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         'pubkeyHex': p.pubkeyHex,
         'displayName': p.displayName,
         'lastSeenIso': p.lastSeen.toIso8601String(),
+        'verifiedAtIso': p.verifiedAt?.toIso8601String(),
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
+    final verifiedRaw = m['verifiedAtIso'] as String?;
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
       lastSeen: DateTime.tryParse((m['lastSeenIso'] as String?) ?? '') ??
           DateTime.now(),
+      verifiedAt: verifiedRaw == null ? null : DateTime.tryParse(verifiedRaw),
     );
   }
 }

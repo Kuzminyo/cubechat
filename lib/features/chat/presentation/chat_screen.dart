@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -9,6 +10,7 @@ import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/message_bubble.dart';
@@ -113,10 +115,10 @@ class ChatScreen extends ConsumerWidget {
                 }
               },
             ),
-          IconButton(
-            icon: Icon(Icons.shield_outlined, color: AppColors.textOnGlass),
-            onPressed: () => _showFingerprint(context, session, t),
-            tooltip: t.profileFingerprint,
+          _ShieldButton(
+            session: session,
+            ref: ref,
+            peerLabel: peerLabel,
           ),
         ],
       ),
@@ -177,38 +179,6 @@ class ChatScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _showFingerprint(
-    BuildContext context,
-    ChatSession? session,
-    AppLocalizations t,
-  ) async {
-    final fp = await session?.remoteFingerprint();
-    if (!context.mounted) return;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-        ),
-        title: Text(
-          t.profileFingerprint,
-          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          fp ?? t.chatSessionFingerprintPending,
-          style: AppTypography.mono(size: 12.5, color: AppColors.textOnGlass),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('OK', style: TextStyle(color: AppColors.brandPrimary)),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _EmptyConversationState extends StatelessWidget {
@@ -239,6 +209,50 @@ class _EmptyConversationState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Shield icon in the chat header that opens the verification screen.
+///
+/// Three visual states:
+///   - dimmed shield_outlined: handshake not yet complete (peer pubkey unknown)
+///   - white shield_outlined:  handshake complete, peer not yet verified
+///   - brand-green verified:   user has compared fingerprints and confirmed
+class _ShieldButton extends StatelessWidget {
+  const _ShieldButton({
+    required this.session,
+    required this.ref,
+    required this.peerLabel,
+  });
+
+  final ChatSession? session;
+  final WidgetRef ref;
+  final String peerLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final pubkeyHex = session?.remotePubkeyHex;
+    final known = ref.watch(knownPeersControllerProvider);
+    final entry = pubkeyHex == null ? null : known[pubkeyHex];
+    final isVerified = entry?.isVerified ?? false;
+    final canVerify = pubkeyHex != null;
+
+    final IconData icon = isVerified ? Icons.verified : Icons.shield_outlined;
+    final Color color = isVerified
+        ? AppColors.brandPrimary
+        : (canVerify ? AppColors.textOnGlass : AppColors.textOnGlassFaint);
+
+    return IconButton(
+      icon: Icon(icon, color: color),
+      tooltip: t.verifyTitle,
+      onPressed: !canVerify
+          ? null
+          : () => context.push(
+                '/verify/${Uri.encodeComponent(pubkeyHex)}'
+                '?name=${Uri.encodeQueryComponent(peerLabel)}',
+              ),
     );
   }
 }

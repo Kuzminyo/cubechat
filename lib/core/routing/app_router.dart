@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/peers/presentation/peers_screen.dart';
+import '../../features/peers/presentation/verification_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../widgets/aurora_background.dart';
@@ -81,6 +82,23 @@ GoRouter buildRouter() {
           child: const AuroraBackground(child: DiagnosticsScreen()),
           state: state,
         ),
+      ),
+      GoRoute(
+        path: '/verify/:pubkey',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final pubkey = state.pathParameters['pubkey']!;
+          final name = state.uri.queryParameters['name'] ?? 'Peer';
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: VerificationScreen(
+                peerPubkeyHex: pubkey,
+                peerLabel: name,
+              ),
+            ),
+            state: state,
+          );
+        },
       ),
     ],
   );

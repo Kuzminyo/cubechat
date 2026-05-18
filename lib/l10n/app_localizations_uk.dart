@@ -136,6 +136,35 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String get verifyTitle => 'Підтвердження';
+
+  @override
+  String get verifyIntro =>
+      'Порівняйте ці два відбитки зі своїм співрозмовником особисто або по голосовому виклику. Якщо вони збігаються з обох сторін — рукостискання Noise не було підмінене.';
+
+  @override
+  String get verifyMine => 'ВАШ ВІДБИТОК';
+
+  @override
+  String verifyTheirs(String name) {
+    return 'ВІДБИТОК $name';
+  }
+
+  @override
+  String get verifyMarkAsVerified => 'Підтвердити особу';
+
+  @override
+  String get verifyAlreadyDone => 'Особу цього співрозмовника підтверджено.';
+
+  @override
+  String get verifyRevoke => 'Скасувати';
+
+  @override
+  String verifyDoneSnack(String name) {
+    return '$name: особу підтверджено';
+  }
+
+  @override
   String get chatInputHint => 'Повідомлення';
 
   @override

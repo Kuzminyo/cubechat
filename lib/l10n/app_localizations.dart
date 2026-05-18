@@ -314,6 +314,54 @@ abstract class AppLocalizations {
   /// **'{n, plural, =0{No centrals} =1{1 central connected} other{{n} centrals connected}}'**
   String bleConnectedCount(int n);
 
+  /// No description provided for @verifyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify peer'**
+  String get verifyTitle;
+
+  /// No description provided for @verifyIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare these two fingerprints with your peer in person or over a voice call. If they match on both sides, you have confirmed the Noise handshake was not tampered with.'**
+  String get verifyIntro;
+
+  /// No description provided for @verifyMine.
+  ///
+  /// In en, this message translates to:
+  /// **'YOUR FINGERPRINT'**
+  String get verifyMine;
+
+  /// No description provided for @verifyTheirs.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s FINGERPRINT'**
+  String verifyTheirs(String name);
+
+  /// No description provided for @verifyMarkAsVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as verified'**
+  String get verifyMarkAsVerified;
+
+  /// No description provided for @verifyAlreadyDone.
+  ///
+  /// In en, this message translates to:
+  /// **'This peer is verified.'**
+  String get verifyAlreadyDone;
+
+  /// No description provided for @verifyRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke'**
+  String get verifyRevoke;
+
+  /// No description provided for @verifyDoneSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} marked as verified'**
+  String verifyDoneSnack(String name);
+
   /// No description provided for @chatInputHint.
   ///
   /// In en, this message translates to:

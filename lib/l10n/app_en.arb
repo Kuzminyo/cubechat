@@ -44,6 +44,17 @@
   "bleConnectedCount": "{n, plural, =0{No centrals} =1{1 central connected} other{{n} centrals connected}}",
   "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } },
 
+  "verifyTitle": "Verify peer",
+  "verifyIntro": "Compare these two fingerprints with your peer in person or over a voice call. If they match on both sides, you have confirmed the Noise handshake was not tampered with.",
+  "verifyMine": "YOUR FINGERPRINT",
+  "verifyTheirs": "{name}'s FINGERPRINT",
+  "@verifyTheirs": { "placeholders": { "name": { "type": "String" } } },
+  "verifyMarkAsVerified": "Mark as verified",
+  "verifyAlreadyDone": "This peer is verified.",
+  "verifyRevoke": "Revoke",
+  "verifyDoneSnack": "{name} marked as verified",
+  "@verifyDoneSnack": { "placeholders": { "name": { "type": "String" } } },
+
   "chatInputHint": "Message",
   "chatSend": "Send",
   "chatToday": "Today",

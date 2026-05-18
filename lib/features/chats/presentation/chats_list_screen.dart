@@ -52,6 +52,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       unreadCount: unread,
       isMesh: true,
       isOnline: onlinePubkeys.contains(peer.pubkeyHex),
+      isVerified: peer.isVerified,
     );
   }).toList();
   entries.sort((a, b) => b.lastTime.compareTo(a.lastTime));

@@ -37,7 +37,7 @@ class ChatTile extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(
+                        Flexible(
                           child: Text(
                             chat.peerName,
                             maxLines: 1,
@@ -49,7 +49,15 @@ class ChatTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        if (chat.isVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.verified,
+                            color: AppColors.brandPrimary,
+                            size: 14,
+                          ),
+                        ],
+                        const Spacer(),
                         Text(
                           formatChatListTime(context, chat.lastTime),
                           style: TextStyle(

@@ -12,6 +12,7 @@ class Chat {
     required this.isMesh,
     required this.isOnline,
     this.isFavorite = false,
+    this.isVerified = false,
   });
 
   final String id;
@@ -23,4 +24,5 @@ class Chat {
   final bool isMesh;
   final bool isOnline;
   final bool isFavorite;
+  final bool isVerified;
 }

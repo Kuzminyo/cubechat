@@ -134,6 +134,35 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get verifyTitle => 'Verify peer';
+
+  @override
+  String get verifyIntro =>
+      'Compare these two fingerprints with your peer in person or over a voice call. If they match on both sides, you have confirmed the Noise handshake was not tampered with.';
+
+  @override
+  String get verifyMine => 'YOUR FINGERPRINT';
+
+  @override
+  String verifyTheirs(String name) {
+    return '$name\'s FINGERPRINT';
+  }
+
+  @override
+  String get verifyMarkAsVerified => 'Mark as verified';
+
+  @override
+  String get verifyAlreadyDone => 'This peer is verified.';
+
+  @override
+  String get verifyRevoke => 'Revoke';
+
+  @override
+  String verifyDoneSnack(String name) {
+    return '$name marked as verified';
+  }
+
+  @override
   String get chatInputHint => 'Message';
 
   @override

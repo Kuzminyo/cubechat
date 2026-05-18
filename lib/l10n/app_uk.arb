@@ -44,6 +44,17 @@
   "bleConnectedCount": "{n, plural, =0{Немає з'єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",
   "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } },
 
+  "verifyTitle": "Підтвердження",
+  "verifyIntro": "Порівняйте ці два відбитки зі своїм співрозмовником особисто або по голосовому виклику. Якщо вони збігаються з обох сторін — рукостискання Noise не було підмінене.",
+  "verifyMine": "ВАШ ВІДБИТОК",
+  "verifyTheirs": "ВІДБИТОК {name}",
+  "@verifyTheirs": { "placeholders": { "name": { "type": "String" } } },
+  "verifyMarkAsVerified": "Підтвердити особу",
+  "verifyAlreadyDone": "Особу цього співрозмовника підтверджено.",
+  "verifyRevoke": "Скасувати",
+  "verifyDoneSnack": "{name}: особу підтверджено",
+  "@verifyDoneSnack": { "placeholders": { "name": { "type": "String" } } },
+
   "chatInputHint": "Повідомлення",
   "chatSend": "Надіслати",
   "chatToday": "Сьогодні",
