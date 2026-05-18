@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/platform_info.dart';
 import '../models/discovered_peer.dart';
@@ -134,10 +135,14 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   Future<void> _bootPeripheral() async {
     try {
       final peripheral = ref.read(peripheralControllerProvider.notifier);
-      // Use the device's advertised name for now. M2 swaps this for the
-      // user's Noise nickname + pubkey fingerprint.
-      final defaultName = PlatformInfo.isIOS ? 'iPhone' : 'Android';
-      await peripheral.start(peerName: defaultName);
+      // Advertise the user's chosen nickname so other phones see something
+      // meaningful in their Nearby list instead of 'Android' / 'iPhone'.
+      // Falls back to the platform name if the user hasn't set one yet.
+      final nickname = ref.read(nicknameControllerProvider);
+      final advertiseName = nickname == NicknameController.defaultNickname
+          ? (PlatformInfo.isIOS ? 'iPhone' : 'Android')
+          : nickname;
+      await peripheral.start(peerName: advertiseName);
     } catch (e, st) {
       debugPrint('peripheral boot failed: $e\n$st');
     }

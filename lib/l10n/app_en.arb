@@ -61,6 +61,9 @@
 
   "profileTitle": "Profile",
   "profileNickname": "Nickname",
+  "profileNicknameEditTitle": "Set your nickname",
+  "profileNicknameHint": "How others see you on the mesh",
+  "profileNicknameSave": "Save",
   "profileFingerprint": "Public key fingerprint",
   "profileLanguage": "Language",
   "profileLanguageEn": "English",

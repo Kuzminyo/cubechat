@@ -410,6 +410,24 @@ abstract class AppLocalizations {
   /// **'Nickname'**
   String get profileNickname;
 
+  /// No description provided for @profileNicknameEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set your nickname'**
+  String get profileNicknameEditTitle;
+
+  /// No description provided for @profileNicknameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How others see you on the mesh'**
+  String get profileNicknameHint;
+
+  /// No description provided for @profileNicknameSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileNicknameSave;
+
   /// No description provided for @profileFingerprint.
   ///
   /// In en, this message translates to:

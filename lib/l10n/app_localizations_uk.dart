@@ -188,6 +188,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileNickname => 'Нікнейм';
 
   @override
+  String get profileNicknameEditTitle => 'Встановіть нікнейм';
+
+  @override
+  String get profileNicknameHint => 'Як вас побачать інші у mesh-мережі';
+
+  @override
+  String get profileNicknameSave => 'Зберегти';
+
+  @override
   String get profileFingerprint => 'Відбиток публічного ключа';
 
   @override

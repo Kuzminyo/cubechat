@@ -6,8 +6,10 @@ import 'package:path_provider/path_provider.dart';
 abstract final class HiveBoxes {
   static const knownPeers = 'cubechat.known_peers';
   static const messages = 'cubechat.messages';
+  /// User preferences: nickname, etc.
+  static const settings = 'cubechat.settings';
 
-  static const all = <String>[knownPeers, messages];
+  static const all = <String>[knownPeers, messages, settings];
 }
 
 /// Initialises Hive. Call from `main()` after `WidgetsFlutterBinding.

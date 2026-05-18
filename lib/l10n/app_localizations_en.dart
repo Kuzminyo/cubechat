@@ -186,6 +186,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileNickname => 'Nickname';
 
   @override
+  String get profileNicknameEditTitle => 'Set your nickname';
+
+  @override
+  String get profileNicknameHint => 'How others see you on the mesh';
+
+  @override
+  String get profileNicknameSave => 'Save';
+
+  @override
   String get profileFingerprint => 'Public key fingerprint';
 
   @override

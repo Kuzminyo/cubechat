@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/identity_service.dart';
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/theme/colors.dart';
@@ -18,8 +19,6 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 
 const _appVersion = '0.1.0';
-// Nickname is still placeholder — nickname management lands in M5.
-const _defaultNickname = 'Anonymous';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -28,6 +27,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final locale = ref.watch(localeControllerProvider);
+    final nickname = ref.watch(nicknameControllerProvider);
     final fingerprintAsync = ref.watch(identityFingerprintProvider);
     final fingerprint = fingerprintAsync.maybeWhen(
       data: (v) => v,
@@ -57,12 +57,9 @@ class ProfileScreen extends ConsumerWidget {
             borderRadius: 22,
             child: Column(
               children: [
-                IdentityAvatar(seed: fingerprint, label: _defaultNickname, size: 72),
+                IdentityAvatar(seed: fingerprint, label: nickname, size: 72),
                 const SizedBox(height: 14),
-                Text(
-                  _defaultNickname,
-                  style: AppTypography.heading(size: 20, color: AppColors.textOnGlass),
-                ),
+                _EditableNickname(value: nickname),
                 const SizedBox(height: 4),
                 Text(
                   t.profileNickname,
@@ -430,6 +427,7 @@ class _EmergencyWipeCard extends ConsumerWidget {
               // reload anything during the wipe.
               await ref.read(messagesControllerProvider.notifier).clearAll();
               await ref.read(knownPeersControllerProvider.notifier).clear();
+              await ref.read(nicknameControllerProvider.notifier).reset();
               final sessions = ref.read(chatSessionManagerProvider);
               final manager = ref.read(chatSessionManagerProvider.notifier);
               for (final peerId in sessions.keys.toList()) {
@@ -443,6 +441,91 @@ class _EmergencyWipeCard extends ConsumerWidget {
               Navigator.of(ctx).pop();
             },
             child: Text(t.profileEmergencyWipeAction, style: const TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditableNickname extends ConsumerWidget {
+  const _EditableNickname({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _showEditDialog(context, ref, t, value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(value, style: AppTypography.heading(size: 20, color: AppColors.textOnGlass)),
+            const SizedBox(width: 6),
+            Icon(Icons.edit_outlined, size: 16, color: AppColors.textOnGlassFaint),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEditDialog(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations t,
+    String current,
+  ) async {
+    final controller = TextEditingController(text: current);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        title: Text(
+          t.profileNicknameEditTitle,
+          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: NicknameController.maxLength,
+          cursorColor: AppColors.brandPrimary,
+          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: t.profileNicknameHint,
+            hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
+            counterStyle: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.glassBorder),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.brandPrimary, width: 1.5),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final value = controller.text.trim();
+              if (value.isEmpty) {
+                Navigator.of(ctx).pop();
+                return;
+              }
+              await ref.read(nicknameControllerProvider.notifier).set(value);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: Text(t.profileNicknameSave, style: const TextStyle(color: AppColors.brandPrimary)),
           ),
         ],
       ),
