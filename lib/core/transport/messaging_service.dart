@@ -5,15 +5,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:cryptography/cryptography.dart';
+
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
+import '../crypto/identity_service.dart';
 import '../util/debug_log.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
+import 'envelope.dart';
 import 'frame.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
@@ -50,6 +54,25 @@ class MessagingService {
   final _clients = <String, BleGattClient>{}; // central-side clients
   final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
+
+  /// Cached pubkey hash of the local identity, computed lazily on first use.
+  /// Used as the `originPubkeyHash` on every outbound transport envelope.
+  Uint8List? _myHashCache;
+
+  Future<Uint8List> _myPubkeyHash() async {
+    if (_myHashCache != null) return _myHashCache!;
+    final id = await _ref.read(identityProvider.future);
+    final digest = await Blake2s().hash(id.publicKey);
+    _myHashCache = TransportEnvelope.shortHashFromHashBytes(
+        Uint8List.fromList(digest.bytes));
+    return _myHashCache!;
+  }
+
+  Future<Uint8List> _peerPubkeyHash(Uint8List peerPubkey) async {
+    final digest = await Blake2s().hash(peerPubkey);
+    return TransportEnvelope.shortHashFromHashBytes(
+        Uint8List.fromList(digest.bytes));
+  }
 
   /// Tap-to-connect: the user picked a peer in the Nearby list. We're the
   /// initiator. [displayName] is the human-readable label (advertised BLE
@@ -174,13 +197,34 @@ class MessagingService {
     }
 
     try {
-      final frame = await session.encryptText(text);
+      final inner = await session.encryptText(text);
+      // Wrap the encrypted bytes in a mesh envelope so relays (M3.E) can
+      // route this frame even without knowing the body. For direct-link
+      // chats this just adds a 33-byte header on top of the Noise ciphertext.
+      final peerPub = session.remoteStaticPublicKey;
+      if (peerPub == null) {
+        throw StateError('session has no remote pubkey, cannot address envelope');
+      }
+      final myHash = await _myPubkeyHash();
+      final peerHash = await _peerPubkeyHash(peerPub);
+      final envelope = TransportEnvelope(
+        originPubkeyHash: myHash,
+        destPubkeyHash: peerHash,
+        msgId: TransportEnvelope.newMsgId(),
+        ttl: TransportEnvelope.defaultTtl,
+        body: inner.payload,
+      );
+      final outboundFrame = Frame(
+        type: FrameType.transport,
+        payload: envelope.encode(),
+      );
+
       final transportId = session.peerId;
       final client = _clients[transportId];
       if (client != null && client.isConnected) {
-        await client.writeOutbound(frame.encode());
+        await client.writeOutbound(outboundFrame.encode());
       } else {
-        final ok = await _ref.read(blePeripheralProvider).notifyInbound(frame.encode());
+        final ok = await _ref.read(blePeripheralProvider).notifyInbound(outboundFrame.encode());
         if (!ok) {
           throw StateError('peripheral notify returned false');
         }
@@ -270,41 +314,79 @@ class MessagingService {
         if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.transport:
-        final session = manager.sessionFor(peerId);
-        if (session == null || !session.isEstablished) {
-          DebugLog.instance.log('NOISE',
-              'drop transport: no established session for $peerId');
-          return;
-        }
-        try {
-          final plaintext = await session.decryptText(frame);
-          DebugLog.instance.log('NOISE',
-              'decrypt OK from $peerId, ${plaintext.length} chars');
-          final message = Message(
-            id: 'm${DateTime.now().microsecondsSinceEpoch}',
-            chatId: peerId,
-            text: plaintext,
-            sentAt: DateTime.now(),
-            isMine: false,
-          );
-          // BLE Privacy: the same logical peer can have different transport-
-          // level addresses depending on direction (central vs peripheral
-          // role). Fan the decrypted message out to every session in the
-          // manager that shares the same authenticated static pubkey, so the
-          // chat UI sees it no matter which transport-side handshake
-          // delivered it.
-          _appendToAllSessionsForSamePeer(session.remoteStaticPublicKey,
-              fallbackPeerId: peerId, message: message);
-        } catch (e, st) {
-          DebugLog.instance.log('NOISE',
-              'decrypt FAILED for $peerId: $e');
-          debugPrint('$st');
-        }
+        await _handleTransportFrame(peerId, frame);
 
       case FrameType.reset:
         manager.drop(peerId);
         _clients.remove(peerId)?.dispose();
     }
+  }
+
+  /// Transport-frame dispatch — pulls the envelope apart, decides whether
+  /// this frame is for us or for someone else (relay path lands in M3.E),
+  /// and decrypts + delivers when addressed.
+  Future<void> _handleTransportFrame(String peerId, Frame frame) async {
+    final TransportEnvelope env;
+    try {
+      env = TransportEnvelope.decode(frame.payload);
+    } catch (e) {
+      DebugLog.instance.log('NOISE',
+          'drop transport from $peerId: malformed envelope ($e)');
+      return;
+    }
+    DebugLog.instance.log('NOISE',
+        'envelope from origin=${TransportEnvelope.hashHex(env.originPubkeyHash)} '
+        'dest=${TransportEnvelope.hashHex(env.destPubkeyHash)} '
+        'ttl=${env.ttl} msgId=${env.msgIdHex().substring(0, 8)}…');
+
+    final myHash = await _myPubkeyHash();
+    final addressedToMe = env.isBroadcast || _bytesEqual(env.destPubkeyHash, myHash);
+
+    if (!addressedToMe) {
+      // Forwarding lands in M3.E. For now just log and drop.
+      DebugLog.instance.log('NOISE',
+          'not for me, dropping (relay forwarding lands in M3.E)');
+      return;
+    }
+
+    // Addressed to us — decrypt the body via the direct-link Noise session
+    // we share with the immediate sender. SealedBox swap-in is M3.D.
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    final session = manager.sessionFor(peerId);
+    if (session == null || !session.isEstablished) {
+      DebugLog.instance.log('NOISE',
+          'drop transport: no established session for $peerId');
+      return;
+    }
+    try {
+      // Reconstruct the inner Noise frame so the existing decryptText
+      // path can stay as-is. Its `.payload` is what we encrypted on the
+      // sender side.
+      final innerFrame = Frame(type: FrameType.transport, payload: env.body);
+      final plaintext = await session.decryptText(innerFrame);
+      DebugLog.instance.log('NOISE',
+          'decrypt OK from $peerId, ${plaintext.length} chars');
+      final message = Message(
+        id: 'm${DateTime.now().microsecondsSinceEpoch}',
+        chatId: peerId,
+        text: plaintext,
+        sentAt: DateTime.now(),
+        isMine: false,
+      );
+      _appendToAllSessionsForSamePeer(session.remoteStaticPublicKey,
+          fallbackPeerId: peerId, message: message);
+    } catch (e, st) {
+      DebugLog.instance.log('NOISE', 'decrypt FAILED for $peerId: $e');
+      debugPrint('$st');
+    }
+  }
+
+  static bool _bytesEqual(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   /// Appends [message] into the canonical pubkey-keyed message bucket, plus
