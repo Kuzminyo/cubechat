@@ -29,6 +29,12 @@ class _VoiceBubbleState extends State<VoiceBubble> {
   Duration _total = Duration.zero;
   bool _playing = false;
 
+  /// Fraction (0..1) of the bar the user is currently dragging the thumb
+  /// to. Non-null = drag in progress; the actual seek commits on release.
+  /// While dragging we render the thumb at this position so the UI feels
+  /// responsive even when the underlying decoder hasn't seeked yet.
+  double? _scrubbing;
+
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
   StreamSubscription<void>? _completeSub;
@@ -125,20 +131,36 @@ class _VoiceBubbleState extends State<VoiceBubble> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: hasFile ? progress : null,
-                    minHeight: 4,
-                    backgroundColor: Colors.white.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation(
-                      AppColors.brandPrimary,
-                    ),
-                  ),
+                _ScrubBar(
+                  progress: _scrubbing ?? progress,
+                  enabled: hasFile && total > Duration.zero,
+                  onSeekStart: (frac) => setState(() => _scrubbing = frac),
+                  onSeekUpdate: (frac) => setState(() => _scrubbing = frac),
+                  onSeekCommit: (frac) async {
+                    final target = Duration(
+                      milliseconds:
+                          (total.inMilliseconds * frac).round(),
+                    );
+                    setState(() {
+                      _position = target;
+                      _scrubbing = null;
+                    });
+                    try {
+                      await _player.seek(target);
+                    } catch (_) {}
+                  },
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _fmt(_playing ? _position : total),
+                  _fmt(_playing
+                      ? _position
+                      : (_scrubbing == null
+                          ? total
+                          : Duration(
+                              milliseconds:
+                                  (total.inMilliseconds * _scrubbing!)
+                                      .round(),
+                            ))),
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11,
@@ -149,6 +171,99 @@ class _VoiceBubbleState extends State<VoiceBubble> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Tappable + draggable playback scrubber. Renders a thin progress bar
+/// with a small thumb at the current position; horizontal-drag/tap on the
+/// bar reports the new fractional position via the seek callbacks. The
+/// parent owns the actual seek + UI state.
+class _ScrubBar extends StatelessWidget {
+  const _ScrubBar({
+    required this.progress,
+    required this.enabled,
+    required this.onSeekStart,
+    required this.onSeekUpdate,
+    required this.onSeekCommit,
+  });
+
+  final double progress;
+  final bool enabled;
+  final ValueChanged<double> onSeekStart;
+  final ValueChanged<double> onSeekUpdate;
+  final ValueChanged<double> onSeekCommit;
+
+  double _fracFor(double localX, double width) {
+    if (width <= 0) return 0;
+    return (localX / width).clamp(0.0, 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: enabled
+              ? (d) => onSeekStart(_fracFor(d.localPosition.dx, width))
+              : null,
+          onHorizontalDragUpdate: enabled
+              ? (d) => onSeekUpdate(_fracFor(d.localPosition.dx, width))
+              : null,
+          onHorizontalDragEnd: enabled
+              ? (_) => onSeekCommit(progress.clamp(0.0, 1.0))
+              : null,
+          onTapDown: enabled
+              ? (d) => onSeekStart(_fracFor(d.localPosition.dx, width))
+              : null,
+          onTapUp: enabled
+              ? (d) => onSeekCommit(_fracFor(d.localPosition.dx, width))
+              : null,
+          // Hit area is taller than the visual bar so it's easy to grab.
+          child: SizedBox(
+            height: 16,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: progress.clamp(0.0, 1.0),
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.brandPrimary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: (width * progress.clamp(0.0, 1.0)) - 6,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: enabled
+                          ? AppColors.brandPrimary
+                          : AppColors.textOnGlassFaint,
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -7,6 +7,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
+import '../image_viewer_screen.dart';
 import 'voice_bubble.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -143,15 +144,30 @@ class _ImagePayload extends StatelessWidget {
     final path = message.imagePath;
     final fileExists = path != null && File(path).existsSync();
 
+    final heroTag = 'image-${message.id}';
     final body = fileExists
-        ? ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.file(
-              File(path),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _ImagePlaceholder(
-                icon: Icons.broken_image_outlined,
-                label: message.imageMime ?? 'image',
+        ? GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                fullscreenDialog: true,
+                builder: (_) => ImageViewerScreen(
+                  imagePath: path,
+                  heroTag: heroTag,
+                ),
+              ),
+            ),
+            child: Hero(
+              tag: heroTag,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  File(path),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _ImagePlaceholder(
+                    icon: Icons.broken_image_outlined,
+                    label: message.imageMime ?? 'image',
+                  ),
+                ),
               ),
             ),
           )
