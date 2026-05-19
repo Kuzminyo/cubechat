@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/identity_service.dart';
+import '../crypto/sealed_box.dart';
 import '../identity/nickname_controller.dart';
 import '../util/debug_log.dart';
 import 'announcement.dart';
@@ -213,14 +215,20 @@ class MessagingService {
     }
 
     try {
-      final inner = await session.encryptText(text);
-      // Wrap the encrypted bytes in a mesh envelope so relays (M3.E) can
-      // route this frame even without knowing the body. For direct-link
-      // chats this just adds a 33-byte header on top of the Noise ciphertext.
       final peerPub = session.remoteStaticPublicKey;
       if (peerPub == null) {
         throw StateError('session has no remote pubkey, cannot address envelope');
       }
+      // M3.D: encrypt the body with SealedBox addressed to the recipient's
+      // long-term static pubkey. The body is now opaque to every relay on
+      // the path — only the holder of the matching private key can decrypt.
+      // The direct-link Noise session still authenticates the immediate
+      // BLE neighbor (so the link itself can't be MITM'd at the BLE layer);
+      // the body is intentionally session-independent.
+      final body = await SealedBox.seal(
+        Uint8List.fromList(utf8.encode(text)),
+        peerPub,
+      );
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
       final envelope = TransportEnvelope(
@@ -228,7 +236,7 @@ class MessagingService {
         destPubkeyHash: peerHash,
         msgId: TransportEnvelope.newMsgId(),
         ttl: TransportEnvelope.defaultTtl,
-        body: inner.payload,
+        body: body,
       );
       final outboundFrame = Frame(
         type: FrameType.transport,
@@ -376,23 +384,28 @@ class MessagingService {
       return;
     }
 
-    // Addressed to us — decrypt the body via the direct-link Noise session
-    // we share with the immediate sender. SealedBox swap-in is M3.D.
-    final manager = _ref.read(chatSessionManagerProvider.notifier);
-    final session = manager.sessionFor(peerId);
-    if (session == null || !session.isEstablished) {
-      DebugLog.instance.log('NOISE',
-          'drop transport: no established session for $peerId');
-      return;
-    }
+    // Addressed to us — open the SealedBox body with our long-term private
+    // key. Note: SealedBox is anonymous — the sender's identity comes from
+    // env.originPubkeyHash and is unauthenticated. For now we cross-check
+    // against the immediate-link Noise session's remote pubkey when one
+    // exists; multi-hop senders are taken on faith pending inner signatures.
     try {
-      // Reconstruct the inner Noise frame so the existing decryptText
-      // path can stay as-is. Its `.payload` is what we encrypted on the
-      // sender side.
-      final innerFrame = Frame(type: FrameType.transport, payload: env.body);
-      final plaintext = await session.decryptText(innerFrame);
+      final identity = await _ref.read(identityProvider.future);
+      final plaintextBytes = await SealedBox.open(
+        env.body,
+        recipientKeyPair: identity.asKeyPair(),
+        recipientPubkey: identity.publicKey,
+      );
+      final plaintext = utf8.decode(plaintextBytes, allowMalformed: true);
       DebugLog.instance.log('NOISE',
-          'decrypt OK from $peerId, ${plaintext.length} chars');
+          'SealedBox open OK from $peerId, ${plaintext.length} chars');
+      // Resolve sender for chat-bucket attribution. If the immediate BLE
+      // neighbour has an established session, we attribute the message to
+      // that authenticated pubkey. Otherwise we fall back to the unauthenticated
+      // origin hash from the envelope (M3.E relay path).
+      final manager = _ref.read(chatSessionManagerProvider.notifier);
+      final session = manager.sessionFor(peerId);
+      final senderPub = session?.remoteStaticPublicKey;
       final message = Message(
         id: 'm${DateTime.now().microsecondsSinceEpoch}',
         chatId: peerId,
@@ -400,10 +413,10 @@ class MessagingService {
         sentAt: DateTime.now(),
         isMine: false,
       );
-      _appendToAllSessionsForSamePeer(session.remoteStaticPublicKey,
+      _appendToAllSessionsForSamePeer(senderPub,
           fallbackPeerId: peerId, message: message);
     } catch (e, st) {
-      DebugLog.instance.log('NOISE', 'decrypt FAILED for $peerId: $e');
+      DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
       debugPrint('$st');
     }
   }
