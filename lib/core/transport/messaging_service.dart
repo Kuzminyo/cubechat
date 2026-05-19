@@ -13,7 +13,9 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/identity_service.dart';
+import '../identity/nickname_controller.dart';
 import '../util/debug_log.dart';
+import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
@@ -26,6 +28,12 @@ import 'frame.dart';
 /// surface a failed state to the UI so the user can retry instead of staring
 /// at a "secure channel forming" spinner indefinitely.
 const _handshakeTimeout = Duration(seconds: 15);
+
+/// How often we re-broadcast our (pubkey, nickname) announcement on every
+/// active link. Matches the cadence of bitchat-style mesh announcements —
+/// slow enough to keep BLE airtime cheap, fast enough that a fresh peer
+/// joining mid-conversation learns the roster within a minute.
+const _announcementInterval = Duration(seconds: 60);
 
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
@@ -49,12 +57,14 @@ const _handshakeTimeout = Duration(seconds: 15);
 class MessagingService {
   MessagingService(this._ref) {
     _wirePeripheralEvents();
+    _startAnnouncementTimer();
   }
 
   final Ref _ref;
   final _clients = <String, BleGattClient>{}; // central-side clients
   final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
+  Timer? _announcementTimer;
 
   /// Cached pubkey hash of the local identity, computed lazily on first use.
   /// Used as the `originPubkeyHash` on every outbound transport envelope.
@@ -322,6 +332,9 @@ class MessagingService {
       case FrameType.transport:
         await _handleTransportFrame(peerId, frame);
 
+      case FrameType.peerAnnouncement:
+        await _handlePeerAnnouncementFrame(peerId, frame);
+
       case FrameType.reset:
         manager.drop(peerId);
         _clients.remove(peerId)?.dispose();
@@ -395,6 +408,110 @@ class MessagingService {
     }
   }
 
+  /// Peer-announcement RX: unwrap envelope, dedup, decode the inner
+  /// `PeerAnnouncement` and upsert the (pubkey, nickname) pair into the
+  /// roster. Multi-hop forwarding lands in M3.E — for now we accept and
+  /// register even frames addressed to a different peer (broadcast).
+  Future<void> _handlePeerAnnouncementFrame(String peerId, Frame frame) async {
+    final TransportEnvelope env;
+    try {
+      env = TransportEnvelope.decode(frame.payload);
+    } catch (e) {
+      DebugLog.instance.log('MESH',
+          'drop announce from $peerId: malformed envelope ($e)');
+      return;
+    }
+    if (!_dedup.acceptEnvelope(env)) {
+      DebugLog.instance.log('MESH', 'drop announce: duplicate');
+      return;
+    }
+    final PeerAnnouncement ann;
+    try {
+      ann = PeerAnnouncement.decode(env.body);
+    } catch (e) {
+      DebugLog.instance.log('MESH',
+          'drop announce from $peerId: malformed body ($e)');
+      return;
+    }
+    // Skip our own announcement bouncing back to us through a relay.
+    final myHash = await _myPubkeyHash();
+    if (_bytesEqual(env.originPubkeyHash, myHash)) {
+      DebugLog.instance.log('MESH', 'drop announce: it is mine');
+      return;
+    }
+    final pubkeyHex = _hexOf(ann.pubkey);
+    _ref.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: pubkeyHex,
+          displayName: ann.nickname,
+        );
+    DebugLog.instance.log('MESH',
+        'registered announce: "${ann.nickname}" ($pubkeyHex) via $peerId');
+  }
+
+  /// Periodic re-announcement of (my pubkey, my nickname) on every active
+  /// link. Idempotent: receivers dedup on (origin, msgId), and the roster
+  /// upsert is a no-op when nothing changed.
+  void _startAnnouncementTimer() {
+    _announcementTimer?.cancel();
+    _announcementTimer = Timer.periodic(_announcementInterval, (_) {
+      unawaited(_broadcastAnnouncement());
+    });
+  }
+
+  /// Build and send one [PeerAnnouncement] across every active client and the
+  /// peripheral notify pipe. Safe to call before any link exists — the
+  /// individual sends just no-op.
+  Future<void> _broadcastAnnouncement() async {
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final nickname = _ref.read(nicknameControllerProvider);
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List.fromList(identity.publicKey),
+        nickname: nickname,
+      );
+      final env = TransportEnvelope(
+        originPubkeyHash: await _myPubkeyHash(),
+        destPubkeyHash: TransportEnvelope.broadcastDest(),
+        msgId: TransportEnvelope.newMsgId(),
+        ttl: TransportEnvelope.defaultTtl,
+        body: ann.encode(),
+      );
+      final frame = Frame(
+        type: FrameType.peerAnnouncement,
+        payload: env.encode(),
+      );
+      // Mark our own announcement in the dedup cache so a reflected copy
+      // bouncing back from a relay can't accidentally pass the broadcast
+      // self-skip check (defense-in-depth).
+      _dedup.acceptEnvelope(env);
+
+      final bytes = frame.encode();
+      var fanout = 0;
+      for (final client in _clients.values) {
+        if (!client.isConnected) continue;
+        try {
+          await client.writeOutbound(bytes);
+          fanout++;
+        } catch (e) {
+          DebugLog.instance.log('MESH', 'announce write failed: $e');
+        }
+      }
+      // Also push via peripheral notify so connected centrals see it.
+      try {
+        final ok = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+        if (ok) fanout++;
+      } catch (e) {
+        DebugLog.instance.log('MESH', 'announce notify failed: $e');
+      }
+      if (fanout > 0) {
+        DebugLog.instance.log('MESH',
+            'announced "${ann.nickname}" on $fanout link(s)');
+      }
+    } catch (e, st) {
+      debugPrint('broadcastAnnouncement failed: $e\n$st');
+    }
+  }
+
   static bool _bytesEqual(Uint8List a, Uint8List b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
@@ -450,6 +567,10 @@ class MessagingService {
         );
     DebugLog.instance.log('NOISE',
         'registered known peer: ${session.peerLabel} ($pubkeyHex)');
+    // Fresh session → kick off an announcement so the new peer (and anyone
+    // they relay to) learns who we are without waiting up to a minute for
+    // the next periodic tick.
+    unawaited(_broadcastAnnouncement());
   }
 
   static String _hexOf(Uint8List bytes) {
@@ -536,6 +657,8 @@ class MessagingService {
   }
 
   Future<void> dispose() async {
+    _announcementTimer?.cancel();
+    _announcementTimer = null;
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {
       t.cancel();

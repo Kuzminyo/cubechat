@@ -27,6 +27,11 @@ enum FrameType {
   /// Either direction after handshake: encrypted application payload.
   transport(0x10),
 
+  /// Unencrypted broadcast announcement carrying (pubkey, nickname). Wrapped
+  /// in a [TransportEnvelope] so the same dedup + relay machinery applies as
+  /// for transport frames. See [PeerAnnouncement].
+  peerAnnouncement(0x20),
+
   /// Either direction: explicit "session aborted / reset, drop your state".
   /// Useful when one side restarts and the other still has a stale session.
   reset(0xFE);
