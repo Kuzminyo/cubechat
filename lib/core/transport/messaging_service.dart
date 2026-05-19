@@ -17,6 +17,7 @@ import '../util/debug_log.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
+import 'dedup_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
 
@@ -58,6 +59,11 @@ class MessagingService {
   /// Cached pubkey hash of the local identity, computed lazily on first use.
   /// Used as the `originPubkeyHash` on every outbound transport envelope.
   Uint8List? _myHashCache;
+
+  /// Drops duplicate transport frames (a frame we've already seen or
+  /// forwarded) before they hit the chat UI or the relay path. Keyed on
+  /// (origin, msgId).
+  final DedupCache _dedup = DedupCache();
 
   Future<Uint8List> _myPubkeyHash() async {
     if (_myHashCache != null) return _myHashCache!;
@@ -338,6 +344,14 @@ class MessagingService {
         'envelope from origin=${TransportEnvelope.hashHex(env.originPubkeyHash)} '
         'dest=${TransportEnvelope.hashHex(env.destPubkeyHash)} '
         'ttl=${env.ttl} msgId=${env.msgIdHex().substring(0, 8)}…');
+
+    // Dedup: drop frames we've already seen via another path. Keyed on the
+    // (origin, msgId) pair which is stable regardless of which relay
+    // delivered the copy.
+    if (!_dedup.acceptEnvelope(env)) {
+      DebugLog.instance.log('NOISE', 'drop transport: duplicate (origin+msgId)');
+      return;
+    }
 
     final myHash = await _myPubkeyHash();
     final addressedToMe = env.isBroadcast || _bytesEqual(env.destPubkeyHash, myHash);
