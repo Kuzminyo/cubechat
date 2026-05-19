@@ -7,6 +7,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
+import 'circle_video_bubble.dart';
 import 'voice_bubble.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -84,6 +85,8 @@ class _MessageBubbleState extends State<MessageBubble>
                 _ImagePayload(message: message)
               else if (message.kind == MessageKind.audio)
                 VoiceBubble(message: message)
+              else if (message.kind == MessageKind.video)
+                CircleVideoBubble(message: message)
               else
                 Text(
                   message.text,

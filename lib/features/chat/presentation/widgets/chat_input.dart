@@ -11,6 +11,7 @@ class ChatInput extends StatefulWidget {
     required this.sendTooltip,
     required this.onSend,
     this.onAttach,
+    this.onCircle,
     this.onVoiceStart,
     this.onVoiceStop,
     this.onVoiceCancel,
@@ -25,6 +26,10 @@ class ChatInput extends StatefulWidget {
   /// Tapped on the attachment (image) button. When null the button is
   /// hidden — caller decides whether image send is wired up.
   final VoidCallback? onAttach;
+
+  /// Tapped on the camera-circle button — launches the video circle
+  /// recorder. Null hides the button.
+  final VoidCallback? onCircle;
 
   /// Voice-recording handlers. When all three are non-null the mic button
   /// is shown next to the send button; press-and-hold drives onVoiceStart,
@@ -89,6 +94,10 @@ class _ChatInputState extends State<ChatInput> {
                 children: [
                   if (widget.onAttach != null && !widget.voiceActive) ...[
                     _AttachButton(onTap: widget.onAttach!),
+                    const SizedBox(width: 8),
+                  ],
+                  if (widget.onCircle != null && !widget.voiceActive) ...[
+                    _CircleButton(onTap: widget.onCircle!),
                     const SizedBox(width: 8),
                   ],
                   Expanded(
@@ -174,6 +183,32 @@ class _AttachButton extends StatelessWidget {
         ),
         child: Icon(
           Icons.image_outlined,
+          color: AppColors.textOnGlass,
+          size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        child: Icon(
+          Icons.videocam_outlined,
           color: AppColors.textOnGlass,
           size: 20,
         ),

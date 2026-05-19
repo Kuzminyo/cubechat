@@ -246,3 +246,87 @@ class AudioReassembler {
     }
   }
 }
+
+/// Mirror of [AudioReassembler] for video clips. Different cache directory,
+/// different mime → extension mapping; same chunk-buffer logic.
+class VideoReassembler {
+  VideoReassembler({this.staleAfter = const Duration(minutes: 10)});
+
+  final Duration staleAfter;
+  final Map<String, _PendingAudio> _pending = {};
+
+  ({Uint8List bytes, String mime, int durationMs, Uint8List videoId})? ingest(
+      VideoChunk chunk) {
+    _gc();
+    final key = _keyOf(chunk.videoId);
+    final entry = _pending.putIfAbsent(
+      key,
+      () => _PendingAudio(
+        total: chunk.total,
+        mime: chunk.mime,
+        durationMs: chunk.durationMs,
+        startedAt: DateTime.now(),
+      ),
+    );
+    if (entry.total != chunk.total) {
+      DebugLog.instance.log('CIRCLE',
+          'chunk total mismatch for $key — discarding video buffer');
+      _pending.remove(key);
+      return null;
+    }
+    entry.chunks[chunk.seq] = chunk.data;
+    DebugLog.instance.log('CIRCLE',
+        'buf $key: ${entry.chunks.length}/${entry.total}');
+    if (entry.isComplete) {
+      final bytes = entry.assemble();
+      _pending.remove(key);
+      return (
+        bytes: bytes,
+        mime: entry.mime,
+        durationMs: entry.durationMs,
+        videoId: chunk.videoId,
+      );
+    }
+    return null;
+  }
+
+  static Future<String> persistToCache({
+    required Uint8List videoId,
+    required Uint8List bytes,
+    required String mime,
+  }) async {
+    final dir = Directory(
+      '${(await getApplicationCacheDirectory()).path}/cubechat/video',
+    );
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    final ext = _videoExtensionFor(mime);
+    final hex =
+        videoId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final file = File('${dir.path}/$hex$ext');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  void _gc() {
+    final now = DateTime.now();
+    _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+  }
+
+  static String _keyOf(Uint8List id) =>
+      id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  static String _videoExtensionFor(String mime) {
+    switch (mime.toLowerCase()) {
+      case 'video/mp4':
+        return '.mp4';
+      case 'video/quicktime':
+        return '.mov';
+      case 'video/webm':
+        return '.webm';
+      default:
+        return '.bin';
+    }
+  }
+}

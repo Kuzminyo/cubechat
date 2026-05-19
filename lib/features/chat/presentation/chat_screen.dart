@@ -18,6 +18,7 @@ import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
+import 'circle_recorder_screen.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/message_bubble.dart';
 
@@ -265,6 +266,39 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     _stopTicker();
   }
 
+  Future<void> _pickAndSendCircle() async {
+    final result = await Navigator.of(context).push<({
+      String path,
+      int durationMs,
+      String mime,
+    })>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const CircleRecorderScreen(),
+      ),
+    );
+    if (result == null) return;
+    if (!widget.canSend) return;
+    try {
+      final bytes = await File(result.path).readAsBytes();
+      await ref.read(messagingServiceProvider).sendVideo(
+            widget.peerId,
+            bytes: bytes,
+            mime: result.mime,
+            durationMs: result.durationMs,
+            cachedPath: result.path,
+          );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+          content: Text('$e', style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickAndSendImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -310,6 +344,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       sendTooltip: t.chatSend,
       onAttach: widget.canSend && !voiceState.isRecording
           ? _pickAndSendImage
+          : null,
+      onCircle: widget.canSend && !voiceState.isRecording
+          ? _pickAndSendCircle
           : null,
       onVoiceStart: widget.canSend ? _onVoiceStart : null,
       onVoiceStop: widget.canSend ? _onVoiceStop : null,

@@ -5,7 +5,7 @@ enum MessageStatus { sending, delivered, read, failed }
 /// What kind of payload this message carries. Media messages keep their raw
 /// bytes on disk (see [Message.mediaPath]) and use [text] only for an
 /// optional caption / mime label shown in the bubble.
-enum MessageKind { text, image, audio }
+enum MessageKind { text, image, audio, video }
 
 @immutable
 class Message {
@@ -22,6 +22,9 @@ class Message {
     this.audioPath,
     this.audioMime,
     this.audioDurationMs,
+    this.videoPath,
+    this.videoMime,
+    this.videoDurationMs,
   });
 
   final String id;
@@ -42,12 +45,19 @@ class Message {
   final String? audioMime;
   final int? audioDurationMs;
 
+  // Video payload (circle clips).
+  final String? videoPath;
+  final String? videoMime;
+  final int? videoDurationMs;
+
   Message copyWith({
     MessageStatus? status,
     String? text,
     String? imagePath,
     String? audioPath,
     int? audioDurationMs,
+    String? videoPath,
+    int? videoDurationMs,
   }) {
     return Message(
       id: id,
@@ -62,6 +72,9 @@ class Message {
       audioPath: audioPath ?? this.audioPath,
       audioMime: audioMime,
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
+      videoPath: videoPath ?? this.videoPath,
+      videoMime: videoMime,
+      videoDurationMs: videoDurationMs ?? this.videoDurationMs,
     );
   }
 }

@@ -151,6 +151,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioPath != null) 'audioPath': m.audioPath,
         if (m.audioMime != null) 'audioMime': m.audioMime,
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
+        if (m.videoPath != null) 'videoPath': m.videoPath,
+        if (m.videoMime != null) 'videoMime': m.videoMime,
+        if (m.videoDurationMs != null) 'videoDurationMs': m.videoDurationMs,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -178,6 +181,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       audioPath: m['audioPath'] as String?,
       audioMime: m['audioMime'] as String?,
       audioDurationMs: m['audioDurationMs'] as int?,
+      videoPath: m['videoPath'] as String?,
+      videoMime: m['videoMime'] as String?,
+      videoDurationMs: m['videoDurationMs'] as int?,
     );
   }
 }
