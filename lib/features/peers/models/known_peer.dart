@@ -26,6 +26,7 @@ class KnownPeer {
     required this.lastSeen,
     this.verifiedAt,
     this.signPublicKey,
+    this.signKeyRotatedAt,
   });
 
   final String pubkeyHex;
@@ -34,14 +35,30 @@ class KnownPeer {
   final DateTime? verifiedAt;
   final Uint8List? signPublicKey;
 
+  /// When this peer's signing key last changed under the same pubkeyHex.
+  /// Set the moment a fresh signed announcement arrives carrying a
+  /// different Ed25519 public key than the one we'd previously cached;
+  /// `verifiedAt` is cleared at the same time, so the chat tile flips
+  /// from "verified" to "key changed — re-verify".
+  final DateTime? signKeyRotatedAt;
+
   bool get isVerified => verifiedAt != null;
+
+  /// True between a key rotation and the user's next manual verification.
+  /// UI surfaces this as an amber warning over the avatar.
+  bool get hasUnacknowledgedRotation =>
+      signKeyRotatedAt != null &&
+      (verifiedAt == null ||
+          verifiedAt!.isBefore(signKeyRotatedAt!));
 
   KnownPeer copyWith({
     String? displayName,
     DateTime? lastSeen,
     DateTime? verifiedAt,
     Uint8List? signPublicKey,
+    DateTime? signKeyRotatedAt,
     bool clearVerifiedAt = false,
+    bool clearSignKeyRotatedAt = false,
   }) {
     return KnownPeer(
       pubkeyHex: pubkeyHex,
@@ -49,6 +66,9 @@ class KnownPeer {
       lastSeen: lastSeen ?? this.lastSeen,
       verifiedAt: clearVerifiedAt ? null : (verifiedAt ?? this.verifiedAt),
       signPublicKey: signPublicKey ?? this.signPublicKey,
+      signKeyRotatedAt: clearSignKeyRotatedAt
+          ? null
+          : (signKeyRotatedAt ?? this.signKeyRotatedAt),
     );
   }
 }

@@ -410,16 +410,23 @@ class _ShieldButton extends StatelessWidget {
     final known = ref.watch(knownPeersControllerProvider);
     final entry = pubkeyHex == null ? null : known[pubkeyHex];
     final isVerified = entry?.isVerified ?? false;
+    final rotated = entry?.hasUnacknowledgedRotation ?? false;
     final canVerify = pubkeyHex != null;
 
-    final IconData icon = isVerified ? Icons.verified : Icons.shield_outlined;
-    final Color color = isVerified
-        ? AppColors.brandPrimary
-        : (canVerify ? AppColors.textOnGlass : AppColors.textOnGlassFaint);
+    final IconData icon = rotated
+        ? Icons.gpp_maybe_outlined
+        : (isVerified ? Icons.verified : Icons.shield_outlined);
+    final Color color = rotated
+        ? AppColors.danger
+        : (isVerified
+            ? AppColors.brandPrimary
+            : (canVerify
+                ? AppColors.textOnGlass
+                : AppColors.textOnGlassFaint));
 
     return IconButton(
       icon: Icon(icon, color: color),
-      tooltip: t.verifyTitle,
+      tooltip: rotated ? t.peerKeyRotated : t.verifyTitle,
       onPressed: !canVerify
           ? null
           : () => context.push(

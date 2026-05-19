@@ -75,19 +75,30 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       resolvedName = displayName;
     }
 
-    // Once a peer has presented a signed Ed25519 key, refuse to overwrite
-    // it with a *different* one. A pubkey-hex collision with a different
-    // signing key would be evidence of impersonation, not a key rotation.
+    // Key-rotation handling. A signed announcement with a *different*
+    // Ed25519 pub for the same X25519 pubkey-hex is either:
+    //   (a) the same peer who reset their identity (and got the same
+    //       X25519 seed somehow — vanishingly rare), or
+    //   (b) someone with the peer's Ed25519 private key (catastrophic
+    //       compromise) ratcheting the visible key forward.
+    // Either way the right move is to accept the new signing key — so
+    // future signed messages from this origin verify — but drop any
+    // prior verification, mark the rotation timestamp, and let the chat
+    // UI nudge the user to re-verify the fingerprint out-of-band.
     Uint8List? resolvedSignPub;
+    DateTime? resolvedRotatedAt = existing?.signKeyRotatedAt;
+    bool rotationDetected = false;
+    bool clearVerified = false;
     if (signPublicKey != null) {
       final prior = existing?.signPublicKey;
       if (prior != null && !_listEq(prior, signPublicKey)) {
-        debugPrint('KnownPeer $pubkeyHex: ignoring sign-pub change '
-            '(possible identity-spoof attempt)');
-        resolvedSignPub = prior;
-      } else {
-        resolvedSignPub = signPublicKey;
+        rotationDetected = true;
+        resolvedRotatedAt = now;
+        clearVerified = true;
+        debugPrint('KnownPeer $pubkeyHex: SIGNING KEY ROTATED '
+            '— accepting new ed-pub, clearing verification');
       }
+      resolvedSignPub = signPublicKey;
     } else {
       resolvedSignPub = existing?.signPublicKey;
     }
@@ -98,12 +109,20 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       lastSeen: now,
       // Preserve a prior verification across name / lastSeen refreshes —
       // verification is tied to the pubkey, which by definition hasn't
-      // changed if we're upserting under the same pubkeyHex.
-      verifiedAt: existing?.verifiedAt,
+      // changed if we're upserting under the same pubkeyHex. EXCEPT when
+      // we just detected a key rotation, in which case the trust the
+      // user granted before applies to a different signing key and is
+      // no longer valid.
+      verifiedAt: clearVerified ? null : existing?.verifiedAt,
       signPublicKey: resolvedSignPub,
+      signKeyRotatedAt: resolvedRotatedAt,
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
+    if (rotationDetected) {
+      debugPrint('KnownPeer $pubkeyHex: rotation badge will show until '
+          'user re-verifies');
+    }
   }
 
   static bool _listEq(Uint8List a, Uint8List b) {
@@ -172,11 +191,14 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         'verifiedAtIso': p.verifiedAt?.toIso8601String(),
         if (p.signPublicKey != null)
           'signPubHex': _hexOf(p.signPublicKey!),
+        if (p.signKeyRotatedAt != null)
+          'signKeyRotatedAtIso': p.signKeyRotatedAt!.toIso8601String(),
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
     final verifiedRaw = m['verifiedAtIso'] as String?;
     final signRaw = m['signPubHex'] as String?;
+    final rotatedRaw = m['signKeyRotatedAtIso'] as String?;
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
@@ -184,6 +206,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
           DateTime.now(),
       verifiedAt: verifiedRaw == null ? null : DateTime.tryParse(verifiedRaw),
       signPublicKey: signRaw == null ? null : _hexDecode(signRaw),
+      signKeyRotatedAt:
+          rotatedRaw == null ? null : DateTime.tryParse(rotatedRaw),
     );
   }
 

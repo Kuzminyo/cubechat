@@ -14,6 +14,7 @@ class Chat {
     this.isReachableViaMesh = false,
     this.isFavorite = false,
     this.isVerified = false,
+    this.signKeyRotated = false,
   });
 
   final String id;
@@ -32,4 +33,11 @@ class Chat {
 
   final bool isFavorite;
   final bool isVerified;
+
+  /// True when the peer's Ed25519 signing key was rotated after our last
+  /// out-of-band verification (or there was no verification yet at all
+  /// and a rotation has been seen). The chat tile renders a warning
+  /// chip; tapping the tile takes the user back to the verification
+  /// screen so they can re-confirm the new fingerprint.
+  final bool signKeyRotated;
 }

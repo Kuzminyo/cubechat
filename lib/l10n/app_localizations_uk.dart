@@ -55,6 +55,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsStatusOffline => 'офлайн';
 
   @override
+  String get peerKeyRotated => 'ключ змінено — підтвердьте знову';
+
+  @override
   String get peersTitle => 'Поблизу';
 
   @override

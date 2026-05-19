@@ -17,6 +17,7 @@
   "chatsSearchHint": "Search chats…",
   "chatsStatusViaMesh": "via mesh",
   "chatsStatusOffline": "offline",
+  "peerKeyRotated": "key changed — re-verify",
 
   "peersTitle": "Nearby",
   "peersSubtitle": "Devices in Bluetooth range",

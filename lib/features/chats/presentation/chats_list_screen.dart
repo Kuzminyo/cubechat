@@ -64,6 +64,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       isOnline: isOnline,
       isReachableViaMesh: isReachableViaMesh,
       isVerified: peer.isVerified,
+      signKeyRotated: peer.hasUnacknowledgedRotation,
     );
   }).toList();
   entries.sort((a, b) => b.lastTime.compareTo(a.lastTime));

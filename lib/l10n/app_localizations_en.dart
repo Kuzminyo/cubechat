@@ -55,6 +55,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsStatusOffline => 'offline';
 
   @override
+  String get peerKeyRotated => 'key changed — re-verify';
+
+  @override
   String get peersTitle => 'Nearby';
 
   @override

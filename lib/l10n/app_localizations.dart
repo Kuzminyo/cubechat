@@ -188,6 +188,12 @@ abstract class AppLocalizations {
   /// **'offline'**
   String get chatsStatusOffline;
 
+  /// No description provided for @peerKeyRotated.
+  ///
+  /// In en, this message translates to:
+  /// **'key changed — re-verify'**
+  String get peerKeyRotated;
+
   /// No description provided for @peersTitle.
   ///
   /// In en, this message translates to:

@@ -17,6 +17,7 @@
   "chatsSearchHint": "Пошук чатів…",
   "chatsStatusViaMesh": "через mesh",
   "chatsStatusOffline": "офлайн",
+  "peerKeyRotated": "ключ змінено — підтвердьте знову",
 
   "peersTitle": "Поблизу",
   "peersSubtitle": "Пристрої у радіусі Bluetooth",

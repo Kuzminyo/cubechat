@@ -59,7 +59,14 @@ class ChatTile extends StatelessWidget {
                             size: 14,
                           ),
                         ],
-                        if (chat.isReachableViaMesh) ...[
+                        if (chat.signKeyRotated) ...[
+                          const SizedBox(width: 6),
+                          _StatusPill(
+                            icon: Icons.warning_amber_rounded,
+                            label: t.peerKeyRotated,
+                            tone: _PillTone.warning,
+                          ),
+                        ] else if (chat.isReachableViaMesh) ...[
                           const SizedBox(width: 6),
                           _StatusPill(
                             icon: Icons.hub_outlined,
@@ -70,7 +77,7 @@ class ChatTile extends StatelessWidget {
                           _StatusPill(
                             icon: Icons.cloud_off_outlined,
                             label: t.chatsStatusOffline,
-                            muted: true,
+                            tone: _PillTone.muted,
                           ),
                         ],
                         const Spacer(),
@@ -115,27 +122,41 @@ class ChatTile extends StatelessWidget {
   }
 }
 
+enum _PillTone { brand, muted, warning }
+
 /// Tiny rounded badge tucked into the chat-tile header row to indicate the
-/// transport state (mesh-only reachable vs offline). Kept compact so it
+/// transport state (mesh-only / offline / key-rotated). Kept compact so it
 /// doesn't crowd out the timestamp on narrow screens.
 class _StatusPill extends StatelessWidget {
   const _StatusPill({
     required this.icon,
     required this.label,
-    this.muted = false,
+    this.tone = _PillTone.brand,
   });
 
   final IconData icon;
   final String label;
-  final bool muted;
+  final _PillTone tone;
 
   @override
   Widget build(BuildContext context) {
-    final color = muted ? AppColors.textOnGlassFaint : AppColors.brandPrimary;
+    final Color color;
+    final double alpha;
+    switch (tone) {
+      case _PillTone.brand:
+        color = AppColors.brandPrimary;
+        alpha = 0.14;
+      case _PillTone.muted:
+        color = AppColors.textOnGlassFaint;
+        alpha = 0.08;
+      case _PillTone.warning:
+        color = AppColors.danger;
+        alpha = 0.18;
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: muted ? 0.08 : 0.14),
+        color: color.withValues(alpha: alpha),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
