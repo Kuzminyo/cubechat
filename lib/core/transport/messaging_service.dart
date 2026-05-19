@@ -85,6 +85,9 @@ class MessagingService {
   /// app cache directory and surfaced as Message.kind == image.
   final ImageReassembler _imageReassembler = ImageReassembler();
 
+  /// Mirror of [_imageReassembler] for voice messages.
+  final AudioReassembler _audioReassembler = AudioReassembler();
+
   Future<Uint8List> _myPubkeyHash() async {
     if (_myHashCache != null) return _myHashCache!;
     final id = await _ref.read(identityProvider.future);
@@ -476,6 +479,139 @@ class MessagingService {
     return msg;
   }
 
+  /// Send a voice message as a series of SealedBox-encrypted audio chunks.
+  /// Same chunking + pacing as sendImage; the receiver's AudioReassembler
+  /// joins them back and emits a Message.kind=audio with playback metadata.
+  Future<Message> sendAudio(
+    String chatId, {
+    required Uint8List bytes,
+    required String mime,
+    required int durationMs,
+    String? cachedPath,
+  }) async {
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    ChatSession? session = manager.sessionFor(chatId);
+    session ??= _findSessionByPubkeyHex(chatId);
+
+    Uint8List? peerPub;
+    String? canonicalId;
+    if (session != null && session.isEstablished) {
+      peerPub = session.remoteStaticPublicKey;
+      canonicalId = session.remotePubkeyHex ?? chatId;
+    } else {
+      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      if (known != null) {
+        try {
+          peerPub = _hexDecodeBytes(known.pubkeyHex);
+          canonicalId = known.pubkeyHex;
+        } catch (e) {
+          DebugLog.instance.log('VOICE',
+              'sendAudio: malformed pubkey hex for $chatId: $e');
+        }
+      }
+    }
+    if (peerPub == null || canonicalId == null) {
+      throw StateError('cannot send audio: no recipient pubkey for $chatId');
+    }
+
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: canonicalId,
+      text: mime,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.audio,
+      audioPath: cachedPath,
+      audioMime: mime,
+      audioDurationMs: durationMs,
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(canonicalId, msg);
+    if (chatId != canonicalId) {
+      messages.append(chatId, msg);
+    }
+
+    try {
+      final audioId = AudioChunk.newAudioId();
+      final total = (bytes.length + AudioChunk.maxDataBytes - 1) ~/
+          AudioChunk.maxDataBytes;
+      if (total > 0xFFFF) {
+        throw StateError('audio too large: $total chunks > 65535 cap');
+      }
+      final myHash = await _myPubkeyHash();
+      final peerHash = await _peerPubkeyHash(peerPub);
+      for (var i = 0; i < total; i++) {
+        final start = i * AudioChunk.maxDataBytes;
+        final end =
+            (start + AudioChunk.maxDataBytes).clamp(0, bytes.length);
+        final chunk = AudioChunk(
+          audioId: audioId,
+          seq: i,
+          total: total,
+          durationMs: durationMs,
+          mime: mime,
+          data: Uint8List.fromList(bytes.sublist(start, end)),
+        );
+        final inner =
+            packInnerPayload(InnerPayloadType.audioChunk, chunk.encode());
+        // Unsigned: audio chunks pay no per-chunk signature cost (would
+        // overflow MTU). Integrity rides on SealedBox AEAD; sender identity
+        // rides on the signed announcement chain.
+        final body = await SealedBox.seal(inner, peerPub);
+        final env = TransportEnvelope(
+          originPubkeyHash: myHash,
+          destPubkeyHash: peerHash,
+          msgId: TransportEnvelope.newMsgId(),
+          ttl: TransportEnvelope.defaultTtl,
+          body: body,
+        );
+        _dedup.acceptEnvelope(env);
+        final frameBytes = Frame(
+          type: FrameType.transport,
+          payload: env.encode(),
+        ).encode();
+
+        final transportId = session?.peerId;
+        if (transportId != null) {
+          final client = _clients[transportId];
+          if (client != null && client.isConnected) {
+            await client.writeOutbound(frameBytes);
+          } else {
+            final ok = await _ref
+                .read(blePeripheralProvider)
+                .notifyInbound(frameBytes);
+            if (!ok) {
+              DebugLog.instance.log('VOICE',
+                  'chunk $i/$total notify returned false');
+              throw StateError('notify failed on audio chunk $i/$total');
+            }
+          }
+        } else {
+          final fanout =
+              await _fanoutAllLinks(frameBytes, excludePeerId: null);
+          if (fanout == 0) {
+            throw StateError('no active mesh links for audio chunk $i/$total');
+          }
+        }
+        if (i + 1 < total) {
+          await Future<void>.delayed(const Duration(milliseconds: 15));
+        }
+      }
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+      }
+    } catch (e, st) {
+      debugPrint('sendAudio failed: $e\n$st');
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+      }
+    }
+    return msg;
+  }
+
   /// Linear scan through active sessions for the one whose authenticated
   /// pubkey matches [pubkeyHex]. Returns null if no live session for that
   /// peer (e.g. the user is browsing chat history while the peer is offline).
@@ -688,9 +824,62 @@ class MessagingService {
             senderPub: senderPub,
             chunkBytes: unpacked.body,
           );
+
+        case InnerPayloadType.audioChunk:
+          await _ingestAudioChunk(
+            peerId: peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+      debugPrint('$st');
+    }
+  }
+
+  /// Drop one audio chunk into the reassembly buffer. Mirrors
+  /// [_ingestImageChunk] — completed audio is persisted under
+  /// <appCache>/cubechat/audio and surfaced as Message.kind == audio.
+  Future<void> _ingestAudioChunk({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List chunkBytes,
+  }) async {
+    final AudioChunk chunk;
+    try {
+      chunk = AudioChunk.decode(chunkBytes);
+    } catch (e) {
+      DebugLog.instance.log('VOICE',
+          'drop audio chunk from $peerId: malformed ($e)');
+      return;
+    }
+    final done = _audioReassembler.ingest(chunk);
+    if (done == null) return;
+    try {
+      final path = await AudioReassembler.persistToCache(
+        audioId: done.audioId,
+        bytes: done.bytes,
+        mime: done.mime,
+      );
+      DebugLog.instance.log('VOICE',
+          'reassembled ${done.bytes.length}B from $peerId '
+          '(${done.durationMs}ms) → $path');
+      final message = Message(
+        id: 'm${DateTime.now().microsecondsSinceEpoch}',
+        chatId: peerId,
+        text: done.mime,
+        sentAt: DateTime.now(),
+        isMine: false,
+        kind: MessageKind.audio,
+        audioPath: path,
+        audioMime: done.mime,
+        audioDurationMs: done.durationMs,
+      );
+      _appendToAllSessionsForSamePeer(senderPub,
+          fallbackPeerId: peerId, message: message);
+    } catch (e, st) {
+      DebugLog.instance.log('VOICE', 'persist failed: $e');
       debugPrint('$st');
     }
   }

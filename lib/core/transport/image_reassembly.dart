@@ -127,3 +127,122 @@ class ImageReassembler {
     }
   }
 }
+
+/// In-memory buffer for one in-flight voice message. Same shape as
+/// [_PendingImage] but carries the [durationMs] so the chat UI can label
+/// the bubble's playback timer the moment the *first* chunk arrives, even
+/// before the rest is on disk.
+class _PendingAudio {
+  _PendingAudio({
+    required this.total,
+    required this.mime,
+    required this.durationMs,
+    required this.startedAt,
+  });
+
+  final int total;
+  final String mime;
+  final int durationMs;
+  final DateTime startedAt;
+  final Map<int, Uint8List> chunks = {};
+
+  bool get isComplete => chunks.length == total;
+
+  Uint8List assemble() {
+    final ordered = List<Uint8List>.generate(total, (i) => chunks[i]!);
+    final totalBytes = ordered.fold<int>(0, (s, c) => s + c.length);
+    final out = Uint8List(totalBytes);
+    var cursor = 0;
+    for (final c in ordered) {
+      out.setRange(cursor, cursor += c.length, c);
+    }
+    return out;
+  }
+}
+
+/// Mirror of [ImageReassembler] for audio chunks. Returns the assembled
+/// bytes + duration the moment the last chunk lands.
+class AudioReassembler {
+  AudioReassembler({this.staleAfter = const Duration(minutes: 5)});
+
+  final Duration staleAfter;
+  final Map<String, _PendingAudio> _pending = {};
+
+  ({Uint8List bytes, String mime, int durationMs, Uint8List audioId})? ingest(
+      AudioChunk chunk) {
+    _gc();
+    final key = _keyOf(chunk.audioId);
+    final entry = _pending.putIfAbsent(
+      key,
+      () => _PendingAudio(
+        total: chunk.total,
+        mime: chunk.mime,
+        durationMs: chunk.durationMs,
+        startedAt: DateTime.now(),
+      ),
+    );
+    if (entry.total != chunk.total) {
+      DebugLog.instance.log('VOICE',
+          'chunk total mismatch for $key — discarding audio buffer');
+      _pending.remove(key);
+      return null;
+    }
+    entry.chunks[chunk.seq] = chunk.data;
+    DebugLog.instance.log('VOICE',
+        'buf $key: ${entry.chunks.length}/${entry.total}');
+    if (entry.isComplete) {
+      final bytes = entry.assemble();
+      _pending.remove(key);
+      return (
+        bytes: bytes,
+        mime: entry.mime,
+        durationMs: entry.durationMs,
+        audioId: chunk.audioId,
+      );
+    }
+    return null;
+  }
+
+  static Future<String> persistToCache({
+    required Uint8List audioId,
+    required Uint8List bytes,
+    required String mime,
+  }) async {
+    final dir = Directory(
+      '${(await getApplicationCacheDirectory()).path}/cubechat/audio',
+    );
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    final ext = _audioExtensionFor(mime);
+    final hex =
+        audioId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final file = File('${dir.path}/$hex$ext');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  void _gc() {
+    final now = DateTime.now();
+    _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+  }
+
+  static String _keyOf(Uint8List id) =>
+      id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  static String _audioExtensionFor(String mime) {
+    switch (mime.toLowerCase()) {
+      case 'audio/aac':
+      case 'audio/mp4':
+      case 'audio/x-m4a':
+        return '.m4a';
+      case 'audio/opus':
+      case 'audio/ogg':
+        return '.opus';
+      case 'audio/wav':
+        return '.wav';
+      default:
+        return '.bin';
+    }
+  }
+}

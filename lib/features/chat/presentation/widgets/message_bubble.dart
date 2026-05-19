@@ -7,6 +7,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
+import 'voice_bubble.dart';
 
 class MessageBubble extends StatefulWidget {
   const MessageBubble({super.key, required this.message});
@@ -81,6 +82,8 @@ class _MessageBubbleState extends State<MessageBubble>
             children: [
               if (message.kind == MessageKind.image)
                 _ImagePayload(message: message)
+              else if (message.kind == MessageKind.audio)
+                VoiceBubble(message: message)
               else
                 Text(
                   message.text,

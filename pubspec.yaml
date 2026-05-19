@@ -40,6 +40,10 @@ dependencies:
   # Media picker (M5.4 — image transfer)
   image_picker: ^1.1.2
 
+  # Voice messages (audio capture + playback)
+  record: ^6.0.0
+  audioplayers: ^6.1.0
+
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1

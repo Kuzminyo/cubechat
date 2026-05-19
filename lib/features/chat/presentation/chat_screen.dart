@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
+import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/message_bubble.dart';
@@ -143,95 +145,15 @@ class ChatScreen extends ConsumerWidget {
                       },
                     ),
             ),
-            ChatInput(
-              hint: t.chatInputHint,
-              sendTooltip: t.chatSend,
-              onAttach: canSend ? () => _pickAndSendImage(context, ref) : null,
-              // Commands always work; regular messages need an established
-              // session. We let any /cmd through even when offline so the
-              // user can `/nick` / `/clear` / `/wipe` without a peer.
-              onSend: (text) async {
-                // Try commands first.
-                final result = await CommandProcessor(ref, canonicalId)
-                    .tryExecute(text);
-                if (result != null) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: result.success
-                          ? AppColors.brandPrimary.withValues(alpha: 0.85)
-                          : AppColors.danger.withValues(alpha: 0.85),
-                      content: Text(result.message,
-                          style: const TextStyle(color: Colors.white)),
-                      duration: Duration(
-                        seconds: result.message.contains('\n') ? 5 : 2,
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                // Not a command — fall through to real send.
-                if (!canSend) return;
-                try {
-                  await ref.read(messagingServiceProvider).sendText(peerId, text);
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-                      content: Text('$e',
-                          style: const TextStyle(color: Colors.white)),
-                    ),
-                  );
-                }
-              },
+            _ChatBottomBar(
+              peerId: peerId,
+              canonicalId: canonicalId,
+              canSend: canSend,
             ),
           ],
         ),
       ),
     );
-  }
-
-  /// Triggered by the paperclip button. Picks one image from the gallery,
-  /// caps its size to keep BLE chunking sane, and hands off to
-  /// MessagingService.sendImage. We deliberately cap dimensions in the
-  /// picker rather than resizing client-side — fewer dependencies and the
-  /// outbound bandwidth budget makes large transfers a bad idea anyway.
-  Future<void> _pickAndSendImage(BuildContext context, WidgetRef ref) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1280,
-      maxHeight: 1280,
-      imageQuality: 70,
-    );
-    if (picked == null) return;
-    try {
-      final bytes = await File(picked.path).readAsBytes();
-      final mime = _guessMime(picked.path);
-      await ref.read(messagingServiceProvider).sendImage(
-            peerId,
-            bytes: bytes,
-            mime: mime,
-            cachedPath: picked.path,
-          );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text('$e', style: const TextStyle(color: Colors.white)),
-        ),
-      );
-    }
-  }
-
-  static String _guessMime(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.gif')) return 'image/gif';
-    return 'image/jpeg';
   }
 
   String _statusLabel(AppLocalizations t, ChatSession? session) {
@@ -248,6 +170,188 @@ class ChatScreen extends ConsumerWidget {
     }
   }
 
+}
+
+class _ChatBottomBar extends ConsumerStatefulWidget {
+  const _ChatBottomBar({
+    required this.peerId,
+    required this.canonicalId,
+    required this.canSend,
+  });
+
+  final String peerId;
+  final String canonicalId;
+  final bool canSend;
+
+  @override
+  ConsumerState<_ChatBottomBar> createState() => _ChatBottomBarState();
+}
+
+class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
+  Timer? _tick;
+  Duration _elapsed = Duration.zero;
+
+  void _startTicker() {
+    _tick?.cancel();
+    _elapsed = Duration.zero;
+    _tick = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      final st = ref.read(voiceRecorderProvider);
+      if (!st.isRecording || st.startedAt == null) {
+        _stopTicker();
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _elapsed = DateTime.now().difference(st.startedAt!);
+      });
+    });
+  }
+
+  void _stopTicker() {
+    _tick?.cancel();
+    _tick = null;
+    if (mounted) setState(() => _elapsed = Duration.zero);
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _onVoiceStart() async {
+    final ok = await ref.read(voiceRecorderProvider.notifier).start();
+    if (!ok) {
+      if (!mounted) return;
+      final err = ref.read(voiceRecorderProvider).error ?? 'cannot record';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+          content: Text(err, style: const TextStyle(color: Colors.white)),
+        ),
+      );
+      return;
+    }
+    _startTicker();
+  }
+
+  Future<void> _onVoiceStop() async {
+    final result = await ref.read(voiceRecorderProvider.notifier).stop();
+    _stopTicker();
+    if (result == null) return;
+    if (!widget.canSend) return;
+    try {
+      final bytes = await File(result.path).readAsBytes();
+      await ref.read(messagingServiceProvider).sendAudio(
+            widget.peerId,
+            bytes: bytes,
+            mime: 'audio/aac',
+            durationMs: result.durationMs,
+            cachedPath: result.path,
+          );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+          content: Text('$e', style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onVoiceCancel() async {
+    await ref.read(voiceRecorderProvider.notifier).cancel();
+    _stopTicker();
+  }
+
+  Future<void> _pickAndSendImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 70,
+    );
+    if (picked == null) return;
+    try {
+      final bytes = await File(picked.path).readAsBytes();
+      final lower = picked.path.toLowerCase();
+      final mime = lower.endsWith('.png')
+          ? 'image/png'
+          : lower.endsWith('.webp')
+              ? 'image/webp'
+              : lower.endsWith('.gif')
+                  ? 'image/gif'
+                  : 'image/jpeg';
+      await ref.read(messagingServiceProvider).sendImage(
+            widget.peerId,
+            bytes: bytes,
+            mime: mime,
+            cachedPath: picked.path,
+          );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+          content: Text('$e', style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final voiceState = ref.watch(voiceRecorderProvider);
+    return ChatInput(
+      hint: t.chatInputHint,
+      sendTooltip: t.chatSend,
+      onAttach: widget.canSend && !voiceState.isRecording
+          ? _pickAndSendImage
+          : null,
+      onVoiceStart: widget.canSend ? _onVoiceStart : null,
+      onVoiceStop: widget.canSend ? _onVoiceStop : null,
+      onVoiceCancel: widget.canSend ? _onVoiceCancel : null,
+      voiceActive: voiceState.isRecording,
+      voiceElapsed: _elapsed,
+      onSend: (text) async {
+        final result =
+            await CommandProcessor(ref, widget.canonicalId).tryExecute(text);
+        if (result != null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: result.success
+                  ? AppColors.brandPrimary.withValues(alpha: 0.85)
+                  : AppColors.danger.withValues(alpha: 0.85),
+              content: Text(result.message,
+                  style: const TextStyle(color: Colors.white)),
+              duration: Duration(
+                seconds: result.message.contains('\n') ? 5 : 2,
+              ),
+            ),
+          );
+          return;
+        }
+        if (!widget.canSend) return;
+        try {
+          await ref
+              .read(messagingServiceProvider)
+              .sendText(widget.peerId, text);
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+              content: Text('$e', style: const TextStyle(color: Colors.white)),
+            ),
+          );
+        }
+      },
+    );
+  }
 }
 
 class _EmptyConversationState extends StatelessWidget {

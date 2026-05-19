@@ -11,6 +11,11 @@ class ChatInput extends StatefulWidget {
     required this.sendTooltip,
     required this.onSend,
     this.onAttach,
+    this.onVoiceStart,
+    this.onVoiceStop,
+    this.onVoiceCancel,
+    this.voiceActive = false,
+    this.voiceElapsed = Duration.zero,
   });
 
   final String hint;
@@ -20,6 +25,18 @@ class ChatInput extends StatefulWidget {
   /// Tapped on the attachment (image) button. When null the button is
   /// hidden — caller decides whether image send is wired up.
   final VoidCallback? onAttach;
+
+  /// Voice-recording handlers. When all three are non-null the mic button
+  /// is shown next to the send button; press-and-hold drives onVoiceStart,
+  /// release commits via onVoiceStop, drag-off cancels via onVoiceCancel.
+  final VoidCallback? onVoiceStart;
+  final VoidCallback? onVoiceStop;
+  final VoidCallback? onVoiceCancel;
+
+  /// True while a voice recording is in progress — flips the UI into
+  /// "recording" mode (red dot + elapsed counter, hide the text input).
+  final bool voiceActive;
+  final Duration voiceElapsed;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -70,38 +87,65 @@ class _ChatInputState extends State<ChatInput> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (widget.onAttach != null) ...[
+                  if (widget.onAttach != null && !widget.voiceActive) ...[
                     _AttachButton(onTap: widget.onAttach!),
                     const SizedBox(width: 8),
                   ],
                   Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.10),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: _controller,
-                        minLines: 1,
-                        maxLines: 5,
-                        cursorColor: AppColors.brandPrimary,
-                        style: TextStyle(color: AppColors.textOnGlass, fontSize: 14.5),
-                        onSubmitted: (_) => _send(),
-                        textInputAction: TextInputAction.send,
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                          border: InputBorder.none,
-                          hintText: widget.hint,
-                          hintStyle: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 14.5),
-                        ),
-                      ),
-                    ),
+                    child: widget.voiceActive
+                        ? _RecordingIndicator(elapsed: widget.voiceElapsed)
+                        : Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.10),
+                              border: Border.all(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.16)),
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            child: TextField(
+                              controller: _controller,
+                              minLines: 1,
+                              maxLines: 5,
+                              cursorColor: AppColors.brandPrimary,
+                              style: TextStyle(
+                                color: AppColors.textOnGlass,
+                                fontSize: 14.5,
+                              ),
+                              onSubmitted: (_) => _send(),
+                              textInputAction: TextInputAction.send,
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12),
+                                border: InputBorder.none,
+                                hintText: widget.hint,
+                                hintStyle: TextStyle(
+                                  color: AppColors.textOnGlassFaint,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 8),
-                  _SendButton(enabled: _hasText, tooltip: widget.sendTooltip, onTap: _send),
+                  if (widget.onVoiceStart != null &&
+                      widget.onVoiceStop != null &&
+                      widget.onVoiceCancel != null &&
+                      !_hasText)
+                    _VoiceButton(
+                      active: widget.voiceActive,
+                      onStart: widget.onVoiceStart!,
+                      onStop: widget.onVoiceStop!,
+                      onCancel: widget.onVoiceCancel!,
+                    )
+                  else
+                    _SendButton(
+                      enabled: _hasText,
+                      tooltip: widget.sendTooltip,
+                      onTap: _send,
+                    ),
                 ],
               ),
             ),
@@ -133,6 +177,117 @@ class _AttachButton extends StatelessWidget {
           color: AppColors.textOnGlass,
           size: 20,
         ),
+      ),
+    );
+  }
+}
+
+class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({
+    required this.active,
+    required this.onStart,
+    required this.onStop,
+    required this.onCancel,
+  });
+
+  final bool active;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: (_) => onStart(),
+      onLongPressEnd: (_) => onStop(),
+      onLongPressCancel: onCancel,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: active
+              ? LinearGradient(
+                  colors: [
+                    AppColors.danger.withValues(alpha: 0.95),
+                    AppColors.danger.withValues(alpha: 0.7),
+                  ],
+                )
+              : LinearGradient(
+                  colors: [
+                    Colors.white.withValues(alpha: 0.18),
+                    Colors.white.withValues(alpha: 0.10),
+                  ],
+                ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: AppColors.danger.withValues(alpha: 0.45),
+                    blurRadius: 16,
+                    spreadRadius: -2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          Icons.mic,
+          color: active ? Colors.white : AppColors.textOnGlass,
+          size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordingIndicator extends StatelessWidget {
+  const _RecordingIndicator({required this.elapsed});
+
+  final Duration elapsed;
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString();
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.danger,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _fmt(elapsed),
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 14,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '◀ slide to cancel',
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

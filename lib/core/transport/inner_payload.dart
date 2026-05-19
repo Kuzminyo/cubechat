@@ -20,7 +20,11 @@ enum InnerPayloadType {
   text(0x10),
 
   /// One slice of a chunked image transfer. See [ImageChunk].
-  imageChunk(0x20);
+  imageChunk(0x20),
+
+  /// One slice of a chunked voice message. Same chunked-delivery scheme
+  /// as image chunks; see [AudioChunk] for the wire layout.
+  audioChunk(0x30);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -161,6 +165,128 @@ class ImageChunk {
 
   /// Mint a fresh 16-byte image id (used to group chunks of the same image).
   static Uint8List newImageId() {
+    final out = Uint8List(idLen);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = _rand.nextInt(256);
+    }
+    return out;
+  }
+}
+
+/// One slice of a chunked voice message. Mirrors [ImageChunk] but adds a
+/// duration-millis field so the receiver can render the playback timer
+/// from chunk #0 without waiting for the full audio to assemble.
+///
+/// Wire layout (inside an [InnerPayloadType.audioChunk] body):
+///
+/// ```
+///   [audioId       : 16 bytes]
+///   [seq           :  2 bytes BE]
+///   [total         :  2 bytes BE]
+///   [durationMs    :  4 bytes BE]   ← total audio length (same in every chunk)
+///   [mimeLen       :  1 byte]
+///   [mime          :  mimeLen bytes UTF-8]
+///   [dataLen       :  2 bytes BE]
+///   [data          :  dataLen bytes — opus/aac frames]
+/// ```
+class AudioChunk {
+  AudioChunk({
+    required this.audioId,
+    required this.seq,
+    required this.total,
+    required this.durationMs,
+    required this.mime,
+    required this.data,
+  })  : assert(audioId.length == idLen, 'audioId must be $idLen B'),
+        assert(seq >= 0 && seq < 0x10000, 'seq out of u16 range'),
+        assert(total >= 1 && total < 0x10000, 'total out of u16 range'),
+        assert(seq < total, 'seq must be < total'),
+        assert(durationMs >= 0 && durationMs <= 0xFFFFFFFF,
+            'durationMs out of u32 range'),
+        assert(data.length < 0x10000, 'chunk data too large for u16 length');
+
+  final Uint8List audioId;
+  final int seq;
+  final int total;
+  final int durationMs;
+  final String mime;
+  final Uint8List data;
+
+  static const int idLen = 16;
+
+  /// Max raw audio bytes per chunk. Slightly smaller than image's 140 to
+  /// leave room for the duration field; still fits inside MTU=256.
+  static const int maxDataBytes = 136;
+
+  Uint8List encode() {
+    final mimeBytes = utf8.encode(mime);
+    if (mimeBytes.length > 255) {
+      throw const FormatException('mime > 255 UTF-8 bytes');
+    }
+    final out = Uint8List(
+      idLen + 2 + 2 + 4 + 1 + mimeBytes.length + 2 + data.length,
+    );
+    var c = 0;
+    out.setRange(c, c += idLen, audioId);
+    out[c++] = (seq >> 8) & 0xff;
+    out[c++] = seq & 0xff;
+    out[c++] = (total >> 8) & 0xff;
+    out[c++] = total & 0xff;
+    out[c++] = (durationMs >> 24) & 0xff;
+    out[c++] = (durationMs >> 16) & 0xff;
+    out[c++] = (durationMs >> 8) & 0xff;
+    out[c++] = durationMs & 0xff;
+    out[c++] = mimeBytes.length;
+    out.setRange(c, c += mimeBytes.length, mimeBytes);
+    out[c++] = (data.length >> 8) & 0xff;
+    out[c++] = data.length & 0xff;
+    out.setRange(c, c += data.length, data);
+    return out;
+  }
+
+  static AudioChunk decode(Uint8List bytes) {
+    if (bytes.length < idLen + 2 + 2 + 4 + 1 + 2) {
+      throw const FormatException('audio chunk truncated');
+    }
+    var c = 0;
+    final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
+    final seq = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    final total = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    final durMs = (bytes[c] << 24) |
+        (bytes[c + 1] << 16) |
+        (bytes[c + 2] << 8) |
+        bytes[c + 3];
+    c += 4;
+    final mimeLen = bytes[c++];
+    if (bytes.length < c + mimeLen + 2) {
+      throw const FormatException('audio chunk mime overrun');
+    }
+    final mime = utf8.decode(
+      bytes.sublist(c, c + mimeLen),
+      allowMalformed: true,
+    );
+    c += mimeLen;
+    final dataLen = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    if (bytes.length < c + dataLen) {
+      throw const FormatException('audio chunk data overrun');
+    }
+    final data = Uint8List.fromList(bytes.sublist(c, c + dataLen));
+    return AudioChunk(
+      audioId: id,
+      seq: seq,
+      total: total,
+      durationMs: durMs,
+      mime: mime,
+      data: data,
+    );
+  }
+
+  static final _rand = Random.secure();
+
+  static Uint8List newAudioId() {
     final out = Uint8List(idLen);
     for (var i = 0; i < out.length; i++) {
       out[i] = _rand.nextInt(256);

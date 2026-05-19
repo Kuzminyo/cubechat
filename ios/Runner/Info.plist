@@ -64,6 +64,9 @@
 	<string>Cubechat uses Bluetooth to discover nearby peers and send messages over a local mesh network — no internet needed.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Cubechat advertises itself over Bluetooth so other peers can find your device on the mesh.</string>
+	<!-- Voice messages -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Cubechat needs the microphone to record voice messages you send in chats.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

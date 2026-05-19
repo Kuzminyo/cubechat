@@ -85,6 +85,28 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Mirror of [completeImage] for voice messages.
+  void completeAudio(
+    String peerId,
+    String msgId, {
+    required String audioPath,
+    required int durationMs,
+    required MessageStatus status,
+  }) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    final list = [...current]
+      ..[idx] = current[idx].copyWith(
+        audioPath: audioPath,
+        audioDurationMs: durationMs,
+        status: status,
+      );
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   /// Erase every conversation — used by Emergency Wipe.
   Future<void> clearAll() async {
     state = <String, List<Message>>{};
@@ -126,6 +148,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         'kind': m.kind.name,
         if (m.imagePath != null) 'imagePath': m.imagePath,
         if (m.imageMime != null) 'imageMime': m.imageMime,
+        if (m.audioPath != null) 'audioPath': m.audioPath,
+        if (m.audioMime != null) 'audioMime': m.audioMime,
+        if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -150,6 +175,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       kind: kind,
       imagePath: m['imagePath'] as String?,
       imageMime: m['imageMime'] as String?,
+      audioPath: m['audioPath'] as String?,
+      audioMime: m['audioMime'] as String?,
+      audioDurationMs: m['audioDurationMs'] as int?,
     );
   }
 }
