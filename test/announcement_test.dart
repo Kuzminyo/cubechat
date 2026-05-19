@@ -1,63 +1,134 @@
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:cubechat/core/transport/announcement.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Future<({SimpleKeyPairData kp, Uint8List pub})> _newEd() async {
+  final pair = await Ed25519().newKeyPair();
+  final pub = await pair.extractPublicKey();
+  final seed = await pair.extractPrivateKeyBytes();
+  return (
+    kp: SimpleKeyPairData(seed, publicKey: pub, type: KeyPairType.ed25519),
+    pub: Uint8List.fromList(pub.bytes),
+  );
+}
+
 void main() {
   group('PeerAnnouncement', () {
-    test('roundtrip preserves pubkey and nickname', () {
-      final pub = Uint8List.fromList(List.generate(32, (i) => i + 1));
-      final ann = PeerAnnouncement(pubkey: pub, nickname: 'Alice');
-      final wire = ann.encode();
-      final decoded = PeerAnnouncement.decode(wire);
-      expect(decoded.pubkey, equals(pub));
+    test('sign + verifyAndDecode roundtrips every field', () async {
+      final ed = await _newEd();
+      final x25519 = Uint8List.fromList(List.generate(32, (i) => i + 1));
+      final ann = PeerAnnouncement(
+        pubkey: x25519,
+        signPubkey: ed.pub,
+        nickname: 'Alice',
+      );
+      final wire = await ann.sign(ed.kp);
+      final decoded = await PeerAnnouncement.verifyAndDecode(wire);
+      expect(decoded.pubkey, equals(x25519));
+      expect(decoded.signPubkey, equals(ed.pub));
       expect(decoded.nickname, 'Alice');
     });
 
-    test('UTF-8 nickname survives the round-trip', () {
-      final pub = Uint8List(32);
-      final ann = PeerAnnouncement(pubkey: pub, nickname: 'Алиса 🦊');
-      final decoded = PeerAnnouncement.decode(ann.encode());
+    test('UTF-8 nickname survives signing', () async {
+      final ed = await _newEd();
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List(32),
+        signPubkey: ed.pub,
+        nickname: 'Алиса 🦊',
+      );
+      final decoded = await PeerAnnouncement.verifyAndDecode(
+        await ann.sign(ed.kp),
+      );
       expect(decoded.nickname, 'Алиса 🦊');
     });
 
-    test('empty nickname is legal', () {
-      final pub = Uint8List(32);
-      final ann = PeerAnnouncement(pubkey: pub, nickname: '');
-      final decoded = PeerAnnouncement.decode(ann.encode());
+    test('empty nickname is legal', () async {
+      final ed = await _newEd();
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List(32),
+        signPubkey: ed.pub,
+        nickname: '',
+      );
+      final decoded = await PeerAnnouncement.verifyAndDecode(
+        await ann.sign(ed.kp),
+      );
       expect(decoded.nickname, '');
     });
 
-    test('wrong-length pubkey throws on construction', () {
+    test('wrong-length pubkey throws on construction', () async {
+      final ed = await _newEd();
       expect(
-        () => PeerAnnouncement(pubkey: Uint8List(31), nickname: 'x'),
+        () => PeerAnnouncement(
+          pubkey: Uint8List(31),
+          signPubkey: ed.pub,
+          nickname: 'x',
+        ),
         throwsA(isA<AssertionError>()),
       );
     });
 
-    test('truncated wire bytes throw FormatException', () {
-      // Just version + part of pubkey (no length byte at all).
-      expect(
-        () => PeerAnnouncement.decode(Uint8List.fromList([1, 2, 3])),
+    test('truncated wire bytes throw FormatException', () async {
+      await expectLater(
+        () => PeerAnnouncement.verifyAndDecode(
+          Uint8List.fromList([1, 2, 3]),
+        ),
         throwsA(isA<FormatException>()),
       );
     });
 
-    test('unknown version byte throws', () {
-      // Version 0x02 (unknown) + 32B + 0-byte name.
-      final bad = Uint8List(1 + 32 + 1)..[0] = 0x02;
-      expect(
-        () => PeerAnnouncement.decode(bad),
+    test('unknown version byte throws', () async {
+      final bad = Uint8List(1 + 32 + 32 + 1 + 64)..[0] = 0x99;
+      await expectLater(
+        () => PeerAnnouncement.verifyAndDecode(bad),
         throwsA(isA<FormatException>()),
       );
     });
 
-    test('nameLen longer than remaining bytes throws', () {
-      final bad = Uint8List(1 + 32 + 1);
-      bad[0] = 1;
-      bad[33] = 99; // claims 99 bytes of name, but there are 0
-      expect(
-        () => PeerAnnouncement.decode(bad),
+    test('tampered signature fails verification', () async {
+      final ed = await _newEd();
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List(32),
+        signPubkey: ed.pub,
+        nickname: 'x',
+      );
+      final wire = await ann.sign(ed.kp);
+      wire[wire.length - 1] ^= 0x40;
+      await expectLater(
+        () => PeerAnnouncement.verifyAndDecode(wire),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('tampered nickname fails verification', () async {
+      final ed = await _newEd();
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List(32),
+        signPubkey: ed.pub,
+        nickname: 'Alice',
+      );
+      final wire = await ann.sign(ed.kp);
+      // Mutate one byte of the name region (between header and signature).
+      wire[1 + 32 + 32 + 1] ^= 0x20;
+      await expectLater(
+        () => PeerAnnouncement.verifyAndDecode(wire),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('forged signPubkey fails verification', () async {
+      final real = await _newEd();
+      final imposter = await _newEd();
+      final ann = PeerAnnouncement(
+        pubkey: Uint8List(32),
+        signPubkey: real.pub,
+        nickname: 'Alice',
+      );
+      // Sign with the impostor's keys but claim to be 'real'.
+      final wire = await ann.sign(imposter.kp);
+      await expectLater(
+        () => PeerAnnouncement.verifyAndDecode(wire),
         throwsA(isA<FormatException>()),
       );
     });

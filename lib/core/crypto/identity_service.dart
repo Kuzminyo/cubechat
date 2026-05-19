@@ -21,27 +21,46 @@ class IdentityService {
             );
 
   static const _privateKeyKey = 'cubechat.identity.priv';
+  static const _signSeedKey = 'cubechat.identity.signseed';
 
   final FlutterSecureStorage _storage;
   final _x25519 = X25519();
+  final _ed25519 = Ed25519();
 
   IdentityKeys? _cached;
 
   /// Returns the cached identity, loading or generating one if needed.
+  /// Migrates legacy identities (X25519 only) by minting a fresh Ed25519
+  /// keypair alongside.
   Future<IdentityKeys> load() async {
     if (_cached != null) return _cached!;
 
-    final hex = await _storage.read(key: _privateKeyKey);
-    if (hex != null && hex.length == 64) {
-      _cached = await _materialize(_hexDecode(hex));
-      return _cached!;
+    final hexX = await _storage.read(key: _privateKeyKey);
+    final hexEd = await _storage.read(key: _signSeedKey);
+
+    final Uint8List xPriv;
+    if (hexX != null && hexX.length == 64) {
+      xPriv = _hexDecode(hexX);
+    } else {
+      final pair = await _x25519.newKeyPair();
+      xPriv = Uint8List.fromList(await pair.extractPrivateKeyBytes());
+      await _storage.write(key: _privateKeyKey, value: _hexEncode(xPriv));
     }
 
-    // First run — mint a fresh key.
-    final pair = await _x25519.newKeyPair();
-    final priv = Uint8List.fromList(await pair.extractPrivateKeyBytes());
-    await _storage.write(key: _privateKeyKey, value: _hexEncode(priv));
-    _cached = await _materialize(priv);
+    Uint8List edSeed;
+    if (hexEd != null && hexEd.length == 64) {
+      edSeed = _hexDecode(hexEd);
+    } else {
+      // Migrate pre-Ed25519 identities: mint a fresh sign-keypair and
+      // persist it. The X25519 pubkey (and therefore the user's
+      // pubkey-hex chat identity) stays the same — only the signing
+      // material is new.
+      final pair = await _ed25519.newKeyPair();
+      edSeed = Uint8List.fromList(await pair.extractPrivateKeyBytes());
+      await _storage.write(key: _signSeedKey, value: _hexEncode(edSeed));
+    }
+
+    _cached = await _materialize(xPriv, edSeed);
     return _cached!;
   }
 
@@ -50,14 +69,19 @@ class IdentityService {
   Future<void> wipe() async {
     _cached = null;
     await _storage.delete(key: _privateKeyKey);
+    await _storage.delete(key: _signSeedKey);
   }
 
-  Future<IdentityKeys> _materialize(Uint8List priv) async {
-    final pair = await _x25519.newKeyPairFromSeed(priv);
-    final pub = await pair.extractPublicKey();
+  Future<IdentityKeys> _materialize(Uint8List xPriv, Uint8List edSeed) async {
+    final xPair = await _x25519.newKeyPairFromSeed(xPriv);
+    final xPub = await xPair.extractPublicKey();
+    final edPair = await _ed25519.newKeyPairFromSeed(edSeed);
+    final edPub = await edPair.extractPublicKey();
     return IdentityKeys(
-      publicKey: Uint8List.fromList(pub.bytes),
-      privateKey: priv,
+      publicKey: Uint8List.fromList(xPub.bytes),
+      privateKey: xPriv,
+      signPublicKey: Uint8List.fromList(edPub.bytes),
+      signPrivateKey: edSeed,
     );
   }
 

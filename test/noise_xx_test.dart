@@ -11,7 +11,19 @@ Future<IdentityKeys> _mintIdentity() async {
   final pair = await x25519.newKeyPair();
   final priv = Uint8List.fromList(await pair.extractPrivateKeyBytes());
   final pub = await pair.extractPublicKey();
-  return IdentityKeys(publicKey: Uint8List.fromList(pub.bytes), privateKey: priv);
+  // Tests of Noise only exercise the X25519 side, but the IdentityKeys
+  // shape now requires Ed25519 fields too — mint a paired Ed25519 keypair
+  // just so the constructor's assertions pass.
+  final edPair = await Ed25519().newKeyPair();
+  final edSeed =
+      Uint8List.fromList(await edPair.extractPrivateKeyBytes());
+  final edPub = await edPair.extractPublicKey();
+  return IdentityKeys(
+    publicKey: Uint8List.fromList(pub.bytes),
+    privateKey: priv,
+    signPublicKey: Uint8List.fromList(edPub.bytes),
+    signPrivateKey: edSeed,
+  );
 }
 
 void main() {

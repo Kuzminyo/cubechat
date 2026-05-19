@@ -15,6 +15,7 @@ import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/sealed_box.dart';
+import '../crypto/signed_payload.dart';
 import '../identity/nickname_controller.dart';
 import '../util/debug_log.dart';
 import 'announcement.dart';
@@ -242,21 +243,33 @@ class MessagingService {
     }
 
     try {
-      // M3.D + M5.4: SealedBox-encrypt a tagged inner payload. The tag
-      // byte tells the receiver whether to decode as UTF-8 text or as an
-      // image chunk. Wire layout under the SealedBox:
-      //   [0x10][utf8(text)]
+      // M3.D + M5.4 + signatures: wrap the inner payload in a SignedPayload
+      // so the receiver can verify the body wasn't forged by a malicious
+      // relay. Layout under the SealedBox: [0xA1][ed_pub:32][sig:64][0x10][utf8].
+      final identity = await _ref.read(identityProvider.future);
       final inner = packInnerPayload(
         InnerPayloadType.text,
         Uint8List.fromList(utf8.encode(text)),
       );
-      final body = await SealedBox.seal(inner, peerPub);
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      final msgId = TransportEnvelope.newMsgId();
+      final ctx = SignedPayload.contextBytes(
+        originPubkeyHash: myHash,
+        destPubkeyHash: peerHash,
+        msgId: msgId,
+      );
+      final signed = await SignedPayload.wrap(
+        inner: inner,
+        context: ctx,
+        signKeyPair: identity.asSignKeyPair(),
+        senderEdPub: identity.signPublicKey,
+      );
+      final body = await SealedBox.seal(signed, peerPub);
       final envelope = TransportEnvelope(
         originPubkeyHash: myHash,
         destPubkeyHash: peerHash,
-        msgId: TransportEnvelope.newMsgId(),
+        msgId: msgId,
         ttl: TransportEnvelope.defaultTtl,
         body: body,
       );
@@ -598,15 +611,60 @@ class MessagingService {
     // exists; multi-hop senders are taken on faith pending inner signatures.
     try {
       final identity = await _ref.read(identityProvider.future);
-      final innerBytes = await SealedBox.open(
+      final sealedPlain = await SealedBox.open(
         env.body,
         recipientKeyPair: identity.asKeyPair(),
         recipientPubkey: identity.publicKey,
       );
+
+      // Detect the signed wrapper (0xA1 marker). Unsigned payloads
+      // (image/audio/video chunks) start directly with an InnerPayloadType
+      // byte and pass through unchanged.
+      Uint8List innerBytes;
+      Uint8List? verifiedSenderEdPub;
+      if (sealedPlain.isNotEmpty &&
+          sealedPlain[0] == SignedPayload.markerByte) {
+        try {
+          final expectedEd =
+              await _expectedEdPubFor(env.originPubkeyHash);
+          final ctx = SignedPayload.contextBytes(
+            originPubkeyHash: env.originPubkeyHash,
+            destPubkeyHash: env.destPubkeyHash,
+            msgId: env.msgId,
+          );
+          final verified = await SignedPayload.verify(
+            wire: sealedPlain,
+            context: ctx,
+            expectedEdPub: expectedEd,
+          );
+          innerBytes = verified.inner;
+          verifiedSenderEdPub = verified.senderEdPub;
+          DebugLog.instance.log('CRYPTO',
+              'signed body verified from $peerId (sender ed pub'
+              '${expectedEd == null ? " — TOFU" : " — strict"})');
+        } on SignatureVerificationException catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'signed body FAILED verification from $peerId: ${e.message}');
+          return;
+        }
+      } else {
+        innerBytes = sealedPlain;
+      }
+
       final unpacked = unpackInnerPayload(innerBytes);
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
       final senderPub = session?.remoteStaticPublicKey;
+
+      // First message from a peer we'd only heard about via an announcement
+      // also doubles as a cross-check: cache the verified Ed pub against
+      // the origin hash. Future messages will be checked in strict mode.
+      if (verifiedSenderEdPub != null) {
+        await _maybeCacheSignerForOrigin(
+          originHash: env.originPubkeyHash,
+          edPub: verifiedSenderEdPub,
+        );
+      }
 
       switch (unpacked.type) {
         case InnerPayloadType.text:
@@ -681,10 +739,11 @@ class MessagingService {
     }
   }
 
-  /// Peer-announcement RX: unwrap envelope, dedup, decode the inner
-  /// `PeerAnnouncement` and upsert the (pubkey, nickname) pair into the
-  /// roster. Multi-hop forwarding lands in M3.E — for now we accept and
-  /// register even frames addressed to a different peer (broadcast).
+  /// Peer-announcement RX: unwrap envelope, dedup, verify the inner
+  /// `PeerAnnouncement` signature and upsert the (x25519, ed25519, name)
+  /// triplet into the roster. Announcement signatures defend against an
+  /// attacker on the mesh injecting fake ed25519 pubkeys to break later
+  /// per-message signature verification.
   Future<void> _handlePeerAnnouncementFrame(String peerId, Frame frame) async {
     final TransportEnvelope env;
     try {
@@ -700,10 +759,10 @@ class MessagingService {
     }
     final PeerAnnouncement ann;
     try {
-      ann = PeerAnnouncement.decode(env.body);
+      ann = await PeerAnnouncement.verifyAndDecode(env.body);
     } catch (e) {
       DebugLog.instance.log('MESH',
-          'drop announce from $peerId: malformed body ($e)');
+          'drop announce from $peerId: bad signature / format ($e)');
       return;
     }
     // Skip our own announcement bouncing back to us through a relay.
@@ -716,9 +775,10 @@ class MessagingService {
     _ref.read(knownPeersControllerProvider.notifier).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
+          signPublicKey: ann.signPubkey,
         );
     DebugLog.instance.log('MESH',
-        'registered announce: "${ann.nickname}" ($pubkeyHex) via $peerId');
+        'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId');
 
     // M3.E: announcements are mesh-wide — relay onward on every other link
     // until ttl runs out so peers more than one hop away learn about us.
@@ -780,6 +840,56 @@ class MessagingService {
     return fanout;
   }
 
+  /// Returns the cached Ed25519 verifying key for the peer whose X25519
+  /// pubkey hashes to [originPubkeyHash], or null if we've never seen a
+  /// signed announcement from them. Linear-scan over the KnownPeers
+  /// roster; for the current scale (<<1000 peers) this is fine.
+  Future<Uint8List?> _expectedEdPubFor(Uint8List originPubkeyHash) async {
+    final known = _ref.read(knownPeersControllerProvider);
+    for (final p in known.values) {
+      final pub = p.signPublicKey;
+      if (pub == null) continue;
+      try {
+        final xBytes = _hexDecodeBytes(p.pubkeyHex);
+        final h = await _peerPubkeyHash(xBytes);
+        if (_bytesEqual(h, originPubkeyHash)) {
+          return pub;
+        }
+      } catch (_) {
+        // ignore malformed entries
+      }
+    }
+    return null;
+  }
+
+  /// Caches a fresh (originHash → ed pub) binding learned from a
+  /// successful TOFU-verified message. Bootstraps strict-mode
+  /// verification for subsequent messages from the same peer.
+  Future<void> _maybeCacheSignerForOrigin({
+    required Uint8List originHash,
+    required Uint8List edPub,
+  }) async {
+    final known = _ref.read(knownPeersControllerProvider);
+    for (final p in known.values) {
+      try {
+        final xBytes = _hexDecodeBytes(p.pubkeyHex);
+        final h = await _peerPubkeyHash(xBytes);
+        if (!_bytesEqual(h, originHash)) continue;
+        if (p.signPublicKey != null) return; // already cached
+        _ref.read(knownPeersControllerProvider.notifier).upsert(
+              pubkeyHex: p.pubkeyHex,
+              displayName: p.displayName,
+              signPublicKey: edPub,
+            );
+        DebugLog.instance.log('CRYPTO',
+            'cached signer for ${p.pubkeyHex} via TOFU');
+        return;
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
+
   static Uint8List _hexDecodeBytes(String hex) {
     if (hex.length.isOdd) {
       throw const FormatException('hex string of odd length');
@@ -810,14 +920,16 @@ class MessagingService {
       final nickname = _ref.read(nicknameControllerProvider);
       final ann = PeerAnnouncement(
         pubkey: Uint8List.fromList(identity.publicKey),
+        signPubkey: identity.signPublicKey,
         nickname: nickname,
       );
+      final signedBody = await ann.sign(identity.asSignKeyPair());
       final env = TransportEnvelope(
         originPubkeyHash: await _myPubkeyHash(),
         destPubkeyHash: TransportEnvelope.broadcastDest(),
         msgId: TransportEnvelope.newMsgId(),
         ttl: TransportEnvelope.defaultTtl,
-        body: ann.encode(),
+        body: signedBody,
       );
       final frame = Frame(
         type: FrameType.peerAnnouncement,

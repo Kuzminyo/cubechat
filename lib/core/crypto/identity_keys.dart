@@ -13,11 +13,26 @@ class IdentityKeys {
   IdentityKeys({
     required this.publicKey,
     required this.privateKey,
+    required this.signPublicKey,
+    required this.signPrivateKey,
   })  : assert(publicKey.length == 32, 'X25519 public key must be 32 bytes'),
-        assert(privateKey.length == 32, 'X25519 private key must be 32 bytes');
+        assert(privateKey.length == 32, 'X25519 private key must be 32 bytes'),
+        assert(signPublicKey.length == 32, 'Ed25519 public must be 32 bytes'),
+        assert(signPrivateKey.length == 32, 'Ed25519 seed must be 32 bytes');
 
+  /// X25519 public key — used for ECDH inside SealedBox and as the routing
+  /// identity hashed into the envelope's originPubkeyHash.
   final Uint8List publicKey;
   final Uint8List privateKey;
+
+  /// Ed25519 public key — used to verify Signature on every received
+  /// message body. Separate from the X25519 key because Curve25519 doesn't
+  /// natively sign.
+  final Uint8List signPublicKey;
+
+  /// Ed25519 seed (32 bytes). The `cryptography` package re-derives the
+  /// 64-byte expanded private key from this on every sign.
+  final Uint8List signPrivateKey;
 
   /// Returns the `cryptography` SimpleKeyPair for use with `X25519` operations.
   SimpleKeyPairData asKeyPair() {
@@ -25,6 +40,16 @@ class IdentityKeys {
       privateKey,
       publicKey: SimplePublicKey(publicKey, type: KeyPairType.x25519),
       type: KeyPairType.x25519,
+    );
+  }
+
+  /// Returns the `cryptography` SimpleKeyPair for use with `Ed25519`
+  /// signing.
+  SimpleKeyPairData asSignKeyPair() {
+    return SimpleKeyPairData(
+      signPrivateKey,
+      publicKey: SimplePublicKey(signPublicKey, type: KeyPairType.ed25519),
+      type: KeyPairType.ed25519,
     );
   }
 
