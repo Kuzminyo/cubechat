@@ -44,10 +44,6 @@ dependencies:
   record: ^6.0.0
   audioplayers: ^6.1.0
 
-  # Video "circles" (camera capture + playback)
-  camera: ^0.11.0
-  video_player: ^2.9.2
-
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1

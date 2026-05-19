@@ -28,11 +28,6 @@
     <!-- Voice messages (mic capture for press-and-hold recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Video circles (camera for short clip recording) -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
-
     <application
         android:label="cubechat"
         android:name="${applicationName}"

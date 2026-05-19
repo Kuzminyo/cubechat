@@ -7,7 +7,6 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
-import 'circle_video_bubble.dart';
 import 'voice_bubble.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -47,79 +46,63 @@ class _MessageBubbleState extends State<MessageBubble>
     final message = widget.message;
     final mine = message.isMine;
 
-    // Telegram-style: video "circles" float free, no bubble background —
-    // just the disc + a discreet timestamp tucked below it.
-    final Widget bubble;
-    if (message.kind == MessageKind.video) {
-      bubble = Column(
-        crossAxisAlignment:
-            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleVideoBubble(message: message),
-          const SizedBox(height: 6),
-          _BubbleMeta(message: message, transparent: true),
-        ],
-      );
-    } else {
-      final radius = BorderRadius.only(
-        topLeft: const Radius.circular(18),
-        topRight: const Radius.circular(18),
-        bottomLeft: Radius.circular(mine ? 18 : 6),
-        bottomRight: Radius.circular(mine ? 6 : 18),
-      );
-      bubble = ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: mine
-                ? BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.brandPrimary.withValues(alpha: 0.85),
-                        AppColors.brandSecondary.withValues(alpha: 0.85),
-                      ],
-                    ),
-                    borderRadius: radius,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18)),
-                  )
-                : BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    borderRadius: radius,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.16)),
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(18),
+      topRight: const Radius.circular(18),
+      bottomLeft: Radius.circular(mine ? 18 : 6),
+      bottomRight: Radius.circular(mine ? 6 : 18),
+    );
+    final bubble = ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: mine
+              ? BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.brandPrimary.withValues(alpha: 0.85),
+                      AppColors.brandSecondary.withValues(alpha: 0.85),
+                    ],
                   ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (message.kind == MessageKind.image)
-                  _ImagePayload(message: message)
-                else if (message.kind == MessageKind.audio)
-                  VoiceBubble(message: message)
-                else
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 14.5,
-                      height: 1.35,
-                    ),
+                  borderRadius: radius,
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18)),
+                )
+              : BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: radius,
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16)),
+                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (message.kind == MessageKind.image)
+                _ImagePayload(message: message)
+              else if (message.kind == MessageKind.audio)
+                VoiceBubble(message: message)
+              else
+                Text(
+                  message.text,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14.5,
+                    height: 1.35,
                   ),
-                const SizedBox(height: 4),
-                _BubbleMeta(message: message),
-              ],
-            ),
+                ),
+              const SizedBox(height: 4),
+              _BubbleMeta(message: message),
+            ],
           ),
         ),
-      );
-    }
+      ),
+    );
 
     return FadeTransition(
       opacity: _fade,
@@ -235,13 +218,9 @@ class _ImagePlaceholder extends StatelessWidget {
 }
 
 class _BubbleMeta extends StatelessWidget {
-  const _BubbleMeta({required this.message, this.transparent = false});
+  const _BubbleMeta({required this.message});
 
   final Message message;
-
-  /// True when rendered outside the bubble (e.g. under a circle video).
-  /// We dim the text a notch to keep it off the chat background.
-  final bool transparent;
 
   @override
   Widget build(BuildContext context) {
@@ -256,9 +235,7 @@ class _BubbleMeta extends StatelessWidget {
           time,
           style: TextStyle(
             fontSize: 10.5,
-            color: Colors.white.withValues(
-              alpha: transparent ? 0.55 : (message.isMine ? 0.8 : 0.5),
-            ),
+            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.5),
           ),
         ),
         if (message.isMine) ...[

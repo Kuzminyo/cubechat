@@ -4,11 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
 
-/// Which media the right-hand record button currently captures.
-/// A short tap on the button toggles between the two; long-press starts
-/// recording in whichever mode is active.
-enum RecordMode { audio, video }
-
 class ChatInput extends StatefulWidget {
   const ChatInput({
     super.key,
@@ -16,8 +11,6 @@ class ChatInput extends StatefulWidget {
     required this.sendTooltip,
     required this.onSend,
     this.onAttach,
-    this.recordMode = RecordMode.audio,
-    this.onRecordModeToggle,
     this.onRecordStart,
     this.onRecordStop,
     this.onRecordCancel,
@@ -33,16 +26,9 @@ class ChatInput extends StatefulWidget {
   /// hidden — caller decides whether image send is wired up.
   final VoidCallback? onAttach;
 
-  /// Telegram-style single-button capture: short tap switches between
-  /// audio (mic icon) and video (camera icon); long-press starts the
-  /// recording in the active mode, release commits, drag-cancel discards.
-  ///
-  /// Wired by the caller through [onRecordModeToggle] / [onRecordStart] /
-  /// [onRecordStop] / [onRecordCancel]. When the start handler is null,
-  /// the button collapses (e.g. while the chat session isn't yet
-  /// established).
-  final RecordMode recordMode;
-  final VoidCallback? onRecordModeToggle;
+  /// Press-and-hold voice recording. When all three are non-null the mic
+  /// button appears next to send; long-press drives onRecordStart, release
+  /// commits via onRecordStop, drag-cancel via onRecordCancel.
   final VoidCallback? onRecordStart;
   final VoidCallback? onRecordStop;
   final VoidCallback? onRecordCancel;
@@ -109,7 +95,6 @@ class _ChatInputState extends State<ChatInput> {
                     child: widget.recording
                         ? _RecordingIndicator(
                             elapsed: widget.recordElapsed,
-                            mode: widget.recordMode,
                           )
                         : Container(
                             decoration: BoxDecoration(
@@ -151,10 +136,8 @@ class _ChatInputState extends State<ChatInput> {
                       widget.onRecordStop != null &&
                       widget.onRecordCancel != null &&
                       !_hasText)
-                    _RecordModeButton(
-                      mode: widget.recordMode,
+                    _VoiceButton(
                       active: widget.recording,
-                      onToggleMode: widget.onRecordModeToggle,
                       onStart: widget.onRecordStart!,
                       onStop: widget.onRecordStop!,
                       onCancel: widget.onRecordCancel!,
@@ -201,23 +184,17 @@ class _AttachButton extends StatelessWidget {
   }
 }
 
-/// Telegram-style single-button capture control. Short tap toggles between
-/// the audio (mic) and video (circle) modes — the icon swaps to reflect
-/// the next-tap action. Long-press starts recording in the active mode,
-/// release commits via [onStop], drag-off cancels via [onCancel].
-class _RecordModeButton extends StatelessWidget {
-  const _RecordModeButton({
-    required this.mode,
+/// Press-and-hold voice record button. Plain mic icon; flips into a red
+/// "recording" state while held.
+class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({
     required this.active,
-    required this.onToggleMode,
     required this.onStart,
     required this.onStop,
     required this.onCancel,
   });
 
-  final RecordMode mode;
   final bool active;
-  final VoidCallback? onToggleMode;
   final VoidCallback onStart;
   final VoidCallback onStop;
   final VoidCallback onCancel;
@@ -225,10 +202,6 @@ class _RecordModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      // Quick tap swaps mode (mic ↔ video). Suppressed while recording —
-      // a stray tap mid-record would otherwise flip the icon under the
-      // user's finger.
-      onTap: active ? null : onToggleMode,
       onLongPressStart: (_) => onStart(),
       onLongPressEnd: (_) => onStop(),
       onLongPressCancel: onCancel,
@@ -261,18 +234,10 @@ class _RecordModeButton extends StatelessWidget {
                 ]
               : null,
         ),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          transitionBuilder: (child, anim) => ScaleTransition(
-            scale: anim,
-            child: FadeTransition(opacity: anim, child: child),
-          ),
-          child: Icon(
-            mode == RecordMode.audio ? Icons.mic : Icons.videocam_outlined,
-            key: ValueKey(mode),
-            color: active ? Colors.white : AppColors.textOnGlass,
-            size: 20,
-          ),
+        child: Icon(
+          Icons.mic,
+          color: active ? Colors.white : AppColors.textOnGlass,
+          size: 20,
         ),
       ),
     );
@@ -280,13 +245,9 @@ class _RecordModeButton extends StatelessWidget {
 }
 
 class _RecordingIndicator extends StatelessWidget {
-  const _RecordingIndicator({
-    required this.elapsed,
-    required this.mode,
-  });
+  const _RecordingIndicator({required this.elapsed});
 
   final Duration elapsed;
-  final RecordMode mode;
 
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString();
@@ -305,21 +266,15 @@ class _RecordingIndicator extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       child: Row(
         children: [
-          Icon(
-            mode == RecordMode.audio ? Icons.mic : Icons.videocam,
-            size: 14,
-            color: AppColors.danger,
-          ),
-          const SizedBox(width: 8),
           Container(
-            width: 8,
-            height: 8,
+            width: 10,
+            height: 10,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.danger,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Text(
             _fmt(elapsed),
             style: TextStyle(
@@ -330,7 +285,7 @@ class _RecordingIndicator extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            mode == RecordMode.audio ? 'release to send' : 'release to send',
+            'release to send',
             style: TextStyle(
               color: AppColors.textOnGlassDim,
               fontSize: 11,

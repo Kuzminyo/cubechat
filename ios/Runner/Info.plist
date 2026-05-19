@@ -67,9 +67,6 @@
 	<!-- Voice messages -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cubechat needs the microphone to record voice messages you send in chats.</string>
-	<!-- Video circles -->
-	<key>NSCameraUsageDescription</key>
-	<string>Cubechat needs the camera to record short video messages you send in chats.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
