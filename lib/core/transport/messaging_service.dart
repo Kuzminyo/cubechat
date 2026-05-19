@@ -182,20 +182,40 @@ class MessagingService {
   /// Send an encrypted text message. [chatId] is either a BLE transport id
   /// (when the user is in an already-open ChatScreen from a tap on the
   /// Nearby tab) OR a pubkeyHex (when the user re-entered the chat from the
-  /// main Chats list). We resolve to a live, established session by
-  /// searching first by transport id, then by pubkeyHex.
+  /// main Chats list or — M3.E — is messaging a mesh-only peer with no direct
+  /// session). Resolution order:
+  ///   1. live session by transport id
+  ///   2. live session by pubkeyHex
+  ///   3. KnownPeers entry by pubkeyHex (mesh-only — relayed via all links)
   Future<Message> sendText(String chatId, String text) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
     ChatSession? session = manager.sessionFor(chatId);
     session ??= _findSessionByPubkeyHex(chatId);
 
-    if (session == null || !session.isEstablished) {
-      throw StateError('cannot send: no established session for $chatId');
+    Uint8List? peerPub;
+    String? canonicalId;
+    if (session != null && session.isEstablished) {
+      peerPub = session.remoteStaticPublicKey;
+      canonicalId = session.remotePubkeyHex ?? chatId;
+    } else {
+      // No direct session — fall back to a mesh send if we know this pubkey
+      // from a prior announcement / handshake.
+      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      if (known != null) {
+        try {
+          peerPub = _hexDecodeBytes(known.pubkeyHex);
+          canonicalId = known.pubkeyHex;
+        } catch (e) {
+          DebugLog.instance.log('MESH',
+              'sendText: malformed pubkey hex for $chatId: $e');
+        }
+      }
     }
 
-    // Canonical key for storage: pubkeyHex of the authenticated peer.
-    final canonicalId = session.remotePubkeyHex ?? chatId;
+    if (peerPub == null || canonicalId == null) {
+      throw StateError('cannot send: no recipient pubkey for $chatId');
+    }
 
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
@@ -215,10 +235,6 @@ class MessagingService {
     }
 
     try {
-      final peerPub = session.remoteStaticPublicKey;
-      if (peerPub == null) {
-        throw StateError('session has no remote pubkey, cannot address envelope');
-      }
       // M3.D: encrypt the body with SealedBox addressed to the recipient's
       // long-term static pubkey. The body is now opaque to every relay on
       // the path — only the holder of the matching private key can decrypt.
@@ -238,19 +254,42 @@ class MessagingService {
         ttl: TransportEnvelope.defaultTtl,
         body: body,
       );
+      // Pre-record our own msgId in the dedup cache so a reflected copy of
+      // this frame coming back over a relay doesn't try to deliver to us.
+      _dedup.acceptEnvelope(envelope);
+
       final outboundFrame = Frame(
         type: FrameType.transport,
         payload: envelope.encode(),
       );
 
-      final transportId = session.peerId;
-      final client = _clients[transportId];
-      if (client != null && client.isConnected) {
-        await client.writeOutbound(outboundFrame.encode());
+      // Direct-session preferred (single write, lowest latency). Falls back
+      // to fan-out across every active link so the mesh can relay when the
+      // destination isn't a direct BLE neighbour.
+      final transportId = session?.peerId;
+      var deliveredVia = 0;
+      if (transportId != null) {
+        final client = _clients[transportId];
+        if (client != null && client.isConnected) {
+          await client.writeOutbound(outboundFrame.encode());
+          deliveredVia = 1;
+        } else {
+          // Session exists but central side is gone — push via peripheral
+          // notify (matches pre-mesh behaviour).
+          final ok = await _ref
+              .read(blePeripheralProvider)
+              .notifyInbound(outboundFrame.encode());
+          if (ok) deliveredVia = 1;
+        }
       } else {
-        final ok = await _ref.read(blePeripheralProvider).notifyInbound(outboundFrame.encode());
-        if (!ok) {
-          throw StateError('peripheral notify returned false');
+        // No direct session for this recipient — broadcast onto every open
+        // link and let the mesh route it. Receivers dedup on (origin, msgId).
+        deliveredVia = await _fanoutAllLinks(
+          outboundFrame.encode(),
+          excludePeerId: null,
+        );
+        if (deliveredVia == 0) {
+          throw StateError('no active mesh links to relay through');
         }
       }
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
@@ -375,12 +414,23 @@ class MessagingService {
     }
 
     final myHash = await _myPubkeyHash();
-    final addressedToMe = env.isBroadcast || _bytesEqual(env.destPubkeyHash, myHash);
+    final isForMe = _bytesEqual(env.destPubkeyHash, myHash);
+    final addressedToMe = env.isBroadcast || isForMe;
+
+    // M3.E forwarding: a frame that isn't ours OR is a broadcast both warrant
+    // re-emission on every other link, decremented by one hop. The receiver
+    // side dedups on (origin, msgId) so loops collapse on the next iteration.
+    if ((!isForMe || env.isBroadcast) && env.ttl > 0) {
+      unawaited(_forwardEnvelope(
+        outerType: FrameType.transport,
+        env: env,
+        excludePeerId: peerId,
+      ));
+    }
 
     if (!addressedToMe) {
-      // Forwarding lands in M3.E. For now just log and drop.
-      DebugLog.instance.log('NOISE',
-          'not for me, dropping (relay forwarding lands in M3.E)');
+      DebugLog.instance.log('MESH',
+          'transport not for me, forwarded only (no decrypt)');
       return;
     }
 
@@ -459,6 +509,76 @@ class MessagingService {
         );
     DebugLog.instance.log('MESH',
         'registered announce: "${ann.nickname}" ($pubkeyHex) via $peerId');
+
+    // M3.E: announcements are mesh-wide — relay onward on every other link
+    // until ttl runs out so peers more than one hop away learn about us.
+    if (env.ttl > 0) {
+      unawaited(_forwardEnvelope(
+        outerType: FrameType.peerAnnouncement,
+        env: env,
+        excludePeerId: peerId,
+      ));
+    }
+  }
+
+  /// Re-emits [env] (with ttl decremented) wrapped in a [outerType] frame
+  /// across every active link except [excludePeerId] (the link we received
+  /// it on, to avoid an immediate echo). Per-receiver dedup catches any
+  /// loops that escape this filter.
+  Future<void> _forwardEnvelope({
+    required FrameType outerType,
+    required TransportEnvelope env,
+    required String? excludePeerId,
+  }) async {
+    final relayed = env.decrementTtl();
+    if (relayed.ttl <= 0) {
+      DebugLog.instance.log('MESH',
+          'not forwarding ${outerType.name}: ttl exhausted');
+      return;
+    }
+    final bytes = Frame(type: outerType, payload: relayed.encode()).encode();
+    final fanout = await _fanoutAllLinks(bytes, excludePeerId: excludePeerId);
+    DebugLog.instance.log('MESH',
+        'relayed ${outerType.name} ttl=${relayed.ttl} fanout=$fanout');
+  }
+
+  /// Writes [bytes] (a fully-encoded frame) onto every active link except
+  /// [excludePeerId]. Peripheral notify is always included (it reaches all
+  /// subscribed centrals — receiver dedup handles any echo). Returns the
+  /// number of links the frame was emitted onto.
+  Future<int> _fanoutAllLinks(
+    Uint8List bytes, {
+    required String? excludePeerId,
+  }) async {
+    var fanout = 0;
+    for (final entry in _clients.entries) {
+      if (entry.key == excludePeerId) continue;
+      if (!entry.value.isConnected) continue;
+      try {
+        await entry.value.writeOutbound(bytes);
+        fanout++;
+      } catch (e) {
+        DebugLog.instance.log('MESH', 'fanout client write failed: $e');
+      }
+    }
+    try {
+      final ok = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+      if (ok) fanout++;
+    } catch (e) {
+      DebugLog.instance.log('MESH', 'fanout notify failed: $e');
+    }
+    return fanout;
+  }
+
+  static Uint8List _hexDecodeBytes(String hex) {
+    if (hex.length.isOdd) {
+      throw const FormatException('hex string of odd length');
+    }
+    final out = Uint8List(hex.length ~/ 2);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return out;
   }
 
   /// Periodic re-announcement of (my pubkey, my nickname) on every active
@@ -498,24 +618,8 @@ class MessagingService {
       // self-skip check (defense-in-depth).
       _dedup.acceptEnvelope(env);
 
-      final bytes = frame.encode();
-      var fanout = 0;
-      for (final client in _clients.values) {
-        if (!client.isConnected) continue;
-        try {
-          await client.writeOutbound(bytes);
-          fanout++;
-        } catch (e) {
-          DebugLog.instance.log('MESH', 'announce write failed: $e');
-        }
-      }
-      // Also push via peripheral notify so connected centrals see it.
-      try {
-        final ok = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
-        if (ok) fanout++;
-      } catch (e) {
-        DebugLog.instance.log('MESH', 'announce notify failed: $e');
-      }
+      final fanout =
+          await _fanoutAllLinks(frame.encode(), excludePeerId: null);
       if (fanout > 0) {
         DebugLog.instance.log('MESH',
             'announced "${ann.nickname}" on $fanout link(s)');
