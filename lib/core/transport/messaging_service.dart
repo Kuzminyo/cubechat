@@ -285,7 +285,22 @@ class MessagingService {
           final ok = await _ref
               .read(blePeripheralProvider)
               .notifyInbound(outboundFrame.encode());
-          if (ok) deliveredVia = 1;
+          if (ok) {
+            deliveredVia = 1;
+          } else {
+            DebugLog.instance.log('NOISE',
+                'text send: notify returned false (no subscriber?), falling back to fan-out');
+            // Last-ditch fan-out so the message still has a chance to reach
+            // its destination via a relay.
+            deliveredVia = await _fanoutAllLinks(
+              outboundFrame.encode(),
+              excludePeerId: null,
+            );
+            if (deliveredVia == 0) {
+              throw StateError(
+                  'send failed: notify rejected and no mesh links available');
+            }
+          }
         }
       } else {
         // No direct session for this recipient — broadcast onto every open
@@ -409,13 +424,29 @@ class MessagingService {
           if (client != null && client.isConnected) {
             await client.writeOutbound(frameBytes);
           } else {
-            await _ref.read(blePeripheralProvider).notifyInbound(frameBytes);
+            final ok = await _ref
+                .read(blePeripheralProvider)
+                .notifyInbound(frameBytes);
+            if (!ok) {
+              DebugLog.instance.log('IMG',
+                  'chunk $i/$total notify returned false — link congested?');
+              throw StateError('notify failed on image chunk $i/$total');
+            }
           }
         } else {
-          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
+          final fanout =
+              await _fanoutAllLinks(frameBytes, excludePeerId: null);
           if (fanout == 0) {
             throw StateError('no active mesh links for image chunk $i/$total');
           }
+        }
+        // Tiny pacing gap. Some Android BLE stacks lose notify packets when
+        // a fast sender outpaces the receiver's read loop. 15ms is below
+        // human perception in aggregate (~5s for a 300-chunk image) and
+        // well above the worst-case per-chunk turn-around on tested
+        // hardware.
+        if (i + 1 < total) {
+          await Future<void>.delayed(const Duration(milliseconds: 15));
         }
       }
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);

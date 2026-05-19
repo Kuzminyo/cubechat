@@ -33,6 +33,12 @@ class BleGattClient {
   bool _running = false;
   int _negotiatedMtu = 23;
 
+  /// Serialises [writeOutbound] across all callers — concurrent writes on the
+  /// same characteristic make flutter_blue_plus silently drop frames on some
+  /// stacks. Image chunking + announcement broadcasts can otherwise collide
+  /// mid-stream and lose data.
+  Future<void> _writeChain = Future<void>.value();
+
   String get peerId => _device.remoteId.str;
   int get negotiatedMtu => _negotiatedMtu;
   Stream<Uint8List> get inboundFrames => _frames.stream;
@@ -115,19 +121,44 @@ class BleGattClient {
     DebugLog.instance.log('BLE-CENTRAL', 'ready');
   }
 
-  /// Writes one frame to the peer's outbound characteristic.
+  /// Writes one frame to the peer's outbound characteristic. Calls are
+  /// serialised — concurrent writes (image chunking + periodic announcements,
+  /// for instance) would otherwise race in the native BLE stack and silently
+  /// drop frames on cheap Android adapters. One transient failure is
+  /// retried once with a short back-off before the error propagates.
   Future<void> writeOutbound(Uint8List bytes) async {
     final ch = _outbound;
     if (ch == null) {
       throw StateError('outbound characteristic not ready');
     }
+    // Chain this write behind any in-flight one; ignore any prior error so
+    // a single failure doesn't poison every subsequent send on this link.
+    final next = _writeChain.catchError((_) {}).then(
+      (_) => _writeWithRetry(ch, bytes),
+    );
+    _writeChain = next;
+    return next;
+  }
+
+  static Future<void> _writeWithRetry(
+    BluetoothCharacteristic ch,
+    Uint8List bytes,
+  ) async {
     DebugLog.instance.log('BLE-CENTRAL', 'write ${bytes.length}B → outbound');
     try {
       await ch.write(bytes, withoutResponse: false);
       DebugLog.instance.log('BLE-CENTRAL', 'write OK');
+      return;
     } catch (e) {
-      DebugLog.instance.log('BLE-CENTRAL', 'write FAILED: $e');
-      rethrow;
+      DebugLog.instance.log('BLE-CENTRAL', 'write FAILED ($e) — retrying once');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      try {
+        await ch.write(bytes, withoutResponse: false);
+        DebugLog.instance.log('BLE-CENTRAL', 'write OK (retry)');
+      } catch (e2) {
+        DebugLog.instance.log('BLE-CENTRAL', 'write FAILED again: $e2');
+        rethrow;
+      }
     }
   }
 
