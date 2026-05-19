@@ -88,6 +88,19 @@ class MessagingService {
   /// Mirror of [_imageReassembler] for voice messages.
   final AudioReassembler _audioReassembler = AudioReassembler();
 
+  /// Verified signed [MediaManifest]s waiting for their chunk stream to
+  /// finish reassembling. Keyed by mediaId hex. GC'd after [_manifestTtl].
+  final Map<String, _ManifestEntry> _pendingManifests = {};
+
+  /// Assembled media bytes whose manifest hasn't arrived yet. Same key
+  /// space as [_pendingManifests]; whichever side lands second triggers
+  /// the SHA-256 verification + delivery.
+  final Map<String, _OrphanMedia> _orphanedMedia = {};
+
+  /// How long we keep waiting for a manifest or for the missing
+  /// chunks before garbage-collecting the half-finished transfer.
+  static const Duration _manifestTtl = Duration(minutes: 5);
+
   Future<Uint8List> _myPubkeyHash() async {
     if (_myHashCache != null) return _myHashCache!;
     final id = await _ref.read(identityProvider.future);
@@ -407,6 +420,17 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      await _sendSignedManifest(
+        mediaId: imageId,
+        kind: MediaKind.image,
+        total: total,
+        mime: mime,
+        bytes: bytes,
+        myHash: myHash,
+        peerHash: peerHash,
+        peerPub: peerPub,
+        session: session,
+      );
       for (var i = 0; i < total; i++) {
         final start = i * ImageChunk.maxDataBytes;
         final end = (start + ImageChunk.maxDataBytes).clamp(0, bytes.length);
@@ -541,6 +565,18 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      await _sendSignedManifest(
+        mediaId: audioId,
+        kind: MediaKind.audio,
+        total: total,
+        mime: mime,
+        durationMs: durationMs,
+        bytes: bytes,
+        myHash: myHash,
+        peerHash: peerHash,
+        peerPub: peerPub,
+        session: session,
+      );
       for (var i = 0; i < total; i++) {
         final start = i * AudioChunk.maxDataBytes;
         final end =
@@ -836,6 +872,14 @@ class MessagingService {
             senderPub: senderPub,
             chunkBytes: unpacked.body,
           );
+
+        case InnerPayloadType.mediaManifest:
+          await _ingestMediaManifest(
+            peerId: peerId,
+            senderPub: senderPub,
+            wasSigned: verifiedSenderEdPub != null,
+            manifestBytes: unpacked.body,
+          );
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
@@ -861,32 +905,15 @@ class MessagingService {
     }
     final done = _audioReassembler.ingest(chunk);
     if (done == null) return;
-    try {
-      final path = await AudioReassembler.persistToCache(
-        audioId: done.audioId,
-        bytes: done.bytes,
-        mime: done.mime,
-      );
-      DebugLog.instance.log('VOICE',
-          'reassembled ${done.bytes.length}B from $peerId '
-          '(${done.durationMs}ms) → $path');
-      final message = Message(
-        id: 'm${DateTime.now().microsecondsSinceEpoch}',
-        chatId: peerId,
-        text: done.mime,
-        sentAt: DateTime.now(),
-        isMine: false,
-        kind: MessageKind.audio,
-        audioPath: path,
-        audioMime: done.mime,
-        audioDurationMs: done.durationMs,
-      );
-      _appendToAllSessionsForSamePeer(senderPub,
-          fallbackPeerId: peerId, message: message);
-    } catch (e, st) {
-      DebugLog.instance.log('VOICE', 'persist failed: $e');
-      debugPrint('$st');
-    }
+    await _finalizeMedia(
+      peerId: peerId,
+      senderPub: senderPub,
+      kind: MediaKind.audio,
+      mediaId: done.audioId,
+      bytes: done.bytes,
+      mime: done.mime,
+      durationMs: done.durationMs,
+    );
   }
 
   /// Drop one image chunk into the reassembly buffer. Once the last chunk
@@ -907,29 +934,244 @@ class MessagingService {
     }
     final done = _imageReassembler.ingest(chunk);
     if (done == null) return;
+    await _finalizeMedia(
+      peerId: peerId,
+      senderPub: senderPub,
+      kind: MediaKind.image,
+      mediaId: done.imageId,
+      bytes: done.bytes,
+      mime: done.mime,
+      durationMs: 0,
+    );
+  }
+
+  /// Decode + retain a signed media manifest. If the chunks have already
+  /// fully arrived (orphan path) we verify SHA-256 here and emit the
+  /// message immediately; otherwise we stash the manifest for the
+  /// finalisation step in [_finalizeMedia].
+  Future<void> _ingestMediaManifest({
+    required String peerId,
+    required Uint8List? senderPub,
+    required bool wasSigned,
+    required Uint8List manifestBytes,
+  }) async {
+    if (!wasSigned) {
+      DebugLog.instance.log('CRYPTO',
+          'drop media manifest from $peerId: not in a signed wrapper');
+      return;
+    }
+    final MediaManifest manifest;
     try {
-      final path = await ImageReassembler.persistToCache(
-        imageId: done.imageId,
-        bytes: done.bytes,
-        mime: done.mime,
+      manifest = MediaManifest.decode(manifestBytes);
+    } catch (e) {
+      DebugLog.instance.log('CRYPTO',
+          'drop media manifest from $peerId: malformed ($e)');
+      return;
+    }
+    final key = _hexOf(manifest.mediaId);
+    _gcMediaBuffers();
+
+    final orphan = _orphanedMedia.remove(key);
+    if (orphan != null) {
+      DebugLog.instance.log('CRYPTO',
+          'late manifest matched orphan media $key — verifying');
+      await _verifyAndEmit(
+        peerId: peerId,
+        senderPub: senderPub,
+        manifest: manifest,
+        bytes: orphan.bytes,
       );
-      DebugLog.instance.log('IMG',
-          'reassembled ${done.bytes.length}B from $peerId → $path');
-      final message = Message(
-        id: 'm${DateTime.now().microsecondsSinceEpoch}',
-        chatId: peerId,
-        text: done.mime,
-        sentAt: DateTime.now(),
-        isMine: false,
-        kind: MessageKind.image,
-        imagePath: path,
-        imageMime: done.mime,
+      return;
+    }
+    _pendingManifests[key] = _ManifestEntry(
+      manifest: manifest,
+      arrivedAt: DateTime.now(),
+      peerId: peerId,
+      senderPub: senderPub,
+    );
+    DebugLog.instance.log('CRYPTO',
+        'cached signed manifest $key '
+        '(${manifest.kind.name} total=${manifest.total})');
+  }
+
+  /// Called by [_ingestImageChunk] / [_ingestAudioChunk] once the chunks
+  /// for a mediaId have fully reassembled. If we already have a signed
+  /// manifest for that id, verify SHA-256 + emit; otherwise park the
+  /// bytes as an orphan until the manifest catches up.
+  Future<void> _finalizeMedia({
+    required String peerId,
+    required Uint8List? senderPub,
+    required MediaKind kind,
+    required Uint8List mediaId,
+    required Uint8List bytes,
+    required String mime,
+    required int durationMs,
+  }) async {
+    final key = _hexOf(mediaId);
+    _gcMediaBuffers();
+    final pending = _pendingManifests.remove(key);
+    if (pending != null) {
+      await _verifyAndEmit(
+        peerId: pending.peerId,
+        senderPub: pending.senderPub,
+        manifest: pending.manifest,
+        bytes: bytes,
       );
+      return;
+    }
+    DebugLog.instance.log('CRYPTO',
+        'media $key assembled before manifest — parking as orphan');
+    _orphanedMedia[key] = _OrphanMedia(
+      bytes: bytes,
+      mime: mime,
+      kind: kind,
+      durationMs: durationMs,
+      arrivedAt: DateTime.now(),
+      peerId: peerId,
+      senderPub: senderPub,
+    );
+  }
+
+  Future<void> _verifyAndEmit({
+    required String peerId,
+    required Uint8List? senderPub,
+    required MediaManifest manifest,
+    required Uint8List bytes,
+  }) async {
+    final digest = await Sha256().hash(bytes);
+    final actual = Uint8List.fromList(digest.bytes);
+    if (!_bytesEqual(actual, manifest.sha256)) {
+      DebugLog.instance.log('CRYPTO',
+          'DROP media ${_hexOf(manifest.mediaId)}: '
+          'sha256 mismatch (manifest says ${_hexOf(manifest.sha256).substring(0, 8)}…, '
+          'assembled ${_hexOf(actual).substring(0, 8)}…)');
+      return;
+    }
+    DebugLog.instance.log('CRYPTO',
+        'media ${_hexOf(manifest.mediaId)} sha256 OK '
+        '(${bytes.length}B, ${manifest.kind.name})');
+    try {
+      final Message message;
+      switch (manifest.kind) {
+        case MediaKind.image:
+          final path = await ImageReassembler.persistToCache(
+            imageId: manifest.mediaId,
+            bytes: bytes,
+            mime: manifest.mime,
+          );
+          message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: manifest.mime,
+            sentAt: DateTime.now(),
+            isMine: false,
+            kind: MessageKind.image,
+            imagePath: path,
+            imageMime: manifest.mime,
+          );
+
+        case MediaKind.audio:
+          final path = await AudioReassembler.persistToCache(
+            audioId: manifest.mediaId,
+            bytes: bytes,
+            mime: manifest.mime,
+          );
+          message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: manifest.mime,
+            sentAt: DateTime.now(),
+            isMine: false,
+            kind: MessageKind.audio,
+            audioPath: path,
+            audioMime: manifest.mime,
+            audioDurationMs: manifest.durationMs,
+          );
+      }
       _appendToAllSessionsForSamePeer(senderPub,
           fallbackPeerId: peerId, message: message);
     } catch (e, st) {
-      DebugLog.instance.log('IMG', 'persist failed: $e');
+      DebugLog.instance.log('CRYPTO', 'media persist failed: $e');
       debugPrint('$st');
+    }
+  }
+
+  void _gcMediaBuffers() {
+    final cutoff = DateTime.now().subtract(_manifestTtl);
+    _pendingManifests.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+    _orphanedMedia.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+  }
+
+  /// Build a [MediaManifest] over the about-to-be-sent [bytes], wrap it in
+  /// a SignedPayload, SealedBox-encrypt to the peer, and emit one frame.
+  /// Throws on missing identity or send failure — caller is expected to
+  /// catch and mark the message as failed.
+  Future<void> _sendSignedManifest({
+    required Uint8List mediaId,
+    required MediaKind kind,
+    required int total,
+    required String mime,
+    int durationMs = 0,
+    required Uint8List bytes,
+    required Uint8List myHash,
+    required Uint8List peerHash,
+    required Uint8List peerPub,
+    required ChatSession? session,
+  }) async {
+    final identity = await _ref.read(identityProvider.future);
+    final digest = await Sha256().hash(bytes);
+    final manifest = MediaManifest(
+      mediaId: mediaId,
+      kind: kind,
+      total: total,
+      mime: mime,
+      durationMs: durationMs,
+      sha256: Uint8List.fromList(digest.bytes),
+    );
+    final inner = packInnerPayload(
+      InnerPayloadType.mediaManifest,
+      manifest.encode(),
+    );
+    final msgId = TransportEnvelope.newMsgId();
+    final ctx = SignedPayload.contextBytes(
+      originPubkeyHash: myHash,
+      destPubkeyHash: peerHash,
+      msgId: msgId,
+    );
+    final signed = await SignedPayload.wrap(
+      inner: inner,
+      context: ctx,
+      signKeyPair: identity.asSignKeyPair(),
+      senderEdPub: identity.signPublicKey,
+    );
+    final body = await SealedBox.seal(signed, peerPub);
+    final env = TransportEnvelope(
+      originPubkeyHash: myHash,
+      destPubkeyHash: peerHash,
+      msgId: msgId,
+      ttl: TransportEnvelope.defaultTtl,
+      body: body,
+    );
+    _dedup.acceptEnvelope(env);
+    final frameBytes = Frame(
+      type: FrameType.transport,
+      payload: env.encode(),
+    ).encode();
+    final transportId = session?.peerId;
+    if (transportId != null) {
+      final client = _clients[transportId];
+      if (client != null && client.isConnected) {
+        await client.writeOutbound(frameBytes);
+        return;
+      }
+      final ok =
+          await _ref.read(blePeripheralProvider).notifyInbound(frameBytes);
+      if (ok) return;
+      throw StateError('manifest notify rejected');
+    }
+    final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
+    if (fanout == 0) {
+      throw StateError('no active mesh links for media manifest');
     }
   }
 
@@ -1309,3 +1551,42 @@ final messagingServiceProvider = Provider<MessagingService>((ref) {
   ref.onDispose(() => svc.dispose());
   return svc;
 });
+
+/// One signed media manifest awaiting its chunks. Holds enough context
+/// to attribute the resulting Message to the right peer once the bytes
+/// have caught up.
+class _ManifestEntry {
+  _ManifestEntry({
+    required this.manifest,
+    required this.arrivedAt,
+    required this.peerId,
+    required this.senderPub,
+  });
+  final MediaManifest manifest;
+  final DateTime arrivedAt;
+  final String peerId;
+  final Uint8List? senderPub;
+}
+
+/// Assembled bytes whose manifest hasn't landed yet. We stash the file
+/// in-memory only — if no manifest shows up before the GC sweep, the
+/// bytes are dropped without ever touching disk (we refuse to surface
+/// unauthenticated media in the chat).
+class _OrphanMedia {
+  _OrphanMedia({
+    required this.bytes,
+    required this.mime,
+    required this.kind,
+    required this.durationMs,
+    required this.arrivedAt,
+    required this.peerId,
+    required this.senderPub,
+  });
+  final Uint8List bytes;
+  final String mime;
+  final MediaKind kind;
+  final int durationMs;
+  final DateTime arrivedAt;
+  final String peerId;
+  final Uint8List? senderPub;
+}

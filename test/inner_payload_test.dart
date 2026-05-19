@@ -157,4 +157,71 @@ void main() {
           isNot(equals(AudioChunk.newAudioId())));
     });
   });
+
+  group('MediaManifest', () {
+    test('encode/decode preserves every field', () {
+      final m = MediaManifest(
+        mediaId: Uint8List.fromList(List.generate(16, (i) => i + 1)),
+        kind: MediaKind.image,
+        total: 359,
+        durationMs: 0,
+        mime: 'image/jpeg',
+        sha256: Uint8List.fromList(List.generate(32, (i) => i)),
+      );
+      final wire = m.encode();
+      final back = MediaManifest.decode(wire);
+      expect(back.mediaId, equals(m.mediaId));
+      expect(back.kind, MediaKind.image);
+      expect(back.total, 359);
+      expect(back.durationMs, 0);
+      expect(back.mime, 'image/jpeg');
+      expect(back.sha256, equals(m.sha256));
+    });
+
+    test('audio manifest carries durationMs', () {
+      final m = MediaManifest(
+        mediaId: Uint8List(16),
+        kind: MediaKind.audio,
+        total: 120,
+        durationMs: 7500,
+        mime: 'audio/aac',
+        sha256: Uint8List(32),
+      );
+      final back = MediaManifest.decode(m.encode());
+      expect(back.kind, MediaKind.audio);
+      expect(back.durationMs, 7500);
+    });
+
+    test('truncated wire bytes throw FormatException', () {
+      expect(
+        () => MediaManifest.decode(Uint8List(10)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('unknown version byte throws', () {
+      final bad = Uint8List(1 + 16 + 1 + 2 + 4 + 1 + 32);
+      bad[0] = 0x99;
+      expect(
+        () => MediaManifest.decode(bad),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('unknown kind tag throws', () {
+      final m = MediaManifest(
+        mediaId: Uint8List(16),
+        kind: MediaKind.image,
+        total: 1,
+        mime: '',
+        sha256: Uint8List(32),
+      );
+      final wire = m.encode();
+      wire[1 + 16] = 0xEE; // garbage in the kind slot
+      expect(
+        () => MediaManifest.decode(wire),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
 }
