@@ -29,6 +29,12 @@ final chatsQueryProvider = StateProvider<String>((_) => '');
 ///
 /// "Online" is derived from whether any live ChatSessionManager session has
 /// the same pubkey — i.e. a transport handshake is currently up.
+/// A peer counts as "reachable via mesh" if their lastSeen (last
+/// announcement we received about them) is within this window. Tied to
+/// the announcement cadence (M3.C, 60s) — give it a few cycles of slack
+/// so a missed beacon doesn't make the tile flicker.
+const _meshReachableWindow = Duration(minutes: 5);
+
 final chatsProvider = Provider<List<Chat>>((ref) {
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
@@ -39,10 +45,14 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       if (s.isEstablished && s.remotePubkeyHex != null) s.remotePubkeyHex!,
   };
 
+  final now = DateTime.now();
   final entries = known.values.map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
     final unread = msgs.where((m) => !m.isMine).length;
+    final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
+    final isReachableViaMesh =
+        !isOnline && now.difference(peer.lastSeen) <= _meshReachableWindow;
     return Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
@@ -51,7 +61,8 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       lastTime: last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,
       isMesh: true,
-      isOnline: onlinePubkeys.contains(peer.pubkeyHex),
+      isOnline: isOnline,
+      isReachableViaMesh: isReachableViaMesh,
       isVerified: peer.isVerified,
     );
   }).toList();

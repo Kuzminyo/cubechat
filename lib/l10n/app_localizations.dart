@@ -176,6 +176,18 @@ abstract class AppLocalizations {
   /// **'Search chats…'**
   String get chatsSearchHint;
 
+  /// No description provided for @chatsStatusViaMesh.
+  ///
+  /// In en, this message translates to:
+  /// **'via mesh'**
+  String get chatsStatusViaMesh;
+
+  /// No description provided for @chatsStatusOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'offline'**
+  String get chatsStatusOffline;
+
   /// No description provided for @peersTitle.
   ///
   /// In en, this message translates to:

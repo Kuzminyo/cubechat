@@ -49,6 +49,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchHint => 'Search chats…';
 
   @override
+  String get chatsStatusViaMesh => 'via mesh';
+
+  @override
+  String get chatsStatusOffline => 'offline';
+
+  @override
   String get peersTitle => 'Nearby';
 
   @override

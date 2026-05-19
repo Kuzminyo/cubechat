@@ -4,6 +4,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/identity_avatar.dart';
 import '../../../../core/widgets/unread_badge.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
 
 class ChatTile extends StatelessWidget {
@@ -14,6 +15,7 @@ class ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -57,6 +59,20 @@ class ChatTile extends StatelessWidget {
                             size: 14,
                           ),
                         ],
+                        if (chat.isReachableViaMesh) ...[
+                          const SizedBox(width: 6),
+                          _StatusPill(
+                            icon: Icons.hub_outlined,
+                            label: t.chatsStatusViaMesh,
+                          ),
+                        ] else if (!chat.isOnline) ...[
+                          const SizedBox(width: 6),
+                          _StatusPill(
+                            icon: Icons.cloud_off_outlined,
+                            label: t.chatsStatusOffline,
+                            muted: true,
+                          ),
+                        ],
                         const Spacer(),
                         Text(
                           formatChatListTime(context, chat.lastTime),
@@ -94,6 +110,49 @@ class ChatTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Tiny rounded badge tucked into the chat-tile header row to indicate the
+/// transport state (mesh-only reachable vs offline). Kept compact so it
+/// doesn't crowd out the timestamp on narrow screens.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.icon,
+    required this.label,
+    this.muted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = muted ? AppColors.textOnGlassFaint : AppColors.brandPrimary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: muted ? 0.08 : 0.14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }

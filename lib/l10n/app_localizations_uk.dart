@@ -49,6 +49,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchHint => 'Пошук чатів…';
 
   @override
+  String get chatsStatusViaMesh => 'через mesh';
+
+  @override
+  String get chatsStatusOffline => 'офлайн';
+
+  @override
   String get peersTitle => 'Поблизу';
 
   @override
