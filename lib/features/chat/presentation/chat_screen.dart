@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -143,6 +146,7 @@ class ChatScreen extends ConsumerWidget {
             ChatInput(
               hint: t.chatInputHint,
               sendTooltip: t.chatSend,
+              onAttach: canSend ? () => _pickAndSendImage(context, ref) : null,
               // Commands always work; regular messages need an established
               // session. We let any /cmd through even when offline so the
               // user can `/nick` / `/clear` / `/wipe` without a peer.
@@ -186,6 +190,48 @@ class ChatScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Triggered by the paperclip button. Picks one image from the gallery,
+  /// caps its size to keep BLE chunking sane, and hands off to
+  /// MessagingService.sendImage. We deliberately cap dimensions in the
+  /// picker rather than resizing client-side — fewer dependencies and the
+  /// outbound bandwidth budget makes large transfers a bad idea anyway.
+  Future<void> _pickAndSendImage(BuildContext context, WidgetRef ref) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 70,
+    );
+    if (picked == null) return;
+    try {
+      final bytes = await File(picked.path).readAsBytes();
+      final mime = _guessMime(picked.path);
+      await ref.read(messagingServiceProvider).sendImage(
+            peerId,
+            bytes: bytes,
+            mime: mime,
+            cachedPath: picked.path,
+          );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+          content: Text('$e', style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+  }
+
+  static String _guessMime(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
   }
 
   String _statusLabel(AppLocalizations t, ChatSession? session) {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -78,14 +79,17 @@ class _MessageBubbleState extends State<MessageBubble>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                message.text,
-                style: TextStyle(
-                  color: AppColors.textOnGlass,
-                  fontSize: 14.5,
-                  height: 1.35,
+              if (message.kind == MessageKind.image)
+                _ImagePayload(message: message)
+              else
+                Text(
+                  message.text,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14.5,
+                    height: 1.35,
+                  ),
                 ),
-              ),
               const SizedBox(height: 4),
               _BubbleMeta(message: message),
             ],
@@ -114,6 +118,94 @@ class _MessageBubbleState extends State<MessageBubble>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// In-bubble image rendering. While the bytes are still in flight (sender
+/// hasn't finished chunking, or receiver hasn't reassembled), shows a
+/// placeholder block with a spinner — the bubble still occupies space so
+/// the list doesn't reflow when the image finally appears.
+class _ImagePayload extends StatelessWidget {
+  const _ImagePayload({required this.message});
+
+  final Message message;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = message.imagePath;
+    final fileExists = path != null && File(path).existsSync();
+
+    final body = fileExists
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _ImagePlaceholder(
+                icon: Icons.broken_image_outlined,
+                label: message.imageMime ?? 'image',
+              ),
+            ),
+          )
+        : _ImagePlaceholder(
+            icon: message.status == MessageStatus.failed
+                ? Icons.broken_image_outlined
+                : Icons.image_outlined,
+            label: message.imageMime ?? message.text,
+            spinning: message.status == MessageStatus.sending,
+          );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
+      child: body,
+    );
+  }
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder({
+    required this.icon,
+    required this.label,
+    this.spinning = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool spinning;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 200,
+      height: 140,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (spinning)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.brandPrimary,
+              ),
+            )
+          else
+            Icon(icon, color: AppColors.textOnGlassDim, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+          ),
+        ],
       ),
     );
   }

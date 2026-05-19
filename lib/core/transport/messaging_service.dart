@@ -24,6 +24,8 @@ import 'chat_session_manager.dart';
 import 'dedup_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
+import 'image_reassembly.dart';
+import 'inner_payload.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -76,6 +78,11 @@ class MessagingService {
   /// forwarded) before they hit the chat UI or the relay path. Keyed on
   /// (origin, msgId).
   final DedupCache _dedup = DedupCache();
+
+  /// Multi-chunk image reassembly buffer (M5.4). Each incoming image stream
+  /// is keyed by its 16-byte imageId; finished images get written to the
+  /// app cache directory and surfaced as Message.kind == image.
+  final ImageReassembler _imageReassembler = ImageReassembler();
 
   Future<Uint8List> _myPubkeyHash() async {
     if (_myHashCache != null) return _myHashCache!;
@@ -235,16 +242,15 @@ class MessagingService {
     }
 
     try {
-      // M3.D: encrypt the body with SealedBox addressed to the recipient's
-      // long-term static pubkey. The body is now opaque to every relay on
-      // the path — only the holder of the matching private key can decrypt.
-      // The direct-link Noise session still authenticates the immediate
-      // BLE neighbor (so the link itself can't be MITM'd at the BLE layer);
-      // the body is intentionally session-independent.
-      final body = await SealedBox.seal(
+      // M3.D + M5.4: SealedBox-encrypt a tagged inner payload. The tag
+      // byte tells the receiver whether to decode as UTF-8 text or as an
+      // image chunk. Wire layout under the SealedBox:
+      //   [0x10][utf8(text)]
+      final inner = packInnerPayload(
+        InnerPayloadType.text,
         Uint8List.fromList(utf8.encode(text)),
-        peerPub,
       );
+      final body = await SealedBox.seal(inner, peerPub);
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
       final envelope = TransportEnvelope(
@@ -298,6 +304,126 @@ class MessagingService {
       }
     } catch (e, st) {
       debugPrint('sendText failed: $e\n$st');
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+      }
+    }
+    return msg;
+  }
+
+  /// M5.4: send an image as a series of SealedBox-encrypted chunks. Each
+  /// chunk is a separate envelope so it routes the same way as a text
+  /// message and so partial transfers don't block other traffic. Chunks
+  /// are emitted strictly in order on the same link to keep MTU stress
+  /// from re-ordering them on lossy stacks. The caller gets back the
+  /// pending Message immediately; status flips to delivered once the last
+  /// chunk's BLE write resolves, or failed on the first error.
+  Future<Message> sendImage(
+    String chatId, {
+    required Uint8List bytes,
+    required String mime,
+    String? cachedPath,
+  }) async {
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    ChatSession? session = manager.sessionFor(chatId);
+    session ??= _findSessionByPubkeyHex(chatId);
+
+    Uint8List? peerPub;
+    String? canonicalId;
+    if (session != null && session.isEstablished) {
+      peerPub = session.remoteStaticPublicKey;
+      canonicalId = session.remotePubkeyHex ?? chatId;
+    } else {
+      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      if (known != null) {
+        try {
+          peerPub = _hexDecodeBytes(known.pubkeyHex);
+          canonicalId = known.pubkeyHex;
+        } catch (e) {
+          DebugLog.instance.log('IMG',
+              'sendImage: malformed pubkey hex for $chatId: $e');
+        }
+      }
+    }
+    if (peerPub == null || canonicalId == null) {
+      throw StateError('cannot send image: no recipient pubkey for $chatId');
+    }
+
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: canonicalId,
+      text: mime,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.image,
+      imagePath: cachedPath,
+      imageMime: mime,
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(canonicalId, msg);
+    if (chatId != canonicalId) {
+      messages.append(chatId, msg);
+    }
+
+    try {
+      final imageId = ImageChunk.newImageId();
+      final total = (bytes.length + ImageChunk.maxDataBytes - 1) ~/
+          ImageChunk.maxDataBytes;
+      if (total > 0xFFFF) {
+        throw StateError('image too large: $total chunks > 65535 cap');
+      }
+      final myHash = await _myPubkeyHash();
+      final peerHash = await _peerPubkeyHash(peerPub);
+      for (var i = 0; i < total; i++) {
+        final start = i * ImageChunk.maxDataBytes;
+        final end = (start + ImageChunk.maxDataBytes).clamp(0, bytes.length);
+        final chunk = ImageChunk(
+          imageId: imageId,
+          seq: i,
+          total: total,
+          mime: mime,
+          data: Uint8List.fromList(bytes.sublist(start, end)),
+        );
+        final inner =
+            packInnerPayload(InnerPayloadType.imageChunk, chunk.encode());
+        final body = await SealedBox.seal(inner, peerPub);
+        final env = TransportEnvelope(
+          originPubkeyHash: myHash,
+          destPubkeyHash: peerHash,
+          msgId: TransportEnvelope.newMsgId(),
+          ttl: TransportEnvelope.defaultTtl,
+          body: body,
+        );
+        _dedup.acceptEnvelope(env);
+        final frameBytes = Frame(
+          type: FrameType.transport,
+          payload: env.encode(),
+        ).encode();
+
+        // Direct session preferred, mesh fan-out otherwise.
+        final transportId = session?.peerId;
+        if (transportId != null) {
+          final client = _clients[transportId];
+          if (client != null && client.isConnected) {
+            await client.writeOutbound(frameBytes);
+          } else {
+            await _ref.read(blePeripheralProvider).notifyInbound(frameBytes);
+          }
+        } else {
+          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
+          if (fanout == 0) {
+            throw StateError('no active mesh links for image chunk $i/$total');
+          }
+        }
+      }
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+      }
+    } catch (e, st) {
+      debugPrint('sendImage failed: $e\n$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
@@ -441,32 +567,85 @@ class MessagingService {
     // exists; multi-hop senders are taken on faith pending inner signatures.
     try {
       final identity = await _ref.read(identityProvider.future);
-      final plaintextBytes = await SealedBox.open(
+      final innerBytes = await SealedBox.open(
         env.body,
         recipientKeyPair: identity.asKeyPair(),
         recipientPubkey: identity.publicKey,
       );
-      final plaintext = utf8.decode(plaintextBytes, allowMalformed: true);
-      DebugLog.instance.log('NOISE',
-          'SealedBox open OK from $peerId, ${plaintext.length} chars');
-      // Resolve sender for chat-bucket attribution. If the immediate BLE
-      // neighbour has an established session, we attribute the message to
-      // that authenticated pubkey. Otherwise we fall back to the unauthenticated
-      // origin hash from the envelope (M3.E relay path).
+      final unpacked = unpackInnerPayload(innerBytes);
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
       final senderPub = session?.remoteStaticPublicKey;
+
+      switch (unpacked.type) {
+        case InnerPayloadType.text:
+          final plaintext =
+              utf8.decode(unpacked.body, allowMalformed: true);
+          DebugLog.instance.log('NOISE',
+              'SealedBox open OK (text) from $peerId, ${plaintext.length} chars');
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+          );
+          _appendToAllSessionsForSamePeer(senderPub,
+              fallbackPeerId: peerId, message: message);
+
+        case InnerPayloadType.imageChunk:
+          await _ingestImageChunk(
+            peerId: peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+      }
+    } catch (e, st) {
+      DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+      debugPrint('$st');
+    }
+  }
+
+  /// Drop one image chunk into the reassembly buffer. Once the last chunk
+  /// for an imageId lands, the bytes are written to the cache directory
+  /// and we append a kind=image Message to the chat.
+  Future<void> _ingestImageChunk({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List chunkBytes,
+  }) async {
+    final ImageChunk chunk;
+    try {
+      chunk = ImageChunk.decode(chunkBytes);
+    } catch (e) {
+      DebugLog.instance.log('IMG',
+          'drop image chunk from $peerId: malformed ($e)');
+      return;
+    }
+    final done = _imageReassembler.ingest(chunk);
+    if (done == null) return;
+    try {
+      final path = await ImageReassembler.persistToCache(
+        imageId: done.imageId,
+        bytes: done.bytes,
+        mime: done.mime,
+      );
+      DebugLog.instance.log('IMG',
+          'reassembled ${done.bytes.length}B from $peerId → $path');
       final message = Message(
         id: 'm${DateTime.now().microsecondsSinceEpoch}',
         chatId: peerId,
-        text: plaintext,
+        text: done.mime,
         sentAt: DateTime.now(),
         isMine: false,
+        kind: MessageKind.image,
+        imagePath: path,
+        imageMime: done.mime,
       );
       _appendToAllSessionsForSamePeer(senderPub,
           fallbackPeerId: peerId, message: message);
     } catch (e, st) {
-      DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+      DebugLog.instance.log('IMG', 'persist failed: $e');
       debugPrint('$st');
     }
   }

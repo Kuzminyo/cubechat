@@ -10,11 +10,16 @@ class ChatInput extends StatefulWidget {
     required this.hint,
     required this.sendTooltip,
     required this.onSend,
+    this.onAttach,
   });
 
   final String hint;
   final String sendTooltip;
   final ValueChanged<String> onSend;
+
+  /// Tapped on the attachment (image) button. When null the button is
+  /// hidden — caller decides whether image send is wired up.
+  final VoidCallback? onAttach;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -65,6 +70,10 @@ class _ChatInputState extends State<ChatInput> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  if (widget.onAttach != null) ...[
+                    _AttachButton(onTap: widget.onAttach!),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -97,6 +106,32 @@ class _ChatInputState extends State<ChatInput> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachButton extends StatelessWidget {
+  const _AttachButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        child: Icon(
+          Icons.image_outlined,
+          color: AppColors.textOnGlass,
+          size: 20,
         ),
       ),
     );

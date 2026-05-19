@@ -51,3 +51,4 @@ macos/Flutter/ephemeral/
 coverage/
 flutter_*.log
 devtools_options.yaml
+.kotlin/

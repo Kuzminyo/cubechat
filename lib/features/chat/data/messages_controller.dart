@@ -60,15 +60,27 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (current == null) return;
     final idx = current.indexWhere((m) => m.id == msgId);
     if (idx == -1) return;
-    final updated = Message(
-      id: current[idx].id,
-      chatId: current[idx].chatId,
-      text: current[idx].text,
-      sentAt: current[idx].sentAt,
-      isMine: current[idx].isMine,
-      status: status,
-    );
-    final list = [...current]..[idx] = updated;
+    final list = [...current]..[idx] = current[idx].copyWith(status: status);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
+  /// Fills in [imagePath] (and bumps the status) on an existing in-flight
+  /// image message once all chunks have been reassembled. The message id
+  /// must already exist in the per-peer list — callers should append the
+  /// placeholder Message with `imagePath: null` first.
+  void completeImage(
+    String peerId,
+    String msgId, {
+    required String imagePath,
+    required MessageStatus status,
+  }) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    final list = [...current]
+      ..[idx] = current[idx].copyWith(imagePath: imagePath, status: status);
     state = {...state, peerId: list};
     _persist(peerId, list);
   }
@@ -111,6 +123,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         'sentAtIso': m.sentAt.toIso8601String(),
         'isMine': m.isMine,
         'status': m.status.name,
+        'kind': m.kind.name,
+        if (m.imagePath != null) 'imagePath': m.imagePath,
+        if (m.imageMime != null) 'imageMime': m.imageMime,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -118,6 +133,11 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     final status = MessageStatus.values.firstWhere(
       (s) => s.name == statusName,
       orElse: () => MessageStatus.delivered,
+    );
+    final kindName = m['kind'] as String? ?? 'text';
+    final kind = MessageKind.values.firstWhere(
+      (k) => k.name == kindName,
+      orElse: () => MessageKind.text,
     );
     return Message(
       id: m['id'] as String,
@@ -127,6 +147,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           DateTime.now(),
       isMine: (m['isMine'] as bool?) ?? false,
       status: status,
+      kind: kind,
+      imagePath: m['imagePath'] as String?,
+      imageMime: m['imageMime'] as String?,
     );
   }
 }
