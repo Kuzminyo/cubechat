@@ -12,6 +12,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
+import '../domain/command_processor.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/message_bubble.dart';
 
@@ -142,22 +143,44 @@ class ChatScreen extends ConsumerWidget {
             ChatInput(
               hint: t.chatInputHint,
               sendTooltip: t.chatSend,
-              onSend: canSend
-                  ? (text) async {
-                      try {
-                        await ref.read(messagingServiceProvider).sendText(peerId, text);
-                      } catch (e) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-                            content: Text('$e',
-                                style: const TextStyle(color: Colors.white)),
-                          ),
-                        );
-                      }
-                    }
-                  : (_) {},
+              // Commands always work; regular messages need an established
+              // session. We let any /cmd through even when offline so the
+              // user can `/nick` / `/clear` / `/wipe` without a peer.
+              onSend: (text) async {
+                // Try commands first.
+                final result = await CommandProcessor(ref, canonicalId)
+                    .tryExecute(text);
+                if (result != null) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: result.success
+                          ? AppColors.brandPrimary.withValues(alpha: 0.85)
+                          : AppColors.danger.withValues(alpha: 0.85),
+                      content: Text(result.message,
+                          style: const TextStyle(color: Colors.white)),
+                      duration: Duration(
+                        seconds: result.message.contains('\n') ? 5 : 2,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                // Not a command — fall through to real send.
+                if (!canSend) return;
+                try {
+                  await ref.read(messagingServiceProvider).sendText(peerId, text);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+                      content: Text('$e',
+                          style: const TextStyle(color: Colors.white)),
+                    ),
+                  );
+                }
+              },
             ),
           ],
         ),

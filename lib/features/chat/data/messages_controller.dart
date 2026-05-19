@@ -83,6 +83,17 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     }
   }
 
+  /// Erase a single chat (the `/clear` IRC command).
+  Future<void> clearForChat(String chatId) async {
+    if (!state.containsKey(chatId)) return;
+    state = {...state}..remove(chatId);
+    try {
+      await _box?.delete(chatId);
+    } catch (e) {
+      debugPrint('Messages delete($chatId) failed: $e');
+    }
+  }
+
   Future<void> _persist(String peerId, List<Message> msgs) async {
     final box = _box;
     if (box == null) return;
