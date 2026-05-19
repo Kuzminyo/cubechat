@@ -14,7 +14,7 @@ import '../../models/message.dart';
 /// second one while the first is playing leaves both playing — quirky but
 /// good enough for a first pass.
 class CircleVideoBubble extends StatefulWidget {
-  const CircleVideoBubble({super.key, required this.message, this.size = 180});
+  const CircleVideoBubble({super.key, required this.message, this.size = 200});
 
   final Message message;
   final double size;

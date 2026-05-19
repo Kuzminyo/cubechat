@@ -191,6 +191,8 @@ class _ChatBottomBar extends ConsumerStatefulWidget {
 class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Timer? _tick;
   Duration _elapsed = Duration.zero;
+  RecordMode _recordMode = RecordMode.audio;
+  bool _videoRecording = false;
 
   void _startTicker() {
     _tick?.cancel();
@@ -220,50 +222,78 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     super.dispose();
   }
 
-  Future<void> _onVoiceStart() async {
-    final ok = await ref.read(voiceRecorderProvider.notifier).start();
-    if (!ok) {
-      if (!mounted) return;
-      final err = ref.read(voiceRecorderProvider).error ?? 'cannot record';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text(err, style: const TextStyle(color: Colors.white)),
-        ),
-      );
-      return;
-    }
-    _startTicker();
+  /// Telegram-style: short tap on the record button swaps mode; the icon
+  /// flips between mic and circle-cam without leaving the chat row.
+  void _onRecordModeToggle() {
+    setState(() {
+      _recordMode =
+          _recordMode == RecordMode.audio ? RecordMode.video : RecordMode.audio;
+    });
   }
 
-  Future<void> _onVoiceStop() async {
-    final result = await ref.read(voiceRecorderProvider.notifier).stop();
-    _stopTicker();
-    if (result == null) return;
-    if (!widget.canSend) return;
-    try {
-      final bytes = await File(result.path).readAsBytes();
-      await ref.read(messagingServiceProvider).sendAudio(
-            widget.peerId,
-            bytes: bytes,
-            mime: 'audio/aac',
-            durationMs: result.durationMs,
-            cachedPath: result.path,
-          );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text('$e', style: const TextStyle(color: Colors.white)),
-        ),
-      );
+  Future<void> _onRecordStart() async {
+    if (_recordMode == RecordMode.audio) {
+      final ok = await ref.read(voiceRecorderProvider.notifier).start();
+      if (!ok) {
+        if (!mounted) return;
+        final err = ref.read(voiceRecorderProvider).error ?? 'cannot record';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+            content: Text(err, style: const TextStyle(color: Colors.white)),
+          ),
+        );
+        return;
+      }
+      _startTicker();
+    } else {
+      // Video circle: opening the camera + initializing preview while a
+      // finger is held down is too slow to feel responsive. Instead the
+      // long-press transitions into the dedicated recorder screen, where
+      // the user taps record once the preview is up. The chat row shows
+      // a transient "recording" pill so it's clear the long-press did
+      // *something* — see _videoRecording state.
+      setState(() => _videoRecording = true);
+      await _pickAndSendCircle();
+      if (mounted) setState(() => _videoRecording = false);
     }
   }
 
-  Future<void> _onVoiceCancel() async {
-    await ref.read(voiceRecorderProvider.notifier).cancel();
-    _stopTicker();
+  Future<void> _onRecordStop() async {
+    if (_recordMode == RecordMode.audio) {
+      final result = await ref.read(voiceRecorderProvider.notifier).stop();
+      _stopTicker();
+      if (result == null) return;
+      if (!widget.canSend) return;
+      try {
+        final bytes = await File(result.path).readAsBytes();
+        await ref.read(messagingServiceProvider).sendAudio(
+              widget.peerId,
+              bytes: bytes,
+              mime: 'audio/aac',
+              durationMs: result.durationMs,
+              cachedPath: result.path,
+            );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+            content: Text('$e', style: const TextStyle(color: Colors.white)),
+          ),
+        );
+      }
+    }
+    // Video mode: stop is a no-op — the recorder screen has its own
+    // commit/cancel buttons, the long-press release just finishes the
+    // gesture on the launching button.
+  }
+
+  Future<void> _onRecordCancel() async {
+    if (_recordMode == RecordMode.audio) {
+      await ref.read(voiceRecorderProvider.notifier).cancel();
+      _stopTicker();
+    }
   }
 
   Future<void> _pickAndSendCircle() async {
@@ -339,20 +369,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
+    final recording = voiceState.isRecording || _videoRecording;
     return ChatInput(
       hint: t.chatInputHint,
       sendTooltip: t.chatSend,
-      onAttach: widget.canSend && !voiceState.isRecording
-          ? _pickAndSendImage
-          : null,
-      onCircle: widget.canSend && !voiceState.isRecording
-          ? _pickAndSendCircle
-          : null,
-      onVoiceStart: widget.canSend ? _onVoiceStart : null,
-      onVoiceStop: widget.canSend ? _onVoiceStop : null,
-      onVoiceCancel: widget.canSend ? _onVoiceCancel : null,
-      voiceActive: voiceState.isRecording,
-      voiceElapsed: _elapsed,
+      onAttach: widget.canSend && !recording ? _pickAndSendImage : null,
+      recordMode: _recordMode,
+      onRecordModeToggle: widget.canSend ? _onRecordModeToggle : null,
+      onRecordStart: widget.canSend ? _onRecordStart : null,
+      onRecordStop: widget.canSend ? _onRecordStop : null,
+      onRecordCancel: widget.canSend ? _onRecordCancel : null,
+      recording: recording,
+      recordElapsed: _elapsed,
       onSend: (text) async {
         final result =
             await CommandProcessor(ref, widget.canonicalId).tryExecute(text);

@@ -70,8 +70,12 @@ class ImageReassembler {
       return null;
     }
     entry.chunks[chunk.seq] = chunk.data;
-    DebugLog.instance.log('IMG',
-        'buf $key: ${entry.chunks.length}/${entry.total}');
+    // Sample every 25th chunk so the log doesn't drown in progress lines
+    // on big payloads. Completion + first chunk are always logged.
+    final n = entry.chunks.length;
+    if (n == 1 || n == entry.total || n % 25 == 0) {
+      DebugLog.instance.log('IMG', 'buf $key: $n/${entry.total}');
+    }
     if (entry.isComplete) {
       final bytes = entry.assemble();
       _pending.remove(key);
@@ -188,8 +192,10 @@ class AudioReassembler {
       return null;
     }
     entry.chunks[chunk.seq] = chunk.data;
-    DebugLog.instance.log('VOICE',
-        'buf $key: ${entry.chunks.length}/${entry.total}');
+    final n = entry.chunks.length;
+    if (n == 1 || n == entry.total || n % 25 == 0) {
+      DebugLog.instance.log('VOICE', 'buf $key: $n/${entry.total}');
+    }
     if (entry.isComplete) {
       final bytes = entry.assemble();
       _pending.remove(key);
@@ -275,8 +281,10 @@ class VideoReassembler {
       return null;
     }
     entry.chunks[chunk.seq] = chunk.data;
-    DebugLog.instance.log('CIRCLE',
-        'buf $key: ${entry.chunks.length}/${entry.total}');
+    final n = entry.chunks.length;
+    if (n == 1 || n == entry.total || n % 50 == 0) {
+      DebugLog.instance.log('CIRCLE', 'buf $key: $n/${entry.total}');
+    }
     if (entry.isComplete) {
       final bytes = entry.assemble();
       _pending.remove(key);

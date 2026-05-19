@@ -144,19 +144,24 @@ class BleGattClient {
     BluetoothCharacteristic ch,
     Uint8List bytes,
   ) async {
-    DebugLog.instance.log('BLE-CENTRAL', 'write ${bytes.length}B → outbound');
+    // Verbose per-write logging gets buried under chunked media (an image
+    // is hundreds of writes, a video circle thousands) and washes more
+    // useful debug logs out of the in-memory ring buffer. Log only on
+    // failure — success is implied by absence of a FAILED line.
     try {
       await ch.write(bytes, withoutResponse: false);
-      DebugLog.instance.log('BLE-CENTRAL', 'write OK');
       return;
     } catch (e) {
-      DebugLog.instance.log('BLE-CENTRAL', 'write FAILED ($e) — retrying once');
+      DebugLog.instance.log('BLE-CENTRAL',
+          'write ${bytes.length}B FAILED ($e) — retrying once');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       try {
         await ch.write(bytes, withoutResponse: false);
-        DebugLog.instance.log('BLE-CENTRAL', 'write OK (retry)');
+        DebugLog.instance.log('BLE-CENTRAL',
+            'write ${bytes.length}B OK (retry)');
       } catch (e2) {
-        DebugLog.instance.log('BLE-CENTRAL', 'write FAILED again: $e2');
+        DebugLog.instance.log('BLE-CENTRAL',
+            'write ${bytes.length}B FAILED again: $e2');
         rethrow;
       }
     }

@@ -777,9 +777,15 @@ class MessagingService {
     Frame frame, {
     required bool fromCentral,
   }) async {
-    DebugLog.instance.log('NOISE',
-        'RX ${frame.type.name} from $peerId (${frame.payload.length}B, '
-        '${fromCentral ? "peripheral side" : "central side"})');
+    // Transport frames during chunked-media transfer fire dozens-per-second.
+    // Logging every one swamps the in-memory ring buffer; we only log
+    // handshake + announcement traffic by default. Per-chunk progress is
+    // already covered by the reassembler's sampled output.
+    if (frame.type != FrameType.transport) {
+      DebugLog.instance.log('NOISE',
+          'RX ${frame.type.name} from $peerId (${frame.payload.length}B, '
+          '${fromCentral ? "peripheral side" : "central side"})');
+    }
 
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
@@ -836,10 +842,9 @@ class MessagingService {
           'drop transport from $peerId: malformed envelope ($e)');
       return;
     }
-    DebugLog.instance.log('NOISE',
-        'envelope from origin=${TransportEnvelope.hashHex(env.originPubkeyHash)} '
-        'dest=${TransportEnvelope.hashHex(env.destPubkeyHash)} '
-        'ttl=${env.ttl} msgId=${env.msgIdHex().substring(0, 8)}…');
+    // Suppressed by default — see _handleFrame above. The reassembler logs
+    // sampled progress, and any decode/decrypt/sig failures still produce
+    // their own log lines below.
 
     // Dedup: drop frames we've already seen via another path. Keyed on the
     // (origin, msgId) pair which is stable regardless of which relay
@@ -937,7 +942,7 @@ class MessagingService {
           final plaintext =
               utf8.decode(unpacked.body, allowMalformed: true);
           DebugLog.instance.log('NOISE',
-              'SealedBox open OK (text) from $peerId, ${plaintext.length} chars');
+              'RX text from $peerId (${plaintext.length} chars)');
           final message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,

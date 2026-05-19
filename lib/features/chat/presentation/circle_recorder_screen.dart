@@ -17,7 +17,17 @@ import '../../../core/theme/colors.dart';
 class CircleRecorderScreen extends StatefulWidget {
   const CircleRecorderScreen({super.key});
 
-  static const int maxDurationSeconds = 10;
+  /// Hard cap on circle clip length. BLE bandwidth makes anything longer
+  /// painfully slow — at 136B per chunk + 15ms pacing, a 200KB clip is
+  /// already ~22s of upload time. Keep clips short.
+  static const int maxDurationSeconds = 5;
+
+  /// Reject the recorded file if it ends up larger than this. With
+  /// ResolutionPreset.low (≈320×240) and no audio, 5s should land well
+  /// under 100KB on most devices, but adaptive bitrate codecs can
+  /// occasionally blow past that; if so, we refuse to send rather than
+  /// queue a multi-minute upload.
+  static const int maxSizeBytes = 250 * 1024;
 
   @override
   State<CircleRecorderScreen> createState() => _CircleRecorderScreenState();
@@ -52,10 +62,11 @@ class _CircleRecorderScreenState extends State<CircleRecorderScreen> {
       final c = CameraController(
         front,
         // Low resolution keeps file size in a transmittable range for BLE.
-        // 320x240 @ ~150kbps × 10s ≈ 200KB — still slow over BLE but
-        // doesn't take all day.
+        // No audio: an MP4 with no audio track at 320×240/5s lands around
+        // 50-100KB on most devices, which is the upper bound we can ship
+        // through the chunked-media pipeline within a couple of minutes.
         ResolutionPreset.low,
-        enableAudio: true,
+        enableAudio: false,
       );
       await c.initialize();
       if (!mounted) {
@@ -122,6 +133,25 @@ class _CircleRecorderScreenState extends State<CircleRecorderScreen> {
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final dst = '${dir.path}/cap-$stamp.mp4';
       await File(file.path).copy(dst);
+      final size = await File(dst).length();
+      if (size > CircleRecorderScreen.maxSizeBytes) {
+        // File is too big to ship over BLE in a reasonable time. Delete and
+        // surface the issue rather than queueing a multi-minute upload.
+        await File(dst).delete();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+            content: Text(
+              'circle too large (${(size / 1024).round()}KB), '
+              'try a shorter clip',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        );
+        Navigator.of(context).pop();
+        return;
+      }
       final durationMs = started == null
           ? 0
           : DateTime.now().difference(started).inMilliseconds;
