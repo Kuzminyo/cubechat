@@ -6,6 +6,7 @@ import '../crypto/identity_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../transport/chat_session_manager.dart';
+import '../transport/messaging_service.dart';
 import 'nickname_controller.dart';
 
 /// Emergency wipe.
@@ -30,6 +31,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   for (final peerId in sessions.keys.toList()) {
     manager.drop(peerId);
   }
+
+  // Drop any encrypted frames we were holding for other peers (relay buffer).
+  ref.read(messagingServiceProvider).clearRelayBuffer();
 
   // 2. On-disk persistence.
   await HiveInit.wipeAll();

@@ -23,6 +23,7 @@ import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'dedup_cache.dart';
+import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
 import 'image_reassembly.dart';
@@ -41,10 +42,12 @@ const _handshakeTimeout = Duration(seconds: 15);
 const _announcementInterval = Duration(seconds: 60);
 
 /// Replay window for signed frames. A frame whose signed timestamp is older
-/// than this is rejected even if it slipped past the dedup cache (which only
-/// remembers the last ~10 minutes). Generous enough to absorb multi-hop
-/// relay latency and offline store-and-forward of a few minutes.
-const int _replayMaxAgeMs = 10 * 60 * 1000;
+/// than this is rejected. It is deliberately aligned with the dedup-cache
+/// TTL and the store-and-forward hold time (all 1 hour): a held frame is
+/// delivered carrying its original signed timestamp, so the window must be
+/// at least as long as we're willing to hold it, and the dedup TTL must
+/// cover the same span so replays inside the window are still caught.
+const int _replayMaxAgeMs = 60 * 60 * 1000;
 
 /// How far a signed timestamp may sit in the future before we treat it as a
 /// bogus / skewed clock and drop the frame. Phones aren't NTP-synced, so we
@@ -88,8 +91,15 @@ class MessagingService {
 
   /// Drops duplicate transport frames (a frame we've already seen or
   /// forwarded) before they hit the chat UI or the relay path. Keyed on
-  /// (origin, msgId).
-  final DedupCache _dedup = DedupCache();
+  /// (origin, msgId). TTL is aligned with the replay window so a frame
+  /// re-injected anywhere inside that window is still recognised as a
+  /// duplicate; capacity is generous enough for a busy event mesh.
+  final DedupCache _dedup =
+      DedupCache(capacity: 4096, ttl: const Duration(hours: 1));
+
+  /// Opportunistic store-and-forward buffer: encrypted frames held for peers
+  /// that aren't reachable right now, flushed when they next connect to us.
+  final StoreForwardCache _store = StoreForwardCache();
 
   /// Multi-chunk image reassembly buffer (M5.4). Each incoming image stream
   /// is keyed by its 16-byte imageId; finished images get written to the
@@ -787,8 +797,25 @@ class MessagingService {
     }
 
     if (!addressedToMe) {
-      DebugLog.instance.log('MESH',
-          'transport not for me, forwarded only (no decrypt)');
+      // Opportunistic store-and-forward: besides the immediate relay above,
+      // hold an encrypted copy for the destination so we can hand it over
+      // if/when they connect to us directly later (data-mule delivery).
+      // Broadcast frames (announcements) don't need holding — they're for
+      // everyone and re-broadcast on their own cadence.
+      if (!env.isBroadcast) {
+        _store.store(
+          destHash: env.destPubkeyHash,
+          frameBytes: frame.encode(),
+          origin: env.originPubkeyHash,
+          msgId: env.msgId,
+        );
+        DebugLog.instance.log('MESH',
+            'transport not for me — forwarded + held for dest '
+            '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
+      } else {
+        DebugLog.instance.log('MESH',
+            'broadcast not for me, forwarded only (no hold)');
+      }
       return;
     }
 
@@ -1478,6 +1505,43 @@ class MessagingService {
     // they relay to) learns who we are without waiting up to a minute for
     // the next periodic tick.
     unawaited(_broadcastAnnouncement());
+    // …and hand over anything we've been holding for this peer while they
+    // were unreachable (store-and-forward delivery).
+    unawaited(_flushStoreForwardFor(session));
+  }
+
+  /// Delivers every frame we've been holding for [session]'s peer now that
+  /// they're a directly-connected neighbour. Frames go out on the same link
+  /// the session lives on, paced like other chunked sends.
+  Future<void> _flushStoreForwardFor(ChatSession session) async {
+    final pub = session.remoteStaticPublicKey;
+    if (pub == null) return;
+    final Uint8List hash;
+    try {
+      hash = await _peerPubkeyHash(pub);
+    } catch (_) {
+      return;
+    }
+    final pending = _store.drainFor(hash);
+    if (pending.isEmpty) return;
+    DebugLog.instance.log('MESH',
+        'store-and-forward: delivering ${pending.length} held frame(s) '
+        'to ${session.peerId}');
+    final client = _clients[session.peerId];
+    for (final bytes in pending) {
+      try {
+        if (client != null && client.isConnected) {
+          await client.writeOutbound(bytes);
+        } else {
+          await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+        }
+      } catch (e) {
+        DebugLog.instance.log('MESH',
+            'store-and-forward delivery failed for ${session.peerId}: $e');
+      }
+      // Pace like the chunked-media path so we don't overrun a cheap stack.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 
   static String _hexOf(Uint8List bytes) {
@@ -1563,6 +1627,11 @@ class MessagingService {
     });
   }
 
+  /// Drops every frame held in the store-and-forward buffer. Called by
+  /// Emergency Wipe — although these frames are opaque (encrypted to other
+  /// peers), a panic wipe should leave nothing behind.
+  void clearRelayBuffer() => _store.clear();
+
   Future<void> dispose() async {
     _announcementTimer?.cancel();
     _announcementTimer = null;
@@ -1571,6 +1640,7 @@ class MessagingService {
       t.cancel();
     }
     _handshakeTimers.clear();
+    _store.clear();
     for (final c in _clients.values) {
       await c.dispose();
     }
