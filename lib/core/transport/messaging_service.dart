@@ -40,6 +40,17 @@ const _handshakeTimeout = Duration(seconds: 15);
 /// joining mid-conversation learns the roster within a minute.
 const _announcementInterval = Duration(seconds: 60);
 
+/// Replay window for signed frames. A frame whose signed timestamp is older
+/// than this is rejected even if it slipped past the dedup cache (which only
+/// remembers the last ~10 minutes). Generous enough to absorb multi-hop
+/// relay latency and offline store-and-forward of a few minutes.
+const int _replayMaxAgeMs = 10 * 60 * 1000;
+
+/// How far a signed timestamp may sit in the future before we treat it as a
+/// bogus / skewed clock and drop the frame. Phones aren't NTP-synced, so we
+/// allow a couple of minutes of forward skew.
+const int _replayMaxFutureMs = 2 * 60 * 1000;
+
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
 ///
@@ -814,6 +825,25 @@ class MessagingService {
             context: ctx,
             expectedEdPub: expectedEd,
           );
+          // Replay window: the signed timestamp can't be refreshed by a
+          // relay without the sender's Ed25519 key, so a frame captured
+          // and re-injected after the dedup cache expired still carries
+          // its original send time. Reject anything too old, and anything
+          // implausibly far in the future (clock skew tolerance).
+          final skewMs =
+              DateTime.now().millisecondsSinceEpoch - verified.timestampMs;
+          if (skewMs > _replayMaxAgeMs) {
+            DebugLog.instance.log('CRYPTO',
+                'drop signed body from $peerId: stale '
+                '(${(skewMs / 1000).round()}s old > replay window)');
+            return;
+          }
+          if (skewMs < -_replayMaxFutureMs) {
+            DebugLog.instance.log('CRYPTO',
+                'drop signed body from $peerId: timestamp '
+                '${(-skewMs / 1000).round()}s in the future (clock skew?)');
+            return;
+          }
           innerBytes = verified.inner;
           verifiedSenderEdPub = verified.senderEdPub;
           DebugLog.instance.log('CRYPTO',

@@ -41,6 +41,50 @@ void main() {
       expect(verified.senderEdPub, equals(sender.pub));
     });
 
+    test('round-trips the signed timestamp', () async {
+      final sender = await _newKey();
+      final ctx = SignedPayload.contextBytes(
+        originPubkeyHash: Uint8List(8),
+        destPubkeyHash: Uint8List(8),
+        msgId: Uint8List(16),
+      );
+      const ts = 1893456000000; // fixed wall-clock for determinism
+      final wire = await SignedPayload.wrap(
+        inner: Uint8List.fromList([0x10, 1]),
+        context: ctx,
+        signKeyPair: sender.kp,
+        senderEdPub: sender.pub,
+        timestampMs: ts,
+      );
+      final verified = await SignedPayload.verify(wire: wire, context: ctx);
+      expect(verified.timestampMs, ts);
+    });
+
+    test('a tampered timestamp fails verification', () async {
+      final sender = await _newKey();
+      final ctx = SignedPayload.contextBytes(
+        originPubkeyHash: Uint8List(8),
+        destPubkeyHash: Uint8List(8),
+        msgId: Uint8List(16),
+      );
+      final wire = await SignedPayload.wrap(
+        inner: Uint8List.fromList([0x10, 1]),
+        context: ctx,
+        signKeyPair: sender.kp,
+        senderEdPub: sender.pub,
+        timestampMs: 1893456000000,
+      );
+      // Flip a byte inside the 8-byte timestamp region (right after the
+      // marker + pub + sig header prefix).
+      final tsOffset = 1 + SignedPayload.pubLen + SignedPayload.sigLen;
+      final tampered = Uint8List.fromList(wire);
+      tampered[tsOffset] ^= 0xFF;
+      await expectLater(
+        () => SignedPayload.verify(wire: tampered, context: ctx),
+        throwsA(isA<SignatureVerificationException>()),
+      );
+    });
+
     test('strict expectedEdPub matches → passes', () async {
       final sender = await _newKey();
       final ctx = SignedPayload.contextBytes(
