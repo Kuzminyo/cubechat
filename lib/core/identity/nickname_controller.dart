@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 
 /// User-chosen display name. Persisted in the Hive settings box, used as the
@@ -27,7 +28,8 @@ class NicknameController extends Notifier<String> {
 
   Future<void> _load() async {
     try {
-      final box = await Hive.openBox<String>(HiveBoxes.settings);
+      final box =
+          await hiveCipherProvider.openEncryptedBox<String>(HiveBoxes.settings);
       _box = box;
       final v = box.get(_key);
       if (v != null && v.isNotEmpty) state = v;

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../models/known_peer.dart';
 
@@ -25,7 +26,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
 
   Future<void> _loadFromDisk() async {
     try {
-      final box = await Hive.openBox<Map<dynamic, dynamic>>(HiveBoxes.knownPeers);
+      final box = await hiveCipherProvider
+          .openEncryptedBox<Map<dynamic, dynamic>>(HiveBoxes.knownPeers);
       _box = box;
       final loaded = <String, KnownPeer>{};
       for (final key in box.keys) {

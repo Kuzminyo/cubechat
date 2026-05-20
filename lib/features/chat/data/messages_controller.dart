@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../models/message.dart';
 
@@ -24,7 +25,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 
   Future<void> _loadFromDisk() async {
     try {
-      final box = await Hive.openBox<List<dynamic>>(HiveBoxes.messages);
+      final box = await hiveCipherProvider
+          .openEncryptedBox<List<dynamic>>(HiveBoxes.messages);
       _box = box;
       final loaded = <String, List<Message>>{};
       for (final key in box.keys) {
