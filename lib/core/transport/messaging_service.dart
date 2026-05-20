@@ -276,7 +276,7 @@ class MessagingService {
       final identity = await _ref.read(identityProvider.future);
       final inner = packInnerPayload(
         InnerPayloadType.text,
-        Uint8List.fromList(utf8.encode(text)),
+        padTextPayload(Uint8List.fromList(utf8.encode(text))),
       );
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
@@ -875,8 +875,10 @@ class MessagingService {
 
       switch (unpacked.type) {
         case InnerPayloadType.text:
-          final plaintext =
-              utf8.decode(unpacked.body, allowMalformed: true);
+          final plaintext = utf8.decode(
+            unpadTextPayload(unpacked.body),
+            allowMalformed: true,
+          );
           DebugLog.instance.log('NOISE',
               'RX text from $peerId (${plaintext.length} chars)');
           final message = Message(

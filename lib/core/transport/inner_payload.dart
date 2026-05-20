@@ -72,6 +72,56 @@ Uint8List packInnerPayload(InnerPayloadType type, Uint8List body) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Text length-hiding padding.
+//
+// A passive BLE sniffer can read the ciphertext length and thereby the exact
+// plaintext length of a message — "ok" vs a 40-char sentence are trivially
+// distinguishable. We pad *short* text so the common cases all share one
+// length. Layout of a padded text body (sits after the 0x10 type tag, inside
+// the signed + SealedBox-encrypted payload):
+//
+//   [realLen : 2 bytes BE][utf8 text : realLen][random pad : 0..N]
+//
+// Short messages (realLen + 2 <= padBucket) are padded up to `padBucket`
+// bytes; everything longer is sent as-is (just the 2-byte prefix) to stay
+// inside the BLE MTU budget. The pad is random so it carries no structure;
+// it's stripped after signature verification on the receiver.
+const int _textPadBucket = 48;
+final _padRand = Random.secure();
+
+/// Wrap UTF-8 [text] bytes into a padded, self-describing text body.
+Uint8List padTextPayload(Uint8List utf8Text) {
+  if (utf8Text.length > 0xFFFF) {
+    throw const FormatException('text too long for 16-bit length prefix');
+  }
+  final base = 2 + utf8Text.length;
+  final target = base <= _textPadBucket ? _textPadBucket : base;
+  final out = Uint8List(target);
+  out[0] = (utf8Text.length >> 8) & 0xff;
+  out[1] = utf8Text.length & 0xff;
+  out.setRange(2, 2 + utf8Text.length, utf8Text);
+  for (var i = 2 + utf8Text.length; i < target; i++) {
+    out[i] = _padRand.nextInt(256);
+  }
+  return out;
+}
+
+/// Recover the original UTF-8 bytes from a padded text body. Tolerates a
+/// legacy (pre-padding) body that is just raw UTF-8 with no length prefix —
+/// if the declared length overruns the buffer we fall back to returning the
+/// whole body, so a peer on an older build still renders (garbled length
+/// prefix shows as two extra glyphs, but no crash).
+Uint8List unpadTextPayload(Uint8List body) {
+  if (body.length < 2) return body;
+  final declared = (body[0] << 8) | body[1];
+  if (declared > body.length - 2) {
+    // Not our padded format (older sender) — treat the whole thing as text.
+    return body;
+  }
+  return Uint8List.fromList(body.sublist(2, 2 + declared));
+}
+
 /// One slice of a chunked image transfer. Multiple chunks sharing the same
 /// `imageId` reassemble (in seq order) into the original image bytes.
 ///

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cubechat/core/transport/inner_payload.dart';
@@ -155,6 +156,48 @@ void main() {
     test('newAudioId mints distinct ids', () {
       expect(AudioChunk.newAudioId(),
           isNot(equals(AudioChunk.newAudioId())));
+    });
+  });
+
+  group('text padding', () {
+    Uint8List u(String s) => Uint8List.fromList(s.codeUnits);
+
+    test('short text is padded to the 48-byte bucket', () {
+      final padded = padTextPayload(u('ok'));
+      expect(padded.length, 48);
+      expect(unpadTextPayload(padded), equals(u('ok')));
+    });
+
+    test('empty text still pads to the bucket', () {
+      final padded = padTextPayload(Uint8List(0));
+      expect(padded.length, 48);
+      expect(unpadTextPayload(padded), isEmpty);
+    });
+
+    test('two short messages of different length share one padded size', () {
+      expect(padTextPayload(u('a')).length,
+          padTextPayload(u('hello there')).length);
+    });
+
+    test('long text is not padded (just the length prefix)', () {
+      final long = u('x' * 100);
+      final padded = padTextPayload(long);
+      expect(padded.length, 2 + 100);
+      expect(unpadTextPayload(padded), equals(long));
+    });
+
+    test('UTF-8 multibyte text round-trips', () {
+      final utf8Bytes = Uint8List.fromList(utf8.encode('Привет 🦊'));
+      final padded = padTextPayload(utf8Bytes);
+      expect(unpadTextPayload(padded), equals(utf8Bytes));
+    });
+
+    test('unpadTextPayload tolerates a legacy unprefixed body', () {
+      // Old sender: body is raw UTF-8 with no 2-byte length prefix. The
+      // declared length (first two bytes) will overrun, so we fall back
+      // to returning the whole body unchanged.
+      final legacy = Uint8List.fromList([0xFF, 0xFF, 1, 2, 3]);
+      expect(unpadTextPayload(legacy), equals(legacy));
     });
   });
 
