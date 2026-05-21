@@ -33,7 +33,26 @@ class HiveCipherProvider {
   /// Returns the cipher, generating a fresh key on first run.
   Future<HiveAesCipher> load() async {
     if (_cached != null) return _cached!;
-    final existing = await _storage.read(key: _keyName);
+    // Same Keystore-corruption hazard as IdentityService: a read can throw
+    // BadPaddingException after an OS update invalidates the master key.
+    // Treat a read failure as "no key yet" — mint a fresh one. The old
+    // encrypted boxes become unreadable, but openEncryptedBox already
+    // deletes-and-recreates a box it can't decrypt, so chat history just
+    // resets rather than crashing.
+    String? existing;
+    try {
+      existing = await _storage.read(key: _keyName);
+    } catch (e) {
+      debugPrint('Hive cipher: secure read failed ($e) — resetting key');
+      try {
+        await _storage.deleteAll();
+      } catch (_) {
+        try {
+          await _storage.delete(key: _keyName);
+        } catch (_) {}
+      }
+      existing = null;
+    }
     Uint8List keyBytes;
     if (existing != null && existing.length == _keyLen * 2) {
       keyBytes = _hexDecode(existing);
@@ -42,8 +61,13 @@ class HiveCipherProvider {
       for (var i = 0; i < _keyLen; i++) {
         keyBytes[i] = _rand.nextInt(256);
       }
-      await _storage.write(key: _keyName, value: _hexEncode(keyBytes));
-      debugPrint('Hive cipher: minted fresh 32-byte AES key');
+      try {
+        await _storage.write(key: _keyName, value: _hexEncode(keyBytes));
+        debugPrint('Hive cipher: minted fresh 32-byte AES key');
+      } catch (e) {
+        debugPrint('Hive cipher: secure write failed ($e) — '
+            'history encryption is session-only this launch');
+      }
     }
     _cached = HiveAesCipher(keyBytes);
     return _cached!;
@@ -54,7 +78,9 @@ class HiveCipherProvider {
   /// box files left on disk become unrecoverable.
   Future<void> wipe() async {
     _cached = null;
-    await _storage.delete(key: _keyName);
+    try {
+      await _storage.delete(key: _keyName);
+    } catch (_) {}
   }
 
   /// Opens (or creates) a Hive box encrypted under our cipher. If a box
