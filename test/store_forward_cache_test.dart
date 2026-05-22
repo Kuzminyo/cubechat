@@ -78,5 +78,49 @@ void main() {
       expect(c.size, 0);
       expect(c.destinationCount, 0);
     });
+
+    test('export/import round-trips held frames', () {
+      final a = StoreForwardCache();
+      a.store(destHash: _b(1), frameBytes: _frame(10), origin: _b(9), msgId: _b(1, 16));
+      a.store(destHash: _b(1), frameBytes: _frame(11), origin: _b(9), msgId: _b(2, 16));
+      a.store(destHash: _b(2), frameBytes: _frame(20), origin: _b(9), msgId: _b(3, 16));
+
+      final rows = a.exportEntries();
+      expect(rows.length, 3);
+
+      final b = StoreForwardCache();
+      b.importEntries(rows);
+      expect(b.size, 3);
+      expect(b.destinationCount, 2);
+      expect(b.drainFor(_b(1)).map((f) => f[0]).toList(), [10, 11]);
+      expect(b.drainFor(_b(2)).single[0], 20);
+    });
+
+    test('import drops entries older than the TTL', () {
+      final src = StoreForwardCache();
+      src.store(destHash: _b(1), frameBytes: _frame(1), origin: _b(9), msgId: _b(1, 16));
+      final rows = src.exportEntries();
+      // Backdate the row well beyond the TTL.
+      rows[0]['at'] = DateTime.now()
+          .subtract(const Duration(hours: 5))
+          .millisecondsSinceEpoch;
+
+      final dst = StoreForwardCache(ttl: const Duration(hours: 1));
+      dst.importEntries(rows);
+      expect(dst.size, 0);
+    });
+
+    test('import accepts frame bytes as a plain int list', () {
+      final dst = StoreForwardCache();
+      dst.importEntries([
+        {
+          'dest': '0101010101010101',
+          'frame': <int>[7, 8, 9],
+          'at': DateTime.now().millisecondsSinceEpoch,
+          'dedup': 'x/y',
+        }
+      ]);
+      expect(dst.size, 1);
+    });
   });
 }

@@ -8,8 +8,11 @@ abstract final class HiveBoxes {
   static const messages = 'cubechat.messages';
   /// User preferences: nickname, etc.
   static const settings = 'cubechat.settings';
+  /// Opportunistic store-and-forward relay buffer (encrypted frames held
+  /// for currently-unreachable peers). Survives restart within the 1h TTL.
+  static const relayBuffer = 'cubechat.relay_buffer';
 
-  static const all = <String>[knownPeers, messages, settings];
+  static const all = <String>[knownPeers, messages, settings, relayBuffer];
 }
 
 /// Initialises Hive. Call from `main()` after `WidgetsFlutterBinding.

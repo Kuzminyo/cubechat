@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 
 import 'package:cryptography/cryptography.dart';
 
@@ -17,6 +18,8 @@ import '../crypto/identity_service.dart';
 import '../crypto/sealed_box.dart';
 import '../crypto/signed_payload.dart';
 import '../identity/nickname_controller.dart';
+import '../storage/hive_cipher.dart';
+import '../storage/hive_init.dart';
 import '../util/debug_log.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
@@ -77,6 +80,7 @@ class MessagingService {
   MessagingService(this._ref) {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
+    unawaited(_loadRelayBuffer());
   }
 
   final Ref _ref;
@@ -100,6 +104,12 @@ class MessagingService {
   /// Opportunistic store-and-forward buffer: encrypted frames held for peers
   /// that aren't reachable right now, flushed when they next connect to us.
   final StoreForwardCache _store = StoreForwardCache();
+
+  /// Encrypted Hive box backing [_store] so held frames survive an app
+  /// restart (within the 1h TTL). Writes are debounced via
+  /// [_relayPersistTimer] so a media-relay burst doesn't thrash the disk.
+  Box<List<dynamic>>? _relayBox;
+  Timer? _relayPersistTimer;
 
   /// Multi-chunk image reassembly buffer (M5.4). Each incoming image stream
   /// is keyed by its 16-byte imageId; finished images get written to the
@@ -809,6 +819,7 @@ class MessagingService {
           origin: env.originPubkeyHash,
           msgId: env.msgId,
         );
+        _scheduleRelayPersist();
         DebugLog.instance.log('MESH',
             'transport not for me — forwarded + held for dest '
             '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
@@ -1524,6 +1535,7 @@ class MessagingService {
     }
     final pending = _store.drainFor(hash);
     if (pending.isEmpty) return;
+    _scheduleRelayPersist(); // drain mutated the buffer
     DebugLog.instance.log('MESH',
         'store-and-forward: delivering ${pending.length} held frame(s) '
         'to ${session.peerId}');
@@ -1541,6 +1553,51 @@ class MessagingService {
       }
       // Pace like the chunked-media path so we don't overrun a cheap stack.
       await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+
+  // -------------------- store-and-forward persistence --------------------
+
+  /// Opens the encrypted relay-buffer box and repopulates [_store] from it.
+  /// Stale rows (older than the cache TTL) are dropped during import.
+  Future<void> _loadRelayBuffer() async {
+    try {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<List<dynamic>>(HiveBoxes.relayBuffer);
+      _relayBox = box;
+      final raw = box.get('entries');
+      if (raw != null && raw.isNotEmpty) {
+        final rows = raw
+            .whereType<Map<dynamic, dynamic>>()
+            .map((m) => m.cast<dynamic, dynamic>())
+            .toList();
+        _store.importEntries(rows);
+        DebugLog.instance.log('MESH',
+            'store-and-forward: restored ${_store.size} held frame(s) '
+            'across ${_store.destinationCount} dest from disk');
+      }
+    } catch (e) {
+      DebugLog.instance.log('MESH', 'relay buffer load failed: $e');
+    }
+  }
+
+  /// Debounced write-back of [_store] to disk. Called after any mutation;
+  /// coalesces a burst (e.g. relaying a media stream) into one write 2s
+  /// after the last change.
+  void _scheduleRelayPersist() {
+    _relayPersistTimer?.cancel();
+    _relayPersistTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(_persistRelayBuffer());
+    });
+  }
+
+  Future<void> _persistRelayBuffer() async {
+    final box = _relayBox;
+    if (box == null) return;
+    try {
+      await box.put('entries', _store.exportEntries());
+    } catch (e) {
+      DebugLog.instance.log('MESH', 'relay buffer persist failed: $e');
     }
   }
 
@@ -1630,11 +1687,23 @@ class MessagingService {
   /// Drops every frame held in the store-and-forward buffer. Called by
   /// Emergency Wipe — although these frames are opaque (encrypted to other
   /// peers), a panic wipe should leave nothing behind.
-  void clearRelayBuffer() => _store.clear();
+  void clearRelayBuffer() {
+    _store.clear();
+    _relayPersistTimer?.cancel();
+    _relayPersistTimer = null;
+    try {
+      _relayBox?.delete('entries');
+    } catch (_) {}
+  }
 
   Future<void> dispose() async {
     _announcementTimer?.cancel();
     _announcementTimer = null;
+    // Flush any pending buffer write synchronously so a held frame isn't
+    // lost if we're disposed inside the debounce window.
+    _relayPersistTimer?.cancel();
+    _relayPersistTimer = null;
+    await _persistRelayBuffer();
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {
       t.cancel();

@@ -100,6 +100,54 @@ class StoreForwardCache {
     _count = 0;
   }
 
+  /// Flattens the buffer into serialisable rows for on-disk persistence.
+  /// `dest` is the hex destination hash, `frame` the raw wire bytes, `at`
+  /// the store time in epoch-ms, `dedup` the origin/msgId key.
+  List<Map<String, dynamic>> exportEntries() {
+    final out = <Map<String, dynamic>>[];
+    for (final entry in _byDest.entries) {
+      for (final f in entry.value) {
+        out.add({
+          'dest': entry.key,
+          'frame': f.frameBytes,
+          'at': f.storedAt.millisecondsSinceEpoch,
+          'dedup': f.dedupKey,
+        });
+      }
+    }
+    return out;
+  }
+
+  /// Restores rows produced by [exportEntries], dropping any already past
+  /// [ttl] and de-duplicating against what's already held. Used once at
+  /// startup to repopulate the buffer from disk.
+  void importEntries(List<Map<dynamic, dynamic>> entries) {
+    final now = DateTime.now();
+    for (final m in entries) {
+      final destHex = m['dest'] as String?;
+      final frame = m['frame'];
+      final atMs = m['at'] as int?;
+      final dedup = m['dedup'] as String?;
+      if (destHex == null || frame == null || atMs == null || dedup == null) {
+        continue;
+      }
+      final storedAt = DateTime.fromMillisecondsSinceEpoch(atMs);
+      if (now.difference(storedAt) > ttl) continue; // already stale
+      final bytes = frame is Uint8List
+          ? frame
+          : Uint8List.fromList((frame as List).cast<int>());
+      final list = _byDest.putIfAbsent(destHex, () => <StoredFrame>[]);
+      if (list.any((x) => x.dedupKey == dedup)) continue;
+      list.add(StoredFrame(
+        frameBytes: bytes,
+        storedAt: storedAt,
+        dedupKey: dedup,
+      ));
+      _count++;
+    }
+    _evictGlobal();
+  }
+
   void _gc() {
     final cutoff = DateTime.now().subtract(ttl);
     final emptyDests = <String>[];
