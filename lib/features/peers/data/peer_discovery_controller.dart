@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
+import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/platform_info.dart';
@@ -137,14 +139,38 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       final peripheral = ref.read(peripheralControllerProvider.notifier);
       // Advertise the user's chosen nickname so other phones see something
       // meaningful in their Nearby list instead of 'Android' / 'iPhone'.
-      // Falls back to the platform name if the user hasn't set one yet.
+      //
+      // The advertised name is also the scanner's dedup key (it survives
+      // Android BLE MAC rotation, unlike the address). So the default name
+      // gets a short, stable per-identity suffix — otherwise two phones that
+      // never set a nickname would both advertise "Android" and the scanner
+      // would collapse them into a single Nearby entry.
       final nickname = ref.read(nicknameControllerProvider);
-      final advertiseName = nickname == NicknameController.defaultNickname
-          ? (PlatformInfo.isIOS ? 'iPhone' : 'Android')
-          : nickname;
+      String advertiseName;
+      if (nickname != NicknameController.defaultNickname) {
+        advertiseName = nickname;
+      } else {
+        final base = PlatformInfo.isIOS ? 'iPhone' : 'Android';
+        final suffix = await _identitySuffix();
+        advertiseName = suffix == null ? base : '$base $suffix';
+      }
       await peripheral.start(peerName: advertiseName);
     } catch (e, st) {
       debugPrint('peripheral boot failed: $e\n$st');
+    }
+  }
+
+  /// 4 hex chars derived from our identity pubkey — stable across restarts
+  /// and unique per device, used to disambiguate default advertise names.
+  Future<String?> _identitySuffix() async {
+    try {
+      final id = await ref.read(identityProvider.future);
+      final digest = await Blake2s().hash(id.publicKey);
+      final b = digest.bytes;
+      return b[0].toRadixString(16).padLeft(2, '0') +
+          b[1].toRadixString(16).padLeft(2, '0');
+    } catch (_) {
+      return null;
     }
   }
 

@@ -102,12 +102,19 @@ class BleScanner {
     var changed = false;
     final now = DateTime.now();
     for (final r in results) {
-      final id = r.device.remoteId.str;
+      final mac = r.device.remoteId.str;
+      final advName = r.advertisementData.advName;
       final advertisedName = _resolveName(r);
-      final existing = _peers[id];
+      // Dedup key: Android rotates the BLE MAC for privacy, so the SAME
+      // phone shows up under many addresses. The advertised name (our
+      // nickname, made unique per identity for the default case) is stable
+      // across rotation, so we key on it and keep the freshest MAC for
+      // connecting. Unnamed advertisers fall back to the MAC.
+      final key = advName.isNotEmpty ? 'n:$advName' : 'm:$mac';
+      final existing = _peers[key];
       if (existing == null) {
-        _peers[id] = DiscoveredPeer(
-          id: id,
+        _peers[key] = DiscoveredPeer(
+          id: mac,
           advertisedName: advertisedName,
           rssi: r.rssi,
           lastSeen: now,
@@ -115,15 +122,22 @@ class BleScanner {
         changed = true;
         continue;
       }
-      // Update if RSSI moved meaningfully or name finally arrived.
       final rssiMoved = (existing.rssi - r.rssi).abs() >= 4;
-      final nameChanged = existing.advertisedName != advertisedName;
-      _peers[id] = existing.copyWith(
+      final macChanged = existing.id != mac;
+      // Rebuild rather than copyWith so we can adopt the freshest MAC into
+      // `id` (copyWith keeps id fixed).
+      _peers[key] = DiscoveredPeer(
+        id: mac,
         advertisedName: advertisedName,
         rssi: r.rssi,
         lastSeen: now,
+        pubkeyFingerprint: existing.pubkeyFingerprint,
+        isConnected: existing.isConnected,
       );
-      if (rssiMoved || nameChanged) changed = true;
+      if (rssiMoved || macChanged ||
+          existing.advertisedName != advertisedName) {
+        changed = true;
+      }
     }
     if (changed) _emit();
   }
