@@ -1690,7 +1690,10 @@ class MessagingService {
   /// short, content-type-aware snippet.
   void _notifyIncoming({required String canonicalId, required Message message}) {
     if (message.isMine) return;
-    if (AppLifecycle.instance.isForeground) return;
+    // Suppress only when the user is actively reading THIS chat. A message
+    // from someone else (or while on the chats list / nearby / backgrounded)
+    // still pops a notification.
+    if (AppLifecycle.instance.isViewingChat(canonicalId)) return;
     final known = _ref.read(knownPeersControllerProvider)[canonicalId];
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName

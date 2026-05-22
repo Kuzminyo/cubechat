@@ -13,6 +13,8 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/app_lifecycle.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -61,13 +63,31 @@ class ChatScreen extends ConsumerWidget {
         const [];
     final canSend = session?.isEstablished ?? false;
 
-    // Presence: directly connected now, or seen via a mesh announcement in
-    // the last 90s, counts as online.
+    // Presence. An established Noise session is a definite "connected right
+    // now". Otherwise we fall back to the last mesh announcement: peers
+    // re-announce every 60s, so a 150s window (~2.5 ticks) absorbs a single
+    // missed beacon without flickering offline.
     final known = ref.watch(knownPeersControllerProvider)[canonicalId];
     final lastSeen = known?.lastSeen;
     final isOnline = (session?.isEstablished ?? false) ||
         (lastSeen != null &&
-            DateTime.now().difference(lastSeen) < const Duration(seconds: 90));
+            DateTime.now().difference(lastSeen) < const Duration(seconds: 150));
+    final String statusText;
+    if (session != null &&
+        (session.status == ChatSessionStatus.handshakingInitiator ||
+            session.status == ChatSessionStatus.handshakingResponder ||
+            session.status == ChatSessionStatus.idle)) {
+      statusText = t.chatSessionHandshaking;
+    } else if (session != null && session.status == ChatSessionStatus.failed) {
+      statusText = t.chatSessionFailed;
+    } else if (isOnline) {
+      statusText = t.presenceOnline;
+    } else if (lastSeen != null) {
+      // "offline · 14:05" / "offline · Mon" — precise last-seen.
+      statusText = '${t.presenceOffline} · ${formatChatListTime(context, lastSeen)}';
+    } else {
+      statusText = t.presenceOffline;
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -93,7 +113,7 @@ class ChatScreen extends ConsumerWidget {
                     style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
                   ),
                   Text(
-                    _statusLabel(t, session, isOnline),
+                    statusText,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: isOnline
@@ -167,25 +187,6 @@ class ChatScreen extends ConsumerWidget {
     );
   }
 
-  String _statusLabel(AppLocalizations t, ChatSession? session, bool isOnline) {
-    // Mid-handshake / failed states are most informative — show them first.
-    if (session != null) {
-      switch (session.status) {
-        case ChatSessionStatus.idle:
-        case ChatSessionStatus.handshakingInitiator:
-        case ChatSessionStatus.handshakingResponder:
-          return t.chatSessionHandshaking;
-        case ChatSessionStatus.failed:
-          return t.chatSessionFailed;
-        case ChatSessionStatus.established:
-          return t.presenceOnline;
-      }
-    }
-    // No live session: presence from the last time we heard their
-    // announcement on the mesh.
-    return isOnline ? t.presenceOnline : t.presenceOffline;
-  }
-
 }
 
 class _ChatBottomBar extends ConsumerStatefulWidget {
@@ -210,7 +211,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   @override
   void initState() {
     super.initState();
-    // Opening the chat clears any pending notification banner for it.
+    // Mark this chat as the one the user is viewing, so inbound messages
+    // for it don't pop a (redundant) notification. Clears any banner too.
+    AppLifecycle.instance.activeChatId = widget.canonicalId;
     NotificationService.instance.clearForChat(widget.canonicalId);
   }
 
@@ -239,6 +242,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   @override
   void dispose() {
     _tick?.cancel();
+    // Only clear if we're still the active chat — guards against the
+    // next chat's initState having already set itself during a transition.
+    if (AppLifecycle.instance.activeChatId == widget.canonicalId) {
+      AppLifecycle.instance.activeChatId = null;
+    }
     super.dispose();
   }
 
