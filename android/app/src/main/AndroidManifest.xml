@@ -28,6 +28,12 @@
     <!-- Voice messages (mic capture for press-and-hold recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Background mesh: keep BLE alive when the app isn't in the foreground -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:label="cubechat"
         android:name="${applicationName}"
@@ -54,6 +60,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Keeps BLE mesh alive in the background (see MeshForegroundService). -->
+        <service
+            android:name=".MeshForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

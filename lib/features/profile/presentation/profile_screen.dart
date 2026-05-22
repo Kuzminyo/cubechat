@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
@@ -137,6 +138,9 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
 
+          const SizedBox(height: 8),
+          const _BackgroundModeCard(),
+
           const SizedBox(height: 12),
 
           // About
@@ -204,6 +208,85 @@ class ProfileScreen extends ConsumerWidget {
 
           // Emergency wipe
           _EmergencyWipeCard(),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackgroundModeCard extends ConsumerWidget {
+  const _BackgroundModeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final enabled = ref.watch(backgroundModeProvider);
+    final controller = ref.read(backgroundModeProvider.notifier);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.brandPrimary.withValues(alpha: 0.18),
+                  border: Border.all(
+                      color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+                ),
+                child: const Icon(Icons.podcasts,
+                    color: AppColors.brandPrimary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.profileBackground,
+                      style: TextStyle(
+                          color: AppColors.textOnGlass, fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t.profileBackgroundSubtitle,
+                      style: TextStyle(
+                          color: AppColors.textOnGlassDim, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: enabled,
+                activeColor: AppColors.brandPrimary,
+                onChanged: (v) => controller.setEnabled(v),
+              ),
+            ],
+          ),
+          if (enabled) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => controller.requestBatteryExemption(),
+                icon: const Icon(Icons.battery_saver,
+                    size: 16, color: AppColors.brandPrimary),
+                label: Text(
+                  t.profileBatteryExempt,
+                  style: const TextStyle(
+                      color: AppColors.brandPrimary, fontSize: 12.5),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

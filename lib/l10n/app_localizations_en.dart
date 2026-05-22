@@ -251,6 +251,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileTransportMesh => 'Bluetooth mesh';
 
   @override
+  String get profileBackground => 'Stay reachable in background';
+
+  @override
+  String get profileBackgroundSubtitle =>
+      'Keep receiving messages while the app is closed';
+
+  @override
+  String get profileBatteryExempt => 'Disable battery optimisation';
+
+  @override
   String get profileAbout => 'About';
 
   @override

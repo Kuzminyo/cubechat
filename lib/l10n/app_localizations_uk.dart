@@ -253,6 +253,16 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileTransportMesh => 'Bluetooth mesh';
 
   @override
+  String get profileBackground => 'Працювати у фоні';
+
+  @override
+  String get profileBackgroundSubtitle =>
+      'Отримувати повідомлення, коли застосунок закрито';
+
+  @override
+  String get profileBatteryExempt => 'Вимкнути оптимізацію батареї';
+
+  @override
   String get profileAbout => 'Про застосунок';
 
   @override

@@ -530,6 +530,24 @@ abstract class AppLocalizations {
   /// **'Bluetooth mesh'**
   String get profileTransportMesh;
 
+  /// No description provided for @profileBackground.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay reachable in background'**
+  String get profileBackground;
+
+  /// No description provided for @profileBackgroundSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep receiving messages while the app is closed'**
+  String get profileBackgroundSubtitle;
+
+  /// No description provided for @profileBatteryExempt.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable battery optimisation'**
+  String get profileBatteryExempt;
+
   /// No description provided for @profileAbout.
   ///
   /// In en, this message translates to:
