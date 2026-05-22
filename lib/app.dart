@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/ble/background_mode_controller.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/routing/app_router.dart';
+import 'core/util/app_lifecycle.dart';
 import 'core/theme/app_theme.dart';
 import 'l10n/app_localizations.dart';
 
@@ -33,6 +34,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Track foreground state so the messaging layer only raises a system
+    // notification for messages that arrive while the user isn't looking.
+    AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+
     // forbids starting a foreground service from the background. Re-apply

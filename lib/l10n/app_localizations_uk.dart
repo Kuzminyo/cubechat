@@ -208,6 +208,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatSessionFailed => 'З\'єднання не вдалося';
 
   @override
+  String get presenceOnline => 'у мережі';
+
+  @override
+  String get presenceOffline => 'не в мережі';
+
+  @override
   String get chatSessionFingerprintPending =>
       'Відбиток з\'явиться після завершення рукостискання.';
 

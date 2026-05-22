@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
@@ -60,6 +61,14 @@ class ChatScreen extends ConsumerWidget {
         const [];
     final canSend = session?.isEstablished ?? false;
 
+    // Presence: directly connected now, or seen via a mesh announcement in
+    // the last 90s, counts as online.
+    final known = ref.watch(knownPeersControllerProvider)[canonicalId];
+    final lastSeen = known?.lastSeen;
+    final isOnline = (session?.isEstablished ?? false) ||
+        (lastSeen != null &&
+            DateTime.now().difference(lastSeen) < const Duration(seconds: 90));
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -70,7 +79,7 @@ class ChatScreen extends ConsumerWidget {
               seed: peerId,
               label: peerLabel,
               size: 36,
-              online: session != null,
+              online: isOnline,
               heroTag: 'avatar-$peerId',
             ),
             const SizedBox(width: 10),
@@ -84,10 +93,12 @@ class ChatScreen extends ConsumerWidget {
                     style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
                   ),
                   Text(
-                    _statusLabel(t, session),
+                    _statusLabel(t, session, isOnline),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: canSend ? AppColors.brandPrimary : AppColors.textOnGlassDim,
+                      color: isOnline
+                          ? AppColors.online
+                          : AppColors.textOnGlassDim,
                       fontSize: 11,
                     ),
                   ),
@@ -156,18 +167,23 @@ class ChatScreen extends ConsumerWidget {
     );
   }
 
-  String _statusLabel(AppLocalizations t, ChatSession? session) {
-    if (session == null) return t.chatEncryptedNotice;
-    switch (session.status) {
-      case ChatSessionStatus.idle:
-      case ChatSessionStatus.handshakingInitiator:
-      case ChatSessionStatus.handshakingResponder:
-        return t.chatSessionHandshaking;
-      case ChatSessionStatus.established:
-        return t.chatSessionEstablished;
-      case ChatSessionStatus.failed:
-        return t.chatSessionFailed;
+  String _statusLabel(AppLocalizations t, ChatSession? session, bool isOnline) {
+    // Mid-handshake / failed states are most informative — show them first.
+    if (session != null) {
+      switch (session.status) {
+        case ChatSessionStatus.idle:
+        case ChatSessionStatus.handshakingInitiator:
+        case ChatSessionStatus.handshakingResponder:
+          return t.chatSessionHandshaking;
+        case ChatSessionStatus.failed:
+          return t.chatSessionFailed;
+        case ChatSessionStatus.established:
+          return t.presenceOnline;
+      }
     }
+    // No live session: presence from the last time we heard their
+    // announcement on the mesh.
+    return isOnline ? t.presenceOnline : t.presenceOffline;
   }
 
 }
@@ -190,6 +206,13 @@ class _ChatBottomBar extends ConsumerStatefulWidget {
 class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Timer? _tick;
   Duration _elapsed = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    // Opening the chat clears any pending notification banner for it.
+    NotificationService.instance.clearForChat(widget.canonicalId);
+  }
 
   void _startTicker() {
     _tick?.cancel();

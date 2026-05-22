@@ -206,6 +206,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSessionFailed => 'Connection failed';
 
   @override
+  String get presenceOnline => 'online';
+
+  @override
+  String get presenceOffline => 'offline';
+
+  @override
   String get chatSessionFingerprintPending =>
       'Fingerprint will appear once the handshake completes.';
 

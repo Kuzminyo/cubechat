@@ -69,6 +69,8 @@
   "chatSessionHandshaking": "Встановлюється захищений канал…",
   "chatSessionEstablished": "Захищено · Noise XX",
   "chatSessionFailed": "З'єднання не вдалося",
+  "presenceOnline": "у мережі",
+  "presenceOffline": "не в мережі",
   "chatSessionFingerprintPending": "Відбиток з'явиться після завершення рукостискання.",
   "chatEmptyEstablished": "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
   "chatEmptyHandshaking": "Очікуємо, поки інший бік завершить рукостискання…",

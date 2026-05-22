@@ -21,8 +21,10 @@ import '../crypto/sealed_box.dart';
 import '../crypto/signed_payload.dart';
 import '../crypto/x3dh.dart';
 import '../identity/nickname_controller.dart';
+import '../notifications/notification_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
+import '../util/app_lifecycle.dart';
 import '../util/debug_log.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
@@ -1678,6 +1680,35 @@ class MessagingService {
     }
     DebugLog.instance.log('NOISE',
         'appended to canonical=$pubkeyHex and ${extras.length} transport id(s)');
+
+    _notifyIncoming(canonicalId: pubkeyHex, message: message);
+  }
+
+  /// Raise a system notification for an inbound message — but only when the
+  /// app isn't in the foreground (otherwise the user is already looking at
+  /// it). Sender name comes from the KnownPeers roster; the preview is a
+  /// short, content-type-aware snippet.
+  void _notifyIncoming({required String canonicalId, required Message message}) {
+    if (message.isMine) return;
+    if (AppLifecycle.instance.isForeground) return;
+    final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+    final name = (known?.displayName.isNotEmpty ?? false)
+        ? known!.displayName
+        : 'New message';
+    final String preview;
+    switch (message.kind) {
+      case MessageKind.image:
+        preview = '📷 Photo';
+      case MessageKind.audio:
+        preview = '🎤 Voice message';
+      case MessageKind.text:
+        preview = message.text;
+    }
+    unawaited(NotificationService.instance.showMessage(
+      threadKey: canonicalId,
+      title: name,
+      body: preview,
+    ));
   }
 
   /// Adds (or refreshes) the authenticated peer in the in-memory roster so

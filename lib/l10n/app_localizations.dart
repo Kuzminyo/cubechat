@@ -446,6 +446,18 @@ abstract class AppLocalizations {
   /// **'Connection failed'**
   String get chatSessionFailed;
 
+  /// No description provided for @presenceOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'online'**
+  String get presenceOnline;
+
+  /// No description provided for @presenceOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'offline'**
+  String get presenceOffline;
+
   /// No description provided for @chatSessionFingerprintPending.
   ///
   /// In en, this message translates to:

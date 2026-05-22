@@ -4,17 +4,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/debug_log.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-05-23-cached-engine-bg';
+const String _buildStamp = '2026-05-23-notifications-presence';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
   await HiveInit.ensureInitialized();
+  await NotificationService.instance.init();
   DebugLog.instance.log('BOOT', 'cubechat $_buildStamp '
       'debug=$kDebugMode profile=$kProfileMode release=$kReleaseMode');
   await SystemChrome.setPreferredOrientations(const [
