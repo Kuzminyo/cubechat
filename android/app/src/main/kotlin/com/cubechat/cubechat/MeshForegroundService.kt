@@ -75,10 +75,18 @@ class MeshForegroundService : Service() {
 
         fun start(ctx: Context) {
             val i = Intent(ctx, MeshForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ctx.startForegroundService(i)
-            } else {
-                ctx.startService(i)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(i)
+                } else {
+                    ctx.startService(i)
+                }
+            } catch (e: Exception) {
+                // Android 12+ throws ForegroundServiceStartNotAllowedException
+                // if we try to start from the background (e.g. headless engine
+                // boot). The Dart side re-applies on app resume, which is an
+                // allowed state, so swallow it here.
+                android.util.Log.w("MeshFGS", "startForegroundService blocked: ${e.message}")
             }
         }
 

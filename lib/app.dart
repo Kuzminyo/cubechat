@@ -15,15 +15,40 @@ class CubechatApp extends ConsumerStatefulWidget {
   ConsumerState<CubechatApp> createState() => _CubechatAppState();
 }
 
-class _CubechatAppState extends ConsumerState<CubechatApp> {
+class _CubechatAppState extends ConsumerState<CubechatApp>
+    with WidgetsBindingObserver {
   late final _router = buildRouter();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The engine is pre-warmed in MainApplication, so main() (and this
+    // widget) can build while the app is still headless — and Android 12+
+    // forbids starting a foreground service from the background. Re-apply
+    // background mode whenever we come to the foreground so the service
+    // actually starts (or restarts) from an allowed state.
+    if (state == AppLifecycleState.resumed) {
+      ref.read(backgroundModeProvider.notifier).apply();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(localeControllerProvider);
-    // Touch the background-mode controller so it builds at startup, applies
-    // the persisted preference, and starts the foreground service (keeping
-    // BLE alive when the app is backgrounded).
+    // Touch the background-mode controller so it builds at startup and applies
+    // the persisted preference. (Foreground-service start is (re)triggered on
+    // resume above, since a headless start would be blocked.)
     ref.watch(backgroundModeProvider);
     return MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appName,

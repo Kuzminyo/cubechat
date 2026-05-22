@@ -36,7 +36,7 @@
 
     <application
         android:label="cubechat"
-        android:name="${applicationName}"
+        android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
