@@ -22,6 +22,7 @@ class Message {
     this.audioPath,
     this.audioMime,
     this.audioDurationMs,
+    this.forwardSecret = false,
   });
 
   final String id;
@@ -32,6 +33,11 @@ class Message {
   final MessageStatus status;
 
   final MessageKind kind;
+
+  /// True when this message was encrypted with a per-message forward-secret
+  /// key (X3DH), as opposed to the long-term-key SealedBox path. Surfaced in
+  /// the bubble as a small shield so the user can see the stronger guarantee.
+  final bool forwardSecret;
 
   // Image payload (M5.4).
   final String? imagePath;
@@ -48,6 +54,7 @@ class Message {
     String? imagePath,
     String? audioPath,
     int? audioDurationMs,
+    bool? forwardSecret,
   }) {
     return Message(
       id: id,
@@ -62,6 +69,7 @@ class Message {
       audioPath: audioPath ?? this.audioPath,
       audioMime: audioMime,
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
+      forwardSecret: forwardSecret ?? this.forwardSecret,
     );
   }
 }

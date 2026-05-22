@@ -371,6 +371,10 @@ class MessagingService {
         final wireLen = 1 + TransportEnvelope.headerLen + tagged.length;
         if (wireLen <= _maxFsWireBytes) {
           body = tagged;
+          messages.markForwardSecret(canonicalId, msg.id);
+          if (chatId != canonicalId) {
+            messages.markForwardSecret(chatId, msg.id);
+          }
           DebugLog.instance.log('CRYPTO',
               'sendText: forward-secret (X3DH) to $canonicalId '
               '(${wireLen}B wire)');
@@ -1061,6 +1065,7 @@ class MessagingService {
             text: plaintext,
             sentAt: DateTime.now(),
             isMine: false,
+            forwardSecret: cipher == _cipherX3dh,
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);

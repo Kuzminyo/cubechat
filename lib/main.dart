@@ -9,7 +9,7 @@ import 'core/util/debug_log.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-05-19-forward-secrecy';
+const String _buildStamp = '2026-05-19-fs-indicator';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

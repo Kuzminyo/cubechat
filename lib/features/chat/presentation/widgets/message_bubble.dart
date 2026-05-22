@@ -247,6 +247,15 @@ class _BubbleMeta extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (message.forwardSecret) ...[
+          Icon(
+            Icons.lock_clock,
+            size: 11,
+            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.55),
+            semanticLabel: 'forward secret',
+          ),
+          const SizedBox(width: 4),
+        ],
         Text(
           time,
           style: TextStyle(

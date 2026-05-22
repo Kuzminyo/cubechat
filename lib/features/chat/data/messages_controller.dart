@@ -67,6 +67,21 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Flags an outgoing message as forward-secret once the send path has
+  /// confirmed the X3DH cipher was actually used (the placeholder is
+  /// appended before the body is built).
+  void markForwardSecret(String peerId, String msgId) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    if (current[idx].forwardSecret) return;
+    final list = [...current]
+      ..[idx] = current[idx].copyWith(forwardSecret: true);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   /// Fills in [imagePath] (and bumps the status) on an existing in-flight
   /// image message once all chunks have been reassembled. The message id
   /// must already exist in the per-peer list — callers should append the
@@ -153,6 +168,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioPath != null) 'audioPath': m.audioPath,
         if (m.audioMime != null) 'audioMime': m.audioMime,
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
+        if (m.forwardSecret) 'fs': true,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -180,6 +196,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       audioPath: m['audioPath'] as String?,
       audioMime: m['audioMime'] as String?,
       audioDurationMs: m['audioDurationMs'] as int?,
+      forwardSecret: (m['fs'] as bool?) ?? false,
     );
   }
 }
