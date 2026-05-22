@@ -19,15 +19,18 @@ void main() {
     test('sign + verifyAndDecode roundtrips every field', () async {
       final ed = await _newEd();
       final x25519 = Uint8List.fromList(List.generate(32, (i) => i + 1));
+      final spk = Uint8List.fromList(List.generate(32, (i) => i + 70));
       final ann = PeerAnnouncement(
         pubkey: x25519,
         signPubkey: ed.pub,
+        signedPrekeyPub: spk,
         nickname: 'Alice',
       );
       final wire = await ann.sign(ed.kp);
       final decoded = await PeerAnnouncement.verifyAndDecode(wire);
       expect(decoded.pubkey, equals(x25519));
       expect(decoded.signPubkey, equals(ed.pub));
+      expect(decoded.signedPrekeyPub, equals(spk));
       expect(decoded.nickname, 'Alice');
     });
 
@@ -36,6 +39,7 @@ void main() {
       final ann = PeerAnnouncement(
         pubkey: Uint8List(32),
         signPubkey: ed.pub,
+        signedPrekeyPub: Uint8List(32),
         nickname: 'Алиса 🦊',
       );
       final decoded = await PeerAnnouncement.verifyAndDecode(
@@ -49,6 +53,7 @@ void main() {
       final ann = PeerAnnouncement(
         pubkey: Uint8List(32),
         signPubkey: ed.pub,
+        signedPrekeyPub: Uint8List(32),
         nickname: '',
       );
       final decoded = await PeerAnnouncement.verifyAndDecode(
@@ -63,6 +68,7 @@ void main() {
         () => PeerAnnouncement(
           pubkey: Uint8List(31),
           signPubkey: ed.pub,
+          signedPrekeyPub: Uint8List(32),
           nickname: 'x',
         ),
         throwsA(isA<AssertionError>()),
@@ -91,6 +97,7 @@ void main() {
       final ann = PeerAnnouncement(
         pubkey: Uint8List(32),
         signPubkey: ed.pub,
+        signedPrekeyPub: Uint8List(32),
         nickname: 'x',
       );
       final wire = await ann.sign(ed.kp);
@@ -106,6 +113,7 @@ void main() {
       final ann = PeerAnnouncement(
         pubkey: Uint8List(32),
         signPubkey: ed.pub,
+        signedPrekeyPub: Uint8List(32),
         nickname: 'Alice',
       );
       final wire = await ann.sign(ed.kp);
@@ -123,6 +131,7 @@ void main() {
       final ann = PeerAnnouncement(
         pubkey: Uint8List(32),
         signPubkey: real.pub,
+        signedPrekeyPub: Uint8List(32),
         nickname: 'Alice',
       );
       // Sign with the impostor's keys but claim to be 'real'.

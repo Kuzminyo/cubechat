@@ -27,6 +27,7 @@ class KnownPeer {
     this.verifiedAt,
     this.signPublicKey,
     this.signKeyRotatedAt,
+    this.signedPrekeyPub,
   });
 
   final String pubkeyHex;
@@ -34,6 +35,11 @@ class KnownPeer {
   final DateTime lastSeen;
   final DateTime? verifiedAt;
   final Uint8List? signPublicKey;
+
+  /// The peer's X25519 signed prekey, learned from their signed announcement.
+  /// When present, we send them forward-secret (X3DH) messages; when absent
+  /// we fall back to SealedBox.
+  final Uint8List? signedPrekeyPub;
 
   /// When this peer's signing key last changed under the same pubkeyHex.
   /// Set the moment a fresh signed announcement arrives carrying a
@@ -57,6 +63,7 @@ class KnownPeer {
     DateTime? verifiedAt,
     Uint8List? signPublicKey,
     DateTime? signKeyRotatedAt,
+    Uint8List? signedPrekeyPub,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
   }) {
@@ -69,6 +76,7 @@ class KnownPeer {
       signKeyRotatedAt: clearSignKeyRotatedAt
           ? null
           : (signKeyRotatedAt ?? this.signKeyRotatedAt),
+      signedPrekeyPub: signedPrekeyPub ?? this.signedPrekeyPub,
     );
   }
 }

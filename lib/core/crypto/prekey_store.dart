@@ -104,6 +104,30 @@ class PrekeyStore {
     );
   }
 
+  /// Restore a previously-persisted signed prekey instead of minting a new
+  /// one. Critical for correctness across restarts: peers cache our SPK
+  /// public from announcements, so if we came back with a *different* SPK
+  /// they'd encrypt to a key we can't read. [priv]/[pub] are the X25519
+  /// halves; [sig] is the Ed25519 signature over [pub].
+  void restoreSignedPrekey({
+    required int id,
+    required Uint8List priv,
+    required Uint8List pub,
+    required Uint8List sig,
+  }) {
+    _signedPrekey = SignedPrekey(
+      id: id,
+      keyPair: SimpleKeyPairData(
+        priv,
+        publicKey: SimplePublicKey(pub, type: KeyPairType.x25519),
+        type: KeyPairType.x25519,
+      ),
+      pub: pub,
+      signature: sig,
+    );
+    if (id >= _nextSpkId) _nextSpkId = id + 1;
+  }
+
   /// Mint [count] fresh one-time prekeys, adding them to the pool.
   Future<void> replenishOneTime(int count) async {
     for (var i = 0; i < count; i++) {

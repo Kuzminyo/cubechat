@@ -14,9 +14,12 @@ import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../ble/ble_peripheral.dart';
+import '../crypto/fs_message.dart';
 import '../crypto/identity_service.dart';
+import '../crypto/prekey_service.dart';
 import '../crypto/sealed_box.dart';
 import '../crypto/signed_payload.dart';
+import '../crypto/x3dh.dart';
 import '../identity/nickname_controller.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
@@ -81,7 +84,18 @@ class MessagingService {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
     unawaited(_loadRelayBuffer());
+    unawaited(_ref.read(prekeyServiceProvider).ensureInitialized());
   }
+
+  /// Envelope-body cipher tags (first byte of [TransportEnvelope.body]) so
+  /// the receiver knows how to decrypt before it can look inside.
+  static const int _cipherSealedBox = 0x01;
+  static const int _cipherX3dh = 0x02;
+
+  /// Conservative single-frame ceiling. A forward-secret text frame whose
+  /// total wire size would exceed this falls back to SealedBox so we never
+  /// produce a frame the BLE MTU (247) can't carry in one write.
+  static const int _maxFsWireBytes = 240;
 
   final Ref _ref;
   final _clients = <String, BleGattClient>{}; // central-side clients
@@ -145,6 +159,22 @@ class MessagingService {
     final digest = await Blake2s().hash(peerPubkey);
     return TransportEnvelope.shortHashFromHashBytes(
         Uint8List.fromList(digest.bytes));
+  }
+
+  /// Prepend the 1-byte cipher tag to an encrypted body.
+  static Uint8List _tagBody(int cipher, Uint8List body) {
+    final out = Uint8List(1 + body.length);
+    out[0] = cipher;
+    out.setRange(1, out.length, body);
+    return out;
+  }
+
+  /// Fresh ephemeral X25519 key pair for one forward-secret send.
+  Future<SimpleKeyPairData> _freshEphemeralX25519() async {
+    final kp = await X25519().newKeyPair();
+    final pub = await kp.extractPublicKey();
+    final priv = await kp.extractPrivateKeyBytes();
+    return SimpleKeyPairData(priv, publicKey: pub, type: KeyPairType.x25519);
   }
 
   /// Tap-to-connect: the user picked a peer in the Nearby list. We're the
@@ -290,14 +320,8 @@ class MessagingService {
     }
 
     try {
-      // M3.D + M5.4 + signatures: wrap the inner payload in a SignedPayload
-      // so the receiver can verify the body wasn't forged by a malicious
-      // relay. Layout under the SealedBox: [0xA1][ed_pub:32][sig:64][0x10][utf8].
       final identity = await _ref.read(identityProvider.future);
-      final inner = packInnerPayload(
-        InnerPayloadType.text,
-        padTextPayload(Uint8List.fromList(utf8.encode(text))),
-      );
+      final utf8Text = Uint8List.fromList(utf8.encode(text));
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
       final msgId = TransportEnvelope.newMsgId();
@@ -306,13 +330,72 @@ class MessagingService {
         destPubkeyHash: peerHash,
         msgId: msgId,
       );
-      final signed = await SignedPayload.wrap(
-        inner: inner,
-        context: ctx,
-        signKeyPair: identity.asSignKeyPair(),
-        senderEdPub: identity.signPublicKey,
-      );
-      final body = await SealedBox.seal(signed, peerPub);
+
+      // Forward-secrecy path: if we hold the recipient's signed prekey
+      // (from their signed announcement) AND the resulting frame fits the
+      // BLE MTU, encrypt with an X3DH-derived key + a fresh ephemeral so a
+      // later compromise of the recipient's long-term key can't decrypt
+      // this message. Otherwise fall back to SealedBox (no FS, but proven
+      // and fits longer text). FS uses the compact signature (0xA2) and no
+      // length padding to claw back MTU headroom.
+      final recipientSpk =
+          _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
+      Uint8List? body;
+      if (recipientSpk != null && recipientSpk.length == 32) {
+        final innerFs = packInnerPayload(
+          InnerPayloadType.text,
+          padTextPayload(utf8Text, bucket: 0),
+        );
+        final signedFs = await SignedPayload.wrapCompact(
+          inner: innerFs,
+          context: ctx,
+          signKeyPair: identity.asSignKeyPair(),
+          senderEdPub: identity.signPublicKey,
+        );
+        final ephemeral = await _freshEphemeralX25519();
+        final sk = await X3dh.deriveSender(
+          identityKeyPair: identity.asKeyPair(),
+          ephemeralKeyPair: ephemeral,
+          recipientIdentityPub: peerPub,
+          recipientSignedPrekeyPub: recipientSpk,
+        );
+        final fsBody = await FsMessage.seal(
+          key: sk,
+          plaintext: signedFs,
+          senderIdentityPub: identity.publicKey,
+          senderEphemeralPub:
+              Uint8List.fromList((ephemeral.publicKey).bytes),
+        );
+        final tagged = _tagBody(_cipherX3dh, fsBody);
+        // wire = frame(1) + envelope header + tagged body
+        final wireLen = 1 + TransportEnvelope.headerLen + tagged.length;
+        if (wireLen <= _maxFsWireBytes) {
+          body = tagged;
+          DebugLog.instance.log('CRYPTO',
+              'sendText: forward-secret (X3DH) to $canonicalId '
+              '(${wireLen}B wire)');
+        } else {
+          DebugLog.instance.log('CRYPTO',
+              'sendText: FS frame ${wireLen}B > $_maxFsWireBytes — '
+              'falling back to SealedBox');
+        }
+      }
+
+      if (body == null) {
+        // SealedBox path (no FS). Full signature (0xA1) + length padding.
+        final inner = packInnerPayload(
+          InnerPayloadType.text,
+          padTextPayload(utf8Text),
+        );
+        final signed = await SignedPayload.wrap(
+          inner: inner,
+          context: ctx,
+          signKeyPair: identity.asSignKeyPair(),
+          senderEdPub: identity.signPublicKey,
+        );
+        body = _tagBody(_cipherSealedBox, await SealedBox.seal(signed, peerPub));
+      }
+
       final envelope = TransportEnvelope(
         originPubkeyHash: myHash,
         destPubkeyHash: peerHash,
@@ -474,7 +557,8 @@ class MessagingService {
         );
         final inner =
             packInnerPayload(InnerPayloadType.imageChunk, chunk.encode());
-        final body = await SealedBox.seal(inner, peerPub);
+        final body =
+            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -625,7 +709,8 @@ class MessagingService {
         // Unsigned: audio chunks pay no per-chunk signature cost (would
         // overflow MTU). Integrity rides on SealedBox AEAD; sender identity
         // rides on the signed announcement chain.
-        final body = await SealedBox.seal(inner, peerPub);
+        final body =
+            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -837,51 +922,75 @@ class MessagingService {
     // exists; multi-hop senders are taken on faith pending inner signatures.
     try {
       final identity = await _ref.read(identityProvider.future);
-      final sealedPlain = await SealedBox.open(
-        env.body,
-        recipientKeyPair: identity.asKeyPair(),
-        recipientPubkey: identity.publicKey,
-      );
+      if (env.body.isEmpty) {
+        DebugLog.instance.log('CRYPTO', 'drop transport from $peerId: empty body');
+        return;
+      }
+      // First byte = cipher tag (0x01 SealedBox, 0x02 X3DH forward-secret).
+      final cipher = env.body[0];
+      final cipherBody = Uint8List.sublistView(env.body, 1);
 
-      // Detect the signed wrapper (0xA1 marker). Unsigned payloads
-      // (image/audio/video chunks) start directly with an InnerPayloadType
-      // byte and pass through unchanged.
+      final Uint8List sealedPlain;
+      if (cipher == _cipherX3dh) {
+        final prekeys = _ref.read(prekeyServiceProvider);
+        await prekeys.ensureInitialized();
+        final FsParsed parsed;
+        try {
+          parsed = FsMessage.parse(cipherBody);
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO', 'drop FS from $peerId: malformed ($e)');
+          return;
+        }
+        try {
+          final sk = await X3dh.deriveReceiver(
+            identityKeyPair: identity.asKeyPair(),
+            signedPrekeyPair: prekeys.signedPrekeyKeyPair,
+            senderIdentityPub: parsed.senderIdentityPub,
+            senderEphemeralPub: parsed.senderEphemeralPub,
+          );
+          sealedPlain = await FsMessage.open(key: sk, parsed: parsed);
+          DebugLog.instance.log('CRYPTO', 'FS (X3DH) body decrypted from $peerId');
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO', 'FS decrypt FAILED from $peerId: $e');
+          return;
+        }
+      } else if (cipher == _cipherSealedBox) {
+        try {
+          sealedPlain = await SealedBox.open(
+            cipherBody,
+            recipientKeyPair: identity.asKeyPair(),
+            recipientPubkey: identity.publicKey,
+          );
+        } catch (e) {
+          DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+          return;
+        }
+      } else {
+        DebugLog.instance.log('CRYPTO',
+            'drop transport from $peerId: unknown cipher tag '
+            '0x${cipher.toRadixString(16)}');
+        return;
+      }
+
+      // Interpret the decrypted plaintext: full signed (0xA1), compact
+      // signed (0xA2, FS), or unsigned media chunk.
+      final ctx = SignedPayload.contextBytes(
+        originPubkeyHash: env.originPubkeyHash,
+        destPubkeyHash: env.destPubkeyHash,
+        msgId: env.msgId,
+      );
       Uint8List innerBytes;
       Uint8List? verifiedSenderEdPub;
       if (sealedPlain.isNotEmpty &&
           sealedPlain[0] == SignedPayload.markerByte) {
         try {
-          final expectedEd =
-              await _expectedEdPubFor(env.originPubkeyHash);
-          final ctx = SignedPayload.contextBytes(
-            originPubkeyHash: env.originPubkeyHash,
-            destPubkeyHash: env.destPubkeyHash,
-            msgId: env.msgId,
-          );
+          final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
           final verified = await SignedPayload.verify(
             wire: sealedPlain,
             context: ctx,
             expectedEdPub: expectedEd,
           );
-          // Replay window: the signed timestamp can't be refreshed by a
-          // relay without the sender's Ed25519 key, so a frame captured
-          // and re-injected after the dedup cache expired still carries
-          // its original send time. Reject anything too old, and anything
-          // implausibly far in the future (clock skew tolerance).
-          final skewMs =
-              DateTime.now().millisecondsSinceEpoch - verified.timestampMs;
-          if (skewMs > _replayMaxAgeMs) {
-            DebugLog.instance.log('CRYPTO',
-                'drop signed body from $peerId: stale '
-                '(${(skewMs / 1000).round()}s old > replay window)');
-            return;
-          }
-          if (skewMs < -_replayMaxFutureMs) {
-            DebugLog.instance.log('CRYPTO',
-                'drop signed body from $peerId: timestamp '
-                '${(-skewMs / 1000).round()}s in the future (clock skew?)');
-            return;
-          }
+          if (!_freshEnough(verified.timestampMs, peerId)) return;
           innerBytes = verified.inner;
           verifiedSenderEdPub = verified.senderEdPub;
           DebugLog.instance.log('CRYPTO',
@@ -890,6 +999,33 @@ class MessagingService {
         } on SignatureVerificationException catch (e) {
           DebugLog.instance.log('CRYPTO',
               'signed body FAILED verification from $peerId: ${e.message}');
+          return;
+        }
+      } else if (sealedPlain.isNotEmpty &&
+          sealedPlain[0] == SignedPayload.markerCompactByte) {
+        // Compact (FS) signature carries no embedded ed pub — we must know
+        // the sender's verifying key from a prior announcement.
+        final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
+        if (expectedEd == null) {
+          DebugLog.instance.log('CRYPTO',
+              'drop FS body from $peerId: sender ed pub unknown '
+              '(awaiting their announcement)');
+          return;
+        }
+        try {
+          final verified = await SignedPayload.verifyCompact(
+            wire: sealedPlain,
+            context: ctx,
+            expectedEdPub: expectedEd,
+          );
+          if (!_freshEnough(verified.timestampMs, peerId)) return;
+          innerBytes = verified.inner;
+          verifiedSenderEdPub = expectedEd;
+          DebugLog.instance.log('CRYPTO',
+              'compact-signed FS body verified from $peerId');
+        } on SignatureVerificationException catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'FS body FAILED verification from $peerId: ${e.message}');
           return;
         }
       } else {
@@ -1214,7 +1350,8 @@ class MessagingService {
       signKeyPair: identity.asSignKeyPair(),
       senderEdPub: identity.signPublicKey,
     );
-    final body = await SealedBox.seal(signed, peerPub);
+    final body =
+        _tagBody(_cipherSealedBox, await SealedBox.seal(signed, peerPub));
     final env = TransportEnvelope(
       originPubkeyHash: myHash,
       destPubkeyHash: peerHash,
@@ -1282,9 +1419,11 @@ class MessagingService {
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
           signPublicKey: ann.signPubkey,
+          signedPrekeyPub: ann.signedPrekeyPub,
         );
     DebugLog.instance.log('MESH',
-        'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId');
+        'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
+        '(+ signed prekey)');
 
     // M3.E: announcements are mesh-wide — relay onward on every other link
     // until ttl runs out so peers more than one hop away learn about us.
@@ -1344,6 +1483,28 @@ class MessagingService {
       DebugLog.instance.log('MESH', 'fanout notify failed: $e');
     }
     return fanout;
+  }
+
+  /// Replay-window gate shared by the full + compact signed paths. The
+  /// signed timestamp can't be refreshed by a relay without the sender's
+  /// Ed25519 key, so a captured frame re-injected after dedup expiry still
+  /// carries its original send time. Returns false (and logs) when the
+  /// frame is too old or implausibly far in the future.
+  bool _freshEnough(int timestampMs, String peerId) {
+    final skewMs = DateTime.now().millisecondsSinceEpoch - timestampMs;
+    if (skewMs > _replayMaxAgeMs) {
+      DebugLog.instance.log('CRYPTO',
+          'drop signed body from $peerId: stale '
+          '(${(skewMs / 1000).round()}s old > replay window)');
+      return false;
+    }
+    if (skewMs < -_replayMaxFutureMs) {
+      DebugLog.instance.log('CRYPTO',
+          'drop signed body from $peerId: timestamp '
+          '${(-skewMs / 1000).round()}s in the future (clock skew?)');
+      return false;
+    }
+    return true;
   }
 
   /// Returns the cached Ed25519 verifying key for the peer whose X25519
@@ -1424,9 +1585,12 @@ class MessagingService {
     try {
       final identity = await _ref.read(identityProvider.future);
       final nickname = _ref.read(nicknameControllerProvider);
+      final prekeys = _ref.read(prekeyServiceProvider);
+      await prekeys.ensureInitialized();
       final ann = PeerAnnouncement(
         pubkey: Uint8List.fromList(identity.publicKey),
         signPubkey: identity.signPublicKey,
+        signedPrekeyPub: prekeys.signedPrekeyPub,
         nickname: nickname,
       );
       final signedBody = await ann.sign(identity.asSignKeyPair());

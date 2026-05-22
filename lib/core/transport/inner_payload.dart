@@ -90,13 +90,16 @@ Uint8List packInnerPayload(InnerPayloadType type, Uint8List body) {
 const int _textPadBucket = 48;
 final _padRand = Random.secure();
 
-/// Wrap UTF-8 [text] bytes into a padded, self-describing text body.
-Uint8List padTextPayload(Uint8List utf8Text) {
+/// Wrap UTF-8 [text] bytes into a padded, self-describing text body. Pass
+/// [bucket] = 0 to add only the length prefix with no padding — used by the
+/// forward-secret path, where every extra byte risks overflowing the MTU
+/// (length-hiding is sacrificed there in favour of fitting FS into a frame).
+Uint8List padTextPayload(Uint8List utf8Text, {int bucket = _textPadBucket}) {
   if (utf8Text.length > 0xFFFF) {
     throw const FormatException('text too long for 16-bit length prefix');
   }
   final base = 2 + utf8Text.length;
-  final target = base <= _textPadBucket ? _textPadBucket : base;
+  final target = base <= bucket ? bucket : base;
   final out = Uint8List(target);
   out[0] = (utf8Text.length >> 8) & 0xff;
   out[1] = utf8Text.length & 0xff;

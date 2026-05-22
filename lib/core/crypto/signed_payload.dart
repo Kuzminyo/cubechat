@@ -37,10 +37,20 @@ class SignedPayload {
   SignedPayload._();
 
   static const int markerByte = 0xA1;
+
+  /// Compact variant marker. Same guarantees as [markerByte] but the
+  /// sender's Ed25519 pub is NOT embedded — the verifier supplies it from
+  /// its KnownPeers cache. Saves 32 bytes, which matters for forward-secret
+  /// frames that already carry a 76-byte X3DH header and must fit the
+  /// 247-byte BLE MTU. Layout: `[0xA2][sig:64][ts:8][inner]`, signed over
+  /// `context || ts || inner`.
+  static const int markerCompactByte = 0xA2;
+
   static const int pubLen = 32;
   static const int sigLen = 64;
   static const int tsLen = 8;
   static const int headerLen = 1 + pubLen + sigLen + tsLen;
+  static const int compactHeaderLen = 1 + sigLen + tsLen;
 
   static final _ed25519 = Ed25519();
 
@@ -155,6 +165,80 @@ class SignedPayload {
       throw const SignatureVerificationException('Ed25519 signature invalid');
     }
     return (inner: inner, senderEdPub: senderEdPub, timestampMs: timestampMs);
+  }
+
+  /// Compact wrap (no embedded ed pub). [senderEdPub] still goes into the
+  /// signed material for domain separation but is not written to the wire;
+  /// the verifier must already know it.
+  static Future<Uint8List> wrapCompact({
+    required Uint8List inner,
+    required Uint8List context,
+    required SimpleKeyPairData signKeyPair,
+    required Uint8List senderEdPub,
+    int? timestampMs,
+  }) async {
+    final ts = timestampMs ?? DateTime.now().millisecondsSinceEpoch;
+    final tsBytes = _encodeTs(ts);
+    final material =
+        Uint8List(context.length + pubLen + tsLen + inner.length);
+    var c = 0;
+    material.setRange(c, c += context.length, context);
+    material.setRange(c, c += pubLen, senderEdPub);
+    material.setRange(c, c += tsLen, tsBytes);
+    material.setRange(c, c + inner.length, inner);
+
+    final signature = await _ed25519.sign(material, keyPair: signKeyPair);
+    final out = Uint8List(compactHeaderLen + inner.length);
+    var o = 0;
+    out[o++] = markerCompactByte;
+    out.setRange(o, o += sigLen, signature.bytes);
+    out.setRange(o, o += tsLen, tsBytes);
+    out.setRange(o, out.length, inner);
+    return out;
+  }
+
+  /// Verify a compact wrap. [expectedEdPub] is REQUIRED — there's no embedded
+  /// key to fall back on — and must be the sender's verifying key from a
+  /// prior (signed) announcement.
+  static Future<({Uint8List inner, int timestampMs})> verifyCompact({
+    required Uint8List wire,
+    required Uint8List context,
+    required Uint8List expectedEdPub,
+  }) async {
+    if (wire.length < compactHeaderLen) {
+      throw const FormatException('compact signed payload shorter than header');
+    }
+    if (wire[0] != markerCompactByte) {
+      throw FormatException(
+          'expected marker 0x${markerCompactByte.toRadixString(16)}, '
+          'got 0x${wire[0].toRadixString(16)}');
+    }
+    var c = 1;
+    final sigBytes = wire.sublist(c, c += sigLen);
+    final tsBytes = wire.sublist(c, c += tsLen);
+    final timestampMs = _decodeTs(tsBytes);
+    final inner = Uint8List.fromList(wire.sublist(c));
+
+    final material =
+        Uint8List(context.length + pubLen + tsLen + inner.length);
+    var m = 0;
+    material.setRange(m, m += context.length, context);
+    material.setRange(m, m += pubLen, expectedEdPub);
+    material.setRange(m, m += tsLen, tsBytes);
+    material.setRange(m, m + inner.length, inner);
+
+    final ok = await _ed25519.verify(
+      material,
+      signature: Signature(
+        sigBytes,
+        publicKey: SimplePublicKey(expectedEdPub, type: KeyPairType.ed25519),
+      ),
+    );
+    if (!ok) {
+      throw const SignatureVerificationException(
+          'Ed25519 signature invalid (compact)');
+    }
+    return (inner: inner, timestampMs: timestampMs);
   }
 
   static Uint8List _encodeTs(int ms) {
