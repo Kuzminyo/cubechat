@@ -90,16 +90,35 @@ class HiveCipherProvider {
   /// than an opaque error.
   Future<Box<T>> openEncryptedBox<T>(String name) async {
     final cipher = await load();
+    // Already open (another controller got there first) → reuse the live
+    // handle. NEVER delete in this case: that used to wipe a perfectly good
+    // box just because two controllers raced to open it.
+    if (Hive.isBoxOpen(name)) {
+      try {
+        return Hive.box<T>(name);
+      } catch (_) {
+        // Open under a different type parameter; the dynamic handle is the
+        // safe shared one. Callers tolerate dynamic.
+        return Hive.box<dynamic>(name) as Box<T>;
+      }
+    }
     try {
       return await Hive.openBox<T>(name, encryptionCipher: cipher);
     } catch (e, st) {
+      final msg = e.toString();
+      if (msg.contains('already open')) {
+        // Race: opened between our isBoxOpen check and openBox. Reuse it
+        // rather than destroying data.
+        try {
+          return Hive.box<T>(name);
+        } catch (_) {
+          return Hive.box<dynamic>(name) as Box<T>;
+        }
+      }
+      // Genuine open failure — most likely an undecryptable legacy
+      // (unencrypted) box from a pre-encryption build. Delete + retry.
       debugPrint('Hive openBox($name) failed under cipher: $e\n$st - '
           'deleting and retrying (legacy unencrypted box?)');
-      try {
-        if (Hive.isBoxOpen(name)) {
-          await Hive.box<dynamic>(name).close();
-        }
-      } catch (_) {}
       try {
         await Hive.deleteBoxFromDisk(name);
       } catch (_) {}

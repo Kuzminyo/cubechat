@@ -18,7 +18,10 @@ class NicknameController extends Notifier<String> {
   /// advertise budgets (~26 chars of useful name after framing overhead).
   static const int maxLength = 24;
 
-  Box<String>? _box;
+  // The settings box is shared with other controllers (background mode,
+  // etc.), so it's opened as Box<dynamic> everywhere — Hive forbids opening
+  // one box under two different type parameters.
+  Box<dynamic>? _box;
 
   @override
   String build() {
@@ -28,10 +31,10 @@ class NicknameController extends Notifier<String> {
 
   Future<void> _load() async {
     try {
-      final box =
-          await hiveCipherProvider.openEncryptedBox<String>(HiveBoxes.settings);
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
-      final v = box.get(_key);
+      final v = box.get(_key) as String?;
       if (v != null && v.isNotEmpty) state = v;
     } catch (e) {
       debugPrint('NicknameController load failed: $e');

@@ -342,46 +342,55 @@ class MessagingService {
           _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
       Uint8List? body;
       if (recipientSpk != null && recipientSpk.length == 32) {
-        final innerFs = packInnerPayload(
-          InnerPayloadType.text,
-          padTextPayload(utf8Text, bucket: 0),
-        );
-        final signedFs = await SignedPayload.wrapCompact(
-          inner: innerFs,
-          context: ctx,
-          signKeyPair: identity.asSignKeyPair(),
-          senderEdPub: identity.signPublicKey,
-        );
-        final ephemeral = await _freshEphemeralX25519();
-        final sk = await X3dh.deriveSender(
-          identityKeyPair: identity.asKeyPair(),
-          ephemeralKeyPair: ephemeral,
-          recipientIdentityPub: peerPub,
-          recipientSignedPrekeyPub: recipientSpk,
-        );
-        final fsBody = await FsMessage.seal(
-          key: sk,
-          plaintext: signedFs,
-          senderIdentityPub: identity.publicKey,
-          senderEphemeralPub:
-              Uint8List.fromList((ephemeral.publicKey).bytes),
-        );
-        final tagged = _tagBody(_cipherX3dh, fsBody);
-        // wire = frame(1) + envelope header + tagged body
-        final wireLen = 1 + TransportEnvelope.headerLen + tagged.length;
-        if (wireLen <= _maxFsWireBytes) {
-          body = tagged;
-          messages.markForwardSecret(canonicalId, msg.id);
-          if (chatId != canonicalId) {
-            messages.markForwardSecret(chatId, msg.id);
+        // Any failure in the FS path MUST fall through to SealedBox — never
+        // fail the whole send. (A bug here once silently dropped every
+        // message to peers we held a prekey for.)
+        try {
+          final innerFs = packInnerPayload(
+            InnerPayloadType.text,
+            padTextPayload(utf8Text, bucket: 0),
+          );
+          final signedFs = await SignedPayload.wrapCompact(
+            inner: innerFs,
+            context: ctx,
+            signKeyPair: identity.asSignKeyPair(),
+            senderEdPub: identity.signPublicKey,
+          );
+          final ephemeral = await _freshEphemeralX25519();
+          final sk = await X3dh.deriveSender(
+            identityKeyPair: identity.asKeyPair(),
+            ephemeralKeyPair: ephemeral,
+            recipientIdentityPub: peerPub,
+            recipientSignedPrekeyPub: recipientSpk,
+          );
+          final fsBody = await FsMessage.seal(
+            key: sk,
+            plaintext: signedFs,
+            senderIdentityPub: identity.publicKey,
+            senderEphemeralPub:
+                Uint8List.fromList((ephemeral.publicKey).bytes),
+          );
+          final tagged = _tagBody(_cipherX3dh, fsBody);
+          // wire = frame(1) + envelope header + tagged body
+          final wireLen = 1 + TransportEnvelope.headerLen + tagged.length;
+          if (wireLen <= _maxFsWireBytes) {
+            body = tagged;
+            messages.markForwardSecret(canonicalId, msg.id);
+            if (chatId != canonicalId) {
+              messages.markForwardSecret(chatId, msg.id);
+            }
+            DebugLog.instance.log('CRYPTO',
+                'sendText: forward-secret (X3DH) to $canonicalId '
+                '(${wireLen}B wire)');
+          } else {
+            DebugLog.instance.log('CRYPTO',
+                'sendText: FS frame ${wireLen}B > $_maxFsWireBytes — '
+                'falling back to SealedBox');
           }
+        } catch (e) {
           DebugLog.instance.log('CRYPTO',
-              'sendText: forward-secret (X3DH) to $canonicalId '
-              '(${wireLen}B wire)');
-        } else {
-          DebugLog.instance.log('CRYPTO',
-              'sendText: FS frame ${wireLen}B > $_maxFsWireBytes — '
-              'falling back to SealedBox');
+              'sendText: FS path failed ($e) — falling back to SealedBox');
+          body = null;
         }
       }
 
@@ -465,6 +474,7 @@ class MessagingService {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
     } catch (e, st) {
+      DebugLog.instance.log('NOISE', 'sendText FAILED: $e');
       debugPrint('sendText failed: $e\n$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
       if (chatId != canonicalId) {
