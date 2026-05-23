@@ -21,12 +21,11 @@ OUT_OPAQUE = "assets/logo/cube.png"
 OUT_FOREGROUND = "assets/logo/cube_transparent.png"
 
 # Cube sits slightly above centre (caption lives below it).
-CX = 0.50   # horizontal centre of the cube
-CY = 0.44   # vertical centre of the cube (caption sits below, so bias up)
-# Crop INSIDE the artwork's glass tile so its rounded frame/outline is gone —
-# we want the bare cube art bleeding to the edges (the launcher applies its
-# own rounding), not a tile-within-a-tile look.
-SIDE = 0.45  # square side as a fraction of min(W, H)
+CX = 0.49   # horizontal centre of the cube
+CY = 0.43   # vertical centre of the cube (caption sits below, so bias up)
+# Crop tight around the cube itself — drop the glass tile frame AND the
+# surrounding circuit/outline so the icon is just the glowing cube.
+SIDE = 0.34  # square side as a fraction of min(W, H)
 OUT_SIZE = 1024
 # Extra breathing room around the cube for the adaptive-icon safe zone
 # (Android masks ~⅓ off the foreground edges).
