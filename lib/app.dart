@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/ble/background_mode_controller.dart';
 import 'core/locale/locale_controller.dart';
+import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
 import 'core/util/app_lifecycle.dart';
 import 'core/theme/app_theme.dart';
+import 'features/peers/data/known_peers_controller.dart';
 import 'l10n/app_localizations.dart';
 
 class CubechatApp extends ConsumerStatefulWidget {
@@ -24,6 +26,26 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Route to the conversation when a message notification is tapped.
+    NotificationService.instance.onSelectChat = _openChat;
+    // Cold start via a notification tap: open that chat after first frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final payload = await NotificationService.instance.initialChatPayload();
+      if (payload != null && payload.isNotEmpty) _openChat(payload);
+    });
+  }
+
+  /// Opens the chat for [chatId] (a pubkey-hex canonical id). Resolves the
+  /// display name from the KnownPeers roster for the header.
+  void _openChat(String chatId) {
+    final known = ref.read(knownPeersControllerProvider)[chatId];
+    final name = (known?.displayName.isNotEmpty ?? false)
+        ? known!.displayName
+        : 'Peer';
+    _router.push(
+      '/chat/${Uri.encodeComponent(chatId)}'
+      '?name=${Uri.encodeQueryComponent(name)}',
+    );
   }
 
   @override

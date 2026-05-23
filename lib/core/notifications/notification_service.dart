@@ -14,6 +14,10 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
+  /// Set by the app: called with the chat id (notification payload) when the
+  /// user taps a message notification, so we can route to that conversation.
+  void Function(String chatId)? onSelectChat;
+
   Future<void> init() async {
     if (_ready) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -25,6 +29,12 @@ class NotificationService {
     try {
       await _plugin.initialize(
         const InitializationSettings(android: android, iOS: ios),
+        onDidReceiveNotificationResponse: (resp) {
+          final payload = resp.payload;
+          if (payload != null && payload.isNotEmpty) {
+            onSelectChat?.call(payload);
+          }
+        },
       );
       // Pre-create the channel so the first notification appears instantly
       // with the right importance.
@@ -83,5 +93,17 @@ class NotificationService {
     try {
       await _plugin.cancel(threadKey.hashCode & 0x7fffffff);
     } catch (_) {}
+  }
+
+  /// If the app was launched by tapping a notification (cold start), returns
+  /// that notification's chat-id payload so the app can open the chat.
+  Future<String?> initialChatPayload() async {
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp ?? false) {
+        return details?.notificationResponse?.payload;
+      }
+    } catch (_) {}
+    return null;
   }
 }
