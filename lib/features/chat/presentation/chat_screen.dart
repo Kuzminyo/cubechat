@@ -217,6 +217,21 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     NotificationService.instance.clearForChat(widget.canonicalId);
   }
 
+  @override
+  void didUpdateWidget(covariant _ChatBottomBar old) {
+    super.didUpdateWidget(old);
+    // Opened from Nearby, the canonical id starts as the BLE transport id and
+    // flips to the peer's pubkey-hex once the handshake completes — without
+    // re-running initState. Keep the active-chat marker in sync so inbound
+    // messages for this (now pubkey-keyed) chat still suppress notifications.
+    if (old.canonicalId != widget.canonicalId) {
+      if (AppLifecycle.instance.activeChatId == old.canonicalId) {
+        AppLifecycle.instance.activeChatId = widget.canonicalId;
+      }
+      NotificationService.instance.clearForChat(widget.canonicalId);
+    }
+  }
+
   void _startTicker() {
     _tick?.cancel();
     _elapsed = Duration.zero;
