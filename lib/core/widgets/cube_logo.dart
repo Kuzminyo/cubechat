@@ -2,14 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// The cubechat logo — an isometric 3D cube rendered programmatically.
+/// The cubechat / MESH CHAT logo.
 ///
-/// Painter-first by design: there's no PNG dependency for in-app use, the
-/// cube scales crisply at every size, and the colour palette stays in lock-
-/// step with the brand (no asset to keep in sync).
+/// Renders the brand artwork (`assets/logo/cube.png`) clipped into a rounded
+/// squircle so the in-app logo matches the launcher icon exactly. A soft
+/// green halo behind it keeps it sitting naturally on the dark glass theme.
 ///
-/// For launcher icons / splash screens, run `tool/export_logo.dart` once —
-/// it rasterizes [CubeLogoPainter] to `assets/logo/cube.png` at 1024×1024.
+/// The legacy [CubeLogoPainter] is kept below for the offline export tool.
 class CubeLogo extends StatelessWidget {
   const CubeLogo({
     super.key,
@@ -22,10 +21,34 @@ class CubeLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final radius = size * 0.26; // squircle-ish, like the launcher icon
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(painter: CubeLogoPainter(glow: glow)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: glow
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF2EDB8F).withValues(alpha: 0.30),
+                    blurRadius: size * 0.32,
+                    spreadRadius: -size * 0.08,
+                  ),
+                ]
+              : null,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: Image.asset(
+            'assets/logo/cube.png',
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+          ),
+        ),
+      ),
     );
   }
 }

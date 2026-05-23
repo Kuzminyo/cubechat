@@ -68,6 +68,10 @@ flutter_launcher_icons:
   background_color_ios: "#06140D"
   adaptive_icon_background: "#06140D"
   adaptive_icon_foreground: assets/logo/cube_transparent.png
+  windows:
+    generate: true
+    image_path: assets/logo/cube.png
+    icon_size: 256
 
 flutter_native_splash:
   color: "#06140D"
