@@ -62,8 +62,6 @@ class _GlassNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTabChanged;
 
-  static const double _radius = 36;
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -104,21 +102,25 @@ class _GlassPill extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTabChanged;
 
-  static const double _radius = 36;
+  static const double _radius = 30;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(_radius),
-        // Tight shadow tucked directly under the pill — no side halo.
-        // The big spread-blur from before was bleeding ~24px each way,
-        // which read as a horizontal darker band on the aurora.
+        // Soft green glow under the bar so it floats off the aurora.
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
+            color: AppColors.brandPrimary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+            spreadRadius: -10,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
             blurRadius: 10,
-            offset: const Offset(0, 6),
+            offset: const Offset(0, 5),
             spreadRadius: -8,
           ),
         ],
@@ -126,20 +128,28 @@ class _GlassPill extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(_radius),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              // Dark glass tint at 22% — chat content shows through clearly
-              // while the pill still reads as glass.
-              color: Colors.black.withValues(alpha: 0.22),
+              // Green frosted glass: a deep-green base for legibility with a
+              // brand-green tint on top, so the whole bar reads green like
+              // the mockup rather than neutral dark glass.
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.bgBottom.withValues(alpha: 0.62),
+                  AppColors.brandPrimary.withValues(alpha: 0.16),
+                ],
+              ),
               borderRadius: BorderRadius.circular(_radius),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: AppColors.brandPrimary.withValues(alpha: 0.28),
                 width: 1,
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -174,9 +184,26 @@ class _NavItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          decoration: BoxDecoration(
+            // Active tab sits inside a brighter green "pill" highlight, like
+            // the mockup — replaces the old underline indicator.
+            color: active
+                ? AppColors.brandPrimary.withValues(alpha: 0.22)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: active
+                ? Border.all(
+                    color: AppColors.brandPrimary.withValues(alpha: 0.35),
+                    width: 1,
+                  )
+                : null,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -191,8 +218,9 @@ class _NavItem extends StatelessWidget {
                 child: Icon(
                   active ? spec.activeIcon : spec.icon,
                   key: ValueKey(active),
-                  size: 24,
-                  color: active ? AppColors.brandPrimary : AppColors.textOnGlassDim,
+                  size: 23,
+                  color:
+                      active ? AppColors.textOnGlass : AppColors.textOnGlassDim,
                 ),
               ),
               const SizedBox(height: 4),
@@ -201,30 +229,12 @@ class _NavItem extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 style: TextStyle(
                   fontSize: 11,
-                  color: active ? AppColors.textOnGlass : AppColors.textOnGlassDim,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                  color: active
+                      ? AppColors.textOnGlass
+                      : AppColors.textOnGlassDim,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w400,
                 ),
-                child: Text(spec.label),
-              ),
-              const SizedBox(height: 4),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
-                width: active ? 18 : 0,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: AppColors.brandPrimary,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: active
-                      ? [
-                          BoxShadow(
-                            color: AppColors.brandPrimary.withValues(alpha: 0.55),
-                            blurRadius: 8,
-                            spreadRadius: -1,
-                          ),
-                        ]
-                      : null,
-                ),
+                child: Text(spec.label, maxLines: 1),
               ),
             ],
           ),
