@@ -1,4 +1,6 @@
-<!DOCTYPE html><html lang="en"><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
@@ -14,7 +16,7 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>Cubechat</title>
   <link rel="manifest" href="manifest.json">
@@ -78,109 +80,32 @@
       color: rgba(232, 232, 240, 0.55);
     }
   </style>
-  
-  
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-  
-  
-  <style id="splash-screen-style">
-    html {
-      height: 100%
-    }
-
-    body {
-      margin: 0;
-      min-height: 100%;
-      background-color: #06140D;
-          background-size: 100% 100%;
-    }
-
-    .center {
-      margin: 0;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
-    }
-
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
-    }
-
-    .stretch {
-      display:block;
-      width:100%; height:100%;
-    }
-
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
-    }
-
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
-    }
-
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-    }
-
-    .bottomRight {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-    }
-  </style>
-  <script id="splash-screen-script">
-    function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
-    }
-  </script>
 </head>
 <body>
-  <picture id="splash">
-      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
-      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
-      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
-  </picture>
-  
-  
   <div id="loader" aria-hidden="true">
     <div class="cube">
       <!-- Isometric cube SVG that matches the in-app CubeLogoPainter. -->
       <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#CFFC56"></stop>
-            <stop offset="100%" stop-color="#A3E635"></stop>
+            <stop offset="0%"  stop-color="#CFFC56"/>
+            <stop offset="100%" stop-color="#A3E635"/>
           </linearGradient>
           <linearGradient id="right" x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#7BC93C"></stop>
-            <stop offset="100%" stop-color="#4C9B23"></stop>
+            <stop offset="0%"  stop-color="#7BC93C"/>
+            <stop offset="100%" stop-color="#4C9B23"/>
           </linearGradient>
           <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#5BAE2C"></stop>
-            <stop offset="100%" stop-color="#2D7211"></stop>
+            <stop offset="0%"  stop-color="#5BAE2C"/>
+            <stop offset="100%" stop-color="#2D7211"/>
           </linearGradient>
         </defs>
         <!-- top face -->
-        <polygon points="50,12 93,31 50,50 7,31" fill="url(#top)"></polygon>
+        <polygon points="50,12 93,31 50,50 7,31" fill="url(#top)"/>
         <!-- right face -->
-        <polygon points="93,31 93,69 50,88 50,50" fill="url(#right)"></polygon>
+        <polygon points="93,31 93,69 50,88 50,50" fill="url(#right)"/>
         <!-- left face -->
-        <polygon points="7,31 50,50 50,88 7,69" fill="url(#left)"></polygon>
+        <polygon points="7,31 50,50 50,88 7,69" fill="url(#left)"/>
       </svg>
     </div>
     <div class="loader-label">Loading Cubechat…</div>
@@ -193,7 +118,6 @@
       if (loader) loader.classList.add('fade');
     });
   </script>
-  <script src="flutter_bootstrap.js" async=""></script>
-
-
-</body></html>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
