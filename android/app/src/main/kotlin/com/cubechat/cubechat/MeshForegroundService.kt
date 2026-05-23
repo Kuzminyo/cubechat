@@ -27,8 +27,24 @@ class MeshForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startAsForeground()
-        return START_STICKY
+        // CRITICAL: starting/promoting a foreground service from the
+        // background (e.g. when the OS auto-restarts this sticky service after
+        // the app was swiped away) throws on Android 12+:
+        //   ForegroundServiceStartNotAllowedException, or a SecurityException
+        //   for the connectedDevice type if BLUETOOTH_CONNECT isn't currently
+        //   grantable. If startForeground() throws here and we don't catch it,
+        //   the process crashes — and because the service is sticky the system
+        //   keeps restarting it into the same crash, which the user sees as
+        //   "cubechat keeps stopping". So: catch, stop quietly, and DON'T ask
+        //   to be restarted. The app re-arms the service on next foreground.
+        return try {
+            startAsForeground()
+            START_STICKY
+        } catch (e: Exception) {
+            android.util.Log.w("MeshFGS", "startForeground blocked: ${e.message}")
+            stopSelf()
+            START_NOT_STICKY
+        }
     }
 
     private fun startAsForeground() {

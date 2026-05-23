@@ -30,18 +30,26 @@ import io.flutter.plugins.GeneratedPluginRegistrant
 class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        val engine = FlutterEngine(this)
-        // Run main() now, headless. Flutter renders to no surface until the
-        // Activity attaches a view; the Dart side (and BLE) runs regardless.
-        engine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault(),
-        )
-        // Register all pubspec plugins (flutter_blue_plus, permission_handler,
-        // record, audioplayers, …). A cached engine doesn't auto-register, so
-        // we must do it ourselves.
-        GeneratedPluginRegistrant.registerWith(engine)
-        registerCustomChannels(engine)
-        FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
+        // Prewarm failures must NOT crash the process (which, on a background
+        // sticky-restart, would loop into "keeps stopping"). If anything here
+        // throws, leave the cache empty — MainActivity then spins up its own
+        // engine the normal way.
+        try {
+            val engine = FlutterEngine(this)
+            // Run main() now, headless. Flutter renders to no surface until the
+            // Activity attaches a view; the Dart side (and BLE) runs regardless.
+            engine.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint.createDefault(),
+            )
+            // Register all pubspec plugins (flutter_blue_plus, permission_handler,
+            // record, audioplayers, …). A cached engine doesn't auto-register, so
+            // we must do it ourselves.
+            GeneratedPluginRegistrant.registerWith(engine)
+            registerCustomChannels(engine)
+            FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
+        } catch (e: Throwable) {
+            android.util.Log.e("MainApplication", "engine prewarm failed", e)
+        }
     }
 
     private fun registerCustomChannels(engine: FlutterEngine) {
