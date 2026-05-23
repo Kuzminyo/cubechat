@@ -121,6 +121,14 @@ class MessagingService {
   /// that aren't reachable right now, flushed when they next connect to us.
   final StoreForwardCache _store = StoreForwardCache();
 
+  /// Our own outgoing messages that were queued because the recipient was
+  /// unreachable. Keyed by the envelope msgId hex so the flush path can flip
+  /// the chat-bubble status to "delivered" once the frame is actually handed
+  /// over. In-memory only: a restart loses the status link (the frame still
+  /// gets delivered from the persisted relay buffer, the checkmark just
+  /// won't update for that older message).
+  final Map<String, _OutboxRef> _outbox = {};
+
   /// Encrypted Hive box backing [_store] so held frames survive an app
   /// restart (within the 1h TTL). Writes are debounced via
   /// [_relayPersistTimer] so a media-relay burst doesn't thrash the disk.
@@ -431,49 +439,53 @@ class MessagingService {
       // to fan-out across every active link so the mesh can relay when the
       // destination isn't a direct BLE neighbour.
       final transportId = session?.peerId;
+      final wireBytes = outboundFrame.encode();
       var deliveredVia = 0;
       if (transportId != null) {
         final client = _clients[transportId];
         if (client != null && client.isConnected) {
-          await client.writeOutbound(outboundFrame.encode());
+          await client.writeOutbound(wireBytes);
           deliveredVia = 1;
         } else {
-          // Session exists but central side is gone — push via peripheral
-          // notify (matches pre-mesh behaviour).
-          final ok = await _ref
-              .read(blePeripheralProvider)
-              .notifyInbound(outboundFrame.encode());
+          final ok =
+              await _ref.read(blePeripheralProvider).notifyInbound(wireBytes);
           if (ok) {
             deliveredVia = 1;
           } else {
-            DebugLog.instance.log('NOISE',
-                'text send: notify returned false (no subscriber?), falling back to fan-out');
-            // Last-ditch fan-out so the message still has a chance to reach
-            // its destination via a relay.
-            deliveredVia = await _fanoutAllLinks(
-              outboundFrame.encode(),
-              excludePeerId: null,
-            );
-            if (deliveredVia == 0) {
-              throw StateError(
-                  'send failed: notify rejected and no mesh links available');
-            }
+            deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
           }
         }
       } else {
-        // No direct session for this recipient — broadcast onto every open
-        // link and let the mesh route it. Receivers dedup on (origin, msgId).
-        deliveredVia = await _fanoutAllLinks(
-          outboundFrame.encode(),
-          excludePeerId: null,
-        );
-        if (deliveredVia == 0) {
-          throw StateError('no active mesh links to relay through');
-        }
+        deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
       }
-      messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
-      if (chatId != canonicalId) {
-        messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+
+      if (deliveredVia > 0) {
+        messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+        if (chatId != canonicalId) {
+          messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+        }
+      } else {
+        // Recipient unreachable right now → opportunistic store-and-forward:
+        // hold the encrypted frame and hand it over the moment they connect
+        // (handled by _flushStoreForwardFor on the next handshake). The
+        // message stays "sending" until then; _outbox flips it to delivered
+        // once it's actually handed off.
+        _store.store(
+          destHash: peerHash,
+          frameBytes: wireBytes,
+          origin: myHash,
+          msgId: msgId,
+        );
+        _outbox[TransportEnvelope.hashHex(msgId)] = _OutboxRef(
+          canonicalId: canonicalId,
+          chatId: chatId,
+          messageId: msg.id,
+        );
+        _scheduleRelayPersist();
+        DebugLog.instance.log('MESH',
+            'text undeliverable — queued for store-and-forward to '
+            '$canonicalId (held ${_store.size})');
+        // Leave status as sending (pending), not failed.
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'sendText FAILED: $e');
@@ -1754,18 +1766,49 @@ class MessagingService {
         'to ${session.peerId}');
     final client = _clients[session.peerId];
     for (final bytes in pending) {
+      var sent = false;
       try {
         if (client != null && client.isConnected) {
           await client.writeOutbound(bytes);
+          sent = true;
         } else {
-          await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+          sent = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
         }
       } catch (e) {
         DebugLog.instance.log('MESH',
             'store-and-forward delivery failed for ${session.peerId}: $e');
       }
+      // If this was one of our own queued (outbox) messages, flip its
+      // chat-bubble status to delivered now that it's actually been handed
+      // over to the recipient.
+      if (sent) _markOutboxDelivered(bytes);
       // Pace like the chunked-media path so we don't overrun a cheap stack.
       await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+
+  /// Decodes a just-flushed frame to recover its envelope msgId; if it
+  /// matches a queued outbox entry, mark that message delivered.
+  void _markOutboxDelivered(Uint8List frameBytes) {
+    if (_outbox.isEmpty) return;
+    try {
+      final frame = Frame.decode(frameBytes);
+      if (frame.type != FrameType.transport) return;
+      final env = TransportEnvelope.decode(frame.payload);
+      final key = TransportEnvelope.hashHex(env.msgId);
+      final ref = _outbox.remove(key);
+      if (ref == null) return;
+      final messages = _ref.read(messagesControllerProvider.notifier);
+      messages.updateStatus(ref.canonicalId, ref.messageId,
+          MessageStatus.delivered);
+      if (ref.chatId != ref.canonicalId) {
+        messages.updateStatus(ref.chatId, ref.messageId,
+            MessageStatus.delivered);
+      }
+      DebugLog.instance.log('MESH',
+          'outbox delivered: ${ref.messageId} → ${ref.canonicalId}');
+    } catch (_) {
+      // not decodable / not ours — ignore
     }
   }
 
@@ -1902,6 +1945,7 @@ class MessagingService {
   /// peers), a panic wipe should leave nothing behind.
   void clearRelayBuffer() {
     _store.clear();
+    _outbox.clear();
     _relayPersistTimer?.cancel();
     _relayPersistTimer = null;
     try {
@@ -1939,6 +1983,20 @@ final messagingServiceProvider = Provider<MessagingService>((ref) {
 /// One signed media manifest awaiting its chunks. Holds enough context
 /// to attribute the resulting Message to the right peer once the bytes
 /// have caught up.
+/// Tracks a queued outgoing message (held in the store-and-forward buffer
+/// because the recipient was offline) so its chat-bubble status can flip to
+/// delivered once we actually hand it over.
+class _OutboxRef {
+  _OutboxRef({
+    required this.canonicalId,
+    required this.chatId,
+    required this.messageId,
+  });
+  final String canonicalId;
+  final String chatId;
+  final String messageId;
+}
+
 class _ManifestEntry {
   _ManifestEntry({
     required this.manifest,
