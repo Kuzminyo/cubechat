@@ -203,6 +203,7 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     await _peerSub?.cancel();
     _peerSub = scanner.peers.listen((peers) {
       state = state.copyWith(peers: peers);
+      _maybeAutoConnect(peers);
     });
     await _adapterSub?.cancel();
     _adapterSub = scanner.adapterState.listen((s) {
@@ -215,6 +216,48 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
         state = state.copyWith(status: PeerDiscoveryStatus.adapterOff);
       }
     });
+  }
+
+  // ---- opportunistic auto-connect (store-and-forward delivery) ----
+
+  /// Per-MAC cooldown so we don't hammer the same advertiser with connect
+  /// attempts every scan tick.
+  final Map<String, DateTime> _autoAttempts = {};
+  static const _autoCooldown = Duration(seconds: 25);
+  static const _maxAutoPerTick = 2;
+
+  /// When we're holding messages for someone who's offline, auto-connect to
+  /// any peer the scanner turns up — a handshake completes the link, which
+  /// flushes the store-and-forward buffer (so a message sent while the
+  /// recipient's Bluetooth was off is delivered the moment they switch it
+  /// back on and we see them). Throttled and capped to keep churn/battery
+  /// sane; connectAsInitiator already no-ops if we're mid-connect to that id.
+  void _maybeAutoConnect(List<DiscoveredPeer> peers) {
+    final messaging = ref.read(messagingServiceProvider);
+    if (!messaging.hasPendingDelivery) return;
+
+    final now = DateTime.now();
+    _autoAttempts.removeWhere((_, t) => now.difference(t) > _autoCooldown);
+
+    var started = 0;
+    for (final peer in peers) {
+      if (started >= _maxAutoPerTick) break;
+      if (peer.isConnected) continue;
+      final last = _autoAttempts[peer.id];
+      if (last != null && now.difference(last) < _autoCooldown) continue;
+      _autoAttempts[peer.id] = now;
+      started++;
+      unawaited(() async {
+        try {
+          await messaging.connectAsInitiator(
+            BluetoothDevice.fromId(peer.id),
+            displayName: peer.advertisedName,
+          );
+        } catch (_) {
+          // transient — the cooldown will let us retry later
+        }
+      }());
+    }
   }
 
   void _disposeSubscriptions() {

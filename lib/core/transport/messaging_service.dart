@@ -441,19 +441,30 @@ class MessagingService {
       final transportId = session?.peerId;
       final wireBytes = outboundFrame.encode();
       var deliveredVia = 0;
+      // Every delivery attempt is wrapped so a transient BLE failure (stale
+      // link, peer's Bluetooth turned off, write rejected) leaves
+      // deliveredVia == 0 and routes the message into the pending outbox —
+      // it must NOT throw to the outer catch and mark the message failed.
       if (transportId != null) {
         final client = _clients[transportId];
         if (client != null && client.isConnected) {
-          await client.writeOutbound(wireBytes);
-          deliveredVia = 1;
-        } else {
-          final ok =
-              await _ref.read(blePeripheralProvider).notifyInbound(wireBytes);
-          if (ok) {
+          try {
+            await client.writeOutbound(wireBytes);
             deliveredVia = 1;
-          } else {
-            deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
+          } catch (e) {
+            DebugLog.instance.log('MESH', 'direct write failed ($e) — will queue');
           }
+        }
+        if (deliveredVia == 0) {
+          try {
+            final ok = await _ref
+                .read(blePeripheralProvider)
+                .notifyInbound(wireBytes);
+            if (ok) deliveredVia = 1;
+          } catch (_) {}
+        }
+        if (deliveredVia == 0) {
+          deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
         }
       } else {
         deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
@@ -1939,6 +1950,12 @@ class MessagingService {
       }
     });
   }
+
+  /// True when we're holding any frames waiting for a peer to come back
+  /// (store-and-forward buffer or our own queued sends). The discovery layer
+  /// uses this to decide whether it's worth auto-connecting to a freshly
+  /// seen peer in order to flush.
+  bool get hasPendingDelivery => _store.size > 0;
 
   /// Drops every frame held in the store-and-forward buffer. Called by
   /// Emergency Wipe — although these frames are opaque (encrypted to other
