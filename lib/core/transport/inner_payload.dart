@@ -33,7 +33,29 @@ enum InnerPayloadType {
   /// the receiver knows it actually came from the claimed origin and
   /// can reject assembled bytes whose hash doesn't match the signed
   /// commitment.
-  mediaManifest(0x50);
+  mediaManifest(0x50),
+
+  /// Read receipt — acknowledges one or more previously-received messages by
+  /// the 16-byte transport msgId they arrived under. Rides the same
+  /// sign + encrypt path as text; 1:1 chats only. See [ReadReceipt].
+  receipt(0x40),
+
+  /// Emoji reaction to a single message, referenced by its transport msgId.
+  /// Same sign + encrypt path as text; works in 1:1 chats and channels.
+  /// See [Reaction].
+  reaction(0x60),
+
+  /// Invitation handing one peer the key to a shared-key channel, over the
+  /// 1:1 signed + SealedBox path. See [ChannelInvite].
+  channelInvite(0x70),
+
+  /// New text for a message the sender already sent, referenced by its
+  /// transport msgId. See [MessageEdit].
+  edit(0x80),
+
+  /// "Delete for everyone" — the sender retracts a message they sent,
+  /// referenced by its transport msgId. See [MessageDelete].
+  delete(0x90);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -485,6 +507,308 @@ class MediaManifest {
       mime: mime,
       sha256: sha,
     );
+  }
+}
+
+/// Delivery state a [ReadReceipt] can acknowledge. Only [read] is emitted
+/// today — plain delivery is already tracked at the BLE-write layer — but the
+/// status byte keeps the format open for a future `delivered` receipt without
+/// a wire break.
+enum ReceiptStatus {
+  delivered(0x01),
+  read(0x02);
+
+  const ReceiptStatus(this.tag);
+  final int tag;
+
+  static ReceiptStatus? fromByte(int b) {
+    for (final v in ReceiptStatus.values) {
+      if (v.tag == b) return v;
+    }
+    return null;
+  }
+}
+
+/// Acknowledgement that the recipient has seen one or more messages, each
+/// referenced by the 16-byte transport msgId it was originally sent under
+/// (the sender records that id as [Message.wireId]; the receiver copies it
+/// from the envelope). Batches several ids into one frame to keep BLE airtime
+/// cheap when a chat is opened with a backlog of unread messages.
+///
+/// Wire layout (inside an [InnerPayloadType.receipt] body):
+///
+/// ```
+///   [status : 1 byte]            ← ReceiptStatus tag
+///   [count  : 1 byte]            ← number of acknowledged ids (1..255)
+///   [ids    : count * 16 bytes]  ← transport msgIds being acknowledged
+/// ```
+class ReadReceipt {
+  ReadReceipt({required this.status, required this.msgIds})
+      : assert(msgIds.length >= 1 && msgIds.length <= 255,
+            'receipt must carry 1..255 ids'),
+        assert(msgIds.every((id) => id.length == idLen),
+            'every msgId must be $idLen B');
+
+  final ReceiptStatus status;
+  final List<Uint8List> msgIds;
+
+  static const int idLen = 16;
+
+  /// Max ids that fit one frame while leaving room for the signature +
+  /// SealedBox + envelope overhead inside the BLE MTU. 12 * 16 = 192B body.
+  static const int maxIdsPerFrame = 12;
+
+  Uint8List encode() {
+    final out = Uint8List(2 + msgIds.length * idLen);
+    out[0] = status.tag;
+    out[1] = msgIds.length;
+    var c = 2;
+    for (final id in msgIds) {
+      out.setRange(c, c += idLen, id);
+    }
+    return out;
+  }
+
+  static ReadReceipt decode(Uint8List bytes) {
+    if (bytes.length < 2) {
+      throw const FormatException('read receipt truncated');
+    }
+    final status = ReceiptStatus.fromByte(bytes[0]);
+    if (status == null) {
+      throw FormatException(
+          'unknown receipt status 0x${bytes[0].toRadixString(16)}');
+    }
+    final count = bytes[1];
+    if (bytes.length < 2 + count * idLen) {
+      throw const FormatException('read receipt id list overrun');
+    }
+    final ids = <Uint8List>[];
+    var c = 2;
+    for (var i = 0; i < count; i++) {
+      ids.add(Uint8List.fromList(bytes.sublist(c, c += idLen)));
+    }
+    return ReadReceipt(status: status, msgIds: ids);
+  }
+}
+
+/// Emoji reaction to a single message, referenced by its 16-byte transport
+/// msgId. An [op] of [ReactionOp.add] attaches the emoji, [ReactionOp.remove]
+/// clears a previously-added one (toggle-off).
+///
+/// Wire layout (inside an [InnerPayloadType.reaction] body):
+///
+/// ```
+///   [op       : 1 byte]            ← ReactionOp tag
+///   [emojiLen : 1 byte]
+///   [emoji    : emojiLen bytes UTF-8]
+///   [targetId : 16 bytes]          ← msgId of the message being reacted to
+/// ```
+enum ReactionOp {
+  remove(0x00),
+  add(0x01);
+
+  const ReactionOp(this.tag);
+  final int tag;
+
+  static ReactionOp? fromByte(int b) {
+    for (final v in ReactionOp.values) {
+      if (v.tag == b) return v;
+    }
+    return null;
+  }
+}
+
+class Reaction {
+  Reaction({required this.op, required this.emoji, required this.targetMsgId})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+
+  final ReactionOp op;
+  final String emoji;
+  final Uint8List targetMsgId;
+
+  static const int idLen = 16;
+
+  Uint8List encode() {
+    final emojiBytes = utf8.encode(emoji);
+    if (emojiBytes.isEmpty || emojiBytes.length > 255) {
+      throw const FormatException('reaction emoji must be 1..255 UTF-8 bytes');
+    }
+    final out = Uint8List(1 + 1 + emojiBytes.length + idLen);
+    var c = 0;
+    out[c++] = op.tag;
+    out[c++] = emojiBytes.length;
+    out.setRange(c, c += emojiBytes.length, emojiBytes);
+    out.setRange(c, c += idLen, targetMsgId);
+    return out;
+  }
+
+  static Reaction decode(Uint8List bytes) {
+    if (bytes.length < 2) {
+      throw const FormatException('reaction truncated');
+    }
+    final op = ReactionOp.fromByte(bytes[0]);
+    if (op == null) {
+      throw FormatException(
+          'unknown reaction op 0x${bytes[0].toRadixString(16)}');
+    }
+    final emojiLen = bytes[1];
+    if (bytes.length < 2 + emojiLen + idLen) {
+      throw const FormatException('reaction body overrun');
+    }
+    var c = 2;
+    final emoji = utf8.decode(bytes.sublist(c, c + emojiLen),
+        allowMalformed: true);
+    c += emojiLen;
+    final target = Uint8List.fromList(bytes.sublist(c, c + idLen));
+    return Reaction(op: op, emoji: emoji, targetMsgId: target);
+  }
+}
+
+/// Invitation handing one peer the key to a shared-key channel.
+///
+/// It carries the channel's **derived key**, not its password: the invitee can
+/// then read and post without the inviter having to store the human secret or
+/// put it on the wire. (A channel's key is all the authority there is —
+/// membership *is* holding it.)
+///
+/// Wire layout (inside an [InnerPayloadType.channelInvite] body, itself inside
+/// a SignedPayload + SealedBox addressed to one peer):
+///
+/// ```
+///   [name : N bytes UTF-8 — includes the leading '#']
+///   [key  : 32 bytes]
+/// ```
+///
+/// The key is fixed-width and last, so the name needs no length prefix.
+///
+/// [maxNameBytes] is whatever survives the single-frame BLE budget after every
+/// enclosing layer takes its cut — an invite that doesn't fit one write can't
+/// be delivered, since nothing below this reassembles fragments:
+///
+/// ```
+///     1   frame type
+///  + 33   transport envelope header
+///  +  1   cipher tag
+///  + 48   SealedBox overhead (ephemeral pubkey + Poly1305 tag)
+///  +105   SignedPayload header (marker + ed pubkey + signature + timestamp)
+///  +  1   inner-payload type tag
+///  + 32   channel key
+///  ----
+///   221   → the 240-byte conservative frame ceiling leaves 19 for the name
+/// ```
+class ChannelInvite {
+  ChannelInvite({required this.name, required this.key})
+      : assert(key.length == keyLen, 'channel key must be $keyLen B');
+
+  /// Normalised channel name, leading `#` included.
+  final String name;
+
+  /// The channel's 32-byte ChaCha20-Poly1305 key.
+  final Uint8List key;
+
+  static const int keyLen = 32;
+
+  /// Longest channel name (in UTF-8 bytes) that still fits one BLE frame.
+  /// Note this is *bytes*, not characters — Cyrillic costs two per letter.
+  static const int maxNameBytes = 19;
+
+  Uint8List encode() {
+    final nameBytes = utf8.encode(name);
+    if (nameBytes.isEmpty) {
+      throw const FormatException('channel invite has an empty name');
+    }
+    if (nameBytes.length > maxNameBytes) {
+      throw const FormatException(
+          'channel name too long to fit a single BLE frame');
+    }
+    final out = Uint8List(nameBytes.length + keyLen);
+    out.setRange(0, nameBytes.length, nameBytes);
+    out.setRange(nameBytes.length, out.length, key);
+    return out;
+  }
+
+  static ChannelInvite decode(Uint8List bytes) {
+    // Strictly greater: a zero-length name is not a channel.
+    if (bytes.length <= keyLen) {
+      throw const FormatException('channel invite truncated');
+    }
+    final split = bytes.length - keyLen;
+    // Symmetric with encode(): reject a name we could never re-invite anyone
+    // with. It also bounds an attacker-supplied string before it reaches the
+    // channel store and the chat list.
+    if (split > maxNameBytes) {
+      throw const FormatException('channel invite name exceeds the cap');
+    }
+    final name = utf8.decode(bytes.sublist(0, split), allowMalformed: true);
+    final key = Uint8List.fromList(bytes.sublist(split));
+    return ChannelInvite(name: name, key: key);
+  }
+}
+
+/// Replacement text for a message the sender already sent, referenced by the
+/// 16-byte transport msgId it went out under.
+///
+/// Wire layout (inside an [InnerPayloadType.edit] body):
+///
+/// ```
+///   [targetId : 16 bytes — msgId of the message being edited]
+///   [text     : N bytes UTF-8 — the new body]
+/// ```
+///
+/// The id is fixed-width and first, so the text needs no length prefix: it runs
+/// to the end of the payload. Authorship is *not* carried here — the receiver
+/// checks that the signer of this frame is the author of the target message,
+/// which is the only thing that makes an edit safe to apply.
+class MessageEdit {
+  MessageEdit({required this.targetMsgId, required this.text})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+
+  final Uint8List targetMsgId;
+  final String text;
+
+  static const int idLen = 16;
+
+  Uint8List encode() {
+    final textBytes = utf8.encode(text);
+    if (textBytes.isEmpty) {
+      throw const FormatException('message edit has empty text');
+    }
+    final out = Uint8List(idLen + textBytes.length);
+    out.setRange(0, idLen, targetMsgId);
+    out.setRange(idLen, out.length, textBytes);
+    return out;
+  }
+
+  static MessageEdit decode(Uint8List bytes) {
+    // Strictly greater: an edit to empty text is a deletion, not an edit, and
+    // this format does not carry one.
+    if (bytes.length <= idLen) {
+      throw const FormatException('message edit truncated');
+    }
+    return MessageEdit(
+      targetMsgId: Uint8List.fromList(bytes.sublist(0, idLen)),
+      text: utf8.decode(bytes.sublist(idLen), allowMalformed: true),
+    );
+  }
+}
+
+/// "Delete for everyone" — retracts a message the sender previously sent,
+/// referenced by the 16-byte transport msgId. The body is just that id.
+class MessageDelete {
+  MessageDelete({required this.targetMsgId})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+
+  final Uint8List targetMsgId;
+
+  static const int idLen = 16;
+
+  Uint8List encode() => Uint8List.fromList(targetMsgId);
+
+  static MessageDelete decode(Uint8List bytes) {
+    if (bytes.length != idLen) {
+      throw const FormatException('message delete must be exactly the id');
+    }
+    return MessageDelete(targetMsgId: Uint8List.fromList(bytes));
   }
 }
 

@@ -290,6 +290,12 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get bleRetry;
 
+  /// No description provided for @bleConnectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t connect. The peer may be out of range, or its Bluetooth address changed.'**
+  String get bleConnectFailed;
+
   /// No description provided for @bleSignal.
   ///
   /// In en, this message translates to:
@@ -619,6 +625,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Copied'**
   String get copied;
+
+  /// No description provided for @channelsNewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New channel'**
+  String get channelsNewTitle;
+
+  /// No description provided for @channelsNewTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'New channel'**
+  String get channelsNewTooltip;
+
+  /// No description provided for @channelNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel name'**
+  String get channelNameLabel;
+
+  /// No description provided for @channelPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password (optional)'**
+  String get channelPasswordLabel;
+
+  /// No description provided for @channelJoinAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get channelJoinAction;
+
+  /// No description provided for @channelSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Group channel · shared key'**
+  String get channelSubtitle;
+
+  /// No description provided for @chatsStatusChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'channel'**
+  String get chatsStatusChannel;
+
+  /// No description provided for @channelInviteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add people'**
+  String get channelInviteTitle;
+
+  /// No description provided for @channelInviteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite'**
+  String get channelInviteAction;
+
+  /// No description provided for @channelInviteEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No known peers yet. Meet someone on the Nearby tab first.'**
+  String get channelInviteEmpty;
+
+  /// No description provided for @channelInviteSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitations sent'**
+  String get channelInviteSent;
+
+  /// No description provided for @channelInviteNoneSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody could be reached right now'**
+  String get channelInviteNoneSent;
+
+  /// No description provided for @channelNameTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'That channel name is too long'**
+  String get channelNameTooLong;
+
+  /// No description provided for @chatsActionFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to favorites'**
+  String get chatsActionFavorite;
+
+  /// No description provided for @chatsActionUnfavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from favorites'**
+  String get chatsActionUnfavorite;
+
+  /// No description provided for @chatsActionDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete chat'**
+  String get chatsActionDelete;
+
+  /// No description provided for @chatsDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this chat?'**
+  String get chatsDeleteTitle;
+
+  /// No description provided for @chatsDeletePeerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes the conversation and forgets this peer. They can find you again over the mesh.'**
+  String get chatsDeletePeerHint;
+
+  /// No description provided for @chatsDeleteChannelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leaves the channel and removes its history. You will need the key again to rejoin.'**
+  String get chatsDeleteChannelHint;
+
+  /// No description provided for @chatEditAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get chatEditAction;
+
+  /// No description provided for @chatEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit message'**
+  String get chatEditTitle;
+
+  /// No description provided for @chatEditSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get chatEditSave;
+
+  /// No description provided for @chatEdited.
+  ///
+  /// In en, this message translates to:
+  /// **'edited'**
+  String get chatEdited;
+
+  /// No description provided for @chatDeleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get chatDeleteAction;
+
+  /// No description provided for @chatDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete message?'**
+  String get chatDeleteTitle;
+
+  /// No description provided for @chatDeleteForMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete for me'**
+  String get chatDeleteForMe;
+
+  /// No description provided for @chatDeleteForEveryone.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete for everyone'**
+  String get chatDeleteForEveryone;
 }
 
 class _AppLocalizationsDelegate

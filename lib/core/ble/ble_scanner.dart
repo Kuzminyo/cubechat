@@ -63,6 +63,48 @@ class BleScanner {
     _emit();
   }
 
+  /// Force a fresh scan window and wait until the peer advertising
+  /// [advertisedName] is seen again, returning the address it is answering on
+  /// *now*. Android rotates the BLE privacy address, and we only refresh our
+  /// view of it once per scan window (with a battery-saving gap in between),
+  /// so an id cached from an earlier window can point at an address the peer
+  /// has already abandoned — connecting there just times out.
+  ///
+  /// Returns null when the scanner isn't running, the name is unknown, or the
+  /// peer isn't observed within [timeout]; callers should then fall back to
+  /// the address they already have.
+  Future<String?> refreshPeerId(
+    String advertisedName, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    if (!_running || advertisedName.isEmpty) return null;
+
+    // Only a sighting from *after* this moment proves the address is current;
+    // the map still holds the previous one until a new result overwrites it.
+    final since = DateTime.now();
+    await _stopScanWindow();
+    unawaited(_startScanWindow());
+
+    final completer = Completer<String?>();
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    final sub = _controller.stream.listen((snapshot) {
+      for (final p in snapshot) {
+        if (p.advertisedName == advertisedName && p.lastSeen.isAfter(since)) {
+          if (!completer.isCompleted) completer.complete(p.id);
+          return;
+        }
+      }
+    });
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      await sub.cancel();
+    }
+  }
+
   Future<void> _startScanWindow() async {
     if (!_running) return;
     try {

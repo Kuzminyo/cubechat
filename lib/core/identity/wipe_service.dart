@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/channels/data/channel_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
+import '../../features/chats/data/favorites_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../crypto/identity_service.dart';
 import '../storage/hive_cipher.dart';
@@ -24,6 +26,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // 1. In-memory state first so nothing tries to re-persist mid-wipe.
   await ref.read(messagesControllerProvider.notifier).clearAll();
   await ref.read(knownPeersControllerProvider.notifier).clear();
+  await ref.read(channelControllerProvider.notifier).clear();
+  await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(nicknameControllerProvider.notifier).reset();
 
   final sessions = ref.read(chatSessionManagerProvider);

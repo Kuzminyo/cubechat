@@ -15,6 +15,7 @@ class Chat {
     this.isFavorite = false,
     this.isVerified = false,
     this.signKeyRotated = false,
+    this.isChannel = false,
   });
 
   final String id;
@@ -40,4 +41,9 @@ class Chat {
   /// chip; tapping the tile takes the user back to the verification
   /// screen so they can re-confirm the new fingerprint.
   final bool signKeyRotated;
+
+  /// True when this entry is a shared-key group channel (id starts with `#`)
+  /// rather than a 1:1 peer conversation. Channels have no online/verified
+  /// state — anyone with the key is a member.
+  final bool isChannel;
 }

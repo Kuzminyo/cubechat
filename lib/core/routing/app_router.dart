@@ -9,55 +9,52 @@ import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
+import 'branch_container.dart';
 import 'page_transitions.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
-final _shellNavKey = GlobalKey<NavigatorState>();
 
 GoRouter buildRouter() {
   return GoRouter(
     navigatorKey: _rootNavKey,
     initialLocation: '/chats',
     routes: [
-      ShellRoute(
-        navigatorKey: _shellNavKey,
-        builder: (context, state, child) {
-          final location = state.uri.toString();
-          final index = switch (location) {
-            (final s) when s.startsWith('/peers') => 1,
-            (final s) when s.startsWith('/profile') => 2,
-            _ => 0,
-          };
-          return AppShell(
-            currentIndex: index,
-            onTabChanged: (i) {
-              switch (i) {
-                case 0:
-                  context.go('/chats');
-                case 1:
-                  context.go('/peers');
-                case 2:
-                  context.go('/profile');
-              }
-            },
-            body: child,
-          );
-        },
-        routes: [
-          GoRoute(
-            path: '/chats',
-            pageBuilder: (context, state) =>
-                crossFadePage(child: const ChatsListScreen(), state: state),
+      // A stateful shell keeps one Navigator per tab alive for the whole
+      // session. Tapping a tab swaps which branch is visible — it does not
+      // rebuild the screen — so switching is instant and scroll positions and
+      // in-flight animations are preserved.
+      StatefulShellRoute(
+        builder: (context, state, navigationShell) =>
+            AppShell(shell: navigationShell),
+        navigatorContainerBuilder: (context, navigationShell, children) =>
+            BranchContainer(
+          currentIndex: navigationShell.currentIndex,
+          branches: children,
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/chats',
+                builder: (context, state) => const ChatsListScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/peers',
-            pageBuilder: (context, state) =>
-                crossFadePage(child: const PeersScreen(), state: state),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/peers',
+                builder: (context, state) => const PeersScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/profile',
-            pageBuilder: (context, state) =>
-                crossFadePage(child: const ProfileScreen(), state: state),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
           ),
         ],
       ),
@@ -70,6 +67,24 @@ GoRouter buildRouter() {
           return fadeSlidePage(
             child: AuroraBackground(
               child: ChatScreen(peerId: peerId, peerLabel: peerLabel),
+            ),
+            state: state,
+          );
+        },
+      ),
+      // Channels get their own route rather than riding /chat/:peerId. Their
+      // chat id starts with '#', and a literal '#' in a URL path is the
+      // fragment delimiter — percent-encoded it does not survive the browser's
+      // round-trip, so the push silently matched nothing on web. The '#' stays
+      // in the chat id; the URL carries the bare name.
+      GoRoute(
+        path: '/channel/:name',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final channel = '#${state.pathParameters['name']!}';
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: ChatScreen(peerId: channel, peerLabel: channel),
             ),
             state: state,
           );

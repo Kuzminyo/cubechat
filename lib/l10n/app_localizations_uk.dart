@@ -114,6 +114,10 @@ class AppLocalizationsUk extends AppLocalizations {
   String get bleRetry => 'Повторити';
 
   @override
+  String get bleConnectFailed =>
+      'Не вдалося підключитися. Пір поза зоною дії або його Bluetooth-адресу змінено.';
+
+  @override
   String get bleSignal => 'Сигнал';
 
   @override
@@ -301,4 +305,88 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get copied => 'Скопійовано';
+
+  @override
+  String get channelsNewTitle => 'Новий канал';
+
+  @override
+  String get channelsNewTooltip => 'Новий канал';
+
+  @override
+  String get channelNameLabel => 'Назва каналу';
+
+  @override
+  String get channelPasswordLabel => 'Пароль (необов’язково)';
+
+  @override
+  String get channelJoinAction => 'Приєднатися';
+
+  @override
+  String get channelSubtitle => 'Груповий канал · спільний ключ';
+
+  @override
+  String get chatsStatusChannel => 'канал';
+
+  @override
+  String get channelInviteTitle => 'Додати учасників';
+
+  @override
+  String get channelInviteAction => 'Запросити';
+
+  @override
+  String get channelInviteEmpty =>
+      'Поки немає відомих пірів. Спершу знайдіть когось на вкладці «Поруч».';
+
+  @override
+  String get channelInviteSent => 'Запрошення надіслано';
+
+  @override
+  String get channelInviteNoneSent => 'Зараз нікого не вдалося досягнути';
+
+  @override
+  String get channelNameTooLong => 'Назва каналу задовга';
+
+  @override
+  String get chatsActionFavorite => 'Додати в обрані';
+
+  @override
+  String get chatsActionUnfavorite => 'Прибрати з обраних';
+
+  @override
+  String get chatsActionDelete => 'Видалити чат';
+
+  @override
+  String get chatsDeleteTitle => 'Видалити цей чат?';
+
+  @override
+  String get chatsDeletePeerHint =>
+      'Розмову буде видалено, а піра забуто. Він зможе знайти вас знову через меш.';
+
+  @override
+  String get chatsDeleteChannelHint =>
+      'Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.';
+
+  @override
+  String get chatEditAction => 'Редагувати';
+
+  @override
+  String get chatEditTitle => 'Редагувати повідомлення';
+
+  @override
+  String get chatEditSave => 'Зберегти';
+
+  @override
+  String get chatEdited => 'змінено';
+
+  @override
+  String get chatDeleteAction => 'Видалити';
+
+  @override
+  String get chatDeleteTitle => 'Видалити повідомлення?';
+
+  @override
+  String get chatDeleteForMe => 'Видалити в мене';
+
+  @override
+  String get chatDeleteForEveryone => 'Видалити в усіх';
 }

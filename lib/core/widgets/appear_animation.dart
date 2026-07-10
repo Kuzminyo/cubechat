@@ -17,6 +17,15 @@ class AppearAnimation extends StatefulWidget {
   final Offset beginOffset;
   final Curve curve;
 
+  /// Entrance delay for the [index]-th item of a list.
+  ///
+  /// The stagger is capped: past [maxSteps] every item shares the last delay,
+  /// so a long list finishes arriving in a fixed ~150 ms instead of trickling
+  /// in for most of a second. The cascade is a flourish on the first few rows,
+  /// not a loading bar.
+  static Duration stagger(int index, {int stepMs = 26, int maxSteps = 6}) =>
+      Duration(milliseconds: stepMs * (index < maxSteps ? index : maxSteps));
+
   @override
   State<AppearAnimation> createState() => _AppearAnimationState();
 }

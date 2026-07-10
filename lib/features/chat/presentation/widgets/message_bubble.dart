@@ -2,24 +2,37 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/utils/time_format.dart';
+import '../../../../core/widgets/context_popup.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../data/message_edit_target.dart';
+import '../../data/messages_controller.dart';
 import '../../models/message.dart';
 import '../image_viewer_screen.dart';
 import 'voice_bubble.dart';
 
-class MessageBubble extends StatefulWidget {
-  const MessageBubble({super.key, required this.message});
+/// Emoji offered in the long-press reaction picker. Kept short so the row fits
+/// one line on a narrow phone.
+const _reactionChoices = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+class MessageBubble extends ConsumerStatefulWidget {
+  const MessageBubble({super.key, required this.message, required this.chatId});
 
   final Message message;
 
+  /// The chat this bubble lives in (pubkey-hex peer id or `#channel`). Needed
+  /// to route a reaction back over the wire.
+  final String chatId;
+
   @override
-  State<MessageBubble> createState() => _MessageBubbleState();
+  ConsumerState<MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<MessageBubble>
+class _MessageBubbleState extends ConsumerState<MessageBubble>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
@@ -41,6 +54,162 @@ class _MessageBubbleState extends State<MessageBubble>
     super.dispose();
   }
 
+  bool get _canReact => widget.message.wireId != null;
+
+  /// Only your own text messages can be rewritten, and only if we know the
+  /// transport id everyone else filed them under.
+  bool get _canEdit =>
+      widget.message.isMine &&
+      widget.message.kind == MessageKind.text &&
+      widget.message.wireId != null;
+
+  void _toggleReaction(String emoji) {
+    final mineSet = widget.message.reactions[emoji];
+    final alreadyMine = mineSet != null && mineSet.contains('me');
+    ref.read(messagingServiceProvider).sendReaction(
+          widget.chatId,
+          widget.message.wireId!,
+          emoji,
+          add: !alreadyMine,
+        );
+  }
+
+  /// Telegram-style long-press menu: a small popup anchored at the finger,
+  /// floating above everything. A reaction strip on top (when the message can
+  /// carry reactions), then the per-message actions.
+  Future<void> _showActions(Offset at) async {
+    final t = AppLocalizations.of(context);
+
+    final picked = await showContextPopup<String>(
+      context: context,
+      globalPosition: at,
+      items: [
+        if (_canReact)
+          PopupMenuItem<String>(
+            enabled: false,
+            padding: EdgeInsets.zero,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                for (final e in _reactionChoices)
+                  // Builder so the pop targets the menu route, not this bubble.
+                  Builder(
+                    builder: (ctx) => InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: () => Navigator.of(ctx).pop('r:$e'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(e, style: const TextStyle(fontSize: 22)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        if (_canEdit)
+          _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
+              AppColors.textOnGlass),
+        _menuRow('delete', Icons.delete_outline, t.chatDeleteAction,
+            AppColors.danger),
+      ],
+    );
+
+    if (picked == null || !mounted) return;
+    if (picked.startsWith('r:')) {
+      _toggleReaction(picked.substring(2));
+    } else if (picked == 'edit') {
+      // Load the message into the input row (Telegram-style inline edit); the
+      // input commits it on send.
+      ref.read(messageEditTargetProvider.notifier).state = MessageEditTarget(
+        chatId: widget.chatId,
+        wireId: widget.message.wireId!,
+        originalText: widget.message.text,
+      );
+    } else if (picked == 'delete') {
+      await _promptDelete();
+    }
+  }
+
+  PopupMenuItem<String> _menuRow(
+    String value,
+    IconData icon,
+    String label,
+    Color color,
+  ) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 44,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 19, color: color),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _promptDelete() async {
+    final t = AppLocalizations.of(context);
+    final m = widget.message;
+    // "For everyone" only makes sense for our own message, and only when we
+    // know the shared id the recipients filed it under.
+    final canForEveryone = m.isMine && m.wireId != null;
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        title: Text(
+          t.chatDeleteTitle,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        children: [
+          if (canForEveryone)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop('everyone'),
+              child: Text(t.chatDeleteForEveryone,
+                  style: const TextStyle(color: AppColors.danger)),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('me'),
+            child: Text(t.chatDeleteForMe,
+                style: TextStyle(color: AppColors.textOnGlass)),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'me') {
+      ref
+          .read(messagesControllerProvider.notifier)
+          .deleteLocal(widget.chatId, m.id);
+    } else if (choice == 'everyone') {
+      await ref
+          .read(messagingServiceProvider)
+          .sendDeleteForEveryone(widget.chatId, m.wireId!);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +253,19 @@ class _MessageBubbleState extends State<MessageBubble>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Channel messages from others: show the author's name on top,
+              // since a channel mixes many senders in one conversation.
+              if (!mine && message.authorName != null) ...[
+                Text(
+                  message.authorName!,
+                  style: TextStyle(
+                    color: AppColors.brandPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+              ],
               if (message.kind == MessageKind.image)
                 _ImagePayload(message: message)
               else if (message.kind == MessageKind.audio)
@@ -115,15 +297,114 @@ class _MessageBubbleState extends State<MessageBubble>
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
             child: Row(
-              mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+              mainAxisAlignment:
+                  mine ? MainAxisAlignment.end : MainAxisAlignment.start,
               children: [
                 ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.75),
-                  child: bubble,
+                  constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                  child: Column(
+                    crossAxisAlignment: mine
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        onLongPressStart: (d) => _showActions(d.globalPosition),
+                        child: bubble,
+                      ),
+                      if (message.reactions.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _ReactionsRow(
+                            reactions: message.reactions,
+                            onTap: _canReact ? _toggleReaction : null,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Row of reaction chips shown under a bubble. Each chip is `emoji ×count`
+/// (count hidden when 1); a chip the local user contributed to is tinted.
+class _ReactionsRow extends StatelessWidget {
+  const _ReactionsRow({required this.reactions, required this.onTap});
+
+  final Map<String, Set<String>> reactions;
+  final void Function(String emoji)? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final entry in reactions.entries)
+          if (entry.value.isNotEmpty)
+            _ReactionChip(
+              emoji: entry.key,
+              count: entry.value.length,
+              mine: entry.value.contains('me'),
+              onTap: onTap == null ? null : () => onTap!(entry.key),
+            ),
+      ],
+    );
+  }
+}
+
+class _ReactionChip extends StatelessWidget {
+  const _ReactionChip({
+    required this.emoji,
+    required this.count,
+    required this.mine,
+    required this.onTap,
+  });
+
+  final String emoji;
+  final int count;
+  final bool mine;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: mine
+              ? AppColors.brandPrimary.withValues(alpha: 0.22)
+              : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: mine
+                ? AppColors.brandPrimary.withValues(alpha: 0.6)
+                : Colors.white.withValues(alpha: 0.14),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 13)),
+            if (count > 1) ...[
+              const SizedBox(width: 4),
+              Text(
+                '$count',
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -238,6 +519,9 @@ class _BubbleMeta extends StatelessWidget {
 
   final Message message;
 
+  /// Distinct tint for a "read" tick so it reads apart from plain delivery.
+  static const _readColor = Color(0xFF66D9FF);
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -253,6 +537,17 @@ class _BubbleMeta extends StatelessWidget {
             size: 11,
             color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.55),
             semanticLabel: 'forward secret',
+          ),
+          const SizedBox(width: 4),
+        ],
+        if (message.editedAt != null) ...[
+          Text(
+            t.chatEdited,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontStyle: FontStyle.italic,
+              color: Colors.white.withValues(alpha: message.isMine ? 0.7 : 0.45),
+            ),
           ),
           const SizedBox(width: 4),
         ],
@@ -275,6 +570,7 @@ class _BubbleMeta extends StatelessWidget {
             size: 12,
             color: switch (message.status) {
               MessageStatus.failed => AppColors.danger,
+              MessageStatus.read => _readColor,
               _ => Colors.white.withValues(alpha: 0.85),
             },
             semanticLabel: switch (message.status) {

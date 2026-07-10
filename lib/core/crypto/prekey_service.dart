@@ -31,6 +31,7 @@ class PrekeyService {
 
   PrekeyStore? _store;
   Box<dynamic>? _box;
+  Future<void>? _inFlight;
 
   /// True once a signed prekey is loaded/minted and ready to advertise.
   bool get isReady => _store?.currentSignedPrekey != null;
@@ -45,9 +46,18 @@ class PrekeyService {
       _store!.currentSignedPrekey!.keyPair;
 
   /// Loads the persisted signed prekey, or mints + signs + persists a fresh
-  /// one on first run. Idempotent.
-  Future<void> ensureInitialized() async {
-    if (isReady) return;
+  /// one on first run. Idempotent — and single-flight, because `isReady` only
+  /// flips after several awaits. Two concurrent callers (the MessagingService
+  /// constructor and the first inbound forward-secret frame) would otherwise
+  /// each mint and persist a *different* signed prekey; whichever lost the race
+  /// would still be advertised to peers, and every message sent to it would
+  /// fail to decrypt.
+  Future<void> ensureInitialized() {
+    if (isReady) return Future<void>.value();
+    return _inFlight ??= _initialize().whenComplete(() => _inFlight = null);
+  }
+
+  Future<void> _initialize() async {
     final identity = await _ref.read(identityProvider.future);
     final store = PrekeyStore(
       identityKeyPair: identity.asKeyPair(),

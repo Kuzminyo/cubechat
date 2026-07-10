@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,12 +16,21 @@ import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../channels/data/channel_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peer_discovery_controller.dart';
+import '../data/message_edit_target.dart';
 import '../data/messages_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/message_bubble.dart';
+
+/// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
+/// than the 64-char pubkey-hex the Chats list routes with. Only the former can
+/// be handed to `BluetoothDevice.fromId` for a reconnect.
+bool _isBleDeviceId(String id) =>
+    !(id.length == 64 && RegExp(r'^[0-9a-f]+$').hasMatch(id));
 
 /// Real-transport chat screen.
 ///
@@ -40,6 +48,13 @@ class ChatScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final messagesMap = ref.watch(messagesControllerProvider);
+
+    // Group channel (`#name`): no Noise session, no presence — membership is
+    // just holding the shared key. Send is enabled while we're a member.
+    if (peerId.startsWith('#')) {
+      return _buildChannel(context, ref, t);
+    }
+
     final sessions = ref.watch(chatSessionManagerProvider);
 
     // `peerId` from the URL can be either a BLE transport id (when we got
@@ -62,6 +77,15 @@ class ChatScreen extends ConsumerWidget {
         messagesMap[peerId] ??
         const [];
     final canSend = session?.isEstablished ?? false;
+
+    // Offer a reconnect whenever there's no live session to speak over — the
+    // old condition only covered a session that reached `failed`, but a GATT
+    // connect that times out never creates one, leaving the screen stuck on
+    // "waiting for the handshake" with no way out. Only meaningful when we
+    // routed here with a device id: a chat opened from the Chats list carries
+    // a pubkey-hex, and you cannot open a GATT link to a public key.
+    final showRetry = _isBleDeviceId(peerId) &&
+        (session == null || session.status == ChatSessionStatus.failed);
 
     // Presence. An established Noise session is a definite "connected right
     // now". Otherwise we fall back to the last mesh announcement: peers
@@ -128,25 +152,31 @@ class ChatScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          if (session?.status == ChatSessionStatus.failed)
+          if (showRetry)
             IconButton(
               icon: Icon(Icons.refresh, color: AppColors.brandPrimary),
               tooltip: t.bleRetry,
               onPressed: () async {
                 final manager = ref.read(chatSessionManagerProvider.notifier);
                 manager.drop(peerId);
+                final scanner = ref.read(bleScannerProvider);
                 try {
-                  await ref.read(messagingServiceProvider).connectAsInitiator(
-                        BluetoothDevice.fromId(peerId),
+                  await ref
+                      .read(messagingServiceProvider)
+                      .connectAsInitiatorWithRetry(
+                        deviceId: peerId,
                         displayName: peerLabel,
+                        refreshId: () => scanner.refreshPeerId(peerLabel),
                       );
-                } catch (e) {
+                } catch (_) {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-                      content:
-                          Text('$e', style: const TextStyle(color: Colors.white)),
+                      content: Text(
+                        t.bleConnectFailed,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
                   );
                 }
@@ -172,7 +202,7 @@ class ChatScreen extends ConsumerWidget {
                       itemCount: messages.length,
                       itemBuilder: (_, i) {
                         final m = messages[messages.length - 1 - i];
-                        return MessageBubble(message: m);
+                        return MessageBubble(message: m, chatId: canonicalId);
                       },
                     ),
             ),
@@ -187,6 +217,260 @@ class ChatScreen extends ConsumerWidget {
     );
   }
 
+  /// Dedicated build for a group channel — a flat, presence-free variant of
+  /// the peer chat. The conversation is keyed by the channel name and every
+  /// send fans out as a broadcast to all members.
+  Widget _buildChannel(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations t,
+  ) {
+    final joined = ref.watch(channelControllerProvider).containsKey(peerId);
+    final messages = ref.watch(messagesControllerProvider)[peerId] ?? const [];
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        leading: BackButton(color: AppColors.textOnGlass),
+        title: Row(
+          children: [
+            IdentityAvatar(
+              seed: peerId,
+              label: peerLabel,
+              size: 36,
+              online: false,
+              heroTag: 'avatar-$peerId',
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    peerLabel,
+                    style: AppTypography.heading(
+                        size: 16, color: AppColors.textOnGlass),
+                  ),
+                  Text(
+                    t.channelSubtitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (joined)
+            IconButton(
+              icon: Icon(Icons.person_add_alt_1_outlined,
+                  color: AppColors.brandPrimary),
+              tooltip: t.channelInviteTitle,
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                backgroundColor: AppColors.bgTop,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                ),
+                builder: (_) => _ChannelInviteSheet(channelName: peerId),
+              ),
+            ),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: messages.isEmpty
+                  ? _EmptyConversationState(canSend: joined)
+                  : ListView.builder(
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      itemCount: messages.length,
+                      itemBuilder: (_, i) {
+                        final m = messages[messages.length - 1 - i];
+                        return MessageBubble(message: m, chatId: peerId);
+                      },
+                    ),
+            ),
+            _ChatBottomBar(
+              peerId: peerId,
+              canonicalId: peerId,
+              canSend: joined,
+              isChannel: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Peer picker for channel invitations. Each selected peer is handed the
+/// channel key over their own 1:1 encrypted link, so there is no group
+/// membership list to maintain — holding the key *is* membership.
+class _ChannelInviteSheet extends ConsumerStatefulWidget {
+  const _ChannelInviteSheet({required this.channelName});
+
+  final String channelName;
+
+  @override
+  ConsumerState<_ChannelInviteSheet> createState() =>
+      _ChannelInviteSheetState();
+}
+
+class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
+  final _selected = <String>{};
+  bool _sending = false;
+
+  Future<void> _invite() async {
+    if (_selected.isEmpty || _sending) return;
+    setState(() => _sending = true);
+
+    // Grab everything context-bound before the first await — the sheet is
+    // popped below, which invalidates its own context.
+    final t = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final messaging = ref.read(messagingServiceProvider);
+
+    var delivered = 0;
+    for (final pubkeyHex in _selected) {
+      try {
+        final fanout = await messaging.sendChannelInvite(
+          channelName: widget.channelName,
+          peerCanonicalId: pubkeyHex,
+        );
+        if (fanout > 0) delivered++;
+      } catch (_) {
+        // Per-peer failure is already logged; the summary below is what the
+        // user acts on.
+      }
+    }
+
+    if (!mounted) return;
+    navigator.pop();
+    messenger.showSnackBar(
+      SnackBar(
+        backgroundColor: (delivered > 0 ? AppColors.brandPrimary : AppColors.danger)
+            .withValues(alpha: 0.9),
+        content: Text(
+          delivered > 0 ? t.channelInviteSent : t.channelInviteNoneSent,
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final peers = ref.watch(knownPeersControllerProvider).values.toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 16),
+          Text(
+            t.channelInviteTitle,
+            style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            widget.channelName,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          if (peers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(
+                t.channelInviteEmpty,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: peers.length,
+                itemBuilder: (_, i) {
+                  final p = peers[i];
+                  final name = p.displayName.isNotEmpty
+                      ? p.displayName
+                      : 'Peer ${p.pubkeyHex.substring(0, 6)}';
+                  return CheckboxListTile(
+                    value: _selected.contains(p.pubkeyHex),
+                    activeColor: AppColors.brandPrimary,
+                    controlAffinity: ListTileControlAffinity.trailing,
+                    onChanged: _sending
+                        ? null
+                        : (v) => setState(() {
+                              if (v ?? false) {
+                                _selected.add(p.pubkeyHex);
+                              } else {
+                                _selected.remove(p.pubkeyHex);
+                              }
+                            }),
+                    secondary: IdentityAvatar(
+                      seed: p.pubkeyHex,
+                      label: name,
+                      size: 36,
+                    ),
+                    title: Text(
+                      name,
+                      style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                    ),
+                    subtitle: p.isVerified
+                        ? Text(
+                            t.bleVerified,
+                            style: const TextStyle(
+                              color: AppColors.brandPrimary,
+                              fontSize: 11,
+                            ),
+                          )
+                        : null,
+                  );
+                },
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: _selected.isEmpty || _sending ? null : _invite,
+                child: _sending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : Text(t.channelInviteAction),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ChatBottomBar extends ConsumerStatefulWidget {
@@ -194,11 +478,13 @@ class _ChatBottomBar extends ConsumerStatefulWidget {
     required this.peerId,
     required this.canonicalId,
     required this.canSend,
+    this.isChannel = false,
   });
 
   final String peerId;
   final String canonicalId;
   final bool canSend;
+  final bool isChannel;
 
   @override
   ConsumerState<_ChatBottomBar> createState() => _ChatBottomBarState();
@@ -215,6 +501,24 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // for it don't pop a (redundant) notification. Clears any banner too.
     AppLifecycle.instance.activeChatId = widget.canonicalId;
     NotificationService.instance.clearForChat(widget.canonicalId);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeSendReadReceipts());
+    // Drop any inline-edit draft left over from a different chat. Deferred so
+    // we don't mutate a provider during this widget's mount.
+    final stale = ref.read(messageEditTargetProvider);
+    if (stale != null && stale.chatId != widget.canonicalId) {
+      Future.microtask(() {
+        if (!mounted) return;
+        ref.read(messageEditTargetProvider.notifier).state = null;
+      });
+    }
+  }
+
+  /// Acknowledge the peer's messages as read now that the user is looking at
+  /// them. No-op for channels (no per-recipient read state).
+  void _maybeSendReadReceipts() {
+    if (widget.isChannel || !mounted) return;
+    ref.read(messagingServiceProvider).sendReadReceipts(widget.canonicalId);
   }
 
   @override
@@ -229,6 +533,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         AppLifecycle.instance.activeChatId = widget.canonicalId;
       }
       NotificationService.instance.clearForChat(widget.canonicalId);
+      _maybeSendReadReceipts();
     }
   }
 
@@ -351,15 +656,38 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
+    // A new inbound message while the chat is open should be acknowledged.
+    ref.listen(messagesControllerProvider, (_, __) => _maybeSendReadReceipts());
+    // Media (images / voice) is 1:1 only for now — channels broadcast text.
+    final mediaEnabled = widget.canSend && !widget.isChannel;
+
+    // Inline edit: only when the target belongs to THIS chat.
+    final editTarget = ref.watch(messageEditTargetProvider);
+    final editingText = (editTarget != null &&
+            editTarget.chatId == widget.canonicalId)
+        ? editTarget.originalText
+        : null;
+
     return ChatInput(
       hint: t.chatInputHint,
       sendTooltip: t.chatSend,
-      onAttach: widget.canSend && !voiceState.isRecording
+      editingText: editingText,
+      onEditCancel: () =>
+          ref.read(messageEditTargetProvider.notifier).state = null,
+      onEditCommit: (newText) async {
+        final target = ref.read(messageEditTargetProvider);
+        ref.read(messageEditTargetProvider.notifier).state = null;
+        if (target == null) return;
+        await ref
+            .read(messagingServiceProvider)
+            .sendEdit(target.chatId, target.wireId, newText);
+      },
+      onAttach: mediaEnabled && !voiceState.isRecording
           ? _pickAndSendImage
           : null,
-      onRecordStart: widget.canSend ? _onRecordStart : null,
-      onRecordStop: widget.canSend ? _onRecordStop : null,
-      onRecordCancel: widget.canSend ? _onRecordCancel : null,
+      onRecordStart: mediaEnabled ? _onRecordStart : null,
+      onRecordStop: mediaEnabled ? _onRecordStop : null,
+      onRecordCancel: mediaEnabled ? _onRecordCancel : null,
       recording: voiceState.isRecording,
       recordElapsed: _elapsed,
       onSend: (text) async {
@@ -383,9 +711,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         }
         if (!widget.canSend) return;
         try {
-          await ref
-              .read(messagingServiceProvider)
-              .sendText(widget.peerId, text);
+          if (widget.isChannel) {
+            await ref
+                .read(messagingServiceProvider)
+                .sendChannelText(widget.peerId, text);
+          } else {
+            await ref
+                .read(messagingServiceProvider)
+                .sendText(widget.peerId, text);
+          }
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

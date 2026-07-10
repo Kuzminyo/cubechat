@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
 import 'core/util/app_lifecycle.dart';
 import 'core/theme/app_theme.dart';
+import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
 import 'l10n/app_localizations.dart';
 
@@ -26,6 +29,14 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Seed the foreground flag. didChangeAppLifecycleState only fires on a
+    // *transition*, so an app that starts already resumed never gets the
+    // callback — isForeground would stay false for the whole session, and
+    // AppLifecycle.isViewingChat (foreground && this chat open) could never be
+    // true. The visible symptom: notifications for the very chat you're
+    // reading, until you background and reopen the app once.
+    AppLifecycle.instance.isForeground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     // Route to the conversation when a message notification is tapped.
     NotificationService.instance.onSelectChat = _openChat;
     // Cold start via a notification tap: open that chat after first frame.
@@ -35,9 +46,15 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     });
   }
 
-  /// Opens the chat for [chatId] (a pubkey-hex canonical id). Resolves the
-  /// display name from the KnownPeers roster for the header.
+  /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`
+  /// name. Resolves the display name from the KnownPeers roster for the header.
   void _openChat(String chatId) {
+    // A channel's id starts with '#', which is the URL fragment delimiter and
+    // cannot travel in a path. It has its own route.
+    if (chatId.startsWith('#')) {
+      _router.push(channelRoute(chatId));
+      return;
+    }
     final known = ref.read(knownPeersControllerProvider)[chatId];
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
@@ -66,6 +83,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // actually starts (or restarts) from an allowed state.
     if (state == AppLifecycleState.resumed) {
       ref.read(backgroundModeProvider.notifier).apply();
+      // Coming back into an open chat: whatever piled up for it while we were
+      // away has already been read the moment it's on screen.
+      final open = AppLifecycle.instance.activeChatId;
+      if (open != null) {
+        unawaited(NotificationService.instance.clearForChat(open));
+      }
     }
   }
 
