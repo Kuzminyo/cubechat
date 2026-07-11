@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -72,7 +73,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     return Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
-      peerName: peer.displayName,
+      peerName: displayNameForPeer(peer.displayName, peer.pubkeyHex),
       lastMessage: last?.text ?? 'Secured · Noise XX',
       lastTime: last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,

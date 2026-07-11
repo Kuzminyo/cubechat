@@ -726,6 +726,9 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
+      // Surface it: the caller shows a snackbar. Silently swallowing left the
+      // user with a broken bubble and no idea the link had dropped.
+      rethrow;
     }
     return msg;
   }
@@ -872,6 +875,8 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
+      // Surface it (see sendImage) so the caller can tell the user why.
+      rethrow;
     }
     return msg;
   }

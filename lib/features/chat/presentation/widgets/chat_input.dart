@@ -17,6 +17,7 @@ class ChatInput extends StatefulWidget {
     this.onRecordCancel,
     this.recording = false,
     this.recordElapsed = Duration.zero,
+    this.recordLevels = const <double>[],
     this.editingText,
     this.onEditCommit,
     this.onEditCancel,
@@ -38,9 +39,12 @@ class ChatInput extends StatefulWidget {
   final VoidCallback? onRecordCancel;
 
   /// True while a recording is in progress — flips the UI into
-  /// "recording" mode (red dot + elapsed counter, hide the text input).
+  /// "recording" mode (red dot + elapsed counter + live waveform).
   final bool recording;
   final Duration recordElapsed;
+
+  /// Rolling input-loudness samples (0..1, newest last) for the waveform.
+  final List<double> recordLevels;
 
   /// Non-null puts the input in edit mode: the field is prefilled with this
   /// text, an "editing" banner shows, and the send button commits via
@@ -179,7 +183,9 @@ class _ChatInputState extends State<ChatInput> {
                           Expanded(
                             child: widget.recording
                                 ? _RecordingIndicator(
-                                    elapsed: widget.recordElapsed)
+                                    elapsed: widget.recordElapsed,
+                                    levels: widget.recordLevels,
+                                  )
                                 : Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8),
@@ -326,8 +332,8 @@ class _AttachButton extends StatelessWidget {
   }
 }
 
-/// Press-and-hold voice record button. Plain mic icon; flips into a red
-/// "recording" state while held.
+/// Press-and-hold voice record button. Plain mic icon; flips into a brand-green
+/// "recording" state while held (red is reserved for the recording dot).
 class _VoiceButton extends StatelessWidget {
   const _VoiceButton({
     required this.active,
@@ -354,12 +360,7 @@ class _VoiceButton extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: active
-              ? LinearGradient(
-                  colors: [
-                    AppColors.danger.withValues(alpha: 0.95),
-                    AppColors.danger.withValues(alpha: 0.7),
-                  ],
-                )
+              ? AppColors.brandGradient
               : LinearGradient(
                   colors: [
                     Colors.white.withValues(alpha: 0.18),
@@ -369,7 +370,7 @@ class _VoiceButton extends StatelessWidget {
           boxShadow: active
               ? [
                   BoxShadow(
-                    color: AppColors.danger.withValues(alpha: 0.45),
+                    color: AppColors.brandPrimary.withValues(alpha: 0.45),
                     blurRadius: 16,
                     spreadRadius: -2,
                   ),
@@ -386,10 +387,30 @@ class _VoiceButton extends StatelessWidget {
   }
 }
 
-class _RecordingIndicator extends StatelessWidget {
-  const _RecordingIndicator({required this.elapsed});
+/// Telegram-style recording strip: a pulsing red dot, the elapsed timer, and a
+/// live waveform that grows from the right as you speak.
+class _RecordingIndicator extends StatefulWidget {
+  const _RecordingIndicator({required this.elapsed, required this.levels});
 
   final Duration elapsed;
+  final List<double> levels;
+
+  @override
+  State<_RecordingIndicator> createState() => _RecordingIndicatorState();
+}
+
+class _RecordingIndicatorState extends State<_RecordingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString();
@@ -400,38 +421,86 @@ class _RecordingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       child: Row(
         children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.danger,
+          FadeTransition(
+            opacity: Tween<double>(begin: 1, end: 0.25).animate(_pulse),
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.danger,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Text(
-            _fmt(elapsed),
+            _fmt(widget.elapsed),
             style: TextStyle(
               color: AppColors.textOnGlass,
               fontSize: 14,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          const Spacer(),
-          Text(
-            'release to send',
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11,
+          const SizedBox(width: 12),
+          Expanded(
+            child: SizedBox(
+              height: 26,
+              child: CustomPaint(
+                painter: _WaveformPainter(widget.levels),
+                size: Size.infinite,
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// Draws the loudness samples as vertical rounded bars, anchored to the right
+/// so the newest sample is always at the leading edge and older ones scroll
+/// away. Older bars fade so the motion reads as "flowing".
+class _WaveformPainter extends CustomPainter {
+  _WaveformPainter(this.levels);
+
+  final List<double> levels;
+
+  static const double _barW = 3;
+  static const double _gap = 2.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (levels.isEmpty) return;
+    final maxBars = (size.width / (_barW + _gap)).floor();
+    if (maxBars <= 0) return;
+    final show = levels.length > maxBars
+        ? levels.sublist(levels.length - maxBars)
+        : levels;
+
+    final mid = size.height / 2;
+    // Right-anchored: last bar sits at the right edge.
+    var x = size.width - show.length * (_barW + _gap) + _gap / 2;
+    for (var i = 0; i < show.length; i++) {
+      final h = (show[i].clamp(0.06, 1.0)) * size.height;
+      final fade = 0.35 + 0.65 * (i / show.length); // older = dimmer
+      final paint = Paint()
+        ..color = AppColors.brandPrimary.withValues(alpha: fade)
+        ..style = PaintingStyle.fill;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, mid - h / 2, _barW, h),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(rect, paint);
+      x += _barW + _gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveformPainter old) =>
+      old.levels != levels;
 }
 
 class _SendButton extends StatefulWidget {

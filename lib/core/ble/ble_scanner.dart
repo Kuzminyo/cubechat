@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../features/peers/models/discovered_peer.dart';
+import '../identity/nickname_controller.dart';
 import 'ble_constants.dart';
 
 /// Cubechat central-role scanner.
@@ -187,9 +188,12 @@ class BleScanner {
   String _resolveName(ScanResult r) {
     final adv = r.advertisementData.advName;
     if (adv.isNotEmpty) return adv;
-    final platform = r.device.platformName;
-    if (platform.isNotEmpty) return platform;
-    return r.device.remoteId.str;
+    // Never fall back to platformName / the MAC: platformName is the OS
+    // Bluetooth name (e.g. "Galaxy S24+"), which leaks the real device on what
+    // is meant to be an anonymous mesh. A cubechat peer always advertises a
+    // name; if it didn't reach us this window, show the anonymous default
+    // until the handshake fills in their real one.
+    return NicknameController.defaultNickname;
   }
 
   void _gcStalePeers() {

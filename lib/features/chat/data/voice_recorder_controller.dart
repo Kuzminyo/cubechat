@@ -14,10 +14,15 @@ class VoiceRecordingState {
     required this.isRecording,
     required this.startedAt,
     this.error,
+    this.levels = const <double>[],
   });
   final bool isRecording;
   final DateTime? startedAt;
   final String? error;
+
+  /// Rolling buffer of recent input loudness, 0..1, newest last. Drives the
+  /// live waveform while recording. Empty when idle.
+  final List<double> levels;
 
   static const idle = VoiceRecordingState(isRecording: false, startedAt: null);
 }
@@ -29,10 +34,48 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
   final AudioRecorder _recorder = AudioRecorder();
   String? _currentPath;
 
+  StreamSubscription<Amplitude>? _ampSub;
+  final List<double> _levels = <double>[];
+
+  /// How many bars of history the waveform keeps.
+  static const _maxLevels = 48;
+
   @override
   VoiceRecordingState build() {
-    ref.onDispose(() => _recorder.dispose());
+    ref.onDispose(() {
+      _ampSub?.cancel();
+      _recorder.dispose();
+    });
     return VoiceRecordingState.idle;
+  }
+
+  /// Subscribe to the mic's amplitude and push normalised loudness into the
+  /// rolling buffer. `Amplitude.current` is dBFS (0 = loudest, ~-45+ = near
+  /// silence); map that onto 0..1 with a small floor so quiet speech still
+  /// shows a bar.
+  void _startAmplitude() {
+    _levels.clear();
+    _ampSub?.cancel();
+    _ampSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 90))
+        .listen((amp) {
+      final norm = ((amp.current + 45) / 45).clamp(0.06, 1.0);
+      _levels.add(norm.toDouble());
+      if (_levels.length > _maxLevels) _levels.removeAt(0);
+      final started = state.startedAt;
+      if (started == null) return; // stopped between events
+      state = VoiceRecordingState(
+        isRecording: true,
+        startedAt: started,
+        levels: List<double>.of(_levels),
+      );
+    });
+  }
+
+  void _stopAmplitude() {
+    _ampSub?.cancel();
+    _ampSub = null;
+    _levels.clear();
   }
 
   /// Begin a new recording. Returns true if recording actually started.
@@ -76,6 +119,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
         isRecording: true,
         startedAt: DateTime.now(),
       );
+      _startAmplitude();
       return true;
     } catch (e, st) {
       debugPrint('voice start failed: $e\n$st');
@@ -94,6 +138,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
     final started = state.startedAt;
     final path = _currentPath;
     _currentPath = null;
+    _stopAmplitude();
     state = VoiceRecordingState.idle;
     if (started == null) return null;
     try {
@@ -119,6 +164,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
   Future<void> cancel() async {
     final path = _currentPath;
     _currentPath = null;
+    _stopAmplitude();
     state = VoiceRecordingState.idle;
     try {
       await _recorder.cancel();

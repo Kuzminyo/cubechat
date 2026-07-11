@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
 import '../../../core/crypto/identity_service.dart';
+import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/platform_info.dart';
@@ -150,7 +150,11 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       if (nickname != NicknameController.defaultNickname) {
         advertiseName = nickname;
       } else {
-        final base = PlatformInfo.isIOS ? 'iPhone' : 'Android';
+        // Default identity: advertise 'Anonymous <tag>' — anonymous by design,
+        // and NOT 'Android'/'iPhone' or the OS device name. The tag matches
+        // what a peer's Chats entry derives from our pubkey, so Nearby and
+        // Chats agree on the label.
+        const base = NicknameController.defaultNickname;
         final suffix = await _identitySuffix();
         advertiseName = suffix == null ? base : '$base $suffix';
       }
@@ -160,15 +164,17 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     }
   }
 
-  /// 4 hex chars derived from our identity pubkey — stable across restarts
-  /// and unique per device, used to disambiguate default advertise names.
+  /// 4 hex chars derived from our identity pubkey — the [anonTag]. Stable
+  /// across restarts and identical to what a peer computes from our pubkey
+  /// hex, so the anonymous label matches between our advertisement and their
+  /// Chats list.
   Future<String?> _identitySuffix() async {
     try {
       final id = await ref.read(identityProvider.future);
-      final digest = await Blake2s().hash(id.publicKey);
-      final b = digest.bytes;
-      return b[0].toRadixString(16).padLeft(2, '0') +
-          b[1].toRadixString(16).padLeft(2, '0');
+      final hex = id.publicKey
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      return anonTag(hex);
     } catch (_) {
       return null;
     }

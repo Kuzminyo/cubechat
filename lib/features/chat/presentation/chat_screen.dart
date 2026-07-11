@@ -690,6 +690,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
       recording: voiceState.isRecording,
       recordElapsed: _elapsed,
+      recordLevels: voiceState.levels,
       onSend: (text) async {
         final result =
             await CommandProcessor(ref, widget.canonicalId).tryExecute(text);

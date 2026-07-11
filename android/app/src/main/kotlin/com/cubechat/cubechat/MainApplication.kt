@@ -36,16 +36,18 @@ class MainApplication : Application() {
         // engine the normal way.
         try {
             val engine = FlutterEngine(this)
+            // Register all pubspec plugins (flutter_blue_plus, permission_handler,
+            // record, audioplayers, ...). Dart main() touches plugins during
+            // startup (Hive path + notifications), so registration must happen
+            // before executeDartEntrypoint(). Doing it afterwards is a release
+            // race that can crash on launch with MissingPluginException.
+            GeneratedPluginRegistrant.registerWith(engine)
+            registerCustomChannels(engine)
             // Run main() now, headless. Flutter renders to no surface until the
             // Activity attaches a view; the Dart side (and BLE) runs regardless.
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint.createDefault(),
             )
-            // Register all pubspec plugins (flutter_blue_plus, permission_handler,
-            // record, audioplayers, …). A cached engine doesn't auto-register, so
-            // we must do it ourselves.
-            GeneratedPluginRegistrant.registerWith(engine)
-            registerCustomChannels(engine)
             FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
         } catch (e: Throwable) {
             android.util.Log.e("MainApplication", "engine prewarm failed", e)
