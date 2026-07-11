@@ -57,15 +57,20 @@ Built and unit-tested (`lib/core/`, pure/offline):
   (`Secp256k1NostrSigner`). Tests drive the flow with an in-memory fake relay,
   proving a frame round-trips byte-for-byte.
 
+Also wired (signed announcement carries the address):
+
+- The peer announcement is bumped to **v0x04** and now signs in each peer's
+  `npub` next to the existing signed prekey, so the (x25519 ↔ ed25519 ↔ spk ↔
+  npub ↔ nickname) binding is authenticated end-to-end — a relay can't swap in
+  its own Nostr address. Received npubs are cached in `KnownPeer` (Hive-backed)
+  and `MessagingService` derives + advertises ours on every announcement.
+
 Remaining (needs a device/network to verify, so not done here):
 
-1. **Announcement field.** Advertise `npub` in the signed peer announcement
-   (alongside the existing signed prekey) so peers learn each other's off-mesh
-   address.
-2. **Relay pool.** A real `NostrRelayClient` over `web_socket_channel` —
+1. **Relay pool.** A real `NostrRelayClient` over `web_socket_channel` —
    REQ/EVENT/EOSE framing, a small relay pool, and reconnect. Must verify each
    inbound event's Schnorr signature (via `Secp256k1.verify`) before emitting.
-3. **MessagingService wiring.** Push to Nostr when a BLE send yields
+2. **MessagingService wiring.** Push to Nostr when a BLE send yields
    `deliveredVia == 0`, and feed `inboundFrames()` into `_handleInboundBytes`
    so off-mesh frames flow through the same decrypt/deliver path.
 

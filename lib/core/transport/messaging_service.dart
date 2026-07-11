@@ -36,6 +36,7 @@ import 'envelope.dart';
 import 'frame.dart';
 import 'image_reassembly.dart';
 import 'inner_payload.dart';
+import 'nostr/nostr_signer.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -109,6 +110,11 @@ class MessagingService {
   /// Used as the `originPubkeyHash` on every outbound transport envelope.
   Uint8List? _myHashCache;
 
+  /// Our deterministically-derived Nostr signer (secp256k1). Derivation does a
+  /// scalar multiplication, so we compute it once and reuse it for every
+  /// announcement and (later) off-mesh send.
+  Secp256k1NostrSigner? _nostrSignerCache;
+
   /// Drops duplicate transport frames (a frame we've already seen or
   /// forwarded) before they hit the chat UI or the relay path. Keyed on
   /// (origin, msgId). TTL is aligned with the replay window so a frame
@@ -169,6 +175,16 @@ class MessagingService {
     final digest = await Blake2s().hash(peerPubkey);
     return TransportEnvelope.shortHashFromHashBytes(
         Uint8List.fromList(digest.bytes));
+  }
+
+  /// Lazily derive (and cache) our Nostr signer from the Ed25519 identity seed.
+  Future<Secp256k1NostrSigner> _myNostrSigner() async {
+    if (_nostrSignerCache != null) return _nostrSignerCache!;
+    final id = await _ref.read(identityProvider.future);
+    _nostrSignerCache = await Secp256k1NostrSigner.deriveFromSeed(
+      Uint8List.fromList(id.signPrivateKey),
+    );
+    return _nostrSignerCache!;
   }
 
   /// Prepend the 1-byte cipher tag to an encrypted body.
@@ -1460,10 +1476,11 @@ class MessagingService {
           displayName: ann.nickname,
           signPublicKey: ann.signPubkey,
           signedPrekeyPub: ann.signedPrekeyPub,
+          nostrPubkey: ann.nostrPubkey,
         );
     DebugLog.instance.log('MESH',
         'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
-        '(+ signed prekey)');
+        '(+ signed prekey + nostr pubkey)');
 
     // M3.E: announcements are mesh-wide — relay onward on every other link
     // until ttl runs out so peers more than one hop away learn about us.
@@ -1627,10 +1644,12 @@ class MessagingService {
       final nickname = _ref.read(nicknameControllerProvider);
       final prekeys = _ref.read(prekeyServiceProvider);
       await prekeys.ensureInitialized();
+      final nostrSigner = await _myNostrSigner();
       final ann = PeerAnnouncement(
         pubkey: Uint8List.fromList(identity.publicKey),
         signPubkey: identity.signPublicKey,
         signedPrekeyPub: prekeys.signedPrekeyPub,
+        nostrPubkey: nostrSigner.nostrPubkeyBytes,
         nickname: nickname,
       );
       final signedBody = await ann.sign(identity.asSignKeyPair());

@@ -60,6 +60,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     required String displayName,
     Uint8List? signPublicKey,
     Uint8List? signedPrekeyPub,
+    Uint8List? nostrPubkey,
   }) {
     final now = DateTime.now();
     final existing = state[pubkeyHex];
@@ -120,6 +121,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       signPublicKey: resolvedSignPub,
       signKeyRotatedAt: resolvedRotatedAt,
       signedPrekeyPub: signedPrekeyPub ?? existing?.signedPrekeyPub,
+      nostrPubkey: nostrPubkey ?? existing?.nostrPubkey,
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
@@ -199,6 +201,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
           'signKeyRotatedAtIso': p.signKeyRotatedAt!.toIso8601String(),
         if (p.signedPrekeyPub != null)
           'spkPubHex': _hexOf(p.signedPrekeyPub!),
+        if (p.nostrPubkey != null)
+          'nostrPubHex': _hexOf(p.nostrPubkey!),
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
@@ -206,6 +210,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     final signRaw = m['signPubHex'] as String?;
     final rotatedRaw = m['signKeyRotatedAtIso'] as String?;
     final spkRaw = m['spkPubHex'] as String?;
+    final nostrRaw = m['nostrPubHex'] as String?;
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
@@ -216,6 +221,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       signKeyRotatedAt:
           rotatedRaw == null ? null : DateTime.tryParse(rotatedRaw),
       signedPrekeyPub: spkRaw == null ? null : _hexDecode(spkRaw),
+      nostrPubkey: nostrRaw == null ? null : _hexDecode(nostrRaw),
     );
   }
 

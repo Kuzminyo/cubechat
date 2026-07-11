@@ -28,6 +28,7 @@ class KnownPeer {
     this.signPublicKey,
     this.signKeyRotatedAt,
     this.signedPrekeyPub,
+    this.nostrPubkey,
   });
 
   final String pubkeyHex;
@@ -40,6 +41,12 @@ class KnownPeer {
   /// When present, we send them forward-secret (X3DH) messages; when absent
   /// we fall back to SealedBox.
   final Uint8List? signedPrekeyPub;
+
+  /// The peer's x-only secp256k1 Nostr pubkey, learned from their signed
+  /// announcement. When present, we can reach them over public Nostr relays
+  /// if the BLE mesh can't deliver (M6). Null for peers last seen before the
+  /// v0x04 announcement upgrade.
+  final Uint8List? nostrPubkey;
 
   /// When this peer's signing key last changed under the same pubkeyHex.
   /// Set the moment a fresh signed announcement arrives carrying a
@@ -64,6 +71,7 @@ class KnownPeer {
     Uint8List? signPublicKey,
     DateTime? signKeyRotatedAt,
     Uint8List? signedPrekeyPub,
+    Uint8List? nostrPubkey,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
   }) {
@@ -77,6 +85,7 @@ class KnownPeer {
           ? null
           : (signKeyRotatedAt ?? this.signKeyRotatedAt),
       signedPrekeyPub: signedPrekeyPub ?? this.signedPrekeyPub,
+      nostrPubkey: nostrPubkey ?? this.nostrPubkey,
     );
   }
 }

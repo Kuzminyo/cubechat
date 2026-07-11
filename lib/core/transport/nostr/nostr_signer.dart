@@ -33,6 +33,10 @@ class Secp256k1NostrSigner implements NostrEventSigner {
   @override
   final String npubHex;
 
+  /// The x-only Nostr pubkey as raw 32 bytes ([npubHex] decoded) — handy for
+  /// embedding in the binary peer announcement.
+  Uint8List get nostrPubkeyBytes => _unhex(npubHex);
+
   static const String _derivationInfo = 'cubechat/nostr-secp256k1/v1';
   static final _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
   static final _rand = Random.secure();
