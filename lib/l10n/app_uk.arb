@@ -132,5 +132,9 @@
   "chatDeleteAction": "Видалити",
   "chatDeleteTitle": "Видалити повідомлення?",
   "chatDeleteForMe": "Видалити в мене",
-  "chatDeleteForEveryone": "Видалити в усіх"
+  "chatDeleteForEveryone": "Видалити в усіх",
+
+  "chatReplyAction": "Відповісти",
+  "chatReplyingTo": "Відповідь для {name}",
+  "chatReplyYou": "себе"
 }

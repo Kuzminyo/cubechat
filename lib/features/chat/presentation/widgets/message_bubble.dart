@@ -10,6 +10,7 @@ import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../data/message_edit_target.dart';
+import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../models/message.dart';
 import '../image_viewer_screen.dart';
@@ -106,6 +107,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               ],
             ),
           ),
+        if (widget.message.wireId != null)
+          _menuRow('reply', Icons.reply, t.chatReplyAction,
+              AppColors.textOnGlass),
         if (_canEdit)
           _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
               AppColors.textOnGlass),
@@ -117,6 +121,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (picked == null || !mounted) return;
     if (picked.startsWith('r:')) {
       _toggleReaction(picked.substring(2));
+    } else if (picked == 'reply') {
+      final m = widget.message;
+      ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
+        chatId: widget.chatId,
+        wireId: m.wireId!,
+        preview: _replyPreview(m),
+        mine: m.isMine,
+        authorName: m.authorName,
+      );
     } else if (picked == 'edit') {
       // Load the message into the input row (Telegram-style inline edit); the
       // input commits it on send.
@@ -127,6 +140,72 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       );
     } else if (picked == 'delete') {
       await _promptDelete();
+    }
+  }
+
+  /// The message [wireId] quotes, resolved from this chat's list, or null if
+  /// it's not in memory (e.g. cleared history or arrived out of order).
+  Message? _resolveQuoted(String wireId) {
+    final list = ref.watch(messagesControllerProvider)[widget.chatId];
+    if (list == null) return null;
+    for (final m in list) {
+      if (m.wireId == wireId) return m;
+    }
+    return null;
+  }
+
+  /// The quote box shown at the top of a reply bubble.
+  Widget _quotedBox(String wireId) {
+    final quoted = _resolveQuoted(wireId);
+    final preview = quoted == null ? '…' : _replyPreview(quoted);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(color: AppColors.brandPrimary, width: 2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (quoted?.authorName != null)
+            Text(
+              quoted!.authorName!,
+              style: TextStyle(
+                color: AppColors.brandPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          Text(
+            preview,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 12.5,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A one-line snippet of [m] for a reply preview / quote box.
+  static String _replyPreview(Message m) {
+    switch (m.kind) {
+      case MessageKind.image:
+        return '📷';
+      case MessageKind.audio:
+        return '🎤';
+      case MessageKind.text:
+        final t = m.text.replaceAll('\n', ' ').trim();
+        return t.length > 80 ? '${t.substring(0, 80)}…' : t;
     }
   }
 
@@ -266,6 +345,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 ),
                 const SizedBox(height: 2),
               ],
+              if (message.replyToWireId != null)
+                _quotedBox(message.replyToWireId!),
               if (message.kind == MessageKind.image)
                 _ImagePayload(message: message)
               else if (message.kind == MessageKind.audio)

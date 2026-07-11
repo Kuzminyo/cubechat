@@ -787,6 +787,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete for everyone'**
   String get chatDeleteForEveryone;
+
+  /// No description provided for @chatReplyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get chatReplyAction;
+
+  /// No description provided for @chatReplyingTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Replying to {name}'**
+  String chatReplyingTo(String name);
+
+  /// No description provided for @chatReplyYou.
+  ///
+  /// In en, this message translates to:
+  /// **'yourself'**
+  String get chatReplyYou;
 }
 
 class _AppLocalizationsDelegate

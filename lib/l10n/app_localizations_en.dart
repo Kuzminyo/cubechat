@@ -387,4 +387,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatDeleteForEveryone => 'Delete for everyone';
+
+  @override
+  String get chatReplyAction => 'Reply';
+
+  @override
+  String chatReplyingTo(String name) {
+    return 'Replying to $name';
+  }
+
+  @override
+  String get chatReplyYou => 'yourself';
 }

@@ -389,4 +389,15 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatDeleteForEveryone => 'Видалити в усіх';
+
+  @override
+  String get chatReplyAction => 'Відповісти';
+
+  @override
+  String chatReplyingTo(String name) {
+    return 'Відповідь для $name';
+  }
+
+  @override
+  String get chatReplyYou => 'себе';
 }

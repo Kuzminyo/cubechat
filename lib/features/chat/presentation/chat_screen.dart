@@ -20,6 +20,7 @@ import '../../channels/data/channel_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../data/message_edit_target.dart';
+import '../data/message_reply_target.dart';
 import '../data/messages_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
@@ -668,7 +669,16 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         ? editTarget.originalText
         : null;
 
-    return ChatInput(
+    // Reply compose (1:1 only for now — channels display quotes but don't
+    // compose them yet).
+    final replyTargetRaw =
+        widget.isChannel ? null : ref.watch(messageReplyTargetProvider);
+    final activeReply = (replyTargetRaw != null &&
+            replyTargetRaw.chatId == widget.canonicalId)
+        ? replyTargetRaw
+        : null;
+
+    final composer = ChatInput(
       hint: t.chatInputHint,
       sendTooltip: t.chatSend,
       editingText: editingText,
@@ -711,6 +721,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           return;
         }
         if (!widget.canSend) return;
+        // Consume the reply target now so the bar clears the moment we send.
+        final replyWireId = activeReply?.wireId;
+        if (replyWireId != null) {
+          ref.read(messageReplyTargetProvider.notifier).state = null;
+        }
         try {
           if (widget.isChannel) {
             await ref
@@ -719,7 +734,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           } else {
             await ref
                 .read(messagingServiceProvider)
-                .sendText(widget.peerId, text);
+                .sendText(widget.peerId, text, replyToWireId: replyWireId);
           }
         } catch (e) {
           if (!mounted) return;
@@ -731,6 +746,86 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           );
         }
       },
+    );
+
+    if (activeReply == null) return composer;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ReplyComposeBar(
+          target: activeReply,
+          onCancel: () =>
+              ref.read(messageReplyTargetProvider.notifier).state = null,
+        ),
+        composer,
+      ],
+    );
+  }
+}
+
+/// The little "Replying to …" bar shown above the input while composing a
+/// reply. Cancel clears the reply target.
+class _ReplyComposeBar extends StatelessWidget {
+  const _ReplyComposeBar({required this.target, required this.onCancel});
+
+  final MessageReplyTarget target;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final String header;
+    if (target.mine) {
+      header = t.chatReplyingTo(t.chatReplyYou);
+    } else if (target.authorName != null) {
+      header = t.chatReplyingTo(target.authorName!);
+    } else {
+      header = t.chatReplyAction; // 1:1 peer — a plain "Reply".
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border(
+          left: BorderSide(color: AppColors.brandPrimary, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  header,
+                  style: TextStyle(
+                    color: AppColors.brandPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  target.preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            color: AppColors.textOnGlassDim,
+            onPressed: onCancel,
+            tooltip: t.cancel,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -132,5 +132,10 @@
   "chatDeleteAction": "Delete",
   "chatDeleteTitle": "Delete message?",
   "chatDeleteForMe": "Delete for me",
-  "chatDeleteForEveryone": "Delete for everyone"
+  "chatDeleteForEveryone": "Delete for everyone",
+
+  "chatReplyAction": "Reply",
+  "chatReplyingTo": "Replying to {name}",
+  "@chatReplyingTo": { "placeholders": { "name": { "type": "String" } } },
+  "chatReplyYou": "yourself"
 }
