@@ -40,6 +40,7 @@ import 'envelope.dart';
 import 'frame.dart';
 import 'image_reassembly.dart';
 import 'inner_payload.dart';
+import '../crypto/media_fs_cipher.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -101,6 +102,16 @@ class MessagingService {
   /// Channel cipher: the body is `[channelTag:8][ChannelCrypto blob]`, a
   /// broadcast frame encrypted under a shared group key. See [ChannelCrypto].
   static const int _cipherChannel = 0x03;
+
+  /// Forward-secret media chunk: the body is a [MediaFsCipher] blob sealed
+  /// under a per-transfer X3DH key. The key is derived from the sender pubs in
+  /// the (v0x02) [MediaManifest], which is sent first. See [MediaFsCipher].
+  static const int _cipherX3dhMedia = 0x04;
+
+  /// Cap on FS chunks we'll hold for a single transfer whose manifest hasn't
+  /// arrived yet — bounds memory against a peer that streams chunks and never
+  /// sends the manifest.
+  static const int _maxPendingFsChunks = 8192;
 
   /// Conservative single-frame ceiling. A forward-secret text frame whose
   /// total wire size would exceed this falls back to SealedBox so we never
@@ -166,6 +177,15 @@ class MessagingService {
   /// the SHA-256 verification + delivery.
   final Map<String, _OrphanMedia> _orphanedMedia = {};
 
+  /// Per-transfer X3DH keys for inbound forward-secret media, keyed by
+  /// mediaId hex. Populated when a v0x02 [MediaManifest] arrives; consumed by
+  /// the [_cipherX3dhMedia] chunk-decrypt path. GC'd with the other buffers.
+  final Map<String, SecretKey> _mediaKeys = {};
+
+  /// FS media chunks that arrived before their manifest (so before we could
+  /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
+  final Map<String, List<_PendingFsChunk>> _pendingFsChunks = {};
+
   /// How long we keep waiting for a manifest or for the missing
   /// chunks before garbage-collecting the half-finished transfer.
   static const Duration _manifestTtl = Duration(minutes: 5);
@@ -199,6 +219,36 @@ class MessagingService {
     final pub = await kp.extractPublicKey();
     final priv = await kp.extractPrivateKeyBytes();
     return SimpleKeyPairData(priv, publicKey: pub, type: KeyPairType.x25519);
+  }
+
+  /// If we hold the recipient's signed prekey, derive a fresh per-transfer
+  /// X3DH key + ephemeral so a media stream can be sealed forward-secret
+  /// ([MediaFsCipher]). Returns null when FS isn't available (no cached
+  /// prekey, or a derivation error) → the caller falls back to SealedBox.
+  Future<({SecretKey key, Uint8List identityPub, Uint8List ephemeralPub})?>
+      _deriveMediaFsSetup(String canonicalId, Uint8List peerPub) async {
+    final recipientSpk =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
+    if (recipientSpk == null || recipientSpk.length != 32) return null;
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final ephemeral = await _freshEphemeralX25519();
+      final sk = await X3dh.deriveSender(
+        identityKeyPair: identity.asKeyPair(),
+        ephemeralKeyPair: ephemeral,
+        recipientIdentityPub: peerPub,
+        recipientSignedPrekeyPub: recipientSpk,
+      );
+      return (
+        key: sk,
+        identityPub: Uint8List.fromList(identity.publicKey),
+        ephemeralPub: Uint8List.fromList(ephemeral.publicKey.bytes),
+      );
+    } catch (e) {
+      DebugLog.instance.log('CRYPTO',
+          'media FS setup failed ($e) — SealedBox fallback');
+      return null;
+    }
   }
 
   /// Tap-to-connect: the user picked a peer in the Nearby list. We're the
@@ -646,6 +696,8 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      // Seal the chunks forward-secret when we hold the recipient's prekey.
+      final fs = await _deriveMediaFsSetup(canonicalId, peerPub);
       await _sendSignedManifest(
         mediaId: imageId,
         kind: MediaKind.image,
@@ -656,7 +708,13 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        senderIdentityPub: fs?.identityPub,
+        senderEphemeralPub: fs?.ephemeralPub,
       );
+      if (fs != null) {
+        DebugLog.instance.log('CRYPTO',
+            'sendImage: forward-secret (X3DH) media to $canonicalId');
+      }
       for (var i = 0; i < total; i++) {
         final start = i * ImageChunk.maxDataBytes;
         final end = (start + ImageChunk.maxDataBytes).clamp(0, bytes.length);
@@ -669,8 +727,12 @@ class MessagingService {
         );
         final inner =
             packInnerPayload(InnerPayloadType.imageChunk, chunk.encode());
-        final body =
-            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+        final body = fs != null
+            ? _tagBody(
+                _cipherX3dhMedia,
+                await MediaFsCipher.seal(
+                    key: fs.key, mediaId: imageId, plaintext: inner))
+            : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -795,6 +857,7 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      final fs = await _deriveMediaFsSetup(canonicalId, peerPub);
       await _sendSignedManifest(
         mediaId: audioId,
         kind: MediaKind.audio,
@@ -806,7 +869,13 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        senderIdentityPub: fs?.identityPub,
+        senderEphemeralPub: fs?.ephemeralPub,
       );
+      if (fs != null) {
+        DebugLog.instance.log('CRYPTO',
+            'sendAudio: forward-secret (X3DH) media to $canonicalId');
+      }
       for (var i = 0; i < total; i++) {
         final start = i * AudioChunk.maxDataBytes;
         final end =
@@ -822,10 +891,15 @@ class MessagingService {
         final inner =
             packInnerPayload(InnerPayloadType.audioChunk, chunk.encode());
         // Unsigned: audio chunks pay no per-chunk signature cost (would
-        // overflow MTU). Integrity rides on SealedBox AEAD; sender identity
-        // rides on the signed announcement chain.
-        final body =
-            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+        // overflow MTU). Integrity rides on the AEAD (SealedBox or, when the
+        // recipient's prekey is known, forward-secret MediaFsCipher); sender
+        // identity rides on the signed manifest + announcement chain.
+        final body = fs != null
+            ? _tagBody(
+                _cipherX3dhMedia,
+                await MediaFsCipher.seal(
+                    key: fs.key, mediaId: audioId, plaintext: inner))
+            : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -1800,6 +1874,39 @@ class MessagingService {
           DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
           return;
         }
+      } else if (cipher == _cipherX3dhMedia) {
+        // Forward-secret media chunk. The per-transfer key rides in the
+        // (v0x02) manifest; if that hasn't arrived we hold the encrypted
+        // chunk and flush it once the key is derived.
+        final Uint8List mediaIdBytes;
+        try {
+          mediaIdBytes = MediaFsCipher.readMediaId(cipherBody);
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'drop FS media chunk from $peerId: malformed ($e)');
+          return;
+        }
+        final mediaIdHex = _hexOf(mediaIdBytes);
+        final key = _mediaKeys[mediaIdHex];
+        if (key == null) {
+          _gcMediaBuffers();
+          final held = _pendingFsChunks.putIfAbsent(mediaIdHex, () => []);
+          if (held.length < _maxPendingFsChunks) {
+            held.add(_PendingFsChunk(
+              peerId: peerId,
+              body: Uint8List.fromList(cipherBody),
+              arrivedAt: DateTime.now(),
+            ));
+          }
+          return;
+        }
+        try {
+          sealedPlain = await MediaFsCipher.open(key: key, body: cipherBody);
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'FS media chunk decrypt FAILED from $peerId: $e');
+          return;
+        }
       } else {
         DebugLog.instance.log('CRYPTO',
             'drop transport from $peerId: unknown cipher tag '
@@ -2050,6 +2157,13 @@ class MessagingService {
     final key = _hexOf(manifest.mediaId);
     _gcMediaBuffers();
 
+    // Forward-secret transfer: derive the per-transfer media key so buffered
+    // and incoming chunks can decrypt. FS chunks can't be assembled without
+    // this, so an FS transfer never lands in the orphan path.
+    if (manifest.isForwardSecret) {
+      await _deriveAndStoreMediaKey(manifest);
+    }
+
     final orphan = _orphanedMedia.remove(key);
     if (orphan != null) {
       DebugLog.instance.log('CRYPTO',
@@ -2070,7 +2184,73 @@ class MessagingService {
     );
     DebugLog.instance.log('CRYPTO',
         'cached signed manifest $key '
-        '(${manifest.kind.name} total=${manifest.total})');
+        '(${manifest.kind.name} total=${manifest.total}'
+        '${manifest.isForwardSecret ? ", FS" : ""})');
+
+    // Now the manifest is registered, drain any FS chunks that raced ahead of
+    // it — decrypting them feeds the reassembler, which may complete the media.
+    if (manifest.isForwardSecret && _mediaKeys.containsKey(key)) {
+      await _flushPendingFsChunks(key);
+    }
+  }
+
+  /// Derive and cache the inbound X3DH key for a forward-secret media
+  /// transfer, from the sender pubs the (v0x02) manifest carries.
+  Future<void> _deriveAndStoreMediaKey(MediaManifest manifest) async {
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final prekeys = _ref.read(prekeyServiceProvider);
+      await prekeys.ensureInitialized();
+      final sk = await X3dh.deriveReceiver(
+        identityKeyPair: identity.asKeyPair(),
+        signedPrekeyPair: prekeys.signedPrekeyKeyPair,
+        senderIdentityPub: manifest.senderIdentityPub!,
+        senderEphemeralPub: manifest.senderEphemeralPub!,
+      );
+      _mediaKeys[_hexOf(manifest.mediaId)] = sk;
+    } catch (e) {
+      DebugLog.instance.log('CRYPTO', 'FS media key derive failed: $e');
+    }
+  }
+
+  /// Decrypt and ingest FS media chunks that arrived before their manifest.
+  Future<void> _flushPendingFsChunks(String mediaIdHex) async {
+    final key = _mediaKeys[mediaIdHex];
+    final held = _pendingFsChunks.remove(mediaIdHex);
+    if (key == null || held == null) return;
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    for (final pc in held) {
+      Uint8List plain;
+      try {
+        plain = await MediaFsCipher.open(key: key, body: pc.body);
+      } catch (e) {
+        DebugLog.instance.log('CRYPTO', 'buffered FS chunk decrypt failed: $e');
+        continue;
+      }
+      final ({InnerPayloadType type, Uint8List body}) unpacked;
+      try {
+        unpacked = unpackInnerPayload(plain);
+      } catch (e) {
+        continue;
+      }
+      final senderPub = manager.sessionFor(pc.peerId)?.remoteStaticPublicKey;
+      switch (unpacked.type) {
+        case InnerPayloadType.imageChunk:
+          await _ingestImageChunk(
+            peerId: pc.peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+        case InnerPayloadType.audioChunk:
+          await _ingestAudioChunk(
+            peerId: pc.peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+        default:
+          break; // FS media only carries chunks
+      }
+    }
   }
 
   /// Called by [_ingestImageChunk] / [_ingestAudioChunk] once the chunks
@@ -2179,6 +2359,13 @@ class MessagingService {
     final cutoff = DateTime.now().subtract(_manifestTtl);
     _pendingManifests.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
     _orphanedMedia.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+    // Drop FS chunks whose whole buffer went stale (manifest never showed).
+    _pendingFsChunks.removeWhere(
+        (_, list) => list.every((c) => c.arrivedAt.isBefore(cutoff)));
+    // A media key is only useful while its transfer is still in flight (its
+    // manifest pending, or chunks buffered). Once neither holds, drop it.
+    _mediaKeys.removeWhere((id, _) =>
+        !_pendingManifests.containsKey(id) && !_pendingFsChunks.containsKey(id));
   }
 
   /// Build a [MediaManifest] over the about-to-be-sent [bytes], wrap it in
@@ -2196,6 +2383,8 @@ class MessagingService {
     required Uint8List peerHash,
     required Uint8List peerPub,
     required ChatSession? session,
+    Uint8List? senderIdentityPub,
+    Uint8List? senderEphemeralPub,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final digest = await Sha256().hash(bytes);
@@ -2206,6 +2395,8 @@ class MessagingService {
       mime: mime,
       durationMs: durationMs,
       sha256: Uint8List.fromList(digest.bytes),
+      senderIdentityPub: senderIdentityPub,
+      senderEphemeralPub: senderEphemeralPub,
     );
     final inner = packInnerPayload(
       InnerPayloadType.mediaManifest,
@@ -2881,4 +3072,18 @@ class _OrphanMedia {
   final DateTime arrivedAt;
   final String peerId;
   final Uint8List? senderPub;
+}
+
+/// A forward-secret media chunk (still encrypted) that arrived before its
+/// manifest, so before we could derive the transfer key. Held until the
+/// manifest lands, then decrypted + ingested by [_flushPendingFsChunks].
+class _PendingFsChunk {
+  _PendingFsChunk({
+    required this.peerId,
+    required this.body,
+    required this.arrivedAt,
+  });
+  final String peerId;
+  final Uint8List body;
+  final DateTime arrivedAt;
 }

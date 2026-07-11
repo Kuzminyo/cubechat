@@ -429,12 +429,21 @@ class MediaManifest {
     required this.mime,
     required this.sha256,
     this.durationMs = 0,
+    this.senderIdentityPub,
+    this.senderEphemeralPub,
   })  : assert(mediaId.length == idLen, 'mediaId must be $idLen B'),
         assert(total >= 1 && total < 0x10000, 'total out of u16 range'),
         assert(durationMs >= 0 && durationMs <= 0xFFFFFFFF,
             'durationMs out of u32 range'),
         assert(sha256.length == digestLen,
-            'sha256 must be $digestLen B');
+            'sha256 must be $digestLen B'),
+        assert(
+            (senderIdentityPub == null) == (senderEphemeralPub == null),
+            'FS pubkeys come as a pair'),
+        assert(senderIdentityPub == null ||
+            senderIdentityPub.length == pubLen),
+        assert(senderEphemeralPub == null ||
+            senderEphemeralPub.length == pubLen);
 
   final Uint8List mediaId;
   final MediaKind kind;
@@ -443,20 +452,35 @@ class MediaManifest {
   final String mime;
   final Uint8List sha256;
 
-  static const int version = 0x01;
+  /// Forward-secrecy setup (v0x02). When present, the media chunks are sealed
+  /// with a per-transfer X3DH key ([MediaFsCipher]) rather than SealedBox: the
+  /// sender's identity + ephemeral X25519 publics let the receiver run the
+  /// matching X3DH derivation. Null for a legacy (v0x01) non-FS transfer.
+  final Uint8List? senderIdentityPub;
+  final Uint8List? senderEphemeralPub;
+
+  static const int versionV1 = 0x01;
+  static const int versionV2Fs = 0x02;
   static const int idLen = 16;
   static const int digestLen = 32;
+  static const int pubLen = 32;
+
+  /// True when this manifest commits the chunks to the forward-secret path.
+  bool get isForwardSecret =>
+      senderIdentityPub != null && senderEphemeralPub != null;
 
   Uint8List encode() {
     final mimeBytes = utf8.encode(mime);
     if (mimeBytes.length > 255) {
       throw const FormatException('mime > 255 UTF-8 bytes');
     }
+    final fs = isForwardSecret;
     final out = Uint8List(
-      1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length + digestLen,
+      1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length + digestLen +
+          (fs ? pubLen * 2 : 0),
     );
     var c = 0;
-    out[c++] = version;
+    out[c++] = fs ? versionV2Fs : versionV1;
     out.setRange(c, c += idLen, mediaId);
     out[c++] = kind.tag;
     out[c++] = (total >> 8) & 0xff;
@@ -467,7 +491,11 @@ class MediaManifest {
     out[c++] = durationMs & 0xff;
     out[c++] = mimeBytes.length;
     out.setRange(c, c += mimeBytes.length, mimeBytes);
-    out.setRange(c, c + digestLen, sha256);
+    out.setRange(c, c += digestLen, sha256);
+    if (fs) {
+      out.setRange(c, c += pubLen, senderIdentityPub!);
+      out.setRange(c, c += pubLen, senderEphemeralPub!);
+    }
     return out;
   }
 
@@ -475,10 +503,12 @@ class MediaManifest {
     if (bytes.length < 1 + idLen + 1 + 2 + 4 + 1 + digestLen) {
       throw const FormatException('media manifest truncated');
     }
-    if (bytes[0] != version) {
+    final ver = bytes[0];
+    if (ver != versionV1 && ver != versionV2Fs) {
       throw FormatException(
-          'unknown media manifest version 0x${bytes[0].toRadixString(16)}');
+          'unknown media manifest version 0x${ver.toRadixString(16)}');
     }
+    final fs = ver == versionV2Fs;
     var c = 1;
     final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
     final kind = MediaKind.fromByte(bytes[c++]);
@@ -490,7 +520,8 @@ class MediaManifest {
         bytes[c + 3];
     c += 4;
     final mimeLen = bytes[c++];
-    if (bytes.length < c + mimeLen + digestLen) {
+    final trailer = digestLen + (fs ? pubLen * 2 : 0);
+    if (bytes.length < c + mimeLen + trailer) {
       throw const FormatException('media manifest mime/sha overrun');
     }
     final mime = utf8.decode(
@@ -498,7 +529,13 @@ class MediaManifest {
       allowMalformed: true,
     );
     c += mimeLen;
-    final sha = Uint8List.fromList(bytes.sublist(c, c + digestLen));
+    final sha = Uint8List.fromList(bytes.sublist(c, c += digestLen));
+    Uint8List? idPub;
+    Uint8List? ephPub;
+    if (fs) {
+      idPub = Uint8List.fromList(bytes.sublist(c, c += pubLen));
+      ephPub = Uint8List.fromList(bytes.sublist(c, c += pubLen));
+    }
     return MediaManifest(
       mediaId: id,
       kind: kind,
@@ -506,6 +543,8 @@ class MediaManifest {
       durationMs: durMs,
       mime: mime,
       sha256: sha,
+      senderIdentityPub: idPub,
+      senderEphemeralPub: ephPub,
     );
   }
 }
