@@ -78,7 +78,7 @@ void main() {
       );
     });
 
-    test('seq >= total fails the assertion', () {
+    test('seq >= total throws FormatException at runtime', () {
       expect(
         () => ImageChunk(
           imageId: Uint8List(16),
@@ -87,8 +87,30 @@ void main() {
           mime: 'image/png',
           data: Uint8List(1),
         ),
-        throwsA(isA<AssertionError>()),
+        throwsA(isA<FormatException>()),
       );
+    });
+
+    test('decode rejects zero total and oversized image data', () {
+      final zeroTotal = Uint8List(ImageChunk.idLen + 2 + 2 + 1 + 2);
+      zeroTotal[ImageChunk.idLen + 3] = 0; // total low byte remains zero
+      expect(
+          () => ImageChunk.decode(zeroTotal), throwsA(isA<FormatException>()));
+
+      final tooLarge = Uint8List(
+        ImageChunk.idLen + 2 + 2 + 1 + 2 + ImageChunk.maxDataBytes + 1,
+      );
+      var c = ImageChunk.idLen;
+      tooLarge[c++] = 0;
+      tooLarge[c++] = 0; // seq
+      tooLarge[c++] = 0;
+      tooLarge[c++] = 1; // total
+      tooLarge[c++] = 0; // mime len
+      final len = ImageChunk.maxDataBytes + 1;
+      tooLarge[c++] = (len >> 8) & 0xff;
+      tooLarge[c++] = len & 0xff;
+      expect(
+          () => ImageChunk.decode(tooLarge), throwsA(isA<FormatException>()));
     });
 
     test('newImageId mints distinct ids', () {
@@ -115,8 +137,7 @@ void main() {
   group('AudioChunk', () {
     test('encode/decode preserves every field', () {
       final id = Uint8List.fromList(List.generate(16, (i) => i + 30));
-      final data =
-          Uint8List.fromList(List.generate(80, (i) => (i * 3) & 0xff));
+      final data = Uint8List.fromList(List.generate(80, (i) => (i * 3) & 0xff));
       final c = AudioChunk(
         audioId: id,
         seq: 2,
@@ -153,9 +174,30 @@ void main() {
       );
     });
 
+    test('decode rejects zero total and oversized audio data', () {
+      final zeroTotal = Uint8List(AudioChunk.idLen + 2 + 2 + 4 + 1 + 2);
+      expect(
+          () => AudioChunk.decode(zeroTotal), throwsA(isA<FormatException>()));
+
+      final tooLarge = Uint8List(
+        AudioChunk.idLen + 2 + 2 + 4 + 1 + 2 + AudioChunk.maxDataBytes + 1,
+      );
+      var c = AudioChunk.idLen;
+      tooLarge[c++] = 0;
+      tooLarge[c++] = 0; // seq
+      tooLarge[c++] = 0;
+      tooLarge[c++] = 1; // total
+      c += 4; // duration
+      tooLarge[c++] = 0; // mime len
+      final len = AudioChunk.maxDataBytes + 1;
+      tooLarge[c++] = (len >> 8) & 0xff;
+      tooLarge[c++] = len & 0xff;
+      expect(
+          () => AudioChunk.decode(tooLarge), throwsA(isA<FormatException>()));
+    });
+
     test('newAudioId mints distinct ids', () {
-      expect(AudioChunk.newAudioId(),
-          isNot(equals(AudioChunk.newAudioId())));
+      expect(AudioChunk.newAudioId(), isNot(equals(AudioChunk.newAudioId())));
     });
   });
 

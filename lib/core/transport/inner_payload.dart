@@ -150,11 +150,9 @@ class ImageChunk {
     required this.total,
     required this.mime,
     required this.data,
-  })  : assert(imageId.length == idLen, 'imageId must be $idLen B'),
-        assert(seq >= 0 && seq < 0x10000, 'seq out of u16 range'),
-        assert(total >= 1 && total < 0x10000, 'total out of u16 range'),
-        assert(seq < total, 'seq must be < total'),
-        assert(data.length < 0x10000, 'chunk data too large for u16 length');
+  }) {
+    _validate();
+  }
 
   final Uint8List imageId;
   final int seq;
@@ -169,12 +167,38 @@ class ImageChunk {
   /// inner-type + chunk header (~95 bytes of overhead at the upper bound).
   static const int maxDataBytes = 140;
 
+  /// Hard protocol cap for a single media transfer. At 140 raw bytes per
+  /// chunk this keeps one image under ~1.1 MiB and prevents release builds
+  /// from accepting attacker-chosen 65k-chunk buffers.
+  static const int maxChunks = 8192;
+
+  void _validate() {
+    if (imageId.length != idLen) {
+      throw const FormatException('imageId must be 16 bytes');
+    }
+    if (seq < 0 || seq >= 0x10000) {
+      throw const FormatException('image chunk seq out of u16 range');
+    }
+    if (total < 1 || total > maxChunks) {
+      throw const FormatException('image chunk total exceeds protocol cap');
+    }
+    if (seq >= total) {
+      throw const FormatException('image chunk seq must be < total');
+    }
+    if (data.length > maxDataBytes) {
+      throw const FormatException(
+        'image chunk data exceeds protocol cap',
+      );
+    }
+  }
+
   Uint8List encode() {
     final mimeBytes = utf8.encode(mime);
     if (mimeBytes.length > 255) {
       throw const FormatException('mime > 255 UTF-8 bytes');
     }
-    final out = Uint8List(idLen + 2 + 2 + 1 + mimeBytes.length + 2 + data.length);
+    final out =
+        Uint8List(idLen + 2 + 2 + 1 + mimeBytes.length + 2 + data.length);
     var c = 0;
     out.setRange(c, c += idLen, imageId);
     out[c++] = (seq >> 8) & 0xff;
@@ -210,8 +234,14 @@ class ImageChunk {
     c += mimeLen;
     final dataLen = (bytes[c] << 8) | bytes[c + 1];
     c += 2;
+    if (dataLen > maxDataBytes) {
+      throw const FormatException('image chunk data exceeds protocol cap');
+    }
     if (bytes.length < c + dataLen) {
       throw const FormatException('image chunk data overrun');
+    }
+    if (bytes.length != c + dataLen) {
+      throw const FormatException('image chunk has trailing bytes');
     }
     final data = Uint8List.fromList(bytes.sublist(c, c + dataLen));
     return ImageChunk(
@@ -259,13 +289,9 @@ class AudioChunk {
     required this.durationMs,
     required this.mime,
     required this.data,
-  })  : assert(audioId.length == idLen, 'audioId must be $idLen B'),
-        assert(seq >= 0 && seq < 0x10000, 'seq out of u16 range'),
-        assert(total >= 1 && total < 0x10000, 'total out of u16 range'),
-        assert(seq < total, 'seq must be < total'),
-        assert(durationMs >= 0 && durationMs <= 0xFFFFFFFF,
-            'durationMs out of u32 range'),
-        assert(data.length < 0x10000, 'chunk data too large for u16 length');
+  }) {
+    _validate();
+  }
 
   final Uint8List audioId;
   final int seq;
@@ -279,6 +305,33 @@ class AudioChunk {
   /// Max raw audio bytes per chunk. Slightly smaller than image's 140 to
   /// leave room for the duration field; still fits inside MTU=256.
   static const int maxDataBytes = 136;
+
+  /// Same transfer cap as [ImageChunk.maxChunks], with a slightly smaller
+  /// chunk size to account for the duration field.
+  static const int maxChunks = 8192;
+
+  void _validate() {
+    if (audioId.length != idLen) {
+      throw const FormatException('audioId must be 16 bytes');
+    }
+    if (seq < 0 || seq >= 0x10000) {
+      throw const FormatException('audio chunk seq out of u16 range');
+    }
+    if (total < 1 || total > maxChunks) {
+      throw const FormatException('audio chunk total exceeds protocol cap');
+    }
+    if (seq >= total) {
+      throw const FormatException('audio chunk seq must be < total');
+    }
+    if (durationMs < 0 || durationMs > 0xFFFFFFFF) {
+      throw const FormatException('audio durationMs out of u32 range');
+    }
+    if (data.length > maxDataBytes) {
+      throw const FormatException(
+        'audio chunk data exceeds protocol cap',
+      );
+    }
+  }
 
   Uint8List encode() {
     final mimeBytes = utf8.encode(mime);
@@ -332,8 +385,14 @@ class AudioChunk {
     c += mimeLen;
     final dataLen = (bytes[c] << 8) | bytes[c + 1];
     c += 2;
+    if (dataLen > maxDataBytes) {
+      throw const FormatException('audio chunk data exceeds protocol cap');
+    }
     if (bytes.length < c + dataLen) {
       throw const FormatException('audio chunk data overrun');
+    }
+    if (bytes.length != c + dataLen) {
+      throw const FormatException('audio chunk has trailing bytes');
     }
     final data = Uint8List.fromList(bytes.sublist(c, c + dataLen));
     return AudioChunk(
@@ -371,8 +430,7 @@ enum MediaKind {
     for (final v in MediaKind.values) {
       if (v.tag == b) return v;
     }
-    throw FormatException(
-        'unknown media kind 0x${b.toRadixString(16)}');
+    throw FormatException('unknown media kind 0x${b.toRadixString(16)}');
   }
 }
 
@@ -407,12 +465,9 @@ class MediaManifest {
     required this.mime,
     required this.sha256,
     this.durationMs = 0,
-  })  : assert(mediaId.length == idLen, 'mediaId must be $idLen B'),
-        assert(total >= 1 && total < 0x10000, 'total out of u16 range'),
-        assert(durationMs >= 0 && durationMs <= 0xFFFFFFFF,
-            'durationMs out of u32 range'),
-        assert(sha256.length == digestLen,
-            'sha256 must be $digestLen B');
+  }) {
+    _validate();
+  }
 
   final Uint8List mediaId;
   final MediaKind kind;
@@ -424,6 +479,22 @@ class MediaManifest {
   static const int version = 0x01;
   static const int idLen = 16;
   static const int digestLen = 32;
+  static const int maxChunks = ImageChunk.maxChunks;
+
+  void _validate() {
+    if (mediaId.length != idLen) {
+      throw const FormatException('mediaId must be 16 bytes');
+    }
+    if (total < 1 || total > maxChunks) {
+      throw const FormatException('media manifest total exceeds protocol cap');
+    }
+    if (durationMs < 0 || durationMs > 0xFFFFFFFF) {
+      throw const FormatException('media durationMs out of u32 range');
+    }
+    if (sha256.length != digestLen) {
+      throw const FormatException('media sha256 must be 32 bytes');
+    }
+  }
 
   Uint8List encode() {
     final mimeBytes = utf8.encode(mime);
@@ -477,6 +548,9 @@ class MediaManifest {
     );
     c += mimeLen;
     final sha = Uint8List.fromList(bytes.sublist(c, c + digestLen));
+    if (bytes.length != c + digestLen) {
+      throw const FormatException('media manifest has trailing bytes');
+    }
     return MediaManifest(
       mediaId: id,
       kind: kind,
@@ -487,4 +561,3 @@ class MediaManifest {
     );
   }
 }
-

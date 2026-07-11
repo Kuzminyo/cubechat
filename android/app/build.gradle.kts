@@ -5,6 +5,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+fun secret(name: String): String? =
+    (project.findProperty(name) as String?) ?: System.getenv(name)
+
+val releaseStoreFile = secret("CUBECHAT_RELEASE_STORE_FILE")
+val releaseStorePassword = secret("CUBECHAT_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = secret("CUBECHAT_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = secret("CUBECHAT_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.cubechat.cubechat"
     compileSdk = flutter.compileSdkVersion
@@ -34,11 +48,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

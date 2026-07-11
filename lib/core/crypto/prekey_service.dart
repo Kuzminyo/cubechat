@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
 import '../storage/hive_cipher.dart';
+import '../storage/hive_init.dart';
 import 'identity_service.dart';
 import 'prekey_store.dart';
 
@@ -27,7 +28,7 @@ class PrekeyService {
   PrekeyService(this._ref);
 
   final Ref _ref;
-  static const _boxName = 'cubechat.prekeys';
+  static const _boxName = HiveBoxes.prekeys;
 
   PrekeyStore? _store;
   Box<dynamic>? _box;
@@ -75,6 +76,21 @@ class PrekeyService {
     await store.rotateSignedPrekey();
     await _persist();
     debugPrint('PrekeyService: minted fresh signed prekey #${signedPrekeyId}');
+  }
+
+  Future<void> wipe() async {
+    _store = null;
+    final box = _box;
+    _box = null;
+    try {
+      await box?.clear();
+      await box?.close();
+    } catch (e) {
+      debugPrint('PrekeyService: wipe open box failed ($e)');
+    }
+    try {
+      await Hive.deleteBoxFromDisk(_boxName);
+    } catch (_) {}
   }
 
   Future<void> _persist() async {

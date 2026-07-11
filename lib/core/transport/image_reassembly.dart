@@ -7,26 +7,26 @@ import '../util/debug_log.dart';
 import 'inner_payload.dart';
 
 /// In-memory reassembly buffer for an in-flight image.
-///
-/// Chunks may arrive out of order (the mesh has no ordering guarantees);
-/// we collect them keyed by `seq` and finalise the moment we have all
-/// `total` slices.
 class _PendingImage {
   _PendingImage({
     required this.total,
     required this.mime,
     required this.startedAt,
-  });
+  }) : lastTouched = startedAt;
 
   final int total;
   final String mime;
   final DateTime startedAt;
+  DateTime lastTouched;
   final Map<int, Uint8List> chunks = {};
 
   bool get isComplete => chunks.length == total;
+  int get byteCount => chunks.values.fold<int>(0, (s, c) => s + c.length);
 
-  /// Concatenate chunks in seq order. Caller is responsible for confirming
-  /// [isComplete] first.
+  void touch() {
+    lastTouched = DateTime.now();
+  }
+
   Uint8List assemble() {
     final ordered = List<Uint8List>.generate(total, (i) => chunks[i]!);
     final totalBytes = ordered.fold<int>(0, (s, c) => s + c.length);
@@ -40,38 +40,53 @@ class _PendingImage {
 }
 
 /// Aggregates [ImageChunk] payloads keyed by imageId, expiring partial
-/// transfers that stall for more than [staleAfter]. Once all chunks have
-/// arrived, the bytes are written to a file under the app cache directory
-/// and the path is returned to the caller.
+/// transfers that stall. Buffers are also bounded by count and bytes so a
+/// malicious peer cannot keep arbitrary partial media in memory until GC.
 class ImageReassembler {
-  ImageReassembler({this.staleAfter = const Duration(minutes: 2)});
+  ImageReassembler({
+    this.staleAfter = const Duration(minutes: 2),
+    this.maxPendingTransfers = 32,
+    this.maxBufferedBytes = 4 * 1024 * 1024,
+  });
 
   final Duration staleAfter;
+  final int maxPendingTransfers;
+  final int maxBufferedBytes;
   final Map<String, _PendingImage> _pending = {};
 
-  /// Feed a chunk into the reassembly buffer. Returns the assembled
-  /// [Uint8List] + mime when this chunk completes the image; otherwise
-  /// returns null and the chunk is buffered.
-  ({Uint8List bytes, String mime, Uint8List imageId})? ingest(ImageChunk chunk) {
+  ({Uint8List bytes, String mime, Uint8List imageId})? ingest(
+      ImageChunk chunk) {
     _gc();
     final key = _keyOf(chunk.imageId);
-    final entry = _pending.putIfAbsent(
-      key,
-      () => _PendingImage(
+    var entry = _pending[key];
+    if (entry == null) {
+      _evictUntilTransferSlotAvailable();
+      if (_pending.length >= maxPendingTransfers) {
+        DebugLog.instance.log('IMG', 'drop $key: pending image cap reached');
+        return null;
+      }
+      entry = _PendingImage(
         total: chunk.total,
         mime: chunk.mime,
         startedAt: DateTime.now(),
-      ),
-    );
+      );
+      _pending[key] = entry;
+    }
     if (entry.total != chunk.total) {
-      DebugLog.instance.log('IMG',
-          'chunk total mismatch for $key — discarding image buffer');
+      DebugLog.instance.log(
+          'IMG', 'chunk total mismatch for $key - discarding image buffer');
+      _pending.remove(key);
+      return null;
+    }
+    final oldLen = entry.chunks[chunk.seq]?.length ?? 0;
+    if (!_reserveBytesFor(key, chunk.data.length - oldLen)) {
+      DebugLog.instance.log('IMG', 'drop $key: image buffer byte cap reached');
       _pending.remove(key);
       return null;
     }
     entry.chunks[chunk.seq] = chunk.data;
-    // Sample every 25th chunk so the log doesn't drown in progress lines
-    // on big payloads. Completion + first chunk are always logged.
+    entry.touch();
+
     final n = entry.chunks.length;
     if (n == 1 || n == entry.total || n % 25 == 0) {
       DebugLog.instance.log('IMG', 'buf $key: $n/${entry.total}');
@@ -84,9 +99,6 @@ class ImageReassembler {
     return null;
   }
 
-  /// Writes [bytes] under <appCache>/cubechat/images/<imageId>.<ext>.
-  /// The extension is derived from [mime] so the OS image viewer behaves
-  /// when the file is shared out.
   static Future<String> persistToCache({
     required Uint8List imageId,
     required Uint8List bytes,
@@ -99,17 +111,51 @@ class ImageReassembler {
       await dir.create(recursive: true);
     }
     final ext = _extensionFor(mime);
-    final hex = imageId
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final hex = imageId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final file = File('${dir.path}/$hex$ext');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
 
+  int get _bufferedBytes =>
+      _pending.values.fold<int>(0, (s, p) => s + p.byteCount);
+
   void _gc() {
     final now = DateTime.now();
     _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+  }
+
+  void _evictUntilTransferSlotAvailable() {
+    while (_pending.length >= maxPendingTransfers && _pending.isNotEmpty) {
+      _evictOldest();
+    }
+  }
+
+  bool _reserveBytesFor(String currentKey, int deltaBytes) {
+    if (deltaBytes <= 0) return true;
+    while (_bufferedBytes + deltaBytes > maxBufferedBytes &&
+        _pending.keys.any((k) => k != currentKey)) {
+      _evictOldest(exceptKey: currentKey);
+    }
+    return _bufferedBytes + deltaBytes <= maxBufferedBytes;
+  }
+
+  void _evictOldest({String? exceptKey}) {
+    String? oldestKey;
+    DateTime? oldestTouched;
+    for (final e in _pending.entries) {
+      if (e.key == exceptKey) continue;
+      final touched = e.value.lastTouched;
+      if (oldestTouched == null || touched.isBefore(oldestTouched)) {
+        oldestTouched = touched;
+        oldestKey = e.key;
+      }
+    }
+    if (oldestKey != null) {
+      DebugLog.instance
+          .log('IMG', 'evict pending image $oldestKey under buffer pressure');
+      _pending.remove(oldestKey);
+    }
   }
 
   static String _keyOf(Uint8List id) =>
@@ -132,25 +178,27 @@ class ImageReassembler {
   }
 }
 
-/// In-memory buffer for one in-flight voice message. Same shape as
-/// [_PendingImage] but carries the [durationMs] so the chat UI can label
-/// the bubble's playback timer the moment the *first* chunk arrives, even
-/// before the rest is on disk.
 class _PendingAudio {
   _PendingAudio({
     required this.total,
     required this.mime,
     required this.durationMs,
     required this.startedAt,
-  });
+  }) : lastTouched = startedAt;
 
   final int total;
   final String mime;
   final int durationMs;
   final DateTime startedAt;
+  DateTime lastTouched;
   final Map<int, Uint8List> chunks = {};
 
   bool get isComplete => chunks.length == total;
+  int get byteCount => chunks.values.fold<int>(0, (s, c) => s + c.length);
+
+  void touch() {
+    lastTouched = DateTime.now();
+  }
 
   Uint8List assemble() {
     final ordered = List<Uint8List>.generate(total, (i) => chunks[i]!);
@@ -164,34 +212,53 @@ class _PendingAudio {
   }
 }
 
-/// Mirror of [ImageReassembler] for audio chunks. Returns the assembled
-/// bytes + duration the moment the last chunk lands.
 class AudioReassembler {
-  AudioReassembler({this.staleAfter = const Duration(minutes: 5)});
+  AudioReassembler({
+    this.staleAfter = const Duration(minutes: 5),
+    this.maxPendingTransfers = 32,
+    this.maxBufferedBytes = 4 * 1024 * 1024,
+  });
 
   final Duration staleAfter;
+  final int maxPendingTransfers;
+  final int maxBufferedBytes;
   final Map<String, _PendingAudio> _pending = {};
 
   ({Uint8List bytes, String mime, int durationMs, Uint8List audioId})? ingest(
       AudioChunk chunk) {
     _gc();
     final key = _keyOf(chunk.audioId);
-    final entry = _pending.putIfAbsent(
-      key,
-      () => _PendingAudio(
+    var entry = _pending[key];
+    if (entry == null) {
+      _evictUntilTransferSlotAvailable();
+      if (_pending.length >= maxPendingTransfers) {
+        DebugLog.instance.log('VOICE', 'drop $key: pending audio cap reached');
+        return null;
+      }
+      entry = _PendingAudio(
         total: chunk.total,
         mime: chunk.mime,
         durationMs: chunk.durationMs,
         startedAt: DateTime.now(),
-      ),
-    );
+      );
+      _pending[key] = entry;
+    }
     if (entry.total != chunk.total) {
-      DebugLog.instance.log('VOICE',
-          'chunk total mismatch for $key — discarding audio buffer');
+      DebugLog.instance.log(
+          'VOICE', 'chunk total mismatch for $key - discarding audio buffer');
+      _pending.remove(key);
+      return null;
+    }
+    final oldLen = entry.chunks[chunk.seq]?.length ?? 0;
+    if (!_reserveBytesFor(key, chunk.data.length - oldLen)) {
+      DebugLog.instance
+          .log('VOICE', 'drop $key: audio buffer byte cap reached');
       _pending.remove(key);
       return null;
     }
     entry.chunks[chunk.seq] = chunk.data;
+    entry.touch();
+
     final n = entry.chunks.length;
     if (n == 1 || n == entry.total || n % 25 == 0) {
       DebugLog.instance.log('VOICE', 'buf $key: $n/${entry.total}');
@@ -221,16 +288,51 @@ class AudioReassembler {
       await dir.create(recursive: true);
     }
     final ext = _audioExtensionFor(mime);
-    final hex =
-        audioId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final hex = audioId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final file = File('${dir.path}/$hex$ext');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
 
+  int get _bufferedBytes =>
+      _pending.values.fold<int>(0, (s, p) => s + p.byteCount);
+
   void _gc() {
     final now = DateTime.now();
     _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+  }
+
+  void _evictUntilTransferSlotAvailable() {
+    while (_pending.length >= maxPendingTransfers && _pending.isNotEmpty) {
+      _evictOldest();
+    }
+  }
+
+  bool _reserveBytesFor(String currentKey, int deltaBytes) {
+    if (deltaBytes <= 0) return true;
+    while (_bufferedBytes + deltaBytes > maxBufferedBytes &&
+        _pending.keys.any((k) => k != currentKey)) {
+      _evictOldest(exceptKey: currentKey);
+    }
+    return _bufferedBytes + deltaBytes <= maxBufferedBytes;
+  }
+
+  void _evictOldest({String? exceptKey}) {
+    String? oldestKey;
+    DateTime? oldestTouched;
+    for (final e in _pending.entries) {
+      if (e.key == exceptKey) continue;
+      final touched = e.value.lastTouched;
+      if (oldestTouched == null || touched.isBefore(oldestTouched)) {
+        oldestTouched = touched;
+        oldestKey = e.key;
+      }
+    }
+    if (oldestKey != null) {
+      DebugLog.instance
+          .log('VOICE', 'evict pending audio $oldestKey under buffer pressure');
+      _pending.remove(oldestKey);
+    }
   }
 
   static String _keyOf(Uint8List id) =>

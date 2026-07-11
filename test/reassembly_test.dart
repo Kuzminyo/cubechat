@@ -4,16 +4,18 @@ import 'package:cubechat/core/transport/image_reassembly.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Uint8List _id(int seed) =>
-    Uint8List.fromList(List.generate(ImageChunk.idLen, (i) => (seed + i) & 0xFF));
+Uint8List _id(int seed) => Uint8List.fromList(
+    List.generate(ImageChunk.idLen, (i) => (seed + i) & 0xFF));
 
 Uint8List _data(int seed, int len) =>
     Uint8List.fromList(List.generate(len, (i) => (seed + i) & 0xFF));
 
 ImageChunk _imgChunk(Uint8List id, int seq, int total, Uint8List data) =>
-    ImageChunk(imageId: id, seq: seq, total: total, mime: 'image/png', data: data);
+    ImageChunk(
+        imageId: id, seq: seq, total: total, mime: 'image/png', data: data);
 
-AudioChunk _audChunk(Uint8List id, int seq, int total, Uint8List data) => AudioChunk(
+AudioChunk _audChunk(Uint8List id, int seq, int total, Uint8List data) =>
+    AudioChunk(
       audioId: id,
       seq: seq,
       total: total,
@@ -98,6 +100,18 @@ void main() {
       // seq 1 starts fresh and cannot complete on its own.
       expect(r.ingest(_imgChunk(id, 1, 2, _data(2, 2))), isNull);
     });
+
+    test('pending transfer cap evicts the oldest partial image', () {
+      final r = ImageReassembler(maxPendingTransfers: 2);
+      final first = _id(20);
+      final second = _id(40);
+      final third = _id(60);
+      expect(r.ingest(_imgChunk(first, 0, 2, _data(0, 2))), isNull);
+      expect(r.ingest(_imgChunk(second, 0, 2, _data(10, 2))), isNull);
+      expect(r.ingest(_imgChunk(third, 0, 2, _data(20, 2))), isNull);
+      expect(r.ingest(_imgChunk(first, 1, 2, _data(2, 2))), isNull);
+      expect(r.ingest(_imgChunk(third, 1, 2, _data(22, 2))), isNotNull);
+    });
   });
 
   group('AudioReassembler', () {
@@ -120,6 +134,18 @@ void main() {
       final r = AudioReassembler();
       final id = _id(9);
       expect(r.ingest(_audChunk(id, 0, 2, _data(0, 3))), isNull);
+    });
+
+    test('pending transfer cap evicts the oldest partial audio', () {
+      final r = AudioReassembler(maxPendingTransfers: 2);
+      final first = _id(60);
+      final second = _id(80);
+      final third = _id(100);
+      expect(r.ingest(_audChunk(first, 0, 2, _data(0, 2))), isNull);
+      expect(r.ingest(_audChunk(second, 0, 2, _data(10, 2))), isNull);
+      expect(r.ingest(_audChunk(third, 0, 2, _data(20, 2))), isNull);
+      expect(r.ingest(_audChunk(first, 1, 2, _data(2, 2))), isNull);
+      expect(r.ingest(_audChunk(third, 1, 2, _data(22, 2))), isNotNull);
     });
   });
 }

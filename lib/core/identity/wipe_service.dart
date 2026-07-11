@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../crypto/identity_service.dart';
+import '../crypto/prekey_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../transport/chat_session_manager.dart';
@@ -35,13 +36,18 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Drop any encrypted frames we were holding for other peers (relay buffer).
   ref.read(messagingServiceProvider).clearRelayBuffer();
 
-  // 2. On-disk persistence.
+  // 2. Forward-secret prekeys keep live private state in their provider.
+  await ref.read(prekeyServiceProvider).wipe();
+
+  // 3. On-disk persistence.
   await HiveInit.wipeAll();
 
-  // 3. The crypto identity + the Hive data-encryption key in the secure
+  // 4. The crypto identity + the Hive data-encryption key in the secure
   //    store. Erasing the AES key renders any encrypted box bytes that
   //    survived step 2 (e.g. a file the OS hadn't flushed) unrecoverable.
   await ref.read(identityServiceProvider).wipe();
   await hiveCipherProvider.wipe();
   ref.invalidate(identityProvider);
+  ref.invalidate(prekeyServiceProvider);
+  ref.invalidate(messagingServiceProvider);
 }

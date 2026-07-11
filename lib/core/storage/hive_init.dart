@@ -6,13 +6,24 @@ import 'package:path_provider/path_provider.dart';
 abstract final class HiveBoxes {
   static const knownPeers = 'cubechat.known_peers';
   static const messages = 'cubechat.messages';
+
   /// User preferences: nickname, etc.
   static const settings = 'cubechat.settings';
+
   /// Opportunistic store-and-forward relay buffer (encrypted frames held
   /// for currently-unreachable peers). Survives restart within the 1h TTL.
   static const relayBuffer = 'cubechat.relay_buffer';
 
-  static const all = <String>[knownPeers, messages, settings, relayBuffer];
+  /// Forward-secret signed prekey private material.
+  static const prekeys = 'cubechat.prekeys';
+
+  static const all = <String>[
+    knownPeers,
+    messages,
+    settings,
+    relayBuffer,
+    prekeys,
+  ];
 }
 
 /// Initialises Hive. Call from `main()` after `WidgetsFlutterBinding.

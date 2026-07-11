@@ -153,14 +153,10 @@ class MessagingService {
   /// finish reassembling. Keyed by mediaId hex. GC'd after [_manifestTtl].
   final Map<String, _ManifestEntry> _pendingManifests = {};
 
-  /// Assembled media bytes whose manifest hasn't arrived yet. Same key
-  /// space as [_pendingManifests]; whichever side lands second triggers
-  /// the SHA-256 verification + delivery.
-  final Map<String, _OrphanMedia> _orphanedMedia = {};
-
   /// How long we keep waiting for a manifest or for the missing
   /// chunks before garbage-collecting the half-finished transfer.
   static const Duration _manifestTtl = Duration(minutes: 5);
+  static const int _maxPendingMediaManifests = 64;
 
   Future<Uint8List> _myPubkeyHash() async {
     if (_myHashCache != null) return _myHashCache!;
@@ -239,7 +235,8 @@ class MessagingService {
     });
 
     final manager = _ref.read(chatSessionManagerProvider.notifier);
-    final session = await manager.startInitiator(peerId, peerLabel: displayName);
+    final session =
+        await manager.startInitiator(peerId, peerLabel: displayName);
 
     _armHandshakeWatchdog(peerId);
 
@@ -258,8 +255,10 @@ class MessagingService {
     // gives only 20B of usable notify space, which silently truncates HS2
     // and the handshake stalls forever.
     if (client.negotiatedMtu < 100) {
-      DebugLog.instance.log('NOISE', 'WARNING: MTU=${client.negotiatedMtu} '
-          'is too small for handshake frames — handshake may stall');
+      DebugLog.instance.log(
+          'NOISE',
+          'WARNING: MTU=${client.negotiatedMtu} '
+              'is too small for handshake frames — handshake may stall');
     }
   }
 
@@ -274,8 +273,8 @@ class MessagingService {
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
       if (session == null || session.isEstablished) return;
-      DebugLog.instance.log('NOISE',
-          'handshake TIMEOUT for $peerId (status=${session.status})');
+      DebugLog.instance.log(
+          'NOISE', 'handshake TIMEOUT for $peerId (status=${session.status})');
       session.markFailed();
       manager.touch(peerId);
       // Tear down the BLE link so a Retry rebuilds it cleanly.
@@ -318,8 +317,8 @@ class MessagingService {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
           canonicalId = known.pubkeyHex;
         } catch (e) {
-          DebugLog.instance.log('MESH',
-              'sendText: malformed pubkey hex for $chatId: $e');
+          DebugLog.instance
+              .log('MESH', 'sendText: malformed pubkey hex for $chatId: $e');
         }
       }
     }
@@ -393,8 +392,7 @@ class MessagingService {
             key: sk,
             plaintext: signedFs,
             senderIdentityPub: identity.publicKey,
-            senderEphemeralPub:
-                Uint8List.fromList((ephemeral.publicKey).bytes),
+            senderEphemeralPub: Uint8List.fromList((ephemeral.publicKey).bytes),
           );
           final tagged = _tagBody(_cipherX3dh, fsBody);
           // wire = frame(1) + envelope header + tagged body
@@ -405,13 +403,15 @@ class MessagingService {
             if (chatId != canonicalId) {
               messages.markForwardSecret(chatId, msg.id);
             }
-            DebugLog.instance.log('CRYPTO',
+            DebugLog.instance.log(
+                'CRYPTO',
                 'sendText: forward-secret (X3DH) to $canonicalId '
-                '(${wireLen}B wire)');
+                    '(${wireLen}B wire)');
           } else {
-            DebugLog.instance.log('CRYPTO',
+            DebugLog.instance.log(
+                'CRYPTO',
                 'sendText: FS frame ${wireLen}B > $_maxFsWireBytes — '
-                'falling back to SealedBox');
+                    'falling back to SealedBox');
           }
         } catch (e) {
           DebugLog.instance.log('CRYPTO',
@@ -432,7 +432,8 @@ class MessagingService {
           signKeyPair: identity.asSignKeyPair(),
           senderEdPub: identity.signPublicKey,
         );
-        body = _tagBody(_cipherSealedBox, await SealedBox.seal(signed, peerPub));
+        body =
+            _tagBody(_cipherSealedBox, await SealedBox.seal(signed, peerPub));
       }
 
       final envelope = TransportEnvelope(
@@ -468,14 +469,14 @@ class MessagingService {
             await client.writeOutbound(wireBytes);
             deliveredVia = 1;
           } catch (e) {
-            DebugLog.instance.log('MESH', 'direct write failed ($e) — will queue');
+            DebugLog.instance
+                .log('MESH', 'direct write failed ($e) — will queue');
           }
         }
         if (deliveredVia == 0) {
           try {
-            final ok = await _ref
-                .read(blePeripheralProvider)
-                .notifyInbound(wireBytes);
+            final ok =
+                await _ref.read(blePeripheralProvider).notifyInbound(wireBytes);
             if (ok) deliveredVia = 1;
           } catch (_) {}
         }
@@ -509,9 +510,10 @@ class MessagingService {
           messageId: msg.id,
         );
         _scheduleRelayPersist();
-        DebugLog.instance.log('MESH',
+        DebugLog.instance.log(
+            'MESH',
             'text undeliverable — queued for store-and-forward to '
-            '$canonicalId (held ${_store.size})');
+                '$canonicalId (held ${_store.size})');
         // Leave status as sending (pending), not failed.
       }
     } catch (e, st) {
@@ -554,8 +556,8 @@ class MessagingService {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
           canonicalId = known.pubkeyHex;
         } catch (e) {
-          DebugLog.instance.log('IMG',
-              'sendImage: malformed pubkey hex for $chatId: $e');
+          DebugLog.instance
+              .log('IMG', 'sendImage: malformed pubkey hex for $chatId: $e');
         }
       }
     }
@@ -584,8 +586,10 @@ class MessagingService {
       final imageId = ImageChunk.newImageId();
       final total = (bytes.length + ImageChunk.maxDataBytes - 1) ~/
           ImageChunk.maxDataBytes;
-      if (total > 0xFFFF) {
-        throw StateError('image too large: $total chunks > 65535 cap');
+      if (total < 1 || total > ImageChunk.maxChunks) {
+        throw StateError(
+          'image too large: $total chunks > ${ImageChunk.maxChunks} cap',
+        );
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
@@ -644,8 +648,7 @@ class MessagingService {
             }
           }
         } else {
-          final fanout =
-              await _fanoutAllLinks(frameBytes, excludePeerId: null);
+          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
           if (fanout == 0) {
             throw StateError('no active mesh links for image chunk $i/$total');
           }
@@ -699,8 +702,8 @@ class MessagingService {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
           canonicalId = known.pubkeyHex;
         } catch (e) {
-          DebugLog.instance.log('VOICE',
-              'sendAudio: malformed pubkey hex for $chatId: $e');
+          DebugLog.instance
+              .log('VOICE', 'sendAudio: malformed pubkey hex for $chatId: $e');
         }
       }
     }
@@ -730,8 +733,10 @@ class MessagingService {
       final audioId = AudioChunk.newAudioId();
       final total = (bytes.length + AudioChunk.maxDataBytes - 1) ~/
           AudioChunk.maxDataBytes;
-      if (total > 0xFFFF) {
-        throw StateError('audio too large: $total chunks > 65535 cap');
+      if (total < 1 || total > AudioChunk.maxChunks) {
+        throw StateError(
+          'audio too large: $total chunks > ${AudioChunk.maxChunks} cap',
+        );
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
@@ -749,8 +754,7 @@ class MessagingService {
       );
       for (var i = 0; i < total; i++) {
         final start = i * AudioChunk.maxDataBytes;
-        final end =
-            (start + AudioChunk.maxDataBytes).clamp(0, bytes.length);
+        final end = (start + AudioChunk.maxDataBytes).clamp(0, bytes.length);
         final chunk = AudioChunk(
           audioId: audioId,
           seq: i,
@@ -789,14 +793,13 @@ class MessagingService {
                 .read(blePeripheralProvider)
                 .notifyInbound(frameBytes);
             if (!ok) {
-              DebugLog.instance.log('VOICE',
-                  'chunk $i/$total notify returned false');
+              DebugLog.instance
+                  .log('VOICE', 'chunk $i/$total notify returned false');
               throw StateError('notify failed on audio chunk $i/$total');
             }
           }
         } else {
-          final fanout =
-              await _fanoutAllLinks(frameBytes, excludePeerId: null);
+          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
           if (fanout == 0) {
             throw StateError('no active mesh links for audio chunk $i/$total');
           }
@@ -859,9 +862,10 @@ class MessagingService {
     // handshake + announcement traffic by default. Per-chunk progress is
     // already covered by the reassembler's sampled output.
     if (frame.type != FrameType.transport) {
-      DebugLog.instance.log('NOISE',
+      DebugLog.instance.log(
+          'NOISE',
           'RX ${frame.type.name} from $peerId (${frame.payload.length}B, '
-          '${fromCentral ? "peripheral side" : "central side"})');
+              '${fromCentral ? "peripheral side" : "central side"})');
     }
 
     final manager = _ref.read(chatSessionManagerProvider.notifier);
@@ -878,7 +882,8 @@ class MessagingService {
           _clearHandshakeWatchdog(peerId);
           _registerKnownPeer(session);
         }
-        if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
+        if (reply != null)
+          await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.noiseHandshake2:
       case FrameType.noiseHandshake3:
@@ -893,7 +898,8 @@ class MessagingService {
           _clearHandshakeWatchdog(peerId);
           _registerKnownPeer(session);
         }
-        if (reply != null) await _writeBack(peerId, reply, fromCentral: fromCentral);
+        if (reply != null)
+          await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.transport:
         await _handleTransportFrame(peerId, frame);
@@ -915,8 +921,8 @@ class MessagingService {
     try {
       env = TransportEnvelope.decode(frame.payload);
     } catch (e) {
-      DebugLog.instance.log('NOISE',
-          'drop transport from $peerId: malformed envelope ($e)');
+      DebugLog.instance
+          .log('NOISE', 'drop transport from $peerId: malformed envelope ($e)');
       return;
     }
     // Suppressed by default — see _handleFrame above. The reassembler logs
@@ -927,7 +933,8 @@ class MessagingService {
     // (origin, msgId) pair which is stable regardless of which relay
     // delivered the copy.
     if (!_dedup.acceptEnvelope(env)) {
-      DebugLog.instance.log('NOISE', 'drop transport: duplicate (origin+msgId)');
+      DebugLog.instance
+          .log('NOISE', 'drop transport: duplicate (origin+msgId)');
       return;
     }
 
@@ -960,12 +967,13 @@ class MessagingService {
           msgId: env.msgId,
         );
         _scheduleRelayPersist();
-        DebugLog.instance.log('MESH',
+        DebugLog.instance.log(
+            'MESH',
             'transport not for me — forwarded + held for dest '
-            '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
+                '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
       } else {
-        DebugLog.instance.log('MESH',
-            'broadcast not for me, forwarded only (no hold)');
+        DebugLog.instance
+            .log('MESH', 'broadcast not for me, forwarded only (no hold)');
       }
       return;
     }
@@ -978,7 +986,8 @@ class MessagingService {
     try {
       final identity = await _ref.read(identityProvider.future);
       if (env.body.isEmpty) {
-        DebugLog.instance.log('CRYPTO', 'drop transport from $peerId: empty body');
+        DebugLog.instance
+            .log('CRYPTO', 'drop transport from $peerId: empty body');
         return;
       }
       // First byte = cipher tag (0x01 SealedBox, 0x02 X3DH forward-secret).
@@ -993,7 +1002,8 @@ class MessagingService {
         try {
           parsed = FsMessage.parse(cipherBody);
         } catch (e) {
-          DebugLog.instance.log('CRYPTO', 'drop FS from $peerId: malformed ($e)');
+          DebugLog.instance
+              .log('CRYPTO', 'drop FS from $peerId: malformed ($e)');
           return;
         }
         try {
@@ -1004,7 +1014,8 @@ class MessagingService {
             senderEphemeralPub: parsed.senderEphemeralPub,
           );
           sealedPlain = await FsMessage.open(key: sk, parsed: parsed);
-          DebugLog.instance.log('CRYPTO', 'FS (X3DH) body decrypted from $peerId');
+          DebugLog.instance
+              .log('CRYPTO', 'FS (X3DH) body decrypted from $peerId');
         } catch (e) {
           DebugLog.instance.log('CRYPTO', 'FS decrypt FAILED from $peerId: $e');
           return;
@@ -1017,13 +1028,15 @@ class MessagingService {
             recipientPubkey: identity.publicKey,
           );
         } catch (e) {
-          DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+          DebugLog.instance
+              .log('NOISE', 'SealedBox open FAILED for $peerId: $e');
           return;
         }
       } else {
-        DebugLog.instance.log('CRYPTO',
+        DebugLog.instance.log(
+            'CRYPTO',
             'drop transport from $peerId: unknown cipher tag '
-            '0x${cipher.toRadixString(16)}');
+                '0x${cipher.toRadixString(16)}');
         return;
       }
 
@@ -1048,9 +1061,10 @@ class MessagingService {
           if (!_freshEnough(verified.timestampMs, peerId)) return;
           innerBytes = verified.inner;
           verifiedSenderEdPub = verified.senderEdPub;
-          DebugLog.instance.log('CRYPTO',
+          DebugLog.instance.log(
+              'CRYPTO',
               'signed body verified from $peerId (sender ed pub'
-              '${expectedEd == null ? " — TOFU" : " — strict"})');
+                  '${expectedEd == null ? " — TOFU" : " — strict"})');
         } on SignatureVerificationException catch (e) {
           DebugLog.instance.log('CRYPTO',
               'signed body FAILED verification from $peerId: ${e.message}');
@@ -1062,9 +1076,10 @@ class MessagingService {
         // the sender's verifying key from a prior announcement.
         final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
         if (expectedEd == null) {
-          DebugLog.instance.log('CRYPTO',
+          DebugLog.instance.log(
+              'CRYPTO',
               'drop FS body from $peerId: sender ed pub unknown '
-              '(awaiting their announcement)');
+                  '(awaiting their announcement)');
           return;
         }
         try {
@@ -1076,8 +1091,8 @@ class MessagingService {
           if (!_freshEnough(verified.timestampMs, peerId)) return;
           innerBytes = verified.inner;
           verifiedSenderEdPub = expectedEd;
-          DebugLog.instance.log('CRYPTO',
-              'compact-signed FS body verified from $peerId');
+          DebugLog.instance
+              .log('CRYPTO', 'compact-signed FS body verified from $peerId');
         } on SignatureVerificationException catch (e) {
           DebugLog.instance.log('CRYPTO',
               'FS body FAILED verification from $peerId: ${e.message}');
@@ -1108,8 +1123,8 @@ class MessagingService {
             unpadTextPayload(unpacked.body),
             allowMalformed: true,
           );
-          DebugLog.instance.log('NOISE',
-              'RX text from $peerId (${plaintext.length} chars)');
+          DebugLog.instance
+              .log('NOISE', 'RX text from $peerId (${plaintext.length} chars)');
           final message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
@@ -1161,8 +1176,23 @@ class MessagingService {
     try {
       chunk = AudioChunk.decode(chunkBytes);
     } catch (e) {
+      DebugLog.instance
+          .log('VOICE', 'drop audio chunk from $peerId: malformed ($e)');
+      return;
+    }
+    final key = _hexOf(chunk.audioId);
+    final pending = _pendingManifests[key];
+    if (pending == null) {
       DebugLog.instance.log('VOICE',
-          'drop audio chunk from $peerId: malformed ($e)');
+          'drop audio chunk from $peerId: no signed manifest for $key');
+      return;
+    }
+    if (pending.manifest.kind != MediaKind.audio ||
+        pending.manifest.total != chunk.total ||
+        pending.manifest.mime != chunk.mime ||
+        pending.manifest.durationMs != chunk.durationMs) {
+      DebugLog.instance.log('VOICE',
+          'drop audio chunk from $peerId: manifest metadata mismatch for $key');
       return;
     }
     final done = _audioReassembler.ingest(chunk);
@@ -1190,8 +1220,22 @@ class MessagingService {
     try {
       chunk = ImageChunk.decode(chunkBytes);
     } catch (e) {
+      DebugLog.instance
+          .log('IMG', 'drop image chunk from $peerId: malformed ($e)');
+      return;
+    }
+    final key = _hexOf(chunk.imageId);
+    final pending = _pendingManifests[key];
+    if (pending == null) {
+      DebugLog.instance.log(
+          'IMG', 'drop image chunk from $peerId: no signed manifest for $key');
+      return;
+    }
+    if (pending.manifest.kind != MediaKind.image ||
+        pending.manifest.total != chunk.total ||
+        pending.manifest.mime != chunk.mime) {
       DebugLog.instance.log('IMG',
-          'drop image chunk from $peerId: malformed ($e)');
+          'drop image chunk from $peerId: manifest metadata mismatch for $key');
       return;
     }
     final done = _imageReassembler.ingest(chunk);
@@ -1207,10 +1251,9 @@ class MessagingService {
     );
   }
 
-  /// Decode + retain a signed media manifest. If the chunks have already
-  /// fully arrived (orphan path) we verify SHA-256 here and emit the
-  /// message immediately; otherwise we stash the manifest for the
-  /// finalisation step in [_finalizeMedia].
+  /// Decode + retain a signed media manifest. Chunks are only accepted after
+  /// this signed metadata has arrived, so unsigned orphan chunks cannot fill
+  /// reassembly buffers.
   Future<void> _ingestMediaManifest({
     required String peerId,
     required Uint8List? senderPub,
@@ -1226,24 +1269,16 @@ class MessagingService {
     try {
       manifest = MediaManifest.decode(manifestBytes);
     } catch (e) {
-      DebugLog.instance.log('CRYPTO',
-          'drop media manifest from $peerId: malformed ($e)');
+      DebugLog.instance
+          .log('CRYPTO', 'drop media manifest from $peerId: malformed ($e)');
       return;
     }
     final key = _hexOf(manifest.mediaId);
     _gcMediaBuffers();
 
-    final orphan = _orphanedMedia.remove(key);
-    if (orphan != null) {
-      DebugLog.instance.log('CRYPTO',
-          'late manifest matched orphan media $key — verifying');
-      await _verifyAndEmit(
-        peerId: peerId,
-        senderPub: senderPub,
-        manifest: manifest,
-        bytes: orphan.bytes,
-      );
-      return;
+    if (_pendingManifests.length >= _maxPendingMediaManifests &&
+        !_pendingManifests.containsKey(key)) {
+      _evictOldestManifest();
     }
     _pendingManifests[key] = _ManifestEntry(
       manifest: manifest,
@@ -1251,15 +1286,15 @@ class MessagingService {
       peerId: peerId,
       senderPub: senderPub,
     );
-    DebugLog.instance.log('CRYPTO',
+    DebugLog.instance.log(
+        'CRYPTO',
         'cached signed manifest $key '
-        '(${manifest.kind.name} total=${manifest.total})');
+            '(${manifest.kind.name} total=${manifest.total})');
   }
 
   /// Called by [_ingestImageChunk] / [_ingestAudioChunk] once the chunks
-  /// for a mediaId have fully reassembled. If we already have a signed
-  /// manifest for that id, verify SHA-256 + emit; otherwise park the
-  /// bytes as an orphan until the manifest catches up.
+  /// for a mediaId have fully reassembled. The signed manifest must still
+  /// be present here; otherwise the assembled bytes are dropped.
   Future<void> _finalizeMedia({
     required String peerId,
     required Uint8List? senderPub,
@@ -1272,25 +1307,16 @@ class MessagingService {
     final key = _hexOf(mediaId);
     _gcMediaBuffers();
     final pending = _pendingManifests.remove(key);
-    if (pending != null) {
-      await _verifyAndEmit(
-        peerId: pending.peerId,
-        senderPub: pending.senderPub,
-        manifest: pending.manifest,
-        bytes: bytes,
-      );
+    if (pending == null) {
+      DebugLog.instance
+          .log('CRYPTO', 'drop assembled media $key: signed manifest missing');
       return;
     }
-    DebugLog.instance.log('CRYPTO',
-        'media $key assembled before manifest — parking as orphan');
-    _orphanedMedia[key] = _OrphanMedia(
+    await _verifyAndEmit(
+      peerId: pending.peerId,
+      senderPub: pending.senderPub,
+      manifest: pending.manifest,
       bytes: bytes,
-      mime: mime,
-      kind: kind,
-      durationMs: durationMs,
-      arrivedAt: DateTime.now(),
-      peerId: peerId,
-      senderPub: senderPub,
     );
   }
 
@@ -1303,15 +1329,17 @@ class MessagingService {
     final digest = await Sha256().hash(bytes);
     final actual = Uint8List.fromList(digest.bytes);
     if (!_bytesEqual(actual, manifest.sha256)) {
-      DebugLog.instance.log('CRYPTO',
+      DebugLog.instance.log(
+          'CRYPTO',
           'DROP media ${_hexOf(manifest.mediaId)}: '
-          'sha256 mismatch (manifest says ${_hexOf(manifest.sha256).substring(0, 8)}…, '
-          'assembled ${_hexOf(actual).substring(0, 8)}…)');
+              'sha256 mismatch (manifest says ${_hexOf(manifest.sha256).substring(0, 8)}…, '
+              'assembled ${_hexOf(actual).substring(0, 8)}…)');
       return;
     }
-    DebugLog.instance.log('CRYPTO',
+    DebugLog.instance.log(
+        'CRYPTO',
         'media ${_hexOf(manifest.mediaId)} sha256 OK '
-        '(${bytes.length}B, ${manifest.kind.name})');
+            '(${bytes.length}B, ${manifest.kind.name})');
     try {
       final Message message;
       switch (manifest.kind) {
@@ -1361,7 +1389,22 @@ class MessagingService {
   void _gcMediaBuffers() {
     final cutoff = DateTime.now().subtract(_manifestTtl);
     _pendingManifests.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
-    _orphanedMedia.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+  }
+
+  void _evictOldestManifest() {
+    String? oldestKey;
+    DateTime? oldestAt;
+    for (final e in _pendingManifests.entries) {
+      if (oldestAt == null || e.value.arrivedAt.isBefore(oldestAt)) {
+        oldestAt = e.value.arrivedAt;
+        oldestKey = e.key;
+      }
+    }
+    if (oldestKey != null) {
+      DebugLog.instance.log('CRYPTO',
+          'evict signed media manifest $oldestKey under buffer pressure');
+      _pendingManifests.remove(oldestKey);
+    }
   }
 
   /// Build a [MediaManifest] over the about-to-be-sent [bytes], wrap it in
@@ -1448,8 +1491,8 @@ class MessagingService {
     try {
       env = TransportEnvelope.decode(frame.payload);
     } catch (e) {
-      DebugLog.instance.log('MESH',
-          'drop announce from $peerId: malformed envelope ($e)');
+      DebugLog.instance
+          .log('MESH', 'drop announce from $peerId: malformed envelope ($e)');
       return;
     }
     if (!_dedup.acceptEnvelope(env)) {
@@ -1460,8 +1503,8 @@ class MessagingService {
     try {
       ann = await PeerAnnouncement.verifyAndDecode(env.body);
     } catch (e) {
-      DebugLog.instance.log('MESH',
-          'drop announce from $peerId: bad signature / format ($e)');
+      DebugLog.instance.log(
+          'MESH', 'drop announce from $peerId: bad signature / format ($e)');
       return;
     }
     // Skip our own announcement bouncing back to us through a relay.
@@ -1478,9 +1521,10 @@ class MessagingService {
           signedPrekeyPub: ann.signedPrekeyPub,
           nostrPubkey: ann.nostrPubkey,
         );
-    DebugLog.instance.log('MESH',
+    DebugLog.instance.log(
+        'MESH',
         'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
-        '(+ signed prekey + nostr pubkey)');
+            '(+ signed prekey + nostr pubkey)');
 
     // M3.E: announcements are mesh-wide — relay onward on every other link
     // until ttl runs out so peers more than one hop away learn about us.
@@ -1504,14 +1548,14 @@ class MessagingService {
   }) async {
     final relayed = env.decrementTtl();
     if (relayed.ttl <= 0) {
-      DebugLog.instance.log('MESH',
-          'not forwarding ${outerType.name}: ttl exhausted');
+      DebugLog.instance
+          .log('MESH', 'not forwarding ${outerType.name}: ttl exhausted');
       return;
     }
     final bytes = Frame(type: outerType, payload: relayed.encode()).encode();
     final fanout = await _fanoutAllLinks(bytes, excludePeerId: excludePeerId);
-    DebugLog.instance.log('MESH',
-        'relayed ${outerType.name} ttl=${relayed.ttl} fanout=$fanout');
+    DebugLog.instance.log(
+        'MESH', 'relayed ${outerType.name} ttl=${relayed.ttl} fanout=$fanout');
   }
 
   /// Writes [bytes] (a fully-encoded frame) onto every active link except
@@ -1550,15 +1594,17 @@ class MessagingService {
   bool _freshEnough(int timestampMs, String peerId) {
     final skewMs = DateTime.now().millisecondsSinceEpoch - timestampMs;
     if (skewMs > _replayMaxAgeMs) {
-      DebugLog.instance.log('CRYPTO',
+      DebugLog.instance.log(
+          'CRYPTO',
           'drop signed body from $peerId: stale '
-          '(${(skewMs / 1000).round()}s old > replay window)');
+              '(${(skewMs / 1000).round()}s old > replay window)');
       return false;
     }
     if (skewMs < -_replayMaxFutureMs) {
-      DebugLog.instance.log('CRYPTO',
+      DebugLog.instance.log(
+          'CRYPTO',
           'drop signed body from $peerId: timestamp '
-          '${(-skewMs / 1000).round()}s in the future (clock skew?)');
+              '${(-skewMs / 1000).round()}s in the future (clock skew?)');
       return false;
     }
     return true;
@@ -1605,8 +1651,8 @@ class MessagingService {
               displayName: p.displayName,
               signPublicKey: edPub,
             );
-        DebugLog.instance.log('CRYPTO',
-            'cached signer for ${p.pubkeyHex} via TOFU');
+        DebugLog.instance
+            .log('CRYPTO', 'cached signer for ${p.pubkeyHex} via TOFU');
         return;
       } catch (_) {
         // ignore
@@ -1669,11 +1715,10 @@ class MessagingService {
       // self-skip check (defense-in-depth).
       _dedup.acceptEnvelope(env);
 
-      final fanout =
-          await _fanoutAllLinks(frame.encode(), excludePeerId: null);
+      final fanout = await _fanoutAllLinks(frame.encode(), excludePeerId: null);
       if (fanout > 0) {
-        DebugLog.instance.log('MESH',
-            'announced "${ann.nickname}" on $fanout link(s)');
+        DebugLog.instance
+            .log('MESH', 'announced "${ann.nickname}" on $fanout link(s)');
       }
     } catch (e, st) {
       debugPrint('broadcastAnnouncement failed: $e\n$st');
@@ -1730,7 +1775,8 @@ class MessagingService {
   /// app isn't in the foreground (otherwise the user is already looking at
   /// it). Sender name comes from the KnownPeers roster; the preview is a
   /// short, content-type-aware snippet.
-  void _notifyIncoming({required String canonicalId, required Message message}) {
+  void _notifyIncoming(
+      {required String canonicalId, required Message message}) {
     if (message.isMine) return;
     // Suppress only when the user is actively reading THIS chat. A message
     // from someone else (or while on the chats list / nearby / backgrounded)
@@ -1765,8 +1811,8 @@ class MessagingService {
           pubkeyHex: pubkeyHex,
           displayName: session.peerLabel,
         );
-    DebugLog.instance.log('NOISE',
-        'registered known peer: ${session.peerLabel} ($pubkeyHex)');
+    DebugLog.instance.log(
+        'NOISE', 'registered known peer: ${session.peerLabel} ($pubkeyHex)');
     // Fresh session → kick off an announcement so the new peer (and anyone
     // they relay to) learns who we are without waiting up to a minute for
     // the next periodic tick.
@@ -1791,9 +1837,10 @@ class MessagingService {
     final pending = _store.drainFor(hash);
     if (pending.isEmpty) return;
     _scheduleRelayPersist(); // drain mutated the buffer
-    DebugLog.instance.log('MESH',
+    DebugLog.instance.log(
+        'MESH',
         'store-and-forward: delivering ${pending.length} held frame(s) '
-        'to ${session.peerId}');
+            'to ${session.peerId}');
     final client = _clients[session.peerId];
     for (final bytes in pending) {
       var sent = false;
@@ -1829,14 +1876,14 @@ class MessagingService {
       final ref = _outbox.remove(key);
       if (ref == null) return;
       final messages = _ref.read(messagesControllerProvider.notifier);
-      messages.updateStatus(ref.canonicalId, ref.messageId,
-          MessageStatus.delivered);
+      messages.updateStatus(
+          ref.canonicalId, ref.messageId, MessageStatus.delivered);
       if (ref.chatId != ref.canonicalId) {
-        messages.updateStatus(ref.chatId, ref.messageId,
-            MessageStatus.delivered);
+        messages.updateStatus(
+            ref.chatId, ref.messageId, MessageStatus.delivered);
       }
-      DebugLog.instance.log('MESH',
-          'outbox delivered: ${ref.messageId} → ${ref.canonicalId}');
+      DebugLog.instance.log(
+          'MESH', 'outbox delivered: ${ref.messageId} → ${ref.canonicalId}');
     } catch (_) {
       // not decodable / not ours — ignore
     }
@@ -1858,9 +1905,10 @@ class MessagingService {
             .map((m) => m.cast<dynamic, dynamic>())
             .toList();
         _store.importEntries(rows);
-        DebugLog.instance.log('MESH',
+        DebugLog.instance.log(
+            'MESH',
             'store-and-forward: restored ${_store.size} held frame(s) '
-            'across ${_store.destinationCount} dest from disk');
+                'across ${_store.destinationCount} dest from disk');
       }
     } catch (e) {
       DebugLog.instance.log('MESH', 'relay buffer load failed: $e');
@@ -1922,7 +1970,8 @@ class MessagingService {
       // We are the central — write to peer's outbound characteristic.
       final c = _clients[peerId];
       if (c == null) {
-        DebugLog.instance.log('NOISE', 'no client for $peerId, cannot write back');
+        DebugLog.instance
+            .log('NOISE', 'no client for $peerId, cannot write back');
         return;
       }
       await c.writeOutbound(bytes);
@@ -1941,8 +1990,8 @@ class MessagingService {
       if (event is PeripheralLog) {
         DebugLog.instance.log('PERIPH-NATIVE', event.message);
       } else if (event is PeripheralCentralConnected) {
-        DebugLog.instance.log('BLE-PERIPH',
-            'central connected: ${event.centralId}');
+        DebugLog.instance
+            .log('BLE-PERIPH', 'central connected: ${event.centralId}');
         _ref
             .read(peripheralControllerProvider.notifier)
             .onCentralConnected(event.centralId);
@@ -1960,8 +2009,8 @@ class MessagingService {
         }
         await _handleFrame(event.centralId, frame, fromCentral: true);
       } else if (event is PeripheralCentralDisconnected) {
-        DebugLog.instance.log('BLE-PERIPH',
-            'central disconnected: ${event.centralId}');
+        DebugLog.instance
+            .log('BLE-PERIPH', 'central disconnected: ${event.centralId}');
         _ref
             .read(peripheralControllerProvider.notifier)
             .onCentralDisconnected(event.centralId);
@@ -2016,9 +2065,6 @@ final messagingServiceProvider = Provider<MessagingService>((ref) {
   return svc;
 });
 
-/// One signed media manifest awaiting its chunks. Holds enough context
-/// to attribute the resulting Message to the right peer once the bytes
-/// have caught up.
 /// Tracks a queued outgoing message (held in the store-and-forward buffer
 /// because the recipient was offline) so its chat-bubble status can flip to
 /// delivered once we actually hand it over.
@@ -2033,6 +2079,9 @@ class _OutboxRef {
   final String messageId;
 }
 
+/// One signed media manifest awaiting its chunks. Holds enough context
+/// to attribute the resulting Message to the right peer once the bytes
+/// have caught up.
 class _ManifestEntry {
   _ManifestEntry({
     required this.manifest,
@@ -2041,29 +2090,6 @@ class _ManifestEntry {
     required this.senderPub,
   });
   final MediaManifest manifest;
-  final DateTime arrivedAt;
-  final String peerId;
-  final Uint8List? senderPub;
-}
-
-/// Assembled bytes whose manifest hasn't landed yet. We stash the file
-/// in-memory only — if no manifest shows up before the GC sweep, the
-/// bytes are dropped without ever touching disk (we refuse to surface
-/// unauthenticated media in the chat).
-class _OrphanMedia {
-  _OrphanMedia({
-    required this.bytes,
-    required this.mime,
-    required this.kind,
-    required this.durationMs,
-    required this.arrivedAt,
-    required this.peerId,
-    required this.senderPub,
-  });
-  final Uint8List bytes;
-  final String mime;
-  final MediaKind kind;
-  final int durationMs;
   final DateTime arrivedAt;
   final String peerId;
   final Uint8List? senderPub;
