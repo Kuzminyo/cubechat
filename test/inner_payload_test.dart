@@ -201,6 +201,36 @@ void main() {
     });
   });
 
+  group('textReply', () {
+    test('pack/unpack round-trips the target id and padded text', () {
+      final target =
+          Uint8List.fromList(List.generate(16, (i) => (i * 7) & 0xFF));
+      final padded = padTextPayload(Uint8List.fromList('hi there'.codeUnits));
+      final body = packTextReply(target, padded);
+      final back = unpackTextReply(body);
+      expect(back.targetMsgId, equals(target));
+      expect(back.paddedText, equals(padded));
+      expect(
+        String.fromCharCodes(unpadTextPayload(back.paddedText)),
+        'hi there',
+      );
+    });
+
+    test('a wrong-length target throws', () {
+      expect(
+        () => packTextReply(Uint8List(15), Uint8List(4)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a body shorter than the target id throws', () {
+      expect(
+        () => unpackTextReply(Uint8List(10)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
   group('MediaManifest', () {
     test('encode/decode preserves every field', () {
       final m = MediaManifest(

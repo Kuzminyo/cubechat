@@ -213,6 +213,27 @@ class MessagingService {
     return out;
   }
 
+  /// Build the inner payload for a text send: a plain [InnerPayloadType.text]
+  /// or, when [replyTarget] (a 16-byte quoted msgId) is set, an
+  /// [InnerPayloadType.textReply]. [bucket] null uses the default text padding
+  /// (SealedBox path); pass 0 to skip padding (FS path, to save MTU).
+  Uint8List _buildTextInner(
+    Uint8List utf8Text,
+    Uint8List? replyTarget, {
+    int? bucket,
+  }) {
+    final padded = bucket == null
+        ? padTextPayload(utf8Text)
+        : padTextPayload(utf8Text, bucket: bucket);
+    if (replyTarget == null) {
+      return packInnerPayload(InnerPayloadType.text, padded);
+    }
+    return packInnerPayload(
+      InnerPayloadType.textReply,
+      packTextReply(replyTarget, padded),
+    );
+  }
+
   /// Fresh ephemeral X25519 key pair for one forward-secret send.
   Future<SimpleKeyPairData> _freshEphemeralX25519() async {
     final kp = await X25519().newKeyPair();
@@ -401,7 +422,11 @@ class MessagingService {
   ///   1. live session by transport id
   ///   2. live session by pubkeyHex
   ///   3. KnownPeers entry by pubkeyHex (mesh-only — relayed via all links)
-  Future<Message> sendText(String chatId, String text) async {
+  Future<Message> sendText(
+    String chatId,
+    String text, {
+    String? replyToWireId,
+  }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
     ChatSession? session = manager.sessionFor(chatId);
@@ -431,6 +456,17 @@ class MessagingService {
       throw StateError('cannot send: no recipient pubkey for $chatId');
     }
 
+    // A reply quotes an earlier message by its wireId (hex of its 16-byte
+    // transport msgId). Ignore a malformed/wrong-length handle rather than
+    // failing the send.
+    Uint8List? replyTarget;
+    if (replyToWireId != null) {
+      try {
+        final decoded = _hexDecodeBytes(replyToWireId);
+        if (decoded.length == replyTargetLen) replyTarget = decoded;
+      } catch (_) {}
+    }
+
     // Mint the transport msgId up front so the local Message can record it as
     // its wireId — the stable handle a read receipt / reaction from the peer
     // will reference back.
@@ -443,6 +479,7 @@ class MessagingService {
       isMine: true,
       status: MessageStatus.sending,
       wireId: TransportEnvelope.hashHex(msgId),
+      replyToWireId: replyTarget != null ? replyToWireId : null,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -479,10 +516,7 @@ class MessagingService {
         // fail the whole send. (A bug here once silently dropped every
         // message to peers we held a prekey for.)
         try {
-          final innerFs = packInnerPayload(
-            InnerPayloadType.text,
-            padTextPayload(utf8Text, bucket: 0),
-          );
+          final innerFs = _buildTextInner(utf8Text, replyTarget, bucket: 0);
           final signedFs = await SignedPayload.wrapCompact(
             inner: innerFs,
             context: ctx,
@@ -529,10 +563,7 @@ class MessagingService {
 
       if (body == null) {
         // SealedBox path (no FS). Full signature (0xA1) + length padding.
-        final inner = packInnerPayload(
-          InnerPayloadType.text,
-          padTextPayload(utf8Text),
-        );
+        final inner = _buildTextInner(utf8Text, replyTarget);
         final signed = await SignedPayload.wrap(
           inner: inner,
           context: ctx,
@@ -1524,6 +1555,30 @@ class MessagingService {
               .append(channel.name, message);
           _notifyChannel(
               channel: channel, authorName: authorName, message: message);
+
+        case InnerPayloadType.textReply:
+          final reply = unpackTextReply(unpacked.body);
+          final plaintext = utf8.decode(
+            unpadTextPayload(reply.paddedText),
+            allowMalformed: true,
+          );
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: channel.name,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+            wireId: TransportEnvelope.hashHex(env.msgId),
+            authorName: authorName,
+            authorId: reactorId,
+            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+          );
+          _ref
+              .read(messagesControllerProvider.notifier)
+              .append(channel.name, message);
+          _notifyChannel(
+              channel: channel, authorName: authorName, message: message);
+
         case InnerPayloadType.reaction:
           final rx = Reaction.decode(unpacked.body);
           _applyReactionToBuckets([channel.name],
@@ -2005,6 +2060,25 @@ class MessagingService {
             isMine: false,
             forwardSecret: cipher == _cipherX3dh,
             wireId: TransportEnvelope.hashHex(env.msgId),
+          );
+          _appendToAllSessionsForSamePeer(senderPub,
+              fallbackPeerId: peerId, message: message);
+
+        case InnerPayloadType.textReply:
+          final reply = unpackTextReply(unpacked.body);
+          final plaintext = utf8.decode(
+            unpadTextPayload(reply.paddedText),
+            allowMalformed: true,
+          );
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+            forwardSecret: cipher == _cipherX3dh,
+            wireId: TransportEnvelope.hashHex(env.msgId),
+            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);

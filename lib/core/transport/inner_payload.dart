@@ -55,7 +55,12 @@ enum InnerPayloadType {
 
   /// "Delete for everyone" — the sender retracts a message they sent,
   /// referenced by its transport msgId. See [MessageDelete].
-  delete(0x90);
+  delete(0x90),
+
+  /// A text message that quotes an earlier one. Body is
+  /// `[target msgId : 16][padded text : N]`; otherwise the same signed +
+  /// encrypted path as [text]. See [packTextReply] / [unpackTextReply].
+  textReply(0xA0);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -91,6 +96,34 @@ Uint8List packInnerPayload(InnerPayloadType type, Uint8List body) {
   return (
     type: type,
     body: Uint8List.fromList(bytes.sublist(1)),
+  );
+}
+
+/// Length of the transport msgId a reply quotes.
+const int replyTargetLen = 16;
+
+/// Body of an [InnerPayloadType.textReply]: the 16-byte transport msgId of the
+/// quoted message, followed by the same padded-text bytes a plain [text]
+/// carries. Splitting the reply target out (rather than a new field on the
+/// padded text) keeps [padTextPayload] / [unpadTextPayload] reusable verbatim.
+Uint8List packTextReply(Uint8List targetMsgId, Uint8List paddedText) {
+  if (targetMsgId.length != replyTargetLen) {
+    throw const FormatException('reply target must be 16 bytes');
+  }
+  final out = Uint8List(replyTargetLen + paddedText.length);
+  out.setRange(0, replyTargetLen, targetMsgId);
+  out.setRange(replyTargetLen, out.length, paddedText);
+  return out;
+}
+
+/// Split a [packTextReply] body back into (target msgId, padded text).
+({Uint8List targetMsgId, Uint8List paddedText}) unpackTextReply(Uint8List body) {
+  if (body.length < replyTargetLen) {
+    throw const FormatException('text reply truncated');
+  }
+  return (
+    targetMsgId: Uint8List.fromList(body.sublist(0, replyTargetLen)),
+    paddedText: Uint8List.fromList(body.sublist(replyTargetLen)),
   );
 }
 

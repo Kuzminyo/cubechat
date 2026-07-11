@@ -28,6 +28,7 @@ class Message {
     this.authorId,
     this.editedAt,
     this.reactions = const <String, Set<String>>{},
+    this.replyToWireId,
   });
 
   final String id;
@@ -71,6 +72,10 @@ class Message {
   /// own reaction off. Persisted as `{emoji: [reactorIds]}`.
   final Map<String, Set<String>> reactions;
 
+  /// [wireId] of the message this one quotes (a reply), or null. The UI looks
+  /// the quoted message up in the store to render its snippet.
+  final String? replyToWireId;
+
   // Image payload (M5.4).
   final String? imagePath;
   final String? imageMime;
@@ -109,6 +114,7 @@ class Message {
       authorId: authorId,
       editedAt: editedAt ?? this.editedAt,
       reactions: reactions ?? this.reactions,
+      replyToWireId: replyToWireId,
     );
   }
 }

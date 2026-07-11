@@ -319,6 +319,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           'reactions': {
             for (final e in m.reactions.entries) e.key: e.value.toList(),
           },
+        if (m.replyToWireId != null) 'replyTo': m.replyToWireId,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -363,6 +364,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           ? null
           : DateTime.tryParse(m['editedAtIso'] as String),
       reactions: reactions,
+      replyToWireId: m['replyTo'] as String?,
     );
   }
 }
