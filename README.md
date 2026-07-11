@@ -5,8 +5,11 @@ Inspired by [bitchat](https://github.com/permissionlesstech/bitchat). Glassmorph
 
 ## Status
 
-**v0.1 — UI scaffold.** Design system, navigation, and chat screens with mock data.
-Bluetooth mesh transport and Noise Protocol encryption land in the next milestones.
+**v0.1 — working encrypted mesh.** BLE central + peripheral transport, Noise XX
+sessions, forward-secret (X3DH) text, chunked image/voice transfer, multi-hop
+relay with dedup + store-and-forward, and encrypted local storage all land. The
+Nostr internet-fallback (M6) is in progress — its offline foundation is built
+and unit-tested; the secp256k1 signer and live relay pool remain.
 
 ## Roadmap
 
@@ -14,11 +17,57 @@ Bluetooth mesh transport and Noise Protocol encryption land in the next mileston
 - [x] M0.5 — Smooth animation pass (aurora drift, hero avatars, bubble entrance, sliding nav)
 - [x] M1 — BLE central scanning (`flutter_blue_plus`), permissions, peer discovery UI
 - [x] M1.5 — Native peripheral mode (Swift + Kotlin via MethodChannel)
-- [ ] M2 — Noise Protocol XX handshake + ChaCha20-Poly1305 transport
-- [ ] M3 — Multi-hop mesh relay + message dedup + LZ4 compression
-- [ ] M4 — Local message store (Hive), key storage (flutter_secure_storage)
-- [ ] M5 — Emergency wipe, IRC-style commands, image transfer
-- [ ] M6 — Nostr fallback transport (NIP-17)
+- [x] M2 — Noise Protocol XX handshake + ChaCha20-Poly1305 transport
+- [x] M3 — Multi-hop mesh relay + message dedup + store-and-forward outbox
+- [x] M4 — Local message store (Hive), key storage (flutter_secure_storage)
+- [x] M5 — Emergency wipe, IRC-style commands, image + voice transfer (signed manifests)
+- [~] M6 — Nostr fallback transport (NIP-17) — foundation built (see below)
+
+> The `[x]` marks above reflect what's implemented and covered by the 126-test
+> suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
+> is not yet wired.
+
+### Nostr fallback (M6, in progress)
+
+Goal: when a recipient is out of BLE range, relay the *same encrypted cubechat
+frame* through public Nostr relays over the internet, and pull frames the mesh
+missed. Nostr is used as a dumb store-and-forward pipe — the frame is already
+end-to-end encrypted (SealedBox / X3DH) and signed, so relays never see
+plaintext.
+
+Built and unit-tested (`lib/core/`, pure/offline):
+
+- **`crypto/secp256k1.dart`** — a self-contained secp256k1 + BIP-340 Schnorr
+  signer/verifier in pure Dart (no new dependency), pinned to the **official
+  BIP-340 test vectors**. Nostr requires this curve; the app's `cryptography`
+  stack (Ed25519 / X25519) doesn't provide it.
+- **`transport/nostr/nostr_signer.dart`** — `Secp256k1NostrSigner`, which
+  **deterministically derives** a stable Nostr key from the Ed25519 identity
+  seed (`HKDF-SHA256(seed, info="cubechat/nostr-secp256k1/v1")`, reduced into
+  `[1, n-1]`), so no extra key material is persisted. Tests verify the produced
+  signatures with the BIP-340 verifier.
+- **`transport/nostr/nostr_event.dart`** — NIP-01 event model with canonical
+  serialization and SHA-256 event id.
+- **`transport/nostr/nostr_frame_codec.dart`** — `cc1:` self-identifying
+  `Frame`↔event-content codec so a shared public relay's unrelated traffic is
+  cheaply skipped.
+- **`transport/nostr/nostr_transport.dart`** — the `sendFrame` /
+  `inboundFrames` seam `MessagingService` will call, over two abstractions:
+  `NostrRelayClient` (WebSocket pool) and `NostrEventSigner`
+  (`Secp256k1NostrSigner`). Tests drive the flow with an in-memory fake relay,
+  proving a frame round-trips byte-for-byte.
+
+Remaining (needs a device/network to verify, so not done here):
+
+1. **Announcement field.** Advertise `npub` in the signed peer announcement
+   (alongside the existing signed prekey) so peers learn each other's off-mesh
+   address.
+2. **Relay pool.** A real `NostrRelayClient` over `web_socket_channel` —
+   REQ/EVENT/EOSE framing, a small relay pool, and reconnect. Must verify each
+   inbound event's Schnorr signature (via `Secp256k1.verify`) before emitting.
+3. **MessagingService wiring.** Push to Nostr when a BLE send yields
+   `deliveredVia == 0`, and feed `inboundFrames()` into `_handleInboundBytes`
+   so off-mesh frames flow through the same decrypt/deliver path.
 
 ### Peripheral mode (M1.5)
 
