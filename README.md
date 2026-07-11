@@ -65,14 +65,23 @@ Also wired (signed announcement carries the address):
   its own Nostr address. Received npubs are cached in `KnownPeer` (Hive-backed)
   and `MessagingService` derives + advertises ours on every announcement.
 
+The relay **protocol framing** is also done and tested
+(`nostr_relay_protocol.dart`): the client→relay `REQ`/`EVENT`/`CLOSE` encoders,
+the relay→client parser (`EVENT`/`EOSE`/`OK`/`NOTICE` → typed `RelayMessage`,
+anything else → `RelayUnknown`), and `verifyInboundEvent` — the untrusted-relay
+gate that checks the cubechat kind, recomputes the event id, and verifies the
+BIP-340 Schnorr signature via `Secp256k1.verify`.
+
 Remaining (needs a device/network to verify, so not done here):
 
-1. **Relay pool.** A real `NostrRelayClient` over `web_socket_channel` —
-   REQ/EVENT/EOSE framing, a small relay pool, and reconnect. Must verify each
-   inbound event's Schnorr signature (via `Secp256k1.verify`) before emitting.
+1. **Socket transport.** A `WebSocketNostrRelayClient` over
+   `web_socket_channel` that pipes strings through `NostrRelayProtocol`, holds a
+   small relay pool, reconnects, and drops any event that fails
+   `verifyInboundEvent`. Thin glue over the tested core above.
 2. **MessagingService wiring.** Push to Nostr when a BLE send yields
-   `deliveredVia == 0`, and feed `inboundFrames()` into `_handleInboundBytes`
-   so off-mesh frames flow through the same decrypt/deliver path.
+   `deliveredVia == 0` (using the recipient's cached `npub`), and feed
+   `inboundFrames()` into `_handleInboundBytes` so off-mesh frames flow through
+   the same decrypt/deliver path.
 
 ### Peripheral mode (M1.5)
 
