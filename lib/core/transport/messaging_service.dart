@@ -2034,6 +2034,16 @@ class MessagingService {
       final session = manager.sessionFor(peerId);
       final senderPub = session?.remoteStaticPublicKey;
 
+      // Blocked peer: drop everything they send (messages, receipts,
+      // reactions, edits) before it can touch the store or the UI.
+      if (senderPub != null &&
+          _ref
+              .read(knownPeersControllerProvider.notifier)
+              .isBlocked(_hexOf(senderPub))) {
+        DebugLog.instance.log('MESH', 'drop inbound from blocked peer');
+        return;
+      }
+
       // First message from a peer we'd only heard about via an announcement
       // also doubles as a cross-check: cache the verified Ed pub against
       // the origin hash. Future messages will be checked in strict mode.
@@ -2816,6 +2826,8 @@ class MessagingService {
     // still pops a notification.
     if (AppLifecycle.instance.isViewingChat(canonicalId)) return;
     final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+    // Muted peer: message is stored, but stays silent.
+    if (known?.isMuted ?? false) return;
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
         : 'New message';

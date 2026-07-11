@@ -28,6 +28,8 @@ class KnownPeer {
     this.signPublicKey,
     this.signKeyRotatedAt,
     this.signedPrekeyPub,
+    this.blockedAt,
+    this.mutedAt,
   });
 
   final String pubkeyHex;
@@ -40,6 +42,17 @@ class KnownPeer {
   /// When present, we send them forward-secret (X3DH) messages; when absent
   /// we fall back to SealedBox.
   final Uint8List? signedPrekeyPub;
+
+  /// Set when the user blocks this peer: their inbound messages are dropped
+  /// (never stored or shown) and we don't send to them. Null = not blocked.
+  final DateTime? blockedAt;
+
+  /// Set when the user mutes this peer: messages still arrive and are stored,
+  /// but no notification fires. Null = not muted.
+  final DateTime? mutedAt;
+
+  bool get isBlocked => blockedAt != null;
+  bool get isMuted => mutedAt != null;
 
   /// When this peer's signing key last changed under the same pubkeyHex.
   /// Set the moment a fresh signed announcement arrives carrying a
@@ -64,8 +77,12 @@ class KnownPeer {
     Uint8List? signPublicKey,
     DateTime? signKeyRotatedAt,
     Uint8List? signedPrekeyPub,
+    DateTime? blockedAt,
+    DateTime? mutedAt,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
+    bool clearBlockedAt = false,
+    bool clearMutedAt = false,
   }) {
     return KnownPeer(
       pubkeyHex: pubkeyHex,
@@ -77,6 +94,8 @@ class KnownPeer {
           ? null
           : (signKeyRotatedAt ?? this.signKeyRotatedAt),
       signedPrekeyPub: signedPrekeyPub ?? this.signedPrekeyPub,
+      blockedAt: clearBlockedAt ? null : (blockedAt ?? this.blockedAt),
+      mutedAt: clearMutedAt ? null : (mutedAt ?? this.mutedAt),
     );
   }
 }

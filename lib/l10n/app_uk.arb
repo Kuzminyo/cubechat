@@ -136,5 +136,11 @@
 
   "chatReplyAction": "Відповісти",
   "chatReplyingTo": "Відповідь для {name}",
-  "chatReplyYou": "себе"
+  "chatReplyYou": "себе",
+
+  "peerBlock": "Заблокувати",
+  "peerUnblock": "Розблокувати",
+  "peerMute": "Без звуку",
+  "peerUnmute": "Увімкнути звук",
+  "peerBlockedNote": "Заблоковано — повідомлення відхиляються."
 }

@@ -398,4 +398,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatReplyYou => 'yourself';
+
+  @override
+  String get peerBlock => 'Block';
+
+  @override
+  String get peerUnblock => 'Unblock';
+
+  @override
+  String get peerMute => 'Mute';
+
+  @override
+  String get peerUnmute => 'Unmute';
+
+  @override
+  String get peerBlockedNote => 'Blocked — their messages are dropped.';
 }

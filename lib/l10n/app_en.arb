@@ -137,5 +137,11 @@
   "chatReplyAction": "Reply",
   "chatReplyingTo": "Replying to {name}",
   "@chatReplyingTo": { "placeholders": { "name": { "type": "String" } } },
-  "chatReplyYou": "yourself"
+  "chatReplyYou": "yourself",
+
+  "peerBlock": "Block",
+  "peerUnblock": "Unblock",
+  "peerMute": "Mute",
+  "peerUnmute": "Unmute",
+  "peerBlockedNote": "Blocked — their messages are dropped."
 }

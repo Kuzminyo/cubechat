@@ -400,4 +400,19 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatReplyYou => 'себе';
+
+  @override
+  String get peerBlock => 'Заблокувати';
+
+  @override
+  String get peerUnblock => 'Розблокувати';
+
+  @override
+  String get peerMute => 'Без звуку';
+
+  @override
+  String get peerUnmute => 'Увімкнути звук';
+
+  @override
+  String get peerBlockedNote => 'Заблоковано — повідомлення відхиляються.';
 }

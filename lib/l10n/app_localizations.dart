@@ -805,6 +805,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'yourself'**
   String get chatReplyYou;
+
+  /// No description provided for @peerBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get peerBlock;
+
+  /// No description provided for @peerUnblock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock'**
+  String get peerUnblock;
+
+  /// No description provided for @peerMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute'**
+  String get peerMute;
+
+  /// No description provided for @peerUnmute.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmute'**
+  String get peerUnmute;
+
+  /// No description provided for @peerBlockedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked — their messages are dropped.'**
+  String get peerBlockedNote;
 }
 
 class _AppLocalizationsDelegate
