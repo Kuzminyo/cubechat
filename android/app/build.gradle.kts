@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,8 +8,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseProperties = Properties().apply {
+    val propsFile = rootProject.file("key.properties")
+    if (propsFile.isFile) {
+        FileInputStream(propsFile).use { load(it) }
+    }
+}
+
 fun secret(name: String): String? =
-    (project.findProperty(name) as String?) ?: System.getenv(name)
+    (project.findProperty(name) as String?)
+        ?: System.getenv(name)
+        ?: releaseProperties.getProperty(name)
 
 val releaseStoreFile = secret("CUBECHAT_RELEASE_STORE_FILE")
 val releaseStorePassword = secret("CUBECHAT_RELEASE_STORE_PASSWORD")
