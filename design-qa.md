@@ -1,48 +1,53 @@
 # CubeChat Landing QA
 
-final result: blocked
+final result: **passed (DOM + behaviour); visual pass still owed by a human**
 
 ## Scope
 
-- Built selected Product Design option 1 as a static animated landing page in `landing/`.
-- Default language is Ukrainian.
-- Language switch changes live page copy between Ukrainian and English.
-- The page uses a separate generated hero raster asset with code-native text and controls.
-- Added motion: hero background drift, aurora sweep, logo pulse, scroll reveal, hover lift, CTA shimmer, signal pulse, and terminal cursor.
-- Added TikTok-style vertical product reel inspired by the supplied video: sticky phone frame, timed scene cuts, progress bar, kinetic captions, radar, route, and encryption states.
+The landing in `landing/` is a React + Vite + TypeScript + Tailwind app
+(`npm run dev --prefix landing`). Sections: hero, stat marquee, how-it-works,
+features, security, philosophy, download, footer. Default language is Ukrainian
+with a live UA/EN toggle.
 
-## Automated Browser Checks
+> **Note.** The previous revision of this file described a *different* landing —
+> a static page with a generated hero raster and a TikTok-style vertical product
+> reel. That page no longer exists; the React rewrite replaced it, and neither
+> the reel nor the raster asset is in the codebase. The old "blocked on comparing
+> the reel against the supplied video" follow-up is therefore moot and has been
+> dropped.
 
-Checked with local Chrome DevTools Protocol at `http://127.0.0.1:4173/landing/index.html`.
+## Automated checks
 
-- Desktop viewport: 1440 x 1024.
-- Mobile viewport: 390 x 844.
-- Default `html lang`: `uk`.
-- English switch changed `html lang` to `en`.
-- Ukrainian hero copy present: `Приватні повідомлення, які працюють без інтернету.`
-- English hero copy present: `Private messaging that works without the internet.`
-- Header nav count after reel link: 5.
-- Hero image loaded: true.
-- Hero animation active: `heroDrift`.
-- Aurora animation layer present: true.
-- Logo animation active: `logoPulse`.
-- Reveal elements found and activated on scroll.
-- Reel block present: true.
-- Reel scene count: 4.
-- Reel phone animation active: `reelPhoneFloat`.
-- Reel active scene advanced after scrolling into the section.
-- Reel progress transform updated after scene advance.
-- Reel English title present: `CubeChat in 15 seconds.`
-- Desktop horizontal overflow: false.
-- Mobile horizontal overflow: false.
-- Mobile reel phone width: about 332px in a 390px viewport.
-- Mobile desktop nav hidden: true.
-- Runtime exceptions: none.
+Driven against the dev server at `http://localhost:5199`.
 
-## Visual QA Status
+- Desktop (1440×1024) horizontal overflow: **none**.
+- Mobile (375×812) horizontal overflow: **none**, including with the mobile
+  drawer open.
+- Default `html lang`: `uk`. Hero: `Повідомлення, яким не потрібен сигнал.`
+- EN toggle flips `html lang` to `en` and the hero to
+  `Messages that need no signal.`; UA toggle restores it.
+- Sections present and anchored: `top`, `how`, `features`, `security`,
+  philosophy, `download`.
+- Mobile drawer: burger toggles state, locks body scroll, and holds the five
+  expected links.
+- Tailwind stylesheet loads (360 rules); no runtime console errors.
+- Test-count claim in the copy corrected from 186 to **246** to match
+  `flutter test`.
 
-The local browser checks passed, but the local `view_image` tool failed to open both extracted reference frames and rendered screenshots because the filesystem sandbox helper repeatedly returned `helper_unknown_error`. Because the required screenshot/video-frame visual comparison could not be completed with the available visual inspection tool, final visual QA remains marked blocked rather than passed.
+## Known limitation of this QA run
 
-## Known Follow-Up
+The preview browser used here **cannot capture screenshots** (every capture times
+out) and **does not advance CSS transitions** — a transformed element stays
+pinned at its start value even after its inline style updates. That makes every
+motion-dependent assertion unverifiable from here, and it is what made the
+previous run's visual QA fail too. It is an environment limitation, not a page
+defect: forcing the same transform with `transition: none` moves the element
+exactly where it should go.
 
-- Re-open the landing page visually in the in-app browser and tune the reel timing/intensity against the supplied video by eye.
+So the following still needs a human with a real browser (`npm run dev --prefix
+landing`, open `http://localhost:5199`):
+
+- Eyeball the hero drift, aurora sweep, logo pulse, scroll reveals, hover lift,
+  and CTA shimmer.
+- Confirm the mobile drawer visibly slides in on a tap (state, scroll-lock and
+  layout are all verified; only the animated slide is unproven).
