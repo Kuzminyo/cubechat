@@ -342,7 +342,10 @@ void main() {
       expect(back.sha256, equals(m.sha256));
     });
 
-    test('providing only one FS pubkey fails the pair assertion', () {
+    test('providing only one FS pubkey fails the pair check', () {
+      // MediaManifest validates via explicit FormatException (not `assert`)
+      // because the constructor also runs on the decode() path over
+      // attacker-controlled bytes, and asserts are stripped in release builds.
       expect(
         () => MediaManifest(
           mediaId: Uint8List(16),
@@ -352,7 +355,7 @@ void main() {
           sha256: Uint8List(32),
           senderEphemeralPub: Uint8List(32),
         ),
-        throwsA(isA<AssertionError>()),
+        throwsA(isA<FormatException>()),
       );
     });
 
