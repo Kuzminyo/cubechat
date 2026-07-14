@@ -143,5 +143,22 @@
   "peerUnblock": "Unblock",
   "peerMute": "Mute",
   "peerUnmute": "Unmute",
-  "peerBlockedNote": "Blocked — their messages are dropped."
+  "peerBlockedNote": "Blocked — their messages are dropped.",
+
+  "relaysTitle": "Internet fallback",
+  "relaysCardTitle": "Reach peers over the internet",
+  "relaysCardSubtitle": "When Bluetooth can't deliver, send via Nostr relays",
+  "relaysExplainer": "Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.",
+  "relaysMyAddress": "Your relay address",
+  "relaysCopied": "Copied",
+  "relaysListLabel": "Relays",
+  "relaysAdd": "Add relay",
+  "relaysAddHint": "wss://relay.example.com",
+  "relaysInvalidUrl": "Enter a wss:// or ws:// address",
+  "relaysRemove": "Remove",
+  "relaysStateConnected": "Connected",
+  "relaysStateConnecting": "Connecting…",
+  "relaysStateFailed": "Unreachable",
+  "relaysStateIdle": "Off",
+  "relaysEmpty": "No relays configured — the fallback stays off."
 }

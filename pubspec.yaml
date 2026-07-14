@@ -32,6 +32,10 @@ dependencies:
   cryptography: ^2.7.0            # X25519, ChaCha20-Poly1305, BLAKE2s, HKDF
   flutter_secure_storage: ^9.2.2  # private key in Keychain / Keystore
 
+  # Nostr internet fallback (M6) — relay sockets. secp256k1/BIP-340 is
+  # implemented in-repo (lib/core/crypto/secp256k1.dart), so no crypto dep.
+  web_socket_channel: ^3.0.3
+
   # Persistence (M4)
   hive: ^2.2.3
   hive_flutter: ^1.1.0

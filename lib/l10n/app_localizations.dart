@@ -835,6 +835,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Blocked — their messages are dropped.'**
   String get peerBlockedNote;
+
+  /// No description provided for @relaysTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet fallback'**
+  String get relaysTitle;
+
+  /// No description provided for @relaysCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reach peers over the internet'**
+  String get relaysCardTitle;
+
+  /// No description provided for @relaysCardSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When Bluetooth can\'t deliver, send via Nostr relays'**
+  String get relaysCardSubtitle;
+
+  /// No description provided for @relaysExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.'**
+  String get relaysExplainer;
+
+  /// No description provided for @relaysMyAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Your relay address'**
+  String get relaysMyAddress;
+
+  /// No description provided for @relaysCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get relaysCopied;
+
+  /// No description provided for @relaysListLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Relays'**
+  String get relaysListLabel;
+
+  /// No description provided for @relaysAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add relay'**
+  String get relaysAdd;
+
+  /// No description provided for @relaysAddHint.
+  ///
+  /// In en, this message translates to:
+  /// **'wss://relay.example.com'**
+  String get relaysAddHint;
+
+  /// No description provided for @relaysInvalidUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a wss:// or ws:// address'**
+  String get relaysInvalidUrl;
+
+  /// No description provided for @relaysRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get relaysRemove;
+
+  /// No description provided for @relaysStateConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get relaysStateConnected;
+
+  /// No description provided for @relaysStateConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get relaysStateConnecting;
+
+  /// No description provided for @relaysStateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unreachable'**
+  String get relaysStateFailed;
+
+  /// No description provided for @relaysStateIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get relaysStateIdle;
+
+  /// No description provided for @relaysEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No relays configured — the fallback stays off.'**
+  String get relaysEmpty;
 }
 
 class _AppLocalizationsDelegate

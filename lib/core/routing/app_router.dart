@@ -7,6 +7,7 @@ import '../../features/peers/presentation/peers_screen.dart';
 import '../../features/peers/presentation/verification_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/profile/presentation/relays_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
 import 'branch_container.dart';
@@ -95,6 +96,14 @@ GoRouter buildRouter() {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/relays',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: RelaysScreen()),
           state: state,
         ),
       ),

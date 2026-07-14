@@ -16,6 +16,7 @@ import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/models/known_peer.dart';
+import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
 import '../crypto/fs_message.dart';
@@ -41,6 +42,8 @@ import 'frame.dart';
 import 'image_reassembly.dart';
 import 'inner_payload.dart';
 import 'nostr/nostr_signer.dart';
+import 'nostr/nostr_transport.dart';
+import 'nostr/websocket_relay_client.dart';
 import '../crypto/media_fs_cipher.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
@@ -91,6 +94,7 @@ class MessagingService {
   MessagingService(this._ref) {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
+    _wireNostrFallback();
     unawaited(_loadRelayBuffer());
     unawaited(_ref.read(prekeyServiceProvider).ensureInitialized());
   }
@@ -220,6 +224,114 @@ class MessagingService {
       Uint8List.fromList(id.signPrivateKey),
     );
     return _nostrSignerCache!;
+  }
+
+  // --------------------------- Nostr fallback (M6) ---------------------------
+
+  /// Live relay pool + transport, non-null only while the user has the Nostr
+  /// fallback switched on with at least one relay configured.
+  WebSocketNostrRelayClient? _relayClient;
+  NostrTransport? _nostr;
+  StreamSubscription<Uint8List>? _nostrSub;
+  StreamSubscription<Map<String, RelayState>>? _relayStateSub;
+
+  /// Guards against two [_applyRelaySettings] runs interleaving (the user
+  /// toggling fast, or a settings write landing while we're still connecting)
+  /// and leaving a stray socket pool behind.
+  Future<void> _nostrReconfigure = Future<void>.value();
+
+  /// Rebuild the Nostr transport whenever the relay settings change, and once
+  /// at startup for the persisted value.
+  void _wireNostrFallback() {
+    _ref.listen<RelaySettings>(
+      relaySettingsProvider,
+      (_, next) => _nostrReconfigure =
+          _nostrReconfigure.then((_) => _applyRelaySettings(next)),
+      fireImmediately: true,
+    );
+  }
+
+  /// Tear down the current pool and, if the fallback is on, stand up a new one
+  /// subscribed to our own Nostr pubkey. Inbound events are unwrapped back into
+  /// plain frame bytes and pushed through the same dispatch a BLE notify uses,
+  /// so a relay-delivered message is indistinguishable downstream (and gets the
+  /// same dedup, replay-window and signature checks).
+  Future<void> _applyRelaySettings(RelaySettings settings) async {
+    await _teardownNostr();
+    if (!settings.isActive) {
+      DebugLog.instance.log('NOSTR', 'internet fallback off');
+      return;
+    }
+    try {
+      final signer = await _myNostrSigner();
+      final client = WebSocketNostrRelayClient(relayUrls: settings.urls);
+      final transport = NostrTransport(signer: signer, relay: client);
+      _relayClient = client;
+      _nostr = transport;
+      _nostrSub = transport.inboundFrames().listen(
+        (bytes) => unawaited(_handleInboundBytes(_nostrPeerId, bytes)),
+        onError: (Object e) =>
+            DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
+      );
+      _relayStateSub = client.stateChanges.listen(
+        (states) => _ref.read(relayStatusProvider.notifier).publish(states),
+      );
+      client.start();
+      _ref.read(relayStatusProvider.notifier).publish(client.states);
+      DebugLog.instance.log(
+          'NOSTR',
+          'internet fallback on — ${settings.urls.length} relay(s), '
+              'listening as ${signer.npubHex.substring(0, 12)}…');
+    } catch (e) {
+      DebugLog.instance.log('NOSTR', 'failed to start relay transport: $e');
+      await _teardownNostr();
+    }
+  }
+
+  Future<void> _teardownNostr() async {
+    await _nostrSub?.cancel();
+    _nostrSub = null;
+    await _relayStateSub?.cancel();
+    _relayStateSub = null;
+    _nostr = null;
+    final client = _relayClient;
+    _relayClient = null;
+    await client?.dispose();
+    _ref.read(relayStatusProvider.notifier).clear();
+  }
+
+  /// Synthetic peerId for frames that arrived over a relay rather than a BLE
+  /// link. It never matches a [ChatSession] key, which is exactly right: a
+  /// relay frame carries no Noise session, and the transport envelope inside is
+  /// decrypted with our identity keys either way. It also can't collide with a
+  /// BLE peerId, so the relay path never gets excluded from mesh re-forwarding.
+  static const String _nostrPeerId = 'nostr:relay';
+
+  /// Last-resort delivery for a frame the mesh couldn't carry: publish it to
+  /// the peer's Nostr pubkey. Returns false (never throws) when the fallback is
+  /// off, we don't know the peer's npub, or no relay accepted the event — the
+  /// caller then falls through to store-and-forward exactly as before.
+  Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
+    final transport = _nostr;
+    if (transport == null) return false;
+    final npub = _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+    if (npub == null || npub.length != 32) {
+      DebugLog.instance.log(
+          'NOSTR', 'no npub for $canonicalId — cannot use internet fallback');
+      return false;
+    }
+    try {
+      await transport.sendFrame(
+        recipientNpubHex: _hexOf(npub),
+        frameBytes: frameBytes,
+      );
+      DebugLog.instance
+          .log('NOSTR', 'sent ${frameBytes.length}B to $canonicalId via relay');
+      return true;
+    } catch (e) {
+      DebugLog.instance.log('NOSTR', 'relay send to $canonicalId failed: $e');
+      return false;
+    }
   }
 
   /// Prepend the 1-byte cipher tag to an encrypted body.
@@ -644,6 +756,14 @@ class MessagingService {
         }
       } else {
         deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
+      }
+
+      // Mesh couldn't carry it → try the internet fallback before queueing.
+      // The frame published to a relay is byte-identical to the one BLE would
+      // have carried: still SealedBox/X3DH-encrypted and signed, so the relay
+      // is a dumb pipe that learns only who talks to whom, and when.
+      if (deliveredVia == 0 && await _sendOverNostr(canonicalId, wireBytes)) {
+        deliveredVia = 1;
       }
 
       if (deliveredVia > 0) {
@@ -1439,7 +1559,11 @@ class MessagingService {
         }
       } catch (_) {}
     }
-    return _fanoutAllLinks(frameBytes, excludePeerId: null);
+    final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
+    if (fanout > 0) return fanout;
+    // Same internet fallback as sendText: a receipt or reaction the mesh can't
+    // deliver still reaches a peer who's only on relays.
+    return await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
   }
 
   /// Build a broadcast channel frame: sign the inner payload (full signature,
@@ -3175,6 +3299,7 @@ class MessagingService {
     _relayPersistTimer?.cancel();
     _relayPersistTimer = null;
     await _persistRelayBuffer();
+    await _teardownNostr();
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {
       t.cancel();

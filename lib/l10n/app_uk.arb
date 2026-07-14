@@ -142,5 +142,22 @@
   "peerUnblock": "Розблокувати",
   "peerMute": "Без звуку",
   "peerUnmute": "Увімкнути звук",
-  "peerBlockedNote": "Заблоковано — повідомлення відхиляються."
+  "peerBlockedNote": "Заблоковано — повідомлення відхиляються.",
+
+  "relaysTitle": "Запасний канал через інтернет",
+  "relaysCardTitle": "Досягати співрозмовників через інтернет",
+  "relaysCardSubtitle": "Коли Bluetooth не доставляє — надсилати через релеї Nostr",
+  "relaysExplainer": "Повідомлення лишаються наскрізно зашифрованими — релей несе той самий запечатаний кадр, що й Bluetooth. Але він бачить, які два ключі спілкуються і коли. Типово вимкнено.",
+  "relaysMyAddress": "Ваша адреса на релеях",
+  "relaysCopied": "Скопійовано",
+  "relaysListLabel": "Релеї",
+  "relaysAdd": "Додати релей",
+  "relaysAddHint": "wss://relay.example.com",
+  "relaysInvalidUrl": "Введіть адресу wss:// або ws://",
+  "relaysRemove": "Видалити",
+  "relaysStateConnected": "З'єднано",
+  "relaysStateConnecting": "З'єднання…",
+  "relaysStateFailed": "Недоступний",
+  "relaysStateIdle": "Вимкнено",
+  "relaysEmpty": "Релеї не налаштовані — запасний канал вимкнено."
 }

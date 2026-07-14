@@ -415,4 +415,54 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get peerBlockedNote => 'Заблоковано — повідомлення відхиляються.';
+
+  @override
+  String get relaysTitle => 'Запасний канал через інтернет';
+
+  @override
+  String get relaysCardTitle => 'Досягати співрозмовників через інтернет';
+
+  @override
+  String get relaysCardSubtitle =>
+      'Коли Bluetooth не доставляє — надсилати через релеї Nostr';
+
+  @override
+  String get relaysExplainer =>
+      'Повідомлення лишаються наскрізно зашифрованими — релей несе той самий запечатаний кадр, що й Bluetooth. Але він бачить, які два ключі спілкуються і коли. Типово вимкнено.';
+
+  @override
+  String get relaysMyAddress => 'Ваша адреса на релеях';
+
+  @override
+  String get relaysCopied => 'Скопійовано';
+
+  @override
+  String get relaysListLabel => 'Релеї';
+
+  @override
+  String get relaysAdd => 'Додати релей';
+
+  @override
+  String get relaysAddHint => 'wss://relay.example.com';
+
+  @override
+  String get relaysInvalidUrl => 'Введіть адресу wss:// або ws://';
+
+  @override
+  String get relaysRemove => 'Видалити';
+
+  @override
+  String get relaysStateConnected => 'З\'єднано';
+
+  @override
+  String get relaysStateConnecting => 'З\'єднання…';
+
+  @override
+  String get relaysStateFailed => 'Недоступний';
+
+  @override
+  String get relaysStateIdle => 'Вимкнено';
+
+  @override
+  String get relaysEmpty => 'Релеї не налаштовані — запасний канал вимкнено.';
 }
