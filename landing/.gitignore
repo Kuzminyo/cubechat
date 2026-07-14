@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+
+# Heavy binary release artifacts — regenerate locally (see public/downloads/README.md)
+public/downloads/*.apk
+public/downloads/*.ipa
+public/downloads/*.aab
