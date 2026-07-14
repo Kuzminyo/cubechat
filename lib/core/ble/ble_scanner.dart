@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../features/peers/models/discovered_peer.dart';
+import '../identity/nickname_controller.dart';
 import 'ble_constants.dart';
 
 /// Cubechat central-role scanner.
@@ -61,6 +62,48 @@ class BleScanner {
     await _stopScanWindow();
     _peers.clear();
     _emit();
+  }
+
+  /// Force a fresh scan window and wait until the peer advertising
+  /// [advertisedName] is seen again, returning the address it is answering on
+  /// *now*. Android rotates the BLE privacy address, and we only refresh our
+  /// view of it once per scan window (with a battery-saving gap in between),
+  /// so an id cached from an earlier window can point at an address the peer
+  /// has already abandoned — connecting there just times out.
+  ///
+  /// Returns null when the scanner isn't running, the name is unknown, or the
+  /// peer isn't observed within [timeout]; callers should then fall back to
+  /// the address they already have.
+  Future<String?> refreshPeerId(
+    String advertisedName, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    if (!_running || advertisedName.isEmpty) return null;
+
+    // Only a sighting from *after* this moment proves the address is current;
+    // the map still holds the previous one until a new result overwrites it.
+    final since = DateTime.now();
+    await _stopScanWindow();
+    unawaited(_startScanWindow());
+
+    final completer = Completer<String?>();
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    final sub = _controller.stream.listen((snapshot) {
+      for (final p in snapshot) {
+        if (p.advertisedName == advertisedName && p.lastSeen.isAfter(since)) {
+          if (!completer.isCompleted) completer.complete(p.id);
+          return;
+        }
+      }
+    });
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      await sub.cancel();
+    }
   }
 
   Future<void> _startScanWindow() async {
@@ -145,9 +188,12 @@ class BleScanner {
   String _resolveName(ScanResult r) {
     final adv = r.advertisementData.advName;
     if (adv.isNotEmpty) return adv;
-    final platform = r.device.platformName;
-    if (platform.isNotEmpty) return platform;
-    return r.device.remoteId.str;
+    // Never fall back to platformName / the MAC: platformName is the OS
+    // Bluetooth name (e.g. "Galaxy S24+"), which leaks the real device on what
+    // is meant to be an anonymous mesh. A cubechat peer always advertises a
+    // name; if it didn't reach us this window, show the anonymous default
+    // until the handshake fills in their real one.
+    return NicknameController.defaultNickname;
   }
 
   void _gcStalePeers() {

@@ -243,6 +243,36 @@ void main() {
     });
   });
 
+  group('textReply', () {
+    test('pack/unpack round-trips the target id and padded text', () {
+      final target =
+          Uint8List.fromList(List.generate(16, (i) => (i * 7) & 0xFF));
+      final padded = padTextPayload(Uint8List.fromList('hi there'.codeUnits));
+      final body = packTextReply(target, padded);
+      final back = unpackTextReply(body);
+      expect(back.targetMsgId, equals(target));
+      expect(back.paddedText, equals(padded));
+      expect(
+        String.fromCharCodes(unpadTextPayload(back.paddedText)),
+        'hi there',
+      );
+    });
+
+    test('a wrong-length target throws', () {
+      expect(
+        () => packTextReply(Uint8List(15), Uint8List(4)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a body shorter than the target id throws', () {
+      expect(
+        () => unpackTextReply(Uint8List(10)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
   group('MediaManifest', () {
     test('encode/decode preserves every field', () {
       final m = MediaManifest(
@@ -275,6 +305,55 @@ void main() {
       final back = MediaManifest.decode(m.encode());
       expect(back.kind, MediaKind.audio);
       expect(back.durationMs, 7500);
+    });
+
+    test('a plain (v1) manifest is not forward-secret', () {
+      final m = MediaManifest(
+        mediaId: Uint8List(16),
+        kind: MediaKind.image,
+        total: 3,
+        mime: 'image/png',
+        sha256: Uint8List(32),
+      );
+      expect(m.isForwardSecret, isFalse);
+      expect(m.encode()[0], MediaManifest.versionV1);
+      expect(MediaManifest.decode(m.encode()).isForwardSecret, isFalse);
+    });
+
+    test('a v2 manifest round-trips the X3DH FS setup', () {
+      final idPub = Uint8List.fromList(List.generate(32, (i) => i + 1));
+      final ephPub = Uint8List.fromList(List.generate(32, (i) => i + 100));
+      final m = MediaManifest(
+        mediaId: Uint8List.fromList(List.generate(16, (i) => i)),
+        kind: MediaKind.image,
+        total: 5,
+        mime: 'image/jpeg',
+        sha256: Uint8List.fromList(List.generate(32, (i) => i + 5)),
+        senderIdentityPub: idPub,
+        senderEphemeralPub: ephPub,
+      );
+      expect(m.isForwardSecret, isTrue);
+      expect(m.encode()[0], MediaManifest.versionV2Fs);
+      final back = MediaManifest.decode(m.encode());
+      expect(back.isForwardSecret, isTrue);
+      expect(back.senderIdentityPub, equals(idPub));
+      expect(back.senderEphemeralPub, equals(ephPub));
+      expect(back.mediaId, equals(m.mediaId));
+      expect(back.sha256, equals(m.sha256));
+    });
+
+    test('providing only one FS pubkey fails the pair assertion', () {
+      expect(
+        () => MediaManifest(
+          mediaId: Uint8List(16),
+          kind: MediaKind.image,
+          total: 1,
+          mime: '',
+          sha256: Uint8List(32),
+          senderEphemeralPub: Uint8List(32),
+        ),
+        throwsA(isA<AssertionError>()),
+      );
     });
 
     test('truncated wire bytes throw FormatException', () {

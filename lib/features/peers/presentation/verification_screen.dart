@@ -156,6 +156,54 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   );
                 },
               ),
+            const SizedBox(height: 12),
+            GlassCard(
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => ref
+                        .read(knownPeersControllerProvider.notifier)
+                        .setMuted(
+                          widget.peerPubkeyHex,
+                          !(entry?.isMuted ?? false),
+                        ),
+                    icon: Icon(
+                      (entry?.isMuted ?? false)
+                          ? Icons.notifications_off
+                          : Icons.notifications_outlined,
+                      size: 18,
+                      color: AppColors.textOnGlass,
+                    ),
+                    label: Text(
+                      (entry?.isMuted ?? false) ? t.peerUnmute : t.peerMute,
+                      style: TextStyle(color: AppColors.textOnGlass),
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => ref
+                        .read(knownPeersControllerProvider.notifier)
+                        .setBlocked(
+                          widget.peerPubkeyHex,
+                          !(entry?.isBlocked ?? false),
+                        ),
+                    icon: const Icon(Icons.block,
+                        size: 18, color: AppColors.danger),
+                    label: Text(
+                      (entry?.isBlocked ?? false) ? t.peerUnblock : t.peerBlock,
+                      style: const TextStyle(color: AppColors.danger),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (entry?.isBlocked ?? false) ...[
+              const SizedBox(height: 8),
+              Text(
+                t.peerBlockedNote,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+              ),
+            ],
           ],
         ),
       ),

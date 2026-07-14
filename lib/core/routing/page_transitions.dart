@@ -50,22 +50,3 @@ CustomTransitionPage<T> fadeSlidePage<T>({
     },
   );
 }
-
-/// Cross-fade page used for the shell tabs (no slide).
-CustomTransitionPage<T> crossFadePage<T>({
-  required Widget child,
-  required GoRouterState state,
-}) {
-  return CustomTransitionPage<T>(
-    key: state.pageKey,
-    child: child,
-    transitionDuration: const Duration(milliseconds: 240),
-    reverseTransitionDuration: const Duration(milliseconds: 180),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-        child: child,
-      );
-    },
-  );
-}

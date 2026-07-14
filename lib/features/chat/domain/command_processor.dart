@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
+import '../../channels/data/channel_controller.dart';
+import '../../channels/models/channel.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
 
@@ -22,6 +24,9 @@ class CommandResult {
 /// Supported:
 ///   - `/nick <name>`   — change the user's display name
 ///   - `/who`           — list known peers (online + offline)
+///   - `/join #x [pw]`  — join a shared-key group channel
+///   - `/leave [#x]`    — leave a channel (the current one if omitted)
+///   - `/channels`      — list joined channels
 ///   - `/clear`         — wipe the current chat's message history
 ///   - `/wipe`          — emergency wipe (with a guard against accidents)
 ///   - `/help`          — print available commands
@@ -51,6 +56,13 @@ class CommandProcessor {
         return _nick(args);
       case 'who':
         return _who();
+      case 'join':
+        return _join(args);
+      case 'leave':
+      case 'part':
+        return _leave(args);
+      case 'channels':
+        return _channels();
       case 'clear':
         return _clear();
       case 'wipe':
@@ -87,6 +99,45 @@ class CommandProcessor {
     return CommandResult.ok('${peers.length} peer(s): $names');
   }
 
+  Future<CommandResult> _join(String args) async {
+    if (args.isEmpty) {
+      return CommandResult.fail('Usage: /join #channel [password]');
+    }
+    final parts = args.split(RegExp(r'\s+'));
+    final name = parts.first;
+    final password = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    try {
+      final ch = await _ref
+          .read(channelControllerProvider.notifier)
+          .join(name, password: password);
+      return CommandResult.ok('Joined ${ch.name} — open it from Chats');
+    } catch (e) {
+      return CommandResult.fail('Could not join: $e');
+    }
+  }
+
+  Future<CommandResult> _leave(String args) async {
+    final raw = args.isNotEmpty ? args : _currentChatId;
+    final normalized = normalizeChannelName(raw);
+    // Reject an empty name, or a no-arg call from a 1:1 chat (nothing to
+    // leave — the current conversation isn't a channel).
+    if (normalized.isEmpty ||
+        (args.isEmpty && !_currentChatId.startsWith('#'))) {
+      return CommandResult.fail('Usage: /leave #channel');
+    }
+    await _ref.read(channelControllerProvider.notifier).leave(normalized);
+    return CommandResult.ok('Left $normalized');
+  }
+
+  CommandResult _channels() {
+    final chans = _ref.read(channelControllerProvider);
+    if (chans.isEmpty) {
+      return CommandResult.ok('No channels joined. Use /join #name');
+    }
+    return CommandResult.ok(
+        '${chans.length} channel(s): ${chans.keys.join(', ')}');
+  }
+
   Future<CommandResult> _clear() async {
     final messages = _ref.read(messagesControllerProvider.notifier);
     await messages.clearForChat(_currentChatId);
@@ -107,6 +158,9 @@ class CommandProcessor {
     const lines = [
       '/nick <name> · set your nickname',
       '/who · list known peers',
+      '/join #name [pw] · join a group channel',
+      '/leave [#name] · leave a channel',
+      '/channels · list joined channels',
       '/clear · clear this chat history',
       '/wipe yes · emergency wipe everything',
       '/help · this list',

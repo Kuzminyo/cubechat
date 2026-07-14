@@ -29,6 +29,8 @@ class KnownPeer {
     this.signKeyRotatedAt,
     this.signedPrekeyPub,
     this.nostrPubkey,
+    this.blockedAt,
+    this.mutedAt,
   });
 
   final String pubkeyHex;
@@ -47,6 +49,17 @@ class KnownPeer {
   /// if the BLE mesh can't deliver (M6). Null for peers last seen before the
   /// v0x04 announcement upgrade.
   final Uint8List? nostrPubkey;
+
+  /// Set when the user blocks this peer: their inbound messages are dropped
+  /// (never stored or shown) and we don't send to them. Null = not blocked.
+  final DateTime? blockedAt;
+
+  /// Set when the user mutes this peer: messages still arrive and are stored,
+  /// but no notification fires. Null = not muted.
+  final DateTime? mutedAt;
+
+  bool get isBlocked => blockedAt != null;
+  bool get isMuted => mutedAt != null;
 
   /// When this peer's signing key last changed under the same pubkeyHex.
   /// Set the moment a fresh signed announcement arrives carrying a
@@ -72,8 +85,12 @@ class KnownPeer {
     DateTime? signKeyRotatedAt,
     Uint8List? signedPrekeyPub,
     Uint8List? nostrPubkey,
+    DateTime? blockedAt,
+    DateTime? mutedAt,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
+    bool clearBlockedAt = false,
+    bool clearMutedAt = false,
   }) {
     return KnownPeer(
       pubkeyHex: pubkeyHex,
@@ -86,6 +103,8 @@ class KnownPeer {
           : (signKeyRotatedAt ?? this.signKeyRotatedAt),
       signedPrekeyPub: signedPrekeyPub ?? this.signedPrekeyPub,
       nostrPubkey: nostrPubkey ?? this.nostrPubkey,
+      blockedAt: clearBlockedAt ? null : (blockedAt ?? this.blockedAt),
+      mutedAt: clearMutedAt ? null : (mutedAt ?? this.mutedAt),
     );
   }
 }

@@ -67,6 +67,148 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Flip our own outgoing messages to [MessageStatus.read] when the peer's
+  /// read receipt lands. Messages are matched by their transport [wireId]
+  /// (the id both sides share); non-mine messages and already-read ones are
+  /// left untouched. No-op when nothing matched (idempotent under resends).
+  void markRead(String peerId, Set<String> wireIds) {
+    final current = state[peerId];
+    if (current == null || wireIds.isEmpty) return;
+    var changed = false;
+    final list = [...current];
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      if (m.isMine &&
+          m.wireId != null &&
+          m.status != MessageStatus.read &&
+          wireIds.contains(m.wireId)) {
+        list[i] = m.copyWith(status: MessageStatus.read);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
+  /// Remove one message from a chat by its local [messageId] — the "delete for
+  /// me" path. Works on any message (ours or theirs, any kind), since it never
+  /// leaves this device.
+  void deleteLocal(String peerId, String messageId) {
+    final current = state[peerId];
+    if (current == null) return;
+    final next = current.where((m) => m.id != messageId).toList();
+    if (next.length == current.length) return;
+    state = {...state, peerId: next};
+    _persist(peerId, next);
+  }
+
+  /// Remove one of *our own* messages by its transport [wireId] — the local
+  /// half of "delete for everyone". Returns whether anything was removed.
+  bool deleteMineByWireId(String peerId, String wireId) =>
+      _deleteByWireId(peerId, wireId, mine: true, authorId: null);
+
+  /// Apply an inbound "delete for everyone": drop the peer's message with this
+  /// [wireId]. The author guard mirrors [editFromPeer] — a channel message may
+  /// only be retracted by its author.
+  bool deleteFromPeer(String peerId, String wireId, {String? authorId}) =>
+      _deleteByWireId(peerId, wireId, mine: false, authorId: authorId);
+
+  bool _deleteByWireId(
+    String peerId,
+    String wireId, {
+    required bool mine,
+    required String? authorId,
+  }) {
+    final current = state[peerId];
+    if (current == null) return false;
+    final idx = current.indexWhere((m) =>
+        m.wireId == wireId &&
+        m.isMine == mine &&
+        (authorId == null || m.authorId == authorId));
+    if (idx == -1) return false;
+    final next = [...current]..removeAt(idx);
+    state = {...state, peerId: next};
+    _persist(peerId, next);
+    return true;
+  }
+
+  /// Rewrite the text of one of *our own* messages. Returns false when the
+  /// target isn't there, isn't ours, isn't text, or the text is unchanged —
+  /// callers use that to decide whether anything needs to go on the wire.
+  bool editMine(String peerId, String targetWireId, String text) =>
+      _applyEdit(peerId, targetWireId, text, mine: true, authorId: null);
+
+  /// Apply an inbound edit. The author check is the whole point: [authorId] is
+  /// the sender's signing-key fingerprint for channel messages, and for a 1:1
+  /// chat "not mine" already pins the sender. Without it any peer on the mesh
+  /// could rewrite words we put on screen.
+  bool editFromPeer(
+    String peerId,
+    String targetWireId,
+    String text, {
+    String? authorId,
+  }) =>
+      _applyEdit(peerId, targetWireId, text, mine: false, authorId: authorId);
+
+  bool _applyEdit(
+    String peerId,
+    String targetWireId,
+    String text, {
+    required bool mine,
+    required String? authorId,
+  }) {
+    final current = state[peerId];
+    if (current == null || text.isEmpty) return false;
+    final idx = current.indexWhere((m) => m.wireId == targetWireId);
+    if (idx == -1) return false;
+    final m = current[idx];
+    if (m.isMine != mine) return false;
+    if (m.kind != MessageKind.text) return false;
+    // Channel messages carry their author; an edit must come from them.
+    if (authorId != null && m.authorId != authorId) return false;
+    if (m.text == text) return false;
+
+    final list = [...current]
+      ..[idx] = m.copyWith(text: text, editedAt: DateTime.now());
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return true;
+  }
+
+  /// Attach or remove an emoji reaction on the message whose transport
+  /// [targetWireId] matches. [reactorId] is `'me'` locally or a short sender
+  /// fingerprint remotely, so a reactor can toggle their own reaction and the
+  /// per-emoji count stays correct. No-op when the target isn't found or the
+  /// mutation wouldn't change anything (idempotent under mesh resends).
+  void applyReaction(
+    String peerId, {
+    required String targetWireId,
+    required String emoji,
+    required String reactorId,
+    required bool add,
+  }) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.wireId == targetWireId);
+    if (idx == -1) return;
+    final m = current[idx];
+    // Deep-copy so we never mutate the (possibly const/shared) existing map.
+    final next = <String, Set<String>>{
+      for (final e in m.reactions.entries) e.key: {...e.value},
+    };
+    final reactors = next.putIfAbsent(emoji, () => <String>{});
+    if (add) {
+      if (!reactors.add(reactorId)) return; // already present
+    } else {
+      if (!reactors.remove(reactorId)) return; // wasn't there
+    }
+    if (reactors.isEmpty) next.remove(emoji);
+    final list = [...current]..[idx] = m.copyWith(reactions: next);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   /// Flags an outgoing message as forward-secret once the send path has
   /// confirmed the X3DH cipher was actually used (the placeholder is
   /// appended before the body is built).
@@ -169,6 +311,15 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioMime != null) 'audioMime': m.audioMime,
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
         if (m.forwardSecret) 'fs': true,
+        if (m.wireId != null) 'wireId': m.wireId,
+        if (m.authorName != null) 'author': m.authorName,
+        if (m.authorId != null) 'authorId': m.authorId,
+        if (m.editedAt != null) 'editedAtIso': m.editedAt!.toIso8601String(),
+        if (m.reactions.isNotEmpty)
+          'reactions': {
+            for (final e in m.reactions.entries) e.key: e.value.toList(),
+          },
+        if (m.replyToWireId != null) 'replyTo': m.replyToWireId,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -182,6 +333,15 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       (k) => k.name == kindName,
       orElse: () => MessageKind.text,
     );
+    final reactions = <String, Set<String>>{};
+    final reactionsRaw = m['reactions'];
+    if (reactionsRaw is Map) {
+      reactionsRaw.forEach((k, v) {
+        if (k is String && v is List) {
+          reactions[k] = v.whereType<String>().toSet();
+        }
+      });
+    }
     return Message(
       id: m['id'] as String,
       chatId: m['chatId'] as String,
@@ -197,6 +357,14 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       audioMime: m['audioMime'] as String?,
       audioDurationMs: m['audioDurationMs'] as int?,
       forwardSecret: (m['fs'] as bool?) ?? false,
+      wireId: m['wireId'] as String?,
+      authorName: m['author'] as String?,
+      authorId: m['authorId'] as String?,
+      editedAt: (m['editedAtIso'] as String?) == null
+          ? null
+          : DateTime.tryParse(m['editedAtIso'] as String),
+      reactions: reactions,
+      replyToWireId: m['replyTo'] as String?,
     );
   }
 }

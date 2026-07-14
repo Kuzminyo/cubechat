@@ -158,6 +158,33 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     await _persist(updated);
   }
 
+  /// Block/unblock a peer — a blocked peer's inbound messages are dropped and
+  /// we don't send to them. No-op if the peer isn't in the roster.
+  Future<void> setBlocked(String pubkeyHex, bool blocked) async {
+    final existing = state[pubkeyHex];
+    if (existing == null) return;
+    final updated = blocked
+        ? existing.copyWith(blockedAt: DateTime.now())
+        : existing.copyWith(clearBlockedAt: true);
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
+  /// Mute/unmute a peer — a muted peer's messages still arrive but fire no
+  /// notification. No-op if the peer isn't in the roster.
+  Future<void> setMuted(String pubkeyHex, bool muted) async {
+    final existing = state[pubkeyHex];
+    if (existing == null) return;
+    final updated = muted
+        ? existing.copyWith(mutedAt: DateTime.now())
+        : existing.copyWith(clearMutedAt: true);
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
+  bool isBlocked(String pubkeyHex) => state[pubkeyHex]?.isBlocked ?? false;
+  bool isMuted(String pubkeyHex) => state[pubkeyHex]?.isMuted ?? false;
+
   /// Revoke a previously-granted verification (the user changed their mind
   /// or suspects a MITM compromise).
   Future<void> revokeVerification(String pubkeyHex) async {
@@ -207,8 +234,11 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         if (p.signPublicKey != null) 'signPubHex': _hexOf(p.signPublicKey!),
         if (p.signKeyRotatedAt != null)
           'signKeyRotatedAtIso': p.signKeyRotatedAt!.toIso8601String(),
-        if (p.signedPrekeyPub != null) 'spkPubHex': _hexOf(p.signedPrekeyPub!),
+        if (p.signedPrekeyPub != null)
+          'spkPubHex': _hexOf(p.signedPrekeyPub!),
         if (p.nostrPubkey != null) 'nostrPubHex': _hexOf(p.nostrPubkey!),
+        if (p.blockedAt != null) 'blockedAtIso': p.blockedAt!.toIso8601String(),
+        if (p.mutedAt != null) 'mutedAtIso': p.mutedAt!.toIso8601String(),
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
@@ -217,6 +247,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     final rotatedRaw = m['signKeyRotatedAtIso'] as String?;
     final spkRaw = m['spkPubHex'] as String?;
     final nostrRaw = m['nostrPubHex'] as String?;
+    final blockedRaw = m['blockedAtIso'] as String?;
+    final mutedRaw = m['mutedAtIso'] as String?;
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
@@ -228,6 +260,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
           rotatedRaw == null ? null : DateTime.tryParse(rotatedRaw),
       signedPrekeyPub: spkRaw == null ? null : _hexDecode(spkRaw),
       nostrPubkey: nostrRaw == null ? null : _hexDecode(nostrRaw),
+      blockedAt: blockedRaw == null ? null : DateTime.tryParse(blockedRaw),
+      mutedAt: mutedRaw == null ? null : DateTime.tryParse(mutedRaw),
     );
   }
 

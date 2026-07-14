@@ -8,15 +8,25 @@ import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
 
 class ChatTile extends StatelessWidget {
-  const ChatTile({super.key, required this.chat, required this.onTap});
+  const ChatTile({
+    super.key,
+    required this.chat,
+    required this.onTap,
+    this.onLongPressAt,
+  });
 
   final Chat chat;
   final VoidCallback onTap;
 
+  /// Long-press with the global press point, so the caller can anchor a popup
+  /// menu to the finger (Telegram-style). InkWell.onLongPress gives no
+  /// position, hence the outer GestureDetector below.
+  final void Function(Offset globalPosition)? onLongPressAt;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return Material(
+    final tile = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -51,6 +61,14 @@ class ChatTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (chat.isFavorite) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.star,
+                            color: AppColors.warning,
+                            size: 13,
+                          ),
+                        ],
                         if (chat.isVerified) ...[
                           const SizedBox(width: 4),
                           const Icon(
@@ -59,7 +77,13 @@ class ChatTile extends StatelessWidget {
                             size: 14,
                           ),
                         ],
-                        if (chat.signKeyRotated) ...[
+                        if (chat.isChannel) ...[
+                          const SizedBox(width: 6),
+                          _StatusPill(
+                            icon: Icons.tag,
+                            label: t.chatsStatusChannel,
+                          ),
+                        ] else if (chat.signKeyRotated) ...[
                           const SizedBox(width: 6),
                           _StatusPill(
                             icon: Icons.warning_amber_rounded,
@@ -118,6 +142,15 @@ class ChatTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (onLongPressAt == null) return tile;
+    // InkWell handles tap (and its ripple); the outer detector only claims the
+    // long-press, so the two don't fight over the gesture.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (d) => onLongPressAt!(d.globalPosition),
+      child: tile,
     );
   }
 }

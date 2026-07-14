@@ -38,6 +38,7 @@
   "bleUnsupportedHint": "This device or platform doesn't expose Bluetooth Low Energy. Try it on a phone.",
   "bleScanning": "Scanning…",
   "bleRetry": "Retry",
+  "bleConnectFailed": "Couldn't connect. The peer may be out of range, or its Bluetooth address changed.",
   "bleSignal": "Signal",
   "bleConnect": "Connect",
   "bleConnected": "Connected",
@@ -99,5 +100,48 @@
   "profileEmergencyWipeAction": "Erase",
   "cancel": "Cancel",
   "copy": "Copy",
-  "copied": "Copied"
+  "copied": "Copied",
+
+  "channelsNewTitle": "New channel",
+  "channelsNewTooltip": "New channel",
+  "channelNameLabel": "Channel name",
+  "channelPasswordLabel": "Password (optional)",
+  "channelJoinAction": "Join",
+  "channelSubtitle": "Group channel · shared key",
+  "chatsStatusChannel": "channel",
+
+  "channelInviteTitle": "Add people",
+  "channelInviteAction": "Invite",
+  "channelInviteEmpty": "No known peers yet. Meet someone on the Nearby tab first.",
+  "channelInviteSent": "Invitations sent",
+  "channelInviteNoneSent": "Nobody could be reached right now",
+  "channelNameTooLong": "That channel name is too long",
+
+  "chatsActionFavorite": "Add to favorites",
+  "chatsActionUnfavorite": "Remove from favorites",
+  "chatsActionDelete": "Delete chat",
+  "chatsDeleteTitle": "Delete this chat?",
+  "chatsDeletePeerHint": "Removes the conversation and forgets this peer. They can find you again over the mesh.",
+  "chatsDeleteChannelHint": "Leaves the channel and removes its history. You will need the key again to rejoin.",
+
+  "chatEditAction": "Edit",
+  "chatEditTitle": "Edit message",
+  "chatEditSave": "Save",
+  "chatEdited": "edited",
+
+  "chatDeleteAction": "Delete",
+  "chatDeleteTitle": "Delete message?",
+  "chatDeleteForMe": "Delete for me",
+  "chatDeleteForEveryone": "Delete for everyone",
+
+  "chatReplyAction": "Reply",
+  "chatReplyingTo": "Replying to {name}",
+  "@chatReplyingTo": { "placeholders": { "name": { "type": "String" } } },
+  "chatReplyYou": "yourself",
+
+  "peerBlock": "Block",
+  "peerUnblock": "Unblock",
+  "peerMute": "Mute",
+  "peerUnmute": "Unmute",
+  "peerBlockedNote": "Blocked — their messages are dropped."
 }

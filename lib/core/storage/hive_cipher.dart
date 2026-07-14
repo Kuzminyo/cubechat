@@ -29,10 +29,33 @@ class HiveCipherProvider {
 
   final FlutterSecureStorage _storage;
   HiveAesCipher? _cached;
+  Future<HiveAesCipher>? _inFlight;
 
   /// Returns the cipher, generating a fresh key on first run.
-  Future<HiveAesCipher> load() async {
-    if (_cached != null) return _cached!;
+  ///
+  /// Single-flight, and it has to be: every controller opens its encrypted box
+  /// during startup, so half a dozen callers hit this at once. Checking
+  /// `_cached` and *then* awaiting the secure store let all of them miss the
+  /// empty cache, mint a **different** random key, and open their box under it.
+  /// Only the last key reached secure storage, so on the next launch every box
+  /// written under one of the others failed to decrypt and was deleted and
+  /// recreated — the peer roster, chat history, channels and prekeys silently
+  /// reset once per install.
+  Future<HiveAesCipher> load() {
+    final cached = _cached;
+    if (cached != null) return Future<HiveAesCipher>.value(cached);
+    return _inFlight ??= _load();
+  }
+
+  Future<HiveAesCipher> _load() async {
+    try {
+      return await _loadUncached();
+    } finally {
+      _inFlight = null;
+    }
+  }
+
+  Future<HiveAesCipher> _loadUncached() async {
     // Same Keystore-corruption hazard as IdentityService: a read can throw
     // BadPaddingException after an OS update invalidates the master key.
     // Treat a read failure as "no key yet" — mint a fresh one. The old
@@ -78,6 +101,7 @@ class HiveCipherProvider {
   /// box files left on disk become unrecoverable.
   Future<void> wipe() async {
     _cached = null;
+    _inFlight = null;
     try {
       await _storage.delete(key: _keyName);
     } catch (_) {}

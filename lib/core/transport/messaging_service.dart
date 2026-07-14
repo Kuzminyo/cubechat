@@ -9,11 +9,15 @@ import 'package:hive/hive.dart';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../features/channels/data/channel_controller.dart';
+import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
+import '../../features/peers/models/known_peer.dart';
 import '../ble/ble_peripheral.dart';
+import '../crypto/channel_crypto.dart';
 import '../crypto/fs_message.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
@@ -37,6 +41,7 @@ import 'frame.dart';
 import 'image_reassembly.dart';
 import 'inner_payload.dart';
 import 'nostr/nostr_signer.dart';
+import '../crypto/media_fs_cipher.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -95,6 +100,20 @@ class MessagingService {
   static const int _cipherSealedBox = 0x01;
   static const int _cipherX3dh = 0x02;
 
+  /// Channel cipher: the body is `[channelTag:8][ChannelCrypto blob]`, a
+  /// broadcast frame encrypted under a shared group key. See [ChannelCrypto].
+  static const int _cipherChannel = 0x03;
+
+  /// Forward-secret media chunk: the body is a [MediaFsCipher] blob sealed
+  /// under a per-transfer X3DH key. The key is derived from the sender pubs in
+  /// the (v0x02) [MediaManifest], which is sent first. See [MediaFsCipher].
+  static const int _cipherX3dhMedia = 0x04;
+
+  /// Cap on FS chunks we'll hold for a single transfer whose manifest hasn't
+  /// arrived yet — bounds memory against a peer that streams chunks and never
+  /// sends the manifest.
+  static const int _maxPendingFsChunks = 8192;
+
   /// Conservative single-frame ceiling. A forward-secret text frame whose
   /// total wire size would exceed this falls back to SealedBox so we never
   /// produce a frame the BLE MTU (247) can't carry in one write.
@@ -135,6 +154,12 @@ class MessagingService {
   /// won't update for that older message).
   final Map<String, _OutboxRef> _outbox = {};
 
+  /// Transport wireIds (hex) we've already sent a read receipt for, so
+  /// re-opening a chat doesn't re-ack the same backlog every time. In-memory
+  /// only — a restart may re-send one receipt per message, which the receiver
+  /// applies idempotently.
+  final Set<String> _sentReadAcks = {};
+
   /// Encrypted Hive box backing [_store] so held frames survive an app
   /// restart (within the 1h TTL). Writes are debounced via
   /// [_relayPersistTimer] so a media-relay burst doesn't thrash the disk.
@@ -152,6 +177,20 @@ class MessagingService {
   /// Verified signed [MediaManifest]s waiting for their chunk stream to
   /// finish reassembling. Keyed by mediaId hex. GC'd after [_manifestTtl].
   final Map<String, _ManifestEntry> _pendingManifests = {};
+
+  /// Assembled media bytes whose manifest hasn't arrived yet. Same key
+  /// space as [_pendingManifests]; whichever side lands second triggers
+  /// the SHA-256 verification + delivery.
+  final Map<String, _OrphanMedia> _orphanedMedia = {};
+
+  /// Per-transfer X3DH keys for inbound forward-secret media, keyed by
+  /// mediaId hex. Populated when a v0x02 [MediaManifest] arrives; consumed by
+  /// the [_cipherX3dhMedia] chunk-decrypt path. GC'd with the other buffers.
+  final Map<String, SecretKey> _mediaKeys = {};
+
+  /// FS media chunks that arrived before their manifest (so before we could
+  /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
+  final Map<String, List<_PendingFsChunk>> _pendingFsChunks = {};
 
   /// How long we keep waiting for a manifest or for the missing
   /// chunks before garbage-collecting the half-finished transfer.
@@ -191,12 +230,63 @@ class MessagingService {
     return out;
   }
 
+  /// Build the inner payload for a text send: a plain [InnerPayloadType.text]
+  /// or, when [replyTarget] (a 16-byte quoted msgId) is set, an
+  /// [InnerPayloadType.textReply]. [bucket] null uses the default text padding
+  /// (SealedBox path); pass 0 to skip padding (FS path, to save MTU).
+  Uint8List _buildTextInner(
+    Uint8List utf8Text,
+    Uint8List? replyTarget, {
+    int? bucket,
+  }) {
+    final padded = bucket == null
+        ? padTextPayload(utf8Text)
+        : padTextPayload(utf8Text, bucket: bucket);
+    if (replyTarget == null) {
+      return packInnerPayload(InnerPayloadType.text, padded);
+    }
+    return packInnerPayload(
+      InnerPayloadType.textReply,
+      packTextReply(replyTarget, padded),
+    );
+  }
+
   /// Fresh ephemeral X25519 key pair for one forward-secret send.
   Future<SimpleKeyPairData> _freshEphemeralX25519() async {
     final kp = await X25519().newKeyPair();
     final pub = await kp.extractPublicKey();
     final priv = await kp.extractPrivateKeyBytes();
     return SimpleKeyPairData(priv, publicKey: pub, type: KeyPairType.x25519);
+  }
+
+  /// If we hold the recipient's signed prekey, derive a fresh per-transfer
+  /// X3DH key + ephemeral so a media stream can be sealed forward-secret
+  /// ([MediaFsCipher]). Returns null when FS isn't available (no cached
+  /// prekey, or a derivation error) → the caller falls back to SealedBox.
+  Future<({SecretKey key, Uint8List identityPub, Uint8List ephemeralPub})?>
+      _deriveMediaFsSetup(String canonicalId, Uint8List peerPub) async {
+    final recipientSpk =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
+    if (recipientSpk == null || recipientSpk.length != 32) return null;
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final ephemeral = await _freshEphemeralX25519();
+      final sk = await X3dh.deriveSender(
+        identityKeyPair: identity.asKeyPair(),
+        ephemeralKeyPair: ephemeral,
+        recipientIdentityPub: peerPub,
+        recipientSignedPrekeyPub: recipientSpk,
+      );
+      return (
+        key: sk,
+        identityPub: Uint8List.fromList(identity.publicKey),
+        ephemeralPub: Uint8List.fromList(ephemeral.publicKey.bytes),
+      );
+    } catch (e) {
+      DebugLog.instance.log('CRYPTO',
+          'media FS setup failed ($e) — SealedBox fallback');
+      return null;
+    }
   }
 
   /// Tap-to-connect: the user picked a peer in the Nearby list. We're the
@@ -221,7 +311,12 @@ class MessagingService {
       await client.connect();
     } catch (e, st) {
       debugPrint('connect to $peerId failed: $e\n$st');
-      _clients.remove(peerId);
+      // Dispose, don't merely drop the reference: connect() subscribes to the
+      // device's connectionState before the GATT connect can time out, so a
+      // bare remove() leaks that subscription plus the client's two stream
+      // controllers on every failed attempt — and the store-and-forward
+      // auto-connect retries this path on a timer.
+      await _clients.remove(peerId)?.dispose();
       rethrow;
     }
 
@@ -262,6 +357,56 @@ class MessagingService {
     }
   }
 
+  /// Connect to [deviceId], retrying a bounded number of times.
+  ///
+  /// A single attempt is unreliable on Android for two independent reasons:
+  ///
+  ///  * the stack fails the first GATT connect with 133 / 147
+  ///    (GATT_CONNECTION_TIMEOUT) far more often than the radio conditions
+  ///    warrant, and an immediate second attempt usually succeeds;
+  ///  * a peer that rotated its BLE privacy address answers only on its new
+  ///    address, so between attempts we ask [refreshId] to re-scan for the
+  ///    one it is using now.
+  ///
+  /// A peer that *does* connect but doesn't expose the cubechat service is a
+  /// permanent failure, not a transient one, so it is never retried.
+  Future<void> connectAsInitiatorWithRetry({
+    required String deviceId,
+    required String displayName,
+    Future<String?> Function()? refreshId,
+    int attempts = 3,
+  }) async {
+    var id = deviceId;
+    Object lastError = StateError('connect was never attempted');
+
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await connectAsInitiator(
+          BluetoothDevice.fromId(id),
+          displayName: displayName,
+        );
+        return;
+      } on StateError {
+        rethrow; // answered, but not a cubechat node — retrying is futile
+      } catch (e) {
+        lastError = e;
+        DebugLog.instance.log('BLE-CENTRAL',
+            'connect attempt $attempt/$attempts to $id failed: $e');
+      }
+
+      if (attempt == attempts) break;
+      await Future<void>.delayed(Duration(milliseconds: 250 * attempt));
+
+      final fresh = await refreshId?.call();
+      if (fresh != null && fresh != id) {
+        DebugLog.instance.log('BLE-CENTRAL',
+            'peer address rotated $id → $fresh — retrying there');
+        id = fresh;
+      }
+    }
+    throw lastError;
+  }
+
   /// Starts a one-shot timer that marks the session failed if the handshake
   /// hasn't reached `established` within [_handshakeTimeout]. The timer is
   /// auto-cancelled when [_clearHandshakeWatchdog] fires (which the frame
@@ -297,7 +442,11 @@ class MessagingService {
   ///   1. live session by transport id
   ///   2. live session by pubkeyHex
   ///   3. KnownPeers entry by pubkeyHex (mesh-only — relayed via all links)
-  Future<Message> sendText(String chatId, String text) async {
+  Future<Message> sendText(
+    String chatId,
+    String text, {
+    String? replyToWireId,
+  }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
     ChatSession? session = manager.sessionFor(chatId);
@@ -327,6 +476,21 @@ class MessagingService {
       throw StateError('cannot send: no recipient pubkey for $chatId');
     }
 
+    // A reply quotes an earlier message by its wireId (hex of its 16-byte
+    // transport msgId). Ignore a malformed/wrong-length handle rather than
+    // failing the send.
+    Uint8List? replyTarget;
+    if (replyToWireId != null) {
+      try {
+        final decoded = _hexDecodeBytes(replyToWireId);
+        if (decoded.length == replyTargetLen) replyTarget = decoded;
+      } catch (_) {}
+    }
+
+    // Mint the transport msgId up front so the local Message can record it as
+    // its wireId — the stable handle a read receipt / reaction from the peer
+    // will reference back.
+    final msgId = TransportEnvelope.newMsgId();
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -334,6 +498,8 @@ class MessagingService {
       sentAt: DateTime.now(),
       isMine: true,
       status: MessageStatus.sending,
+      wireId: TransportEnvelope.hashHex(msgId),
+      replyToWireId: replyTarget != null ? replyToWireId : null,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -349,7 +515,6 @@ class MessagingService {
       final utf8Text = Uint8List.fromList(utf8.encode(text));
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
-      final msgId = TransportEnvelope.newMsgId();
       final ctx = SignedPayload.contextBytes(
         originPubkeyHash: myHash,
         destPubkeyHash: peerHash,
@@ -371,10 +536,7 @@ class MessagingService {
         // fail the whole send. (A bug here once silently dropped every
         // message to peers we held a prekey for.)
         try {
-          final innerFs = packInnerPayload(
-            InnerPayloadType.text,
-            padTextPayload(utf8Text, bucket: 0),
-          );
+          final innerFs = _buildTextInner(utf8Text, replyTarget, bucket: 0);
           final signedFs = await SignedPayload.wrapCompact(
             inner: innerFs,
             context: ctx,
@@ -422,10 +584,7 @@ class MessagingService {
 
       if (body == null) {
         // SealedBox path (no FS). Full signature (0xA1) + length padding.
-        final inner = packInnerPayload(
-          InnerPayloadType.text,
-          padTextPayload(utf8Text),
-        );
+        final inner = _buildTextInner(utf8Text, replyTarget);
         final signed = await SignedPayload.wrap(
           inner: inner,
           context: ctx,
@@ -593,6 +752,8 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      // Seal the chunks forward-secret when we hold the recipient's prekey.
+      final fs = await _deriveMediaFsSetup(canonicalId, peerPub);
       await _sendSignedManifest(
         mediaId: imageId,
         kind: MediaKind.image,
@@ -603,7 +764,13 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        senderIdentityPub: fs?.identityPub,
+        senderEphemeralPub: fs?.ephemeralPub,
       );
+      if (fs != null) {
+        DebugLog.instance.log('CRYPTO',
+            'sendImage: forward-secret (X3DH) media to $canonicalId');
+      }
       for (var i = 0; i < total; i++) {
         final start = i * ImageChunk.maxDataBytes;
         final end = (start + ImageChunk.maxDataBytes).clamp(0, bytes.length);
@@ -616,8 +783,12 @@ class MessagingService {
         );
         final inner =
             packInnerPayload(InnerPayloadType.imageChunk, chunk.encode());
-        final body =
-            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+        final body = fs != null
+            ? _tagBody(
+                _cipherX3dhMedia,
+                await MediaFsCipher.seal(
+                    key: fs.key, mediaId: imageId, plaintext: inner))
+            : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -672,6 +843,9 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
+      // Surface it: the caller shows a snackbar. Silently swallowing left the
+      // user with a broken bubble and no idea the link had dropped.
+      rethrow;
     }
     return msg;
   }
@@ -740,6 +914,7 @@ class MessagingService {
       }
       final myHash = await _myPubkeyHash();
       final peerHash = await _peerPubkeyHash(peerPub);
+      final fs = await _deriveMediaFsSetup(canonicalId, peerPub);
       await _sendSignedManifest(
         mediaId: audioId,
         kind: MediaKind.audio,
@@ -751,7 +926,13 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        senderIdentityPub: fs?.identityPub,
+        senderEphemeralPub: fs?.ephemeralPub,
       );
+      if (fs != null) {
+        DebugLog.instance.log('CRYPTO',
+            'sendAudio: forward-secret (X3DH) media to $canonicalId');
+      }
       for (var i = 0; i < total; i++) {
         final start = i * AudioChunk.maxDataBytes;
         final end = (start + AudioChunk.maxDataBytes).clamp(0, bytes.length);
@@ -766,10 +947,15 @@ class MessagingService {
         final inner =
             packInnerPayload(InnerPayloadType.audioChunk, chunk.encode());
         // Unsigned: audio chunks pay no per-chunk signature cost (would
-        // overflow MTU). Integrity rides on SealedBox AEAD; sender identity
-        // rides on the signed announcement chain.
-        final body =
-            _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+        // overflow MTU). Integrity rides on the AEAD (SealedBox or, when the
+        // recipient's prekey is known, forward-secret MediaFsCipher); sender
+        // identity rides on the signed manifest + announcement chain.
+        final body = fs != null
+            ? _tagBody(
+                _cipherX3dhMedia,
+                await MediaFsCipher.seal(
+                    key: fs.key, mediaId: audioId, plaintext: inner))
+            : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
@@ -818,8 +1004,742 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
+      // Surface it (see sendImage) so the caller can tell the user why.
+      rethrow;
     }
     return msg;
+  }
+
+  // -------------------- read receipts / reactions / channels --------------
+
+  /// Acknowledge every not-yet-acked inbound message in the [canonicalId]
+  /// (pubkey-hex) chat as *read*. Called when the user opens / views a chat.
+  /// No-op for channels (no per-recipient read state) and when there's
+  /// nothing new to ack. Best-effort: a send failure rolls the ack back so
+  /// the next view retries.
+  Future<void> sendReadReceipts(String canonicalId) async {
+    if (canonicalId.startsWith('#')) return;
+    final msgs = _ref.read(messagesControllerProvider)[canonicalId];
+    if (msgs == null || msgs.isEmpty) return;
+
+    final fresh = <Uint8List>[];
+    for (final m in msgs) {
+      if (m.isMine) continue;
+      final w = m.wireId;
+      if (w == null || _sentReadAcks.contains(w)) continue;
+      try {
+        fresh.add(_hexDecodeBytes(w));
+        _sentReadAcks.add(w);
+      } catch (_) {/* skip malformed wireId */}
+    }
+    if (fresh.isEmpty) return;
+
+    final peerPub = _resolvePeerPub(canonicalId);
+    if (peerPub == null) return;
+
+    for (var i = 0; i < fresh.length; i += ReadReceipt.maxIdsPerFrame) {
+      final end = (i + ReadReceipt.maxIdsPerFrame).clamp(0, fresh.length);
+      final slice = fresh.sublist(i, end);
+      final receipt =
+          ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
+      try {
+        await _sendControlToPeer(
+          canonicalId: canonicalId,
+          peerPub: peerPub,
+          type: InnerPayloadType.receipt,
+          innerBody: receipt.encode(),
+        );
+      } catch (e) {
+        for (final id in slice) {
+          _sentReadAcks.remove(TransportEnvelope.hashHex(id));
+        }
+        DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
+      }
+    }
+  }
+
+  /// Add or toggle-off an emoji [emoji] reaction on the message identified by
+  /// [targetWireId] in [chatId] (a pubkey-hex peer chat or a `#channel`).
+  /// Applies locally first (optimistic) then puts it on the wire.
+  Future<void> sendReaction(
+    String chatId,
+    String targetWireId,
+    String emoji, {
+    required bool add,
+  }) async {
+    final Uint8List target;
+    try {
+      target = _hexDecodeBytes(targetWireId);
+    } catch (_) {
+      return;
+    }
+    if (target.length != Reaction.idLen) return;
+
+    // Optimistic local echo.
+    _ref.read(messagesControllerProvider.notifier).applyReaction(
+          chatId,
+          targetWireId: targetWireId,
+          emoji: emoji,
+          reactorId: 'me',
+          add: add,
+        );
+
+    final reaction = Reaction(
+      op: add ? ReactionOp.add : ReactionOp.remove,
+      emoji: emoji,
+      targetMsgId: target,
+    );
+    final body = reaction.encode();
+    try {
+      if (chatId.startsWith('#')) {
+        final channel =
+            _ref.read(channelControllerProvider.notifier).byName(chatId);
+        if (channel == null) return;
+        final msgId = TransportEnvelope.newMsgId();
+        final frame = await _buildChannelFrame(
+            channel, InnerPayloadType.reaction, body, msgId);
+        await _fanoutAllLinks(frame, excludePeerId: null);
+      } else {
+        final peerPub = _resolvePeerPub(chatId);
+        if (peerPub == null) return;
+        await _sendControlToPeer(
+          canonicalId: chatId,
+          peerPub: peerPub,
+          type: InnerPayloadType.reaction,
+          innerBody: body,
+        );
+      }
+    } catch (e) {
+      DebugLog.instance.log('REACT', 'reaction send failed: $e');
+    }
+  }
+
+  /// Rewrite one of our own already-sent text messages, in a peer chat or a
+  /// channel, and push the new text to everyone who has the old one.
+  ///
+  /// No-ops when [targetWireId] doesn't name a text message of ours — the local
+  /// store is the authority on that, so nothing goes on the wire either.
+  Future<void> sendEdit(
+    String chatId,
+    String targetWireId,
+    String newText,
+  ) async {
+    final Uint8List target;
+    try {
+      target = _hexDecodeBytes(targetWireId);
+    } catch (_) {
+      return;
+    }
+    if (target.length != MessageEdit.idLen) return;
+
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    if (!messages.editMine(chatId, targetWireId, newText)) return;
+
+    final body = MessageEdit(targetMsgId: target, text: newText).encode();
+    try {
+      if (chatId.startsWith('#')) {
+        final channel =
+            _ref.read(channelControllerProvider.notifier).byName(chatId);
+        if (channel == null) return;
+        final frame = await _buildChannelFrame(
+          channel,
+          InnerPayloadType.edit,
+          body,
+          TransportEnvelope.newMsgId(),
+        );
+        await _fanoutAllLinks(frame, excludePeerId: null);
+      } else {
+        final peerPub = _resolvePeerPub(chatId);
+        if (peerPub == null) return;
+        await _sendControlToPeer(
+          canonicalId: chatId,
+          peerPub: peerPub,
+          type: InnerPayloadType.edit,
+          innerBody: body,
+        );
+      }
+    } catch (e) {
+      DebugLog.instance.log('EDIT', 'edit send failed: $e');
+    }
+  }
+
+  /// Retract one of our own already-sent messages everywhere: drop it locally
+  /// and tell the other side(s) to drop it too. No-op when [targetWireId]
+  /// doesn't name a message of ours.
+  Future<void> sendDeleteForEveryone(
+    String chatId,
+    String targetWireId,
+  ) async {
+    final Uint8List target;
+    try {
+      target = _hexDecodeBytes(targetWireId);
+    } catch (_) {
+      return;
+    }
+    if (target.length != MessageDelete.idLen) return;
+
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    if (!messages.deleteMineByWireId(chatId, targetWireId)) return;
+
+    final body = MessageDelete(targetMsgId: target).encode();
+    try {
+      if (chatId.startsWith('#')) {
+        final channel =
+            _ref.read(channelControllerProvider.notifier).byName(chatId);
+        if (channel == null) return;
+        final frame = await _buildChannelFrame(
+          channel,
+          InnerPayloadType.delete,
+          body,
+          TransportEnvelope.newMsgId(),
+        );
+        await _fanoutAllLinks(frame, excludePeerId: null);
+      } else {
+        final peerPub = _resolvePeerPub(chatId);
+        if (peerPub == null) return;
+        await _sendControlToPeer(
+          canonicalId: chatId,
+          peerPub: peerPub,
+          type: InnerPayloadType.delete,
+          innerBody: body,
+        );
+      }
+    } catch (e) {
+      DebugLog.instance.log('EDIT', 'delete send failed: $e');
+    }
+  }
+
+  /// An inbound "delete for everyone" from a peer, applied to their message.
+  void _ingestPeerDelete({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final MessageDelete del;
+    try {
+      del = MessageDelete.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('EDIT', 'drop delete from $peerId: $e');
+      return;
+    }
+    final target = TransportEnvelope.hashHex(del.targetMsgId);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    messages.deleteFromPeer(canonical, target);
+    if (canonical != peerId) messages.deleteFromPeer(peerId, target);
+  }
+
+  /// An inbound edit from a peer, applied to their own message only.
+  void _ingestPeerEdit({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final MessageEdit edit;
+    try {
+      edit = MessageEdit.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('EDIT', 'drop edit from $peerId: $e');
+      return;
+    }
+    final target = TransportEnvelope.hashHex(edit.targetMsgId);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    messages.editFromPeer(canonical, target, edit.text);
+    if (canonical != peerId) {
+      messages.editFromPeer(peerId, target, edit.text);
+    }
+  }
+
+  /// Hand [peerCanonicalId] the key to a channel we're a member of, over the
+  /// 1:1 signed + SealedBox path. Returns the number of links the invite went
+  /// out on — 0 means the peer is unreachable right now and nothing was sent.
+  ///
+  /// Throws [StateError] when we aren't in the channel or don't know the peer,
+  /// and [FormatException] when the channel name is too long for one frame.
+  Future<int> sendChannelInvite({
+    required String channelName,
+    required String peerCanonicalId,
+  }) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) {
+      throw StateError('not a member of $channelName');
+    }
+    final peerPub = _resolvePeerPub(peerCanonicalId);
+    if (peerPub == null) {
+      throw StateError('no pubkey for peer $peerCanonicalId');
+    }
+    final body = ChannelInvite(name: channel.name, key: channel.key).encode();
+    final fanout = await _sendControlToPeer(
+      canonicalId: peerCanonicalId,
+      peerPub: peerPub,
+      type: InnerPayloadType.channelInvite,
+      innerBody: body,
+    );
+    DebugLog.instance.log('CHAN',
+        'invite to ${channel.name} → $peerCanonicalId (fanout=$fanout)');
+    return fanout;
+  }
+
+  /// A peer handed us a channel key — join it and surface it in the chat list.
+  ///
+  /// Guarded twice, because SealedBox is anonymous: anyone who knows our public
+  /// key can encrypt to us. We therefore accept an invite only when it carries
+  /// a valid Ed25519 signature *and* that signing key already belongs to a peer
+  /// in our roster. Without both, any node on the mesh could silently push
+  /// channels into the user's chat list.
+  Future<void> _ingestChannelInvite({
+    required String peerId,
+    required Uint8List? senderEdPub,
+    required Uint8List body,
+  }) async {
+    if (senderEdPub == null) {
+      DebugLog.instance.log('CHAN',
+          'drop channel invite from $peerId: not signed');
+      return;
+    }
+    final inviter = _knownPeerBySignKey(senderEdPub);
+    if (inviter == null) {
+      DebugLog.instance.log('CHAN',
+          'drop channel invite from $peerId: signer is not a known peer');
+      return;
+    }
+    final ChannelInvite invite;
+    try {
+      invite = ChannelInvite.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('CHAN',
+          'drop channel invite from $peerId: malformed ($e)');
+      return;
+    }
+    try {
+      final channel = await _ref
+          .read(channelControllerProvider.notifier)
+          .joinWithKey(invite.name, invite.key);
+      DebugLog.instance.log('CHAN',
+          'auto-joined ${channel.name} on invite from ${inviter.displayName}');
+      if (!AppLifecycle.instance.isViewingChat(channel.name)) {
+        unawaited(NotificationService.instance.showMessage(
+          threadKey: channel.name,
+          title: channel.name,
+          body: '${inviter.displayName} added you to this channel',
+        ));
+      }
+    } catch (e) {
+      DebugLog.instance.log('CHAN', 'channel invite join failed: $e');
+    }
+  }
+
+  /// The roster entry whose Ed25519 signing key is [edPub], or null.
+  KnownPeer? _knownPeerBySignKey(Uint8List edPub) {
+    for (final p in _ref.read(knownPeersControllerProvider).values) {
+      final pub = p.signPublicKey;
+      if (pub != null && _bytesEqual(pub, edPub)) return p;
+    }
+    return null;
+  }
+
+  /// Post [text] to a joined channel. Encrypted under the shared channel key
+  /// and broadcast across the mesh; every member with the key decrypts it.
+  /// Returns the local pending Message (bucketed under the channel name).
+  Future<Message> sendChannelText(String channelName, String text) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) {
+      throw StateError('not a member of $channelName');
+    }
+    final canonicalId = channel.name;
+    final msgId = TransportEnvelope.newMsgId();
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: canonicalId,
+      text: text,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      wireId: TransportEnvelope.hashHex(msgId),
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(canonicalId, msg);
+
+    try {
+      final utf8Text = Uint8List.fromList(utf8.encode(text));
+      final inner = padTextPayload(utf8Text);
+      final frame =
+          await _buildChannelFrame(channel, InnerPayloadType.text, inner, msgId);
+      final fanout = await _fanoutAllLinks(frame, excludePeerId: null);
+      messages.updateStatus(
+        canonicalId,
+        msg.id,
+        fanout > 0 ? MessageStatus.delivered : MessageStatus.sending,
+      );
+      DebugLog.instance.log('CHAN',
+          'channel post to ${channel.name} fanout=$fanout');
+    } catch (e, st) {
+      debugPrint('sendChannelText failed: $e\n$st');
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+    }
+    return msg;
+  }
+
+  /// Sign + SealedBox-encrypt a small control payload (read receipt /
+  /// reaction) to a single peer and deliver it best-effort (direct session,
+  /// else mesh fan-out — no store-and-forward hold; a receipt/reaction that
+  /// misses isn't worth persisting). Returns the number of links it went out
+  /// on.
+  Future<int> _sendControlToPeer({
+    required String canonicalId,
+    required Uint8List peerPub,
+    required InnerPayloadType type,
+    required Uint8List innerBody,
+  }) async {
+    final identity = await _ref.read(identityProvider.future);
+    final myHash = await _myPubkeyHash();
+    final peerHash = await _peerPubkeyHash(peerPub);
+    final msgId = TransportEnvelope.newMsgId();
+    final ctx = SignedPayload.contextBytes(
+      originPubkeyHash: myHash,
+      destPubkeyHash: peerHash,
+      msgId: msgId,
+    );
+    final inner = packInnerPayload(type, innerBody);
+    final signed = await SignedPayload.wrap(
+      inner: inner,
+      context: ctx,
+      signKeyPair: identity.asSignKeyPair(),
+      senderEdPub: identity.signPublicKey,
+    );
+    final body =
+        _tagBody(_cipherSealedBox, await SealedBox.seal(signed, peerPub));
+    final env = TransportEnvelope(
+      originPubkeyHash: myHash,
+      destPubkeyHash: peerHash,
+      msgId: msgId,
+      ttl: TransportEnvelope.defaultTtl,
+      body: body,
+    );
+    _dedup.acceptEnvelope(env);
+    final frameBytes =
+        Frame(type: FrameType.transport, payload: env.encode()).encode();
+
+    final session = _findSessionByPubkeyHex(canonicalId);
+    final transportId = session?.peerId;
+    if (transportId != null) {
+      final client = _clients[transportId];
+      if (client != null && client.isConnected) {
+        try {
+          await client.writeOutbound(frameBytes);
+          return 1;
+        } catch (_) {/* fall through to notify / fan-out */}
+      }
+      try {
+        if (await _ref.read(blePeripheralProvider).notifyInbound(frameBytes)) {
+          return 1;
+        }
+      } catch (_) {}
+    }
+    return _fanoutAllLinks(frameBytes, excludePeerId: null);
+  }
+
+  /// Build a broadcast channel frame: sign the inner payload (full signature,
+  /// so members learn the author's Ed25519 key), encrypt it under the channel
+  /// key, prepend the public channel tag + cipher tag, and wrap in a
+  /// broadcast [TransportEnvelope]. Pre-records the msgId in the dedup cache
+  /// so our own copy bouncing back over a relay is ignored.
+  Future<Uint8List> _buildChannelFrame(
+    Channel channel,
+    InnerPayloadType type,
+    Uint8List innerBody,
+    Uint8List msgId,
+  ) async {
+    final identity = await _ref.read(identityProvider.future);
+    final myHash = await _myPubkeyHash();
+    final broadcast = TransportEnvelope.broadcastDest();
+    final inner = packInnerPayload(type, innerBody);
+    final ctx = SignedPayload.contextBytes(
+      originPubkeyHash: myHash,
+      destPubkeyHash: broadcast,
+      msgId: msgId,
+    );
+    final signed = await SignedPayload.wrap(
+      inner: inner,
+      context: ctx,
+      signKeyPair: identity.asSignKeyPair(),
+      senderEdPub: identity.signPublicKey,
+    );
+    final sealed = await ChannelCrypto.seal(channel.key, signed);
+    final channelBody = Uint8List(ChannelCrypto.tagLen + sealed.length)
+      ..setRange(0, ChannelCrypto.tagLen, channel.tag)
+      ..setRange(ChannelCrypto.tagLen, ChannelCrypto.tagLen + sealed.length,
+          sealed);
+    final env = TransportEnvelope(
+      originPubkeyHash: myHash,
+      destPubkeyHash: broadcast,
+      msgId: msgId,
+      ttl: TransportEnvelope.defaultTtl,
+      body: _tagBody(_cipherChannel, channelBody),
+    );
+    _dedup.acceptEnvelope(env);
+    return Frame(type: FrameType.transport, payload: env.encode()).encode();
+  }
+
+  /// Decrypt + route an inbound channel broadcast. The frame has already been
+  /// dedup-checked and relayed by [_handleTransportFrame]; here we pick the
+  /// matching joined channel by its public tag, open it, verify the author's
+  /// signature, and append the message / apply the reaction to the channel's
+  /// bucket. Frames for channels we haven't joined are silently dropped (we
+  /// still relayed them onward for members downstream).
+  Future<void> _handleChannelBody({
+    required TransportEnvelope env,
+    required String peerId,
+    required Uint8List channelBody,
+  }) async {
+    if (channelBody.length < ChannelCrypto.tagLen) {
+      DebugLog.instance.log('CHAN', 'drop channel frame: truncated');
+      return;
+    }
+    final tag =
+        Uint8List.fromList(channelBody.sublist(0, ChannelCrypto.tagLen));
+    final channel =
+        _ref.read(channelControllerProvider.notifier).channelForTag(tag);
+    if (channel == null) return; // not a member — relayed only
+
+    // Skip our own broadcast reflected back through a relay.
+    final myHash = await _myPubkeyHash();
+    if (_bytesEqual(env.originPubkeyHash, myHash)) return;
+
+    final blob =
+        Uint8List.fromList(channelBody.sublist(ChannelCrypto.tagLen));
+    final Uint8List plain;
+    try {
+      plain = await ChannelCrypto.open(channel.key, blob);
+    } catch (e) {
+      DebugLog.instance.log('CHAN',
+          'drop ${channel.name} frame: decrypt failed (wrong password?)');
+      return;
+    }
+
+    if (plain.isEmpty || plain[0] != SignedPayload.markerByte) {
+      DebugLog.instance.log('CHAN',
+          'drop ${channel.name} frame: not author-signed');
+      return;
+    }
+    final ctx = SignedPayload.contextBytes(
+      originPubkeyHash: env.originPubkeyHash,
+      destPubkeyHash: env.destPubkeyHash,
+      msgId: env.msgId,
+    );
+    final Uint8List innerBytes;
+    final Uint8List senderEdPub;
+    try {
+      final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
+      final verified = await SignedPayload.verify(
+        wire: plain,
+        context: ctx,
+        expectedEdPub: expectedEd,
+      );
+      if (!_freshEnough(verified.timestampMs, peerId)) return;
+      innerBytes = verified.inner;
+      senderEdPub = verified.senderEdPub;
+      await _maybeCacheSignerForOrigin(
+        originHash: env.originPubkeyHash,
+        edPub: senderEdPub,
+      );
+    } on SignatureVerificationException catch (e) {
+      DebugLog.instance.log('CHAN',
+          'drop ${channel.name} frame: bad signature (${e.message})');
+      return;
+    }
+
+    try {
+      final unpacked = unpackInnerPayload(innerBytes);
+      final authorName = _resolveAuthorName(senderEdPub);
+      final reactorId = _hexOf(senderEdPub).substring(0, 16);
+      switch (unpacked.type) {
+        case InnerPayloadType.text:
+          final plaintext = utf8.decode(
+            unpadTextPayload(unpacked.body),
+            allowMalformed: true,
+          );
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: channel.name,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+            wireId: TransportEnvelope.hashHex(env.msgId),
+            authorName: authorName,
+            // The fingerprint, not the name: an inbound edit is checked
+            // against it, and display names are not identities.
+            authorId: reactorId,
+          );
+          _ref
+              .read(messagesControllerProvider.notifier)
+              .append(channel.name, message);
+          _notifyChannel(
+              channel: channel, authorName: authorName, message: message);
+
+        case InnerPayloadType.textReply:
+          final reply = unpackTextReply(unpacked.body);
+          final plaintext = utf8.decode(
+            unpadTextPayload(reply.paddedText),
+            allowMalformed: true,
+          );
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: channel.name,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+            wireId: TransportEnvelope.hashHex(env.msgId),
+            authorName: authorName,
+            authorId: reactorId,
+            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+          );
+          _ref
+              .read(messagesControllerProvider.notifier)
+              .append(channel.name, message);
+          _notifyChannel(
+              channel: channel, authorName: authorName, message: message);
+
+        case InnerPayloadType.reaction:
+          final rx = Reaction.decode(unpacked.body);
+          _applyReactionToBuckets([channel.name],
+              rx: rx, reactorId: reactorId);
+
+        case InnerPayloadType.edit:
+          final edit = MessageEdit.decode(unpacked.body);
+          // reactorId is the signer's key fingerprint, and only the author of
+          // the target message may rewrite it.
+          _ref.read(messagesControllerProvider.notifier).editFromPeer(
+                channel.name,
+                TransportEnvelope.hashHex(edit.targetMsgId),
+                edit.text,
+                authorId: reactorId,
+              );
+
+        case InnerPayloadType.delete:
+          final del = MessageDelete.decode(unpacked.body);
+          _ref.read(messagesControllerProvider.notifier).deleteFromPeer(
+                channel.name,
+                TransportEnvelope.hashHex(del.targetMsgId),
+                authorId: reactorId,
+              );
+
+        case InnerPayloadType.receipt:
+        case InnerPayloadType.channelInvite:
+        case InnerPayloadType.imageChunk:
+        case InnerPayloadType.audioChunk:
+        case InnerPayloadType.mediaManifest:
+          // Not carried in channels — ignore. (An invite is addressed to one
+          // peer; broadcasting one to the channel would be circular.)
+          break;
+      }
+    } catch (e) {
+      DebugLog.instance.log('CHAN',
+          'drop ${channel.name} frame: malformed inner ($e)');
+    }
+  }
+
+  /// A read receipt from a peer flips our matching outgoing messages to read.
+  void _ingestReceipt({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final ReadReceipt r;
+    try {
+      r = ReadReceipt.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('RECEIPT', 'drop receipt from $peerId: $e');
+      return;
+    }
+    if (r.status != ReceiptStatus.read) return;
+    final ids = r.msgIds.map(TransportEnvelope.hashHex).toSet();
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    messages.markRead(canonical, ids);
+    if (canonical != peerId) messages.markRead(peerId, ids);
+  }
+
+  /// A reaction from a peer, applied to both the canonical (pubkey-hex) and
+  /// any open transport-id bucket for that peer.
+  void _ingestPeerReaction({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List? senderEdPub,
+    required Uint8List body,
+  }) {
+    final Reaction rx;
+    try {
+      rx = Reaction.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('REACT', 'drop reaction from $peerId: $e');
+      return;
+    }
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    final reactorId =
+        senderEdPub != null ? _hexOf(senderEdPub).substring(0, 16) : 'them';
+    final buckets =
+        canonical != peerId ? <String>[canonical, peerId] : <String>[canonical];
+    _applyReactionToBuckets(buckets, rx: rx, reactorId: reactorId);
+  }
+
+  void _applyReactionToBuckets(
+    List<String> buckets, {
+    required Reaction rx,
+    required String reactorId,
+  }) {
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final target = TransportEnvelope.hashHex(rx.targetMsgId);
+    for (final b in buckets) {
+      messages.applyReaction(
+        b,
+        targetWireId: target,
+        emoji: rx.emoji,
+        reactorId: reactorId,
+        add: rx.op == ReactionOp.add,
+      );
+    }
+  }
+
+  /// Resolve the X25519 static pubkey for a peer chat id (pubkey-hex): prefer
+  /// a live authenticated session, else the KnownPeers roster.
+  Uint8List? _resolvePeerPub(String canonicalId) {
+    final session = _findSessionByPubkeyHex(canonicalId);
+    if (session != null && session.isEstablished) {
+      final p = session.remoteStaticPublicKey;
+      if (p != null) return p;
+    }
+    final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+    if (known != null) {
+      try {
+        return _hexDecodeBytes(known.pubkeyHex);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Best-effort display name for a channel author, matched from the roster by
+  /// their Ed25519 signing key. Falls back to a short key fingerprint.
+  String _resolveAuthorName(Uint8List edPub) {
+    final peer = _knownPeerBySignKey(edPub);
+    if (peer != null && peer.displayName.isNotEmpty) return peer.displayName;
+    return 'Peer ${_hexOf(edPub).substring(0, 6)}';
+  }
+
+  void _notifyChannel({
+    required Channel channel,
+    required String authorName,
+    required Message message,
+  }) {
+    if (AppLifecycle.instance.isViewingChat(channel.name)) return;
+    unawaited(NotificationService.instance.showMessage(
+      threadKey: channel.name,
+      title: channel.name,
+      body: '$authorName: ${message.text}',
+    ));
   }
 
   /// Linear scan through active sessions for the one whose authenticated
@@ -990,9 +1910,19 @@ class MessagingService {
             .log('CRYPTO', 'drop transport from $peerId: empty body');
         return;
       }
-      // First byte = cipher tag (0x01 SealedBox, 0x02 X3DH forward-secret).
+      // First byte = cipher tag (0x01 SealedBox, 0x02 X3DH forward-secret,
+      // 0x03 shared-key channel broadcast).
       final cipher = env.body[0];
       final cipherBody = Uint8List.sublistView(env.body, 1);
+
+      if (cipher == _cipherChannel) {
+        await _handleChannelBody(
+          env: env,
+          peerId: peerId,
+          channelBody: cipherBody,
+        );
+        return;
+      }
 
       final Uint8List sealedPlain;
       if (cipher == _cipherX3dh) {
@@ -1030,6 +1960,39 @@ class MessagingService {
         } catch (e) {
           DebugLog.instance
               .log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+          return;
+        }
+      } else if (cipher == _cipherX3dhMedia) {
+        // Forward-secret media chunk. The per-transfer key rides in the
+        // (v0x02) manifest; if that hasn't arrived we hold the encrypted
+        // chunk and flush it once the key is derived.
+        final Uint8List mediaIdBytes;
+        try {
+          mediaIdBytes = MediaFsCipher.readMediaId(cipherBody);
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'drop FS media chunk from $peerId: malformed ($e)');
+          return;
+        }
+        final mediaIdHex = _hexOf(mediaIdBytes);
+        final key = _mediaKeys[mediaIdHex];
+        if (key == null) {
+          _gcMediaBuffers();
+          final held = _pendingFsChunks.putIfAbsent(mediaIdHex, () => []);
+          if (held.length < _maxPendingFsChunks) {
+            held.add(_PendingFsChunk(
+              peerId: peerId,
+              body: Uint8List.fromList(cipherBody),
+              arrivedAt: DateTime.now(),
+            ));
+          }
+          return;
+        }
+        try {
+          sealedPlain = await MediaFsCipher.open(key: key, body: cipherBody);
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO',
+              'FS media chunk decrypt FAILED from $peerId: $e');
           return;
         }
       } else {
@@ -1107,6 +2070,16 @@ class MessagingService {
       final session = manager.sessionFor(peerId);
       final senderPub = session?.remoteStaticPublicKey;
 
+      // Blocked peer: drop everything they send (messages, receipts,
+      // reactions, edits) before it can touch the store or the UI.
+      if (senderPub != null &&
+          _ref
+              .read(knownPeersControllerProvider.notifier)
+              .isBlocked(_hexOf(senderPub))) {
+        DebugLog.instance.log('MESH', 'drop inbound from blocked peer');
+        return;
+      }
+
       // First message from a peer we'd only heard about via an announcement
       // also doubles as a cross-check: cache the verified Ed pub against
       // the origin hash. Future messages will be checked in strict mode.
@@ -1132,9 +2105,65 @@ class MessagingService {
             sentAt: DateTime.now(),
             isMine: false,
             forwardSecret: cipher == _cipherX3dh,
+            wireId: TransportEnvelope.hashHex(env.msgId),
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);
+
+        case InnerPayloadType.textReply:
+          final reply = unpackTextReply(unpacked.body);
+          final plaintext = utf8.decode(
+            unpadTextPayload(reply.paddedText),
+            allowMalformed: true,
+          );
+          final message = Message(
+            id: 'm${DateTime.now().microsecondsSinceEpoch}',
+            chatId: peerId,
+            text: plaintext,
+            sentAt: DateTime.now(),
+            isMine: false,
+            forwardSecret: cipher == _cipherX3dh,
+            wireId: TransportEnvelope.hashHex(env.msgId),
+            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+          );
+          _appendToAllSessionsForSamePeer(senderPub,
+              fallbackPeerId: peerId, message: message);
+
+        case InnerPayloadType.receipt:
+          _ingestReceipt(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.reaction:
+          _ingestPeerReaction(
+            peerId: peerId,
+            senderPub: senderPub,
+            senderEdPub: verifiedSenderEdPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.channelInvite:
+          await _ingestChannelInvite(
+            peerId: peerId,
+            senderEdPub: verifiedSenderEdPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.edit:
+          _ingestPeerEdit(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.delete:
+          _ingestPeerDelete(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
 
         case InnerPayloadType.imageChunk:
           await _ingestImageChunk(
@@ -1276,6 +2305,26 @@ class MessagingService {
     final key = _hexOf(manifest.mediaId);
     _gcMediaBuffers();
 
+    // Forward-secret transfer: derive the per-transfer media key so buffered
+    // and incoming chunks can decrypt. FS chunks can't be assembled without
+    // this, so an FS transfer never lands in the orphan path.
+    if (manifest.isForwardSecret) {
+      await _deriveAndStoreMediaKey(manifest);
+    }
+
+    final orphan = _orphanedMedia.remove(key);
+    if (orphan != null) {
+      DebugLog.instance.log('CRYPTO',
+          'late manifest matched orphan media $key — verifying');
+      await _verifyAndEmit(
+        peerId: peerId,
+        senderPub: senderPub,
+        manifest: manifest,
+        bytes: orphan.bytes,
+      );
+      return;
+    }
+
     if (_pendingManifests.length >= _maxPendingMediaManifests &&
         !_pendingManifests.containsKey(key)) {
       _evictOldestManifest();
@@ -1289,7 +2338,73 @@ class MessagingService {
     DebugLog.instance.log(
         'CRYPTO',
         'cached signed manifest $key '
-            '(${manifest.kind.name} total=${manifest.total})');
+        '(${manifest.kind.name} total=${manifest.total}'
+        '${manifest.isForwardSecret ? ", FS" : ""})');
+
+    // Now the manifest is registered, drain any FS chunks that raced ahead of
+    // it — decrypting them feeds the reassembler, which may complete the media.
+    if (manifest.isForwardSecret && _mediaKeys.containsKey(key)) {
+      await _flushPendingFsChunks(key);
+    }
+  }
+
+  /// Derive and cache the inbound X3DH key for a forward-secret media
+  /// transfer, from the sender pubs the (v0x02) manifest carries.
+  Future<void> _deriveAndStoreMediaKey(MediaManifest manifest) async {
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final prekeys = _ref.read(prekeyServiceProvider);
+      await prekeys.ensureInitialized();
+      final sk = await X3dh.deriveReceiver(
+        identityKeyPair: identity.asKeyPair(),
+        signedPrekeyPair: prekeys.signedPrekeyKeyPair,
+        senderIdentityPub: manifest.senderIdentityPub!,
+        senderEphemeralPub: manifest.senderEphemeralPub!,
+      );
+      _mediaKeys[_hexOf(manifest.mediaId)] = sk;
+    } catch (e) {
+      DebugLog.instance.log('CRYPTO', 'FS media key derive failed: $e');
+    }
+  }
+
+  /// Decrypt and ingest FS media chunks that arrived before their manifest.
+  Future<void> _flushPendingFsChunks(String mediaIdHex) async {
+    final key = _mediaKeys[mediaIdHex];
+    final held = _pendingFsChunks.remove(mediaIdHex);
+    if (key == null || held == null) return;
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    for (final pc in held) {
+      Uint8List plain;
+      try {
+        plain = await MediaFsCipher.open(key: key, body: pc.body);
+      } catch (e) {
+        DebugLog.instance.log('CRYPTO', 'buffered FS chunk decrypt failed: $e');
+        continue;
+      }
+      final ({InnerPayloadType type, Uint8List body}) unpacked;
+      try {
+        unpacked = unpackInnerPayload(plain);
+      } catch (e) {
+        continue;
+      }
+      final senderPub = manager.sessionFor(pc.peerId)?.remoteStaticPublicKey;
+      switch (unpacked.type) {
+        case InnerPayloadType.imageChunk:
+          await _ingestImageChunk(
+            peerId: pc.peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+        case InnerPayloadType.audioChunk:
+          await _ingestAudioChunk(
+            peerId: pc.peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+        default:
+          break; // FS media only carries chunks
+      }
+    }
   }
 
   /// Called by [_ingestImageChunk] / [_ingestAudioChunk] once the chunks
@@ -1389,6 +2504,14 @@ class MessagingService {
   void _gcMediaBuffers() {
     final cutoff = DateTime.now().subtract(_manifestTtl);
     _pendingManifests.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+    _orphanedMedia.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+    // Drop FS chunks whose whole buffer went stale (manifest never showed).
+    _pendingFsChunks.removeWhere(
+        (_, list) => list.every((c) => c.arrivedAt.isBefore(cutoff)));
+    // A media key is only useful while its transfer is still in flight (its
+    // manifest pending, or chunks buffered). Once neither holds, drop it.
+    _mediaKeys.removeWhere((id, _) =>
+        !_pendingManifests.containsKey(id) && !_pendingFsChunks.containsKey(id));
   }
 
   void _evictOldestManifest() {
@@ -1422,6 +2545,8 @@ class MessagingService {
     required Uint8List peerHash,
     required Uint8List peerPub,
     required ChatSession? session,
+    Uint8List? senderIdentityPub,
+    Uint8List? senderEphemeralPub,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final digest = await Sha256().hash(bytes);
@@ -1432,6 +2557,8 @@ class MessagingService {
       mime: mime,
       durationMs: durationMs,
       sha256: Uint8List.fromList(digest.bytes),
+      senderIdentityPub: senderIdentityPub,
+      senderEphemeralPub: senderEphemeralPub,
     );
     final inner = packInnerPayload(
       InnerPayloadType.mediaManifest,
@@ -1783,6 +2910,8 @@ class MessagingService {
     // still pops a notification.
     if (AppLifecycle.instance.isViewingChat(canonicalId)) return;
     final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+    // Muted peer: message is stored, but stays silent.
+    if (known?.isMuted ?? false) return;
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
         : 'New message';
@@ -2093,4 +3222,41 @@ class _ManifestEntry {
   final DateTime arrivedAt;
   final String peerId;
   final Uint8List? senderPub;
+}
+
+/// Assembled bytes whose manifest hasn't landed yet. We stash the file
+/// in-memory only — if no manifest shows up before the GC sweep, the
+/// bytes are dropped without ever touching disk (we refuse to surface
+/// unauthenticated media in the chat).
+class _OrphanMedia {
+  _OrphanMedia({
+    required this.bytes,
+    required this.mime,
+    required this.kind,
+    required this.durationMs,
+    required this.arrivedAt,
+    required this.peerId,
+    required this.senderPub,
+  });
+  final Uint8List bytes;
+  final String mime;
+  final MediaKind kind;
+  final int durationMs;
+  final DateTime arrivedAt;
+  final String peerId;
+  final Uint8List? senderPub;
+}
+
+/// A forward-secret media chunk (still encrypted) that arrived before its
+/// manifest, so before we could derive the transfer key. Held until the
+/// manifest lands, then decrypted + ingested by [_flushPendingFsChunks].
+class _PendingFsChunk {
+  _PendingFsChunk({
+    required this.peerId,
+    required this.body,
+    required this.arrivedAt,
+  });
+  final String peerId;
+  final Uint8List body;
+  final DateTime arrivedAt;
 }

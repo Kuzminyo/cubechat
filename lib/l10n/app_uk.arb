@@ -38,6 +38,7 @@
   "bleUnsupportedHint": "Цей пристрій або платформа не підтримує Bluetooth Low Energy. Спробуйте на смартфоні.",
   "bleScanning": "Сканування…",
   "bleRetry": "Повторити",
+  "bleConnectFailed": "Не вдалося підключитися. Пір поза зоною дії або його Bluetooth-адресу змінено.",
   "bleSignal": "Сигнал",
   "bleConnect": "З'єднатися",
   "bleConnected": "З'єднано",
@@ -99,5 +100,47 @@
   "profileEmergencyWipeAction": "Стерти",
   "cancel": "Скасувати",
   "copy": "Копіювати",
-  "copied": "Скопійовано"
+  "copied": "Скопійовано",
+
+  "channelsNewTitle": "Новий канал",
+  "channelsNewTooltip": "Новий канал",
+  "channelNameLabel": "Назва каналу",
+  "channelPasswordLabel": "Пароль (необов’язково)",
+  "channelJoinAction": "Приєднатися",
+  "channelSubtitle": "Груповий канал · спільний ключ",
+  "chatsStatusChannel": "канал",
+
+  "channelInviteTitle": "Додати учасників",
+  "channelInviteAction": "Запросити",
+  "channelInviteEmpty": "Поки немає відомих пірів. Спершу знайдіть когось на вкладці «Поруч».",
+  "channelInviteSent": "Запрошення надіслано",
+  "channelInviteNoneSent": "Зараз нікого не вдалося досягнути",
+  "channelNameTooLong": "Назва каналу задовга",
+
+  "chatsActionFavorite": "Додати в обрані",
+  "chatsActionUnfavorite": "Прибрати з обраних",
+  "chatsActionDelete": "Видалити чат",
+  "chatsDeleteTitle": "Видалити цей чат?",
+  "chatsDeletePeerHint": "Розмову буде видалено, а піра забуто. Він зможе знайти вас знову через меш.",
+  "chatsDeleteChannelHint": "Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.",
+
+  "chatEditAction": "Редагувати",
+  "chatEditTitle": "Редагувати повідомлення",
+  "chatEditSave": "Зберегти",
+  "chatEdited": "змінено",
+
+  "chatDeleteAction": "Видалити",
+  "chatDeleteTitle": "Видалити повідомлення?",
+  "chatDeleteForMe": "Видалити в мене",
+  "chatDeleteForEveryone": "Видалити в усіх",
+
+  "chatReplyAction": "Відповісти",
+  "chatReplyingTo": "Відповідь для {name}",
+  "chatReplyYou": "себе",
+
+  "peerBlock": "Заблокувати",
+  "peerUnblock": "Розблокувати",
+  "peerMute": "Без звуку",
+  "peerUnmute": "Увімкнути звук",
+  "peerBlockedNote": "Заблоковано — повідомлення відхиляються."
 }

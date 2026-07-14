@@ -13,6 +13,9 @@ abstract final class HiveBoxes {
   /// Opportunistic store-and-forward relay buffer (encrypted frames held
   /// for currently-unreachable peers). Survives restart within the 1h TTL.
   static const relayBuffer = 'cubechat.relay_buffer';
+  /// Joined group channels (name + derived symmetric key). Encrypted at rest
+  /// because the key grants read/write access to the channel.
+  static const channels = 'cubechat.channels';
 
   /// Forward-secret signed prekey private material.
   static const prekeys = 'cubechat.prekeys';
@@ -22,6 +25,7 @@ abstract final class HiveBoxes {
     messages,
     settings,
     relayBuffer,
+    channels,
     prekeys,
   ];
 }

@@ -1,0 +1,45 @@
+cubechat — iOS sideload / встановлення на iOS
+=============================================
+
+cubechat is not on the App Store (it's an off-grid, no-account app).
+On iOS it is installed by sideloading an unsigned .ipa with your own Apple ID.
+
+--- EN -------------------------------------------------------------------
+
+There is no signed .ipa to hand out — every install must be re-signed with
+YOUR Apple ID, so you build/download the .ipa and sign it yourself:
+
+1. Get the .ipa
+   - Build on a Mac:  flutter build ipa
+   - Or download the unsigned artifact from CI:
+     GitHub Actions → workflow "ios" → artifact "cubechat-ios-unsigned-<sha>"
+
+2. Sideload it with a free Apple ID using one of:
+   - Sideloadly   https://sideloadly.io/
+   - AltStore     https://altstore.io/
+   (free Apple ID = 7-day re-sign cycle)
+
+3. Trust the profile on the phone:
+   Settings → General → VPN & Device Management → trust your developer app.
+
+Needs a real iPhone with Bluetooth — the mesh does not work in the Simulator.
+
+--- UK -------------------------------------------------------------------
+
+Готового підписаного .ipa не існує — кожне встановлення підписується ВАШИМ
+Apple ID, тож ви збираєте/завантажуєте .ipa і підписуєте його самі:
+
+1. Отримати .ipa
+   - Зібрати на Mac:  flutter build ipa
+   - Або завантажити непідписаний артефакт із CI:
+     GitHub Actions → workflow «ios» → артефакт «cubechat-ios-unsigned-<sha>»
+
+2. Сайдлоад через безкоштовний Apple ID:
+   - Sideloadly   https://sideloadly.io/
+   - AltStore     https://altstore.io/
+   (безкоштовний Apple ID = перепідпис кожні 7 днів)
+
+3. Довірте профіль на телефоні:
+   Налаштування → Основні → VPN та керування пристроєм → довірити застосунок.
+
+Потрібен реальний iPhone з Bluetooth — у симуляторі мережа не працює.

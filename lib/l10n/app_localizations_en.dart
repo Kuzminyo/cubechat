@@ -113,6 +113,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bleRetry => 'Retry';
 
   @override
+  String get bleConnectFailed =>
+      'Couldn\'t connect. The peer may be out of range, or its Bluetooth address changed.';
+
+  @override
   String get bleSignal => 'Signal';
 
   @override
@@ -299,4 +303,114 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get copied => 'Copied';
+
+  @override
+  String get channelsNewTitle => 'New channel';
+
+  @override
+  String get channelsNewTooltip => 'New channel';
+
+  @override
+  String get channelNameLabel => 'Channel name';
+
+  @override
+  String get channelPasswordLabel => 'Password (optional)';
+
+  @override
+  String get channelJoinAction => 'Join';
+
+  @override
+  String get channelSubtitle => 'Group channel · shared key';
+
+  @override
+  String get chatsStatusChannel => 'channel';
+
+  @override
+  String get channelInviteTitle => 'Add people';
+
+  @override
+  String get channelInviteAction => 'Invite';
+
+  @override
+  String get channelInviteEmpty =>
+      'No known peers yet. Meet someone on the Nearby tab first.';
+
+  @override
+  String get channelInviteSent => 'Invitations sent';
+
+  @override
+  String get channelInviteNoneSent => 'Nobody could be reached right now';
+
+  @override
+  String get channelNameTooLong => 'That channel name is too long';
+
+  @override
+  String get chatsActionFavorite => 'Add to favorites';
+
+  @override
+  String get chatsActionUnfavorite => 'Remove from favorites';
+
+  @override
+  String get chatsActionDelete => 'Delete chat';
+
+  @override
+  String get chatsDeleteTitle => 'Delete this chat?';
+
+  @override
+  String get chatsDeletePeerHint =>
+      'Removes the conversation and forgets this peer. They can find you again over the mesh.';
+
+  @override
+  String get chatsDeleteChannelHint =>
+      'Leaves the channel and removes its history. You will need the key again to rejoin.';
+
+  @override
+  String get chatEditAction => 'Edit';
+
+  @override
+  String get chatEditTitle => 'Edit message';
+
+  @override
+  String get chatEditSave => 'Save';
+
+  @override
+  String get chatEdited => 'edited';
+
+  @override
+  String get chatDeleteAction => 'Delete';
+
+  @override
+  String get chatDeleteTitle => 'Delete message?';
+
+  @override
+  String get chatDeleteForMe => 'Delete for me';
+
+  @override
+  String get chatDeleteForEveryone => 'Delete for everyone';
+
+  @override
+  String get chatReplyAction => 'Reply';
+
+  @override
+  String chatReplyingTo(String name) {
+    return 'Replying to $name';
+  }
+
+  @override
+  String get chatReplyYou => 'yourself';
+
+  @override
+  String get peerBlock => 'Block';
+
+  @override
+  String get peerUnblock => 'Unblock';
+
+  @override
+  String get peerMute => 'Mute';
+
+  @override
+  String get peerUnmute => 'Unmute';
+
+  @override
+  String get peerBlockedNote => 'Blocked — their messages are dropped.';
 }

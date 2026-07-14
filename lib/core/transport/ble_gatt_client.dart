@@ -51,7 +51,23 @@ class BleGattClient {
   Future<void> connect({Duration timeout = const Duration(seconds: 8)}) async {
     if (_running) return;
     _running = true;
+    try {
+      await _connect(timeout);
+    } catch (_) {
+      // A failed connect must not leave the client half-alive: the
+      // connectionState subscription is opened before the GATT connect can
+      // fail, and _running would otherwise stay latched so a later retry on
+      // this object would early-return as if already connected.
+      _running = false;
+      await _inboundSub?.cancel();
+      _inboundSub = null;
+      await _connectionSub?.cancel();
+      _connectionSub = null;
+      rethrow;
+    }
+  }
 
+  Future<void> _connect(Duration timeout) async {
     final log = DebugLog.instance;
     log.log('BLE-CENTRAL', 'connect → ${_device.remoteId.str}');
 

@@ -2,22 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/appear_animation.dart';
+import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../channels/data/channel_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../data/favorites_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 
 enum ChatsFilter { all, unread, mesh, favorites }
+
+/// Location for a chat list entry. Channels route by bare name — their id's
+/// leading `#` is a URL fragment delimiter and can't live in a path.
+String routeForChat(Chat chat) => chat.isChannel
+    ? channelRoute(chat.peerId)
+    : '/chat/${Uri.encodeComponent(chat.peerId)}'
+        '?name=${Uri.encodeQueryComponent(chat.peerName)}';
+
+/// [name] is the channel's chat id, e.g. `#ios-team`.
+String channelRoute(String name) =>
+    '/channel/${Uri.encodeComponent(name.replaceFirst('#', ''))}';
 
 final chatsFilterProvider = StateProvider<ChatsFilter>((_) => ChatsFilter.all);
 final chatsQueryProvider = StateProvider<String>((_) => '');
@@ -39,6 +54,8 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
+  final channels = ref.watch(channelControllerProvider);
+  final favorites = ref.watch(favoritesControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -56,7 +73,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     return Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
-      peerName: peer.displayName,
+      peerName: displayNameForPeer(peer.displayName, peer.pubkeyHex),
       lastMessage: last?.text ?? 'Secured · Noise XX',
       lastTime: last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,
@@ -65,9 +82,41 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       isReachableViaMesh: isReachableViaMesh,
       isVerified: peer.isVerified,
       signKeyRotated: peer.hasUnacknowledgedRotation,
+      isFavorite: favorites.contains(peer.pubkeyHex),
     );
   }).toList();
-  entries.sort((a, b) => b.lastTime.compareTo(a.lastTime));
+
+  // Group channels sit in the same list. They have no online/verified state —
+  // membership is just holding the key. Last-message preview prefixes the
+  // author for readability since a channel bucket mixes senders.
+  for (final ch in channels.values) {
+    final msgs = messagesByChat[ch.name] ?? const [];
+    final last = msgs.isNotEmpty ? msgs.last : null;
+    final unread = msgs.where((m) => !m.isMine).length;
+    final preview = last == null
+        ? 'Group channel'
+        : (!last.isMine && last.authorName != null
+            ? '${last.authorName}: ${last.text}'
+            : last.text);
+    entries.add(Chat(
+      id: ch.name,
+      peerId: ch.name,
+      peerName: ch.name,
+      lastMessage: preview,
+      lastTime: last?.sentAt ?? ch.joinedAt,
+      unreadCount: unread,
+      isMesh: true,
+      isOnline: false,
+      isChannel: true,
+      isFavorite: favorites.contains(ch.name),
+    ));
+  }
+
+  // Favourites float to the top; within each group, most recent first.
+  entries.sort((a, b) {
+    if (a.isFavorite != b.isFavorite) return a.isFavorite ? -1 : 1;
+    return b.lastTime.compareTo(a.lastTime);
+  });
   return entries;
 });
 
@@ -116,6 +165,12 @@ class ChatsListScreen extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(t.chatsTitle, style: AppTypography.display()),
+                      ),
+                      IconButton(
+                        onPressed: () => _showNewChannelDialog(context, ref, t),
+                        icon: Icon(Icons.group_add_outlined,
+                            color: AppColors.brandPrimary),
+                        tooltip: t.channelsNewTooltip,
                       ),
                     ],
                   ),
@@ -172,16 +227,15 @@ class ChatsListScreen extends ConsumerWidget {
                 itemBuilder: (_, i) {
                   final chat = filtered[i];
                   return AppearAnimation(
-                    delay: Duration(milliseconds: 40 * i),
+                    delay: AppearAnimation.stagger(i),
                     child: GlassCard(
                       padding: EdgeInsets.zero,
                       borderRadius: 18,
                       child: ChatTile(
                         chat: chat,
-                        onTap: () => context.push(
-                          '/chat/${Uri.encodeComponent(chat.peerId)}'
-                          '?name=${Uri.encodeQueryComponent(chat.peerName)}',
-                        ),
+                        onTap: () => context.push(routeForChat(chat)),
+                        onLongPressAt: (pos) =>
+                            _showChatActions(context, ref, chat, t, pos),
                       ),
                     ),
                   );
@@ -338,4 +392,218 @@ Future<void> _confirmWipe(
       ],
     ),
   );
+}
+
+/// Long-press actions for one chat: star it, or delete it. A small popup
+/// anchored at [pos], floating above the nav bar.
+Future<void> _showChatActions(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+  AppLocalizations t,
+  Offset pos,
+) async {
+  final favorited = chat.isFavorite;
+
+  final action = await showContextPopup<String>(
+    context: context,
+    globalPosition: pos,
+    items: [
+      PopupMenuItem<String>(
+        value: 'favorite',
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(favorited ? Icons.star : Icons.star_border,
+                size: 19, color: AppColors.brandPrimary),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                favorited ? t.chatsActionUnfavorite : t.chatsActionFavorite,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'delete',
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.delete_outline, size: 19, color: AppColors.danger),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(t.chatsActionDelete,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(color: AppColors.danger, fontSize: 14)),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  if (action == 'favorite') {
+    await ref.read(favoritesControllerProvider.notifier).toggle(chat.id);
+    return;
+  }
+  if (action != 'delete' || !context.mounted) return;
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      title: Text(
+        t.chatsDeleteTitle,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Text(
+        chat.isChannel ? t.chatsDeleteChannelHint : t.chatsDeletePeerHint,
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(t.cancel,
+              style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(t.chatsActionDelete,
+              style: const TextStyle(color: AppColors.danger)),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+
+  await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
+  await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
+  if (chat.isChannel) {
+    // Leaving forgets the key; without it the channel's broadcasts become
+    // unreadable noise we simply relay.
+    await ref.read(channelControllerProvider.notifier).leave(chat.id);
+  } else {
+    // Forget the roster entry too, otherwise the tile reappears empty.
+    await ref.read(knownPeersControllerProvider.notifier).forget(chat.id);
+  }
+}
+
+/// Prompt for a channel name + optional password, join it, and open it.
+/// Joining is local — deriving the shared key makes you a member the moment a
+/// matching-key message arrives on the mesh.
+Future<void> _showNewChannelDialog(
+  BuildContext context,
+  WidgetRef ref,
+  AppLocalizations t,
+) async {
+  final nameCtrl = TextEditingController();
+  final pwCtrl = TextEditingController();
+
+  InputDecoration deco(String hint, {String? prefix}) => InputDecoration(
+        hintText: hint,
+        prefixText: prefix,
+        prefixStyle: TextStyle(color: AppColors.textOnGlassDim),
+        hintStyle: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 14),
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.glassBorder),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.brandPrimary),
+        ),
+      );
+
+  final joined = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      title: Text(
+        t.channelsNewTitle,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: nameCtrl,
+            autofocus: true,
+            cursorColor: AppColors.brandPrimary,
+            style: TextStyle(color: AppColors.textOnGlass),
+            decoration: deco(t.channelNameLabel, prefix: '#'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: pwCtrl,
+            obscureText: true,
+            cursorColor: AppColors.brandPrimary,
+            style: TextStyle(color: AppColors.textOnGlass),
+            decoration: deco(t.channelPasswordLabel),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(t.cancel,
+              style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () async {
+            final name = nameCtrl.text.trim();
+            if (name.isEmpty) return;
+            final messenger = ScaffoldMessenger.of(ctx);
+            try {
+              final ch = await ref
+                  .read(channelControllerProvider.notifier)
+                  .join(name, password: pwCtrl.text);
+              if (ctx.mounted) Navigator.of(ctx).pop(ch.name);
+            } catch (_) {
+              // The only reachable failure here is a name that wouldn't fit in
+              // a channel invite — an empty one is already guarded above.
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              messenger.showSnackBar(
+                SnackBar(
+                  backgroundColor: AppColors.danger.withValues(alpha: 0.9),
+                  content: Text(
+                    t.channelNameTooLong,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              );
+            }
+          },
+          child: Text(t.channelJoinAction,
+              style: const TextStyle(color: AppColors.brandPrimary)),
+        ),
+      ],
+    ),
+  );
+
+  nameCtrl.dispose();
+  pwCtrl.dispose();
+
+  if (joined != null && context.mounted) {
+    context.push(channelRoute(joined));
+  }
 }

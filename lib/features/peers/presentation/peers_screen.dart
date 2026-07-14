@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -122,7 +121,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
         return [
           for (var i = 0; i < state.peers.length; i++)
             AppearAnimation(
-              delay: Duration(milliseconds: 40 * i),
+              delay: AppearAnimation.stagger(i),
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Consumer(
@@ -485,29 +484,60 @@ Future<void> _connectAndOpen(
   DiscoveredPeer peer,
   AppLocalizations t,
 ) async {
-  final messaging = ref.read(messagingServiceProvider);
   final label = peer.advertisedName.isNotEmpty
       ? peer.advertisedName
       : t.bleUnknownPeer;
-
-  // Reconstruct the BluetoothDevice handle from the scan-time peer id.
-  final device = BluetoothDevice.fromId(peer.id);
 
   // Navigate immediately so the user sees the "handshaking..." UI; the
   // connect/handshake happens in the background and Riverpod will repaint
   // the chat screen as the session progresses.
   context.push('/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}');
 
+  await _connectWithFeedback(context, ref, peer, label, t);
+}
+
+/// Runs the retrying connect and, if it still fails, surfaces a readable
+/// message with a Retry action. Kept separate from [_connectAndOpen] so the
+/// action re-runs only the connect — pushing the chat route a second time
+/// would stack another screen.
+Future<void> _connectWithFeedback(
+  BuildContext context,
+  WidgetRef ref,
+  DiscoveredPeer peer,
+  String label,
+  AppLocalizations t,
+) async {
+  final messaging = ref.read(messagingServiceProvider);
+  final scanner = ref.read(bleScannerProvider);
   try {
-    await messaging.connectAsInitiator(device, displayName: label);
-  } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-        content: Text('$e', style: const TextStyle(color: Colors.white)),
-      ),
+    await messaging.connectAsInitiatorWithRetry(
+      deviceId: peer.id,
+      displayName: label,
+      refreshId: () => scanner.refreshPeerId(peer.advertisedName),
     );
+  } catch (_) {
+    // The per-attempt cause is already in the debug log; the user gets the
+    // actionable version.
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.danger.withValues(alpha: 0.9),
+          duration: const Duration(seconds: 6),
+          content: Text(
+            t.bleConnectFailed,
+            style: const TextStyle(color: Colors.white),
+          ),
+          action: SnackBarAction(
+            label: t.bleRetry,
+            textColor: Colors.white,
+            onPressed: () {
+              _connectWithFeedback(context, ref, peer, label, t);
+            },
+          ),
+        ),
+      );
   }
 }
 
