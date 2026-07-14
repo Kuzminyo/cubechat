@@ -128,7 +128,21 @@ class CubechatBlePeripheralPlugin(
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return false
         val adapter = mgr.adapter ?: return false
-        return adapter.bluetoothLeAdvertiser != null && adapter.isMultipleAdvertisementSupported
+        // NOTE: do NOT gate on isMultipleAdvertisementSupported(). That asks
+        // whether the chipset can run SEVERAL concurrent advertisements;
+        // cubechat runs exactly one, and plenty of phones that advertise fine
+        // answer false. Gating on it switched the peripheral off on capable
+        // hardware, so the device never became discoverable.
+        //
+        // bluetoothLeAdvertiser is null while Bluetooth is off, so a false here
+        // can also just mean "adapter down" - the Dart side checks the adapter
+        // first and retries when it comes back on.
+        return try {
+            adapter.bluetoothLeAdvertiser != null
+        } catch (e: SecurityException) {
+            android.util.Log.w("CubechatBlePeripheral", "isSupported: denied", e)
+            false
+        }
     }
 
     private fun ensurePermissions(): Boolean {

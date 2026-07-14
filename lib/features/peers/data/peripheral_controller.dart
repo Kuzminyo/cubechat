@@ -66,6 +66,16 @@ final peripheralControllerProvider =
 class PeripheralController extends Notifier<PeripheralState> {
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
 
+  /// Last name/fingerprint we were asked to advertise, replayed by the adapter
+  /// watcher when Bluetooth returns.
+  String? _lastPeerName;
+  String? _lastFingerprint;
+
+  /// True while a [start] is in flight. The adapter stream replays its current
+  /// value to a new listener, so without this the watcher would re-enter
+  /// [start] while the first call is still walking its checks.
+  bool _starting = false;
+
   @override
   PeripheralState build() {
     ref.onDispose(() {
@@ -100,19 +110,34 @@ class PeripheralController extends Notifier<PeripheralState> {
   /// replaced with the Noise pubkey nickname once M2 lands.
   Future<void> start({required String peerName, String? pubkeyFingerprint}) async {
     final log = DebugLog.instance;
+    if (_starting) {
+      log.log('PERIPH-CTL', 'start already in flight — skipping');
+      return;
+    }
     log.log('PERIPH-CTL', 'start(peerName=$peerName)');
+    // Remembered so the adapter watcher can restart advertising by itself when
+    // Bluetooth comes back, without waiting for the screen to call us again.
+    _lastPeerName = peerName;
+    _lastFingerprint = pubkeyFingerprint;
     if (!PlatformInfo.isMobile) {
       log.log('PERIPH-CTL', 'unsupported platform');
       state = state.copyWith(status: PeripheralStatus.unsupported);
       return;
     }
 
-    final peripheral = ref.read(blePeripheralProvider);
-    if (!await peripheral.isSupported()) {
-      log.log('PERIPH-CTL', 'native isSupported = false');
-      state = state.copyWith(status: PeripheralStatus.unsupported);
-      return;
+    _starting = true;
+    try {
+      await _startChecked(peerName, pubkeyFingerprint, log);
+    } finally {
+      _starting = false;
     }
+  }
+
+  Future<void> _startChecked(
+    String peerName,
+    String? pubkeyFingerprint,
+    DebugLog log,
+  ) async {
 
     final perms = await const BlePermissions().check();
     if (perms != BlePermissionState.granted && perms != BlePermissionState.notApplicable) {
@@ -121,12 +146,27 @@ class PeripheralController extends Notifier<PeripheralState> {
       return;
     }
 
+    // Wire the watcher before any adapter-dependent bail-out — it's what
+    // re-runs start() once Bluetooth is back. Wiring it after the checks meant
+    // a phone whose adapter was down when the Peers screen opened stayed dark
+    // until the app was restarted.
     await _wireAdapterWatcher();
 
     final adapter = await FlutterBluePlus.adapterState.first;
     if (adapter != BluetoothAdapterState.on) {
       log.log('PERIPH-CTL', 'adapter is $adapter, not starting');
       state = state.copyWith(status: PeripheralStatus.notReady);
+      return;
+    }
+
+    // Ask the hardware only once permissions and the adapter are actually in
+    // place. The native check reads BluetoothAdapter.bluetoothLeAdvertiser,
+    // which is null while Bluetooth is off — asking first (as this used to)
+    // brands a perfectly capable phone permanently "unsupported".
+    final peripheral = ref.read(blePeripheralProvider);
+    if (!await peripheral.isSupported()) {
+      log.log('PERIPH-CTL', 'native isSupported = false — no BLE advertiser');
+      state = state.copyWith(status: PeripheralStatus.unsupported);
       return;
     }
 
@@ -150,14 +190,18 @@ class PeripheralController extends Notifier<PeripheralState> {
   }
 
   Future<void> _wireAdapterWatcher() async {
+    // Idempotent: start() calls this on every invocation, and the watcher can
+    // itself call start() — cancelling and re-listening from inside our own
+    // callback would be needlessly hairy.
+    if (_adapterSub != null) return;
     final peripheral = ref.read(blePeripheralProvider);
-    await _adapterSub?.cancel();
     _adapterSub = FlutterBluePlus.adapterState.listen((s) async {
       if (s == BluetoothAdapterState.on) {
-        if (state.status == PeripheralStatus.notReady ||
-            state.status == PeripheralStatus.idle) {
-          // Adapter came back; let the screen call start() again with a fresh name.
-          state = state.copyWith(status: PeripheralStatus.idle);
+        final name = _lastPeerName;
+        if (state.status != PeripheralStatus.broadcasting && name != null) {
+          DebugLog.instance
+              .log('PERIPH-CTL', 'adapter back on — re-starting advertising');
+          await start(peerName: name, pubkeyFingerprint: _lastFingerprint);
         }
       } else {
         await peripheral.stop();
