@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
@@ -11,6 +13,14 @@ import '../theme/colors.dart';
 /// [RepaintBoundary]: [child] is a *sibling* of the painter, never a descendant
 /// of the animation. (It used to sit inside the `AnimatedBuilder`, which
 /// rebuilt the entire app subtree on every one of the animation's frames.)
+///
+/// The drift is driven by a ~30 fps wall-clock ticker rather than an
+/// [AnimationController] (which repaints every vsync — 120 fps on ProMotion).
+/// The blobs rebuild four radial-gradient shaders per paint, so at 120 fps the
+/// backdrop kept the GPU busy even while the app sat idle; the drift is far too
+/// slow (24 s period) for the difference between 30 and 120 fps to be visible.
+/// The ticker also pauses whenever the app leaves the foreground, so an
+/// idle-but-open app never spins the GPU on an animation nobody can see.
 ///
 /// [focus] lets the background react to navigation: pass the active tab index
 /// and the blobs ease sideways, so each tab has its own light. Routes outside
@@ -28,11 +38,14 @@ class AuroraBackground extends StatefulWidget {
 }
 
 class _AuroraBackgroundState extends State<AuroraBackground>
-    with TickerProviderStateMixin {
-  late final AnimationController _drift = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 24),
-  )..repeat();
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  /// Drift phase in [0, 1), advanced ~30 times/second off wall-clock time.
+  final ValueNotifier<double> _drift = ValueNotifier<double>(0);
+  final Stopwatch _clock = Stopwatch();
+  Timer? _ticker;
+
+  static const Duration _driftPeriod = Duration(seconds: 24);
+  static const Duration _tickInterval = Duration(milliseconds: 33); // ~30 fps
 
   /// Drives the ease between the previous and the current [widget.focus].
   /// Starts completed so the first frame paints at the requested focus.
@@ -44,6 +57,41 @@ class _AuroraBackgroundState extends State<AuroraBackground>
 
   late double _focusFrom = widget.focus;
   late double _focusTo = widget.focus;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Only run the ticker while we're actually on screen.
+    if (WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      _startTicker();
+    }
+  }
+
+  void _startTicker() {
+    if (_ticker != null) return;
+    _clock.start();
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      final periodMs = _driftPeriod.inMilliseconds;
+      _drift.value = (_clock.elapsedMilliseconds % periodMs) / periodMs;
+    });
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+    _clock.stop(); // preserves elapsed, so the drift resumes seamlessly
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTicker();
+    } else {
+      _stopTicker();
+    }
+  }
 
   @override
   void didUpdateWidget(covariant AuroraBackground old) {
@@ -65,6 +113,8 @@ class _AuroraBackgroundState extends State<AuroraBackground>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTicker();
     _drift.dispose();
     _focus.dispose();
     super.dispose();
@@ -102,7 +152,7 @@ class _AuroraPainter extends CustomPainter {
     required this.focusTo,
   }) : super(repaint: Listenable.merge([drift, focus]));
 
-  final Animation<double> drift;
+  final ValueListenable<double> drift;
   final Animation<double> focus;
   final double focusFrom;
   final double focusTo;
@@ -113,10 +163,19 @@ class _AuroraPainter extends CustomPainter {
     colors: [AppColors.bgTop, AppColors.bgBottom],
   );
 
+  // The base gradient depends only on size, so build its shader once per size
+  // and reuse it across frames instead of rebuilding it on every paint.
+  Shader? _baseShader;
+  Size? _baseShaderSize;
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    canvas.drawRect(rect, Paint()..shader = _base.createShader(rect));
+    if (_baseShader == null || _baseShaderSize != size) {
+      _baseShader = _base.createShader(rect);
+      _baseShaderSize = size;
+    }
+    canvas.drawRect(rect, Paint()..shader = _baseShader!);
 
     final t = drift.value * 2 * math.pi;
     final f = lerpDouble(

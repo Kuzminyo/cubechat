@@ -8,8 +8,10 @@ import 'core/ble/background_mode_controller.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
+import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
 import 'core/theme/app_theme.dart';
+import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
 import 'l10n/app_localizations.dart';
@@ -39,6 +41,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     // Route to the conversation when a message notification is tapped.
     NotificationService.instance.onSelectChat = _openChat;
+    // Send an inline reply typed into a message notification straight over the
+    // mesh, without opening the app.
+    NotificationService.instance.onReply = _replyToChat;
     // Cold start via a notification tap: open that chat after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final payload = await NotificationService.instance.initialChatPayload();
@@ -65,6 +70,20 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     );
   }
 
+  /// Send the text of an inline notification reply to [chatId] — a `#channel`
+  /// broadcast or a 1:1 peer send. Best-effort; a send failure is already
+  /// surfaced/logged inside the messaging layer.
+  void _replyToChat(String chatId, String text) {
+    final messaging = ref.read(messagingServiceProvider);
+    if (chatId.startsWith('#')) {
+      unawaited(messaging.sendChannelText(chatId, text));
+    } else {
+      unawaited(messaging.sendText(chatId, text));
+    }
+    // A reply means the user has seen the conversation — clear its badge.
+    ref.read(readMarkersControllerProvider.notifier).markRead(chatId);
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -88,6 +107,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       final open = AppLifecycle.instance.activeChatId;
       if (open != null) {
         unawaited(NotificationService.instance.clearForChat(open));
+        ref.read(readMarkersControllerProvider.notifier).markRead(open);
       }
     }
   }

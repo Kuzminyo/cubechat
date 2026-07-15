@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **246 passing tests** (`flutter test`, including known-answer
+covered by **269 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -34,7 +34,7 @@ UI work but have no BLE.
 - [x] M5.5 — Group channels, receipts/reactions, message edit/delete, reply/quote, block/mute peers
 - [x] M6 — Nostr internet fallback (see below)
 
-> The `[x]` marks above reflect what's implemented and covered by the 246-test
+> The `[x]` marks above reflect what's implemented and covered by the 269-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -53,10 +53,15 @@ UI work but have no BLE.
   *for me* (local) or *for everyone* (retracted over the wire)
 - **Images** and **voice messages** (chunked, with a signed manifest and SHA-256
   reassembly check; live waveform while recording)
+- **In-app gallery** — a custom multi-select photo picker (send several at once)
+  and a Telegram-style swipeable full-screen viewer with pinch-zoom, save and
+  share
 - **Group channels** — shared-key rooms broadcast across the mesh (`/join #room`)
 - **Channel invites** — hand a peer the channel key over their 1:1 encrypted link
-- **Favorites**, unread badges, search, and system notifications (suppressed for
-  the chat you're actively reading)
+- **Favorites**, real unread tracking (badge + highlighted tile that clears when
+  you open the chat), search, and rich **MessagingStyle notifications** with the
+  sender's avatar and an inline **Reply** box (suppressed for the chat you're
+  actively reading)
 
 **Trust & privacy**
 - **Out-of-band verification**: compare two fingerprints in person to confirm no
@@ -163,6 +168,7 @@ Every BLE write/notification carries one **frame**: `[type:1][payload:N]`.
 Frame
  ├─ noiseHandshake1/2/3   raw Noise XX messages
  ├─ peerAnnouncement       signed (pubkey, nickname, signed prekey) broadcast
+ ├─ fragment               [fragId:4][index:1][count:1][slice] — link-layer split
  ├─ reset                  drop-your-session
  └─ transport              TransportEnvelope:
         [originHash:8][destHash:8][msgId:16][ttl:1][body]
@@ -176,6 +182,16 @@ Frame
 each relay decrements it. Short text is padded to a 48-byte bucket to hide
 length from passive sniffers.
 
+**MTU-aware framing.** Real iOS↔Android links often negotiate an ATT MTU well
+below the ~247 the code once assumed, and a frame larger than the link's usable
+payload is silently truncated on the wire (the AEAD open then fails). Media
+chunks are sized from the link's actual `negotiatedMtu` (`mtu_budget.dart`), and
+any frame that still doesn't fit is split into `fragment` frames and rejoined by
+the receiver *before* dispatch (`frame_fragment.dart`) — transparent to dedup,
+replay and relay. The native peripheral side (Swift/Kotlin) queues notifies and
+drains them on the BLE "ready to send" callback, so a media burst no longer
+overruns the transmit queue and aborts the transfer.
+
 ---
 
 ## Architecture
@@ -183,7 +199,10 @@ length from passive sniffers.
 Flutter + Riverpod (Notifier pattern), `go_router` with a `StatefulShellRoute`
 so tabs keep their state. The floating glass nav bar and chat-input capsule are
 overlays, not welded plates; the animated aurora backdrop is a single
-`CustomPainter` so it never rebuilds the widget tree.
+`CustomPainter` so it never rebuilds the widget tree, and its drift runs off a
+~30 fps wall-clock ticker (paused while backgrounded) rather than every vsync —
+the blobs rebuild four shaders per paint, so at 120 fps on ProMotion it ran the
+GPU hot even while the app sat idle.
 
 ```
 lib/
@@ -221,6 +240,17 @@ lib/
 It starts automatically when the Peers screen opens (permissions/adapter
 permitting) and surfaces as a "Broadcasting · N centrals connected" chip.
 
+### Background delivery on aggressive OEMs (Xiaomi/MIUI, etc.)
+
+BLE delivery while the app is backgrounded needs the OS to keep the process
+alive. Most phones are fine once **Background mode** is on (Profile → Background)
+and the battery-optimisation exemption is granted (the "Battery exempt" button
+there). MIUI/HyperOS (Xiaomi/Redmi/POCO) additionally kill apps unless
+**Autostart** is enabled for cubechat — grant it in *Settings → Apps → cubechat →
+Autostart* (or Security app → Autostart), and set battery saver to *No
+restrictions*. Without those, messages sent while cubechat is closed only arrive
+after the peer reopens it.
+
 ---
 
 ## Build & run
@@ -230,7 +260,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 246 tests, incl. crypto known-answer vectors
+flutter test         # 269 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -275,7 +305,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **246 tests** across 29 files. Highlights:
+`flutter test` — **269 tests** across 32 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto

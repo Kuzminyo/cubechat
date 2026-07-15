@@ -41,8 +41,12 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
 
-  # Media picker (M5.4 — image transfer)
-  image_picker: ^1.1.2
+  # Telegram-style gallery: custom device-photo grid picker (multi-select),
+  # plus save-to-gallery and share from the in-chat media viewer. (Replaced the
+  # one-shot image_picker.)
+  photo_manager: ^3.6.0
+  share_plus: ^10.1.4
+  saver_gallery: ^4.0.1
 
   # Voice messages (audio capture + playback)
   record: ^6.0.0

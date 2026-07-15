@@ -26,6 +26,10 @@ class ChatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    // Unread chats "light up": a heavier name and a brighter, non-dimmed
+    // preview line, on top of the count badge — so a glance down the list lands
+    // on the conversations with something new.
+    final unread = chat.unreadCount > 0;
     final tile = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -57,7 +61,8 @@ class ChatTile extends StatelessWidget {
                             style: TextStyle(
                               color: AppColors.textOnGlass,
                               fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontWeight:
+                                  unread ? FontWeight.w800 : FontWeight.w600,
                             ),
                           ),
                         ),
@@ -123,9 +128,13 @@ class ChatTile extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: AppColors.textOnGlassDim,
+                              color: unread
+                                  ? AppColors.textOnGlass
+                                  : AppColors.textOnGlassDim,
                               fontSize: 13,
                               height: 1.3,
+                              fontWeight:
+                                  unread ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),
                         ),

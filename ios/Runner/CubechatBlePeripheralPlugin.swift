@@ -32,6 +32,14 @@ final class CubechatBlePeripheralPlugin: NSObject {
   private var running = false
   private var pendingStart = false
 
+  /// Outbound notify backpressure. `updateValue` returns false when CoreBluetooth's
+  /// transmit queue is full; frames wait here and drain from
+  /// `peripheralManagerIsReadyToUpdateSubscribers`. Without this, a media burst
+  /// filled the system queue and the whole transfer aborted (see the
+  /// "notify failed on image chunk N" field bug).
+  private var notifyQueue: [Data] = []
+  private let maxNotifyQueue = 4096
+
   init(messenger: FlutterBinaryMessenger) {
     self.methodChannel = FlutterMethodChannel(
       name: "cubechat/ble_peripheral", binaryMessenger: messenger)
@@ -119,6 +127,7 @@ final class CubechatBlePeripheralPlugin: NSObject {
     outboundChar = nil
     peerInfoChar = nil
     subscribers.removeAll()
+    notifyQueue.removeAll()
   }
 
   private func configureAndStart() {
@@ -168,14 +177,36 @@ final class CubechatBlePeripheralPlugin: NSObject {
     emit(["type": "advertising", "ok": true])
   }
 
+  /// Enqueue a frame for notify and kick the drain. Returns true when the frame
+  /// was accepted into our queue (there is at least one subscriber and a live
+  /// characteristic) — a full CoreBluetooth transmit queue is handled by the
+  /// drain + `peripheralManagerIsReadyToUpdateSubscribers`, not surfaced as a
+  /// failure to Dart.
   private func notifyInbound(_ data: Data) -> Bool {
-    guard let mgr = manager, let ch = inboundChar, !subscribers.isEmpty else {
+    guard manager != nil, inboundChar != nil, !subscribers.isEmpty else {
       return false
     }
-    // updateValue returns false if the system queue is full; the manager will
-    // call peripheralManagerIsReady(toUpdateSubscribers:) when there is room
-    // again. We don't requeue here — the upper transport layer (M3) will.
-    return mgr.updateValue(data, for: ch, onSubscribedCentrals: nil)
+    if notifyQueue.count >= maxNotifyQueue {
+      // Sustained overrun — drop the oldest so we bound memory. The reassembler
+      // on the far side times the partial transfer out.
+      notifyQueue.removeFirst()
+    }
+    notifyQueue.append(data)
+    drainNotifyQueue()
+    return true
+  }
+
+  /// Feed the queue into CoreBluetooth until `updateValue` reports the transmit
+  /// queue is full, then stop — the ready callback resumes us.
+  private func drainNotifyQueue() {
+    guard let mgr = manager, let ch = inboundChar else { return }
+    while let head = notifyQueue.first {
+      if mgr.updateValue(head, for: ch, onSubscribedCentrals: nil) {
+        notifyQueue.removeFirst()
+      } else {
+        break
+      }
+    }
   }
 
   private func encodePeerInfo() -> Data {
@@ -244,6 +275,11 @@ extension CubechatBlePeripheralPlugin: CBPeripheralManagerDelegate {
   ) {
     subscribers.remove(central.identifier)
     emit(["type": "disconnected", "centralId": central.identifier.uuidString])
+  }
+
+  /// CoreBluetooth's transmit queue has room again — resume draining.
+  func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+    drainNotifyQueue()
   }
 
   func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {

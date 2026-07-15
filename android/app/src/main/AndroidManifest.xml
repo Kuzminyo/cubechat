@@ -28,6 +28,14 @@
     <!-- Voice messages (mic capture for press-and-hold recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- In-app gallery: read device photos (Android 13+) with legacy fallback,
+         and write to the gallery on pre-scoped-storage devices. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Background mesh: keep BLE alive when the app isn't in the foreground -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />

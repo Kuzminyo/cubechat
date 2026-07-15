@@ -39,7 +39,9 @@ import 'dedup_cache.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
+import 'frame_fragment.dart';
 import 'image_reassembly.dart';
+import 'mtu_budget.dart';
 import 'inner_payload.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
@@ -118,11 +120,6 @@ class MessagingService {
   /// sends the manifest.
   static const int _maxPendingFsChunks = 8192;
 
-  /// Conservative single-frame ceiling. A forward-secret text frame whose
-  /// total wire size would exceed this falls back to SealedBox so we never
-  /// produce a frame the BLE MTU (247) can't carry in one write.
-  static const int _maxFsWireBytes = 240;
-
   final Ref _ref;
   final _clients = <String, BleGattClient>{}; // central-side clients
   final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
@@ -149,6 +146,13 @@ class MessagingService {
   /// Opportunistic store-and-forward buffer: encrypted frames held for peers
   /// that aren't reachable right now, flushed when they next connect to us.
   final StoreForwardCache _store = StoreForwardCache();
+
+  /// Reassembles [FrameType.fragment] frames back into whole frames before
+  /// dispatch. A frame too big for a link's negotiated MTU is split on the way
+  /// out (see [_writeFrameToClient] / [_notifyFrameToPeripheral] /
+  /// [_fanoutAllLinks]) and rejoined here — the fix for FS-text and media that
+  /// were being truncated on low-MTU iOS↔Android links.
+  final FrameFragmentReassembler _fragments = FrameFragmentReassembler();
 
   /// Our own outgoing messages that were queued because the recipient was
   /// unreachable. Keyed by the envelope msgId hex so the flush path can flip
@@ -671,22 +675,19 @@ class MessagingService {
           final tagged = _tagBody(_cipherX3dh, fsBody);
           // wire = frame(1) + envelope header + tagged body
           final wireLen = 1 + TransportEnvelope.headerLen + tagged.length;
-          if (wireLen <= _maxFsWireBytes) {
-            body = tagged;
-            messages.markForwardSecret(canonicalId, msg.id);
-            if (chatId != canonicalId) {
-              messages.markForwardSecret(chatId, msg.id);
-            }
-            DebugLog.instance.log(
-                'CRYPTO',
-                'sendText: forward-secret (X3DH) to $canonicalId '
-                    '(${wireLen}B wire)');
-          } else {
-            DebugLog.instance.log(
-                'CRYPTO',
-                'sendText: FS frame ${wireLen}B > $_maxFsWireBytes — '
-                    'falling back to SealedBox');
+          // Fragmentation now carries any frame across a low-MTU link, so we no
+          // longer downgrade a large FS frame to SealedBox (which is bigger
+          // anyway, and on a ~207B iOS link was itself truncated). Forward
+          // secrecy applies to every text to a peer whose prekey we hold.
+          body = tagged;
+          messages.markForwardSecret(canonicalId, msg.id);
+          if (chatId != canonicalId) {
+            messages.markForwardSecret(chatId, msg.id);
           }
+          DebugLog.instance.log(
+              'CRYPTO',
+              'sendText: forward-secret (X3DH) to $canonicalId '
+                  '(${wireLen}B wire)');
         } catch (e) {
           DebugLog.instance.log('CRYPTO',
               'sendText: FS path failed ($e) — falling back to SealedBox');
@@ -737,7 +738,7 @@ class MessagingService {
         final client = _clients[transportId];
         if (client != null && client.isConnected) {
           try {
-            await client.writeOutbound(wireBytes);
+            await _writeFrameToClient(client, wireBytes);
             deliveredVia = 1;
           } catch (e) {
             DebugLog.instance
@@ -746,8 +747,7 @@ class MessagingService {
         }
         if (deliveredVia == 0) {
           try {
-            final ok =
-                await _ref.read(blePeripheralProvider).notifyInbound(wireBytes);
+            final ok = await _notifyFrameToPeripheral(wireBytes);
             if (ok) deliveredVia = 1;
           } catch (_) {}
         }
@@ -863,8 +863,19 @@ class MessagingService {
 
     try {
       final imageId = ImageChunk.newImageId();
-      final total = (bytes.length + ImageChunk.maxDataBytes - 1) ~/
-          ImageChunk.maxDataBytes;
+      // Size chunks to the link's real MTU so a full chunk-frame fits one BLE
+      // write. A fixed 140 overflowed low-MTU iOS links (the frame was
+      // truncated, the AEAD open then failed). Fragmentation is the safety net,
+      // but a chunk that fits avoids per-fragment overhead and the notify-queue
+      // churn that aborted transfers around chunk 300 on iOS peripheral links.
+      final imgTid = session?.peerId;
+      final imgDirect = imgTid != null ? _clients[imgTid] : null;
+      final effMtu = (imgDirect != null && imgDirect.isConnected)
+          ? effectivePayload(imgDirect.negotiatedMtu)
+          : conservativeEffectivePayload();
+      final chunkData =
+          mediaChunkDataBudget(effMtu, ceiling: ImageChunk.maxDataBytes);
+      final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > ImageChunk.maxChunks) {
         throw StateError(
           'image too large: $total chunks > ${ImageChunk.maxChunks} cap',
@@ -892,8 +903,8 @@ class MessagingService {
             'sendImage: forward-secret (X3DH) media to $canonicalId');
       }
       for (var i = 0; i < total; i++) {
-        final start = i * ImageChunk.maxDataBytes;
-        final end = (start + ImageChunk.maxDataBytes).clamp(0, bytes.length);
+        final start = i * chunkData;
+        final end = (start + chunkData).clamp(0, bytes.length);
         final chunk = ImageChunk(
           imageId: imageId,
           seq: i,
@@ -927,14 +938,12 @@ class MessagingService {
         if (transportId != null) {
           final client = _clients[transportId];
           if (client != null && client.isConnected) {
-            await client.writeOutbound(frameBytes);
+            await _writeFrameToClient(client, frameBytes);
           } else {
-            final ok = await _ref
-                .read(blePeripheralProvider)
-                .notifyInbound(frameBytes);
+            final ok = await _notifyFrameToPeripheral(frameBytes);
             if (!ok) {
               DebugLog.instance.log('IMG',
-                  'chunk $i/$total notify returned false — link congested?');
+                  'chunk $i/$total notify rejected — no subscribers?');
               throw StateError('notify failed on image chunk $i/$total');
             }
           }
@@ -1025,8 +1034,15 @@ class MessagingService {
 
     try {
       final audioId = AudioChunk.newAudioId();
-      final total = (bytes.length + AudioChunk.maxDataBytes - 1) ~/
-          AudioChunk.maxDataBytes;
+      // Size chunks to the link's real MTU (see sendImage for the why).
+      final audTid = session?.peerId;
+      final audDirect = audTid != null ? _clients[audTid] : null;
+      final effMtu = (audDirect != null && audDirect.isConnected)
+          ? effectivePayload(audDirect.negotiatedMtu)
+          : conservativeEffectivePayload();
+      final chunkData =
+          mediaChunkDataBudget(effMtu, ceiling: AudioChunk.maxDataBytes);
+      final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > AudioChunk.maxChunks) {
         throw StateError(
           'audio too large: $total chunks > ${AudioChunk.maxChunks} cap',
@@ -1054,8 +1070,8 @@ class MessagingService {
             'sendAudio: forward-secret (X3DH) media to $canonicalId');
       }
       for (var i = 0; i < total; i++) {
-        final start = i * AudioChunk.maxDataBytes;
-        final end = (start + AudioChunk.maxDataBytes).clamp(0, bytes.length);
+        final start = i * chunkData;
+        final end = (start + chunkData).clamp(0, bytes.length);
         final chunk = AudioChunk(
           audioId: audioId,
           seq: i,
@@ -1093,14 +1109,12 @@ class MessagingService {
         if (transportId != null) {
           final client = _clients[transportId];
           if (client != null && client.isConnected) {
-            await client.writeOutbound(frameBytes);
+            await _writeFrameToClient(client, frameBytes);
           } else {
-            final ok = await _ref
-                .read(blePeripheralProvider)
-                .notifyInbound(frameBytes);
+            final ok = await _notifyFrameToPeripheral(frameBytes);
             if (!ok) {
               DebugLog.instance
-                  .log('VOICE', 'chunk $i/$total notify returned false');
+                  .log('VOICE', 'chunk $i/$total notify rejected');
               throw StateError('notify failed on audio chunk $i/$total');
             }
           }
@@ -1444,6 +1458,8 @@ class MessagingService {
           threadKey: channel.name,
           title: channel.name,
           body: '${inviter.displayName} added you to this channel',
+          senderId: channel.name,
+          isGroup: true,
         ));
       }
     } catch (e) {
@@ -1549,12 +1565,12 @@ class MessagingService {
       final client = _clients[transportId];
       if (client != null && client.isConnected) {
         try {
-          await client.writeOutbound(frameBytes);
+          await _writeFrameToClient(client, frameBytes);
           return 1;
         } catch (_) {/* fall through to notify / fan-out */}
       }
       try {
-        if (await _ref.read(blePeripheralProvider).notifyInbound(frameBytes)) {
+        if (await _notifyFrameToPeripheral(frameBytes)) {
           return 1;
         }
       } catch (_) {}
@@ -1863,6 +1879,8 @@ class MessagingService {
       threadKey: channel.name,
       title: channel.name,
       body: '$authorName: ${message.text}',
+      senderId: channel.name,
+      isGroup: true,
     ));
   }
 
@@ -1891,6 +1909,15 @@ class MessagingService {
       frame = Frame.decode(bytes);
     } catch (e) {
       DebugLog.instance.log('NOISE', 'drop malformed frame from $peerId: $e');
+      return;
+    }
+    // Link-layer reassembly: a fragment is one slice of a frame that was too
+    // big for this link's MTU. Rejoin it before any dispatch/dedup/relay so the
+    // rest of the stack never sees fragments. Only when the last slice lands do
+    // we recurse with the whole frame.
+    if (frame.type == FrameType.fragment) {
+      final whole = _fragments.ingest(peerId, frame.payload);
+      if (whole != null) await _handleInboundBytes(peerId, whole);
       return;
     }
     await _handleFrame(peerId, frame, fromCentral: false);
@@ -1950,6 +1977,12 @@ class MessagingService {
 
       case FrameType.peerAnnouncement:
         await _handlePeerAnnouncementFrame(peerId, frame);
+
+      case FrameType.fragment:
+        // Fragments are reassembled in _handleInboundBytes before dispatch, so
+        // one reaching here means a slice leaked past reassembly — drop it.
+        DebugLog.instance
+            .log('NOISE', 'unexpected fragment frame at dispatch from $peerId');
 
       case FrameType.reset:
         manager.drop(peerId);
@@ -2718,11 +2751,10 @@ class MessagingService {
     if (transportId != null) {
       final client = _clients[transportId];
       if (client != null && client.isConnected) {
-        await client.writeOutbound(frameBytes);
+        await _writeFrameToClient(client, frameBytes);
         return;
       }
-      final ok =
-          await _ref.read(blePeripheralProvider).notifyInbound(frameBytes);
+      final ok = await _notifyFrameToPeripheral(frameBytes);
       if (ok) return;
       throw StateError('manifest notify rejected');
     }
@@ -2812,7 +2844,8 @@ class MessagingService {
   /// Writes [bytes] (a fully-encoded frame) onto every active link except
   /// [excludePeerId]. Peripheral notify is always included (it reaches all
   /// subscribed centrals — receiver dedup handles any echo). Returns the
-  /// number of links the frame was emitted onto.
+  /// number of links the frame was emitted onto. Each link fragments to its
+  /// own MTU, so one oversized frame reaches a mix of high- and low-MTU peers.
   Future<int> _fanoutAllLinks(
     Uint8List bytes, {
     required String? excludePeerId,
@@ -2822,19 +2855,50 @@ class MessagingService {
       if (entry.key == excludePeerId) continue;
       if (!entry.value.isConnected) continue;
       try {
-        await entry.value.writeOutbound(bytes);
+        await _writeFrameToClient(entry.value, bytes);
         fanout++;
       } catch (e) {
         DebugLog.instance.log('MESH', 'fanout client write failed: $e');
       }
     }
     try {
-      final ok = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+      final ok = await _notifyFrameToPeripheral(bytes);
       if (ok) fanout++;
     } catch (e) {
       DebugLog.instance.log('MESH', 'fanout notify failed: $e');
     }
     return fanout;
+  }
+
+  /// Send one whole frame to a directly-connected central-role client,
+  /// splitting it into [FrameType.fragment] frames sized to the link's
+  /// negotiated MTU when it wouldn't fit a single BLE write. Small frames pass
+  /// through untouched. Propagates a write failure to the caller (which decides
+  /// whether to queue / mark failed), matching the old direct-write contract.
+  Future<bool> _writeFrameToClient(
+      BleGattClient client, Uint8List frameBytes) async {
+    final parts =
+        fragmentFrame(frameBytes, effectivePayload(client.negotiatedMtu));
+    for (final part in parts) {
+      await client.writeOutbound(part);
+    }
+    return true;
+  }
+
+  /// Notify one whole frame to every subscribed central via our peripheral,
+  /// fragmenting to a conservative MTU (the per-central value isn't reported on
+  /// the peripheral side). Returns true only if every fragment was accepted.
+  /// The native side queues + drains on backpressure, so a full transmit queue
+  /// no longer surfaces here as a failure the way it used to.
+  Future<bool> _notifyFrameToPeripheral(Uint8List frameBytes) async {
+    final peripheral = _ref.read(blePeripheralProvider);
+    final parts = fragmentFrame(frameBytes, conservativeEffectivePayload());
+    var ok = true;
+    for (final part in parts) {
+      final accepted = await peripheral.notifyInbound(part);
+      if (!accepted) ok = false;
+    }
+    return ok;
   }
 
   /// Replay-window gate shared by the full + compact signed paths. The
@@ -3052,6 +3116,7 @@ class MessagingService {
       threadKey: canonicalId,
       title: name,
       body: preview,
+      senderId: canonicalId,
     ));
   }
 
@@ -3099,10 +3164,10 @@ class MessagingService {
       var sent = false;
       try {
         if (client != null && client.isConnected) {
-          await client.writeOutbound(bytes);
+          await _writeFrameToClient(client, bytes);
           sent = true;
         } else {
-          sent = await _ref.read(blePeripheralProvider).notifyInbound(bytes);
+          sent = await _notifyFrameToPeripheral(bytes);
         }
       } catch (e) {
         DebugLog.instance.log('MESH',

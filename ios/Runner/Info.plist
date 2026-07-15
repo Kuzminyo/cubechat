@@ -67,6 +67,11 @@
 	<!-- Voice messages -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cubechat needs the microphone to record voice messages you send in chats.</string>
+	<!-- In-app gallery: pick photos to send, and save received photos -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cubechat needs access to your photos so you can pick images to send in chats.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cubechat saves photos from your chats to your photo library when you choose to.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

@@ -16,8 +16,10 @@ import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/favorites_controller.dart';
+import '../data/read_markers_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 
@@ -50,12 +52,24 @@ final chatsQueryProvider = StateProvider<String>((_) => '');
 /// so a missed beacon doesn't make the tile flicker.
 const _meshReachableWindow = Duration(minutes: 5);
 
+/// Count of inbound messages the user hasn't seen yet: everything not-mine that
+/// arrived after the chat's read marker. With no marker (never opened), every
+/// inbound message is unread — opening the chat sets the marker and clears it.
+/// Public so the counting rule can be unit-tested without a Hive-backed store.
+int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
+  if (lastReadAt == null) return msgs.where((m) => !m.isMine).length;
+  return msgs
+      .where((m) => !m.isMine && m.sentAt.isAfter(lastReadAt))
+      .length;
+}
+
 final chatsProvider = Provider<List<Chat>>((ref) {
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
   final channels = ref.watch(channelControllerProvider);
   final favorites = ref.watch(favoritesControllerProvider);
+  final readMarkers = ref.watch(readMarkersControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -66,7 +80,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final entries = known.values.map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
-    final unread = msgs.where((m) => !m.isMine).length;
+    final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
     final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
     final isReachableViaMesh =
         !isOnline && now.difference(peer.lastSeen) <= _meshReachableWindow;
@@ -92,7 +106,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   for (final ch in channels.values) {
     final msgs = messagesByChat[ch.name] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
-    final unread = msgs.where((m) => !m.isMine).length;
+    final unread = unreadMessageCount(msgs, readMarkers[ch.name]);
     final preview = last == null
         ? 'Group channel'
         : (!last.isMine && last.authorName != null
@@ -492,6 +506,7 @@ Future<void> _showChatActions(
 
   await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
   await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
+  await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
   if (chat.isChannel) {
     // Leaving forgets the key; without it the channel's broadcasts become
     // unreadable noise we simply relay.
