@@ -19,8 +19,17 @@ import '../theme/colors.dart';
 /// The blobs rebuild four radial-gradient shaders per paint, so at 120 fps the
 /// backdrop kept the GPU busy even while the app sat idle; the drift is far too
 /// slow (24 s period) for the difference between 30 and 120 fps to be visible.
-/// The ticker also pauses whenever the app leaves the foreground, so an
-/// idle-but-open app never spins the GPU on an animation nobody can see.
+///
+/// The ticker only runs when someone is actually looking at movement: it stops
+/// when the app leaves the foreground, and again [_idleAfter] a touch ends.
+/// Each paint is six full-screen draws (base + four blobs + scrim), so a drift
+/// that never stopped meant the GPU never idled for as long as the app was
+/// open — the single biggest reason the phone ran hot. Freezing is invisible at
+/// a 24 s period, and the [Stopwatch] preserves elapsed time so motion resumes
+/// from exactly where it stopped rather than jumping.
+///
+/// Tab changes animate through [_focus], which repaints the painter on its own
+/// — so the backdrop still reacts to navigation while the drift is parked.
 ///
 /// [focus] lets the background react to navigation: pass the active tab index
 /// and the blobs ease sideways, so each tab has its own light. Routes outside
@@ -47,6 +56,17 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   static const Duration _driftPeriod = Duration(seconds: 24);
   static const Duration _tickInterval = Duration(milliseconds: 33); // ~30 fps
 
+  /// How long the drift keeps running after the last touch lifts. Long enough
+  /// that it stays alive between the taps of a browsing session, short enough
+  /// that a put-down phone stops repainting almost immediately.
+  static const Duration _idleAfter = Duration(seconds: 2);
+
+  Timer? _idleTimer;
+
+  /// Pointers currently down. The drift never idles mid-gesture — a slow drag
+  /// would otherwise freeze the backdrop under the user's own finger.
+  int _pointers = 0;
+
   /// Drives the ease between the previous and the current [widget.focus].
   /// Starts completed so the first frame paints at the requested focus.
   late final AnimationController _focus = AnimationController(
@@ -62,11 +82,25 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Only run the ticker while we're actually on screen.
+    // Only run the ticker while we're actually on screen. Drift on launch, then
+    // settle: the first frames are the ones with motion worth seeing.
     if (WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-      _startTicker();
+      _wake();
     }
+  }
+
+  /// Run the drift now, and park it once things go quiet again.
+  void _wake() {
+    _startTicker();
+    _scheduleIdle();
+  }
+
+  void _scheduleIdle() {
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    if (_pointers > 0) return; // still under a finger — stay awake
+    _idleTimer = Timer(_idleAfter, _stopTicker);
   }
 
   void _startTicker() {
@@ -79,6 +113,8 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   }
 
   void _stopTicker() {
+    _idleTimer?.cancel();
+    _idleTimer = null;
     _ticker?.cancel();
     _ticker = null;
     _clock.stop(); // preserves elapsed, so the drift resumes seamlessly
@@ -87,8 +123,9 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _startTicker();
+      _wake();
     } else {
+      _pointers = 0; // no gesture survives backgrounding
       _stopTicker();
     }
   }
@@ -102,6 +139,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
       _focusFrom = _currentFocus;
       _focusTo = widget.focus;
       _focus.forward(from: 0);
+      _wake(); // a tab change is worth some motion behind it
     }
   }
 
@@ -135,7 +173,28 @@ class _AuroraBackgroundState extends State<AuroraBackground>
             ),
           ),
         ),
-        widget.child,
+        // Translucent so the app still gets every event — this only observes
+        // when a gesture starts and ends, to decide whether the drift is worth
+        // painting. Counting pointers (rather than kicking a timer on every
+        // move) keeps a scroll from churning a Timer per frame.
+        Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) {
+            _pointers++;
+            _idleTimer?.cancel();
+            _idleTimer = null;
+            _startTicker();
+          },
+          onPointerUp: (_) {
+            if (_pointers > 0) _pointers--;
+            _scheduleIdle();
+          },
+          onPointerCancel: (_) {
+            if (_pointers > 0) _pointers--;
+            _scheduleIdle();
+          },
+          child: widget.child,
+        ),
       ],
     );
   }

@@ -15,8 +15,28 @@ import 'ble_constants.dart';
 /// Restarts scan windows automatically so the radio gets a periodic rest —
 /// continuous BLE scanning is a battery liability and on some Androids the
 /// stack throttles us if we never stop.
+///
+/// The cadence adapts: see [shouldScanActively].
 class BleScanner {
   BleScanner();
+
+  /// Consulted at the start of every scan window to pick a cadence — active
+  /// (10 s on / 4 s off) when the answer is true, idle (6 s on / 24 s off)
+  /// when it's false. Null means always active.
+  ///
+  /// A callback rather than a provider read so the scanner stays a plain
+  /// object with no Riverpod dependency; [PeerDiscoveryController] wires it to
+  /// "app is in the foreground, or we owe someone a delivery".
+  bool Function()? shouldScanActively;
+
+  /// Cadence chosen for the window currently running.
+  bool _active = true;
+
+  /// How long a peer may go unseen before [_gcStalePeers] drops it. Follows the
+  /// running cadence: at the idle cadence a whole cycle is 30 s, so the active
+  /// threshold would expire peers that never actually left.
+  Duration get _staleAfter =>
+      _active ? BleConstants.peerStaleAfter : BleConstants.peerStaleAfterIdle;
 
   final _peers = <String, DiscoveredPeer>{};
   final _controller = StreamController<List<DiscoveredPeer>>.broadcast();
@@ -108,11 +128,20 @@ class BleScanner {
 
   Future<void> _startScanWindow() async {
     if (!_running) return;
+    // Re-decided per window, so a resume (or a message queued for an offline
+    // peer) tightens the cadence from the next window on.
+    _active = shouldScanActively?.call() ?? true;
+    final window =
+        _active ? BleConstants.scanWindow : BleConstants.scanWindowIdle;
+    final gap = _active ? BleConstants.scanGap : BleConstants.scanGapIdle;
     try {
       await FlutterBluePlus.startScan(
         withServices: [Guid(BleConstants.serviceUuid)],
-        timeout: BleConstants.scanWindow,
-        androidScanMode: AndroidScanMode.balanced,
+        timeout: window,
+        // lowPower lengthens the radio's own duty cycle *within* the window,
+        // on top of the longer gap between windows.
+        androidScanMode:
+            _active ? AndroidScanMode.balanced : AndroidScanMode.lowPower,
       );
     } catch (e, st) {
       debugPrint('BleScanner.startScan failed: $e\n$st');
@@ -121,7 +150,7 @@ class BleScanner {
     _scanSub = FlutterBluePlus.scanResults.listen(_onResults);
 
     // After the window closes, rest then cycle again.
-    _cycleTimer = Timer(BleConstants.scanWindow + BleConstants.scanGap, () async {
+    _cycleTimer = Timer(window + gap, () async {
       await _stopScanWindow();
       if (_running) unawaited(_startScanWindow());
     });
@@ -199,8 +228,9 @@ class BleScanner {
   void _gcStalePeers() {
     final now = DateTime.now();
     final stale = _peers.entries
-        .where((e) => !e.value.isConnected &&
-            now.difference(e.value.lastSeen) > BleConstants.peerStaleAfter)
+        .where((e) =>
+            !e.value.isConnected &&
+            now.difference(e.value.lastSeen) > _staleAfter)
         .map((e) => e.key)
         .toList();
     if (stale.isEmpty) return;
