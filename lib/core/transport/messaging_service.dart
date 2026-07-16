@@ -121,6 +121,10 @@ class MessagingService {
   static const int _maxPendingFsChunks = 8192;
 
   final Ref _ref;
+
+  /// Set by [dispose] so async teardown steps know the container is on its way
+  /// out and must not be read from.
+  bool _disposed = false;
   final _clients = <String, BleGattClient>{}; // central-side clients
   final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
@@ -301,7 +305,10 @@ class MessagingService {
     final client = _relayClient;
     _relayClient = null;
     await client?.dispose();
-    _ref.read(relayStatusProvider.notifier).clear();
+    // Only meaningful while the app is still running: this publishes "no
+    // relays" to the UI. On our own disposal the container is already going
+    // down, and reading a provider out of it here throws.
+    if (!_disposed) _ref.read(relayStatusProvider.notifier).clear();
   }
 
   /// Synthetic peerId for frames that arrived over a relay rather than a BLE
@@ -1903,7 +1910,14 @@ class MessagingService {
 
   // -------------------- inbound dispatch --------------------
 
-  Future<void> _handleInboundBytes(String peerId, Uint8List bytes) async {
+  /// Single entry point for bytes arriving on any link. [fromCentral] is true
+  /// when the remote is a central writing to our peripheral — it decides which
+  /// way a reply goes (notify vs. GATT write), so it must survive reassembly.
+  Future<void> _handleInboundBytes(
+    String peerId,
+    Uint8List bytes, {
+    bool fromCentral = false,
+  }) async {
     final Frame frame;
     try {
       frame = Frame.decode(bytes);
@@ -1917,10 +1931,12 @@ class MessagingService {
     // we recurse with the whole frame.
     if (frame.type == FrameType.fragment) {
       final whole = _fragments.ingest(peerId, frame.payload);
-      if (whole != null) await _handleInboundBytes(peerId, whole);
+      if (whole != null) {
+        await _handleInboundBytes(peerId, whole, fromCentral: fromCentral);
+      }
       return;
     }
-    await _handleFrame(peerId, frame, fromCentral: false);
+    await _handleFrame(peerId, frame, fromCentral: fromCentral);
   }
 
   Future<void> _handleFrame(
@@ -3317,15 +3333,12 @@ class MessagingService {
         DebugLog.instance.log('BLE-PERIPH',
             'write from ${event.centralId} (${event.data.length}B)');
         // A central has written to our outbound characteristic — treat it as
-        // an inbound frame for the responder side.
-        final Frame frame;
-        try {
-          frame = Frame.decode(event.data);
-        } catch (e) {
-          DebugLog.instance.log('BLE-PERIPH', 'decode failed: $e');
-          return;
-        }
-        await _handleFrame(event.centralId, frame, fromCentral: true);
+        // an inbound frame for the responder side. Goes through
+        // _handleInboundBytes (not _handleFrame) so a frame the peer had to
+        // fragment for the link MTU is rejoined first; dispatching raw here
+        // dropped every fragmented frame we were sent as peripheral.
+        await _handleInboundBytes(event.centralId, event.data,
+            fromCentral: true);
       } else if (event is PeripheralCentralDisconnected) {
         DebugLog.instance
             .log('BLE-PERIPH', 'central disconnected: ${event.centralId}');
@@ -3357,6 +3370,7 @@ class MessagingService {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     _announcementTimer?.cancel();
     _announcementTimer = null;
     // Flush any pending buffer write synchronously so a held frame isn't
