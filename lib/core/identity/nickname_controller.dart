@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
@@ -23,9 +21,24 @@ class NicknameController extends Notifier<String> {
   // one box under two different type parameters.
   Box<dynamic>? _box;
 
+  late Future<void> _loading;
+
+  /// Set once the user has chosen a name this session, so a slow disk read
+  /// can't come back and overwrite their choice with the previous value.
+  bool _userSet = false;
+
+  /// Completes once the stored nickname has been read back from disk.
+  ///
+  /// [state] is the default until then, so anything that bakes the nickname
+  /// into something long-lived must await this first. The BLE advertisement is
+  /// the case that bit us: it read the default mid-load and kept advertising
+  /// "Anonymous <tag>" for the whole session while the mesh announced the real
+  /// name — the user's rename appeared to do nothing.
+  Future<void> get loaded => _loading;
+
   @override
   String build() {
-    unawaited(_load());
+    _loading = _load();
     return defaultNickname;
   }
 
@@ -35,7 +48,7 @@ class NicknameController extends Notifier<String> {
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
       final v = box.get(_key) as String?;
-      if (v != null && v.isNotEmpty) state = v;
+      if (v != null && v.isNotEmpty && !_userSet) state = v;
     } catch (e) {
       debugPrint('NicknameController load failed: $e');
     }
@@ -50,6 +63,10 @@ class NicknameController extends Notifier<String> {
         ? trimmed.substring(0, maxLength)
         : trimmed;
     state = capped;
+    _userSet = true;
+    // A rename that lands before the box finishes opening would otherwise be
+    // dropped on the floor (_box still null) and reappear on next launch.
+    await _loading;
     try {
       await _box?.put(_key, capped);
     } catch (e) {
@@ -60,6 +77,8 @@ class NicknameController extends Notifier<String> {
   /// Reset to the default — used by Emergency Wipe.
   Future<void> reset() async {
     state = defaultNickname;
+    _userSet = true;
+    await _loading;
     try {
       await _box?.delete(_key);
     } catch (e) {
