@@ -39,6 +39,21 @@ const int kMediaChunkFrameOverhead = 124;
 /// explode a transfer into thousands of near-empty chunks.
 const int kMinMediaChunkData = 40;
 
+/// Target size for an outgoing photo, in bytes.
+///
+/// Media crosses the mesh in [mediaChunkDataBudget]-sized bites — 50 B on a
+/// conservative 185-byte ATT MTU, 112 B on a negotiated 247 — paced at 15 ms a
+/// chunk. Two things bound a photo: the 8192-chunk protocol cap (400 KB on the
+/// *worst* link, not the best) and patience (400 KB there is ~2 minutes on the
+/// radio). 192 KiB clears the cap on any link we can negotiate and holds the
+/// send to roughly a minute at worst, ~25 s on a good link.
+///
+/// The camera's own JPEG is 10–20x this and even a 1280 px re-encode lands
+/// around 1 MB, so the picker steps the resolution down until the bytes fit —
+/// sizing by pixels alone is what let 10912-chunk images reach the transport
+/// and throw.
+const int kMaxOutgoingImageBytes = 192 * 1024;
+
 /// Usable application payload for a link that negotiated [negotiatedMtu].
 /// Never returns less than 20 (a link that small can't carry cubechat anyway,
 /// but the caller shouldn't get a negative budget).

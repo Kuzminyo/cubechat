@@ -14,6 +14,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -650,13 +651,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     final messaging = ref.read(messagingServiceProvider);
     for (final asset in assets) {
       try {
-        // Downscale for the BLE mesh: a 1280px JPEG keeps the chunk count sane
-        // (a full-res photo is thousands of chunks). Mirrors the old picker's
-        // maxWidth/Height 1280 + quality 70.
-        final bytes = await asset.thumbnailDataWithSize(
-          const ThumbnailSize(1280, 1280),
-          quality: 72,
-        );
+        final bytes = await _encodeForMesh(asset);
         if (bytes == null) continue;
         final cachedPath = await _cacheOutgoingImage(bytes, asset.id);
         await messaging.sendImage(
@@ -675,6 +670,37 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         );
       }
     }
+  }
+
+  /// Re-encode a picked photo down to something the BLE mesh can actually
+  /// carry — at most [kMaxOutgoingImageBytes].
+  ///
+  /// A fixed 1280 px / q72 (what this used to do) still produced ~1 MB for a
+  /// detailed photo, which is 10912 chunks against a 8192 cap: the transport
+  /// threw and the user just saw "image too large". Pixel dimensions don't
+  /// predict JPEG size — detail does — so step down the rungs until the bytes
+  /// come in under budget, and send the smallest rung if even that overshoots
+  /// (a 320 px thumbnail beats a failed send).
+  Future<Uint8List?> _encodeForMesh(AssetEntity asset) async {
+    const rungs = <({int size, int quality})>[
+      (size: 1280, quality: 70),
+      (size: 1024, quality: 65),
+      (size: 800, quality: 60),
+      (size: 640, quality: 55),
+      (size: 480, quality: 50),
+      (size: 320, quality: 45),
+    ];
+    Uint8List? smallest;
+    for (final rung in rungs) {
+      final bytes = await asset.thumbnailDataWithSize(
+        ThumbnailSize(rung.size, rung.size),
+        quality: rung.quality,
+      );
+      if (bytes == null) continue;
+      smallest = bytes;
+      if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
+    }
+    return smallest;
   }
 
   /// Persist the downscaled bytes we're about to send to the app cache, so the
