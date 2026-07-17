@@ -7,21 +7,13 @@ import '../../../../core/widgets/unread_badge.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
 
+/// The contents of one chat row: avatar, name + status, and last-message
+/// preview. It paints no surface of its own — the [FloatingGlass] island the
+/// list wraps it in owns the background, tap ripple and long-press.
 class ChatTile extends StatelessWidget {
-  const ChatTile({
-    super.key,
-    required this.chat,
-    required this.onTap,
-    this.onLongPressAt,
-  });
+  const ChatTile({super.key, required this.chat});
 
   final Chat chat;
-  final VoidCallback onTap;
-
-  /// Long-press with the global press point, so the caller can anchor a popup
-  /// menu to the finger (Telegram-style). InkWell.onLongPress gives no
-  /// position, hence the outer GestureDetector below.
-  final void Function(Offset globalPosition)? onLongPressAt;
 
   @override
   Widget build(BuildContext context) {
@@ -30,136 +22,120 @@ class ChatTile extends StatelessWidget {
     // preview line, on top of the count badge — so a glance down the list lands
     // on the conversations with something new.
     final unread = chat.unreadCount > 0;
-    final tile = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              IdentityAvatar(
-                seed: chat.peerId,
-                label: chat.peerName,
-                size: 48,
-                online: chat.isOnline,
-                heroTag: 'avatar-${chat.peerId}',
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          IdentityAvatar(
+            seed: chat.peerId,
+            label: chat.peerName,
+            size: 48,
+            online: chat.isOnline,
+            heroTag: 'avatar-${chat.peerId}',
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            chat.peerName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: AppColors.textOnGlass,
-                              fontSize: 15,
-                              fontWeight:
-                                  unread ? FontWeight.w800 : FontWeight.w600,
-                            ),
-                          ),
+                    Flexible(
+                      child: Text(
+                        chat.peerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 15,
+                          fontWeight:
+                              unread ? FontWeight.w800 : FontWeight.w600,
                         ),
-                        if (chat.isFavorite) ...[
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.star,
-                            color: AppColors.warning,
-                            size: 13,
-                          ),
-                        ],
-                        if (chat.isVerified) ...[
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.verified,
-                            color: AppColors.brandPrimary,
-                            size: 14,
-                          ),
-                        ],
-                        if (chat.isChannel) ...[
-                          const SizedBox(width: 6),
-                          _StatusPill(
-                            icon: Icons.tag,
-                            label: t.chatsStatusChannel,
-                          ),
-                        ] else if (chat.signKeyRotated) ...[
-                          const SizedBox(width: 6),
-                          _StatusPill(
-                            icon: Icons.warning_amber_rounded,
-                            label: t.peerKeyRotated,
-                            tone: _PillTone.warning,
-                          ),
-                        ] else if (chat.isReachableViaMesh) ...[
-                          const SizedBox(width: 6),
-                          _StatusPill(
-                            icon: Icons.hub_outlined,
-                            label: t.chatsStatusViaMesh,
-                          ),
-                        ] else if (!chat.isOnline) ...[
-                          const SizedBox(width: 6),
-                          _StatusPill(
-                            icon: Icons.cloud_off_outlined,
-                            label: t.chatsStatusOffline,
-                            tone: _PillTone.muted,
-                          ),
-                        ],
-                        const Spacer(),
-                        Text(
-                          formatChatListTime(context, chat.lastTime),
-                          style: TextStyle(
-                            color: AppColors.textOnGlassFaint,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            chat.lastMessage,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: unread
-                                  ? AppColors.textOnGlass
-                                  : AppColors.textOnGlassDim,
-                              fontSize: 13,
-                              height: 1.3,
-                              fontWeight:
-                                  unread ? FontWeight.w600 : FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        if (chat.unreadCount > 0) ...[
-                          const SizedBox(width: 8),
-                          UnreadBadge(count: chat.unreadCount),
-                        ],
-                      ],
+                    if (chat.isFavorite) ...[
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.star,
+                        color: AppColors.warning,
+                        size: 13,
+                      ),
+                    ],
+                    if (chat.isVerified) ...[
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.verified,
+                        color: AppColors.brandPrimary,
+                        size: 14,
+                      ),
+                    ],
+                    if (chat.isChannel) ...[
+                      const SizedBox(width: 6),
+                      _StatusPill(
+                        icon: Icons.tag,
+                        label: t.chatsStatusChannel,
+                      ),
+                    ] else if (chat.signKeyRotated) ...[
+                      const SizedBox(width: 6),
+                      _StatusPill(
+                        icon: Icons.warning_amber_rounded,
+                        label: t.peerKeyRotated,
+                        tone: _PillTone.warning,
+                      ),
+                    ] else if (chat.isReachableViaMesh) ...[
+                      const SizedBox(width: 6),
+                      _StatusPill(
+                        icon: Icons.hub_outlined,
+                        label: t.chatsStatusViaMesh,
+                      ),
+                    ] else if (!chat.isOnline) ...[
+                      const SizedBox(width: 6),
+                      _StatusPill(
+                        icon: Icons.cloud_off_outlined,
+                        label: t.chatsStatusOffline,
+                        tone: _PillTone.muted,
+                      ),
+                    ],
+                    const Spacer(),
+                    Text(
+                      formatChatListTime(context, chat.lastTime),
+                      style: TextStyle(
+                        color: AppColors.textOnGlassFaint,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        chat.lastMessage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: unread
+                              ? AppColors.textOnGlass
+                              : AppColors.textOnGlassDim,
+                          fontSize: 13,
+                          height: 1.3,
+                          fontWeight:
+                              unread ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    if (chat.unreadCount > 0) ...[
+                      const SizedBox(width: 8),
+                      UnreadBadge(count: chat.unreadCount),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
-    );
-
-    if (onLongPressAt == null) return tile;
-    // InkWell handles tap (and its ripple); the outer detector only claims the
-    // long-press, so the two don't fight over the gesture.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPressStart: (d) => onLongPressAt!(d.globalPosition),
-      child: tile,
     );
   }
 }

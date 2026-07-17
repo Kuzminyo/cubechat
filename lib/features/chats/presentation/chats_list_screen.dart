@@ -10,7 +10,7 @@ import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
@@ -242,15 +242,15 @@ class ChatsListScreen extends ConsumerWidget {
                   final chat = filtered[i];
                   return AppearAnimation(
                     delay: AppearAnimation.stagger(i),
-                    child: GlassCard(
-                      padding: EdgeInsets.zero,
+                    // Each row is its own levitating pane of smoked glass —
+                    // the nav bar's treatment — so the list reads as separate
+                    // floating islands over the aurora, not cards on a plate.
+                    child: FloatingGlass(
                       borderRadius: 18,
-                      child: ChatTile(
-                        chat: chat,
-                        onTap: () => context.push(routeForChat(chat)),
-                        onLongPressAt: (pos) =>
-                            _showChatActions(context, ref, chat, t, pos),
-                      ),
+                      onTap: () => context.push(routeForChat(chat)),
+                      onLongPressAt: (pos) =>
+                          _showChatActions(context, ref, chat, t, pos),
+                      child: ChatTile(chat: chat),
                     ),
                   );
                 },
@@ -270,7 +270,7 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
+    return FloatingGlass(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       borderRadius: 14,
       child: TextField(
