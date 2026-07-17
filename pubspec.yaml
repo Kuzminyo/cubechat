@@ -28,6 +28,9 @@ dependencies:
   flutter_blue_plus: ^1.34.5
   permission_handler: ^11.3.1
 
+  # Off-mesh fallback (M6 — cubechat frames over public Nostr relays)
+  web_socket_channel: ^2.4.0
+
   # Crypto (M2)
   cryptography: ^2.7.0            # X25519, ChaCha20-Poly1305, BLAKE2s, HKDF
   flutter_secure_storage: ^9.2.2  # private key in Keychain / Keystore

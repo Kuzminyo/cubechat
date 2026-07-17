@@ -41,6 +41,10 @@ import 'frame.dart';
 import 'image_reassembly.dart';
 import 'inner_payload.dart';
 import 'nostr/nostr_signer.dart';
+import 'nostr/nostr_transport.dart';
+import 'nostr/pooled_nostr_relay_client.dart';
+import 'nostr/relay_socket.dart';
+import 'nostr/web_socket_relay_socket.dart';
 import '../crypto/media_fs_cipher.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
@@ -88,11 +92,20 @@ const int _replayMaxFutureMs = 2 * 60 * 1000;
 ///   3. Subsequent writes carry transport frames → we decrypt and append
 ///      to [MessagesController]
 class MessagingService {
-  MessagingService(this._ref) {
+  MessagingService(
+    this._ref, {
+    List<String>? nostrRelayUrls,
+    RelaySocketFactory? nostrSocketFactory,
+  })  : _nostrRelayUrls = nostrRelayUrls ?? kDefaultNostrRelays,
+        _nostrSocketFactory = nostrSocketFactory ?? webSocketRelaySocketFactory {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
     unawaited(_loadRelayBuffer());
     unawaited(_ref.read(prekeyServiceProvider).ensureInitialized());
+    // Bring the off-mesh internet fallback up in the background so we can both
+    // receive frames the mesh missed and push to unreachable peers. Failures
+    // are self-healing (the relay pool retries) and never touch the BLE path.
+    unawaited(_ensureNostrStarted());
   }
 
   /// Envelope-body cipher tags (first byte of [TransportEnvelope.body]) so
@@ -131,8 +144,24 @@ class MessagingService {
 
   /// Our deterministically-derived Nostr signer (secp256k1). Derivation does a
   /// scalar multiplication, so we compute it once and reuse it for every
-  /// announcement and (later) off-mesh send.
+  /// announcement and off-mesh send.
   Secp256k1NostrSigner? _nostrSignerCache;
+
+  /// Public relays the off-mesh fallback fans across, and the socket factory
+  /// used to reach them. Both are injectable so a test can drive the fallback
+  /// with an in-memory relay instead of real WebSockets.
+  final List<String> _nostrRelayUrls;
+  final RelaySocketFactory _nostrSocketFactory;
+
+  /// The live off-mesh fallback, or null until [_ensureNostrStarted] brings it
+  /// up (and again after [dispose]). [_nostrRelay] is retained so the pool can
+  /// be torn down; [_nostrInboundSub] pipes received frames into the same
+  /// dispatch a BLE notify uses; [_nostrStarting] guards against concurrent
+  /// start attempts.
+  NostrTransport? _nostr;
+  PooledNostrRelayClient? _nostrRelay;
+  StreamSubscription<Uint8List>? _nostrInboundSub;
+  bool _nostrStarting = false;
 
   /// Drops duplicate transport frames (a frame we've already seen or
   /// forwarded) before they hit the chat UI or the relay path. Keyed on
@@ -220,6 +249,79 @@ class MessagingService {
       Uint8List.fromList(id.signPrivateKey),
     );
     return _nostrSignerCache!;
+  }
+
+  /// Synthetic peer id stamped on frames that arrived over Nostr rather than a
+  /// BLE link, so provenance is obvious in the logs. Transport-frame dispatch
+  /// routes by the envelope's dest hash, not by this id, so it needs no
+  /// corresponding session or link.
+  static const String _nostrPeerId = 'nostr';
+
+  /// Bring up the off-mesh Nostr fallback: connect the relay pool, subscribe
+  /// for frames addressed to our npub, and feed anything that arrives back
+  /// through the exact inbound path a BLE notify uses ([_handleInboundBytes]),
+  /// so an off-mesh message is decrypted, deduped, and delivered identically.
+  ///
+  /// Idempotent and best-effort: a failure here just leaves the fallback down
+  /// (the relay pool keeps retrying on its own); the BLE mesh is untouched.
+  Future<void> _ensureNostrStarted() async {
+    if (_nostr != null || _nostrStarting || _nostrRelayUrls.isEmpty) return;
+    _nostrStarting = true;
+    try {
+      final signer = await _myNostrSigner();
+      final relay = PooledNostrRelayClient(
+        relayUrls: _nostrRelayUrls,
+        socketFactory: _nostrSocketFactory,
+      );
+      final transport = NostrTransport(signer: signer, relay: relay);
+      _nostrInboundSub = transport.inboundFrames().listen(
+            (bytes) => unawaited(_handleInboundBytes(_nostrPeerId, bytes)),
+          );
+      _nostrRelay = relay;
+      _nostr = transport;
+      DebugLog.instance.log(
+          'NOSTR',
+          'off-mesh fallback up: ${_nostrRelayUrls.length} relays, '
+              'npub=${signer.npubHex.substring(0, 8)}…');
+    } catch (e) {
+      DebugLog.instance.log('NOSTR', 'off-mesh fallback failed to start: $e');
+    } finally {
+      _nostrStarting = false;
+    }
+  }
+
+  /// Best-effort off-mesh push. When a BLE send finds no route and we know
+  /// [canonicalPubkeyHex]'s Nostr pubkey (learned from their signed
+  /// announcement), relay the already-encrypted [wireBytes] to them over the
+  /// public relays. A no-op for peers whose npub we've never seen (e.g. last
+  /// seen before the v0x04 announcement) — those stay purely in BLE
+  /// store-and-forward.
+  Future<void> _maybeSendOverNostr(
+      String canonicalPubkeyHex, Uint8List wireBytes) async {
+    final npub =
+        _ref.read(knownPeersControllerProvider)[canonicalPubkeyHex]?.nostrPubkey;
+    if (npub == null || npub.length != 32) return;
+    await _ensureNostrStarted();
+    final transport = _nostr;
+    if (transport == null) return;
+    try {
+      await transport.sendFrame(
+        recipientNpubHex: _hexEncode(npub),
+        frameBytes: wireBytes,
+      );
+      DebugLog.instance.log('NOSTR',
+          'pushed ${wireBytes.length}B off-mesh to $canonicalPubkeyHex');
+    } catch (e) {
+      DebugLog.instance.log('NOSTR', 'off-mesh push failed: $e');
+    }
+  }
+
+  static String _hexEncode(Uint8List bytes) {
+    final sb = StringBuffer();
+    for (final b in bytes) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
   }
 
   /// Prepend the 1-byte cipher tag to an encrypted body.
@@ -673,6 +775,12 @@ class MessagingService {
             'MESH',
             'text undeliverable — queued for store-and-forward to '
                 '$canonicalId (held ${_store.size})');
+        // In parallel, try the internet fallback: BLE store-and-forward only
+        // delivers if the recipient later connects to *us*, whereas a Nostr
+        // relay holds the frame for them to pull from anywhere. Belt and
+        // suspenders — whichever path lands first wins; the receiver dedups the
+        // other by (origin, msgId).
+        unawaited(_maybeSendOverNostr(canonicalId, wireBytes));
         // Leave status as sending (pending), not failed.
       }
     } catch (e, st) {
@@ -3175,6 +3283,11 @@ class MessagingService {
     _relayPersistTimer?.cancel();
     _relayPersistTimer = null;
     await _persistRelayBuffer();
+    await _nostrInboundSub?.cancel();
+    _nostrInboundSub = null;
+    await _nostrRelay?.dispose();
+    _nostrRelay = null;
+    _nostr = null;
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {
       t.cancel();

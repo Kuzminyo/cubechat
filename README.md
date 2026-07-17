@@ -34,13 +34,13 @@ UI work but have no BLE.
 - [x] M4 — Local message store (Hive), key storage (flutter_secure_storage)
 - [x] M5 — Emergency wipe, IRC-style commands, image + voice transfer (signed manifests)
 - [x] M5.5 — Group channels, receipts/reactions, message edit/delete, block/mute peers
-- [~] M6 — Nostr fallback transport — signer + framing + relay protocol built (see below)
+- [x] M6 — Nostr fallback transport — signer + framing + relay protocol + WebSocket pool + MessagingService wiring (see below)
 
 > The `[x]` marks above reflect what's implemented and covered by the 236-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is not yet wired.
 
-### Nostr fallback (M6, in progress)
+### Nostr fallback (M6)
 
 Goal: when a recipient is out of BLE range, relay the *same encrypted cubechat
 frame* through public Nostr relays over the internet, and pull frames the mesh
@@ -85,16 +85,33 @@ anything else → `RelayUnknown`), and `verifyInboundEvent` — the untrusted-re
 gate that checks the cubechat kind, recomputes the event id, and verifies the
 BIP-340 Schnorr signature via `Secp256k1.verify`.
 
-Remaining (needs a device/network to verify, so not done here):
+Socket transport + wiring (completed):
 
-1. **Socket transport.** A `WebSocketNostrRelayClient` over
-   `web_socket_channel` that pipes strings through `NostrRelayProtocol`, holds a
-   small relay pool, reconnects, and drops any event that fails
-   `verifyInboundEvent`. Thin glue over the tested core above.
-2. **MessagingService wiring.** Push to Nostr when a BLE send yields
-   `deliveredVia == 0` (using the recipient's cached `npub`), and feed
-   `inboundFrames()` into `_handleInboundBytes` so off-mesh frames flow through
-   the same decrypt/deliver path.
+1. **Socket transport.** `PooledNostrRelayClient`
+   (`transport/nostr/pooled_nostr_relay_client.dart`) fans the subscription and
+   every publish across a pool of relays, reconnecting each with exponential
+   backoff + jitter, replaying the subscription on every reconnect, buffering a
+   publish made while the whole pool is down until a relay returns, and
+   deduplicating inbound events by id across relays. Every inbound event is
+   gated on `verifyInboundEvent` **and** re-checked to be addressed to us before
+   it reaches a subscriber. The actual `wss://` socket is injected as a
+   `RelaySocketFactory` (`relay_socket.dart`), with the production
+   `web_socket_channel` implementation in `web_socket_relay_socket.dart` — so
+   the pool's reconnect/replay/dedup/verify logic is unit-tested end-to-end
+   against an in-memory fake, no real socket required
+   (`test/pooled_nostr_relay_client_test.dart`).
+2. **MessagingService wiring.** On startup the service brings the relay pool up
+   and subscribes for frames addressed to our `npub`, feeding each received
+   frame into the same `_handleInboundBytes` path a BLE notify uses (so it's
+   decrypted, deduped by `(origin, msgId)`, and delivered identically). When a
+   text send finds no BLE route (`deliveredVia == 0`) and we hold the
+   recipient's cached `npub`, the already-encrypted frame is pushed off-mesh in
+   parallel with BLE store-and-forward — whichever path lands first wins, the
+   receiver dedups the other.
+
+The relay list is a small default set of public relays (`kDefaultNostrRelays`),
+and both the relay URLs and the socket factory are injectable on
+`MessagingService` for testing.
 
 ---
 
