@@ -1,0 +1,119 @@
+name: Android build (debug APK for sideloading)
+
+# Triggers:
+# - every push to main or the backup-internet-channel feature branch
+#   (so each commit produces a fresh installable APK)
+# - manual run from the Actions tab (Run workflow button)
+on:
+  push:
+    branches: [main, claude/backup-internet-channel-fjxeqj]
+  workflow_dispatch:
+
+# Needed so the job can upsert the rolling "apk-latest" prerelease that holds
+# a directly-downloadable .apk link (nicer on a phone than a zipped artifact).
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build debug APK
+    # Ubuntu runner ships the Android SDK and can reach dl.google.com, which the
+    # sandboxed dev environment cannot — this is why the APK is built in CI.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Pin Flutter to match the developer's local stable channel (same version
+      # the iOS workflow uses).
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      # A debug APK is self-signed with the Android debug keystore, so it
+      # installs on any device without release signing secrets. (A --release
+      # build here would be unsigned — this project only wires a release
+      # signingConfig when key.properties / CUBECHAT_RELEASE_* secrets exist —
+      # and an unsigned release APK won't install.)
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Show build output
+        run: |
+          set -e
+          echo "build/app/outputs/flutter-apk:"
+          ls -lh build/app/outputs/flutter-apk/ || echo "(missing)"
+
+      - name: Rename APK
+        run: |
+          set -e
+          cp build/app/outputs/flutter-apk/app-debug.apk cubechat-debug.apk
+          ls -lh cubechat-debug.apk
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubechat-android-debug-${{ github.sha }}
+          path: cubechat-debug.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # Attach the APK to a rolling prerelease so there's a stable, direct
+      # download URL that opens straight to install on a phone (no zip, no
+      # digging through the Actions UI).
+      - name: Publish to rolling prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Latest debug APK (${{ github.ref_name }})
+          prerelease: true
+          body: |
+            Auto-built **debug** APK for sideloading on Android.
+
+            - Commit: `${{ github.sha }}`
+            - Branch: `${{ github.ref_name }}`
+
+            Download `cubechat-debug.apk` below, open it on your Android phone,
+            and allow "Install unknown apps" for your browser/file manager when
+            prompted.
+          files: cubechat-debug.apk
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## ✅ Android build succeeded"
+            echo ""
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo ""
+            echo "### Download the APK"
+            echo "- **Direct link (best on a phone):** the \`apk-latest\` release →"
+            echo "  \`${{ github.server_url }}/${{ github.repository }}/releases/tag/apk-latest\`"
+            echo "- **Or** this run's artifact: Summary tab → Artifacts →"
+            echo "  \`cubechat-android-debug-${{ github.sha }}\` (downloads as a zip)"
+            echo ""
+            echo "### Install on Android"
+            echo "1. Open the download link on your phone"
+            echo "2. Tap \`cubechat-debug.apk\`"
+            echo "3. Allow \"Install unknown apps\" for your browser if prompted"
+            echo "4. Install and open"
+          } >> "$GITHUB_STEP_SUMMARY"
