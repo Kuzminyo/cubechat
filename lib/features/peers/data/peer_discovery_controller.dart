@@ -146,6 +146,11 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     unawaited(_bootPeripheral());
   }
 
+  /// Ask the scanner to re-pick its scan cadence immediately — called when the
+  /// app returns to the foreground, so discovery doesn't stay at the idle
+  /// cadence for the remainder of a window the user is now watching.
+  Future<void> retuneScan() => ref.read(bleScannerProvider).retune();
+
   Future<void> _bootPeripheral() async {
     // Wired before the first start, not after: a start that fails still needs
     // to pick up a later rename.

@@ -14,6 +14,7 @@ import 'core/theme/app_theme.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
+import 'features/peers/data/peer_discovery_controller.dart';
 import 'l10n/app_localizations.dart';
 
 class CubechatApp extends ConsumerStatefulWidget {
@@ -102,6 +103,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // actually starts (or restarts) from an allowed state.
     if (state == AppLifecycleState.resumed) {
       ref.read(backgroundModeProvider.notifier).apply();
+      // The BLE scan cadence is picked when a window opens, so coming back
+      // mid-idle-cycle would leave discovery sluggish for up to 30 s with the
+      // user looking straight at the Nearby list. Re-pick it now.
+      unawaited(ref.read(peerDiscoveryControllerProvider.notifier).retuneScan());
       // Coming back into an open chat: whatever piled up for it while we were
       // away has already been read the moment it's on screen.
       final open = AppLifecycle.instance.activeChatId;

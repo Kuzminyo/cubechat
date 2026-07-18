@@ -73,6 +73,24 @@ class BleScanner {
     }
   }
 
+  /// Re-pick the cadence now rather than at the next window boundary.
+  ///
+  /// The cadence is chosen when a window opens, so a change of circumstances
+  /// mid-window — the user bringing the app back to the foreground, or a
+  /// message queued for a peer who's offline — would otherwise not take effect
+  /// for up to a full idle cycle. That is 30 s of sluggish discovery with the
+  /// user watching the Nearby list, which is exactly what the idle cadence is
+  /// supposed to avoid paying for.
+  ///
+  /// No-op unless the scanner is running and the cadence actually changed.
+  Future<void> retune() async {
+    if (!_running) return;
+    final wanted = shouldScanActively?.call() ?? true;
+    if (wanted == _active) return;
+    await _stopScanWindow();
+    if (_running) await _startScanWindow();
+  }
+
   Future<void> stop() async {
     _running = false;
     _cycleTimer?.cancel();
