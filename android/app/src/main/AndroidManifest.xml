@@ -36,6 +36,14 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- Internet fallback (M6): the Nostr relay pool opens wss:// sockets when
+         the mesh can't deliver. Flutter's template declares INTERNET only in
+         the debug/profile manifests (the tool needs it for hot reload), and
+         those are not merged into a release build — so without this line the
+         fallback worked in debug and every relay sat "unreachable" in the
+         release APK, with no permission error to explain why. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Background mesh: keep BLE alive when the app isn't in the foreground -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
