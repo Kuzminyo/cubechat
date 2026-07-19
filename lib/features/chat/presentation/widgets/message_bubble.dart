@@ -10,6 +10,7 @@ import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
+import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
@@ -152,14 +153,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     } else if (picked == 'copy') {
       await Clipboard.setData(ClipboardData(text: widget.message.text));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-          content:
-              Text(t.chatCopied, style: const TextStyle(color: Colors.white)),
-        ),
-      );
+      showCopiedToast(context, t.chatCopied);
     } else if (picked == 'forward') {
       await _promptForward();
     } else if (picked == 'edit') {
@@ -360,15 +354,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await messaging.sendText(chosen.id, text);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        content: Text(
-          t.chatForwardSent(chosen.peerName),
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
+    showGlassToast(
+      context,
+      t.chatForwardSent(chosen.peerName),
+      icon: Icons.shortcut_outlined,
+      tone: ToastTone.success,
     );
   }
 

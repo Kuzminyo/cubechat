@@ -16,6 +16,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/relay_settings_controller.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 const _appVersion = '0.1.0';
 
@@ -44,7 +45,9 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 const CubeLogo(size: 32),
                 const SizedBox(width: 12),
-                Expanded(child: Text(t.profileTitle, style: AppTypography.display())),
+                Expanded(
+                    child:
+                        Text(t.profileTitle, style: AppTypography.display())),
               ],
             ),
           ),
@@ -62,7 +65,8 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Text(
                   t.profileNickname,
-                  style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
                 const SizedBox(height: 18),
                 _FingerprintRow(
@@ -87,7 +91,9 @@ class ProfileScreen extends ConsumerWidget {
                     label: t.profileLanguageEn,
                     code: 'en',
                     current: locale.languageCode,
-                    onTap: () => ref.read(localeControllerProvider.notifier).set(const Locale('en')),
+                    onTap: () => ref
+                        .read(localeControllerProvider.notifier)
+                        .set(const Locale('en')),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -96,7 +102,9 @@ class ProfileScreen extends ConsumerWidget {
                     label: t.profileLanguageUk,
                     code: 'uk',
                     current: locale.languageCode,
-                    onTap: () => ref.read(localeControllerProvider.notifier).set(const Locale('uk')),
+                    onTap: () => ref
+                        .read(localeControllerProvider.notifier)
+                        .set(const Locale('uk')),
                   ),
                 ),
               ],
@@ -116,15 +124,18 @@ class ProfileScreen extends ConsumerWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                    border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+                    border: Border.all(
+                        color: AppColors.brandPrimary.withValues(alpha: 0.4)),
                   ),
-                  child: const Icon(Icons.bluetooth, color: AppColors.brandPrimary, size: 18),
+                  child: const Icon(Icons.bluetooth,
+                      color: AppColors.brandPrimary, size: 18),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     t.profileTransportMesh,
-                    style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                    style:
+                        TextStyle(color: AppColors.textOnGlass, fontSize: 14),
                   ),
                 ),
                 Container(
@@ -160,12 +171,14 @@ class ProfileScreen extends ConsumerWidget {
                     children: [
                       Text(
                         'Cubechat',
-                        style: AppTypography.heading(size: 15, color: AppColors.textOnGlass),
+                        style: AppTypography.heading(
+                            size: 15, color: AppColors.textOnGlass),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         t.profileVersion(_appVersion),
-                        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                        style: TextStyle(
+                            color: AppColors.textOnGlassDim, fontSize: 12),
                       ),
                     ],
                   ),
@@ -187,7 +200,8 @@ class ProfileScreen extends ConsumerWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.08),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.18)),
                   ),
                   child: Icon(Icons.bug_report_outlined,
                       color: AppColors.textOnGlass, size: 18),
@@ -251,8 +265,8 @@ class _BackgroundModeCard extends ConsumerWidget {
                   children: [
                     Text(
                       t.profileBackground,
-                      style: TextStyle(
-                          color: AppColors.textOnGlass, fontSize: 14),
+                      style:
+                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -415,27 +429,23 @@ class _FingerprintRow extends StatelessWidget {
                   value,
                   style: AppTypography.mono(
                     size: 12.5,
-                    color: ready ? AppColors.textOnGlass : AppColors.textOnGlassFaint,
+                    color: ready
+                        ? AppColors.textOnGlass
+                        : AppColors.textOnGlassFaint,
                   ),
                 ),
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 splashRadius: 18,
-                icon: Icon(Icons.copy, size: 16, color: AppColors.textOnGlassDim),
+                icon:
+                    Icon(Icons.copy, size: 16, color: AppColors.textOnGlassDim),
                 tooltip: t.copy,
                 onPressed: ready
                     ? () async {
                         await Clipboard.setData(ClipboardData(text: value));
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: Colors.white.withValues(alpha: 0.12),
-                            content: Text(t.copied,
-                                style: TextStyle(color: AppColors.textOnGlass)),
-                            duration: const Duration(seconds: 1),
-                          ),
-                        );
+                        showCopiedToast(context, t.copied);
                       }
                     : null,
               ),
@@ -505,9 +515,11 @@ class _EmergencyWipeCard extends ConsumerWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.danger.withValues(alpha: 0.18),
-              border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+              border:
+                  Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
             ),
-            child: const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 18),
+            child: const Icon(Icons.warning_amber_rounded,
+                color: AppColors.danger, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -525,7 +537,8 @@ class _EmergencyWipeCard extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   t.profileEmergencyWipeHint,
-                  style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
               ],
             ),
@@ -540,7 +553,8 @@ class _EmergencyWipeCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmWipe(BuildContext context, WidgetRef ref, AppLocalizations t) async {
+  Future<void> _confirmWipe(
+      BuildContext context, WidgetRef ref, AppLocalizations t) async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -551,7 +565,10 @@ class _EmergencyWipeCard extends ConsumerWidget {
         ),
         title: Text(
           t.profileEmergencyWipeConfirm,
-          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 16,
+              fontWeight: FontWeight.w600),
         ),
         content: Text(
           t.profileEmergencyWipeConfirmHint,
@@ -560,7 +577,8 @@ class _EmergencyWipeCard extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
           ),
           TextButton(
             onPressed: () async {
@@ -568,7 +586,8 @@ class _EmergencyWipeCard extends ConsumerWidget {
               if (!ctx.mounted) return;
               Navigator.of(ctx).pop();
             },
-            child: Text(t.profileEmergencyWipeAction, style: const TextStyle(color: AppColors.danger)),
+            child: Text(t.profileEmergencyWipeAction,
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -592,9 +611,12 @@ class _EditableNickname extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(value, style: AppTypography.heading(size: 20, color: AppColors.textOnGlass)),
+            Text(value,
+                style: AppTypography.heading(
+                    size: 20, color: AppColors.textOnGlass)),
             const SizedBox(width: 6),
-            Icon(Icons.edit_outlined, size: 16, color: AppColors.textOnGlassFaint),
+            Icon(Icons.edit_outlined,
+                size: 16, color: AppColors.textOnGlassFaint),
           ],
         ),
       ),
@@ -618,7 +640,10 @@ class _EditableNickname extends ConsumerWidget {
         ),
         title: Text(
           t.profileNicknameEditTitle,
-          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 16,
+              fontWeight: FontWeight.w600),
         ),
         content: TextField(
           controller: controller,
@@ -629,7 +654,8 @@ class _EditableNickname extends ConsumerWidget {
           decoration: InputDecoration(
             hintText: t.profileNicknameHint,
             hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
-            counterStyle: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+            counterStyle:
+                TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
             enabledBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: AppColors.glassBorder),
             ),
@@ -641,7 +667,8 @@ class _EditableNickname extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
           ),
           TextButton(
             onPressed: () async {
@@ -653,7 +680,8 @@ class _EditableNickname extends ConsumerWidget {
               await ref.read(nicknameControllerProvider.notifier).set(value);
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child: Text(t.profileNicknameSave, style: const TextStyle(color: AppColors.brandPrimary)),
+            child: Text(t.profileNicknameSave,
+                style: const TextStyle(color: AppColors.brandPrimary)),
           ),
         ],
       ),

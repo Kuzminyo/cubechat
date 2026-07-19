@@ -12,6 +12,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/known_peers_controller.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 /// Out-of-band fingerprint verification.
 ///
@@ -143,15 +144,11 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                       .markVerified(widget.peerPubkeyHex);
                   if (!context.mounted) return;
                   // Surface the result so the user gets confirmation.
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.85),
-                      content: Text(
-                        t.verifyDoneSnack(widget.peerLabel),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
+                  showGlassToast(
+                    context,
+                    t.verifyDoneSnack(widget.peerLabel),
+                    icon: Icons.verified_user_outlined,
+                    tone: ToastTone.success,
                   );
                 },
               ),
@@ -302,16 +299,7 @@ class _FingerprintCard extends StatelessWidget {
                   : () async {
                       await Clipboard.setData(ClipboardData(text: fingerprint));
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: Colors.white.withValues(alpha: 0.12),
-                          content: Text(
-                            t.copied,
-                            style: TextStyle(color: AppColors.textOnGlass),
-                          ),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
+                      showCopiedToast(context, t.copied);
                     },
             ),
           ),

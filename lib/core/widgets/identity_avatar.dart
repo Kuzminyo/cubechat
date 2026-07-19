@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../util/ui_activity.dart';
 
 /// Deterministic gradient avatar from a stable seed (e.g. peer pubkey).
 class IdentityAvatar extends StatelessWidget {
@@ -90,7 +91,8 @@ class IdentityAvatar extends StatelessWidget {
     final parts = text.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts.first.isEmpty) return '?';
     if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts[1].characters.first).toUpperCase();
+    return (parts.first.characters.first + parts[1].characters.first)
+        .toUpperCase();
   }
 }
 
@@ -108,7 +110,7 @@ class _OnlineDotState extends State<_OnlineDot>
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
-  )..repeat(reverse: true);
+  );
 
   late final Animation<double> _glow = Tween<double>(
     begin: 0.35,
@@ -116,7 +118,34 @@ class _OnlineDotState extends State<_OnlineDot>
   ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
 
   @override
+  void initState() {
+    super.initState();
+    UiActivity.instance.isQuiet.addListener(_applyActivity);
+    _applyActivity();
+  }
+
+  /// Pulse while the interface is in use; park when it goes quiet.
+  ///
+  /// A running ticker means a frame scheduled every vsync. The aurora already
+  /// parks itself when nothing is happening; without this the dot kept the app
+  /// awake anyway — a dozen of them on a chat list held the compositor at the
+  /// display's full refresh rate while the user did nothing but read.
+  ///
+  /// Parking leaves the glow wherever it was, which is fine: the value only
+  /// ranges over 0.35–0.60, so any frozen frame reads as a lit dot rather than
+  /// a half-drawn one.
+  void _applyActivity() {
+    if (!mounted) return;
+    if (UiActivity.instance.isQuiet.value) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
+
+  @override
   void dispose() {
+    UiActivity.instance.isQuiet.removeListener(_applyActivity);
     _c.dispose();
     super.dispose();
   }

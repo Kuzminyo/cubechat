@@ -17,8 +17,7 @@ Future<T?> showContextPopup<T>({
   required List<PopupMenuEntry<T>> items,
 }) {
   final rootNav = Navigator.of(context, rootNavigator: true);
-  final overlay =
-      rootNav.overlay!.context.findRenderObject() as RenderBox;
+  final overlay = rootNav.overlay!.context.findRenderObject() as RenderBox;
   // A 1x1 anchor rect at the press point; showMenu grows the menu from here and
   // keeps it on screen. Coordinates are global, which is exactly the root
   // overlay's coordinate space.
@@ -29,11 +28,22 @@ Future<T?> showContextPopup<T>({
   return showMenu<T>(
     context: rootNav.context,
     position: position,
-    color: AppColors.bgTop,
-    elevation: 12,
+    // Translucent rather than the flat opaque fill this used to have. Every
+    // other surface in the app is smoked glass over the aurora, and an opaque
+    // slab dropped into the middle of that reads as borrowed from another
+    // application.
+    //
+    // Not a true frosted pane: showMenu owns its own surface, so there is
+    // nowhere to hang a BackdropFilter without replacing the route wholesale —
+    // and with it showMenu's anchoring and on-screen clamping, which is
+    // fiddly work that wants checking on a real screen. Translucency plus the
+    // hairline gets most of the way there and risks nothing.
+    color: AppColors.bgTop.withValues(alpha: 0.92),
+    elevation: 16,
+    shadowColor: Colors.black,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+      borderRadius: BorderRadius.circular(18),
+      side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
     ),
     items: items,
   );
