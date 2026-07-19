@@ -469,14 +469,19 @@ class MessagingService {
     manager.touch(peerId);
 
     // Surface MTU-too-small immediately — HS2 is ~97B + 1 byte type, so we
-    // need ≥ ~100B effective payload. With Android default MTU of 23 that
-    // gives only 20B of usable notify space, which silently truncates HS2
-    // and the handshake stalls forever.
-    if (client.negotiatedMtu < 100) {
+    // need ≥ ~100B effective payload. At the 23-byte ATT default that leaves
+    // only 20B of usable notify space, so every frame is fragmented and the
+    // link crawls. `negotiatedMtu` is read live, so by now it reflects
+    // whatever the platform actually settled on, including on iOS.
+    final mtu = client.negotiatedMtu;
+    if (mtu < 100) {
       DebugLog.instance.log(
           'NOISE',
-          'WARNING: MTU=${client.negotiatedMtu} '
-              'is too small for handshake frames — handshake may stall');
+          'WARNING: MTU=$mtu is too small for handshake frames — '
+              'frames will be fragmented and delivery will be slow');
+    } else {
+      DebugLog.instance.log('NOISE', 'link MTU=$mtu '
+          '(${effectivePayload(mtu)}B usable payload)');
     }
   }
 
