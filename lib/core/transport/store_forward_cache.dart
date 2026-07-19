@@ -95,6 +95,23 @@ class StoreForwardCache {
   /// Number of distinct destinations we're currently holding frames for.
   int get destinationCount => _byDest.length;
 
+  /// When the most recently held frame was queued, or null if nothing is held.
+  ///
+  /// Lets a caller tell "we just missed someone" apart from "we have been
+  /// carrying this for half an hour". The two deserve very different amounts of
+  /// radio: [ttl] is an hour, and treating the whole hour as urgent pins the
+  /// scanner to its expensive cadence long after the peer stopped being likely
+  /// to reappear.
+  DateTime? get newestStoredAt {
+    DateTime? newest;
+    for (final list in _byDest.values) {
+      for (final f in list) {
+        if (newest == null || f.storedAt.isAfter(newest)) newest = f.storedAt;
+      }
+    }
+    return newest;
+  }
+
   void clear() {
     _byDest.clear();
     _count = 0;

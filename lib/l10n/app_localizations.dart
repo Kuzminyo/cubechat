@@ -806,6 +806,42 @@ abstract class AppLocalizations {
   /// **'yourself'**
   String get chatReplyYou;
 
+  /// No description provided for @chatCopyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get chatCopyAction;
+
+  /// No description provided for @chatCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get chatCopied;
+
+  /// No description provided for @chatForwardAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Forward'**
+  String get chatForwardAction;
+
+  /// No description provided for @chatForwardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Forward to'**
+  String get chatForwardTitle;
+
+  /// No description provided for @chatForwardEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No other chats yet'**
+  String get chatForwardEmpty;
+
+  /// No description provided for @chatForwardSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Forwarded to {name}'**
+  String chatForwardSent(String name);
+
   /// No description provided for @peerBlock.
   ///
   /// In en, this message translates to:

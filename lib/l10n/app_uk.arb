@@ -138,6 +138,14 @@
   "chatReplyingTo": "Відповідь для {name}",
   "chatReplyYou": "себе",
 
+  "chatCopyAction": "Копіювати",
+  "chatCopied": "Скопійовано",
+
+  "chatForwardAction": "Переслати",
+  "chatForwardTitle": "Переслати в",
+  "chatForwardEmpty": "Інших чатів поки немає",
+  "chatForwardSent": "Переслано в {name}",
+
   "peerBlock": "Заблокувати",
   "peerUnblock": "Розблокувати",
   "peerMute": "Без звуку",

@@ -400,6 +400,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatReplyYou => 'yourself';
 
   @override
+  String get chatCopyAction => 'Copy';
+
+  @override
+  String get chatCopied => 'Copied';
+
+  @override
+  String get chatForwardAction => 'Forward';
+
+  @override
+  String get chatForwardTitle => 'Forward to';
+
+  @override
+  String get chatForwardEmpty => 'No other chats yet';
+
+  @override
+  String chatForwardSent(String name) {
+    return 'Forwarded to $name';
+  }
+
+  @override
   String get peerBlock => 'Block';
 
   @override

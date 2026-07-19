@@ -5,6 +5,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../features/peers/models/discovered_peer.dart';
 import '../identity/nickname_controller.dart';
+import '../util/platform_info.dart';
 import 'ble_constants.dart';
 
 /// Cubechat central-role scanner.
@@ -18,11 +19,16 @@ import 'ble_constants.dart';
 ///
 /// The cadence adapts: see [shouldScanActively].
 class BleScanner {
-  BleScanner();
+  /// [isIOS] is injectable purely so the cadence can be tested off-device;
+  /// production always takes the platform's own answer.
+  BleScanner({bool? isIOS}) : _isIOS = isIOS ?? PlatformInfo.isIOS;
+
+  /// Which platform's cycle shape to use — see [BleConstants.scanWindowFor].
+  final bool _isIOS;
 
   /// Consulted at the start of every scan window to pick a cadence — active
-  /// (10 s on / 4 s off) when the answer is true, idle (6 s on / 24 s off)
-  /// when it's false. Null means always active.
+  /// when the answer is true, idle when it's false. Null means always active.
+  /// The durations each maps to are platform-dependent; see [BleConstants].
   ///
   /// A callback rather than a provider read so the scanner stays a plain
   /// object with no Riverpod dependency; [PeerDiscoveryController] wires it to
@@ -32,11 +38,27 @@ class BleScanner {
   /// Cadence chosen for the window currently running.
   bool _active = true;
 
+  /// Window and gap of the cycle currently running, kept so [_gcPeriod] can
+  /// pace itself against the cycle rather than a fixed interval.
+  Duration _window = BleConstants.scanWindow;
+  Duration _gap = BleConstants.scanGap;
+
   /// How long a peer may go unseen before [_gcStalePeers] drops it. Follows the
   /// running cadence: at the idle cadence a whole cycle is 30 s, so the active
   /// threshold would expire peers that never actually left.
   Duration get _staleAfter =>
       _active ? BleConstants.peerStaleAfter : BleConstants.peerStaleAfterIdle;
+
+  /// How often stale peers are swept.
+  ///
+  /// While active someone may be watching the Nearby list, so a departed peer
+  /// should disappear promptly. While idle nobody is looking, and a fixed 4 s
+  /// sweep is seven isolate wakeups per idle cycle that can only ever find
+  /// something once — so sweep once per cycle instead. A peer therefore
+  /// lingers up to one extra cycle past [_staleAfter], which no one is awake
+  /// to see.
+  Duration get _gcPeriod =>
+      _active ? const Duration(seconds: 4) : _window + _gap;
 
   final _peers = <String, DiscoveredPeer>{};
   final _controller = StreamController<List<DiscoveredPeer>>.broadcast();
@@ -44,6 +66,9 @@ class BleScanner {
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
   Timer? _cycleTimer;
   Timer? _gcTimer;
+
+  /// Period [_gcTimer] is currently armed at, or null when it isn't running.
+  Duration? _gcTimerPeriod;
   bool _running = false;
 
   Stream<List<DiscoveredPeer>> get peers => _controller.stream;
@@ -65,7 +90,9 @@ class BleScanner {
       }
     });
 
-    _gcTimer = Timer.periodic(const Duration(seconds: 4), (_) => _gcStalePeers());
+    // Armed here so the sweep runs even while the adapter is off and no window
+    // ever opens; _startScanWindow re-arms it whenever the cadence changes.
+    _restartGcTimer();
 
     final adapter = await FlutterBluePlus.adapterState.first;
     if (adapter == BluetoothAdapterState.on) {
@@ -95,6 +122,11 @@ class BleScanner {
     _running = false;
     _cycleTimer?.cancel();
     _gcTimer?.cancel();
+    // Cleared, not just cancelled: _restartGcTimer treats a non-null timer as
+    // already armed, so leaving the stale handle here would make a later
+    // start() skip arming the sweep entirely.
+    _gcTimer = null;
+    _gcTimerPeriod = null;
     await _adapterSub?.cancel();
     _adapterSub = null;
     await _stopScanWindow();
@@ -149,9 +181,13 @@ class BleScanner {
     // Re-decided per window, so a resume (or a message queued for an offline
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
-    final window =
-        _active ? BleConstants.scanWindow : BleConstants.scanWindowIdle;
-    final gap = _active ? BleConstants.scanGap : BleConstants.scanGapIdle;
+    _window = BleConstants.scanWindowFor(active: _active, isIOS: _isIOS);
+    _gap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);
+    // The sweep is paced off the cycle, so it has to be re-armed whenever the
+    // cadence changes underneath it.
+    _restartGcTimer();
+    final window = _window;
+    final gap = _gap;
     try {
       await FlutterBluePlus.startScan(
         withServices: [Guid(BleConstants.serviceUuid)],
@@ -241,6 +277,18 @@ class BleScanner {
     // name; if it didn't reach us this window, show the anonymous default
     // until the handshake fills in their real one.
     return NicknameController.defaultNickname;
+  }
+
+  /// (Re-)arm the stale sweep at the period the running cadence calls for.
+  /// No-op if it is already running at that period, so the common case — a
+  /// window opening at an unchanged cadence — doesn't reset the phase and
+  /// starve the sweep.
+  void _restartGcTimer() {
+    final period = _gcPeriod;
+    if (_gcTimer != null && period == _gcTimerPeriod) return;
+    _gcTimer?.cancel();
+    _gcTimerPeriod = period;
+    _gcTimer = Timer.periodic(period, (_) => _gcStalePeers());
   }
 
   void _gcStalePeers() {

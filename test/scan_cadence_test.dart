@@ -48,4 +48,77 @@ void main() {
           greaterThan(BleConstants.peerStaleAfter));
     });
   });
+
+  group('iOS cadence', () {
+    Duration window({required bool active}) =>
+        BleConstants.scanWindowFor(active: active, isIOS: true);
+    Duration gap({required bool active}) =>
+        BleConstants.scanGapFor(active: active, isIOS: true);
+    Duration androidWindow({required bool active}) =>
+        BleConstants.scanWindowFor(active: active, isIOS: false);
+    Duration androidGap({required bool active}) =>
+        BleConstants.scanGapFor(active: active, isIOS: false);
+
+    test('the selectors route each platform to its own numbers', () {
+      expect(androidWindow(active: true), BleConstants.scanWindow);
+      expect(androidGap(active: true), BleConstants.scanGap);
+      expect(androidWindow(active: false), BleConstants.scanWindowIdle);
+      expect(androidGap(active: false), BleConstants.scanGapIdle);
+      expect(window(active: true), BleConstants.scanWindowIos);
+      expect(gap(active: true), BleConstants.scanGapIos);
+      expect(window(active: false), BleConstants.scanWindowIdleIos);
+      expect(gap(active: false), BleConstants.scanGapIdleIos);
+    });
+
+    test('spends less radio time than Android at both cadences', () {
+      // CoreBluetooth reports each peer once per scan session, so the tail of
+      // a long window is receive time that cannot learn anything new.
+      for (final active in [true, false]) {
+        final ios = dutyCycle(window(active: active), gap(active: active));
+        final android = dutyCycle(
+          androidWindow(active: active),
+          androidGap(active: active),
+        );
+        expect(
+          ios,
+          lessThan(android),
+          reason: 'iOS should idle the radio more than Android '
+              '(active=$active)',
+        );
+      }
+    });
+
+    test('finds a peer sooner than Android despite scanning less', () {
+      // The point of the iOS shape, and the thing that makes it a free win
+      // rather than a trade: discovery latency is bounded by the cycle, not
+      // the window, so a shorter cycle beats a longer one even though the
+      // radio is on for less of it. If a future tuning pass ever inverts
+      // this, the change has stopped being free and needs re-arguing.
+      for (final active in [true, false]) {
+        final iosCycle = window(active: active) + gap(active: active);
+        final androidCycle =
+            androidWindow(active: active) + androidGap(active: active);
+        expect(
+          iosCycle,
+          lessThan(androidCycle),
+          reason: 'iOS cycle must stay shorter (active=$active)',
+        );
+      }
+    });
+
+    test('a peer survives a missed window at either cadence', () {
+      // The stale thresholds are shared with Android rather than scaled to the
+      // shorter iOS cycles, so the margin here is generous — but it is exactly
+      // the invariant that broke when the idle cadence first landed, so pin it
+      // for iOS too.
+      expect(
+        BleConstants.peerStaleAfter,
+        greaterThan((window(active: true) + gap(active: true)) * 2),
+      );
+      expect(
+        BleConstants.peerStaleAfterIdle,
+        greaterThan((window(active: false) + gap(active: false)) * 2),
+      );
+    });
+  });
 }

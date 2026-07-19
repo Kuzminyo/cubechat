@@ -402,6 +402,26 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatReplyYou => 'себе';
 
   @override
+  String get chatCopyAction => 'Копіювати';
+
+  @override
+  String get chatCopied => 'Скопійовано';
+
+  @override
+  String get chatForwardAction => 'Переслати';
+
+  @override
+  String get chatForwardTitle => 'Переслати в';
+
+  @override
+  String get chatForwardEmpty => 'Інших чатів поки немає';
+
+  @override
+  String chatForwardSent(String name) {
+    return 'Переслано в $name';
+  }
+
+  @override
   String get peerBlock => 'Заблокувати';
 
   @override

@@ -2,13 +2,17 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
+import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../chats/models/chat.dart';
+import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
@@ -56,6 +60,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   bool get _canReact => widget.message.wireId != null;
+
+  /// Anything with words in it can be copied — including the caption on a
+  /// photo. A voice note or a bare image has nothing to put on the clipboard.
+  bool get _canCopy => widget.message.text.trim().isNotEmpty;
+
+  /// Forwarding re-sends the text into another chat, so it needs text for the
+  /// same reason [_canCopy] does. Media isn't forwarded: the bytes live in a
+  /// chat-scoped file and re-sending them is a different job from this one.
+  bool get _canForward => _canCopy;
 
   /// Only your own text messages can be rewritten, and only if we know the
   /// transport id everyone else filed them under.
@@ -108,7 +121,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             ),
           ),
         if (widget.message.wireId != null)
-          _menuRow('reply', Icons.reply, t.chatReplyAction,
+          _menuRow(
+              'reply', Icons.reply, t.chatReplyAction, AppColors.textOnGlass),
+        if (_canCopy)
+          _menuRow('copy', Icons.copy_outlined, t.chatCopyAction,
+              AppColors.textOnGlass),
+        if (_canForward)
+          _menuRow('forward', Icons.shortcut_outlined, t.chatForwardAction,
               AppColors.textOnGlass),
         if (_canEdit)
           _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
@@ -130,6 +149,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         mine: m.isMine,
         authorName: m.authorName,
       );
+    } else if (picked == 'copy') {
+      await Clipboard.setData(ClipboardData(text: widget.message.text));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          content:
+              Text(t.chatCopied, style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    } else if (picked == 'forward') {
+      await _promptForward();
     } else if (picked == 'edit') {
       // Load the message into the input row (Telegram-style inline edit); the
       // input commits it on send.
@@ -235,6 +267,111 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
+  /// Pick a chat and re-send this message's text into it.
+  ///
+  /// Forwarding is a fresh send, not a relay of the original frame: the text
+  /// goes out under our own identity, signed and sealed for the new recipient.
+  /// That is the only shape that works here — the original is encrypted to a
+  /// session the new chat has no key for, so it could not be passed along even
+  /// if we wanted to.
+  Future<void> _promptForward() async {
+    final t = AppLocalizations.of(context);
+    // Every chat except the one we're standing in.
+    final targets =
+        ref.read(chatsProvider).where((c) => c.id != widget.chatId).toList();
+
+    final chosen = await showDialog<Chat>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        title: Text(
+          t.chatForwardTitle,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        children: [
+          if (targets.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+              child: Text(
+                t.chatForwardEmpty,
+                style: TextStyle(color: AppColors.textOnGlassDim),
+              ),
+            )
+          else
+            // Bounded so a long chat list scrolls inside the dialog instead of
+            // overflowing it.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final c in targets)
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.of(ctx).pop(c),
+                        child: Row(
+                          children: [
+                            Icon(
+                              c.isChannel ? Icons.tag : Icons.person_outline,
+                              size: 18,
+                              color: AppColors.textOnGlassDim,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                c.peerName,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: AppColors.textOnGlass),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+        ],
+      ),
+    );
+
+    if (chosen == null || !mounted) return;
+
+    final messaging = ref.read(messagingServiceProvider);
+    final text = widget.message.text;
+    if (chosen.isChannel) {
+      await messaging.sendChannelText(chosen.id, text);
+    } else {
+      await messaging.sendText(chosen.id, text);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        content: Text(
+          t.chatForwardSent(chosen.peerName),
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   Future<void> _promptDelete() async {
     final t = AppLocalizations.of(context);
     final m = widget.message;
@@ -301,68 +438,85 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       bottomLeft: Radius.circular(mine ? 18 : 6),
       bottomRight: Radius.circular(mine ? 6 : 18),
     );
-    final bubble = ClipRRect(
-      borderRadius: radius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: mine
-              ? BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.brandPrimary.withValues(alpha: 0.85),
-                      AppColors.brandSecondary.withValues(alpha: 0.85),
-                    ],
-                  ),
-                  borderRadius: radius,
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18)),
-                )
-              : BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  borderRadius: radius,
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16)),
-                ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Channel messages from others: show the author's name on top,
-              // since a channel mixes many senders in one conversation.
-              if (!mine && message.authorName != null) ...[
-                Text(
-                  message.authorName!,
-                  style: TextStyle(
-                    color: AppColors.brandPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-              ],
-              if (message.replyToWireId != null)
-                _quotedBox(message.replyToWireId!),
-              if (message.kind == MessageKind.image)
-                _ImagePayload(message: message, chatId: widget.chatId)
-              else if (message.kind == MessageKind.audio)
-                VoiceBubble(message: message)
-              else
-                Text(
-                  message.text,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 14.5,
-                    height: 1.35,
-                  ),
-                ),
-              const SizedBox(height: 4),
-              _BubbleMeta(message: message),
-            ],
+    // Each bubble is its own levitating island, the same principle the chat
+    // list and the nav bar use — nothing welded behind it, just a pane over the
+    // aurora. It can't be a FloatingGlass (that surface is deliberately neutral
+    // and these have to stay colour-coded by sender), so it wears the shared
+    // shadow recipe over its own fill.
+    //
+    // The RepaintBoundary is not decoration: the BackdropFilter below was
+    // already here, and without a boundary one bubble's blur repaints its
+    // neighbours on every scroll frame. It makes the list cheaper than before,
+    // which matters on the same phones this branch is trying to cool down.
+    final bubble = RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: FloatingGlass.shadows,
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: mine
+                  ? BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.brandPrimary.withValues(alpha: 0.85),
+                          AppColors.brandSecondary.withValues(alpha: 0.85),
+                        ],
+                      ),
+                      borderRadius: radius,
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18)),
+                    )
+                  : BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: radius,
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.16)),
+                    ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Channel messages from others: show the author's name on top,
+                  // since a channel mixes many senders in one conversation.
+                  if (!mine && message.authorName != null) ...[
+                    Text(
+                      message.authorName!,
+                      style: TextStyle(
+                        color: AppColors.brandPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                  ],
+                  if (message.replyToWireId != null)
+                    _quotedBox(message.replyToWireId!),
+                  if (message.kind == MessageKind.image)
+                    _ImagePayload(message: message, chatId: widget.chatId)
+                  else if (message.kind == MessageKind.audio)
+                    VoiceBubble(message: message)
+                  else
+                    Text(
+                      message.text,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 14.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  _BubbleMeta(message: message),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -628,7 +782,8 @@ class _BubbleMeta extends StatelessWidget {
             style: TextStyle(
               fontSize: 10.5,
               fontStyle: FontStyle.italic,
-              color: Colors.white.withValues(alpha: message.isMine ? 0.7 : 0.45),
+              color:
+                  Colors.white.withValues(alpha: message.isMine ? 0.7 : 0.45),
             ),
           ),
           const SizedBox(width: 4),
