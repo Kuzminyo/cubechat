@@ -32,13 +32,21 @@ dependencies:
   cryptography: ^2.7.0            # X25519, ChaCha20-Poly1305, BLAKE2s, HKDF
   flutter_secure_storage: ^9.2.2  # private key in Keychain / Keystore
 
+  # Nostr internet fallback (M6) — relay sockets. secp256k1/BIP-340 is
+  # implemented in-repo (lib/core/crypto/secp256k1.dart), so no crypto dep.
+  web_socket_channel: ^3.0.3
+
   # Persistence (M4)
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
 
-  # Media picker (M5.4 — image transfer)
-  image_picker: ^1.1.2
+  # Telegram-style gallery: custom device-photo grid picker (multi-select),
+  # plus save-to-gallery and share from the in-chat media viewer. (Replaced the
+  # one-shot image_picker.)
+  photo_manager: ^3.6.0
+  share_plus: ^10.1.4
+  saver_gallery: ^4.0.1
 
   # Voice messages (audio capture + playback)
   record: ^6.0.0

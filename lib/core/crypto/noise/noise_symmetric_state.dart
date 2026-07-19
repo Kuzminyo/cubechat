@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import 'noise_cipher_state.dart';
-import 'noise_constants.dart';
 
 /// SymmetricState from §5.2 of the Noise spec.
 ///

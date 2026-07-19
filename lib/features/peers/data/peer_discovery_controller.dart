@@ -10,6 +10,7 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/platform_info.dart';
 import '../models/discovered_peer.dart';
 import 'peripheral_controller.dart';
@@ -80,6 +81,10 @@ final peerDiscoveryControllerProvider =
 class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   StreamSubscription<List<DiscoveredPeer>>? _peerSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  bool _nicknameWatched = false;
+
+  /// Tail of the serialized advertise transitions — see [_serializeAdvertise].
+  Future<void>? _advertiseChain;
 
   @override
   PeerDiscoveryState build() {
@@ -95,6 +100,13 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     ref.read(messagingServiceProvider);
 
     final scanner = ref.read(bleScannerProvider);
+    // Scan hard only when it buys something: while the user is in the app
+    // (watching Nearby, or one tap from it), or while we're still holding
+    // frames for a peer we haven't managed to hand them to. A backgrounded app
+    // with an empty outbox drops to the idle cadence — see BleConstants.
+    scanner.shouldScanActively = () =>
+        AppLifecycle.instance.isForeground ||
+        ref.read(messagingServiceProvider).hasPendingDelivery;
 
     // Web/desktop don't have meaningful BLE peripheral support yet, and
     // central support varies. Bail with a clear status.
@@ -134,34 +146,86 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     unawaited(_bootPeripheral());
   }
 
+  /// Ask the scanner to re-pick its scan cadence immediately — called when the
+  /// app returns to the foreground, so discovery doesn't stay at the idle
+  /// cadence for the remainder of a window the user is now watching.
+  Future<void> retuneScan() => ref.read(bleScannerProvider).retune();
+
   Future<void> _bootPeripheral() async {
-    try {
+    // Wired before the first start, not after: a start that fails still needs
+    // to pick up a later rename.
+    _watchNickname();
+    await _serializeAdvertise(() async {
       final peripheral = ref.read(peripheralControllerProvider.notifier);
-      // Advertise the user's chosen nickname so other phones see something
-      // meaningful in their Nearby list instead of 'Android' / 'iPhone'.
-      //
-      // The advertised name is also the scanner's dedup key (it survives
-      // Android BLE MAC rotation, unlike the address). So the default name
-      // gets a short, stable per-identity suffix — otherwise two phones that
-      // never set a nickname would both advertise "Android" and the scanner
-      // would collapse them into a single Nearby entry.
-      final nickname = ref.read(nicknameControllerProvider);
-      String advertiseName;
-      if (nickname != NicknameController.defaultNickname) {
-        advertiseName = nickname;
-      } else {
-        // Default identity: advertise 'Anonymous <tag>' — anonymous by design,
-        // and NOT 'Android'/'iPhone' or the OS device name. The tag matches
-        // what a peer's Chats entry derives from our pubkey, so Nearby and
-        // Chats agree on the label.
-        const base = NicknameController.defaultNickname;
-        final suffix = await _identitySuffix();
-        advertiseName = suffix == null ? base : '$base $suffix';
+      await peripheral.start(peerName: await _advertiseName());
+    }, what: 'peripheral boot');
+  }
+
+  /// Re-advertise under the new name when the user renames themselves.
+  /// The advertised name is baked into the GATT service at start(), so without
+  /// this a rename only reached peers through mesh announcements — their Nearby
+  /// list kept showing the old name until the app was restarted.
+  void _watchNickname() {
+    if (_nicknameWatched) return;
+    _nicknameWatched = true;
+    ref.listen<String>(nicknameControllerProvider, (prev, next) {
+      if (prev == next) return;
+      unawaited(_readvertise());
+    });
+  }
+
+  Future<void> _readvertise() => _serializeAdvertise(() async {
+        final peripheral = ref.read(peripheralControllerProvider.notifier);
+        final name = await _advertiseName();
+        // Advertising has to go down and back up for the name to change; the
+        // native side reads it once at start.
+        await peripheral.stop();
+        await peripheral.start(peerName: name);
+      }, what: 're-advertise after rename');
+
+  /// Run advertise transitions one at a time.
+  ///
+  /// Each is a stop/start pair, and PeripheralController drops a start that
+  /// arrives while another is in flight. Two renames in quick succession could
+  /// therefore interleave into stop → stop → start(dropped) and leave the radio
+  /// silent. Chaining them keeps the last rename the one that wins.
+  Future<void> _serializeAdvertise(
+    Future<void> Function() action, {
+    required String what,
+  }) {
+    final next = (_advertiseChain ?? Future<void>.value()).then((_) async {
+      try {
+        await action();
+      } catch (e, st) {
+        debugPrint('$what failed: $e\n$st');
       }
-      await peripheral.start(peerName: advertiseName);
-    } catch (e, st) {
-      debugPrint('peripheral boot failed: $e\n$st');
-    }
+    });
+    _advertiseChain = next;
+    return next;
+  }
+
+  /// Advertise the user's chosen nickname so other phones see something
+  /// meaningful in their Nearby list instead of 'Android' / 'iPhone'.
+  ///
+  /// The advertised name is also the scanner's dedup key (it survives
+  /// Android BLE MAC rotation, unlike the address). So the default name
+  /// gets a short, stable per-identity suffix — otherwise two phones that
+  /// never set a nickname would both advertise "Android" and the scanner
+  /// would collapse them into a single Nearby entry.
+  Future<String> _advertiseName() async {
+    // The stored nickname loads asynchronously and the provider reads back the
+    // default until it lands. Advertising is a once-per-start decision, so
+    // reading it early pinned us to "Anonymous <tag>" for the whole session.
+    await ref.read(nicknameControllerProvider.notifier).loaded;
+    final nickname = ref.read(nicknameControllerProvider);
+    if (nickname != NicknameController.defaultNickname) return nickname;
+    // Default identity: advertise 'Anonymous <tag>' — anonymous by design,
+    // and NOT 'Android'/'iPhone' or the OS device name. The tag matches
+    // what a peer's Chats entry derives from our pubkey, so Nearby and
+    // Chats agree on the label.
+    const base = NicknameController.defaultNickname;
+    final suffix = await _identitySuffix();
+    return suffix == null ? base : '$base $suffix';
   }
 
   /// 4 hex chars derived from our identity pubkey — the [anonTag]. Stable

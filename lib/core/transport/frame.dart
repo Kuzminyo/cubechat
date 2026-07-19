@@ -32,6 +32,12 @@ enum FrameType {
   /// for transport frames. See [PeerAnnouncement].
   peerAnnouncement(0x20),
 
+  /// One slice of a frame too large for the link's negotiated MTU. Carries
+  /// `[fragId:4][index:1][count:1][slice…]`; the receiver reassembles the
+  /// original frame bytes *before* normal dispatch, so dedup/replay/relay never
+  /// see fragments. See [fragmentFrame] / [FrameFragmentReassembler].
+  fragment(0x40),
+
   /// Either direction: explicit "session aborted / reset, drop your state".
   /// Useful when one side restarts and the other still has a stale session.
   reset(0xFE);

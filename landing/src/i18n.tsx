@@ -29,7 +29,7 @@ const uk = {
     scroll: 'гортати',
   },
   marquee: [
-    '186 тестів пройдено',
+    '246 тестів пройдено',
     '0 серверів',
     '0 номерів телефона',
     'рукостискання Noise XX',
@@ -222,7 +222,7 @@ const en: Dict = {
     scroll: 'scroll',
   },
   marquee: [
-    '186 passing tests',
+    '246 passing tests',
     '0 servers',
     '0 phone numbers',
     'Noise XX handshake',

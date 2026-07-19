@@ -103,11 +103,17 @@ class _OnlineDot extends StatefulWidget {
   State<_OnlineDot> createState() => _OnlineDotState();
 }
 
-class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMixin {
+class _OnlineDotState extends State<_OnlineDot>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
   )..repeat(reverse: true);
+
+  late final Animation<double> _glow = Tween<double>(
+    begin: 0.35,
+    end: 0.60,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
 
   @override
   void dispose() {
@@ -117,27 +123,49 @@ class _OnlineDotState extends State<_OnlineDot> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) {
-        final glow = 0.35 + 0.25 * _c.value;
-        return Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            color: AppColors.online,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.bgDeep, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.online.withValues(alpha: glow),
-                blurRadius: 8 + 4 * _c.value,
-                spreadRadius: 1,
+    // This dot sits on every avatar, so it is on screen once per visible chat
+    // row — and it never stops animating. Two things keep that affordable:
+    //
+    //  * the blur is a fixed radius and only the glow layer's *opacity*
+    //    animates, so the shadow rasterizes once and the compositor re-blends
+    //    it. Animating blurRadius (as this used to) re-rasterizes a blur per
+    //    dot per frame, which at 120 Hz is most of a frame budget spent on
+    //    decoration.
+    //  * the RepaintBoundary keeps the repaint inside the dot instead of
+    //    dirtying the whole list row behind it.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            FadeTransition(
+              opacity: _glow,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.online,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.online,
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.online,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.bgDeep, width: 2),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

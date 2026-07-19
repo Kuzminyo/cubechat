@@ -13,7 +13,7 @@ import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../models/message.dart';
-import '../image_viewer_screen.dart';
+import '../chat_media_gallery_screen.dart';
 import 'voice_bubble.dart';
 
 /// Emoji offered in the long-press reaction picker. Kept short so the row fits
@@ -348,7 +348,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               if (message.replyToWireId != null)
                 _quotedBox(message.replyToWireId!),
               if (message.kind == MessageKind.image)
-                _ImagePayload(message: message)
+                _ImagePayload(message: message, chatId: widget.chatId)
               else if (message.kind == MessageKind.audio)
                 VoiceBubble(message: message)
               else
@@ -497,9 +497,10 @@ class _ReactionChip extends StatelessWidget {
 /// placeholder block with a spinner — the bubble still occupies space so
 /// the list doesn't reflow when the image finally appears.
 class _ImagePayload extends StatelessWidget {
-  const _ImagePayload({required this.message});
+  const _ImagePayload({required this.message, required this.chatId});
 
   final Message message;
+  final String chatId;
 
   @override
   Widget build(BuildContext context) {
@@ -512,9 +513,9 @@ class _ImagePayload extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 fullscreenDialog: true,
-                builder: (_) => ImageViewerScreen(
-                  imagePath: path,
-                  heroTag: heroTag,
+                builder: (_) => ChatMediaGalleryScreen(
+                  chatId: chatId,
+                  initialMessageId: message.id,
                 ),
               ),
             ),

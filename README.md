@@ -14,13 +14,11 @@ launch.
 
 ## Status
 
-Well past a UI scaffold: the BLE mesh, the Noise-encrypted transport, persistent
-storage, group channels, media, and a full set of messaging features are all
-implemented and covered by **236 passing tests** (`flutter test`, including
-known-answer vectors for the crypto). An optional internet-fallback transport
-(Nostr, M6) has its signer, event framing, and relay protocol done and
-vector-verified; wiring the live socket + `MessagingService` bridge is the
-remaining work (see below).
+Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
+transport, persistent storage, group channels, media, the full messaging
+feature set, and the optional Nostr internet fallback are all implemented and
+covered by **269 passing tests** (`flutter test`, including known-answer
+vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
 UI work but have no BLE.
@@ -33,68 +31,15 @@ UI work but have no BLE.
 - [x] M3 — Multi-hop mesh relay + message dedup + store-and-forward outbox
 - [x] M4 — Local message store (Hive), key storage (flutter_secure_storage)
 - [x] M5 — Emergency wipe, IRC-style commands, image + voice transfer (signed manifests)
-- [x] M5.5 — Group channels, receipts/reactions, message edit/delete, block/mute peers
-- [~] M6 — Nostr fallback transport — signer + framing + relay protocol built (see below)
+- [x] M5.5 — Group channels, receipts/reactions, message edit/delete, reply/quote, block/mute peers
+- [x] M6 — Nostr internet fallback (see below)
 
-> The `[x]` marks above reflect what's implemented and covered by the 236-test
+> The `[x]` marks above reflect what's implemented and covered by the 269-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
-> is not yet wired.
-
-### Nostr fallback (M6, in progress)
-
-Goal: when a recipient is out of BLE range, relay the *same encrypted cubechat
-frame* through public Nostr relays over the internet, and pull frames the mesh
-missed. Nostr is used as a dumb store-and-forward pipe — the frame is already
-end-to-end encrypted (SealedBox / X3DH) and signed, so relays never see
-plaintext.
-
-Built and unit-tested (`lib/core/`, pure/offline):
-
-- **`crypto/secp256k1.dart`** — a self-contained secp256k1 + BIP-340 Schnorr
-  signer/verifier in pure Dart (no new dependency), pinned to the **official
-  BIP-340 test vectors**. Nostr requires this curve; the app's `cryptography`
-  stack (Ed25519 / X25519) doesn't provide it.
-- **`transport/nostr/nostr_signer.dart`** — `Secp256k1NostrSigner`, which
-  **deterministically derives** a stable Nostr key from the Ed25519 identity
-  seed (`HKDF-SHA256(seed, info="cubechat/nostr-secp256k1/v1")`, reduced into
-  `[1, n-1]`), so no extra key material is persisted. Tests verify the produced
-  signatures with the BIP-340 verifier.
-- **`transport/nostr/nostr_event.dart`** — NIP-01 event model with canonical
-  serialization and SHA-256 event id.
-- **`transport/nostr/nostr_frame_codec.dart`** — `cc1:` self-identifying
-  `Frame`↔event-content codec so a shared public relay's unrelated traffic is
-  cheaply skipped.
-- **`transport/nostr/nostr_transport.dart`** — the `sendFrame` /
-  `inboundFrames` seam `MessagingService` will call, over two abstractions:
-  `NostrRelayClient` (WebSocket pool) and `NostrEventSigner`
-  (`Secp256k1NostrSigner`). Tests drive the flow with an in-memory fake relay,
-  proving a frame round-trips byte-for-byte.
-
-Also wired (signed announcement carries the address):
-
-- The peer announcement is bumped to **v0x04** and now signs in each peer's
-  `npub` next to the existing signed prekey, so the (x25519 ↔ ed25519 ↔ spk ↔
-  npub ↔ nickname) binding is authenticated end-to-end — a relay can't swap in
-  its own Nostr address. Received npubs are cached in `KnownPeer` (Hive-backed)
-  and `MessagingService` derives + advertises ours on every announcement.
-
-The relay **protocol framing** is also done and tested
-(`nostr_relay_protocol.dart`): the client→relay `REQ`/`EVENT`/`CLOSE` encoders,
-the relay→client parser (`EVENT`/`EOSE`/`OK`/`NOTICE` → typed `RelayMessage`,
-anything else → `RelayUnknown`), and `verifyInboundEvent` — the untrusted-relay
-gate that checks the cubechat kind, recomputes the event id, and verifies the
-BIP-340 Schnorr signature via `Secp256k1.verify`.
-
-Remaining (needs a device/network to verify, so not done here):
-
-1. **Socket transport.** A `WebSocketNostrRelayClient` over
-   `web_socket_channel` that pipes strings through `NostrRelayProtocol`, holds a
-   small relay pool, reconnects, and drops any event that fails
-   `verifyInboundEvent`. Thin glue over the tested core above.
-2. **MessagingService wiring.** Push to Nostr when a BLE send yields
-   `deliveredVia == 0` (using the recipient's cached `npub`), and feed
-   `inboundFrames()` into `_handleInboundBytes` so off-mesh frames flow through
-   the same decrypt/deliver path.
+> is intentionally dropped — it defeats the length-hiding padding.
+>
+> The one thing the test suite can't prove is real radio behaviour: two-phone
+> BLE range/reconnect and a live public relay both need hardware.
 
 ---
 
@@ -103,14 +48,20 @@ Remaining (needs a device/network to verify, so not done here):
 **Messaging**
 - 1:1 chats with delivery **and read receipts**
 - Emoji **reactions** on any message
+- **Replies** — long-press to quote a message; the quote rides in the envelope
 - **Edit** your own messages (inline, Telegram-style) and **delete** them —
   *for me* (local) or *for everyone* (retracted over the wire)
 - **Images** and **voice messages** (chunked, with a signed manifest and SHA-256
   reassembly check; live waveform while recording)
+- **In-app gallery** — a custom multi-select photo picker (send several at once)
+  and a Telegram-style swipeable full-screen viewer with pinch-zoom, save and
+  share
 - **Group channels** — shared-key rooms broadcast across the mesh (`/join #room`)
 - **Channel invites** — hand a peer the channel key over their 1:1 encrypted link
-- **Favorites**, unread badges, search, and system notifications (suppressed for
-  the chat you're actively reading)
+- **Favorites**, real unread tracking (badge + highlighted tile that clears when
+  you open the chat), search, and rich **MessagingStyle notifications** with the
+  sender's avatar and an inline **Reply** box (suppressed for the chat you're
+  actively reading)
 
 **Trust & privacy**
 - **Out-of-band verification**: compare two fingerprints in person to confirm no
@@ -119,6 +70,8 @@ Remaining (needs a device/network to verify, so not done here):
   and asks you to re-verify
 - **Anonymous by default**: no device name is ever broadcast; unnamed peers show
   as `Anonymous <tag>` where the tag is derived from their public key
+- **Block / mute** a peer — blocked peers' messages are dropped on arrival,
+  muted peers arrive silently
 - **Emergency wipe**: triple-tap the logo to erase every key, peer, and message
 
 **Transport**
@@ -126,6 +79,8 @@ Remaining (needs a device/network to verify, so not done here):
 - **Multi-hop mesh relay** with TTL and per-message deduplication
 - **Store-and-forward**: messages for an offline peer are held (encrypted) and
   delivered automatically when they come back into range
+- **Internet fallback (optional, off by default)** — when the mesh can't reach a
+  peer, the same sealed frame goes out over public Nostr relays
 - Automatic reconnect with address-rotation rescan and backoff
 
 **Commands** (IRC-style, typed into any chat)
@@ -167,29 +122,41 @@ keyed on `(originPubkeyHash, msgId)` drops loops and reflections across the mesh
 
 ### Nostr internet fallback (optional, M6)
 
-The cryptographic core lives in `lib/core/transport/nostr/` and **pinned to
-the official BIP-340 test vectors**:
+When the mesh can't reach a peer, cubechat can push the **same encrypted frame**
+through public Nostr relays instead of only holding it in the store-and-forward
+buffer. Nostr is a dumb pipe: the frame is already sealed (SealedBox / X3DH) and
+signed, so a relay carries ciphertext it cannot read. Lives in
+`lib/core/transport/nostr/`.
 
 - **`Secp256k1NostrSigner`** — deterministically derives a stable Nostr key
   from the Ed25519 identity seed (`HKDF-SHA256`, reduced into `[1, n-1]`), so
-  no extra key material is persisted; signs/verifies NIP-01 events with
-  BIP-340 Schnorr.
+  no extra key material is persisted; signs NIP-01 events with BIP-340 Schnorr
+  (pure-Dart, **pinned to the official BIP-340 vectors**).
 - **NIP-01 event model + relay protocol** — canonical event serialization,
   SHA-256 event id, and the client↔relay `REQ`/`EVENT`/`CLOSE`/`OK`/`EOSE`
   framing, including `verifyInboundEvent` (the untrusted-relay gate that
   recomputes the event id and checks the Schnorr signature before anything
   reaches the app).
-- **`cc1:` frame codec** — wraps/unwraps the same encrypted cubechat `Frame`
-  used on BLE inside a Nostr event, so relays only ever see ciphertext they
-  can't decrypt — Nostr is a dumb store-and-forward pipe, not a second
-  encryption layer.
+- **`cc1:` frame codec** — wraps the same encrypted cubechat `Frame` used on BLE
+  inside a Nostr event, self-identifying so a shared relay's unrelated traffic
+  is cheaply skipped.
+- **`WebSocketNostrRelayClient`** — the relay pool: publishes to every connected
+  relay, merges inbound events into one stream, de-duplicates by event id across
+  relays, and reconnects with exponential backoff (replaying `since` so nothing
+  is missed or re-downloaded).
 - **Signed announcement carries the address** — the peer announcement (v0x04)
-  signs each peer's `npub` alongside the existing signed prekey, so a relay
-  can't swap in its own Nostr address.
+  signs each peer's `npub` alongside the signed prekey, so a relay can't swap in
+  its own Nostr address.
+- **`MessagingService` bridge** — a text or control frame the mesh couldn't
+  deliver is published to the recipient's `npub`; if no relay accepts it, it
+  still falls through to store-and-forward. Inbound relay frames re-enter the
+  *same* dispatch as a BLE notification, so they get the same dedup, replay
+  window, and signature checks.
 
-Not yet wired: the live `WebSocketNostrRelayClient` and the
-`MessagingService` bridge that pushes to Nostr when a BLE send can't reach
-the peer (see [Status](#status) above for the exact remaining steps).
+**Off by default, and it should be.** A relay never sees plaintext, but it does
+learn which two Nostr keys exchanged a message and when — metadata the BLE mesh
+never leaks. So it is opt-in per device (Profile → Internet fallback), the relay
+list is user-editable, and Emergency Wipe switches it back off.
 
 ---
 
@@ -201,6 +168,7 @@ Every BLE write/notification carries one **frame**: `[type:1][payload:N]`.
 Frame
  ├─ noiseHandshake1/2/3   raw Noise XX messages
  ├─ peerAnnouncement       signed (pubkey, nickname, signed prekey) broadcast
+ ├─ fragment               [fragId:4][index:1][count:1][slice] — link-layer split
  ├─ reset                  drop-your-session
  └─ transport              TransportEnvelope:
         [originHash:8][destHash:8][msgId:16][ttl:1][body]
@@ -214,6 +182,16 @@ Frame
 each relay decrements it. Short text is padded to a 48-byte bucket to hide
 length from passive sniffers.
 
+**MTU-aware framing.** Real iOS↔Android links often negotiate an ATT MTU well
+below the ~247 the code once assumed, and a frame larger than the link's usable
+payload is silently truncated on the wire (the AEAD open then fails). Media
+chunks are sized from the link's actual `negotiatedMtu` (`mtu_budget.dart`), and
+any frame that still doesn't fit is split into `fragment` frames and rejoined by
+the receiver *before* dispatch (`frame_fragment.dart`) — transparent to dedup,
+replay and relay. The native peripheral side (Swift/Kotlin) queues notifies and
+drains them on the BLE "ready to send" callback, so a media burst no longer
+overruns the transmit queue and aborts the transfer.
+
 ---
 
 ## Architecture
@@ -221,7 +199,10 @@ length from passive sniffers.
 Flutter + Riverpod (Notifier pattern), `go_router` with a `StatefulShellRoute`
 so tabs keep their state. The floating glass nav bar and chat-input capsule are
 overlays, not welded plates; the animated aurora backdrop is a single
-`CustomPainter` so it never rebuilds the widget tree.
+`CustomPainter` so it never rebuilds the widget tree, and its drift runs off a
+~30 fps wall-clock ticker (paused while backgrounded) rather than every vsync —
+the blobs rebuild four shaders per paint, so at 120 fps on ProMotion it ran the
+GPU hot even while the app sat idle.
 
 ```
 lib/
@@ -231,7 +212,7 @@ lib/
 │   │                 #   channel crypto, identity
 │   ├── transport/    # messaging service, envelope, frame, dedup, store-forward,
 │   │                 #   chat sessions, inner payloads, nostr/ (M6 signer, frame
-│   │                 #   codec, relay protocol)
+│   │                 #   codec, relay protocol + WebSocket relay pool)
 │   ├── ble/          # scanner, peripheral bridge, permissions, constants
 │   ├── storage/      # encrypted Hive boxes + AES cipher provider
 │   ├── identity/     # nickname, anon naming, emergency wipe
@@ -241,7 +222,7 @@ lib/
 │   ├── chat/         # conversation screen, bubbles, input, voice, edit target
 │   ├── channels/     # channel model + controller
 │   ├── peers/        # Nearby discovery, peripheral controller, verification
-│   └── profile/      # settings, identity, diagnostics
+│   └── profile/      # settings, identity, diagnostics, relay settings
 └── l10n/             # ARB files (en, uk)
 ```
 
@@ -259,6 +240,17 @@ lib/
 It starts automatically when the Peers screen opens (permissions/adapter
 permitting) and surfaces as a "Broadcasting · N centrals connected" chip.
 
+### Background delivery on aggressive OEMs (Xiaomi/MIUI, etc.)
+
+BLE delivery while the app is backgrounded needs the OS to keep the process
+alive. Most phones are fine once **Background mode** is on (Profile → Background)
+and the battery-optimisation exemption is granted (the "Battery exempt" button
+there). MIUI/HyperOS (Xiaomi/Redmi/POCO) additionally kill apps unless
+**Autostart** is enabled for cubechat — grant it in *Settings → Apps → cubechat →
+Autostart* (or Security app → Autostart), and set battery saver to *No
+restrictions*. Without those, messages sent while cubechat is closed only arrive
+after the peer reopens it.
+
 ---
 
 ## Build & run
@@ -268,7 +260,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 186 tests, incl. crypto known-answer vectors
+flutter test         # 269 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -313,7 +305,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **236 tests** across 27 files. Highlights:
+`flutter test` — **269 tests** across 32 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto
@@ -322,6 +314,10 @@ dart run flutter_native_splash:create
 - `nostr_signer_test`, `nostr_event_test`, `nostr_relay_protocol_test`,
   `nostr_transport_test` — Nostr fallback signer, event framing, relay
   protocol, and the in-memory fake-relay round-trip
+- `websocket_relay_client_test` — the relay pool driven against a **real
+  in-process WebSocket relay**: publish, REQ filter, cross-relay dedup,
+  forged-signature rejection, and the no-relay throw that keeps
+  store-and-forward as the backstop
 - `channel_crypto_test`, `channel_invite_test`, `receipt_reaction_test`,
   `edit_delete_test` — feature wire formats
 - `dedup_cache_test`, `store_forward_cache_test`, `hive_cipher_test` — mesh +
@@ -342,14 +338,14 @@ dart run flutter_native_splash:create
       padding and is a CRIME/BREACH-class leak with encryption)*
 - [x] **M4** — Encrypted Hive store + Keystore/Keychain key storage
 - [x] **M5** — Emergency wipe, IRC commands, image + voice transfer
-- [x] **M5.5** — Channels, receipts, reactions, edit/delete, favorites, floating
-      Telegram-style UI, anonymous naming
-- [~] **M6** — Nostr fallback: **secp256k1 signer + event framing + relay
-      protocol done and vector-verified**; live socket transport,
-      `MessagingService` bridging, and relay UI remain
+- [x] **M5.5** — Channels, receipts, reactions, edit/delete, reply/quote,
+      block/mute, favorites, floating Telegram-style UI, anonymous naming
+- [x] **M6** — Nostr internet fallback: secp256k1 signer, event framing, relay
+      protocol, WebSocket relay pool, `MessagingService` bridge, and the relay
+      settings screen — opt-in, off by default
 
 ---
 
 ## License
 
-TBD.
+[MIT](LICENSE) © 2026 Kuzminyo

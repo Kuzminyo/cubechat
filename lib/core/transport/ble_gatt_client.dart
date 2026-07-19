@@ -26,12 +26,17 @@ class BleGattClient {
 
   StreamSubscription<List<int>>? _inboundSub;
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
+  StreamSubscription<int>? _mtuSub;
 
   final _frames = StreamController<Uint8List>.broadcast();
   final _connection = StreamController<BluetoothConnectionState>.broadcast();
 
   bool _running = false;
   int _negotiatedMtu = 23;
+
+  /// True once the platform has reported a real ATT MTU for this link, as
+  /// opposed to us still sitting on the 23-byte assumption.
+  bool _mtuKnown = false;
 
   /// Serialises [writeOutbound] across all callers — concurrent writes on the
   /// same characteristic make flutter_blue_plus silently drop frames on some
@@ -40,7 +45,30 @@ class BleGattClient {
   Future<void> _writeChain = Future<void>.value();
 
   String get peerId => _device.remoteId.str;
-  int get negotiatedMtu => _negotiatedMtu;
+
+  /// The link's real ATT MTU, read live from the platform on every access.
+  ///
+  /// It cannot be latched at connect time, and it cannot be taken from
+  /// [BluetoothDevice.requestMtu] alone:
+  ///
+  ///  * `requestMtu` is Android-only. On iOS it throws, and we used to swallow
+  ///    that and leave the field at the 23-byte ATT default — so every frame
+  ///    an iPhone sent as central was fragmented into 13-byte slices: a 174 B
+  ///    announce went out as 14 writes, and a 10 KB voice note as ~3300
+  ///    instead of the 91 the same note took in the Android→iOS direction.
+  ///    CoreBluetooth negotiates the MTU itself (185+ in practice); the plugin
+  ///    polls for it and reports it through [BluetoothDevice.mtuNow].
+  ///  * iOS reports it *after* the connect completes, so a value read once at
+  ///    the end of [connect] can still be the stale 23.
+  ///
+  /// [mtuNow] falls back to 23 when the platform hasn't reported yet, so keep
+  /// whichever value is larger: on Android the `requestMtu` result is
+  /// authoritative the moment it returns.
+  int get negotiatedMtu {
+    final live = _device.mtuNow;
+    return live > _negotiatedMtu ? live : _negotiatedMtu;
+  }
+
   Stream<Uint8List> get inboundFrames => _frames.stream;
   Stream<BluetoothConnectionState> get connectionState => _connection.stream;
   bool get isConnected =>
@@ -63,6 +91,8 @@ class BleGattClient {
       _inboundSub = null;
       await _connectionSub?.cancel();
       _connectionSub = null;
+      await _mtuSub?.cancel();
+      _mtuSub = null;
       rethrow;
     }
   }
@@ -82,11 +112,28 @@ class BleGattClient {
     await _device.connect(timeout: timeout, autoConnect: false);
     log.log('BLE-CENTRAL', 'connected, requesting MTU ${BleConstants.preferredMtu}');
 
+    // Track every MTU the platform reports for the life of the link. This is
+    // the only channel that carries iOS's self-negotiated value, and it also
+    // catches a late renegotiation on Android.
+    _mtuSub = _device.mtu.listen((m) {
+      if (m <= _negotiatedMtu) return;
+      _negotiatedMtu = m;
+      _mtuKnown = true;
+      log.log('BLE-CENTRAL', 'MTU reported by platform = $m');
+    });
+
     try {
       _negotiatedMtu = await _device.requestMtu(BleConstants.preferredMtu);
+      _mtuKnown = true;
       log.log('BLE-CENTRAL', 'MTU negotiated = $_negotiatedMtu');
     } catch (e) {
-      log.log('BLE-CENTRAL', 'requestMtu failed: $e — staying at default 23');
+      // Expected on iOS — CoreBluetooth owns MTU negotiation and refuses the
+      // request. It reports the real value through the stream above shortly
+      // after connecting, so give it a moment rather than sizing frames for
+      // 23 bytes and crawling for the rest of the session.
+      log.log('BLE-CENTRAL', 'requestMtu unavailable ($e) — awaiting the '
+          "platform's own MTU report");
+      await _awaitPlatformMtu();
     }
 
     log.log('BLE-CENTRAL', 'discoverServices…');
@@ -135,6 +182,30 @@ class BleGattClient {
       _frames.add(Uint8List.fromList(bytes));
     });
     DebugLog.instance.log('BLE-CENTRAL', 'ready');
+  }
+
+  /// Waits briefly for the platform to report this link's MTU.
+  ///
+  /// iOS negotiates the MTU itself a moment after the connection is up, and
+  /// the plugin discovers it by polling, so the value isn't there the instant
+  /// [connect] returns. Blocking the handshake on it for a second or so buys
+  /// correctly-sized frames from the very first write; if it never arrives we
+  /// carry on at 23 and the [negotiatedMtu] getter picks the real value up as
+  /// soon as it lands.
+  Future<void> _awaitPlatformMtu({
+    Duration timeout = const Duration(milliseconds: 1500),
+  }) async {
+    if (_mtuKnown) return;
+    try {
+      final mtu = await _device.mtu.firstWhere((m) => m > 23).timeout(timeout);
+      if (mtu > _negotiatedMtu) _negotiatedMtu = mtu;
+      _mtuKnown = true;
+      DebugLog.instance.log('BLE-CENTRAL', 'platform reported MTU = $mtu');
+    } on TimeoutException {
+      DebugLog.instance.log('BLE-CENTRAL',
+          'no MTU report within ${timeout.inMilliseconds}ms — sizing frames '
+          'for 23 until one arrives');
+    }
   }
 
   /// Writes one frame to the peer's outbound characteristic. Calls are
@@ -189,6 +260,12 @@ class BleGattClient {
     _inboundSub = null;
     await _connectionSub?.cancel();
     _connectionSub = null;
+    await _mtuSub?.cancel();
+    _mtuSub = null;
+    // The platform drops its cached MTU on disconnect; drop ours too, so a
+    // reconnect can't size frames for the previous link's ceiling.
+    _negotiatedMtu = 23;
+    _mtuKnown = false;
     try {
       await _device.disconnect();
     } catch (_) {

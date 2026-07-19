@@ -63,6 +63,16 @@ class CubechatBlePeripheralPlugin(
     private val subscribers = mutableSetOf<BluetoothDevice>()
     private var running = false
 
+    // Outbound notify backpressure. notifyCharacteristicChanged can report the
+    // stack is busy; the next notify must wait for onNotificationSent. Frames
+    // wait here and drain from that callback. Without this, a media burst
+    // overran the stack and the whole transfer aborted (the "notify failed on
+    // image chunk N" field bug). All queue access is marshalled onto the main
+    // thread so it stays single-threaded.
+    private val notifyQueue = ArrayDeque<ByteArray>()
+    private var notifyInFlight = false
+    private val maxNotifyQueue = 4096
+
     init {
         methodChannel.setMethodCallHandler(this)
         eventChannel.setStreamHandler(this)
@@ -128,7 +138,21 @@ class CubechatBlePeripheralPlugin(
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return false
         val adapter = mgr.adapter ?: return false
-        return adapter.bluetoothLeAdvertiser != null && adapter.isMultipleAdvertisementSupported
+        // NOTE: do NOT gate on isMultipleAdvertisementSupported(). That asks
+        // whether the chipset can run SEVERAL concurrent advertisements;
+        // cubechat runs exactly one, and plenty of phones that advertise fine
+        // answer false. Gating on it switched the peripheral off on capable
+        // hardware, so the device never became discoverable.
+        //
+        // bluetoothLeAdvertiser is null while Bluetooth is off, so a false here
+        // can also just mean "adapter down" - the Dart side checks the adapter
+        // first and retries when it comes back on.
+        return try {
+            adapter.bluetoothLeAdvertiser != null
+        } catch (e: SecurityException) {
+            android.util.Log.w("CubechatBlePeripheral", "isSupported: denied", e)
+            false
+        }
     }
 
     private fun ensurePermissions(): Boolean {
@@ -272,51 +296,73 @@ class CubechatBlePeripheralPlugin(
         gattServer = null
         inboundChar = null
         subscribers.clear()
+        notifyQueue.clear()
+        notifyInFlight = false
     }
 
+    /// Enqueue a frame and kick the drain. Returns true when the frame was
+    /// accepted (there is a server, a characteristic, and at least one
+    /// subscriber). A busy stack no longer surfaces to Dart as a failure — the
+    /// queue drains as onNotificationSent fires.
     private fun notifyInbound(data: ByteArray): Boolean {
-        val server = gattServer ?: run {
-            Log.w(TAG, "notifyInbound: no gattServer")
-            return false
+        if (gattServer == null) {
+            Log.w(TAG, "notifyInbound: no gattServer"); return false
         }
-        val ch = inboundChar ?: run {
-            Log.w(TAG, "notifyInbound: no inboundChar")
-            return false
+        if (inboundChar == null) {
+            Log.w(TAG, "notifyInbound: no inboundChar"); return false
         }
         if (subscribers.isEmpty()) {
             Log.w(TAG, "notifyInbound: no subscribers (central did not enable CCCD)")
             return false
         }
-        var anySuccess = false
+        mainHandler.post {
+            if (notifyQueue.size >= maxNotifyQueue) {
+                notifyQueue.removeFirst() // bound memory under sustained overrun
+                Log.w(TAG, "notify queue full — dropping oldest frame")
+            }
+            notifyQueue.addLast(data)
+            pumpNotifyQueue()
+        }
+        return true
+    }
+
+    /// Send the next queued frame to every subscriber, then wait for
+    /// onNotificationSent before sending the following one. Runs on the main
+    /// thread. On a busy return we re-queue at the front and retry shortly.
+    private fun pumpNotifyQueue() {
+        if (notifyInFlight) return
+        val server = gattServer ?: return
+        val ch = inboundChar ?: return
+        val data = notifyQueue.removeFirstOrNull() ?: return
+        var sent = false
         for (dev in subscribers.toList()) {
             try {
                 val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     // Atomic value+notify required on Android 13+; the deprecated
                     // ch.value=... + notifyCharacteristicChanged(dev, ch, false)
                     // pair stopped being atomic and would race or send stale bytes.
-                    val res = server.notifyCharacteristicChanged(dev, ch, false, data)
-                    if (res != BluetoothStatusCodes.SUCCESS) {
-                        Log.w(TAG, "notifyCharacteristicChanged returned status=$res for ${dev.address}")
-                    }
-                    res == BluetoothStatusCodes.SUCCESS
+                    server.notifyCharacteristicChanged(dev, ch, false, data) ==
+                        BluetoothStatusCodes.SUCCESS
                 } else {
                     @Suppress("DEPRECATION")
-                    val ok = run {
+                    run {
                         ch.value = data
                         server.notifyCharacteristicChanged(dev, ch, false)
                     }
-                    if (!ok) {
-                        Log.w(TAG, "notifyCharacteristicChanged returned false for ${dev.address}")
-                    }
-                    ok
                 }
-                if (ok) anySuccess = true
+                if (ok) sent = true
             } catch (e: SecurityException) {
                 Log.w(TAG, "notifyInbound permission denied for ${dev.address}", e)
-                return false
             }
         }
-        return anySuccess
+        if (sent) {
+            // Wait for onNotificationSent to release the next frame.
+            notifyInFlight = true
+        } else {
+            // Busy / rejected by every subscriber — retry this frame shortly.
+            notifyQueue.addFirst(data)
+            mainHandler.postDelayed({ pumpNotifyQueue() }, 15)
+        }
     }
 
     private fun encodePeerInfo(): ByteArray {
@@ -355,6 +401,15 @@ class CubechatBlePeripheralPlugin(
                 "(0=SUCCESS, other = registration FAILED)")
         }
 
+        override fun onNotificationSent(device: BluetoothDevice, status: Int) {
+            // The stack finished the previous notify — release the next queued
+            // frame. Marshalled to the main thread to keep queue access serial.
+            mainHandler.post {
+                notifyInFlight = false
+                pumpNotifyQueue()
+            }
+        }
+
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             emitLog("connection state change ${device.address}: status=$status newState=$newState")
             when (newState) {
@@ -363,6 +418,15 @@ class CubechatBlePeripheralPlugin(
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     subscribers.remove(device)
+                    // A notify in flight to this central will never get its
+                    // onNotificationSent now — clear the gate so the queue for
+                    // any remaining/next subscriber doesn't wedge.
+                    if (subscribers.isEmpty()) {
+                        mainHandler.post {
+                            notifyInFlight = false
+                            notifyQueue.clear()
+                        }
+                    }
                     emit(mapOf("type" to "disconnected", "centralId" to device.address))
                 }
             }

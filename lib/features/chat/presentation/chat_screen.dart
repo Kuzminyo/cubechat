@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/colors.dart';
@@ -12,11 +14,13 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../chats/data/read_markers_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../data/message_edit_target.dart';
@@ -25,6 +29,7 @@ import '../data/messages_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
 import 'widgets/chat_input.dart';
+import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
@@ -502,8 +507,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // for it don't pop a (redundant) notification. Clears any banner too.
     AppLifecycle.instance.activeChatId = widget.canonicalId;
     NotificationService.instance.clearForChat(widget.canonicalId);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _maybeSendReadReceipts());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markChatRead();
+      _maybeSendReadReceipts();
+    });
     // Drop any inline-edit draft left over from a different chat. Deferred so
     // we don't mutate a provider during this widget's mount.
     final stale = ref.read(messageEditTargetProvider);
@@ -522,6 +529,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     ref.read(messagingServiceProvider).sendReadReceipts(widget.canonicalId);
   }
 
+  /// Advance this chat's local read marker so its unread badge clears on the
+  /// main Chats list. Applies to channels too (unlike the peer-only receipts).
+  void _markChatRead() {
+    if (!mounted) return;
+    ref
+        .read(readMarkersControllerProvider.notifier)
+        .markRead(widget.canonicalId);
+  }
+
   @override
   void didUpdateWidget(covariant _ChatBottomBar old) {
     super.didUpdateWidget(old);
@@ -534,6 +550,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         AppLifecycle.instance.activeChatId = widget.canonicalId;
       }
       NotificationService.instance.clearForChat(widget.canonicalId);
+      _markChatRead();
       _maybeSendReadReceipts();
     }
   }
@@ -618,38 +635,89 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   }
 
   Future<void> _pickAndSendImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1280,
-      maxHeight: 1280,
-      imageQuality: 70,
+    // Custom in-app gallery picker (multi-select) instead of the one-shot
+    // system picker, so several photos go out in one action.
+    final assets = await showModalBottomSheet<List<AssetEntity>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bgTop,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => const MediaPickerSheet(),
     );
-    if (picked == null) return;
-    try {
-      final bytes = await File(picked.path).readAsBytes();
-      final lower = picked.path.toLowerCase();
-      final mime = lower.endsWith('.png')
-          ? 'image/png'
-          : lower.endsWith('.webp')
-              ? 'image/webp'
-              : lower.endsWith('.gif')
-                  ? 'image/gif'
-                  : 'image/jpeg';
-      await ref.read(messagingServiceProvider).sendImage(
-            widget.peerId,
-            bytes: bytes,
-            mime: mime,
-            cachedPath: picked.path,
-          );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text('$e', style: const TextStyle(color: Colors.white)),
-        ),
+    if (assets == null || assets.isEmpty || !mounted) return;
+
+    final messaging = ref.read(messagingServiceProvider);
+    for (final asset in assets) {
+      try {
+        final bytes = await _encodeForMesh(asset);
+        if (bytes == null) continue;
+        final cachedPath = await _cacheOutgoingImage(bytes, asset.id);
+        await messaging.sendImage(
+          widget.peerId,
+          bytes: bytes,
+          mime: 'image/jpeg',
+          cachedPath: cachedPath,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
+            content: Text('$e', style: const TextStyle(color: Colors.white)),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Re-encode a picked photo down to something the BLE mesh can actually
+  /// carry — at most [kMaxOutgoingImageBytes].
+  ///
+  /// A fixed 1280 px / q72 (what this used to do) still produced ~1 MB for a
+  /// detailed photo, which is 10912 chunks against a 8192 cap: the transport
+  /// threw and the user just saw "image too large". Pixel dimensions don't
+  /// predict JPEG size — detail does — so step down the rungs until the bytes
+  /// come in under budget, and send the smallest rung if even that overshoots
+  /// (a 320 px thumbnail beats a failed send).
+  Future<Uint8List?> _encodeForMesh(AssetEntity asset) async {
+    const rungs = <({int size, int quality})>[
+      (size: 1280, quality: 70),
+      (size: 1024, quality: 65),
+      (size: 800, quality: 60),
+      (size: 640, quality: 55),
+      (size: 480, quality: 50),
+      (size: 320, quality: 45),
+    ];
+    Uint8List? smallest;
+    for (final rung in rungs) {
+      final bytes = await asset.thumbnailDataWithSize(
+        ThumbnailSize(rung.size, rung.size),
+        quality: rung.quality,
       );
+      if (bytes == null) continue;
+      smallest = bytes;
+      if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
+    }
+    return smallest;
+  }
+
+  /// Persist the downscaled bytes we're about to send to the app cache, so the
+  /// sender's own bubble can render the image immediately (the picker gives us
+  /// bytes, not a stable file path).
+  Future<String?> _cacheOutgoingImage(Uint8List bytes, String assetId) async {
+    try {
+      final dir = Directory(
+        '${(await getApplicationCacheDirectory()).path}/cubechat/sent',
+      );
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final safeId = assetId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final file = File('${dir.path}/$safeId.jpg');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (_) {
+      return null; // preview is best-effort; the send still goes through
     }
   }
 
@@ -657,8 +725,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
-    // A new inbound message while the chat is open should be acknowledged.
-    ref.listen(messagesControllerProvider, (_, __) => _maybeSendReadReceipts());
+    // A new inbound message while the chat is open should be acknowledged and
+    // counted as read (so its badge never appears on the list behind us).
+    ref.listen(messagesControllerProvider, (_, __) {
+      _markChatRead();
+      _maybeSendReadReceipts();
+    });
     // Media (images / voice) is 1:1 only for now — channels broadcast text.
     final mediaEnabled = widget.canSend && !widget.isChannel;
 

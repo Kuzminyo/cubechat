@@ -413,4 +413,54 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get peerBlockedNote => 'Blocked — their messages are dropped.';
+
+  @override
+  String get relaysTitle => 'Internet fallback';
+
+  @override
+  String get relaysCardTitle => 'Reach peers over the internet';
+
+  @override
+  String get relaysCardSubtitle =>
+      'When Bluetooth can\'t deliver, send via Nostr relays';
+
+  @override
+  String get relaysExplainer =>
+      'Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.';
+
+  @override
+  String get relaysMyAddress => 'Your relay address';
+
+  @override
+  String get relaysCopied => 'Copied';
+
+  @override
+  String get relaysListLabel => 'Relays';
+
+  @override
+  String get relaysAdd => 'Add relay';
+
+  @override
+  String get relaysAddHint => 'wss://relay.example.com';
+
+  @override
+  String get relaysInvalidUrl => 'Enter a wss:// or ws:// address';
+
+  @override
+  String get relaysRemove => 'Remove';
+
+  @override
+  String get relaysStateConnected => 'Connected';
+
+  @override
+  String get relaysStateConnecting => 'Connecting…';
+
+  @override
+  String get relaysStateFailed => 'Unreachable';
+
+  @override
+  String get relaysStateIdle => 'Off';
+
+  @override
+  String get relaysEmpty => 'No relays configured — the fallback stays off.';
 }

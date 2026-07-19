@@ -9,7 +9,6 @@ import '../../../core/crypto/identity_keys.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
-import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/known_peers_controller.dart';
