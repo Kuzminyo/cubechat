@@ -79,9 +79,8 @@ class ChatScreen extends ConsumerWidget {
     // Prefer the canonical pubkey-keyed bucket; fall back to the transport
     // id (for chats that are still on the BLE-address URL).
     final canonicalId = session?.remotePubkeyHex ?? peerId;
-    final messages = messagesMap[canonicalId] ??
-        messagesMap[peerId] ??
-        const [];
+    final messages =
+        messagesMap[canonicalId] ?? messagesMap[peerId] ?? const [];
     final canSend = session?.isEstablished ?? false;
 
     // Offer a reconnect whenever there's no live session to speak over — the
@@ -114,7 +113,8 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.presenceOnline;
     } else if (lastSeen != null) {
       // "offline · 14:05" / "offline · Mon" — precise last-seen.
-      statusText = '${t.presenceOffline} · ${formatChatListTime(context, lastSeen)}';
+      statusText =
+          '${t.presenceOffline} · ${formatChatListTime(context, lastSeen)}';
     } else {
       statusText = t.presenceOffline;
     }
@@ -140,7 +140,8 @@ class ChatScreen extends ConsumerWidget {
                 children: [
                   Text(
                     peerLabel,
-                    style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
+                    style: AppTypography.heading(
+                        size: 16, color: AppColors.textOnGlass),
                   ),
                   Text(
                     statusText,
@@ -197,27 +198,23 @@ class ChatScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: messages.isEmpty
-                  ? _EmptyConversationState(canSend: canSend)
-                  : ListView.builder(
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      itemCount: messages.length,
-                      itemBuilder: (_, i) {
-                        final m = messages[messages.length - 1 - i];
-                        return MessageBubble(message: m, chatId: canonicalId);
-                      },
-                    ),
-            ),
-            _ChatBottomBar(
-              peerId: peerId,
-              canonicalId: canonicalId,
-              canSend: canSend,
-            ),
-          ],
+        child: _FloatingComposerBody(
+          listBuilder: (padding) => messages.isEmpty
+              ? _EmptyConversationState(canSend: canSend)
+              : ListView.builder(
+                  reverse: true,
+                  padding: padding,
+                  itemCount: messages.length,
+                  itemBuilder: (_, i) {
+                    final m = messages[messages.length - 1 - i];
+                    return MessageBubble(message: m, chatId: canonicalId);
+                  },
+                ),
+          composer: _ChatBottomBar(
+            peerId: peerId,
+            canonicalId: canonicalId,
+            canSend: canSend,
+          ),
         ),
       ),
     );
@@ -291,28 +288,24 @@ class ChatScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: messages.isEmpty
-                  ? _EmptyConversationState(canSend: joined)
-                  : ListView.builder(
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      itemCount: messages.length,
-                      itemBuilder: (_, i) {
-                        final m = messages[messages.length - 1 - i];
-                        return MessageBubble(message: m, chatId: peerId);
-                      },
-                    ),
-            ),
-            _ChatBottomBar(
-              peerId: peerId,
-              canonicalId: peerId,
-              canSend: joined,
-              isChannel: true,
-            ),
-          ],
+        child: _FloatingComposerBody(
+          listBuilder: (padding) => messages.isEmpty
+              ? _EmptyConversationState(canSend: joined)
+              : ListView.builder(
+                  reverse: true,
+                  padding: padding,
+                  itemCount: messages.length,
+                  itemBuilder: (_, i) {
+                    final m = messages[messages.length - 1 - i];
+                    return MessageBubble(message: m, chatId: peerId);
+                  },
+                ),
+          composer: _ChatBottomBar(
+            peerId: peerId,
+            canonicalId: peerId,
+            canSend: joined,
+            isChannel: true,
+          ),
         ),
       ),
     );
@@ -365,8 +358,9 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
     navigator.pop();
     messenger.showSnackBar(
       SnackBar(
-        backgroundColor: (delivered > 0 ? AppColors.brandPrimary : AppColors.danger)
-            .withValues(alpha: 0.9),
+        backgroundColor:
+            (delivered > 0 ? AppColors.brandPrimary : AppColors.danger)
+                .withValues(alpha: 0.9),
         content: Text(
           delivered > 0 ? t.channelInviteSent : t.channelInviteNoneSent,
           style: const TextStyle(color: Colors.white),
@@ -388,7 +382,8 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
           const SizedBox(height: 16),
           Text(
             t.channelInviteTitle,
-            style: AppTypography.heading(size: 16, color: AppColors.textOnGlass),
+            style:
+                AppTypography.heading(size: 16, color: AppColors.textOnGlass),
           ),
           const SizedBox(height: 2),
           Text(
@@ -435,7 +430,8 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
                     ),
                     title: Text(
                       name,
-                      style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                      style:
+                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
                     ),
                     subtitle: p.isVerified
                         ? Text(
@@ -475,6 +471,78 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Message list with the composer floating clear of the bottom edge, the
+/// conversation scrolling underneath it — the same principle as the floating
+/// nav bar, rather than a bar welded across the foot of the screen.
+///
+/// The list needs bottom room equal to the composer's height, or the newest
+/// message sits behind it. That height is not a constant: the input grows with
+/// multi-line text and gains a "Replying to …" bar above it. So the composer is
+/// measured after layout and the padding follows it, instead of guessing a
+/// number that would be wrong exactly when someone is typing a long message.
+class _FloatingComposerBody extends StatefulWidget {
+  const _FloatingComposerBody({
+    required this.listBuilder,
+    required this.composer,
+  });
+
+  /// Builds the conversation, given the padding that keeps it clear of the
+  /// composer.
+  final Widget Function(EdgeInsets padding) listBuilder;
+  final Widget composer;
+
+  @override
+  State<_FloatingComposerBody> createState() => _FloatingComposerBodyState();
+}
+
+class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
+  final _composerKey = GlobalKey();
+
+  /// Height used until the first real measurement lands — a single-line
+  /// composer. Only ever wrong for one frame.
+  static const double _initialGuess = 76;
+
+  /// Breathing room between the newest message and the composer above it.
+  static const double _clearance = 12;
+
+  double _composerHeight = _initialGuess;
+
+  void _measure(Duration _) {
+    final box = _composerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final h = box.size.height;
+    // Sub-pixel churn would otherwise setState on every frame.
+    if ((h - _composerHeight).abs() < 0.5) return;
+    setState(() => _composerHeight = h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Re-measured after each build because the composer changes height while
+    // the user types. The guard above makes the steady state a no-op.
+    WidgetsBinding.instance.addPostFrameCallback(_measure);
+
+    return Stack(
+      children: [
+        // reverse: true means the list starts at the visual bottom, so this
+        // bottom padding is what the newest message clears itself by.
+        widget.listBuilder(
+          EdgeInsets.only(
+            top: _clearance,
+            bottom: _composerHeight + _clearance,
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: KeyedSubtree(key: _composerKey, child: widget.composer),
+        ),
+      ],
     );
   }
 }
@@ -736,19 +804,19 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
     // Inline edit: only when the target belongs to THIS chat.
     final editTarget = ref.watch(messageEditTargetProvider);
-    final editingText = (editTarget != null &&
-            editTarget.chatId == widget.canonicalId)
-        ? editTarget.originalText
-        : null;
+    final editingText =
+        (editTarget != null && editTarget.chatId == widget.canonicalId)
+            ? editTarget.originalText
+            : null;
 
     // Reply compose (1:1 only for now — channels display quotes but don't
     // compose them yet).
     final replyTargetRaw =
         widget.isChannel ? null : ref.watch(messageReplyTargetProvider);
-    final activeReply = (replyTargetRaw != null &&
-            replyTargetRaw.chatId == widget.canonicalId)
-        ? replyTargetRaw
-        : null;
+    final activeReply =
+        (replyTargetRaw != null && replyTargetRaw.chatId == widget.canonicalId)
+            ? replyTargetRaw
+            : null;
 
     final composer = ChatInput(
       hint: t.chatInputHint,
@@ -764,9 +832,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             .read(messagingServiceProvider)
             .sendEdit(target.chatId, target.wireId, newText);
       },
-      onAttach: mediaEnabled && !voiceState.isRecording
-          ? _pickAndSendImage
-          : null,
+      onAttach:
+          mediaEnabled && !voiceState.isRecording ? _pickAndSendImage : null,
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
@@ -918,7 +985,8 @@ class _EmptyConversationState extends StatelessWidget {
           children: [
             Icon(
               canSend ? Icons.lock_outline : Icons.hourglass_top,
-              color: canSend ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
+              color:
+                  canSend ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
               size: 36,
             ),
             const SizedBox(height: 12),
@@ -968,9 +1036,7 @@ class _ShieldButton extends StatelessWidget {
         ? AppColors.danger
         : (isVerified
             ? AppColors.brandPrimary
-            : (canVerify
-                ? AppColors.textOnGlass
-                : AppColors.textOnGlassFaint));
+            : (canVerify ? AppColors.textOnGlass : AppColors.textOnGlassFaint));
 
     return IconButton(
       icon: Icon(icon, color: color),

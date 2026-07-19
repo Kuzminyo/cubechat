@@ -139,6 +139,15 @@
   "@chatReplyingTo": { "placeholders": { "name": { "type": "String" } } },
   "chatReplyYou": "yourself",
 
+  "chatCopyAction": "Copy",
+  "chatCopied": "Copied",
+
+  "chatForwardAction": "Forward",
+  "chatForwardTitle": "Forward to",
+  "chatForwardEmpty": "No other chats yet",
+  "chatForwardSent": "Forwarded to {name}",
+  "@chatForwardSent": { "placeholders": { "name": { "type": "String" } } },
+
   "peerBlock": "Block",
   "peerUnblock": "Unblock",
   "peerMute": "Mute",

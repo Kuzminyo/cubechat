@@ -65,7 +65,8 @@ class PeerDiscoveryState {
   );
 }
 
-final blePermissionsProvider = Provider<BlePermissions>((_) => const BlePermissions());
+final blePermissionsProvider =
+    Provider<BlePermissions>((_) => const BlePermissions());
 
 final bleScannerProvider = Provider<BleScanner>((ref) {
   final scanner = BleScanner();
@@ -101,12 +102,16 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
 
     final scanner = ref.read(bleScannerProvider);
     // Scan hard only when it buys something: while the user is in the app
-    // (watching Nearby, or one tap from it), or while we're still holding
-    // frames for a peer we haven't managed to hand them to. A backgrounded app
-    // with an empty outbox drops to the idle cadence — see BleConstants.
+    // (watching Nearby, or one tap from it), or while we're still chasing a
+    // handover we only just failed to make. A backgrounded app with nothing
+    // fresh to deliver drops to the idle cadence — see BleConstants.
+    //
+    // Deliberately hasFreshPendingDelivery, not hasPendingDelivery: the latter
+    // stays true for the buffer's full one-hour TTL, so one undeliverable
+    // message used to hold the radio at the active cadence for an hour.
     scanner.shouldScanActively = () =>
         AppLifecycle.instance.isForeground ||
-        ref.read(messagingServiceProvider).hasPendingDelivery;
+        ref.read(messagingServiceProvider).hasFreshPendingDelivery;
 
     // Web/desktop don't have meaningful BLE peripheral support yet, and
     // central support varies. Bail with a clear status.
@@ -235,9 +240,8 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   Future<String?> _identitySuffix() async {
     try {
       final id = await ref.read(identityProvider.future);
-      final hex = id.publicKey
-          .map((b) => b.toRadixString(16).padLeft(2, '0'))
-          .join();
+      final hex =
+          id.publicKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       return anonTag(hex);
     } catch (_) {
       return null;
@@ -260,7 +264,8 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     }
   }
 
-  Future<void> openSettings() => ref.read(blePermissionsProvider).openSettings();
+  Future<void> openSettings() =>
+      ref.read(blePermissionsProvider).openSettings();
 
   Future<void> stop() async {
     await ref.read(bleScannerProvider).stop();

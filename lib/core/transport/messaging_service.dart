@@ -17,6 +17,7 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
+import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
 import '../crypto/fs_message.dart';
@@ -277,10 +278,10 @@ class MessagingService {
       _relayClient = client;
       _nostr = transport;
       _nostrSub = transport.inboundFrames().listen(
-        (bytes) => unawaited(_handleInboundBytes(_nostrPeerId, bytes)),
-        onError: (Object e) =>
-            DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
-      );
+            (bytes) => unawaited(_handleInboundBytes(_nostrPeerId, bytes)),
+            onError: (Object e) =>
+                DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
+          );
       _relayStateSub = client.stateChanges.listen(
         (states) => _ref.read(relayStatusProvider.notifier).publish(states),
       );
@@ -325,7 +326,8 @@ class MessagingService {
   Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
     final transport = _nostr;
     if (transport == null) return false;
-    final npub = _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+    final npub =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
     if (npub == null || npub.length != 32) {
       DebugLog.instance.log(
           'NOSTR', 'no npub for $canonicalId — cannot use internet fallback');
@@ -406,8 +408,8 @@ class MessagingService {
         ephemeralPub: Uint8List.fromList(ephemeral.publicKey.bytes),
       );
     } catch (e) {
-      DebugLog.instance.log('CRYPTO',
-          'media FS setup failed ($e) — SealedBox fallback');
+      DebugLog.instance
+          .log('CRYPTO', 'media FS setup failed ($e) — SealedBox fallback');
       return null;
     }
   }
@@ -480,8 +482,10 @@ class MessagingService {
           'WARNING: MTU=$mtu is too small for handshake frames — '
               'frames will be fragmented and delivery will be slow');
     } else {
-      DebugLog.instance.log('NOISE', 'link MTU=$mtu '
-          '(${effectivePayload(mtu)}B usable payload)');
+      DebugLog.instance.log(
+          'NOISE',
+          'link MTU=$mtu '
+              '(${effectivePayload(mtu)}B usable payload)');
     }
   }
 
@@ -911,8 +915,8 @@ class MessagingService {
         senderEphemeralPub: fs?.ephemeralPub,
       );
       if (fs != null) {
-        DebugLog.instance.log('CRYPTO',
-            'sendImage: forward-secret (X3DH) media to $canonicalId');
+        DebugLog.instance.log(
+            'CRYPTO', 'sendImage: forward-secret (X3DH) media to $canonicalId');
       }
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -954,8 +958,8 @@ class MessagingService {
           } else {
             final ok = await _notifyFrameToPeripheral(frameBytes);
             if (!ok) {
-              DebugLog.instance.log('IMG',
-                  'chunk $i/$total notify rejected — no subscribers?');
+              DebugLog.instance.log(
+                  'IMG', 'chunk $i/$total notify rejected — no subscribers?');
               throw StateError('notify failed on image chunk $i/$total');
             }
           }
@@ -1078,8 +1082,8 @@ class MessagingService {
         senderEphemeralPub: fs?.ephemeralPub,
       );
       if (fs != null) {
-        DebugLog.instance.log('CRYPTO',
-            'sendAudio: forward-secret (X3DH) media to $canonicalId');
+        DebugLog.instance.log(
+            'CRYPTO', 'sendAudio: forward-secret (X3DH) media to $canonicalId');
       }
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -1125,8 +1129,7 @@ class MessagingService {
           } else {
             final ok = await _notifyFrameToPeripheral(frameBytes);
             if (!ok) {
-              DebugLog.instance
-                  .log('VOICE', 'chunk $i/$total notify rejected');
+              DebugLog.instance.log('VOICE', 'chunk $i/$total notify rejected');
               throw StateError('notify failed on audio chunk $i/$total');
             }
           }
@@ -1186,8 +1189,7 @@ class MessagingService {
     for (var i = 0; i < fresh.length; i += ReadReceipt.maxIdsPerFrame) {
       final end = (i + ReadReceipt.maxIdsPerFrame).clamp(0, fresh.length);
       final slice = fresh.sublist(i, end);
-      final receipt =
-          ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
+      final receipt = ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
       try {
         await _sendControlToPeer(
           canonicalId: canonicalId,
@@ -1441,8 +1443,8 @@ class MessagingService {
     required Uint8List body,
   }) async {
     if (senderEdPub == null) {
-      DebugLog.instance.log('CHAN',
-          'drop channel invite from $peerId: not signed');
+      DebugLog.instance
+          .log('CHAN', 'drop channel invite from $peerId: not signed');
       return;
     }
     final inviter = _knownPeerBySignKey(senderEdPub);
@@ -1455,8 +1457,8 @@ class MessagingService {
     try {
       invite = ChannelInvite.decode(body);
     } catch (e) {
-      DebugLog.instance.log('CHAN',
-          'drop channel invite from $peerId: malformed ($e)');
+      DebugLog.instance
+          .log('CHAN', 'drop channel invite from $peerId: malformed ($e)');
       return;
     }
     try {
@@ -1514,16 +1516,16 @@ class MessagingService {
     try {
       final utf8Text = Uint8List.fromList(utf8.encode(text));
       final inner = padTextPayload(utf8Text);
-      final frame =
-          await _buildChannelFrame(channel, InnerPayloadType.text, inner, msgId);
+      final frame = await _buildChannelFrame(
+          channel, InnerPayloadType.text, inner, msgId);
       final fanout = await _fanoutAllLinks(frame, excludePeerId: null);
       messages.updateStatus(
         canonicalId,
         msg.id,
         fanout > 0 ? MessageStatus.delivered : MessageStatus.sending,
       );
-      DebugLog.instance.log('CHAN',
-          'channel post to ${channel.name} fanout=$fanout');
+      DebugLog.instance
+          .log('CHAN', 'channel post to ${channel.name} fanout=$fanout');
     } catch (e, st) {
       debugPrint('sendChannelText failed: $e\n$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
@@ -1623,8 +1625,8 @@ class MessagingService {
     final sealed = await ChannelCrypto.seal(channel.key, signed);
     final channelBody = Uint8List(ChannelCrypto.tagLen + sealed.length)
       ..setRange(0, ChannelCrypto.tagLen, channel.tag)
-      ..setRange(ChannelCrypto.tagLen, ChannelCrypto.tagLen + sealed.length,
-          sealed);
+      ..setRange(
+          ChannelCrypto.tagLen, ChannelCrypto.tagLen + sealed.length, sealed);
     final env = TransportEnvelope(
       originPubkeyHash: myHash,
       destPubkeyHash: broadcast,
@@ -1661,8 +1663,7 @@ class MessagingService {
     final myHash = await _myPubkeyHash();
     if (_bytesEqual(env.originPubkeyHash, myHash)) return;
 
-    final blob =
-        Uint8List.fromList(channelBody.sublist(ChannelCrypto.tagLen));
+    final blob = Uint8List.fromList(channelBody.sublist(ChannelCrypto.tagLen));
     final Uint8List plain;
     try {
       plain = await ChannelCrypto.open(channel.key, blob);
@@ -1673,8 +1674,8 @@ class MessagingService {
     }
 
     if (plain.isEmpty || plain[0] != SignedPayload.markerByte) {
-      DebugLog.instance.log('CHAN',
-          'drop ${channel.name} frame: not author-signed');
+      DebugLog.instance
+          .log('CHAN', 'drop ${channel.name} frame: not author-signed');
       return;
     }
     final ctx = SignedPayload.contextBytes(
@@ -1699,8 +1700,8 @@ class MessagingService {
         edPub: senderEdPub,
       );
     } on SignatureVerificationException catch (e) {
-      DebugLog.instance.log('CHAN',
-          'drop ${channel.name} frame: bad signature (${e.message})');
+      DebugLog.instance.log(
+          'CHAN', 'drop ${channel.name} frame: bad signature (${e.message})');
       return;
     }
 
@@ -1757,8 +1758,7 @@ class MessagingService {
 
         case InnerPayloadType.reaction:
           final rx = Reaction.decode(unpacked.body);
-          _applyReactionToBuckets([channel.name],
-              rx: rx, reactorId: reactorId);
+          _applyReactionToBuckets([channel.name], rx: rx, reactorId: reactorId);
 
         case InnerPayloadType.edit:
           final edit = MessageEdit.decode(unpacked.body);
@@ -1789,8 +1789,8 @@ class MessagingService {
           break;
       }
     } catch (e) {
-      DebugLog.instance.log('CHAN',
-          'drop ${channel.name} frame: malformed inner ($e)');
+      DebugLog.instance
+          .log('CHAN', 'drop ${channel.name} frame: malformed inner ($e)');
     }
   }
 
@@ -2148,8 +2148,8 @@ class MessagingService {
         try {
           mediaIdBytes = MediaFsCipher.readMediaId(cipherBody);
         } catch (e) {
-          DebugLog.instance.log('CRYPTO',
-              'drop FS media chunk from $peerId: malformed ($e)');
+          DebugLog.instance.log(
+              'CRYPTO', 'drop FS media chunk from $peerId: malformed ($e)');
           return;
         }
         final mediaIdHex = _hexOf(mediaIdBytes);
@@ -2169,8 +2169,8 @@ class MessagingService {
         try {
           sealedPlain = await MediaFsCipher.open(key: key, body: cipherBody);
         } catch (e) {
-          DebugLog.instance.log('CRYPTO',
-              'FS media chunk decrypt FAILED from $peerId: $e');
+          DebugLog.instance
+              .log('CRYPTO', 'FS media chunk decrypt FAILED from $peerId: $e');
           return;
         }
       } else {
@@ -2492,8 +2492,8 @@ class MessagingService {
 
     final orphan = _orphanedMedia.remove(key);
     if (orphan != null) {
-      DebugLog.instance.log('CRYPTO',
-          'late manifest matched orphan media $key — verifying');
+      DebugLog.instance
+          .log('CRYPTO', 'late manifest matched orphan media $key — verifying');
       await _verifyAndEmit(
         peerId: peerId,
         senderPub: senderPub,
@@ -2516,8 +2516,8 @@ class MessagingService {
     DebugLog.instance.log(
         'CRYPTO',
         'cached signed manifest $key '
-        '(${manifest.kind.name} total=${manifest.total}'
-        '${manifest.isForwardSecret ? ", FS" : ""})');
+            '(${manifest.kind.name} total=${manifest.total}'
+            '${manifest.isForwardSecret ? ", FS" : ""})');
 
     // Now the manifest is registered, drain any FS chunks that raced ahead of
     // it — decrypting them feeds the reassembler, which may complete the media.
@@ -2689,7 +2689,8 @@ class MessagingService {
     // A media key is only useful while its transfer is still in flight (its
     // manifest pending, or chunks buffered). Once neither holds, drop it.
     _mediaKeys.removeWhere((id, _) =>
-        !_pendingManifests.containsKey(id) && !_pendingFsChunks.containsKey(id));
+        !_pendingManifests.containsKey(id) &&
+        !_pendingFsChunks.containsKey(id));
   }
 
   void _evictOldestManifest() {
@@ -2867,6 +2868,14 @@ class MessagingService {
   /// subscribed centrals — receiver dedup handles any echo). Returns the
   /// number of links the frame was emitted onto. Each link fragments to its
   /// own MTU, so one oversized frame reaches a mix of high- and low-MTU peers.
+  /// Whether any peer could hear a broadcast right now — a connected
+  /// central-role client of ours, or a central subscribed to our peripheral.
+  /// Mirrors exactly the two paths [_fanoutAllLinks] writes to, so "false"
+  /// means a fanout would return 0.
+  bool get _hasAnyLink =>
+      _clients.values.any((c) => c.isConnected) ||
+      _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+
   Future<int> _fanoutAllLinks(
     Uint8List bytes, {
     required String? excludePeerId,
@@ -3021,6 +3030,17 @@ class MessagingService {
   /// peripheral notify pipe. Safe to call before any link exists — the
   /// individual sends just no-op.
   Future<void> _broadcastAnnouncement() async {
+    // Nothing to announce to, nothing to build. An announcement only ever
+    // travels over an established link — a connected GATT client, or a central
+    // subscribed to our peripheral — and _fanoutAllLinks is the only path out
+    // of here, so with neither present every byte below is discarded.
+    //
+    // That mattered: this runs on a 60 s timer for the life of the process, and
+    // the discarded work includes a prekey-store init and an Ed25519 signature.
+    // A phone sitting in a pocket with no peers in range was waking up to sign
+    // an announcement for nobody, once a minute, forever.
+    if (!_hasAnyLink) return;
+
     try {
       final identity = await _ref.read(identityProvider.future);
       final nickname = _ref.read(nicknameControllerProvider);
@@ -3360,6 +3380,22 @@ class MessagingService {
   /// uses this to decide whether it's worth auto-connecting to a freshly
   /// seen peer in order to flush.
   bool get hasPendingDelivery => _store.size > 0;
+
+  /// True while a held frame is recent enough to be worth spending radio on.
+  ///
+  /// Distinct from [hasPendingDelivery], which stays true for the buffer's full
+  /// one-hour TTL and is the right question for "should we auto-connect to this
+  /// peer we just saw". It is the wrong question for the scan cadence: see
+  /// [BleConstants.pendingDeliveryChase].
+  ///
+  /// Needs no timer of its own — the scanner re-asks at every window boundary,
+  /// so the cadence relaxes within one cycle of the chase window closing.
+  bool get hasFreshPendingDelivery {
+    final newest = _store.newestStoredAt;
+    if (newest == null) return false;
+    return DateTime.now().difference(newest) <
+        BleConstants.pendingDeliveryChase;
+  }
 
   /// Drops every frame held in the store-and-forward buffer. Called by
   /// Emergency Wipe — although these frames are opaque (encrypted to other

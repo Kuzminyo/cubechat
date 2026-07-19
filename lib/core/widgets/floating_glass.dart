@@ -43,6 +43,28 @@ class FloatingGlass extends StatelessWidget {
   /// still belong to the InkWell.
   final void Function(Offset globalPosition)? onLongPressAt;
 
+  /// The pair of shadows that makes a pane hover: a close contact shadow and a
+  /// slightly wider ambient one, both pulled in with negative spread.
+  ///
+  /// Exposed because not every island can be a [FloatingGlass]. A chat bubble
+  /// has to keep its own sender colour, so it builds its own surface — but it
+  /// must levitate *identically*, and two hand-tuned shadow lists would drift
+  /// apart the first time either is touched.
+  static List<BoxShadow> get shadows => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.50),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+          spreadRadius: -4,
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.30),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+          spreadRadius: -14,
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
@@ -50,20 +72,7 @@ class FloatingGlass extends StatelessWidget {
     Widget surface = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.50),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-            spreadRadius: -4,
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -14,
-          ),
-        ],
+        boxShadow: shadows,
       ),
       child: ClipRRect(
         borderRadius: radius,

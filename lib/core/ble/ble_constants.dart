@@ -106,6 +106,21 @@ abstract final class BleConstants {
   // there by a wide margin, and a peer blinking out of the Nearby list is a
   // far worse bug than holding a departed one a few seconds too long.
 
+  /// How long a queued delivery keeps the scanner at the active cadence.
+  ///
+  /// Holding frames for an unreachable peer is a reason to look for them
+  /// harder — but the store-and-forward buffer keeps frames for a whole hour,
+  /// and "we owe someone a delivery" was pinning the radio to the active
+  /// cadence for all of it. A single undeliverable message therefore cost an
+  /// hour at 71% duty (Android) or 50% (iOS) on a backgrounded phone, which is
+  /// most of the battery complaint this branch exists to fix.
+  ///
+  /// Someone who walks out of range and comes back typically does so within a
+  /// few minutes; past that the idle cadence still finds them within a cycle
+  /// (~22–30 s) and the flush happens then. So chase hard briefly, then let the
+  /// frames wait cheaply — they are held either way.
+  static const Duration pendingDeliveryChase = Duration(minutes: 5);
+
   /// Scan window for the running cadence on this platform.
   static Duration scanWindowFor({required bool active, required bool isIOS}) {
     if (isIOS) return active ? scanWindowIos : scanWindowIdleIos;
