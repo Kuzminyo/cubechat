@@ -2,16 +2,16 @@ name: iOS build (unsigned IPA for sideloading)
 
 # Triggers:
 # - every push to main (so each commit produces a fresh IPA)
-# - pushes to whichever feature branch is being tested on a device
 # - manual run from the Actions tab (Run workflow button)
 #
-# Unlike the Android workflow, this one only uploads a per-SHA workflow
-# artifact — there is no rolling release for a branch build to overwrite — so
-# listing a feature branch here is cheap. Take it out when the branch merges
-# anyway, to stop spending runner minutes on a branch nobody is testing.
+# Add a feature branch to the list below to get device builds off it without
+# merging first, then take it back out when it merges. Unlike the Android
+# workflow this one only uploads a per-SHA workflow artifact — there is no
+# rolling release for a branch build to overwrite — so the only cost of leaving
+# one behind is runner minutes spent on a branch nobody is testing.
 on:
   push:
-    branches: [main, ios-power-tuning]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
