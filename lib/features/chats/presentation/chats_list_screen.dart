@@ -22,6 +22,7 @@ import '../data/favorites_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 enum ChatsFilter { all, unread, mesh, favorites }
 
@@ -58,9 +59,7 @@ const _meshReachableWindow = Duration(minutes: 5);
 /// Public so the counting rule can be unit-tested without a Hive-backed store.
 int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
   if (lastReadAt == null) return msgs.where((m) => !m.isMine).length;
-  return msgs
-      .where((m) => !m.isMine && m.sentAt.isAfter(lastReadAt))
-      .length;
+  return msgs.where((m) => !m.isMine && m.sentAt.isAfter(lastReadAt)).length;
 }
 
 final chatsProvider = Provider<List<Chat>>((ref) {
@@ -178,7 +177,8 @@ class ChatsListScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(t.chatsTitle, style: AppTypography.display()),
+                        child:
+                            Text(t.chatsTitle, style: AppTypography.display()),
                       ),
                       IconButton(
                         onPressed: () => _showNewChannelDialog(context, ref, t),
@@ -204,7 +204,8 @@ class ChatsListScreen extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: _SearchField(
-                onChanged: (v) => ref.read(chatsQueryProvider.notifier).state = v,
+                onChanged: (v) =>
+                    ref.read(chatsQueryProvider.notifier).state = v,
                 hint: t.chatsSearchHint,
               ),
             ),
@@ -216,13 +217,29 @@ class ChatsListScreen extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
                 children: [
-                  _FilterPill(label: t.chatsFilterAll, value: ChatsFilter.all, current: filter, ref: ref),
+                  _FilterPill(
+                      label: t.chatsFilterAll,
+                      value: ChatsFilter.all,
+                      current: filter,
+                      ref: ref),
                   const SizedBox(width: 8),
-                  _FilterPill(label: t.chatsFilterUnread, value: ChatsFilter.unread, current: filter, ref: ref),
+                  _FilterPill(
+                      label: t.chatsFilterUnread,
+                      value: ChatsFilter.unread,
+                      current: filter,
+                      ref: ref),
                   const SizedBox(width: 8),
-                  _FilterPill(label: t.chatsFilterMesh, value: ChatsFilter.mesh, current: filter, ref: ref),
+                  _FilterPill(
+                      label: t.chatsFilterMesh,
+                      value: ChatsFilter.mesh,
+                      current: filter,
+                      ref: ref),
                   const SizedBox(width: 8),
-                  _FilterPill(label: t.chatsFilterFavorites, value: ChatsFilter.favorites, current: filter, ref: ref),
+                  _FilterPill(
+                      label: t.chatsFilterFavorites,
+                      value: ChatsFilter.favorites,
+                      current: filter,
+                      ref: ref),
                 ],
               ),
             ),
@@ -230,7 +247,8 @@ class ChatsListScreen extends ConsumerWidget {
           if (filtered.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: _EmptyState(title: t.chatsEmptyTitle, hint: t.chatsEmptyHint),
+              child:
+                  _EmptyState(title: t.chatsEmptyTitle, hint: t.chatsEmptyHint),
             )
           else
             SliverPadding(
@@ -335,7 +353,8 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.glassFill,
                 border: Border.all(color: AppColors.glassBorder),
               ),
-              child: Icon(Icons.chat_bubble_outline, color: AppColors.textOnGlassDim, size: 28),
+              child: Icon(Icons.chat_bubble_outline,
+                  color: AppColors.textOnGlassDim, size: 28),
             ),
             const SizedBox(height: 16),
             Text(
@@ -390,7 +409,8 @@ Future<void> _confirmWipe(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
         ),
         TextButton(
           onPressed: () async {
@@ -491,8 +511,8 @@ Future<void> _showChatActions(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: Text(t.cancel,
-              style: TextStyle(color: AppColors.textOnGlassDim)),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(true),
@@ -580,14 +600,13 @@ Future<void> _showNewChannelDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(t.cancel,
-              style: TextStyle(color: AppColors.textOnGlassDim)),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
         ),
         TextButton(
           onPressed: () async {
             final name = nameCtrl.text.trim();
             if (name.isEmpty) return;
-            final messenger = ScaffoldMessenger.of(ctx);
             try {
               final ch = await ref
                   .read(channelControllerProvider.notifier)
@@ -596,16 +615,12 @@ Future<void> _showNewChannelDialog(
             } catch (_) {
               // The only reachable failure here is a name that wouldn't fit in
               // a channel invite — an empty one is already guarded above.
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              messenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: AppColors.danger.withValues(alpha: 0.9),
-                  content: Text(
-                    t.channelNameTooLong,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              );
+              if (!ctx.mounted) return;
+              // Toast first: it goes to the root overlay, so it survives the
+              // dialog closing underneath it. (This is what the captured
+              // ScaffoldMessenger used to be for.)
+              showGlassToast(ctx, t.channelNameTooLong, tone: ToastTone.danger);
+              Navigator.of(ctx).pop();
             }
           },
           child: Text(t.channelJoinAction,

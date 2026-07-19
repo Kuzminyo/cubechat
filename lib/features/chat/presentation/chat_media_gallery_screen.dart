@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/colors.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 /// Telegram-style media browser: every image in a conversation, full-screen and
 /// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
@@ -41,10 +42,12 @@ class _ChatMediaGalleryScreenState
     final msgs = ref.read(messagesControllerProvider)[widget.chatId] ??
         const <Message>[];
     return msgs
-        .where((m) =>
-            m.kind == MessageKind.image &&
-            m.imagePath != null &&
-            File(m.imagePath!).existsSync(),)
+        .where(
+          (m) =>
+              m.kind == MessageKind.image &&
+              m.imagePath != null &&
+              File(m.imagePath!).existsSync(),
+        )
         .toList();
   }
 
@@ -71,7 +74,7 @@ class _ChatMediaGalleryScreenState
     try {
       await Share.shareXFiles([XFile(path)]);
     } catch (e) {
-      _toast('Could not share: $e');
+      _toast('Could not share: $e', ok: false);
     }
   }
 
@@ -88,21 +91,22 @@ class _ChatMediaGalleryScreenState
         fileName: 'cubechat_${msg.id}$ext',
         skipIfExists: false,
       );
-      _toast(result.isSuccess ? 'Saved to gallery' : 'Save failed');
+      _toast(result.isSuccess ? 'Saved to gallery' : 'Save failed',
+          ok: result.isSuccess);
     } catch (e) {
-      _toast('Save failed: $e');
+      _toast('Save failed: $e', ok: false);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _toast(String message) {
+  void _toast(String message, {bool ok = true}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.bgTop,
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-      ),
+    showGlassToast(
+      context,
+      message,
+      icon: ok ? Icons.download_done_rounded : null,
+      tone: ok ? ToastTone.success : ToastTone.danger,
     );
   }
 
@@ -137,7 +141,9 @@ class _ChatMediaGalleryScreenState
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white,),
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : const Icon(Icons.download, color: Colors.white),
             tooltip: 'Save',
@@ -176,11 +182,16 @@ class _ChatMediaGalleryScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.broken_image_outlined,
-                color: AppColors.textOnGlassDim, size: 56,),
+            Icon(
+              Icons.broken_image_outlined,
+              color: AppColors.textOnGlassDim,
+              size: 56,
+            ),
             const SizedBox(height: 12),
-            Text('image not available',
-                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),),
+            Text(
+              'image not available',
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+            ),
           ],
         ),
       );

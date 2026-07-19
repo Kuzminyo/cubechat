@@ -31,6 +31,7 @@ import '../domain/command_processor.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
 /// than the 64-char pubkey-hex the Chats list routes with. Only the former can
@@ -177,15 +178,8 @@ class ChatScreen extends ConsumerWidget {
                       );
                 } catch (_) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-                      content: Text(
-                        t.bleConnectFailed,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  );
+                  showGlassToast(context, t.bleConnectFailed,
+                      tone: ToastTone.danger);
                 }
               },
             ),
@@ -336,7 +330,6 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
     // Grab everything context-bound before the first await — the sheet is
     // popped below, which invalidates its own context.
     final t = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final messaging = ref.read(messagingServiceProvider);
 
@@ -355,18 +348,15 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
     }
 
     if (!mounted) return;
-    navigator.pop();
-    messenger.showSnackBar(
-      SnackBar(
-        backgroundColor:
-            (delivered > 0 ? AppColors.brandPrimary : AppColors.danger)
-                .withValues(alpha: 0.9),
-        content: Text(
-          delivered > 0 ? t.channelInviteSent : t.channelInviteNoneSent,
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
+    // Shown before the pop, but into the root overlay, so it outlives this
+    // sheet rather than being disposed along with it.
+    showGlassToast(
+      context,
+      delivered > 0 ? t.channelInviteSent : t.channelInviteNoneSent,
+      icon: delivered > 0 ? Icons.send_rounded : null,
+      tone: delivered > 0 ? ToastTone.success : ToastTone.danger,
     );
+    navigator.pop();
   }
 
   @override
@@ -661,12 +651,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     if (!ok) {
       if (!mounted) return;
       final err = ref.read(voiceRecorderProvider).error ?? 'cannot record';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text(err, style: const TextStyle(color: Colors.white)),
-        ),
-      );
+      showGlassToast(context, err, tone: ToastTone.danger);
       return;
     }
     _startTicker();
@@ -688,12 +673,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-          content: Text('$e', style: const TextStyle(color: Colors.white)),
-        ),
-      );
+      showGlassToast(context, '$e', tone: ToastTone.danger);
     }
   }
 
@@ -730,12 +710,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-            content: Text('$e', style: const TextStyle(color: Colors.white)),
-          ),
-        );
+        showGlassToast(context, '$e', tone: ToastTone.danger);
       }
     }
   }
@@ -845,16 +820,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             await CommandProcessor(ref, widget.canonicalId).tryExecute(text);
         if (result != null) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: result.success
-                  ? AppColors.brandPrimary.withValues(alpha: 0.85)
-                  : AppColors.danger.withValues(alpha: 0.85),
-              content: Text(result.message,
-                  style: const TextStyle(color: Colors.white)),
-              duration: Duration(
-                seconds: result.message.contains('\n') ? 5 : 2,
-              ),
+          showGlassToast(
+            context,
+            result.message,
+            tone: result.success ? ToastTone.success : ToastTone.danger,
+            // Multi-line command output needs longer than a one-word ack.
+            duration: Duration(
+              seconds: result.message.contains('\n') ? 5 : 2,
             ),
           );
           return;
@@ -877,12 +849,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           }
         } catch (e) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: AppColors.danger.withValues(alpha: 0.85),
-              content: Text('$e', style: const TextStyle(color: Colors.white)),
-            ),
-          );
+          showGlassToast(context, '$e', tone: ToastTone.danger);
         }
       },
     );

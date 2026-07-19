@@ -127,7 +127,8 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
                 child: Consumer(
                   builder: (context, ref, _) => _PeerCard(
                     peer: state.peers[i],
-                    onTap: () => _connectAndOpen(context, ref, state.peers[i], t),
+                    onTap: () =>
+                        _connectAndOpen(context, ref, state.peers[i], t),
                   ),
                 ),
               ),
@@ -209,7 +210,8 @@ class _BroadcastChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.brandPrimary.withValues(alpha: 0.12),
-        border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+        border:
+            Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -271,7 +273,8 @@ class _ScanningPulseState extends State<_ScanningPulse>
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: AppColors.brandPrimary.withValues(alpha: 0.12),
-            border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+            border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.4)),
             borderRadius: BorderRadius.circular(999),
             boxShadow: [
               BoxShadow(
@@ -366,7 +369,8 @@ class _StatusCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               hint,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13, height: 1.4),
+              style: TextStyle(
+                  color: AppColors.textOnGlassDim, fontSize: 13, height: 1.4),
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 14),
@@ -459,7 +463,8 @@ class _RadarPainter extends CustomPainter {
       ..strokeWidth = 1.2
       ..color = AppColors.brandPrimary.withValues(alpha: 0.25);
     canvas.drawCircle(c, maxR - 1, ring);
-    canvas.drawCircle(c, maxR * 0.6, ring..color = AppColors.brandPrimary.withValues(alpha: 0.18));
+    canvas.drawCircle(c, maxR * 0.6,
+        ring..color = AppColors.brandPrimary.withValues(alpha: 0.18));
 
     // Expanding pulse
     final pulseR = maxR * progress;
@@ -484,14 +489,14 @@ Future<void> _connectAndOpen(
   DiscoveredPeer peer,
   AppLocalizations t,
 ) async {
-  final label = peer.advertisedName.isNotEmpty
-      ? peer.advertisedName
-      : t.bleUnknownPeer;
+  final label =
+      peer.advertisedName.isNotEmpty ? peer.advertisedName : t.bleUnknownPeer;
 
   // Navigate immediately so the user sees the "handshaking..." UI; the
   // connect/handshake happens in the background and Riverpod will repaint
   // the chat screen as the session progresses.
-  context.push('/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}');
+  context.push(
+      '/chat/${Uri.encodeComponent(peer.id)}?name=${Uri.encodeQueryComponent(label)}');
 
   await _connectWithFeedback(context, ref, peer, label, t);
 }
@@ -550,9 +555,8 @@ class _PeerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final displayName = peer.advertisedName.isNotEmpty
-        ? peer.advertisedName
-        : t.bleUnknownPeer;
+    final displayName =
+        peer.advertisedName.isNotEmpty ? peer.advertisedName : t.bleUnknownPeer;
     return GlassCard(
       onTap: onTap,
       child: Row(

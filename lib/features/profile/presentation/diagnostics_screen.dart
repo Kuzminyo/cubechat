@@ -5,6 +5,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 /// In-app diagnostic log viewer. Reads the [DebugLog] singleton and rebuilds
 /// whenever a new line is added.
@@ -42,7 +43,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       appBar: AppBar(
         leading: BackButton(color: AppColors.textOnGlass),
         title: Text('Diagnostics',
-            style: AppTypography.heading(size: 18, color: AppColors.textOnGlass)),
+            style:
+                AppTypography.heading(size: 18, color: AppColors.textOnGlass)),
         actions: [
           IconButton(
             tooltip: 'Copy all',
@@ -54,14 +56,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   .join('\n');
               await Clipboard.setData(ClipboardData(text: text));
               if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                  content: Text(t.copied,
-                      style: TextStyle(color: AppColors.textOnGlass)),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
+              showCopiedToast(context, t.copied);
             },
           ),
           IconButton(

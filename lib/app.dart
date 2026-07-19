@@ -10,6 +10,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
+import 'core/util/ui_activity.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
@@ -62,9 +63,8 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       return;
     }
     final known = ref.read(knownPeersControllerProvider)[chatId];
-    final name = (known?.displayName.isNotEmpty ?? false)
-        ? known!.displayName
-        : 'Peer';
+    final name =
+        (known?.displayName.isNotEmpty ?? false) ? known!.displayName : 'Peer';
     _router.push(
       '/chat/${Uri.encodeComponent(chatId)}'
       '?name=${Uri.encodeQueryComponent(name)}',
@@ -106,7 +106,8 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the
       // user looking straight at the Nearby list. Re-pick it now.
-      unawaited(ref.read(peerDiscoveryControllerProvider.notifier).retuneScan());
+      unawaited(
+          ref.read(peerDiscoveryControllerProvider.notifier).retuneScan());
       // Coming back into an open chat: whatever piled up for it while we were
       // away has already been read the moment it's on screen.
       final open = AppLifecycle.instance.activeChatId;
@@ -137,6 +138,17 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         GlobalWidgetsLocalizations.delegate,
       ],
       routerConfig: _router,
+      // Feeds the app-wide "something is happening" signal that decorative
+      // animations park themselves against. A Listener at the root sees every
+      // pointer event without claiming any of them, so nothing downstream
+      // changes behaviour; `poke` only re-arms a timer.
+      builder: (context, child) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => UiActivity.instance.poke(),
+        onPointerMove: (_) => UiActivity.instance.poke(),
+        onPointerSignal: (_) => UiActivity.instance.poke(),
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

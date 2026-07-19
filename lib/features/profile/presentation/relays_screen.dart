@@ -10,6 +10,7 @@ import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/relay_settings_controller.dart';
+import '../../../core/widgets/glass_toast.dart';
 
 /// Settings for the Nostr internet fallback (M6): switch it on, see the address
 /// peers reach you at, and manage the relay list with live connection state.
@@ -34,8 +35,7 @@ class RelaysScreen extends ConsumerWidget {
         leading: BackButton(color: AppColors.textOnGlass),
         title: Text(
           t.relaysTitle,
-          style:
-              AppTypography.heading(size: 18, color: AppColors.textOnGlass),
+          style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
         ),
         backgroundColor: Colors.transparent,
       ),
@@ -106,7 +106,6 @@ class RelaysScreen extends ConsumerWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
           _Label(text: t.relaysMyAddress),
           GlassCard(
@@ -115,9 +114,7 @@ class RelaysScreen extends ConsumerWidget {
               if (value == null) return;
               await Clipboard.setData(ClipboardData(text: value));
               if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(t.relaysCopied)),
-              );
+              showCopiedToast(context, t.relaysCopied);
             },
             child: Row(
               children: [
@@ -137,7 +134,6 @@ class RelaysScreen extends ConsumerWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
           _Label(text: t.relaysListLabel),
           if (settings.urls.isEmpty)
@@ -161,15 +157,13 @@ class RelaysScreen extends ConsumerWidget {
                 onRemove: () => controller.removeRelay(url),
               ),
             ),
-
           const SizedBox(height: 6),
           _AddRelayField(
             onSubmit: (url) async {
               final ok = await controller.addRelay(url);
               if (!ok && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(t.relaysInvalidUrl)),
-                );
+                showGlassToast(context, t.relaysInvalidUrl,
+                    tone: ToastTone.danger);
               }
               return ok;
             },
