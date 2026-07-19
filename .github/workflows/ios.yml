@@ -2,12 +2,14 @@ name: iOS build (unsigned IPA for sideloading)
 
 # Triggers:
 # - every push to main (so each commit produces a fresh IPA)
-# - pushes to the active feature branch, so its changes get an iOS build
-#   without merging to main first (remove the branch after it merges)
 # - manual run from the Actions tab (Run workflow button)
+#
+# Add an active feature branch here to get iOS builds off it without merging
+# to main first — and take it back out once it merges, or its pushes keep
+# overwriting the release with a build that isn't main's.
 on:
   push:
-    branches: [main, m6-nostr-fallback]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
