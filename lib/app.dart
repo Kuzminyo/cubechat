@@ -10,6 +10,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
+import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/data/read_markers_controller.dart';
@@ -96,6 +97,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
+    _applyIosBackgroundPolicy(resumed: state == AppLifecycleState.resumed);
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+
     // forbids starting a foreground service from the background. Re-apply
@@ -116,6 +118,28 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         ref.read(readMarkersControllerProvider.notifier).markRead(open);
       }
     }
+  }
+
+  /// Honour the "keep running in the background" preference on iOS.
+  ///
+  /// On Android that preference is a foreground service: turning it off lets
+  /// the OS suspend us and the radio stops by itself. iOS has no equivalent.
+  /// Info.plist declares the bluetooth-central/peripheral background modes, so
+  /// the process is never suspended — scanning kept cycling the radio, the
+  /// peripheral kept advertising, and the timers kept firing, forever, no
+  /// matter what the toggle said. The toggle was inert on iOS (the
+  /// `cubechat/background` channel only exists in MainApplication.kt), which is
+  /// why an iPhone ran hot and flattened its battery where an Android didn't.
+  ///
+  /// So on iOS we enforce it ourselves: take the radio down on the way out,
+  /// bring it back on the way in. With the preference ON nothing changes — the
+  /// app stays reachable in the background exactly as before.
+  void _applyIosBackgroundPolicy({required bool resumed}) {
+    if (!PlatformInfo.isIOS) return;
+    if (ref.read(backgroundModeProvider)) return; // user wants to stay live
+    final discovery = ref.read(peerDiscoveryControllerProvider.notifier);
+    // start() is idempotent and restores scanning and advertising together.
+    unawaited(resumed ? discovery.start() : discovery.suspend());
   }
 
   @override

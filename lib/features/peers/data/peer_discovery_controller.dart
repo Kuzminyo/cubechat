@@ -273,6 +273,33 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     state = state.copyWith(status: PeerDiscoveryStatus.idle, peers: const []);
   }
 
+  /// Take the radio fully down — scanning *and* advertising.
+  ///
+  /// [stop] only parks the scanner, which is the right thing when the Peers
+  /// screen goes away but the app is still meant to be reachable. This is the
+  /// stronger version, for when the user has asked us not to run in the
+  /// background at all.
+  ///
+  /// Only iOS needs it. On Android "keep running in the background" is a
+  /// foreground service: switching it off lets the OS suspend us, and the radio
+  /// stops as a consequence. iOS has no equivalent — UIBackgroundModes
+  /// (bluetooth-central/peripheral) keeps the process alive indefinitely
+  /// whether the user wants it or not, so the preference has to be enforced
+  /// here in Dart or it means nothing at all.
+  ///
+  /// Advertising goes through the same chain as every other transition so a
+  /// suspend can't interleave with an in-flight re-advertise and leave the
+  /// radio in a state neither of them intended.
+  Future<void> suspend() async {
+    await ref.read(bleScannerProvider).stop();
+    await _serializeAdvertise(
+      () => ref.read(peripheralControllerProvider.notifier).stop(),
+      what: 'suspend advertising',
+    );
+    _disposeSubscriptions();
+    state = state.copyWith(status: PeerDiscoveryStatus.idle, peers: const []);
+  }
+
   Future<void> _wireStreams() async {
     final scanner = ref.read(bleScannerProvider);
     await _peerSub?.cancel();

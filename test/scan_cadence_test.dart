@@ -88,36 +88,64 @@ void main() {
       }
     });
 
-    test('finds a peer sooner than Android despite scanning less', () {
-      // The point of the iOS shape, and the thing that makes it a free win
-      // rather than a trade: discovery latency is bounded by the cycle, not
-      // the window, so a shorter cycle beats a longer one even though the
-      // radio is on for less of it. If a future tuning pass ever inverts
-      // this, the change has stopped being free and needs re-arguing.
-      for (final active in [true, false]) {
-        final iosCycle = window(active: active) + gap(active: active);
-        final androidCycle =
-            androidWindow(active: active) + androidGap(active: active);
-        expect(
-          iosCycle,
-          lessThan(androidCycle),
-          reason: 'iOS cycle must stay shorter (active=$active)',
-        );
-      }
+    test('active: finds a peer sooner than Android despite scanning less', () {
+      // What makes the *active* iOS shape a free win rather than a trade:
+      // discovery latency is bounded by the cycle, not the window, so a shorter
+      // cycle beats a longer one even though the radio is on for less of it.
+      // Still holds while the user is watching the Nearby list.
+      final iosCycle = window(active: true) + gap(active: true);
+      final androidCycle = androidWindow(active: true) + androidGap(active: true);
+      expect(iosCycle, lessThan(androidCycle));
+    });
+
+    test('idle: trades discovery latency for far fewer scan restarts', () {
+      // The idle half deliberately gives up that property — this is the
+      // re-argument the old "cycle must stay shorter" assertion demanded.
+      //
+      // Duty cycle was never the iOS problem (iOS already scans less than
+      // Android at both cadences, below). The cost was per-cycle CoreBluetooth
+      // session churn on a process iOS never suspends, so the fix is a longer
+      // cycle, not a smaller window. Advertising is continuous and independent
+      // of scanning, so we stay discoverable to the foreground peer who is
+      // actually looking for us the whole time.
+      final iosCycle = window(active: false) + gap(active: false);
+      final androidCycle =
+          androidWindow(active: false) + androidGap(active: false);
+      expect(iosCycle, greaterThan(androidCycle));
+      // Still cheaper on radio time than Android, despite the longer cycle.
+      expect(
+        dutyCycle(window(active: false), gap(active: false)),
+        lessThan(dutyCycle(BleConstants.scanWindowIdle, BleConstants.scanGapIdle)),
+      );
     });
 
     test('a peer survives a missed window at either cadence', () {
-      // The stale thresholds are shared with Android rather than scaled to the
-      // shorter iOS cycles, so the margin here is generous — but it is exactly
-      // the invariant that broke when the idle cadence first landed, so pin it
-      // for iOS too.
+      // The invariant that broke when the idle cadence first landed. The idle
+      // threshold is now platform-specific precisely to keep it true here: the
+      // shared 75 s one is under a single 60 s iOS idle cycle plus its window.
       expect(
-        BleConstants.peerStaleAfter,
+        BleConstants.peerStaleAfterFor(active: true, isIOS: true),
         greaterThan((window(active: true) + gap(active: true)) * 2),
       );
       expect(
-        BleConstants.peerStaleAfterIdle,
+        BleConstants.peerStaleAfterFor(active: false, isIOS: true),
         greaterThan((window(active: false) + gap(active: false)) * 2),
+      );
+    });
+
+    test('the stale selector routes each platform to its own idle number', () {
+      expect(
+        BleConstants.peerStaleAfterFor(active: false, isIOS: true),
+        BleConstants.peerStaleAfterIdleIos,
+      );
+      expect(
+        BleConstants.peerStaleAfterFor(active: false, isIOS: false),
+        BleConstants.peerStaleAfterIdle,
+      );
+      // Active is shared — one number for both platforms.
+      expect(
+        BleConstants.peerStaleAfterFor(active: true, isIOS: true),
+        BleConstants.peerStaleAfterFor(active: true, isIOS: false),
       );
     });
   });

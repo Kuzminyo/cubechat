@@ -2,8 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Cap rendering at 60 Hz on ProMotion (120 Hz) displays. The Flutter iOS
+	     template ships this key as <true/>, which opts the app into 120 Hz —
+	     every scroll, tab transition and pulse then composites at up to twice
+	     the frame rate. This is a BLE mesh app whose main complaint is the phone
+	     running hot; its animations are slow and decorative (the aurora and the
+	     online dots already self-limit to ~30 fps by wall-clock ticker), so
+	     120 Hz buys imperceptible smoothness for a real GPU/battery cost. Left
+	     explicitly false, with this note, so a future template regen doesn't
+	     silently re-enable it. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

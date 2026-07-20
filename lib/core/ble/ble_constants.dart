@@ -99,12 +99,41 @@ abstract final class BleConstants {
   static const Duration scanWindowIdleIos = Duration(seconds: 2);
 
   /// Quiet period between idle iOS scan windows.
-  static const Duration scanGapIdleIos = Duration(seconds: 20);
+  ///
+  /// Long, and deliberately longer than Android's idle cycle — which inverts
+  /// the "iOS finds a peer sooner" property the active cadence still holds. The
+  /// reason that is safe, and the reason this number moved from 20 s:
+  ///
+  /// Duty cycle was never the iOS problem. iOS already scanned *less* than
+  /// Android at both cadences (9% vs 20% idle, 50% vs 71% active), yet iPhones
+  /// ran hot where Android didn't — so the cost was not radio-on time but the
+  /// per-cycle churn of tearing down and re-establishing a CoreBluetooth scan
+  /// session, on a process that (unlike Android's, which is a foreground
+  /// service the OS schedules) is never suspended and so does it forever. A
+  /// 22 s cycle is ~3900 restarts a day; 60 s is ~1400.
+  ///
+  /// Slower background discovery costs less than it appears to, because
+  /// advertising is continuous and independent of scanning: a backgrounded
+  /// phone stays discoverable the whole time, and the peer who wants to reach
+  /// us is by definition the one in the foreground, scanning at the active
+  /// cadence and connecting to our peripheral. Our own background scanning
+  /// mainly exists to notice peers we owe a store-and-forward delivery to —
+  /// and anything fresh pins us back to the active cadence anyway
+  /// (see [pendingDeliveryChase]).
+  static const Duration scanGapIdleIos = Duration(seconds: 58);
 
-  // The stale thresholds are deliberately shared with Android rather than
-  // scaled down to match the shorter iOS cycles. They are already ≥ 2 cycles
-  // there by a wide margin, and a peer blinking out of the Nearby list is a
-  // far worse bug than holding a departed one a few seconds too long.
+  /// Stale threshold at the iOS idle cadence.
+  ///
+  /// Needs its own number now: the iOS idle cycle is 60 s end to end, so the
+  /// shared 75 s threshold would be barely over *one* cycle and a peer sitting
+  /// still would blink out of the list and back in every cycle. ~2.5 cycles,
+  /// the same margin every other pair here uses.
+  static const Duration peerStaleAfterIdleIos = Duration(seconds: 150);
+
+  // The *active* stale threshold is still shared with Android rather than
+  // scaled down to the shorter iOS active cycle. It is ≥ 2 cycles there by a
+  // wide margin, and a peer blinking out of the Nearby list is a far worse bug
+  // than holding a departed one a few seconds too long.
 
   /// How long a queued delivery keeps the scanner at the active cadence.
   ///
@@ -131,5 +160,16 @@ abstract final class BleConstants {
   static Duration scanGapFor({required bool active, required bool isIOS}) {
     if (isIOS) return active ? scanGapIos : scanGapIdleIos;
     return active ? scanGap : scanGapIdle;
+  }
+
+  /// How long a peer may go unseen before it's dropped, for the running
+  /// cadence on this platform. Platform-aware only while idle — that's the one
+  /// cadence whose cycle length differs enough between the two to matter.
+  static Duration peerStaleAfterFor({
+    required bool active,
+    required bool isIOS,
+  }) {
+    if (active) return peerStaleAfter;
+    return isIOS ? peerStaleAfterIdleIos : peerStaleAfterIdle;
   }
 }

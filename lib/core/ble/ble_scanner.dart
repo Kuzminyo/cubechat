@@ -44,10 +44,11 @@ class BleScanner {
   Duration _gap = BleConstants.scanGap;
 
   /// How long a peer may go unseen before [_gcStalePeers] drops it. Follows the
-  /// running cadence: at the idle cadence a whole cycle is 30 s, so the active
-  /// threshold would expire peers that never actually left.
+  /// running cadence *and* the platform: an idle cycle is 30 s on Android and
+  /// 60 s on iOS, so the active threshold — or the other platform's idle one —
+  /// would expire peers that never actually left.
   Duration get _staleAfter =>
-      _active ? BleConstants.peerStaleAfter : BleConstants.peerStaleAfterIdle;
+      BleConstants.peerStaleAfterFor(active: _active, isIOS: _isIOS);
 
   /// How often stale peers are swept.
   ///
