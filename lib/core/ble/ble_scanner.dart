@@ -38,6 +38,12 @@ class BleScanner {
   /// Cadence chosen for the window currently running.
   bool _active = true;
 
+  /// Consecutive idle windows that ended with an empty peer map — the input to
+  /// [BleConstants.idleGapWithBackoff]. Reset the moment anything is seen or
+  /// the cadence goes active, so the back-off can never outlive the conditions
+  /// that justified it.
+  int _emptyIdleWindows = 0;
+
   /// Window and gap of the cycle currently running, kept so [_gcPeriod] can
   /// pace itself against the cycle rather than a fixed interval.
   Duration _window = BleConstants.scanWindow;
@@ -121,6 +127,9 @@ class BleScanner {
 
   Future<void> stop() async {
     _running = false;
+    // A later start() is a fresh set of circumstances — it must not inherit a
+    // back-off earned before the scanner was taken down.
+    _emptyIdleWindows = 0;
     _cycleTimer?.cancel();
     _gcTimer?.cancel();
     // Cleared, not just cancelled: _restartGcTimer treats a non-null timer as
@@ -183,7 +192,19 @@ class BleScanner {
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
     _window = BleConstants.scanWindowFor(active: _active, isIOS: _isIOS);
-    _gap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);
+    final baseGap = BleConstants.scanGapFor(active: _active, isIOS: _isIOS);
+    // Only the idle cadence backs off. While active someone is watching the
+    // Nearby list (or we owe a delivery), and a stretched gap there is exactly
+    // the sluggish discovery the active cadence exists to prevent.
+    if (_active) {
+      _emptyIdleWindows = 0;
+      _gap = baseGap;
+    } else {
+      _gap = BleConstants.idleGapWithBackoff(
+        base: baseGap,
+        emptyWindows: _emptyIdleWindows,
+      );
+    }
     // The sweep is paced off the cycle, so it has to be re-armed whenever the
     // cadence changes underneath it.
     _restartGcTimer();
@@ -206,6 +227,15 @@ class BleScanner {
 
     // After the window closes, rest then cycle again.
     _cycleTimer = Timer(window + gap, () async {
+      // Count the window that just ended. Keyed off an EMPTY peer map, not off
+      // "saw nothing this window": while any peer is still listed the gap must
+      // stay at the base cadence, or the stretched gap would outrun that
+      // peer's stale threshold and blink it out of the Nearby list.
+      if (_active || _peers.isNotEmpty) {
+        _emptyIdleWindows = 0;
+      } else {
+        _emptyIdleWindows++;
+      }
       await _stopScanWindow();
       if (_running) unawaited(_startScanWindow());
     });
@@ -266,6 +296,10 @@ class BleScanner {
         changed = true;
       }
     }
+    // Anything at all in range collapses the back-off, so the very next gap is
+    // the base one — an arrival is the event the idle cadence exists to catch,
+    // and we want the cycle tight again from that moment on.
+    if (results.isNotEmpty) _emptyIdleWindows = 0;
     if (changed) _emit();
   }
 

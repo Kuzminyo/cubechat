@@ -49,6 +49,61 @@ void main() {
     });
   });
 
+  group('idle back-off when nobody is around', () {
+    Duration backoff(int emptyWindows, {Duration? base}) =>
+        BleConstants.idleGapWithBackoff(
+          base: base ?? BleConstants.scanGapIdleIos,
+          emptyWindows: emptyWindows,
+        );
+
+    test('stays at the base gap until the threshold is crossed', () {
+      // The common case — someone is around, or has only just stopped being
+      // seen — must be completely untouched by this.
+      for (var n = 0; n <= BleConstants.idleBackoffAfterEmptyWindows; n++) {
+        expect(
+          backoff(n),
+          BleConstants.scanGapIdleIos,
+          reason: '$n empty windows should not have backed off yet',
+        );
+      }
+    });
+
+    test('grows past the threshold and never exceeds the cap', () {
+      final first = backoff(BleConstants.idleBackoffAfterEmptyWindows + 1);
+      expect(first, greaterThan(BleConstants.scanGapIdleIos));
+      // Monotonic, and pinned under the ceiling however long we go unseen.
+      var previous = first;
+      for (var n = BleConstants.idleBackoffAfterEmptyWindows + 2;
+          n < 40;
+          n++) {
+        final gap = backoff(n);
+        expect(gap, greaterThanOrEqualTo(previous));
+        expect(gap, lessThanOrEqualTo(BleConstants.idleGapMax));
+        previous = gap;
+      }
+      // And it actually reaches the cap rather than creeping forever.
+      expect(backoff(40), BleConstants.idleGapMax);
+    });
+
+    test('works from the Android base gap too', () {
+      expect(backoff(0, base: BleConstants.scanGapIdle),
+          BleConstants.scanGapIdle);
+      expect(
+        backoff(40, base: BleConstants.scanGapIdle),
+        BleConstants.idleGapMax,
+      );
+    });
+
+    test('the cap is reachable without starving discovery outright', () {
+      // The bound that makes the trade arguable: even fully backed off we
+      // still look, and a peer who walks up is noticed within the cap. If
+      // someone raises idleGapMax into "effectively off" territory, this is
+      // the assertion that should stop them and force the re-argument.
+      expect(BleConstants.idleGapMax, lessThanOrEqualTo(const Duration(minutes: 5)));
+      expect(BleConstants.idleGapMax, greaterThan(BleConstants.scanGapIdleIos));
+    });
+  });
+
   group('iOS cadence', () {
     Duration window({required bool active}) =>
         BleConstants.scanWindowFor(active: active, isIOS: true);

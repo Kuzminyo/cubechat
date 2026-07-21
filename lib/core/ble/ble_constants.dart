@@ -150,6 +150,57 @@ abstract final class BleConstants {
   /// frames wait cheaply — they are held either way.
   static const Duration pendingDeliveryChase = Duration(minutes: 5);
 
+  // ---- idle backoff (nobody around) ----
+  //
+  // The idle cadence assumes someone might be nearby. Most of the time nobody
+  // is: a phone in a pocket on the bus runs the idle cycle all day and finds
+  // nothing every single time — ~1400 scan sessions a day on iOS, each one a
+  // CoreBluetooth start/stop on a process that is never suspended.
+  //
+  // So when a run of idle windows turns up nothing at all, stretch the gap.
+  // Empty windows are evidence that the next one will also be empty, and the
+  // whole point of scanning while nobody is there is to notice the moment
+  // somebody arrives — which this still does, just less often.
+  //
+  // Backing off is safe in a way that a blanket-longer idle cadence is not:
+  //
+  //  * it only engages when the peer map is EMPTY, so no peer's stale
+  //    threshold can be undermined by the stretched gap — there is nothing
+  //    there to expire.
+  //  * it collapses to the base cadence the instant anything is seen, or the
+  //    cadence flips back to active (app resumed, delivery owed).
+  //  * a peer who wants to reach us does not depend on it. Advertising is
+  //    continuous, and they are the one in the foreground scanning at the
+  //    active cadence; they find us and connect to our peripheral. Our own
+  //    background scanning only decides how fast *we* initiate.
+
+  /// Consecutive empty idle windows tolerated before the gap starts growing.
+  /// Small, but >1 so a single unlucky window doesn't trigger a back-off.
+  static const int idleBackoffAfterEmptyWindows = 3;
+
+  /// Ceiling on the stretched idle gap. Bounds the worst case for noticing a
+  /// peer who walks up while we're backed off.
+  static const Duration idleGapMax = Duration(minutes: 4);
+
+  /// Idle gap after [emptyWindows] consecutive sightings of nothing.
+  ///
+  /// Doubles once per empty window past [idleBackoffAfterEmptyWindows], capped
+  /// at [idleGapMax]. Returns [base] unchanged until the threshold is crossed,
+  /// so the common "someone is around" case is untouched.
+  static Duration idleGapWithBackoff({
+    required Duration base,
+    required int emptyWindows,
+  }) {
+    final over = emptyWindows - idleBackoffAfterEmptyWindows;
+    if (over <= 0) return base;
+    var gap = base;
+    for (var i = 0; i < over; i++) {
+      gap *= 2;
+      if (gap >= idleGapMax) return idleGapMax;
+    }
+    return gap;
+  }
+
   /// Scan window for the running cadence on this platform.
   static Duration scanWindowFor({required bool active, required bool isIOS}) {
     if (isIOS) return active ? scanWindowIos : scanWindowIdleIos;
