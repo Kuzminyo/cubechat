@@ -176,6 +176,11 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     ref.listen<String>(nicknameControllerProvider, (prev, next) {
       if (prev == next) return;
       unawaited(_readvertise());
+      // Re-advertising only fixes the name in scan results — peers we are
+      // already linked to learn a rename from a mesh announcement. That used to
+      // ride the 60 s heartbeat; the heartbeat is now minutes apart, so the
+      // rename is pushed on the spot instead of waiting for it.
+      unawaited(ref.read(messagingServiceProvider).announceNow());
     });
   }
 
@@ -332,11 +337,19 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   /// any peer the scanner turns up — a handshake completes the link, which
   /// flushes the store-and-forward buffer (so a message sent while the
   /// recipient's Bluetooth was off is delivered the moment they switch it
-  /// back on and we see them). Throttled and capped to keep churn/battery
-  /// sane; connectAsInitiator already no-ops if we're mid-connect to that id.
+  /// back on and we see them).
+  ///
+  /// Bounded by [BleConstants.pendingDeliveryChase] rather than the buffer's
+  /// full one-hour TTL — the same correction the scan cadence already got, and
+  /// missed here. This runs on *every* scanner emission (which includes a
+  /// 4 dBm RSSI wobble), and with the cooldown pruned at 25 s it re-attempted
+  /// every visible peer every 25 s for a solid hour after a single
+  /// undeliverable message. Nothing is lost by stopping: a session established
+  /// from either side flushes the buffer, so a peer who connects to *us* still
+  /// gets their frames — this only decides how hard we chase.
   void _maybeAutoConnect(List<DiscoveredPeer> peers) {
     final messaging = ref.read(messagingServiceProvider);
-    if (!messaging.hasPendingDelivery) return;
+    if (!messaging.hasFreshPendingDelivery) return;
 
     final now = DateTime.now();
     _autoAttempts.removeWhere((_, t) => now.difference(t) > _autoCooldown);
@@ -344,7 +357,12 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     var started = 0;
     for (final peer in peers) {
       if (started >= _maxAutoPerTick) break;
-      if (peer.isConnected) continue;
+      // Ask the transport, not the scan result. DiscoveredPeer.isConnected is
+      // never set to true by anything — the scanner only ever copies the
+      // default forward — so the guard that used to stand here was dead code,
+      // and every already-linked peer was walked all the way into
+      // connectAsInitiator to be turned away by its own membership check.
+      if (messaging.hasLinkOrPendingTo(peer.id)) continue;
       final last = _autoAttempts[peer.id];
       if (last != null && now.difference(last) < _autoCooldown) continue;
       _autoAttempts[peer.id] = now;

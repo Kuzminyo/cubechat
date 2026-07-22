@@ -56,10 +56,20 @@ import '../crypto/media_fs_cipher.dart';
 const _handshakeTimeout = Duration(seconds: 15);
 
 /// How often we re-broadcast our (pubkey, nickname) announcement on every
-/// active link. Matches the cadence of bitchat-style mesh announcements —
-/// slow enough to keep BLE airtime cheap, fast enough that a fresh peer
-/// joining mid-conversation learns the roster within a minute.
-const _announcementInterval = Duration(seconds: 60);
+/// active link.
+///
+/// This is a *safety net*, not the delivery mechanism. Everything that makes an
+/// announcement worth hearing is pushed the moment it happens: a freshly
+/// established session gets one immediately, and so does a rename (see
+/// [announceNow]). The periodic copy only exists to re-sync a peer that joined
+/// the mesh indirectly, over a hop we never saw come up.
+///
+/// It used to run every 60 s, which is expensive in a way that is easy to miss:
+/// each tick signs an Ed25519 announcement here and makes every peer on every
+/// link *verify* one, plus the BLE airtime to carry it. Two links meant that
+/// bill twice a minute, forever, on a phone that is doing nothing. As a
+/// heartbeat behind two event-driven paths, minutes are plenty.
+const _announcementInterval = Duration(minutes: 5);
 
 /// Replay window for signed frames. A frame whose signed timestamp is older
 /// than this is rejected. It is deliberately aligned with the dedup-cache
@@ -3026,6 +3036,15 @@ class MessagingService {
     });
   }
 
+  /// Broadcast our announcement immediately, outside the periodic heartbeat.
+  ///
+  /// For the events that actually change what peers know about us — right now a
+  /// rename. Without this, lengthening [_announcementInterval] would mean a new
+  /// nickname taking minutes to reach someone we are already talking to; with
+  /// it, the change lands at once and the heartbeat stays cheap. No-ops
+  /// harmlessly when no link is up.
+  Future<void> announceNow() => _broadcastAnnouncement();
+
   /// Build and send one [PeerAnnouncement] across every active client and the
   /// peripheral notify pipe. Safe to call before any link exists — the
   /// individual sends just no-op.
@@ -3381,15 +3400,27 @@ class MessagingService {
   /// seen peer in order to flush.
   bool get hasPendingDelivery => _store.size > 0;
 
+  /// True when we already hold — or are in the middle of opening — a
+  /// central-role link to [peerId].
+  ///
+  /// Mirrors the guard inside [connectAsInitiator] exactly (membership, not
+  /// `isConnected`), so a peer whose handshake is still in flight counts as
+  /// taken. Callers deciding whether to *start* a connection should ask this
+  /// first: reaching connectAsInitiator and being turned away at the door still
+  /// costs a scan-result pass and a log line every time.
+  bool hasLinkOrPendingTo(String peerId) => _clients.containsKey(peerId);
+
   /// True while a held frame is recent enough to be worth spending radio on.
   ///
   /// Distinct from [hasPendingDelivery], which stays true for the buffer's full
-  /// one-hour TTL and is the right question for "should we auto-connect to this
-  /// peer we just saw". It is the wrong question for the scan cadence: see
-  /// [BleConstants.pendingDeliveryChase].
+  /// one-hour TTL. This is the question both radio-spending decisions ask — the
+  /// scan cadence and the auto-connect sweep — because "we are still holding
+  /// something" is not on its own a reason to keep the radio busy for an hour.
+  /// See [BleConstants.pendingDeliveryChase] for the trade.
   ///
-  /// Needs no timer of its own — the scanner re-asks at every window boundary,
-  /// so the cadence relaxes within one cycle of the chase window closing.
+  /// Needs no timer of its own — the scanner re-asks at every window boundary
+  /// and the sweep at every scan emission, so both relax on their own once the
+  /// chase window closes.
   bool get hasFreshPendingDelivery {
     final newest = _store.newestStoredAt;
     if (newest == null) return false;
