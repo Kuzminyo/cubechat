@@ -72,7 +72,23 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
 
   Future<void> _load() async {
     try {
-      final perm = await PhotoManager.requestPermissionExtend();
+      // Ask only about images. The default is RequestType.common, which
+      // requests photos AND videos — but the manifest declares only
+      // READ_MEDIA_IMAGES (this feature sends photos, never video). On Android
+      // 13+, where media permissions are per-type, the never-granted video
+      // permission drags the aggregate state to "denied", so the sheet showed
+      // "Photo access is off" even with photos fully granted. On Android 12 and
+      // below a single READ_EXTERNAL_STORAGE covers everything, which is why it
+      // only reproduced on some devices. Querying image-only matches what we
+      // declare and what we use.
+      final perm = await PhotoManager.requestPermissionExtend(
+        requestOption: const PermissionRequestOption(
+          androidPermission: AndroidPermission(
+            type: RequestType.image,
+            mediaLocation: false,
+          ),
+        ),
+      );
       _perm = perm;
       if (!perm.hasAccess) {
         if (mounted) setState(() => _loading = false);
