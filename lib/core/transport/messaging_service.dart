@@ -2883,7 +2883,7 @@ class MessagingService {
   /// Mirrors exactly the two paths [_fanoutAllLinks] writes to, so "false"
   /// means a fanout would return 0.
   bool get _hasAnyLink =>
-      _clients.values.any((c) => c.isConnected) ||
+      _clients.values.any((c) => c.isReady) ||
       _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
 
   Future<int> _fanoutAllLinks(
@@ -2893,7 +2893,13 @@ class MessagingService {
     var fanout = 0;
     for (final entry in _clients.entries) {
       if (entry.key == excludePeerId) continue;
-      if (!entry.value.isConnected) continue;
+      // isReady, not isConnected: a link mid-service-discovery is "connected"
+      // but its outbound characteristic isn't there yet, so a write throws
+      // "outbound characteristic not ready". Skipping it drops nothing that a
+      // write would have delivered — the write would have failed — and avoids
+      // the failure + 50 ms retry churn seen when several peers connect at
+      // once. A freshly-ready link catches up via the on-handshake announce.
+      if (!entry.value.isReady) continue;
       try {
         await _writeFrameToClient(entry.value, bytes);
         fanout++;

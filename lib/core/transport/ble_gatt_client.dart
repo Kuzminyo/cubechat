@@ -74,6 +74,14 @@ class BleGattClient {
   bool get isConnected =>
       _device.isConnected;
 
+  /// True once the link is connected *and* the outbound characteristic has
+  /// been discovered — i.e. [writeOutbound] can actually send. [isConnected]
+  /// alone is true in the window between the GATT connect and the end of
+  /// service discovery, where a write throws "outbound characteristic not
+  /// ready". Fanning out to such a link only produces a caught failure and a
+  /// wasted retry, so callers that are about to write should gate on this.
+  bool get isReady => _device.isConnected && _outbound != null;
+
   /// Connects to the device, discovers our service, finds the characteristics,
   /// and subscribes to inbound notifications. Throws if any step fails.
   Future<void> connect({Duration timeout = const Duration(seconds: 8)}) async {
