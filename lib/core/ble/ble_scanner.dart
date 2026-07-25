@@ -188,6 +188,14 @@ class BleScanner {
 
   Future<void> _startScanWindow() async {
     if (!_running) return;
+    // Don't open a window while the radio is off. startScan throws
+    // "Bluetooth must be turned on", and because the cycle timer re-arms itself
+    // at the end of this method, a single failure keeps recurring every window
+    // for as long as Bluetooth stays off — an isolate wakeup and an exception
+    // every ~14 s, seen when the user disables Bluetooth (e.g. to test the
+    // internet fallback). Bailing here means no scan and no re-armed cycle; the
+    // adapter listener restarts scanning when Bluetooth comes back on.
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
     // Re-decided per window, so a resume (or a message queued for an offline
     // peer) tightens the cadence from the next window on.
     _active = shouldScanActively?.call() ?? true;
