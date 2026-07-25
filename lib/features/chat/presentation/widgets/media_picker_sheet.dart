@@ -6,10 +6,30 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../../../core/theme/colors.dart';
 
+/// What the picker sheet resolves to when it closes.
+///
+/// A sealed result rather than a bare `List<AssetEntity>` because the sheet now
+/// has two exits — the photo grid and the camera tile — and the caller drives a
+/// different flow for each (batch-send vs capture-then-edit).
+sealed class MediaPickerResult {
+  const MediaPickerResult();
+}
+
+/// The user tapped the camera tile; the caller should open the capture screen.
+class MediaPickerCamera extends MediaPickerResult {
+  const MediaPickerCamera();
+}
+
+/// The user confirmed a gallery selection.
+class MediaPickerAssets extends MediaPickerResult {
+  const MediaPickerAssets(this.assets);
+  final List<AssetEntity> assets;
+}
+
 /// Telegram-style in-app photo picker: a grid of the device's photos with
-/// multi-select and a numbered selection order, returning the chosen
-/// [AssetEntity]s to the caller (which downscales + sends each). Replaces the
-/// one-at-a-time system picker so several photos go out in one action.
+/// multi-select and a numbered selection order, plus a camera tile in the first
+/// cell. Returns a [MediaPickerResult] — either the camera request or the
+/// chosen [AssetEntity]s (which the caller downscales + sends).
 class MediaPickerSheet extends StatefulWidget {
   const MediaPickerSheet({super.key});
 
@@ -198,16 +218,19 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       );
     }
     if (_perm != null && !_perm!.hasAccess) {
+      // No gallery access still lets the camera work — surface both.
       return _message(
         'Photo access is off',
-        'Grant photo access to pick images from your gallery.',
+        'Grant photo access to pick images, or take a photo now.',
         action: 'Open settings',
         onAction: PhotoManager.openSetting,
+        secondaryAction: 'Take a photo',
+        onSecondaryAction: () =>
+            Navigator.of(context).pop(const MediaPickerCamera()),
       );
     }
-    if (_assets.isEmpty) {
-      return _message('No photos', 'There are no images on this device.');
-    }
+    // itemCount is assets + 1: the first cell is always the camera tile, so the
+    // camera is reachable even when the gallery is empty.
     return GridView.builder(
       controller: _scroll,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -216,15 +239,23 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         mainAxisSpacing: 3,
         crossAxisSpacing: 3,
       ),
-      itemCount: _assets.length,
-      itemBuilder: (_, i) => _Thumb(
-        // Keyed by asset id so the element (and its decoded thumbnail) follows
-        // its photo instead of its grid slot as pages are appended.
-        key: ValueKey<String>(_assets[i].id),
-        asset: _assets[i],
-        order: _selected.indexOf(_assets[i]),
-        onTap: () => _toggle(_assets[i]),
-      ),
+      itemCount: _assets.length + 1,
+      itemBuilder: (_, i) {
+        if (i == 0) {
+          return _CameraTile(
+            onTap: () => Navigator.of(context).pop(const MediaPickerCamera()),
+          );
+        }
+        final asset = _assets[i - 1];
+        return _Thumb(
+          // Keyed by asset id so the element (and its decoded thumbnail) follows
+          // its photo instead of its grid slot as pages are appended.
+          key: ValueKey<String>(asset.id),
+          asset: asset,
+          order: _selected.indexOf(asset),
+          onTap: () => _toggle(asset),
+        );
+      },
     );
   }
 
@@ -242,8 +273,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
           ),
           onPressed: n == 0
               ? null
-              : () => Navigator.of(context).pop<List<AssetEntity>>(
-                    List<AssetEntity>.from(_selected),
+              : () => Navigator.of(context).pop(
+                    MediaPickerAssets(List<AssetEntity>.from(_selected)),
                   ),
           child: Text(n == 0 ? 'Select photos' : 'Send $n'),
         ),
@@ -252,7 +283,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   }
 
   Widget _message(String title, String hint,
-      {String? action, VoidCallback? onAction,}) {
+      {String? action,
+      VoidCallback? onAction,
+      String? secondaryAction,
+      VoidCallback? onSecondaryAction,}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -269,14 +303,60 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 textAlign: TextAlign.center,
                 style:
                     TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),),
-            if (action != null) ...[
+            if (secondaryAction != null) ...[
               const SizedBox(height: 12),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: onSecondaryAction,
+                icon: const Icon(Icons.photo_camera, size: 18),
+                label: Text(secondaryAction),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: onAction,
                 child: Text(action,
                     style: const TextStyle(color: AppColors.brandPrimary),),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The camera tile that leads the photo grid — tap to open the in-app camera.
+class _CameraTile extends StatelessWidget {
+  const _CameraTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.glassFill,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.photo_camera,
+                color: AppColors.brandPrimary, size: 26),
+            const SizedBox(height: 6),
+            Text('Camera',
+                style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,),),
           ],
         ),
       ),

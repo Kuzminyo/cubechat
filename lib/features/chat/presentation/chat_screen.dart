@@ -28,7 +28,10 @@ import '../data/message_reply_target.dart';
 import '../data/messages_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/command_processor.dart';
+import '../../../core/util/image_encode.dart';
+import 'camera_capture_screen.dart';
 import 'widgets/chat_input.dart';
+import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -683,9 +686,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   }
 
   Future<void> _pickAndSendImage() async {
-    // Custom in-app gallery picker (multi-select) instead of the one-shot
-    // system picker, so several photos go out in one action.
-    final assets = await showModalBottomSheet<List<AssetEntity>>(
+    // Custom in-app picker: a photo grid (multi-select) with a camera tile.
+    final result = await showModalBottomSheet<MediaPickerResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.bgTop,
@@ -694,25 +696,101 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       ),
       builder: (_) => const MediaPickerSheet(),
     );
-    if (assets == null || assets.isEmpty || !mounted) return;
+    if (result == null || !mounted) return;
 
-    final messaging = ref.read(messagingServiceProvider);
+    switch (result) {
+      case MediaPickerCamera():
+        await _captureEditAndSend();
+      case MediaPickerAssets(:final assets):
+        if (assets.isEmpty) return;
+        // One photo goes through the editor (draw / crop / text, then send);
+        // a multi-select batch sends straight through — editing a dozen photos
+        // one by one isn't the flow anyone wants.
+        if (assets.length == 1) {
+          await _editAndSend(assets.first);
+        } else {
+          await _sendAssetsBatch(assets);
+        }
+    }
+  }
+
+  /// Camera tile → in-app capture → editor → send.
+  Future<void> _captureEditAndSend() async {
+    final captured = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute<Uint8List>(
+        builder: (_) => const CameraCaptureScreen(),
+      ),
+    );
+    if (captured == null || !mounted) return;
+    await _editAndSendBytes(
+      captured,
+      idHint: 'cam-${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  /// Single gallery pick → editor → send. The editor gets a bounded-resolution
+  /// copy (drawing doesn't need the full-res original), and the *edited* result
+  /// is downscaled for the mesh afterwards.
+  Future<void> _editAndSend(AssetEntity asset) async {
+    final preview = await asset.thumbnailDataWithSize(
+      const ThumbnailSize(1600, 1600),
+      quality: 90,
+    );
+    if (preview == null || !mounted) return;
+    await _editAndSendBytes(preview, idHint: asset.id);
+  }
+
+  Future<void> _editAndSendBytes(
+    Uint8List source, {
+    required String idHint,
+  }) async {
+    final edited = await openImageEditor(context, source);
+    if (edited == null || !mounted) return; // backed out of the editor
+    await _encodeAndSend(edited, idHint);
+  }
+
+  /// Downscale arbitrary (camera / edited) bytes to the mesh budget and send.
+  Future<void> _encodeAndSend(Uint8List bytes, String idHint) async {
+    try {
+      final wire = await encodeBytesForMesh(bytes);
+      if (!mounted) return;
+      if (wire == null) {
+        showGlassToast(context, 'Image too large to send',
+            tone: ToastTone.danger);
+        return;
+      }
+      await _sendImageBytes(wire, idHint);
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
+  /// Multi-select path: each asset downscaled via the native thumbnailer.
+  Future<void> _sendAssetsBatch(List<AssetEntity> assets) async {
     for (final asset in assets) {
       try {
         final bytes = await _encodeForMesh(asset);
         if (bytes == null) continue;
-        final cachedPath = await _cacheOutgoingImage(bytes, asset.id);
-        await messaging.sendImage(
-          widget.peerId,
-          bytes: bytes,
-          mime: 'image/jpeg',
-          cachedPath: cachedPath,
-        );
+        await _sendImageBytes(bytes, asset.id);
       } catch (e) {
         if (!mounted) return;
         showGlassToast(context, '$e', tone: ToastTone.danger);
       }
     }
+  }
+
+  /// Cache the outgoing bytes (so our own bubble renders at once) and hand them
+  /// to the transport.
+  Future<void> _sendImageBytes(Uint8List bytes, String idHint) async {
+    final messaging = ref.read(messagingServiceProvider);
+    final cachedPath = await _cacheOutgoingImage(bytes, idHint);
+    await messaging.sendImage(
+      widget.peerId,
+      bytes: bytes,
+      mime: 'image/jpeg',
+      cachedPath: cachedPath,
+    );
   }
 
   /// Re-encode a picked photo down to something the BLE mesh can actually

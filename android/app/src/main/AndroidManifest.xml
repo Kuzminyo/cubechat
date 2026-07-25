@@ -28,6 +28,13 @@
     <!-- Voice messages (mic capture for press-and-hold recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- In-app camera: take a photo to send without leaving the app. Declared
+         optional so the app still installs on the rare camera-less device; the
+         capture screen degrades to "no camera available" there. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any"
+        android:required="false" />
+
     <!-- In-app gallery: read device photos (Android 13+) with legacy fallback,
          and write to the gallery on pre-scoped-storage devices. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

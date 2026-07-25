@@ -56,6 +56,19 @@ dependencies:
   flutter_local_notifications: ^17.2.3
   flutter_native_splash: ^2.4.1
 
+  # Take-a-photo-to-send: in-app camera capture screen.
+  camera: ^0.12.0+2
+  # Telegram-style photo editor (paint/marker, text, crop, filters) shown before
+  # sending. PINNED below 12: 12.x/13.x declare flutter ">=3.41.0" and use
+  # ReorderableListView.builder(onReorderItem:) in their video-clips editor,
+  # which is not in the 3.41.9 stable API here — the build fails to compile.
+  # 11.23.0 needs only flutter >=3.35.0 and has no video editor (unneeded). Do
+  # not bump to ^12 without a newer Flutter.
+  pro_image_editor: ^11.23.0
+  # JPEG re-encode/downscale of camera & edited bytes to the BLE mesh budget
+  # (the gallery path downscales natively via photo_manager instead).
+  image: ^4.8.0
+
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1
