@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 
 /// In-memory stand-in for the platform keystore, with a deliberate delay so the
 /// window between "cache is empty" and "key is cached" is wide enough for a
@@ -110,6 +113,48 @@ void main() {
 
       expect(storage.writes, 1, reason: 'no second key may be written');
       expect(storage.store.values.single, minted);
+    });
+  });
+
+  group('HiveCipherProvider.openEncryptedBox', () {
+    late Directory tmp;
+
+    setUp(() async {
+      tmp = await Directory.systemTemp.createTemp('cubechat_hive_test');
+      Hive.init(tmp.path);
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      await tmp.delete(recursive: true);
+    });
+
+    test('concurrent opens of one box share a single live handle', () async {
+      // The real startup pattern: several controllers open the same `settings`
+      // box at once. Before openEncryptedBox was single-flight, a loser in that
+      // race could run the delete-and-retry path, close the handle the winner
+      // had handed out, and wipe the box — surfacing later as
+      // "Box has already been closed" on a write. Guard the contract: every
+      // concurrent caller gets the same open, usable box.
+      final provider = HiveCipherProvider(storage: _FakeSecureStorage());
+
+      final boxes = await Future.wait(
+        List.generate(
+          6,
+          (_) => provider.openEncryptedBox<dynamic>('cubechat.settings'),
+        ),
+      );
+
+      for (final b in boxes) {
+        expect(identical(b, boxes.first), isTrue,
+            reason: 'all callers must share one handle');
+        expect(b.isOpen, isTrue, reason: 'the shared box must stay open');
+      }
+
+      // A write through one handle is visible through another — proof they are
+      // the same live box and it was never deleted out from under anyone.
+      await boxes.first.put('k', 'v');
+      expect(boxes.last.get('k'), 'v');
     });
   });
 }

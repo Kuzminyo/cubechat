@@ -107,37 +107,64 @@ class HiveCipherProvider {
     } catch (_) {}
   }
 
+  /// One in-flight open per box name, so concurrent openers of the same box
+  /// share a single [Hive.openBox] instead of racing into it.
+  final Map<String, Future<void>> _opening = {};
+
   /// Opens (or creates) a Hive box encrypted under our cipher. If a box
   /// of the same name exists on disk but can't be decrypted - most
   /// likely a leftover from a build that wrote unencrypted boxes - we
   /// delete and reopen so the user lands on a clean encrypted box rather
   /// than an opaque error.
+  ///
+  /// Single-flight per box name, for the same reason [load] is: at startup
+  /// half a dozen controllers open the *same* `settings` box at once. Letting
+  /// them all race into [Hive.openBox] meant a loser could hit the
+  /// delete-and-retry path below, [Hive.deleteBoxFromDisk] the box the winner
+  /// had already handed out, and leave every other holder with a dead handle —
+  /// surfacing later as "Box has already been closed" on a write, and silently
+  /// wiping that box's data (read markers, favourites, relay settings). Now the
+  /// first caller opens it and the rest await that one open and reuse the live
+  /// handle.
   Future<Box<T>> openEncryptedBox<T>(String name) async {
-    final cipher = await load();
-    // Already open (another controller got there first) → reuse the live
-    // handle. NEVER delete in this case: that used to wipe a perfectly good
-    // box just because two controllers raced to open it.
-    if (Hive.isBoxOpen(name)) {
-      try {
-        return Hive.box<T>(name);
-      } catch (_) {
-        // Open under a different type parameter; the dynamic handle is the
-        // safe shared one. Callers tolerate dynamic.
-        return Hive.box<dynamic>(name) as Box<T>;
-      }
+    // Already open (this call, or an earlier one, won) → reuse the live handle.
+    if (Hive.isBoxOpen(name)) return _handle<T>(name);
+    // Someone else is opening this exact box right now → wait for them, then
+    // take the shared handle. Never open it a second time in parallel.
+    final pending = _opening[name];
+    if (pending != null) {
+      await pending;
+      return _handle<T>(name);
     }
+    final future = _openFresh<T>(name);
+    _opening[name] = future;
+    try {
+      return await future;
+    } finally {
+      _opening.remove(name);
+    }
+  }
+
+  /// The live handle for an already-open box, tolerating a type-parameter
+  /// mismatch by falling back to the shared dynamic handle.
+  Box<T> _handle<T>(String name) {
+    try {
+      return Hive.box<T>(name);
+    } catch (_) {
+      return Hive.box<dynamic>(name) as Box<T>;
+    }
+  }
+
+  Future<Box<T>> _openFresh<T>(String name) async {
+    final cipher = await load();
     try {
       return await Hive.openBox<T>(name, encryptionCipher: cipher);
     } catch (e, st) {
       final msg = e.toString();
       if (msg.contains('already open')) {
-        // Race: opened between our isBoxOpen check and openBox. Reuse it
-        // rather than destroying data.
-        try {
-          return Hive.box<T>(name);
-        } catch (_) {
-          return Hive.box<dynamic>(name) as Box<T>;
-        }
+        // Opened out from under us despite the single-flight guard (e.g. by
+        // code that opens Hive boxes directly). Reuse rather than destroy.
+        return _handle<T>(name);
       }
       // Genuine open failure — most likely an undecryptable legacy
       // (unencrypted) box from a pre-encryption build. Delete + retry.
