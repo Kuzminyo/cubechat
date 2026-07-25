@@ -85,7 +85,17 @@ class ChatScreen extends ConsumerWidget {
     final canonicalId = session?.remotePubkeyHex ?? peerId;
     final messages =
         messagesMap[canonicalId] ?? messagesMap[peerId] ?? const [];
-    final canSend = session?.isEstablished ?? false;
+    // A prior announcement gives us the peer's pubkey (and, when present, their
+    // Nostr npub) even with no live BLE session — enough for sendText to carry
+    // a frame over the mesh, the Nostr internet fallback, or store-and-forward.
+    final known = ref.watch(knownPeersControllerProvider)[canonicalId];
+    // Sending needs a recipient pubkey, not a live handshake. Gating on
+    // isEstablished made Send a silent no-op whenever the peer wasn't a direct
+    // BLE neighbour: two phones talking only over the internet could type but
+    // nothing ever left the phone (no bubble, no error). Enable Send whenever we
+    // can address the peer at all — sendText appends the bubble and it shows a
+    // clock until a transport (mesh / Nostr / store-and-forward) takes it.
+    final canSend = (session?.isEstablished ?? false) || known != null;
 
     // Offer a reconnect whenever there's no live session to speak over — the
     // old condition only covered a session that reached `failed`, but a GATT
@@ -100,7 +110,6 @@ class ChatScreen extends ConsumerWidget {
     // now". Otherwise we fall back to the last mesh announcement: peers
     // re-announce every 60s, so a 150s window (~2.5 ticks) absorbs a single
     // missed beacon without flickering offline.
-    final known = ref.watch(knownPeersControllerProvider)[canonicalId];
     final lastSeen = known?.lastSeen;
     final isOnline = (session?.isEstablished ?? false) ||
         (lastSeen != null &&
