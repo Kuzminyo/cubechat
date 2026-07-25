@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -255,10 +259,33 @@ class _ScanningPulseState extends State<_ScanningPulse>
   late final _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    UiActivity.instance.isQuiet.addListener(_applyActivity);
+    _applyActivity();
+  }
+
+  /// Breathe while the interface is in use; park when it goes quiet.
+  ///
+  /// This chip is only shown while scanning, and a scan can sit open for a
+  /// long time — without parking, its ticker keeps a frame scheduled every
+  /// vsync (120 Hz on a ProMotion display) while the user just watches. The
+  /// glow only ranges over 0.35–0.70, so a frozen frame reads as a lit chip.
+  void _applyActivity() {
+    if (!mounted) return;
+    if (UiActivity.instance.isQuiet.value) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
+    UiActivity.instance.isQuiet.removeListener(_applyActivity);
     _c.dispose();
     super.dispose();
   }
@@ -418,15 +445,62 @@ class _RadarSpinner extends StatefulWidget {
 }
 
 class _RadarSpinnerState extends State<_RadarSpinner>
-    with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  )..repeat();
+    with WidgetsBindingObserver {
+  /// Sweep phase in [0, 1), advanced ~30 times/second off wall-clock time.
+  final ValueNotifier<double> _progress = ValueNotifier<double>(0);
+  final Stopwatch _clock = Stopwatch();
+  Timer? _ticker;
+
+  static const Duration _sweepPeriod = Duration(milliseconds: 1800);
+  static const Duration _tickInterval = Duration(milliseconds: 33); // ~30 fps
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == null || state == AppLifecycleState.resumed) _startTicker();
+  }
+
+  /// Drive the sweep off a ~30 fps wall-clock timer instead of an
+  /// [AnimationController], which repaints every vsync (60 Hz capped, 120 Hz
+  /// uncapped on ProMotion). The radar only shows on the empty-scanning card —
+  /// exactly where someone leaves the screen open and waits — so a vsync-rate
+  /// `repeat()` kept the frame pump alive on that tab indefinitely. Freezing it
+  /// reads as a hung app, so unlike the aurora/dots it does *not* park on idle;
+  /// halving the repaint rate keeps it moving while cutting its cost. The
+  /// [Stopwatch] preserves elapsed time so the sweep resumes where it stopped.
+  void _startTicker() {
+    if (_ticker != null) return;
+    _clock.start();
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      final periodMs = _sweepPeriod.inMilliseconds;
+      _progress.value = (_clock.elapsedMilliseconds % periodMs) / periodMs;
+    });
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+    _clock.stop(); // preserves elapsed, so the sweep resumes seamlessly
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A bare Timer keeps firing while backgrounded (it isn't tied to frame
+    // scheduling), so park it off-screen where the sweep can't be seen anyway.
+    if (state == AppLifecycleState.resumed) {
+      _startTicker();
+    } else {
+      _stopTicker();
+    }
+  }
 
   @override
   void dispose() {
-    _c.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTicker();
+    _progress.dispose();
     super.dispose();
   }
 
@@ -435,27 +509,23 @@ class _RadarSpinnerState extends State<_RadarSpinner>
     return SizedBox(
       width: 64,
       height: 64,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (_, __) {
-          return CustomPaint(
-            painter: _RadarPainter(progress: _c.value),
-          );
-        },
+      child: CustomPaint(
+        painter: _RadarPainter(progress: _progress),
       ),
     );
   }
 }
 
 class _RadarPainter extends CustomPainter {
-  _RadarPainter({required this.progress});
+  _RadarPainter({required this.progress}) : super(repaint: progress);
 
-  final double progress;
+  final ValueListenable<double> progress;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
     final maxR = size.shortestSide / 2;
+    final p = progress.value;
 
     // Outer ring
     final ring = Paint()
@@ -467,11 +537,11 @@ class _RadarPainter extends CustomPainter {
         ring..color = AppColors.brandPrimary.withValues(alpha: 0.18));
 
     // Expanding pulse
-    final pulseR = maxR * progress;
+    final pulseR = maxR * p;
     final pulse = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = AppColors.brandPrimary.withValues(alpha: (1 - progress) * 0.8);
+      ..color = AppColors.brandPrimary.withValues(alpha: (1 - p) * 0.8);
     canvas.drawCircle(c, pulseR, pulse);
 
     // Center dot
@@ -479,8 +549,10 @@ class _RadarPainter extends CustomPainter {
     canvas.drawCircle(c, 3, dot);
   }
 
+  // Repaint is driven by the [progress] listenable, not by new painter
+  // instances, so a rebuild with the same notifier needn't force one.
   @override
-  bool shouldRepaint(covariant _RadarPainter old) => old.progress != progress;
+  bool shouldRepaint(covariant _RadarPainter old) => false;
 }
 
 Future<void> _connectAndOpen(
