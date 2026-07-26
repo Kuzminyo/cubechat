@@ -86,10 +86,11 @@ void main() {
   Future<NostrEvent> signedFrameEvent(
     Uint8List frameBytes, {
     required String recipientNpubHex,
+    int? createdAt,
   }) {
     return signer.sign(NostrEvent(
       pubkey: signer.npubHex,
-      createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
       kind: kCubechatFrameKind,
       tags: [
         [kRecipientTag, recipientNpubHex],
@@ -197,6 +198,107 @@ void main() {
     await _until(() => relay.reqs.isNotEmpty, reason: 'REQ sent');
     await Future<void>.delayed(const Duration(milliseconds: 400));
     expect(frames, isEmpty);
+  });
+
+  // Without a persisted watermark, every launch asked each relay for its whole
+  // stored backlog — which is how testers ended up with their entire
+  // internet-delivered history re-delivered (and re-shown) on each restart.
+  group('subscription watermark', () {
+    /// The `since` on the single REQ [relay] has received, or null if absent.
+    int? sinceOf(_FakeRelayServer relay) {
+      final req = jsonDecode(relay.reqs.single) as List<dynamic>;
+      return ((req[2] as Map).cast<String, dynamic>())['since'] as int?;
+    }
+
+    test('a seeded watermark resumes the REQ instead of re-asking for all',
+        () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+
+      const stored = 1770000000; // whatever the last launch persisted
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        sinceSeconds: stored,
+      );
+      addTearDown(client.dispose);
+      final transport = NostrTransport(signer: signer, relay: client);
+      transport.inboundFrames().listen((_) {});
+      client.start();
+
+      await _until(() => relay.reqs.isNotEmpty, reason: 'REQ sent');
+      // Slack below the watermark: relays index on the sender's clock, so a
+      // sender running slightly behind us must not fall into the gap.
+      expect(sinceOf(relay), stored - 600);
+    });
+
+    test('first run asks for everything the relay holds', () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+
+      final client = WebSocketNostrRelayClient(relayUrls: [relay.url]);
+      addTearDown(client.dispose);
+      final transport = NostrTransport(signer: signer, relay: client);
+      transport.inboundFrames().listen((_) {});
+      client.start();
+
+      await _until(() => relay.reqs.isNotEmpty, reason: 'REQ sent');
+      expect(sinceOf(relay), isNull);
+    });
+
+    test('an accepted event reports the new watermark for persisting',
+        () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      relay.willDeliver(await signedFrameEvent(
+        frame,
+        recipientNpubHex: signer.npubHex,
+        createdAt: createdAt,
+      ));
+
+      final marks = <int>[];
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        onWatermark: marks.add,
+      );
+      addTearDown(client.dispose);
+      final transport = NostrTransport(signer: signer, relay: client);
+      final frames = <Uint8List>[];
+      transport.inboundFrames().listen(frames.add);
+      client.start();
+
+      await _until(() => frames.isNotEmpty, reason: 'inbound frame');
+      expect(marks, [createdAt]);
+    });
+
+    test('a future-dated event cannot push the watermark past real mail',
+        () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      // Validly signed, but stamped a year out: a signature says who wrote an
+      // event, not when. Honouring it as `since` would blind the subscription.
+      relay.willDeliver(await signedFrameEvent(
+        frame,
+        recipientNpubHex: signer.npubHex,
+        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 31536000,
+      ));
+
+      final marks = <int>[];
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        onWatermark: marks.add,
+      );
+      addTearDown(client.dispose);
+      final transport = NostrTransport(signer: signer, relay: client);
+      final frames = <Uint8List>[];
+      transport.inboundFrames().listen(frames.add);
+      client.start();
+
+      // The frame is still delivered (the replay window upstream judges its
+      // age) — only the watermark refuses to move.
+      await _until(() => frames.isNotEmpty, reason: 'inbound frame');
+      expect(marks, isEmpty);
+    });
   });
 
   test('publish throws when no relay is connected', () async {

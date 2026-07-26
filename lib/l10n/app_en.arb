@@ -148,6 +148,16 @@
   "chatForwardSent": "Forwarded to {name}",
   "@chatForwardSent": { "placeholders": { "name": { "type": "String" } } },
 
+  "chatSentAt": "Sent {time}",
+  "@chatSentAt": { "placeholders": { "time": { "type": "String" } } },
+  "chatReadAt": "Read {time}",
+  "@chatReadAt": { "placeholders": { "time": { "type": "String" } } },
+
+  "chatPinAction": "Pin",
+  "chatUnpinAction": "Unpin",
+  "chatPinnedTitle": "Pinned message",
+  "chatPinnedGone": "That message is no longer in this chat",
+
   "peerBlock": "Block",
   "peerUnblock": "Unblock",
   "peerMute": "Mute",

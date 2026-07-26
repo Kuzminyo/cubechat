@@ -23,10 +23,13 @@ import '../../channels/data/channel_controller.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
+import '../../peers/data/presence_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_reply_target.dart';
 import '../data/messages_controller.dart';
+import '../data/pinned_controller.dart';
 import '../data/voice_recorder_controller.dart';
+import '../models/message.dart';
 import '../domain/command_processor.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
@@ -106,14 +109,14 @@ class ChatScreen extends ConsumerWidget {
     final showRetry = _isBleDeviceId(peerId) &&
         (session == null || session.status == ChatSessionStatus.failed);
 
-    // Presence. An established Noise session is a definite "connected right
-    // now". Otherwise we fall back to the last mesh announcement: peers
-    // re-announce every 60s, so a 150s window (~2.5 ticks) absorbs a single
-    // missed beacon without flickering offline.
+    // Presence: a live session, else a fresh beacon (the internet case), else
+    // how recently they were announcing on the mesh. See [peerIsOnline].
     final lastSeen = known?.lastSeen;
-    final isOnline = (session?.isEstablished ?? false) ||
-        (lastSeen != null &&
-            DateTime.now().difference(lastSeen) < const Duration(seconds: 150));
+    final isOnline = peerIsOnline(
+      hasLiveSession: session?.isEstablished ?? false,
+      beacon: ref.watch(presenceControllerProvider)[canonicalId],
+      lastSeen: lastSeen,
+    );
     final String statusText;
     if (session != null &&
         (session.status == ChatSessionStatus.handshakingInitiator ||
@@ -204,18 +207,10 @@ class ChatScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: _FloatingComposerBody(
-          listBuilder: (padding) => messages.isEmpty
-              ? _EmptyConversationState(canSend: canSend)
-              : ListView.builder(
-                  reverse: true,
-                  padding: padding,
-                  itemCount: messages.length,
-                  itemBuilder: (_, i) {
-                    final m = messages[messages.length - 1 - i];
-                    return MessageBubble(message: m, chatId: canonicalId);
-                  },
-                ),
+        child: _ConversationView(
+          chatId: canonicalId,
+          messages: messages,
+          canSend: canSend,
           composer: _ChatBottomBar(
             peerId: peerId,
             canonicalId: canonicalId,
@@ -294,18 +289,10 @@ class ChatScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         top: false,
-        child: _FloatingComposerBody(
-          listBuilder: (padding) => messages.isEmpty
-              ? _EmptyConversationState(canSend: joined)
-              : ListView.builder(
-                  reverse: true,
-                  padding: padding,
-                  itemCount: messages.length,
-                  itemBuilder: (_, i) {
-                    final m = messages[messages.length - 1 - i];
-                    return MessageBubble(message: m, chatId: peerId);
-                  },
-                ),
+        child: _ConversationView(
+          chatId: peerId,
+          messages: messages,
+          canSend: joined,
           composer: _ChatBottomBar(
             peerId: peerId,
             canonicalId: peerId,
@@ -472,6 +459,219 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The message in [messages] carrying [wireId], or null when it isn't there (or
+/// nothing is pinned).
+Message? _messageByWireId(List<Message> messages, String? wireId) {
+  if (wireId == null) return null;
+  for (final m in messages) {
+    if (m.wireId == wireId) return m;
+  }
+  return null;
+}
+
+/// The conversation itself: an optional pinned-message bar, the message list,
+/// and the floating composer.
+///
+/// It owns the list's [ScrollController] because the pinned bar has to be able
+/// to scroll the conversation to the message it names — the two can't be
+/// assembled independently.
+class _ConversationView extends ConsumerStatefulWidget {
+  const _ConversationView({
+    required this.chatId,
+    required this.messages,
+    required this.canSend,
+    required this.composer,
+  });
+
+  /// Bucket key for this conversation: a peer's pubkey-hex or a `#channel`.
+  final String chatId;
+  final List<Message> messages;
+  final bool canSend;
+  final Widget composer;
+
+  @override
+  ConsumerState<_ConversationView> createState() => _ConversationViewState();
+}
+
+class _ConversationViewState extends ConsumerState<_ConversationView> {
+  final _scroll = ScrollController();
+
+  /// Attached to the pinned message's bubble (and only to that one) so a jump
+  /// can finish with [Scrollable.ensureVisible] once it is actually built.
+  final _pinnedKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Scroll the conversation to the message the pinned bar names.
+  ///
+  /// Bubble heights vary (one-liners, photos, quoted replies), so there is no
+  /// offset to compute directly. Jump to the proportional estimate first, which
+  /// lands within a screen or two, then let `ensureVisible` finish the job once
+  /// the target has been built. If it never builds — the estimate was too far
+  /// off — the user is at least in the right region of the history.
+  Future<void> _jumpTo(String wireId) async {
+    final messages = widget.messages;
+    final index = messages.indexWhere((m) => m.wireId == wireId);
+    if (index < 0) {
+      final t = AppLocalizations.of(context);
+      showGlassToast(context, t.chatPinnedGone);
+      return;
+    }
+    if (_scroll.hasClients && messages.length > 1) {
+      // The list is reversed: offset 0 is the newest message.
+      final fromNewest = messages.length - 1 - index;
+      final max = _scroll.position.maxScrollExtent;
+      final estimate = max * (fromNewest / (messages.length - 1));
+      _scroll.jumpTo(estimate.clamp(0.0, max));
+    }
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+      if (!mounted) return;
+      // The bubble's own context, not this widget's: it can be scrolled out of
+      // the cache and disposed between attempts, so `mounted` on the State says
+      // nothing about it.
+      final ctx = _pinnedKey.currentContext;
+      if (ctx == null || !ctx.mounted) continue;
+      await Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 220),
+      );
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = widget.messages;
+    final pin = ref.watch(pinnedControllerProvider)[widget.chatId];
+    // A pin whose message isn't in this chat any more (deleted, or history
+    // cleared) has nothing to show or scroll to — hide the bar rather than
+    // render an empty one.
+    final pinnedMessage = _messageByWireId(messages, pin?.wireId);
+
+    final body = _FloatingComposerBody(
+      listBuilder: (padding) => messages.isEmpty
+          ? _EmptyConversationState(canSend: widget.canSend)
+          : ListView.builder(
+              reverse: true,
+              controller: _scroll,
+              padding: padding,
+              itemCount: messages.length,
+              itemBuilder: (_, i) {
+                final m = messages[messages.length - 1 - i];
+                final bubble = MessageBubble(message: m, chatId: widget.chatId);
+                if (pinnedMessage == null || m.id != pinnedMessage.id) {
+                  return bubble;
+                }
+                return KeyedSubtree(key: _pinnedKey, child: bubble);
+              },
+            ),
+      composer: widget.composer,
+    );
+
+    // The bar's slot is always in the tree, empty when nothing is pinned.
+    // Adding or removing a child would re-parent the list below it, which
+    // detaches the scroll position — pinning a message while scrolled back
+    // through history would snap the conversation to the bottom.
+    return Column(
+      children: [
+        if (pinnedMessage == null)
+          const SizedBox.shrink()
+        else
+          _PinnedBar(
+            message: pinnedMessage,
+            onTap: () => _jumpTo(pinnedMessage.wireId!),
+            onUnpin: () => ref.read(messagingServiceProvider).sendPin(
+                  widget.chatId,
+                  pinnedMessage.wireId!,
+                  pinned: false,
+                ),
+          ),
+        Expanded(child: body),
+      ],
+    );
+  }
+}
+
+/// The bar under the app bar naming the chat's pinned message. Tapping it jumps
+/// to that message; the pin button clears it for both sides.
+class _PinnedBar extends StatelessWidget {
+  const _PinnedBar({
+    required this.message,
+    required this.onTap,
+    required this.onUnpin,
+  });
+
+  final Message message;
+  final VoidCallback onTap;
+  final VoidCallback onUnpin;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final String preview;
+    switch (message.kind) {
+      case MessageKind.image:
+        preview = '📷 ${t.chatPinnedTitle}';
+      case MessageKind.audio:
+        preview = '🎤 ${t.chatPinnedTitle}';
+      case MessageKind.text:
+        preview = message.text.replaceAll('\n', ' ').trim();
+    }
+    return Material(
+      color: Colors.white.withValues(alpha: 0.05),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+          child: Row(
+            children: [
+              Icon(Icons.push_pin, size: 15, color: AppColors.brandPrimary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.chatPinnedTitle,
+                      style: TextStyle(
+                        color: AppColors.brandPrimary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                color: AppColors.textOnGlassDim,
+                tooltip: t.chatUnpinAction,
+                onPressed: onUnpin,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

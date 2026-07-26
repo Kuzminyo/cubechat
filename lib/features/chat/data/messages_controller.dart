@@ -16,10 +16,15 @@ import '../models/message.dart';
 /// stable, no codegen TypeAdapter required.
 class MessagesController extends Notifier<Map<String, List<Message>>> {
   Box<List<dynamic>>? _box;
+  Future<void>? _loading;
+
+  /// Completes once the persisted history has been merged into [state]. The app
+  /// doesn't need to wait (the UI rebuilds when it lands); tests do.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   Map<String, List<Message>> build() {
-    unawaited(_loadFromDisk());
+    unawaited(_loading = _loadFromDisk());
     return <String, List<Message>>{};
   }
 
@@ -29,19 +34,30 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           .openEncryptedBox<List<dynamic>>(HiveBoxes.messages);
       _box = box;
       final loaded = <String, List<Message>>{};
+      final repaired = <String>[];
       for (final key in box.keys) {
         final raw = box.get(key);
         if (raw == null) continue;
         try {
-          loaded[key as String] = raw
+          final decoded = raw
               .map((dynamic m) => _decode((m as Map).cast<String, dynamic>()))
               .toList();
+          // Heal history written before [append] deduped: a device that took a
+          // relay backlog replay on every launch has each internet-delivered
+          // message stored several times over.
+          final unique = _withoutWireIdDuplicates(decoded);
+          if (unique.length != decoded.length) repaired.add(key as String);
+          loaded[key as String] = unique;
         } catch (e) {
           debugPrint('skip corrupt messages bucket "$key": $e');
         }
       }
       if (loaded.isNotEmpty) {
         state = {...loaded, ...state};
+      }
+      for (final key in repaired) {
+        debugPrint('messages bucket "$key": dropped duplicate wireIds');
+        _persist(key, loaded[key]!);
       }
     } catch (e, st) {
       debugPrint('Messages load failed: $e\n$st');
@@ -50,11 +66,28 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 
   List<Message> forPeer(String peerId) => state[peerId] ?? const <Message>[];
 
-  void append(String peerId, Message msg) {
+  /// Appends [msg] unless this chat already holds a message with the same
+  /// transport [Message.wireId]. Returns whether it was actually added, so a
+  /// caller can skip the notification/fan-out that goes with a *new* message.
+  ///
+  /// This idempotency is what makes a redelivered frame harmless. A message can
+  /// legitimately reach us twice: a Nostr relay replays its stored backlog to
+  /// every fresh subscription, a mesh peer hands over frames it was holding for
+  /// us, and the same message can arrive over two paths at once. The in-memory
+  /// dedup cache catches that only inside its TTL and only within one process —
+  /// after a restart it is empty, which is exactly when the relay backlog is
+  /// re-downloaded, and the whole internet-delivered history used to land in the
+  /// chat a second time. The wireId (hex of the 16-byte transport msgId, or the
+  /// media id for an assembled photo/voice note) is stable across all of those
+  /// paths and restarts, so it is the key that has to gate the insert.
+  bool append(String peerId, Message msg) {
     final current = state[peerId] ?? const <Message>[];
+    final wireId = msg.wireId;
+    if (wireId != null && current.any((m) => m.wireId == wireId)) return false;
     final next = [...current, msg];
     state = {...state, peerId: next};
     _persist(peerId, next);
+    return true;
   }
 
   void updateStatus(String peerId, String msgId, MessageStatus status) {
@@ -68,13 +101,16 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   }
 
   /// Flip our own outgoing messages to [MessageStatus.read] when the peer's
-  /// read receipt lands. Messages are matched by their transport [wireId]
-  /// (the id both sides share); non-mine messages and already-read ones are
-  /// left untouched. No-op when nothing matched (idempotent under resends).
+  /// read receipt lands, stamping [Message.readAt] with the moment it did.
+  /// Messages are matched by their transport [wireId] (the id both sides share);
+  /// non-mine messages and already-read ones are left untouched. No-op when
+  /// nothing matched (idempotent under resends — the first receipt's timestamp
+  /// is the one that sticks).
   void markRead(String peerId, Set<String> wireIds) {
     final current = state[peerId];
     if (current == null || wireIds.isEmpty) return;
     var changed = false;
+    final now = DateTime.now();
     final list = [...current];
     for (var i = 0; i < list.length; i++) {
       final m = list[i];
@@ -82,7 +118,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           m.wireId != null &&
           m.status != MessageStatus.read &&
           wireIds.contains(m.wireId)) {
-        list[i] = m.copyWith(status: MessageStatus.read);
+        list[i] = m.copyWith(status: MessageStatus.read, readAt: now);
         changed = true;
       }
     }
@@ -287,6 +323,22 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     }
   }
 
+  /// [msgs] with later copies of an already-seen [Message.wireId] removed,
+  /// keeping the first (oldest) copy and its accumulated reactions/edits.
+  /// Messages without a wireId — anything sent before the transport minted one,
+  /// and our own outgoing media — are left alone: there is no key to compare
+  /// them on, and two identical photos in a row can be genuine.
+  static List<Message> _withoutWireIdDuplicates(List<Message> msgs) {
+    final seen = <String>{};
+    final out = <Message>[];
+    for (final m in msgs) {
+      final wireId = m.wireId;
+      if (wireId != null && !seen.add(wireId)) continue;
+      out.add(m);
+    }
+    return out;
+  }
+
   Future<void> _persist(String peerId, List<Message> msgs) async {
     final box = _box;
     if (box == null) return;
@@ -315,6 +367,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.authorName != null) 'author': m.authorName,
         if (m.authorId != null) 'authorId': m.authorId,
         if (m.editedAt != null) 'editedAtIso': m.editedAt!.toIso8601String(),
+        if (m.readAt != null) 'readAtIso': m.readAt!.toIso8601String(),
         if (m.reactions.isNotEmpty)
           'reactions': {
             for (final e in m.reactions.entries) e.key: e.value.toList(),
@@ -363,6 +416,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       editedAt: (m['editedAtIso'] as String?) == null
           ? null
           : DateTime.tryParse(m['editedAtIso'] as String),
+      readAt: (m['readAtIso'] as String?) == null
+          ? null
+          : DateTime.tryParse(m['readAtIso'] as String),
       reactions: reactions,
       replyToWireId: m['replyTo'] as String?,
     );

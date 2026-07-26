@@ -842,6 +842,42 @@ abstract class AppLocalizations {
   /// **'Forwarded to {name}'**
   String chatForwardSent(String name);
 
+  /// No description provided for @chatSentAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {time}'**
+  String chatSentAt(String time);
+
+  /// No description provided for @chatReadAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Read {time}'**
+  String chatReadAt(String time);
+
+  /// No description provided for @chatPinAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get chatPinAction;
+
+  /// No description provided for @chatUnpinAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get chatUnpinAction;
+
+  /// No description provided for @chatPinnedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned message'**
+  String get chatPinnedTitle;
+
+  /// No description provided for @chatPinnedGone.
+  ///
+  /// In en, this message translates to:
+  /// **'That message is no longer in this chat'**
+  String get chatPinnedGone;
+
   /// No description provided for @peerBlock.
   ///
   /// In en, this message translates to:

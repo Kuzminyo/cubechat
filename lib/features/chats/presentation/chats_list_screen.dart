@@ -16,8 +16,10 @@ import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/presence_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../models/chat.dart';
@@ -69,10 +71,16 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final channels = ref.watch(channelControllerProvider);
   final favorites = ref.watch(favoritesControllerProvider);
   final readMarkers = ref.watch(readMarkersControllerProvider);
+  final presence = ref.watch(presenceControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
       if (s.isEstablished && s.remotePubkeyHex != null) s.remotePubkeyHex!,
+    // Peers who have the app open but are reachable only over the internet:
+    // there is no session and no announcement, so a live beacon is the only
+    // evidence they exist right now (see MessagingService.announcePresence).
+    for (final e in presence.entries)
+      if (e.value.online && e.value.isFresh) e.key,
   };
 
   final now = DateTime.now();
@@ -527,6 +535,7 @@ Future<void> _showChatActions(
   await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
   await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
   await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
+  await ref.read(pinnedControllerProvider.notifier).forget(chat.id);
   if (chat.isChannel) {
     // Leaving forgets the key; without it the channel's broadcasts become
     // unreadable noise we simply relay.

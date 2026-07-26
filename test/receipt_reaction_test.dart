@@ -159,4 +159,98 @@ void main() {
       );
     });
   });
+
+  group('MessagePin', () {
+    test('encode/decode round-trips op and target', () {
+      final back = MessagePin.decode(
+        MessagePin(op: PinOp.pin, targetMsgId: id(7)).encode(),
+      );
+      expect(back.op, PinOp.pin);
+      expect(back.targetMsgId, equals(id(7)));
+    });
+
+    test('an unpin round-trips as its own op', () {
+      final back = MessagePin.decode(
+        MessagePin(op: PinOp.unpin, targetMsgId: id(9)).encode(),
+      );
+      expect(back.op, PinOp.unpin);
+      expect(back.targetMsgId, equals(id(9)));
+    });
+
+    test('rides through the inner-payload tag', () {
+      final p = MessagePin(op: PinOp.pin, targetMsgId: id(4));
+      final unpacked =
+          unpackInnerPayload(packInnerPayload(InnerPayloadType.pin, p.encode()));
+      expect(unpacked.type, InnerPayloadType.pin);
+      expect(MessagePin.decode(unpacked.body).targetMsgId, equals(id(4)));
+    });
+
+    test('unknown op byte throws', () {
+      final wire = Uint8List(1 + MessagePin.idLen)..[0] = 0x7f;
+      expect(() => MessagePin.decode(wire), throwsA(isA<FormatException>()));
+    });
+
+    test('a body of the wrong length throws', () {
+      expect(
+        () => MessagePin.decode(Uint8List(MessagePin.idLen)),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => MessagePin.decode(Uint8List(2 + MessagePin.idLen)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('wrong target-id length fails the assertion', () {
+      expect(
+        () => MessagePin(op: PinOp.pin, targetMsgId: Uint8List(8)),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+  });
+
+  group('PresenceBeacon', () {
+    test('both states round-trip', () {
+      expect(
+        PresenceBeacon.decode(const PresenceBeacon(online: true).encode())
+            .online,
+        isTrue,
+      );
+      expect(
+        PresenceBeacon.decode(const PresenceBeacon(online: false).encode())
+            .online,
+        isFalse,
+      );
+    });
+
+    test('a beacon is a single byte on the wire', () {
+      // The heartbeat runs for the life of the process, so the payload staying
+      // one byte is the point, not an accident.
+      expect(const PresenceBeacon(online: true).encode(), hasLength(1));
+    });
+
+    test('rides through the inner-payload tag', () {
+      final wire = packInnerPayload(
+        InnerPayloadType.presence,
+        const PresenceBeacon(online: true).encode(),
+      );
+      final unpacked = unpackInnerPayload(wire);
+      expect(unpacked.type, InnerPayloadType.presence);
+      expect(PresenceBeacon.decode(unpacked.body).online, isTrue);
+    });
+
+    test('an unknown state byte throws instead of guessing', () {
+      expect(
+        () => PresenceBeacon.decode(Uint8List.fromList([0x42])),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('a multi-byte body throws', () {
+      expect(
+        () => PresenceBeacon.decode(Uint8List.fromList([0x01, 0x00])),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
 }

@@ -25,6 +25,16 @@ String formatBubbleTime(BuildContext context, DateTime time) {
   return DateFormat.Hm(locale).format(time);
 }
 
+/// Timestamp for the long-press message details: bare time for today, date +
+/// time for anything older. Details are read to answer "when exactly", so
+/// unlike the bubble's clock this one never hides the day.
+String formatMessageDetailsTime(BuildContext context, DateTime time) {
+  final locale = Localizations.localeOf(context).toLanguageTag();
+  final hm = DateFormat.Hm(locale).format(time);
+  if (_sameDay(DateTime.now(), time)) return hm;
+  return '${DateFormat.MMMd(locale).format(time)}, $hm';
+}
+
 String formatDayHeader(BuildContext context, DateTime day) {
   final t = AppLocalizations.of(context);
   final now = DateTime.now();

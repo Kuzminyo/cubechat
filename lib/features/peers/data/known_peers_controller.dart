@@ -148,6 +148,19 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     return true;
   }
 
+  /// Refresh only [KnownPeer.lastSeen] — evidence of life that carries no new
+  /// identity material, such as a presence beacon arriving over a relay. Unlike
+  /// [upsert] this never touches names or keys, so it can't be used by a peer to
+  /// nudge their own record. No-op for an unknown peer: a first contact has to
+  /// come through a signed announcement.
+  Future<void> touch(String pubkeyHex) async {
+    final existing = state[pubkeyHex];
+    if (existing == null) return;
+    final updated = existing.copyWith(lastSeen: DateTime.now());
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
   /// Stamp a peer as verified (the user compared fingerprints out-of-band).
   /// No-op if the peer isn't in the roster yet.
   Future<void> markVerified(String pubkeyHex) async {

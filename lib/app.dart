@@ -98,6 +98,13 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
     _applyIosBackgroundPolicy(resumed: state == AppLifecycleState.resumed);
+    // Tell internet-reachable peers we've arrived / are leaving, so their "in
+    // the app" dot flips now instead of waiting out the heartbeat. The goodbye
+    // is best-effort by nature — the OS can kill us without another callback —
+    // which is why the beacon also carries a TTL on the receiving side.
+    unawaited(ref.read(messagingServiceProvider).announcePresence(
+          online: state == AppLifecycleState.resumed,
+        ));
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+
     // forbids starting a foreground service from the background. Re-apply

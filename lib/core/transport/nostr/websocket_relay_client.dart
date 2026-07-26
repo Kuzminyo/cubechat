@@ -34,8 +34,12 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   WebSocketNostrRelayClient({
     required List<String> relayUrls,
     WebSocketChannel Function(Uri)? connect,
+    int? sinceSeconds,
+    void Function(int seconds)? onWatermark,
   })  : _urls = List.unmodifiable(relayUrls),
-        _connect = connect ?? WebSocketChannel.connect {
+        _connect = connect ?? WebSocketChannel.connect,
+        _watermark = sinceSeconds,
+        _onWatermark = onWatermark {
     for (final url in _urls) {
       _states[url] = RelayState.idle;
     }
@@ -46,12 +50,27 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   static const Duration _maxBackoff = Duration(minutes: 2);
   static const Duration _initialBackoff = Duration(seconds: 2);
 
+  /// How far back before the watermark a REQ still asks. Relays index on the
+  /// *sender's* `created_at`, so a sender whose clock trails ours can stamp an
+  /// event below a watermark we already advanced past; the overlap keeps that
+  /// message from being skipped. Re-downloading a few minutes of backlog is
+  /// cheap and harmless — the message store dedups on wireId.
+  static const Duration _sinceSlack = Duration(minutes: 10);
+
   /// Cap on remembered event ids for cross-relay de-duplication. Ids are 32 B
   /// of hex; a few thousand is nothing and covers any realistic burst.
   static const int _seenCapacity = 2048;
 
   final List<String> _urls;
   final WebSocketChannel Function(Uri) _connect;
+
+  /// Unix seconds of the newest event we've accepted, pool-wide. Sent as the
+  /// REQ `since` (minus [_sinceSlack]) so neither a reconnect nor a fresh app
+  /// launch re-downloads the whole backlog a relay is holding for us. Seeded
+  /// from the persisted value by the caller; every advance is reported through
+  /// [_onWatermark] so it can be persisted again.
+  int? _watermark;
+  final void Function(int seconds)? _onWatermark;
 
   final _conns = <String, _RelayConnection>{};
   final _states = <String, RelayState>{};
@@ -157,8 +176,30 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       return;
     }
     _remember(id);
+    _advanceWatermark(event.createdAt);
     final c = _inbound;
     if (c != null && !c.isClosed) c.add(event);
+  }
+
+  /// Move the watermark up to [createdAt]. Clamped to now: a relay can hand us
+  /// a validly-signed event stamped years in the future (a signature says who
+  /// wrote an event, not when), and letting that set `since` would blind the
+  /// subscription to every real message that follows.
+  void _advanceWatermark(int createdAt) {
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (createdAt > nowSeconds) return;
+    if (_watermark != null && createdAt <= _watermark!) return;
+    _watermark = createdAt;
+    _onWatermark?.call(createdAt);
+  }
+
+  /// The `since` to put on a REQ — null until we've accepted an event, which is
+  /// the first-run case where we do want the relay's full backlog.
+  int? get _reqSince {
+    final w = _watermark;
+    if (w == null) return null;
+    final since = w - _sinceSlack.inSeconds;
+    return since <= 0 ? null : since;
   }
 
   void _remember(String id) {
@@ -184,11 +225,6 @@ class _RelayConnection {
   Timer? _retryTimer;
   Duration _backoff = WebSocketNostrRelayClient._initialBackoff;
   bool _closed = false;
-
-  /// Unix seconds of the newest event we've accepted, replayed as the REQ
-  /// `since` on reconnect so we don't re-download the whole backlog (and don't
-  /// miss what landed while we were away).
-  int? _since;
 
   final String _subId = 'cc-${Random().nextInt(1 << 32).toRadixString(16)}';
 
@@ -228,7 +264,7 @@ class _RelayConnection {
     send(NostrRelayProtocol.req(
       _subId,
       recipientPubkeyHex: target,
-      since: _since,
+      since: _pool._reqSince,
     ));
   }
 
@@ -251,8 +287,9 @@ class _RelayConnection {
     final msg = NostrRelayProtocol.parse(raw);
     switch (msg) {
       case RelayEvent(:final event):
-        final createdAt = event.createdAt;
-        if (_since == null || createdAt > _since!) _since = createdAt;
+        // The watermark advances in the pool, and only for events that pass
+        // verification — an unsigned event with a future timestamp must not be
+        // able to push our subscription past real messages.
         unawaited(_pool._onEvent(url, event));
       case RelayOk(:final accepted, :final message):
         if (!accepted) {

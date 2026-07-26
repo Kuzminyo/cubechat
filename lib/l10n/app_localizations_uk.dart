@@ -422,6 +422,28 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String chatSentAt(String time) {
+    return 'Надіслано $time';
+  }
+
+  @override
+  String chatReadAt(String time) {
+    return 'Прочитано $time';
+  }
+
+  @override
+  String get chatPinAction => 'Закріпити';
+
+  @override
+  String get chatUnpinAction => 'Відкріпити';
+
+  @override
+  String get chatPinnedTitle => 'Закріплене повідомлення';
+
+  @override
+  String get chatPinnedGone => 'Цього повідомлення вже немає в чаті';
+
+  @override
   String get peerBlock => 'Заблокувати';
 
   @override

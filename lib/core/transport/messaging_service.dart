@@ -12,9 +12,11 @@ import 'package:cryptography/cryptography.dart';
 import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/messages_controller.dart';
+import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
+import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_constants.dart';
@@ -46,6 +48,7 @@ import 'mtu_budget.dart';
 import 'inner_payload.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
+import 'nostr/relay_watermark_store.dart';
 import 'nostr/websocket_relay_client.dart';
 import '../crypto/media_fs_cipher.dart';
 
@@ -107,6 +110,7 @@ class MessagingService {
   MessagingService(this._ref) {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
+    _startPresenceTimer();
     _wireNostrFallback();
     unawaited(_loadRelayBuffer());
     unawaited(_ref.read(prekeyServiceProvider).ensureInitialized());
@@ -140,6 +144,7 @@ class MessagingService {
   final _handshakeTimers = <String, Timer>{}; // peerId -> watchdog timer
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
   Timer? _announcementTimer;
+  Timer? _presenceTimer;
 
   /// Cached pubkey hash of the local identity, computed lazily on first use.
   /// Used as the `originPubkeyHash` on every outbound transport envelope.
@@ -254,6 +259,9 @@ class MessagingService {
   StreamSubscription<Uint8List>? _nostrSub;
   StreamSubscription<Map<String, RelayState>>? _relayStateSub;
 
+  /// Where the relay subscription resumes from across restarts.
+  final RelayWatermarkStore _relayWatermark = RelayWatermarkStore();
+
   /// Guards against two [_applyRelaySettings] runs interleaving (the user
   /// toggling fast, or a settings write landing while we're still connecting)
   /// and leaving a stray socket pool behind.
@@ -283,7 +291,16 @@ class MessagingService {
     }
     try {
       final signer = await _myNostrSigner();
-      final client = WebSocketNostrRelayClient(relayUrls: settings.urls);
+      // Resume the subscription from the last event we accepted. Without this a
+      // relaunch asks for everything the relays still hold and re-delivers the
+      // entire off-mesh history (dedup then drops it, but we'd pay for the
+      // download and the decrypt every time).
+      final since = await _relayWatermark.load();
+      final client = WebSocketNostrRelayClient(
+        relayUrls: settings.urls,
+        sinceSeconds: since,
+        onWatermark: (seconds) => unawaited(_relayWatermark.save(seconds)),
+      );
       final transport = NostrTransport(signer: signer, relay: client);
       _relayClient = client;
       _nostr = transport;
@@ -870,6 +887,11 @@ class MessagingService {
       throw StateError('cannot send image: no recipient pubkey for $chatId');
     }
 
+    // Minted before the bubble so it can carry the media id as its wireId — the
+    // same handle the receiver files this photo under. That symmetry is what
+    // lets a read receipt for a photo find its way back to this message (and,
+    // with it, the read time in the long-press details).
+    final imageId = ImageChunk.newImageId();
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -880,6 +902,7 @@ class MessagingService {
       kind: MessageKind.image,
       imagePath: cachedPath,
       imageMime: mime,
+      wireId: TransportEnvelope.hashHex(imageId),
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -888,7 +911,6 @@ class MessagingService {
     }
 
     try {
-      final imageId = ImageChunk.newImageId();
       // Size chunks to the link's real MTU so a full chunk-frame fits one BLE
       // write. A fixed 140 overflowed low-MTU iOS links (the frame was
       // truncated, the AEAD open then failed). Fragmentation is the safety net,
@@ -1031,6 +1053,9 @@ class MessagingService {
       throw StateError('cannot send audio: no recipient pubkey for $chatId');
     }
 
+    // Media id up front, so the bubble's wireId matches what the receiver files
+    // this voice note under (see sendImage).
+    final audioId = AudioChunk.newAudioId();
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -1042,6 +1067,7 @@ class MessagingService {
       audioPath: cachedPath,
       audioMime: mime,
       audioDurationMs: durationMs,
+      wireId: TransportEnvelope.hashHex(audioId),
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -1050,7 +1076,6 @@ class MessagingService {
     }
 
     try {
-      final audioId = AudioChunk.newAudioId();
       // Size chunks to the link's real MTU (see sendImage for the why).
       final audTid = session?.peerId;
       final audDirect = audTid != null ? _clients[audTid] : null;
@@ -1349,6 +1374,104 @@ class MessagingService {
     }
   }
 
+  /// Pin (or unpin) a message for everyone in [chatId], referenced by its
+  /// [targetWireId]. Applies locally first so the banner appears instantly, then
+  /// mirrors it to the other side over the same signed + encrypted control path
+  /// a reaction uses.
+  ///
+  /// Either party may pin any message in the chat — including one the *other*
+  /// person sent, which is the common case ("pin the address he just sent").
+  /// That's why there's no author check here or on the receiving side; the pin
+  /// is conversation state, not a rewrite of somebody's message.
+  Future<void> sendPin(
+    String chatId,
+    String targetWireId, {
+    required bool pinned,
+  }) async {
+    final Uint8List target;
+    try {
+      target = _hexDecodeBytes(targetWireId);
+    } catch (_) {
+      return;
+    }
+    if (target.length != MessagePin.idLen) return;
+
+    final pins = _ref.read(pinnedControllerProvider.notifier);
+    if (pinned) {
+      await pins.pin(chatId, targetWireId);
+    } else {
+      await pins.unpin(chatId, wireId: targetWireId);
+    }
+
+    final body = MessagePin(
+      op: pinned ? PinOp.pin : PinOp.unpin,
+      targetMsgId: target,
+    ).encode();
+    try {
+      if (chatId.startsWith('#')) {
+        final channel =
+            _ref.read(channelControllerProvider.notifier).byName(chatId);
+        if (channel == null) return;
+        final frame = await _buildChannelFrame(
+          channel,
+          InnerPayloadType.pin,
+          body,
+          TransportEnvelope.newMsgId(),
+        );
+        await _fanoutAllLinks(frame, excludePeerId: null);
+      } else {
+        final peerPub = _resolvePeerPub(chatId);
+        if (peerPub == null) return;
+        await _sendControlToPeer(
+          canonicalId: chatId,
+          peerPub: peerPub,
+          type: InnerPayloadType.pin,
+          innerBody: body,
+        );
+      }
+    } catch (e) {
+      DebugLog.instance.log('PIN', 'pin send failed: $e');
+    }
+  }
+
+  /// A pin/unpin from the other side of a 1:1 chat, applied to the same buckets
+  /// their messages land in.
+  void _ingestPeerPin({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final MessagePin p;
+    try {
+      p = MessagePin.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('PIN', 'drop pin from $peerId: $e');
+      return;
+    }
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    final target = TransportEnvelope.hashHex(p.targetMsgId);
+    final buckets =
+        canonical != peerId ? <String>[canonical, peerId] : <String>[canonical];
+    _applyPinToBuckets(buckets, target: target, pinned: p.op == PinOp.pin);
+  }
+
+  void _applyPinToBuckets(
+    List<String> buckets, {
+    required String target,
+    required bool pinned,
+  }) {
+    final pins = _ref.read(pinnedControllerProvider.notifier);
+    for (final b in buckets) {
+      if (pinned) {
+        unawaited(pins.pin(b, target));
+      } else {
+        unawaited(pins.unpin(b, wireId: target));
+      }
+    }
+    DebugLog.instance
+        .log('PIN', '${pinned ? 'pinned' : 'unpinned'} $target from peer');
+  }
+
   /// An inbound "delete for everyone" from a peer, applied to their message.
   void _ingestPeerDelete({
     required String peerId,
@@ -1530,11 +1653,16 @@ class MessagingService {
   /// else mesh fan-out — no store-and-forward hold; a receipt/reaction that
   /// misses isn't worth persisting). Returns the number of links it went out
   /// on.
+  ///
+  /// [relayOnly] skips the mesh entirely and publishes over Nostr alone — for
+  /// the presence heartbeat, whose whole job is covering peers the mesh can't
+  /// see, and which must not spend BLE airtime on the ones it can.
   Future<int> _sendControlToPeer({
     required String canonicalId,
     required Uint8List peerPub,
     required InnerPayloadType type,
     required Uint8List innerBody,
+    bool relayOnly = false,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final myHash = await _myPubkeyHash();
@@ -1564,6 +1692,10 @@ class MessagingService {
     _dedup.acceptEnvelope(env);
     final frameBytes =
         Frame(type: FrameType.transport, payload: env.encode()).encode();
+
+    if (relayOnly) {
+      return await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
+    }
 
     final session = _findSessionByPubkeyHex(canonicalId);
     final transportId = session?.peerId;
@@ -1719,11 +1851,14 @@ class MessagingService {
             // against it, and display names are not identities.
             authorId: reactorId,
           );
-          _ref
+          // append() is idempotent on wireId; only a genuinely new message
+          // warrants a notification.
+          if (_ref
               .read(messagesControllerProvider.notifier)
-              .append(channel.name, message);
-          _notifyChannel(
-              channel: channel, authorName: authorName, message: message);
+              .append(channel.name, message)) {
+            _notifyChannel(
+                channel: channel, authorName: authorName, message: message);
+          }
 
         case InnerPayloadType.textReply:
           final reply = unpackTextReply(unpacked.body);
@@ -1742,11 +1877,12 @@ class MessagingService {
             authorId: reactorId,
             replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
           );
-          _ref
+          if (_ref
               .read(messagesControllerProvider.notifier)
-              .append(channel.name, message);
-          _notifyChannel(
-              channel: channel, authorName: authorName, message: message);
+              .append(channel.name, message)) {
+            _notifyChannel(
+                channel: channel, authorName: authorName, message: message);
+          }
 
         case InnerPayloadType.reaction:
           final rx = Reaction.decode(unpacked.body);
@@ -1771,13 +1907,24 @@ class MessagingService {
                 authorId: reactorId,
               );
 
+        case InnerPayloadType.pin:
+          final pin = MessagePin.decode(unpacked.body);
+          // Any member may pin in a channel, so no author guard (see sendPin).
+          _applyPinToBuckets(
+            [channel.name],
+            target: TransportEnvelope.hashHex(pin.targetMsgId),
+            pinned: pin.op == PinOp.pin,
+          );
+
         case InnerPayloadType.receipt:
         case InnerPayloadType.channelInvite:
         case InnerPayloadType.imageChunk:
         case InnerPayloadType.audioChunk:
         case InnerPayloadType.mediaManifest:
+        case InnerPayloadType.presence:
           // Not carried in channels — ignore. (An invite is addressed to one
-          // peer; broadcasting one to the channel would be circular.)
+          // peer; broadcasting one to the channel would be circular, and
+          // presence is per-peer, not per-channel.)
           break;
       }
     } catch (e) {
@@ -2341,6 +2488,20 @@ class MessagingService {
             body: unpacked.body,
           );
 
+        case InnerPayloadType.pin:
+          _ingestPeerPin(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.presence:
+          _ingestPresence(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
         case InnerPayloadType.imageChunk:
           await _ingestImageChunk(
             peerId: peerId,
@@ -2649,6 +2810,10 @@ class MessagingService {
             kind: MessageKind.image,
             imagePath: path,
             imageMime: manifest.mime,
+            // The sender's media id, stable across every path and replay that
+            // can deliver this photo — the handle that keeps a re-delivered
+            // manifest from adding a second copy to the chat.
+            wireId: TransportEnvelope.hashHex(manifest.mediaId),
           );
 
         case MediaKind.audio:
@@ -2667,6 +2832,7 @@ class MessagingService {
             audioPath: path,
             audioMime: manifest.mime,
             audioDurationMs: manifest.durationMs,
+            wireId: TransportEnvelope.hashHex(manifest.mediaId),
           );
       }
       _appendToAllSessionsForSamePeer(senderPub,
@@ -3110,6 +3276,131 @@ class MessagingService {
     });
   }
 
+  // ------------------------- presence over the internet ---------------------
+
+  /// How often we tell internet-reachable peers we still have the app open.
+  /// Two of these fit inside [PeerPresence.ttl], so one dropped beacon doesn't
+  /// flicker the dot.
+  static const Duration presenceHeartbeat = Duration(seconds: 45);
+
+  /// Most peers one heartbeat will reach. Each beacon is a signed frame
+  /// published to every configured relay, so this bounds a pathological roster
+  /// (and the relay traffic) to something a phone can afford. The peers that
+  /// matter are the ones you've heard from recently, which is how they're
+  /// ranked.
+  static const int _presenceFanoutCap = 10;
+
+  /// Beacon peers we haven't seen on the mesh in this long: nobody needs an
+  /// "online" ping from someone they met once, months ago.
+  static const Duration _presenceMaxPeerAge = Duration(days: 30);
+
+  /// Presence heartbeat. Fires regardless of foreground state and checks
+  /// inside — [announcePresence] is the one place that decides whether a beacon
+  /// is warranted, so there's a single rule to reason about.
+  void _startPresenceTimer() {
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer.periodic(presenceHeartbeat, (_) {
+      unawaited(announcePresence(online: true));
+    });
+  }
+
+  /// Tell internet-reachable peers whether we're in the app.
+  ///
+  /// This exists because the mesh cannot answer the question. A BLE
+  /// announcement means "in range"; two people talking from different cities
+  /// never are, so before this a peer chatting over the relay always read as
+  /// offline. The beacon is deliberately narrow:
+  ///
+  ///   * **Relay only.** It never touches BLE. A peer in range is already
+  ///     covered by announcements, and spending mesh airtime (and battery) on a
+  ///     second presence channel is exactly the kind of always-on chatter this
+  ///     app has been trimming.
+  ///   * **Foreground only** for an "online" beacon. "In the app" is what the
+  ///     status claims, so a backgrounded process must not keep claiming it.
+  ///   * **Opt-in by construction.** With the internet fallback off there is no
+  ///     transport, so nothing is sent. When it is on, the relay learns that
+  ///     these two npubs are in contact — which it learns from the first message
+  ///     anyway — but on a fixed cadence rather than only when you type.
+  Future<void> announcePresence({required bool online}) async {
+    if (_disposed) return;
+    if (online && !AppLifecycle.instance.isForeground) return;
+    if (_nostr == null) return;
+
+    final now = DateTime.now();
+    final peers = _ref
+        .read(knownPeersControllerProvider)
+        .values
+        .where((p) =>
+            p.nostrPubkey != null &&
+            !p.isBlocked &&
+            now.difference(p.lastSeen) < _presenceMaxPeerAge)
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    if (peers.isEmpty) return;
+
+    final body = PresenceBeacon(online: online).encode();
+    var sent = 0;
+    for (final peer in peers.take(_presenceFanoutCap)) {
+      final Uint8List peerPub;
+      try {
+        peerPub = _hexDecodeBytes(peer.pubkeyHex);
+      } catch (_) {
+        continue;
+      }
+      try {
+        final n = await _sendControlToPeer(
+          canonicalId: peer.pubkeyHex,
+          peerPub: peerPub,
+          type: InnerPayloadType.presence,
+          innerBody: body,
+          relayOnly: true,
+        );
+        if (n > 0) sent++;
+      } catch (e) {
+        DebugLog.instance
+            .log('PRESENCE', 'beacon to ${peer.pubkeyHex.substring(0, 8)}: $e');
+      }
+    }
+    if (sent > 0) {
+      DebugLog.instance.log('PRESENCE',
+          'sent ${online ? 'online' : 'offline'} beacon to $sent peer(s)');
+    }
+  }
+
+  /// A presence beacon from a peer: they have the app open (or are leaving it).
+  ///
+  /// Also refreshes their roster `lastSeen`, but only for an "online" beacon —
+  /// that field is what the chat header falls back to for "offline · 14:05", and
+  /// a goodbye must not read as "seen just now" *and* offline at once.
+  void _ingestPresence({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final PresenceBeacon beacon;
+    try {
+      beacon = PresenceBeacon.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('PRESENCE', 'drop beacon from $peerId: $e');
+      return;
+    }
+    if (senderPub == null) {
+      // No canonical identity to attribute it to (an unauthenticated relay
+      // frame from someone whose announcement we've never seen).
+      DebugLog.instance.log('PRESENCE', 'drop beacon from $peerId: no sender');
+      return;
+    }
+    final canonical = _hexOf(senderPub);
+    _ref
+        .read(presenceControllerProvider.notifier)
+        .record(canonical, online: beacon.online);
+    if (beacon.online) {
+      _ref.read(knownPeersControllerProvider.notifier).touch(canonical);
+    }
+    DebugLog.instance.log('PRESENCE',
+        '${canonical.substring(0, 8)} is ${beacon.online ? 'online' : 'offline'}');
+  }
+
   /// Broadcast our announcement immediately, outside the periodic heartbeat.
   ///
   /// For the events that actually change what peers know about us — right now a
@@ -3198,8 +3489,17 @@ class MessagingService {
       return;
     }
     final pubkeyHex = _hexOf(pubkey);
-    // Canonical key (lives forever, used by chats list).
-    messages.append(pubkeyHex, message);
+    // Canonical key (lives forever, used by chats list). A false return means
+    // this exact wireId is already in the chat — a relay backlog replay or a
+    // second delivery path — so there is nothing to fan out and nothing to
+    // notify about either.
+    if (!messages.append(pubkeyHex, message)) {
+      DebugLog.instance.log(
+        'NOISE',
+        'skip already-stored message ${message.wireId} in $pubkeyHex',
+      );
+      return;
+    }
 
     // Fan-out to transport-id keys for any currently open ChatScreen that
     // was navigated to via a BLE address.
@@ -3519,6 +3819,8 @@ class MessagingService {
     _disposed = true;
     _announcementTimer?.cancel();
     _announcementTimer = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
     // Flush any pending buffer write synchronously so a held frame isn't
     // lost if we're disposed inside the debounce window.
     _relayPersistTimer?.cancel();

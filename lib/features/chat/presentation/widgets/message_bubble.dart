@@ -17,6 +17,7 @@ import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
+import '../../data/pinned_controller.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import 'voice_bubble.dart';
@@ -94,11 +95,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// carry reactions), then the per-message actions.
   Future<void> _showActions(Offset at) async {
     final t = AppLocalizations.of(context);
+    final pinnedHere = widget.message.wireId != null &&
+        ref
+            .read(pinnedControllerProvider.notifier)
+            .isPinned(widget.chatId, widget.message.wireId!);
 
     final picked = await showContextPopup<String>(
       context: context,
       globalPosition: at,
       items: [
+        _detailsHeader(t),
         if (_canReact)
           PopupMenuItem<String>(
             enabled: false,
@@ -124,6 +130,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         if (widget.message.wireId != null)
           _menuRow(
               'reply', Icons.reply, t.chatReplyAction, AppColors.textOnGlass),
+        // A pin is conversation state, so it needs the shared transport id —
+        // and either side may pin either side's message.
+        if (widget.message.wireId != null)
+          _menuRow(
+            pinnedHere ? 'unpin' : 'pin',
+            pinnedHere ? Icons.push_pin : Icons.push_pin_outlined,
+            pinnedHere ? t.chatUnpinAction : t.chatPinAction,
+            AppColors.textOnGlass,
+          ),
         if (_canCopy)
           _menuRow('copy', Icons.copy_outlined, t.chatCopyAction,
               AppColors.textOnGlass),
@@ -154,6 +169,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await Clipboard.setData(ClipboardData(text: widget.message.text));
       if (!mounted) return;
       showCopiedToast(context, t.chatCopied);
+    } else if (picked == 'pin' || picked == 'unpin') {
+      await ref.read(messagingServiceProvider).sendPin(
+            widget.chatId,
+            widget.message.wireId!,
+            pinned: picked == 'pin',
+          );
     } else if (picked == 'forward') {
       await _promptForward();
     } else if (picked == 'edit') {
@@ -233,6 +254,42 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         final t = m.text.replaceAll('\n', ' ').trim();
         return t.length > 80 ? '${t.substring(0, 80)}…' : t;
     }
+  }
+
+  /// Non-tappable first row of the long-press menu: when this message was sent
+  /// and, for our own messages the peer has acknowledged, when they read it.
+  ///
+  /// This is where the read time lives rather than in the bubble: the bubble
+  /// already carries a clock and a tick, and a second timestamp on every line
+  /// would crowd the conversation for something you only look up occasionally.
+  /// It works for a photo or a voice note exactly as it does for text — the
+  /// long-press covers the whole bubble, and media now carries the wireId a
+  /// receipt refers to.
+  PopupMenuItem<String> _detailsHeader(AppLocalizations t) {
+    final m = widget.message;
+    final readAt = m.readAt;
+    return PopupMenuItem<String>(
+      enabled: false,
+      height: readAt == null ? 30 : 48,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+          ),
+          if (readAt != null)
+            Text(
+              t.chatReadAt(formatMessageDetailsTime(context, readAt)),
+              style: const TextStyle(
+                color: _BubbleMeta._readColor,
+                fontSize: 11.5,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   PopupMenuItem<String> _menuRow(
@@ -421,6 +478,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   Widget build(BuildContext context) {
     final message = widget.message;
     final mine = message.isMine;
+    // Marked in the bubble too, not only in the banner up top: scrolling back
+    // through history, you want to see which line the banner is pointing at.
+    final pinned = message.wireId != null &&
+        ref.watch(pinnedControllerProvider)[widget.chatId]?.wireId ==
+            message.wireId;
 
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
@@ -503,7 +565,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ),
                     ),
                   const SizedBox(height: 4),
-                  _BubbleMeta(message: message),
+                  _BubbleMeta(message: message, pinned: pinned),
                 ],
               ),
             ),
@@ -741,9 +803,12 @@ class _ImagePlaceholder extends StatelessWidget {
 }
 
 class _BubbleMeta extends StatelessWidget {
-  const _BubbleMeta({required this.message});
+  const _BubbleMeta({required this.message, this.pinned = false});
 
   final Message message;
+
+  /// True when this is the chat's pinned message.
+  final bool pinned;
 
   /// Distinct tint for a "read" tick so it reads apart from plain delivery.
   static const _readColor = Color(0xFF66D9FF);
@@ -757,6 +822,15 @@ class _BubbleMeta extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (pinned) ...[
+          Icon(
+            Icons.push_pin,
+            size: 11,
+            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.55),
+            semanticLabel: t.chatPinnedTitle,
+          ),
+          const SizedBox(width: 4),
+        ],
         if (message.forwardSecret) ...[
           Icon(
             Icons.lock_clock,

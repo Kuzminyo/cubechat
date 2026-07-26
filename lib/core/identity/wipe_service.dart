@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/channels/data/channel_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
+import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/presence_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
@@ -32,6 +34,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(channelControllerProvider.notifier).clear();
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(readMarkersControllerProvider.notifier).clear();
+  await ref.read(pinnedControllerProvider.notifier).clear();
+  ref.read(presenceControllerProvider.notifier).clear();
   await ref.read(nicknameControllerProvider.notifier).reset();
   // Switches the internet fallback off and forgets any custom relay list, so
   // the next launch talks to nobody until the user opts in again.

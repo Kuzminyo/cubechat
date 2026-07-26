@@ -60,7 +60,15 @@ enum InnerPayloadType {
   /// A text message that quotes an earlier one. Body is
   /// `[target msgId : 16][padded text : N]`; otherwise the same signed +
   /// encrypted path as [text]. See [packTextReply] / [unpackTextReply].
-  textReply(0xA0);
+  textReply(0xA0),
+
+  /// Pin (or unpin) a message for everyone in the conversation, referenced by
+  /// its transport msgId. Works in 1:1 chats and channels. See [MessagePin].
+  pin(0xB0),
+
+  /// "I'm in the app" beacon, so a peer reachable only over the internet can
+  /// still be shown as online. See [PresenceBeacon].
+  presence(0xC0);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -946,6 +954,107 @@ class MessageEdit {
       targetMsgId: Uint8List.fromList(bytes.sublist(0, idLen)),
       text: utf8.decode(bytes.sublist(idLen), allowMalformed: true),
     );
+  }
+}
+
+/// Pin or unpin a message for the whole conversation, referenced by the 16-byte
+/// transport msgId it was sent under.
+///
+/// Wire layout (inside an [InnerPayloadType.pin] body):
+///
+/// ```
+///   [op       : 1 byte]     ← PinOp tag
+///   [targetId : 16 bytes]   ← msgId of the message being pinned
+/// ```
+///
+/// Unlike an edit or a delete, a pin is *not* restricted to the author of the
+/// target: either side of a 1:1 chat can pin what the other said, which is the
+/// whole point of pinning ("remember this address he sent"). The signature on
+/// the enclosing payload still proves who did the pinning, so a relay can't
+/// invent one.
+enum PinOp {
+  unpin(0x00),
+  pin(0x01);
+
+  const PinOp(this.tag);
+  final int tag;
+
+  static PinOp? fromByte(int b) {
+    for (final v in PinOp.values) {
+      if (v.tag == b) return v;
+    }
+    return null;
+  }
+}
+
+class MessagePin {
+  MessagePin({required this.op, required this.targetMsgId})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+
+  final PinOp op;
+  final Uint8List targetMsgId;
+
+  static const int idLen = 16;
+
+  Uint8List encode() {
+    final out = Uint8List(1 + idLen);
+    out[0] = op.tag;
+    out.setRange(1, out.length, targetMsgId);
+    return out;
+  }
+
+  static MessagePin decode(Uint8List bytes) {
+    if (bytes.length != 1 + idLen) {
+      throw const FormatException('message pin must be op + 16-byte id');
+    }
+    final op = PinOp.fromByte(bytes[0]);
+    if (op == null) {
+      throw FormatException('unknown pin op 0x${bytes[0].toRadixString(16)}');
+    }
+    return MessagePin(
+      op: op,
+      targetMsgId: Uint8List.fromList(bytes.sublist(1)),
+    );
+  }
+}
+
+/// "I have the app open" (or "I'm gone"), sent to one peer so they can show us
+/// as online even when the only path between us is a public relay.
+///
+/// Wire layout (inside an [InnerPayloadType.presence] body):
+///
+/// ```
+///   [state : 1 byte]   ← 0x01 online, 0x00 offline
+/// ```
+///
+/// The freshness that matters comes from the enclosing [SignedPayload]'s
+/// timestamp, which the receiver already checks against its replay window — so
+/// the beacon carries no time of its own to be lied about. A single byte also
+/// keeps the frame small enough that a heartbeat costs nothing on the wire.
+class PresenceBeacon {
+  const PresenceBeacon({required this.online});
+
+  final bool online;
+
+  static const int _onlineTag = 0x01;
+  static const int _offlineTag = 0x00;
+
+  Uint8List encode() =>
+      Uint8List.fromList([online ? _onlineTag : _offlineTag]);
+
+  static PresenceBeacon decode(Uint8List bytes) {
+    if (bytes.length != 1) {
+      throw const FormatException('presence beacon must be exactly one byte');
+    }
+    switch (bytes[0]) {
+      case _onlineTag:
+        return const PresenceBeacon(online: true);
+      case _offlineTag:
+        return const PresenceBeacon(online: false);
+      default:
+        throw FormatException(
+            'unknown presence state 0x${bytes[0].toRadixString(16)}');
+    }
   }
 }
 

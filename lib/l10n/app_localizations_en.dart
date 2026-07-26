@@ -420,6 +420,28 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chatSentAt(String time) {
+    return 'Sent $time';
+  }
+
+  @override
+  String chatReadAt(String time) {
+    return 'Read $time';
+  }
+
+  @override
+  String get chatPinAction => 'Pin';
+
+  @override
+  String get chatUnpinAction => 'Unpin';
+
+  @override
+  String get chatPinnedTitle => 'Pinned message';
+
+  @override
+  String get chatPinnedGone => 'That message is no longer in this chat';
+
+  @override
   String get peerBlock => 'Block';
 
   @override

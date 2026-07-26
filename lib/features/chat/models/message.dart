@@ -27,6 +27,7 @@ class Message {
     this.authorName,
     this.authorId,
     this.editedAt,
+    this.readAt,
     this.reactions = const <String, Set<String>>{},
     this.replyToWireId,
   });
@@ -66,6 +67,14 @@ class Message {
   /// When the author last rewrote this message, or null if never edited.
   final DateTime? editedAt;
 
+  /// When the recipient's read receipt for this message landed — our own clock,
+  /// not theirs, since a peer's timestamp is neither trustworthy nor comparable
+  /// with the rest of the timeline. Only ever set on our own outgoing messages
+  /// ([status] == [MessageStatus.read] implies it), and surfaced in the
+  /// long-press details rather than the bubble: it answers "when did they see
+  /// this" without adding a second timestamp to every line of the chat.
+  final DateTime? readAt;
+
   /// Emoji reactions attached to this message: emoji → set of reactor ids.
   /// A reactor id is `'me'` for the local user or a short sender fingerprint
   /// for a remote one, so counts stay correct and a reactor can toggle their
@@ -94,6 +103,7 @@ class Message {
     bool? forwardSecret,
     Map<String, Set<String>>? reactions,
     DateTime? editedAt,
+    DateTime? readAt,
   }) {
     return Message(
       id: id,
@@ -113,6 +123,7 @@ class Message {
       authorName: authorName,
       authorId: authorId,
       editedAt: editedAt ?? this.editedAt,
+      readAt: readAt ?? this.readAt,
       reactions: reactions ?? this.reactions,
       replyToWireId: replyToWireId,
     );
