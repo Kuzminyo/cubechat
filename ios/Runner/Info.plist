@@ -88,6 +88,19 @@
 	<array>
 		<string>bluetooth-central</string>
 		<string>bluetooth-peripheral</string>
+		<!-- Lets iOS wake us on its own schedule to pull whatever the Nostr
+		     relays are holding, so an internet message that arrived while the
+		     app was suspended can raise a notification before the user next
+		     opens it. Bluetooth needs no such window; the two modes above keep
+		     the process alive for radio events. -->
+		<string>fetch</string>
+	</array>
+	<!-- BGTaskScheduler refuses to register an identifier that is not listed
+	     here, and throws at launch when the app tries. Must match
+	     AppDelegate.refreshTaskId. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.cubechat.relayRefresh</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
