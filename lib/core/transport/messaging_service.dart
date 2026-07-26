@@ -896,8 +896,11 @@ class MessagingService {
       // churn that aborted transfers around chunk 300 on iOS peripheral links.
       final imgTid = session?.peerId;
       final imgDirect = imgTid != null ? _clients[imgTid] : null;
-      final chunkData =
-          _mediaChunkData(imgDirect, ceiling: ImageChunk.maxDataBytes);
+      // One decision for the whole transfer: with no BLE link at all it goes
+      // over the relay, which also sets the chunk size.
+      final relayOnly = !_hasAnyLink;
+      final chunkData = _mediaChunkData(imgDirect,
+          relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > ImageChunk.maxChunks) {
         throw StateError(
@@ -919,6 +922,7 @@ class MessagingService {
         peerPub: peerPub,
         session: session,
         canonicalId: canonicalId,
+        relayOnly: relayOnly,
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
@@ -957,26 +961,14 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        // Direct session preferred, mesh fan-out otherwise.
-        final transportId = session?.peerId;
-        if (transportId != null) {
-          final client = _clients[transportId];
-          if (client != null && client.isConnected) {
-            await _writeFrameToClient(client, frameBytes);
-          } else {
-            final ok = await _notifyFrameToPeripheral(frameBytes);
-            if (!ok) {
-              DebugLog.instance.log(
-                  'IMG', 'chunk $i/$total notify rejected — no subscribers?');
-              throw StateError('notify failed on image chunk $i/$total');
-            }
-          }
-        } else {
-          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-          if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
-            throw StateError(
-                'no mesh link or relay for image chunk $i/$total');
-          }
+        final sent = await _deliverMediaFrame(
+          frameBytes: frameBytes,
+          session: session,
+          canonicalId: canonicalId,
+          relayOnly: relayOnly,
+        );
+        if (!sent) {
+          throw StateError('no mesh link or relay for image chunk $i/$total');
         }
         // Tiny pacing gap. Some Android BLE stacks lose notify packets when
         // a fast sender outpaces the receiver's read loop. 15ms is below
@@ -1062,8 +1054,9 @@ class MessagingService {
       // Size chunks to the link's real MTU (see sendImage for the why).
       final audTid = session?.peerId;
       final audDirect = audTid != null ? _clients[audTid] : null;
-      final chunkData =
-          _mediaChunkData(audDirect, ceiling: AudioChunk.maxDataBytes);
+      final relayOnly = !_hasAnyLink;
+      final chunkData = _mediaChunkData(audDirect,
+          relayOnly: relayOnly, ceiling: AudioChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > AudioChunk.maxChunks) {
         throw StateError(
@@ -1085,6 +1078,7 @@ class MessagingService {
         peerPub: peerPub,
         session: session,
         canonicalId: canonicalId,
+        relayOnly: relayOnly,
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
@@ -1128,24 +1122,14 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        final transportId = session?.peerId;
-        if (transportId != null) {
-          final client = _clients[transportId];
-          if (client != null && client.isConnected) {
-            await _writeFrameToClient(client, frameBytes);
-          } else {
-            final ok = await _notifyFrameToPeripheral(frameBytes);
-            if (!ok) {
-              DebugLog.instance.log('VOICE', 'chunk $i/$total notify rejected');
-              throw StateError('notify failed on audio chunk $i/$total');
-            }
-          }
-        } else {
-          final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-          if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
-            throw StateError(
-                'no mesh link or relay for audio chunk $i/$total');
-          }
+        final sent = await _deliverMediaFrame(
+          frameBytes: frameBytes,
+          session: session,
+          canonicalId: canonicalId,
+          relayOnly: relayOnly,
+        );
+        if (!sent) {
+          throw StateError('no mesh link or relay for audio chunk $i/$total');
         }
         if (i + 1 < total) {
           await Future<void>.delayed(const Duration(milliseconds: 15));
@@ -2739,6 +2723,7 @@ class MessagingService {
     required Uint8List peerPub,
     required ChatSession? session,
     required String canonicalId,
+    required bool relayOnly,
     Uint8List? senderIdentityPub,
     Uint8List? senderEphemeralPub,
   }) async {
@@ -2784,19 +2769,13 @@ class MessagingService {
       type: FrameType.transport,
       payload: env.encode(),
     ).encode();
-    final transportId = session?.peerId;
-    if (transportId != null) {
-      final client = _clients[transportId];
-      if (client != null && client.isConnected) {
-        await _writeFrameToClient(client, frameBytes);
-        return;
-      }
-      final ok = await _notifyFrameToPeripheral(frameBytes);
-      if (ok) return;
-      throw StateError('manifest notify rejected');
-    }
-    final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
+    final delivered = await _deliverMediaFrame(
+      frameBytes: frameBytes,
+      session: session,
+      canonicalId: canonicalId,
+      relayOnly: relayOnly,
+    );
+    if (!delivered) {
       throw StateError('no mesh link or relay for media manifest');
     }
   }
@@ -2898,16 +2877,61 @@ class MessagingService {
   /// whole frames — one event each, no fragmentation — so use the full
   /// [ceiling] to keep the relay event count sane (140 B chunks would be
   /// thousands of publishes per image).
-  int _mediaChunkData(BleGattClient? direct, {required int ceiling}) {
+  int _mediaChunkData(
+    BleGattClient? direct, {
+    required bool relayOnly,
+    required int ceiling,
+  }) {
+    if (relayOnly) return ceiling;
     if (direct != null && direct.isConnected) {
       return mediaChunkDataBudget(effectivePayload(direct.negotiatedMtu),
           ceiling: ceiling);
     }
-    if (_hasAnyLink) {
-      return mediaChunkDataBudget(conservativeEffectivePayload(),
-          ceiling: ceiling);
+    return mediaChunkDataBudget(conservativeEffectivePayload(),
+        ceiling: ceiling);
+  }
+
+  /// Carry one media frame (manifest or chunk) to [canonicalId].
+  ///
+  /// Mirrors the cascade [sendText] uses — direct link, then our peripheral,
+  /// then a mesh fan-out, then the Nostr relay — instead of committing to the
+  /// session's transport and giving up there. A [ChatSession] outlives the BLE
+  /// link that created it, so a peer met earlier still has `session.peerId`
+  /// long after the link is gone; the old code took that as "must go over BLE",
+  /// failed the notify (no subscribers) and threw `manifest notify rejected`
+  /// without ever trying the relay.
+  ///
+  /// [relayOnly] short-circuits straight to the relay when the transfer was
+  /// chunked for it (see [_mediaChunkData]) — a 16 KB chunk sized for one Nostr
+  /// event would otherwise be fragmented into ~70 unpaced BLE notifies.
+  Future<bool> _deliverMediaFrame({
+    required Uint8List frameBytes,
+    required ChatSession? session,
+    required String canonicalId,
+    required bool relayOnly,
+  }) async {
+    if (!relayOnly) {
+      final transportId = session?.peerId;
+      if (transportId != null) {
+        final client = _clients[transportId];
+        if (client != null && client.isConnected) {
+          try {
+            await _writeFrameToClient(client, frameBytes);
+            return true;
+          } catch (e) {
+            DebugLog.instance
+                .log('MESH', 'media direct write failed ($e) — trying mesh');
+          }
+        }
+        try {
+          if (await _notifyFrameToPeripheral(frameBytes)) return true;
+        } catch (_) {}
+      }
+      if (await _fanoutAllLinks(frameBytes, excludePeerId: null) > 0) {
+        return true;
+      }
     }
-    return ceiling;
+    return _sendOverNostr(canonicalId, frameBytes);
   }
 
   Future<int> _fanoutAllLinks(
