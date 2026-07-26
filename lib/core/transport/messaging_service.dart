@@ -896,11 +896,8 @@ class MessagingService {
       // churn that aborted transfers around chunk 300 on iOS peripheral links.
       final imgTid = session?.peerId;
       final imgDirect = imgTid != null ? _clients[imgTid] : null;
-      final effMtu = (imgDirect != null && imgDirect.isConnected)
-          ? effectivePayload(imgDirect.negotiatedMtu)
-          : conservativeEffectivePayload();
       final chunkData =
-          mediaChunkDataBudget(effMtu, ceiling: ImageChunk.maxDataBytes);
+          _mediaChunkData(imgDirect, ceiling: ImageChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > ImageChunk.maxChunks) {
         throw StateError(
@@ -921,6 +918,7 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        canonicalId: canonicalId,
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
@@ -975,8 +973,9 @@ class MessagingService {
           }
         } else {
           final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-          if (fanout == 0) {
-            throw StateError('no active mesh links for image chunk $i/$total');
+          if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
+            throw StateError(
+                'no mesh link or relay for image chunk $i/$total');
           }
         }
         // Tiny pacing gap. Some Android BLE stacks lose notify packets when
@@ -1063,11 +1062,8 @@ class MessagingService {
       // Size chunks to the link's real MTU (see sendImage for the why).
       final audTid = session?.peerId;
       final audDirect = audTid != null ? _clients[audTid] : null;
-      final effMtu = (audDirect != null && audDirect.isConnected)
-          ? effectivePayload(audDirect.negotiatedMtu)
-          : conservativeEffectivePayload();
       final chunkData =
-          mediaChunkDataBudget(effMtu, ceiling: AudioChunk.maxDataBytes);
+          _mediaChunkData(audDirect, ceiling: AudioChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > AudioChunk.maxChunks) {
         throw StateError(
@@ -1088,6 +1084,7 @@ class MessagingService {
         peerHash: peerHash,
         peerPub: peerPub,
         session: session,
+        canonicalId: canonicalId,
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
@@ -1145,8 +1142,9 @@ class MessagingService {
           }
         } else {
           final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-          if (fanout == 0) {
-            throw StateError('no active mesh links for audio chunk $i/$total');
+          if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
+            throw StateError(
+                'no mesh link or relay for audio chunk $i/$total');
           }
         }
         if (i + 1 < total) {
@@ -2740,6 +2738,7 @@ class MessagingService {
     required Uint8List peerHash,
     required Uint8List peerPub,
     required ChatSession? session,
+    required String canonicalId,
     Uint8List? senderIdentityPub,
     Uint8List? senderEphemeralPub,
   }) async {
@@ -2797,8 +2796,8 @@ class MessagingService {
       throw StateError('manifest notify rejected');
     }
     final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    if (fanout == 0) {
-      throw StateError('no active mesh links for media manifest');
+    if (fanout == 0 && !await _sendOverNostr(canonicalId, frameBytes)) {
+      throw StateError('no mesh link or relay for media manifest');
     }
   }
 
@@ -2891,6 +2890,25 @@ class MessagingService {
   bool get _hasAnyLink =>
       _clients.values.any((c) => c.isReady) ||
       _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+
+  /// Data budget for one media chunk. A live direct link sizes to its real MTU;
+  /// any other BLE link uses the conservative MTU (both keep one chunk ≈ one
+  /// notify, which the peripheral fragmenter + 15 ms pacing rely on to not drop
+  /// packets). With **no** BLE link the transfer will go over the Nostr relay as
+  /// whole frames — one event each, no fragmentation — so use the full
+  /// [ceiling] to keep the relay event count sane (140 B chunks would be
+  /// thousands of publishes per image).
+  int _mediaChunkData(BleGattClient? direct, {required int ceiling}) {
+    if (direct != null && direct.isConnected) {
+      return mediaChunkDataBudget(effectivePayload(direct.negotiatedMtu),
+          ceiling: ceiling);
+    }
+    if (_hasAnyLink) {
+      return mediaChunkDataBudget(conservativeEffectivePayload(),
+          ceiling: ceiling);
+    }
+    return ceiling;
+  }
 
   Future<int> _fanoutAllLinks(
     Uint8List bytes, {

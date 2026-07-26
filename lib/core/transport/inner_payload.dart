@@ -217,14 +217,19 @@ class ImageChunk {
 
   static const int idLen = 16;
 
-  /// Max raw image bytes per chunk. Keeps the full outer frame inside the
-  /// Android default 244-byte effective MTU after envelope + SealedBox +
-  /// inner-type + chunk header (~95 bytes of overhead at the upper bound).
-  static const int maxDataBytes = 140;
+  /// Max raw image bytes per chunk. Over BLE the sender sizes each chunk down
+  /// to the link MTU (≈136 B, one chunk per notify), so this ceiling is only
+  /// reached on the Nostr relay path — where a frame is a single event with no
+  /// fragmentation and a 140 B ceiling would have meant thousands of publishes
+  /// per image. The receiver's memory is bounded by the reassembler's
+  /// total-byte cap (4 MiB), not by this value, so a larger ceiling does not
+  /// widen the DoS surface. Must stay ≤ 65535 (the u16 chunk-length field).
+  static const int maxDataBytes = 16384;
 
-  /// Hard protocol cap for a single media transfer. At 140 raw bytes per
-  /// chunk this keeps one image under ~1.1 MiB and prevents release builds
-  /// from accepting attacker-chosen 65k-chunk buffers.
+  /// Hard protocol cap on the chunk *count* for one transfer (also the u16
+  /// seq/total range). Total transfer size is bounded separately by the
+  /// receiver's reassembler byte cap (4 MiB); this mainly limits the
+  /// many-small-chunks BLE path.
   static const int maxChunks = 8192;
 
   void _validate() {
@@ -357,12 +362,13 @@ class AudioChunk {
 
   static const int idLen = 16;
 
-  /// Max raw audio bytes per chunk. Slightly smaller than image's 140 to
-  /// leave room for the duration field; still fits inside MTU=256.
-  static const int maxDataBytes = 136;
+  /// Max raw audio bytes per chunk. Like [ImageChunk.maxDataBytes] this is only
+  /// reached on the Nostr relay path; over BLE the sender sizes chunks down to
+  /// the link MTU. Must stay ≤ 65535 (the u16 chunk-length field).
+  static const int maxDataBytes = 16384;
 
-  /// Same transfer cap as [ImageChunk.maxChunks], with a slightly smaller
-  /// chunk size to account for the duration field.
+  /// Hard protocol cap on the chunk *count* for one transfer; total size is
+  /// bounded separately by the receiver's reassembler byte cap (4 MiB).
   static const int maxChunks = 8192;
 
   void _validate() {
