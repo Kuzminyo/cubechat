@@ -19,11 +19,23 @@ jobs:
     name: Build unsigned IPA
     # GitHub-hosted macOS runner — 10× minute multiplier but public repos
     # get unlimited minutes, private repos get 200 free macOS minutes/month.
-    runs-on: macos-14
+    # macos-15 ships Xcode 16 (iOS 18 SDK); the macos-14 default Xcode 15 lacks
+    # the AVCaptureSession.runtimeErrorNotification / .wasInterruptedNotification
+    # members that camera_avfoundation 0.10.2 compiles against, which failed the
+    # build outright.
+    runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Pin Xcode explicitly so a runner-image default bump can't silently drop
+      # us back onto an SDK too old for the camera plugin. latest-stable = the
+      # newest non-beta Xcode on the image (16.x on macos-15).
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Show Xcode version
         run: xcodebuild -version
