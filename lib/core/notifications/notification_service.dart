@@ -44,10 +44,16 @@ class NotificationService {
   Future<void> init() async {
     if (_ready) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Triggers the iOS system permission prompt on first launch (init() runs
+    // unconditionally from main(), before runApp). Without this the app never
+    // asks — local notifications are silently dropped and there is nothing for
+    // the user to grant from Settings, since iOS only surfaces a
+    // Notifications entry for an app once it has requested authorization at
+    // least once.
     const ios = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
     try {
       await _plugin.initialize(
