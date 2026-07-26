@@ -17,6 +17,7 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
+import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -135,75 +136,61 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.presenceOffline;
     }
 
+    final pubkeyHex = session?.remotePubkeyHex ?? known?.pubkeyHex;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: BackButton(color: AppColors.textOnGlass),
-        title: Row(
-          children: [
-            IdentityAvatar(
-              seed: peerId,
-              label: peerLabel,
-              size: 36,
-              online: isOnline,
-              heroTag: 'avatar-$peerId',
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    peerLabel,
-                    style: AppTypography.heading(
-                        size: 16, color: AppColors.textOnGlass),
+        automaticallyImplyLeading: false,
+        toolbarHeight: _headerPillHeight + 8,
+        titleSpacing: 0,
+        title: _ChatHeader(
+          avatarSeed: peerId,
+          label: peerLabel,
+          statusText: statusText,
+          statusColor:
+              isOnline ? AppColors.online : AppColors.textOnGlassDim,
+          online: isOnline,
+          // Tapping the identity pill goes where the shield goes — the peer's
+          // fingerprint screen is the only "profile" this app has.
+          onTapIdentity: pubkeyHex == null
+              ? null
+              : () => context.push(
+                    '/verify/${Uri.encodeComponent(pubkeyHex)}'
+                    '?name=${Uri.encodeQueryComponent(peerLabel)}',
                   ),
-                  Text(
-                    statusText,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isOnline
-                          ? AppColors.online
-                          : AppColors.textOnGlassDim,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+          actions: [
+            if (showRetry)
+              _PillIconButton(
+                icon: Icons.refresh,
+                color: AppColors.brandPrimary,
+                tooltip: t.bleRetry,
+                onPressed: () async {
+                  final manager = ref.read(chatSessionManagerProvider.notifier);
+                  manager.drop(peerId);
+                  final scanner = ref.read(bleScannerProvider);
+                  try {
+                    await ref
+                        .read(messagingServiceProvider)
+                        .connectAsInitiatorWithRetry(
+                          deviceId: peerId,
+                          displayName: peerLabel,
+                          refreshId: () => scanner.refreshPeerId(peerLabel),
+                        );
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    showGlassToast(context, t.bleConnectFailed,
+                        tone: ToastTone.danger);
+                  }
+                },
               ),
+            _ShieldButton(
+              session: session,
+              ref: ref,
+              peerLabel: peerLabel,
             ),
           ],
         ),
-        actions: [
-          if (showRetry)
-            IconButton(
-              icon: Icon(Icons.refresh, color: AppColors.brandPrimary),
-              tooltip: t.bleRetry,
-              onPressed: () async {
-                final manager = ref.read(chatSessionManagerProvider.notifier);
-                manager.drop(peerId);
-                final scanner = ref.read(bleScannerProvider);
-                try {
-                  await ref
-                      .read(messagingServiceProvider)
-                      .connectAsInitiatorWithRetry(
-                        deviceId: peerId,
-                        displayName: peerLabel,
-                        refreshId: () => scanner.refreshPeerId(peerLabel),
-                      );
-                } catch (_) {
-                  if (!context.mounted) return;
-                  showGlassToast(context, t.bleConnectFailed,
-                      tone: ToastTone.danger);
-                }
-              },
-            ),
-          _ShieldButton(
-            session: session,
-            ref: ref,
-            peerLabel: peerLabel,
-          ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -235,57 +222,34 @@ class ChatScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: BackButton(color: AppColors.textOnGlass),
-        title: Row(
-          children: [
-            IdentityAvatar(
-              seed: peerId,
-              label: peerLabel,
-              size: 36,
-              online: false,
-              heroTag: 'avatar-$peerId',
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    peerLabel,
-                    style: AppTypography.heading(
-                        size: 16, color: AppColors.textOnGlass),
+        automaticallyImplyLeading: false,
+        toolbarHeight: _headerPillHeight + 8,
+        titleSpacing: 0,
+        title: _ChatHeader(
+          avatarSeed: peerId,
+          label: peerLabel,
+          statusText: t.channelSubtitle,
+          statusColor: AppColors.textOnGlassDim,
+          online: false,
+          actions: [
+            if (joined)
+              _PillIconButton(
+                icon: Icons.person_add_alt_1_outlined,
+                color: AppColors.brandPrimary,
+                tooltip: t.channelInviteTitle,
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  backgroundColor: AppColors.bgTop,
+                  isScrollControlled: true,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(22)),
                   ),
-                  Text(
-                    t.channelSubtitle,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+                  builder: (_) => _ChannelInviteSheet(channelName: peerId),
+                ),
               ),
-            ),
           ],
         ),
-        actions: [
-          if (joined)
-            IconButton(
-              icon: Icon(Icons.person_add_alt_1_outlined,
-                  color: AppColors.brandPrimary),
-              tooltip: t.channelInviteTitle,
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                backgroundColor: AppColors.bgTop,
-                isScrollControlled: true,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-                ),
-                builder: (_) => _ChannelInviteSheet(channelName: peerId),
-              ),
-            ),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -464,6 +428,162 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
   }
 }
 
+/// Height of the header pills. An avatar (36) plus its breathing room, which is
+/// also what makes the round back button a circle rather than a squashed pill.
+const double _headerPillHeight = 52;
+
+/// A single floating pill in the chat header. Three of them — back, identity,
+/// actions — read as separate islands over the aurora, the same principle the
+/// nav bar and the chat bubbles already use, instead of one bar welded across
+/// the top of the screen.
+class _HeaderPill extends StatelessWidget {
+  const _HeaderPill({
+    required this.child,
+    this.onTap,
+    this.padding = const EdgeInsets.symmetric(horizontal: 8),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _headerPillHeight,
+      child: FloatingGlass(
+        borderRadius: _headerPillHeight / 2,
+        onTap: onTap,
+        padding: padding,
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
+/// Icon button sized to sit inside a [_HeaderPill] without the 48-px slop
+/// IconButton reserves by default (which would fight the pill's own padding).
+class _PillIconButton extends StatelessWidget {
+  const _PillIconButton({
+    required this.icon,
+    required this.onPressed,
+    required this.color,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color color;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, color: color, size: 21),
+      onPressed: onPressed,
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      splashRadius: 22,
+    );
+  }
+}
+
+/// The chat header: a round back button, the identity pill (avatar, name and
+/// presence line), and a pill holding whatever actions this chat offers.
+class _ChatHeader extends StatelessWidget {
+  const _ChatHeader({
+    required this.avatarSeed,
+    required this.label,
+    required this.statusText,
+    required this.statusColor,
+    required this.online,
+    required this.actions,
+    this.onTapIdentity,
+  });
+
+  final String avatarSeed;
+  final String label;
+  final String statusText;
+  final Color statusColor;
+  final bool online;
+  final List<Widget> actions;
+  final VoidCallback? onTapIdentity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: Row(
+        children: [
+          _HeaderPill(
+            padding: EdgeInsets.zero,
+            child: SizedBox(
+              width: _headerPillHeight,
+              child: _PillIconButton(
+                icon: Icons.arrow_back_rounded,
+                color: AppColors.textOnGlass,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _HeaderPill(
+              onTap: onTapIdentity,
+              padding: const EdgeInsets.only(left: 8, right: 14),
+              child: Row(
+                children: [
+                  IdentityAvatar(
+                    seed: avatarSeed,
+                    label: label,
+                    size: 36,
+                    online: online,
+                    heroTag: 'avatar-$avatarSeed',
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.heading(
+                            size: 15.5,
+                            color: AppColors.textOnGlass,
+                          ),
+                        ),
+                        Text(
+                          statusText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: statusColor, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _HeaderPill(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: actions),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// The message in [messages] carrying [wireId], or null when it isn't there (or
 /// nothing is pinned).
 Message? _messageByWireId(List<Message> messages, String? wireId) {
@@ -603,8 +723,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   }
 }
 
-/// The bar under the app bar naming the chat's pinned message. Tapping it jumps
-/// to that message; the pin button clears it for both sides.
+/// The pinned-message island under the header. Tapping it jumps to that
+/// message; the button on the right clears the pin for both sides.
+///
+/// Built as its own floating pane rather than a strip welded under the app bar,
+/// so it belongs to the same family as the header pills, the bubbles and the
+/// nav bar. The marker rail on the left and the media thumbnail are what make it
+/// legible at a glance: with a photo pinned, the picture *is* the label.
 class _PinnedBar extends StatelessWidget {
   const _PinnedBar({
     required this.message,
@@ -616,65 +741,106 @@ class _PinnedBar extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onUnpin;
 
+  /// Side of the square media thumbnail.
+  static const double _thumb = 34;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final String preview;
     switch (message.kind) {
       case MessageKind.image:
-        preview = '📷 ${t.chatPinnedTitle}';
+        // The thumbnail carries the "it's a photo" part, so the line beside it
+        // is free for the caption — or, failing that, a plain label.
+        final caption = message.text.trim();
+        preview = _looksLikeMime(caption) ? '📷 Photo' : caption;
       case MessageKind.audio:
-        preview = '🎤 ${t.chatPinnedTitle}';
+        preview = '🎤 Voice message';
       case MessageKind.text:
         preview = message.text.replaceAll('\n', ' ').trim();
     }
-    return Material(
-      color: Colors.white.withValues(alpha: 0.05),
-      child: InkWell(
+
+    final path = message.imagePath;
+    final thumb = (message.kind == MessageKind.image &&
+            path != null &&
+            File(path).existsSync())
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(path),
+              width: _thumb,
+              height: _thumb,
+              fit: BoxFit.cover,
+              // A pinned photo whose cache file went missing must not take the
+              // whole header down with it.
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          )
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      child: FloatingGlass(
+        borderRadius: 16,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-          child: Row(
-            children: [
-              Icon(Icons.push_pin, size: 15, color: AppColors.brandPrimary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t.chatPinnedTitle,
-                      style: TextStyle(
-                        color: AppColors.brandPrimary,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      preview,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.textOnGlassDim,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ],
-                ),
+        padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+        child: Row(
+          children: [
+            // Telegram's pin rail: one segment per pinned message. We keep a
+            // single pin per chat, so it reads as one solid marker.
+            Container(
+              width: 2.5,
+              height: _thumb,
+              decoration: BoxDecoration(
+                color: AppColors.brandPrimary,
+                borderRadius: BorderRadius.circular(2),
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                color: AppColors.textOnGlassDim,
-                tooltip: t.chatUnpinAction,
-                onPressed: onUnpin,
+            ),
+            const SizedBox(width: 10),
+            if (thumb != null) ...[thumb, const SizedBox(width: 10)],
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.chatPinnedTitle,
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    preview,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 12.5,
+                      height: 1.15,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            _PillIconButton(
+              icon: Icons.push_pin_outlined,
+              color: AppColors.textOnGlassDim,
+              tooltip: t.chatUnpinAction,
+              onPressed: onUnpin,
+            ),
+          ],
         ),
       ),
     );
   }
+
+  /// Media bubbles carry the mime type in [Message.text] when there's no real
+  /// caption, and "image/jpeg" is not a preview worth showing.
+  static bool _looksLikeMime(String s) =>
+      s.isEmpty || s.startsWith('image/') || s.startsWith('audio/');
 }
 
 /// Message list with the composer floating clear of the bottom edge, the
@@ -1292,8 +1458,9 @@ class _ShieldButton extends StatelessWidget {
             ? AppColors.brandPrimary
             : (canVerify ? AppColors.textOnGlass : AppColors.textOnGlassFaint));
 
-    return IconButton(
-      icon: Icon(icon, color: color),
+    return _PillIconButton(
+      icon: icon,
+      color: color,
       tooltip: rotated ? t.peerKeyRotated : t.verifyTitle,
       onPressed: !canVerify
           ? null
