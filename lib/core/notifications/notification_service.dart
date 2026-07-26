@@ -19,6 +19,10 @@ class NotificationService {
   static const _groupKey = 'cubechat.messages';
   static const _replyActionId = 'cubechat_reply';
 
+  /// iOS notification category carrying the Reply action. Registered in [init]
+  /// and referenced by every message notification.
+  static const _categoryId = 'cubechat_message';
+
   /// How many recent lines we keep per conversation for the MessagingStyle
   /// history. Enough to show a burst as a thread, bounded so memory can't grow.
   static const _maxThreadMessages = 8;
@@ -50,14 +54,34 @@ class NotificationService {
     // the user to grant from Settings, since iOS only surfaces a
     // Notifications entry for an app once it has requested authorization at
     // least once.
-    const ios = DarwinInitializationSettings(
+    //
+    // The category has to be registered here for [_categoryId] (which every
+    // message notification already carried) to mean anything: on iOS an
+    // unregistered identifier just yields a banner with no buttons, so the
+    // Reply box Android has had all along was missing. Same action id on both
+    // platforms, so [_onResponse] handles either one.
+    // Not const: DarwinNotificationAction.text is a factory.
+    final ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      notificationCategories: <DarwinNotificationCategory>[
+        DarwinNotificationCategory(
+          _categoryId,
+          actions: <DarwinNotificationAction>[
+            DarwinNotificationAction.text(
+              _replyActionId,
+              'Reply',
+              buttonTitle: 'Send',
+              placeholder: 'Message',
+            ),
+          ],
+        ),
+      ],
     );
     try {
       await _plugin.initialize(
-        const InitializationSettings(android: android, iOS: ios),
+        InitializationSettings(android: android, iOS: ios),
         onDidReceiveNotificationResponse: _onResponse,
       );
       // Pre-create the channel so the first notification appears instantly with
@@ -157,7 +181,7 @@ class NotificationService {
       ),
       iOS: const DarwinNotificationDetails(
         threadIdentifier: 'cubechat',
-        categoryIdentifier: 'cubechat_message',
+        categoryIdentifier: _categoryId,
       ),
     );
     try {
