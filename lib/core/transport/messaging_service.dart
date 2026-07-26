@@ -2256,7 +2256,13 @@ class MessagingService {
       final unpacked = unpackInnerPayload(innerBytes);
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
-      final senderPub = session?.remoteStaticPublicKey;
+      // Over the Nostr relay there is no Noise session (peerId == _nostrPeerId),
+      // so remoteStaticPublicKey is null. Recover the sender's canonical pubkey
+      // from the envelope's origin hash so the message routes into their real
+      // chat — and so the blocked-peer, receipt, reaction and edit paths below
+      // can identify the sender too, instead of it vanishing into 'nostr:relay'.
+      final senderPub = session?.remoteStaticPublicKey ??
+          await _canonicalPubForOrigin(env.originPubkeyHash);
 
       // Blocked peer: drop everything they send (messages, receipts,
       // reactions, edits) before it can touch the store or the UI.
@@ -2986,6 +2992,26 @@ class MessagingService {
         if (_bytesEqual(h, originPubkeyHash)) {
           return pub;
         }
+      } catch (_) {
+        // ignore malformed entries
+      }
+    }
+    return null;
+  }
+
+  /// Reverse an envelope's [originPubkeyHash] back to the sender's full
+  /// canonical (X25519 static) pubkey by matching it against the known-peer
+  /// roster. Needed on the Nostr path, where there is no Noise session to read
+  /// `remoteStaticPublicKey` from — without it an inbound relay message is filed
+  /// under the 'nostr:relay' placeholder instead of the sender's own chat, so it
+  /// decrypts fine yet never shows up in the conversation.
+  Future<Uint8List?> _canonicalPubForOrigin(Uint8List originPubkeyHash) async {
+    final known = _ref.read(knownPeersControllerProvider);
+    for (final p in known.values) {
+      try {
+        final xBytes = _hexDecodeBytes(p.pubkeyHex);
+        final h = await _peerPubkeyHash(xBytes);
+        if (_bytesEqual(h, originPubkeyHash)) return xBytes;
       } catch (_) {
         // ignore malformed entries
       }
