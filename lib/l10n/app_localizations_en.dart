@@ -600,4 +600,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileDiscoverableExplainer =>
       'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.';
+
+  @override
+  String get voiceTrimPlay => 'Play';
+
+  @override
+  String get voiceTrimPause => 'Pause';
+
+  @override
+  String get voiceTrimDiscard => 'Discard recording';
+
+  @override
+  String voiceTrimSelection(String duration) {
+    return 'Sending $duration';
+  }
 }

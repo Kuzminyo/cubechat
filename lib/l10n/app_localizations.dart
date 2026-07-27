@@ -1177,6 +1177,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.'**
   String get profileDiscoverableExplainer;
+
+  /// No description provided for @voiceTrimPlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get voiceTrimPlay;
+
+  /// No description provided for @voiceTrimPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get voiceTrimPause;
+
+  /// No description provided for @voiceTrimDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard recording'**
+  String get voiceTrimDiscard;
+
+  /// No description provided for @voiceTrimSelection.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending {duration}'**
+  String voiceTrimSelection(String duration);
 }
 
 class _AppLocalizationsDelegate

@@ -61,6 +61,9 @@ class MainApplication : Application() {
             methodChannel = MethodChannel(messenger, "cubechat/ble_peripheral"),
             eventChannel = EventChannel(messenger, "cubechat/ble_peripheral/events"),
         )
+        CubechatAudioTrimPlugin(
+            methodChannel = MethodChannel(messenger, "cubechat/audio_trim"),
+        )
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

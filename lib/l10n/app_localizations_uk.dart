@@ -602,4 +602,18 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get profileDiscoverableExplainer =>
       'Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім\'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв\'язними. Новим людям тоді потрібна картка контакту.';
+
+  @override
+  String get voiceTrimPlay => 'Відтворити';
+
+  @override
+  String get voiceTrimPause => 'Пауза';
+
+  @override
+  String get voiceTrimDiscard => 'Видалити запис';
+
+  @override
+  String voiceTrimSelection(String duration) {
+    return 'Надсилаємо $duration';
+  }
 }

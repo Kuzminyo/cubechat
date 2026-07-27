@@ -55,7 +55,12 @@ UI work but have no BLE.
   the quote rides in the envelope
 - **Edit** your own messages (inline, Telegram-style) and **delete** them —
   *for me* (local) or *for everyone* (retracted over the wire)
-- **Images** and **voice messages** (chunked, with a signed manifest and SHA-256
+- **Voice messages** — hold to talk and release to send, or slide up to lock
+  hands-free; a locked recording gets a **trim editor** first (drag either end
+  of the waveform, preview the selection, then send). The cut is a native
+  re-mux, so it is lossless and best-effort: if a device can't do it, the
+  untrimmed recording is sent rather than nothing
+- **Images** and voice (chunked, with a signed manifest and SHA-256
   reassembly check; live waveform while recording). Hold the mic to talk,
   **slide up to lock** it hands-free, **slide left to discard**
 - **In-app gallery** — a custom multi-select photo picker (send several at once)

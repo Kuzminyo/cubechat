@@ -16,6 +16,7 @@ import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
+import '../../../core/util/audio_trimmer.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -38,6 +39,7 @@ import 'widgets/chat_input.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
+import 'widgets/voice_trim_bar.dart';
 import '../../../core/widgets/glass_toast.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
@@ -1006,6 +1008,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// Cleared by whatever ends the recording, so the next hold starts held.
   bool _recordLocked = false;
 
+  /// A finished locked recording waiting to be trimmed and sent. While this is
+  /// set the composer is replaced by the trim island, so there is no way to
+  /// start a second recording on top of an unreviewed one.
+  PendingVoice? _pendingVoice;
+
   @override
   void initState() {
     super.initState();
@@ -1107,23 +1114,85 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   }
 
   Future<void> _onRecordStop() async {
+    final wasLocked = _recordLocked;
     final result = await ref.read(voiceRecorderProvider.notifier).stop();
     _stopTicker();
     if (mounted) setState(() => _recordLocked = false);
     if (result == null) return;
     if (!widget.canSend) return;
+
+    // A locked recording gets a review step: the finger is already off the
+    // button and the user is looking at the screen, so this is the moment to
+    // offer a trim. A held press that was just released does not — that
+    // gesture exists to be fast, and an editor in the way would make the
+    // common case slower to serve the rare one.
+    if (wasLocked && mounted) {
+      setState(() {
+        _pendingVoice = PendingVoice(
+          path: result.path,
+          durationMs: result.durationMs,
+          envelope: result.envelope,
+        );
+      });
+      return;
+    }
+
+    await _sendVoice(
+      path: result.path,
+      durationMs: result.durationMs,
+    );
+  }
+
+  /// Read the file and put it on the wire. [path] is whatever survived
+  /// trimming — the trimmer falls back to the original recording, so this is
+  /// never handed a missing file because a cut failed.
+  Future<void> _sendVoice({
+    required String path,
+    required int durationMs,
+  }) async {
     try {
-      final bytes = await File(result.path).readAsBytes();
+      final bytes = await File(path).readAsBytes();
       await ref.read(messagingServiceProvider).sendAudio(
             widget.peerId,
             bytes: bytes,
             mime: 'audio/aac',
-            durationMs: result.durationMs,
-            cachedPath: result.path,
+            durationMs: durationMs,
+            cachedPath: path,
           );
     } catch (e) {
       if (!mounted) return;
       showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
+  /// Commit the reviewed recording, cutting it to the chosen range first.
+  Future<void> _sendTrimmedVoice(int startMs, int endMs) async {
+    final pending = _pendingVoice;
+    if (pending == null) return;
+    setState(() => _pendingVoice = null);
+
+    final path = await AudioTrimmer().trimOrOriginal(
+      sourcePath: pending.path,
+      startMs: startMs,
+      endMs: endMs,
+      fullDurationMs: pending.durationMs,
+    );
+    // Only claim the trimmed length when the cut actually happened.
+    final durationMs =
+        path == pending.path ? pending.durationMs : endMs - startMs;
+    await _sendVoice(path: path, durationMs: durationMs);
+  }
+
+  /// Throw the reviewed recording away.
+  Future<void> _discardPendingVoice() async {
+    final pending = _pendingVoice;
+    setState(() => _pendingVoice = null);
+    if (pending == null) return;
+    try {
+      final f = File(pending.path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {
+      // A leftover file in the cache directory is not worth surfacing.
     }
   }
 
@@ -1381,6 +1450,20 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         }
       },
     );
+
+    // A recording waiting to be reviewed takes the composer's place entirely.
+    // Leaving the input underneath would invite starting a second recording,
+    // or typing, on top of one that has not been dealt with.
+    final pending = _pendingVoice;
+    if (pending != null) {
+      return VoiceTrimBar(
+        pending: pending,
+        onCancel: _discardPendingVoice,
+        onSend: (startMs, endMs) => unawaited(
+          _sendTrimmedVoice(startMs, endMs),
+        ),
+      );
+    }
 
     if (activeReply == null) return composer;
     return Column(

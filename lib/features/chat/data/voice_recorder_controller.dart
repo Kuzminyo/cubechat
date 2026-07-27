@@ -37,8 +37,20 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
   StreamSubscription<Amplitude>? _ampSub;
   final List<double> _levels = <double>[];
 
+  /// The whole recording's loudness envelope, unlike [_levels] which is a
+  /// rolling window. The live strip only ever shows the last moment, but the
+  /// trim editor has to draw the entire clip to let someone pick a range in
+  /// it — the rolling buffer would show only the tail.
+  final List<double> _envelope = <double>[];
+
   /// How many bars of history the waveform keeps.
   static const _maxLevels = 48;
+
+  /// Ceiling on the full envelope: at one sample per 90 ms this is a bit over
+  /// three minutes, far beyond any voice note worth sending over BLE. Past it
+  /// the oldest samples drop, so the editor shows the most recent stretch
+  /// rather than growing without bound.
+  static const _maxEnvelope = 2048;
 
   @override
   VoiceRecordingState build() {
@@ -55,6 +67,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
   /// shows a bar.
   void _startAmplitude() {
     _levels.clear();
+    _envelope.clear();
     _ampSub?.cancel();
     _ampSub = _recorder
         .onAmplitudeChanged(const Duration(milliseconds: 90))
@@ -62,6 +75,8 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       final norm = ((amp.current + 45) / 45).clamp(0.06, 1.0);
       _levels.add(norm.toDouble());
       if (_levels.length > _maxLevels) _levels.removeAt(0);
+      _envelope.add(norm.toDouble());
+      if (_envelope.length > _maxEnvelope) _envelope.removeAt(0);
       final started = state.startedAt;
       if (started == null) return; // stopped between events
       state = VoiceRecordingState(
@@ -76,6 +91,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
     _ampSub?.cancel();
     _ampSub = null;
     _levels.clear();
+    _envelope.clear();
   }
 
   /// Begin a new recording. Returns true if recording actually started.
@@ -134,10 +150,13 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
 
   /// Stop recording and return the file path + measured duration. Returns
   /// null when nothing was recording or the file ended up empty.
-  Future<({String path, int durationMs})?> stop() async {
+  Future<({String path, int durationMs, List<double> envelope})?> stop() async {
     final started = state.startedAt;
     final path = _currentPath;
     _currentPath = null;
+    // Copied before the buffers are cleared: the trim editor outlives the
+    // recording and needs the envelope to draw what was captured.
+    final envelope = List<double>.of(_envelope);
     _stopAmplitude();
     state = VoiceRecordingState.idle;
     if (started == null) return null;
@@ -153,7 +172,7 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       }
       final durationMs =
           DateTime.now().difference(started).inMilliseconds.clamp(0, 0xFFFFFFFF);
-      return (path: finalPath, durationMs: durationMs);
+      return (path: finalPath, durationMs: durationMs, envelope: envelope);
     } catch (e, st) {
       debugPrint('voice stop failed: $e\n$st');
       return null;
