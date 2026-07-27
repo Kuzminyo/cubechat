@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:meta/meta.dart';
+
 import 'nostr_event.dart';
 import 'nostr_frame_codec.dart';
 
@@ -18,9 +20,62 @@ const String kRecipientTag = 'p';
 /// WebSocket connections (`wss://…`), REQ/EVENT/EOSE framing, and reconnection.
 /// Tests supply an in-memory fake so the whole [NostrTransport] flow is
 /// exercised without a socket.
+/// What the relays actually did with an event we published.
+///
+/// Writing to a socket is not delivery. A relay answers every `EVENT` with an
+/// `["OK", <id>, <accepted>, <message>]`, and it says false more often than you
+/// would hope — rate limits ("you are noting too much"), size caps, spam
+/// heuristics, paid-relay policies. Treating a successful write as a send meant
+/// a message could vanish with the app showing it delivered, and it is why this
+/// exists: anything downstream that acts on "the message got out" — a push
+/// wake, a delivery tick — has to key off acceptance, not off bytes leaving.
+@immutable
+class PublishReceipt {
+  const PublishReceipt({
+    required this.sentTo,
+    required this.accepted,
+    required this.rejected,
+    this.rejections = const [],
+  });
+
+  /// Relays the event was written to.
+  final int sentTo;
+
+  /// Relays that answered `OK true`.
+  final int accepted;
+
+  /// Relays that answered `OK false`.
+  final int rejected;
+
+  /// Why the rejections happened, for diagnostics.
+  final List<String> rejections;
+
+  /// Relays that never answered before the deadline. Silence is not consent,
+  /// but it is not a refusal either — the event may well be stored.
+  int get silent => (sentTo - accepted - rejected).clamp(0, sentTo);
+
+  /// At least one relay took it. One is enough: the recipient subscribes to
+  /// every relay in their own list and de-duplicates by event id.
+  bool get isAccepted => accepted > 0;
+
+  /// Nothing accepted it and at least one actively refused — worth surfacing,
+  /// as against a timeout where the event probably landed.
+  bool get isRefused => accepted == 0 && rejected > 0;
+
+  static const none = PublishReceipt(sentTo: 0, accepted: 0, rejected: 0);
+
+  @override
+  String toString() =>
+      'PublishReceipt(sent: $sentTo, ok: $accepted, no: $rejected, '
+      'silent: $silent)';
+}
+
 abstract class NostrRelayClient {
-  /// Publish a fully-signed [event] to the connected relays.
-  Future<void> publish(NostrEvent event);
+  /// Publish a fully-signed [event] and report what the relays said.
+  ///
+  /// Resolves once every relay has answered or the implementation's deadline
+  /// passes, whichever comes first — never hangs on a relay that goes quiet.
+  Future<PublishReceipt> publish(NostrEvent event);
 
   /// Stream of inbound events whose recipient (`"p"`) tag equals
   /// [recipientPubkeyHex]. The relay/client is responsible for filtering by
@@ -90,7 +145,7 @@ class NostrTransport {
 
   /// Build, sign and publish an event carrying [frameBytes] to the peer whose
   /// Nostr pubkey is [recipientNpubHex].
-  Future<void> sendFrame({
+  Future<PublishReceipt> sendFrame({
     required String recipientNpubHex,
     required Uint8List frameBytes,
   }) async {
@@ -104,7 +159,7 @@ class NostrTransport {
       content: NostrFrameCodec.encodeContent(frameBytes),
     );
     final signed = await _signer.sign(event);
-    await _relay.publish(signed);
+    return _relay.publish(signed);
   }
 
   /// Frames addressed to us, recovered from inbound Nostr events. Events whose

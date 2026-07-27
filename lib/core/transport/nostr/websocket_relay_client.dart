@@ -36,10 +36,12 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     WebSocketChannel Function(Uri)? connect,
     int? sinceSeconds,
     void Function(int seconds)? onWatermark,
+    Duration? publishAckTimeout,
   })  : _urls = List.unmodifiable(relayUrls),
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
-        _onWatermark = onWatermark {
+        _onWatermark = onWatermark,
+        _publishAckTimeout = publishAckTimeout ?? defaultPublishAckTimeout {
     for (final url in _urls) {
       _states[url] = RelayState.idle;
     }
@@ -108,13 +110,28 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     }
   }
 
+  /// How long to wait for relays to answer an `EVENT` before giving up on the
+  /// stragglers.
+  ///
+  /// Long enough that a healthy relay on a slow link still counts, short enough
+  /// that a send never visibly hangs behind one that has gone quiet. Silence is
+  /// reported as silence rather than as refusal — the event has most likely
+  /// been stored, we just did not hear so.
+  static const Duration defaultPublishAckTimeout = Duration(seconds: 5);
+
+  final Duration _publishAckTimeout;
+
+  /// Publishes still waiting for their `OK`, keyed by event id.
+  final Map<String, _PendingPublish> _pending = {};
+
   @override
-  Future<void> publish(NostrEvent event) async {
+  Future<PublishReceipt> publish(NostrEvent event) async {
     if (_disposed) throw StateError('relay client disposed');
     final live = _conns.values.where((c) => c.isOpen).toList();
     if (live.isEmpty) {
       throw StateError('no relay connected (${_urls.length} configured)');
     }
+    final id = event.id;
     final payload = NostrRelayProtocol.event(event);
     var sent = 0;
     for (final c in live) {
@@ -123,8 +140,32 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     if (sent == 0) {
       throw StateError('every relay write failed');
     }
-    DebugLog.instance
-        .log('NOSTR', 'published ${event.id?.substring(0, 8)} to $sent relay(s)');
+
+    // An unsigned event has no id to match an OK against; nothing downstream
+    // should be publishing one, but reporting the writes beats hanging.
+    if (id == null) {
+      return PublishReceipt(sentTo: sent, accepted: 0, rejected: 0);
+    }
+
+    final pending = _PendingPublish(sentTo: sent);
+    // A relay that answers the same id twice, or an id we are already waiting
+    // on (a re-publish), resolves the earlier wait rather than colliding.
+    _pending.remove(id)?.settle();
+    _pending[id] = pending;
+
+    final receipt = await pending.wait(_publishAckTimeout);
+    _pending.remove(id);
+
+    DebugLog.instance.log(
+      'NOSTR',
+      'published ${id.substring(0, 8)} — $receipt',
+    );
+    return receipt;
+  }
+
+  /// Route an `OK` back to whoever is waiting on that event id.
+  void _onOk(String eventId, bool accepted, String message) {
+    _pending[eventId]?.record(accepted: accepted, message: message);
   }
 
   @override
@@ -149,6 +190,12 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    // Settle anything still waiting, or its caller is left on a future that
+    // can never complete now the sockets are going away.
+    for (final p in _pending.values) {
+      p.settle();
+    }
+    _pending.clear();
     for (final c in _conns.values) {
       await c.close();
     }
@@ -214,6 +261,48 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 
 /// One relay socket: connect, (re)subscribe, pump messages, reconnect with
 /// exponential backoff. Owned by [WebSocketNostrRelayClient].
+/// One in-flight publish, collecting `OK`s until every relay has answered or
+/// the deadline passes.
+class _PendingPublish {
+  _PendingPublish({required this.sentTo});
+
+  final int sentTo;
+  final _completer = Completer<PublishReceipt>();
+  final List<String> _rejections = [];
+  int _accepted = 0;
+  int _rejected = 0;
+  Timer? _deadline;
+
+  void record({required bool accepted, required String message}) {
+    if (_completer.isCompleted) return;
+    if (accepted) {
+      _accepted++;
+    } else {
+      _rejected++;
+      if (message.isNotEmpty) _rejections.add(message);
+    }
+    // Everyone has spoken — no reason to sit out the rest of the timeout.
+    if (_accepted + _rejected >= sentTo) settle();
+  }
+
+  Future<PublishReceipt> wait(Duration timeout) {
+    _deadline = Timer(timeout, settle);
+    return _completer.future;
+  }
+
+  void settle() {
+    _deadline?.cancel();
+    _deadline = null;
+    if (_completer.isCompleted) return;
+    _completer.complete(PublishReceipt(
+      sentTo: sentTo,
+      accepted: _accepted,
+      rejected: _rejected,
+      rejections: List.unmodifiable(_rejections),
+    ));
+  }
+}
+
 class _RelayConnection {
   _RelayConnection(this.url, this._pool);
 
@@ -310,10 +399,11 @@ class _RelayConnection {
         // verification — an unsigned event with a future timestamp must not be
         // able to push our subscription past real messages.
         unawaited(_pool._onEvent(url, event));
-      case RelayOk(:final accepted, :final message):
+      case RelayOk(:final eventId, :final accepted, :final message):
         if (!accepted) {
           DebugLog.instance.log('NOSTR', '$url rejected publish: $message');
         }
+        _pool._onOk(eventId, accepted, message);
       case RelayNotice(:final message):
         DebugLog.instance.log('NOSTR', '$url notice: $message');
       case RelayEose():

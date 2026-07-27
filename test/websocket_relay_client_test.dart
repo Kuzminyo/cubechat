@@ -22,6 +22,15 @@ class _FakeRelayServer {
   final List<Map<String, dynamic>> _toReplay = [];
   final List<String> reqs = [];
 
+  /// How this relay answers an EVENT: true for `OK true`, false for a refusal,
+  /// null to say nothing at all — the relay that has gone quiet, which is the
+  /// case a publish must not hang on.
+  bool? okAnswer = true;
+
+  /// What a refusal says. The default is verbatim what damus sends when it is
+  /// rate-limiting, which is the refusal that was silently counted as delivery.
+  String refusalMessage = 'rate-limited: you are noting too much';
+
   String get url => 'ws://localhost:${_server.port}';
 
   static Future<_FakeRelayServer> start() async {
@@ -40,7 +49,15 @@ class _FakeRelayServer {
           case 'EVENT':
             final ev = (msg[1] as Map).cast<String, dynamic>();
             relay.received.add(ev);
-            ws.add(jsonEncode(['OK', ev['id'], true, '']));
+            final answer = relay.okAnswer;
+            if (answer != null) {
+              ws.add(jsonEncode([
+                'OK',
+                ev['id'],
+                answer,
+                answer ? '' : relay.refusalMessage,
+              ]));
+            }
           case 'REQ':
             final subId = msg[1] as String;
             relay.reqs.add(data);
@@ -103,6 +120,108 @@ void main() {
     type: FrameType.transport,
     payload: Uint8List.fromList(List<int>.generate(40, (i) => i)),
   ).encode();
+
+  group('publish acceptance', () {
+    // Short deadline so the silent-relay case doesn't sit out a real timeout.
+    const ackTimeout = Duration(milliseconds: 300);
+
+    test('an accepted event reports acceptance', () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+
+      expect(receipt.isAccepted, isTrue);
+      expect(receipt.accepted, 1);
+      expect(receipt.rejected, 0);
+      expect(receipt.silent, 0);
+    });
+
+    test('a refusal is reported as refused, not as delivery', () async {
+      // This is the bug the receipt exists for: damus answers a burst with
+      // "rate-limited: you are noting too much" and drops the event, and the
+      // old publish() returned as though it had been sent.
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      relay.okAnswer = false;
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+
+      expect(receipt.isAccepted, isFalse);
+      expect(receipt.isRefused, isTrue);
+      expect(receipt.rejected, 1);
+      expect(receipt.rejections.single, contains('rate-limited'));
+    });
+
+    test('a relay that never answers resolves as silent, not as a hang',
+        () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      relay.okAnswer = null; // accepts the write, says nothing
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame)
+          .timeout(const Duration(seconds: 3));
+
+      expect(receipt.silent, 1);
+      expect(receipt.isRefused, isFalse,
+          reason: 'silence is not a refusal — the event was probably stored');
+      expect(receipt.isAccepted, isFalse);
+    });
+
+    test('one relay accepting is enough, even when another refuses', () async {
+      final good = await _FakeRelayServer.start();
+      final bad = await _FakeRelayServer.start();
+      addTearDown(good.stop);
+      addTearDown(bad.stop);
+      bad.okAnswer = false;
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [good.url, bad.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+      // Both sockets have to be up, or this measures a one-relay pool.
+      await _until(() => client.states.values.where((s) => s == RelayState.connected).length == 2,
+          reason: 'both relays connected');
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+
+      expect(receipt.accepted, 1);
+      expect(receipt.rejected, 1);
+      expect(receipt.isAccepted, isTrue,
+          reason: 'the recipient reads every relay in their own list');
+      expect(receipt.isRefused, isFalse);
+    });
+  });
 
   test('publishes a signed frame event the relay receives', () async {
     final relay = await _FakeRelayServer.start();

@@ -422,12 +422,25 @@ class MessagingService {
       // Make sure they know who we are before the payload lands (see
       // [_announceOverNostrTo]); harmless no-op after the first time.
       await _announceOverNostrTo(npubHex, _hexDecodeBytes(canonicalId));
-      await transport.sendFrame(
+      final receipt = await transport.sendFrame(
         recipientNpubHex: npubHex,
         frameBytes: frameBytes,
       );
-      DebugLog.instance
-          .log('NOSTR', 'sent ${frameBytes.length}B to $canonicalId via relay');
+      // A write is not a send. Relays refuse events routinely — rate limits,
+      // size caps, spam heuristics — and counting a refusal as delivery is how
+      // a message disappears while the chat shows it delivered. A relay that
+      // simply went quiet is treated as acceptance: the event has most likely
+      // been stored, and falling back to store-and-forward for silence would
+      // strand messages behind one slow relay.
+      if (receipt.isRefused) {
+        DebugLog.instance.log(
+            'NOSTR',
+            'every relay refused the frame for $canonicalId '
+                '(${receipt.rejections.join('; ')})');
+        return false;
+      }
+      DebugLog.instance.log('NOSTR',
+          'sent ${frameBytes.length}B to $canonicalId via relay — $receipt');
       return true;
     } catch (e) {
       DebugLog.instance.log('NOSTR', 'relay send to $canonicalId failed: $e');

@@ -14,12 +14,26 @@ class _FakeRelay implements NostrRelayClient {
   final Map<String, StreamController<NostrEvent>> _byRecipient = {};
   final List<NostrEvent> published = [];
 
+  /// Set to make the fake relay refuse everything, the way a real one does
+  /// when it is rate-limiting.
+  bool refuse = false;
+
   @override
-  Future<void> publish(NostrEvent event) async {
+  Future<PublishReceipt> publish(NostrEvent event) async {
     published.add(event);
+    if (refuse) {
+      return const PublishReceipt(
+        sentTo: 1,
+        accepted: 0,
+        rejected: 1,
+        rejections: ['rate-limited: you are noting too much'],
+      );
+    }
     final recipient = event.firstTagValue(kRecipientTag);
-    if (recipient == null) return;
-    _byRecipient[recipient]?.add(event);
+    if (recipient != null) {
+      _byRecipient[recipient]?.add(event);
+    }
+    return const PublishReceipt(sentTo: 1, accepted: 1, rejected: 0);
   }
 
   @override
