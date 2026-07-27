@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/share_anchor.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -123,13 +124,8 @@ class ContactCardScreen extends ConsumerWidget {
                             ? (buttonContext) => Share.share(
                                   card.value!,
                                   subject: t.contactShareSubject,
-                                  // iPad presents the share sheet as a popover
-                                  // and needs something to point it at; without
-                                  // an anchor UIKit raises rather than guessing,
-                                  // and this app does run on iPad. Harmless on
-                                  // iPhone, where the sheet slides up regardless.
                                   sharePositionOrigin:
-                                      _anchorOf(buttonContext),
+                                      shareAnchorFor(buttonContext),
                                 )
                             : null,
                       ),
@@ -326,14 +322,6 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
       ),
     );
   }
-}
-
-/// Screen rectangle of the widget behind [context], for anchoring an iPad
-/// popover. Null before layout, which callers pass straight through.
-Rect? _anchorOf(BuildContext context) {
-  final box = context.findRenderObject() as RenderBox?;
-  if (box == null || !box.hasSize) return null;
-  return box.localToGlobal(Offset.zero) & box.size;
 }
 
 class _ActionButton extends StatelessWidget {

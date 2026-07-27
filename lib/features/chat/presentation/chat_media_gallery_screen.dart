@@ -6,6 +6,7 @@ import 'package:saver_gallery/saver_gallery.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/share_anchor.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -68,11 +69,20 @@ class _ChatMediaGalleryScreenState
   Message? get _current =>
       (_index >= 0 && _index < _images.length) ? _images[_index] : null;
 
+  /// The share control lives in the AppBar, so the handler has no context of
+  /// its own to measure — hence the key.
+  final _shareButtonKey = GlobalKey();
+
   Future<void> _share() async {
     final path = _current?.imagePath;
     if (path == null) return;
     try {
-      await Share.shareXFiles([XFile(path)]);
+      await Share.shareXFiles(
+        [XFile(path)],
+        // Required, not optional: iOS raises without a non-empty anchor, on
+        // iPhone as well as iPad. See [shareAnchorFor].
+        sharePositionOrigin: shareAnchorFor(context, key: _shareButtonKey),
+      );
     } catch (e) {
       _toast('Could not share: $e', ok: false);
     }
@@ -131,6 +141,7 @@ class _ChatMediaGalleryScreenState
               ),
         actions: [
           IconButton(
+            key: _shareButtonKey,
             icon: const Icon(Icons.ios_share, color: Colors.white),
             tooltip: 'Share',
             onPressed: _current == null ? null : _share,
