@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **269 passing tests** (`flutter test`, including known-answer
+covered by **373 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -33,8 +33,9 @@ UI work but have no BLE.
 - [x] M5 — Emergency wipe, IRC-style commands, image + voice transfer (signed manifests)
 - [x] M5.5 — Group channels, receipts/reactions, message edit/delete, reply/quote, block/mute peers
 - [x] M6 — Nostr internet fallback (see below)
+- [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
 
-> The `[x]` marks above reflect what's implemented and covered by the 269-test
+> The `[x]` marks above reflect what's implemented and covered by the 373-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -81,6 +82,9 @@ UI work but have no BLE.
   delivered automatically when they come back into range
 - **Internet fallback (optional, off by default)** — when the mesh can't reach a
   peer, the same sealed frame goes out over public Nostr relays
+- **Contact cards** — start a chat with someone who has *never* been in
+  Bluetooth range: share a signed identity card as text through any other app,
+  they paste it, and messages flow over the relay from the first tap
 - Automatic reconnect with address-rotation rescan and backoff
 
 **Commands** (IRC-style, typed into any chat)
@@ -157,6 +161,60 @@ signed, so a relay carries ciphertext it cannot read. Lives in
 learn which two Nostr keys exchanged a message and when — metadata the BLE mesh
 never leaks. So it is opt-in per device (Profile → Internet fallback), the relay
 list is user-editable, and Emergency Wipe switches it back off.
+
+### Contact cards — starting a chat with no BLE at all
+
+The fallback above assumes you already know the peer, and until now the only way
+to learn someone was to stand next to them: the signed announcement that carries
+their keys travelled over Bluetooth and nowhere else. Two people in different
+cities therefore couldn't open a chat at all — the relay could have carried the
+message, but neither side held the keys to encrypt one.
+
+A **contact card** is that missing handshake, moved off the radio. It is the
+*same* signed `PeerAnnouncement` the mesh broadcasts, base64'd into a string you
+can send through any other app:
+
+```
+cubechat:c1:<base64url(signed announcement)>
+```
+
+Because it's the announcement verbatim, there is no second wire format and no
+new signing context — importing a card runs the identical
+`PeerAnnouncement.verifyAndDecode` gate a mesh announcement does, so a card
+edited in transit fails the Ed25519 check before it can reach the roster
+(`lib/core/transport/contact_card.dart`). The parser is deliberately forgiving
+about *packaging* — surrounding chat text, injected line breaks, a stripped
+scheme — and unforgiving about content.
+
+**The reply path.** A card only travels one way: they now hold your keys, but
+you hold none of theirs, and an inbound frame carries just an 8-byte origin hash
+that cannot be reversed into an identity. So the first thing sent to a peer's
+`npub` is our own signed announcement (`_announceOverNostrTo`, once per process
+per peer). Without it our message would land in their app attributable to no
+chat, and they'd have no address to answer at.
+
+That introduction is **sealed to the recipient**, unlike its mesh counterpart.
+On BLE an announcement has to be cleartext — it's addressed to whoever is in
+range. A public relay is a different room: events there are readable by anyone
+who asks, so publishing the bundle as-is would park a *human-readable nickname*
+next to a Nostr pubkey, permanently, for any passive scraper — the one thing
+every other frame on this path is careful not to leak. So it goes out as
+`[0x01][SealedBox to their X25519 key]` (we have that key — it's what a card is
+for), and the tag can't be mistaken for a plaintext announcement, which always
+opens with version `0x04`. It also carries `ttl: 1`: a point-to-point
+introduction, not a broadcast, so the receiver decrementing it to zero stops it
+being flooded across their local Bluetooth neighbourhood, where nobody could
+open it anyway.
+
+> **A card proves consistency, not provenance.** The signature says the bundle
+> is internally coherent and unmodified; it says nothing about *who handed it to
+> you*. Anyone can mint a card for their own keys under any nickname, and a card
+> forwarded through a chat app could have been swapped in transit. So a peer
+> added this way starts **unverified** — compare fingerprints in person or over
+> a call (Peers → verification) before trusting the identity. Accepting an
+> introduction over a relay is likewise trust-on-first-use: it is what lets a
+> stranger who knows your `npub` appear in your roster, the same exposure as
+> being messageable at all.
 
 ---
 
@@ -260,7 +318,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 269 tests, incl. crypto known-answer vectors
+flutter test         # 373 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -305,7 +363,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **269 tests** across 32 files. Highlights:
+`flutter test` — **373 tests** across 34 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto
@@ -318,6 +376,10 @@ dart run flutter_native_splash:create
   in-process WebSocket relay**: publish, REQ filter, cross-relay dedup,
   forged-signature rejection, and the no-relay throw that keeps
   store-and-forward as the backstop
+- `contact_card_test`, `contact_bootstrap_test` — the off-mesh first contact:
+  card round-trip, tolerant parsing, tampered/forged-card rejection, and the
+  relay introduction (announcement → `cc1:` content → frame → verified) with
+  its `ttl: 1` point-to-point budget
 - `channel_crypto_test`, `channel_invite_test`, `receipt_reaction_test`,
   `edit_delete_test` — feature wire formats
 - `dedup_cache_test`, `store_forward_cache_test`, `hive_cipher_test` — mesh +
@@ -343,6 +405,9 @@ dart run flutter_native_splash:create
 - [x] **M6** — Nostr internet fallback: secp256k1 signer, event framing, relay
       protocol, WebSocket relay pool, `MessagingService` bridge, and the relay
       settings screen — opt-in, off by default
+- [x] **M6.5** — Contact cards: share the signed announcement as text, import a
+      peer you've never met on the mesh, and introduce yourself over the relay
+      so the reply path exists — a chat that never touches Bluetooth
 
 ---
 

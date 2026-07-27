@@ -507,4 +507,70 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get relaysEmpty => 'Релеї не налаштовані — запасний канал вимкнено.';
+
+  @override
+  String get contactTitle => 'Картка контакту';
+
+  @override
+  String get contactMineLabel => 'Ваша картка';
+
+  @override
+  String get contactMineExplainer =>
+      'Надішліть її тому, хто поза зоною Bluetooth. Вона містить ваші ключі та адресу на релеях — цього досить, щоб почати з вами зашифрований чат через інтернет.';
+
+  @override
+  String get contactCopy => 'Копіювати';
+
+  @override
+  String get contactShare => 'Поділитися';
+
+  @override
+  String get contactCopied => 'Картку скопійовано';
+
+  @override
+  String get contactShareSubject => 'Моя картка контакту cubechat';
+
+  @override
+  String get contactAddLabel => 'Додати людину';
+
+  @override
+  String get contactAddHint => 'Вставте картку контакту';
+
+  @override
+  String get contactAddAction => 'Додати';
+
+  @override
+  String get contactPaste => 'Вставити';
+
+  @override
+  String contactAdded(String name) {
+    return 'Додано $name';
+  }
+
+  @override
+  String get contactInvalid => 'Це не картка контакту';
+
+  @override
+  String get contactOwnCard => 'Це ваша власна картка';
+
+  @override
+  String get contactUnverified =>
+      'Доданий так контакт спершу неперевірений. Будь-хто може створити картку й написати на ній будь-яке ім\'я, тож звірте відбитки особисто або по дзвінку, перш ніж довіряти особі.';
+
+  @override
+  String get contactRelayOff =>
+      'Запасний канал через інтернет вимкнено, тож картка поки нікого не досягне.';
+
+  @override
+  String get contactRelayEnable => 'Увімкнути';
+
+  @override
+  String get profileContactCard => 'Картка контакту';
+
+  @override
+  String get profileContactCardSubtitle =>
+      'Спілкування з тим, хто поза зоною Bluetooth';
+
+  @override
+  String get chatsAddContactTooltip => 'Додати контакт за карткою';
 }

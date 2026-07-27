@@ -38,6 +38,7 @@ import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
+import 'contact_card.dart';
 import 'dedup_cache.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
@@ -360,9 +361,13 @@ class MessagingService {
           'NOSTR', 'no npub for $canonicalId — cannot use internet fallback');
       return false;
     }
+    final npubHex = _hexOf(npub);
     try {
+      // Make sure they know who we are before the payload lands (see
+      // [_announceOverNostrTo]); harmless no-op after the first time.
+      await _announceOverNostrTo(npubHex, _hexDecodeBytes(canonicalId));
       await transport.sendFrame(
-        recipientNpubHex: _hexOf(npub),
+        recipientNpubHex: npubHex,
         frameBytes: frameBytes,
       );
       DebugLog.instance
@@ -371,6 +376,75 @@ class MessagingService {
     } catch (e) {
       DebugLog.instance.log('NOSTR', 'relay send to $canonicalId failed: $e');
       return false;
+    }
+  }
+
+  /// Marks an announcement body as `[0x01][SealedBox blob]` rather than a bare
+  /// signed announcement. Only ever used off-mesh — see [_announceOverNostrTo]
+  /// for why a relay introduction must not be readable by the relay, and
+  /// [_handlePeerAnnouncementFrame] for the unwrap.
+  static const int _announcementSealed = 0x01;
+
+  /// Nostr pubkeys we've already introduced ourselves to in this process.
+  ///
+  /// In-memory on purpose: an extra announcement after a restart costs one
+  /// event and is idempotent on the receiver (the roster upsert is a no-op when
+  /// nothing changed), whereas a persisted "already done" flag that went stale —
+  /// after a nickname change, a prekey rotation, or a wipe-and-reinstall on
+  /// their side — would leave the peer permanently unable to reach us.
+  final Set<String> _announcedOverNostr = {};
+
+  /// Publish our signed announcement to a single peer's Nostr pubkey.
+  ///
+  /// This is what makes a *cold* internet conversation possible. A contact card
+  /// only travels one way: they handed us their keys, so we can encrypt to
+  /// them, but they hold nothing of ours. An inbound frame carries just an
+  /// 8-byte origin hash, which is not enough to reverse into an identity — so
+  /// without an introduction our first message would land in their app
+  /// unattributable to any chat, and they would have no address to answer at.
+  /// Sending the same self-authenticating bundle the mesh broadcasts closes
+  /// both gaps at once.
+  ///
+  /// **Sealed to the recipient.** On the mesh an announcement is a cleartext
+  /// broadcast — it has to be, since it's addressed to whoever is in range. A
+  /// public relay is a different room: events there are readable by anyone who
+  /// asks for them, so publishing the bundle as-is would put a *human-readable
+  /// nickname* next to a Nostr pubkey, permanently, for a passive scraper. That
+  /// is the one thing every other frame on this path is careful not to leak, so
+  /// the introduction is wrapped in a [SealedBox] to the recipient's X25519 key
+  /// (which we have — it's what a contact card is for) and tagged
+  /// [_announcementSealed]. Plaintext announcements always start with the
+  /// version byte 0x04, so the tag can never be mistaken for one.
+  ///
+  /// Sent with `ttl: 1` — unlike a mesh announcement this is a point-to-point
+  /// introduction, and the receiver decrementing 1 to 0 stops it from being
+  /// flooded onward across their local Bluetooth neighbourhood (where nobody
+  /// could open it anyway).
+  Future<void> _announceOverNostrTo(String npubHex, Uint8List peerPub) async {
+    final transport = _nostr;
+    if (transport == null) return;
+    if (!_announcedOverNostr.add(npubHex)) return;
+    try {
+      final sealed = await SealedBox.seal(
+        await buildSignedAnnouncement(),
+        peerPub,
+      );
+      final frame = _announcementFrame(
+        signedBody: _tagBody(_announcementSealed, sealed),
+        originHash: await _myPubkeyHash(),
+        ttl: 1,
+      );
+      await transport.sendFrame(
+        recipientNpubHex: npubHex,
+        frameBytes: frame.encode(),
+      );
+      DebugLog.instance.log(
+          'NOSTR', 'introduced ourselves to ${npubHex.substring(0, 12)}…');
+    } catch (e) {
+      // Un-mark so the next send retries; a peer that never receives the
+      // introduction can never answer us.
+      _announcedOverNostr.remove(npubHex);
+      DebugLog.instance.log('NOSTR', 'introduction to $npubHex failed: $e');
     }
   }
 
@@ -2964,9 +3038,30 @@ class MessagingService {
       DebugLog.instance.log('MESH', 'drop announce: duplicate');
       return;
     }
+    // An off-mesh introduction is sealed to us (see [_announceOverNostrTo]); a
+    // mesh broadcast is the bare signed bundle. The tag byte is unambiguous
+    // because a plaintext announcement always opens with version 0x04.
+    Uint8List announceBody = env.body;
+    if (announceBody.isNotEmpty && announceBody[0] == _announcementSealed) {
+      try {
+        final identity = await _ref.read(identityProvider.future);
+        announceBody = await SealedBox.open(
+          Uint8List.sublistView(announceBody, 1),
+          recipientKeyPair: identity.asKeyPair(),
+          recipientPubkey: identity.publicKey,
+        );
+      } catch (e) {
+        // Not for us, or corrupt. Either way there is nothing to learn from it
+        // and nothing to forward — it was addressed to one recipient.
+        DebugLog.instance
+            .log('MESH', 'drop sealed announce from $peerId: $e');
+        return;
+      }
+    }
+
     final PeerAnnouncement ann;
     try {
-      ann = await PeerAnnouncement.verifyAndDecode(env.body);
+      ann = await PeerAnnouncement.verifyAndDecode(announceBody);
     } catch (e) {
       DebugLog.instance.log(
           'MESH', 'drop announce from $peerId: bad signature / format ($e)');
@@ -3426,43 +3521,109 @@ class MessagingService {
     if (!_hasAnyLink) return;
 
     try {
-      final identity = await _ref.read(identityProvider.future);
-      final nickname = _ref.read(nicknameControllerProvider);
-      final prekeys = _ref.read(prekeyServiceProvider);
-      await prekeys.ensureInitialized();
-      final nostrSigner = await _myNostrSigner();
-      final ann = PeerAnnouncement(
-        pubkey: Uint8List.fromList(identity.publicKey),
-        signPubkey: identity.signPublicKey,
-        signedPrekeyPub: prekeys.signedPrekeyPub,
-        nostrPubkey: nostrSigner.nostrPubkeyBytes,
-        nickname: nickname,
-      );
-      final signedBody = await ann.sign(identity.asSignKeyPair());
-      final env = TransportEnvelope(
-        originPubkeyHash: await _myPubkeyHash(),
-        destPubkeyHash: TransportEnvelope.broadcastDest(),
-        msgId: TransportEnvelope.newMsgId(),
+      final signedBody = await buildSignedAnnouncement();
+      final frame = _announcementFrame(
+        signedBody: signedBody,
+        originHash: await _myPubkeyHash(),
         ttl: TransportEnvelope.defaultTtl,
-        body: signedBody,
       );
-      final frame = Frame(
-        type: FrameType.peerAnnouncement,
-        payload: env.encode(),
-      );
-      // Mark our own announcement in the dedup cache so a reflected copy
-      // bouncing back from a relay can't accidentally pass the broadcast
-      // self-skip check (defense-in-depth).
-      _dedup.acceptEnvelope(env);
 
       final fanout = await _fanoutAllLinks(frame.encode(), excludePeerId: null);
       if (fanout > 0) {
-        DebugLog.instance
-            .log('MESH', 'announced "${ann.nickname}" on $fanout link(s)');
+        DebugLog.instance.log('MESH', 'announced on $fanout link(s)');
       }
     } catch (e, st) {
       debugPrint('broadcastAnnouncement failed: $e\n$st');
     }
+  }
+
+  /// Build and Ed25519-sign the current [PeerAnnouncement] for this device —
+  /// the identity bundle (X25519 static, Ed25519 verifier, signed prekey, Nostr
+  /// pubkey, nickname) every other peer needs to reach us.
+  ///
+  /// Shared by the three things that hand it out: the mesh broadcast, the
+  /// off-mesh introduction ([_announceOverNostrTo]), and the shareable contact
+  /// card ([myContactCard]). They differ only in how the bytes travel.
+  Future<Uint8List> buildSignedAnnouncement() async {
+    final identity = await _ref.read(identityProvider.future);
+    final nickname = _ref.read(nicknameControllerProvider);
+    final prekeys = _ref.read(prekeyServiceProvider);
+    await prekeys.ensureInitialized();
+    final nostrSigner = await _myNostrSigner();
+    final ann = PeerAnnouncement(
+      pubkey: Uint8List.fromList(identity.publicKey),
+      signPubkey: identity.signPublicKey,
+      signedPrekeyPub: prekeys.signedPrekeyPub,
+      nostrPubkey: nostrSigner.nostrPubkeyBytes,
+      nickname: nickname,
+    );
+    return ann.sign(identity.asSignKeyPair());
+  }
+
+  /// Wrap signed announcement bytes in a broadcast envelope + frame, and
+  /// pre-record it in the dedup cache so a reflected copy bouncing back from a
+  /// relay can't accidentally pass the broadcast self-skip check.
+  Frame _announcementFrame({
+    required Uint8List signedBody,
+    required Uint8List originHash,
+    required int ttl,
+  }) {
+    final env = TransportEnvelope(
+      originPubkeyHash: originHash,
+      destPubkeyHash: TransportEnvelope.broadcastDest(),
+      msgId: TransportEnvelope.newMsgId(),
+      ttl: ttl,
+      body: signedBody,
+    );
+    _dedup.acceptEnvelope(env);
+    return Frame(type: FrameType.peerAnnouncement, payload: env.encode());
+  }
+
+  // ------------------------- contact cards (off-mesh first contact) ---------
+
+  /// This device's shareable contact card — paste it into any other channel to
+  /// let someone who has never been in Bluetooth range of you start a chat.
+  ///
+  /// See [ContactCard] for the format and for what the signature does and does
+  /// not prove.
+  Future<String> myContactCard() async =>
+      ContactCard.encode(await buildSignedAnnouncement());
+
+  /// Import a contact card someone sent us.
+  ///
+  /// Verifies the signature, refuses our own card, and files the peer in the
+  /// roster exactly as a mesh announcement would — so from here on the peer is
+  /// indistinguishable from one we met over BLE: they appear in the chats list,
+  /// `sendText` can resolve them, and (relay permitting) messages reach them
+  /// over the internet.
+  ///
+  /// Returns the imported peer's canonical pubkey hex. Throws [FormatException]
+  /// on a malformed or unsigned-for card, [StateError] on our own card.
+  Future<String> addContactFromCard(String raw) async {
+    final ann = await ContactCard.parse(raw);
+    final identity = await _ref.read(identityProvider.future);
+    if (_bytesEqual(ann.pubkey, Uint8List.fromList(identity.publicKey))) {
+      throw StateError('that is your own contact card');
+    }
+    final pubkeyHex = _hexOf(ann.pubkey);
+    _ref.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: pubkeyHex,
+          displayName: ann.nickname,
+          signPublicKey: ann.signPubkey,
+          signedPrekeyPub: ann.signedPrekeyPub,
+          nostrPubkey: ann.nostrPubkey,
+        );
+    DebugLog.instance.log(
+        'MESH',
+        'imported contact card: "${ann.nickname}" ($pubkeyHex) '
+            '— unverified until fingerprints are compared');
+
+    // Introduce ourselves straight away rather than waiting for the user's
+    // first message. The card was one-directional — they handed us their keys
+    // and have none of ours — so without this they can see nothing from us and
+    // cannot write first.
+    await _announceOverNostrTo(_hexOf(ann.nostrPubkey), ann.pubkey);
+    return pubkeyHex;
   }
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {

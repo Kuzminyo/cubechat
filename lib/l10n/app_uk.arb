@@ -175,5 +175,28 @@
   "relaysStateConnecting": "З'єднання…",
   "relaysStateFailed": "Недоступний",
   "relaysStateIdle": "Вимкнено",
-  "relaysEmpty": "Релеї не налаштовані — запасний канал вимкнено."
+  "relaysEmpty": "Релеї не налаштовані — запасний канал вимкнено.",
+
+  "contactTitle": "Картка контакту",
+  "contactMineLabel": "Ваша картка",
+  "contactMineExplainer": "Надішліть її тому, хто поза зоною Bluetooth. Вона містить ваші ключі та адресу на релеях — цього досить, щоб почати з вами зашифрований чат через інтернет.",
+  "contactCopy": "Копіювати",
+  "contactShare": "Поділитися",
+  "contactCopied": "Картку скопійовано",
+  "contactShareSubject": "Моя картка контакту cubechat",
+  "contactAddLabel": "Додати людину",
+  "contactAddHint": "Вставте картку контакту",
+  "contactAddAction": "Додати",
+  "contactPaste": "Вставити",
+  "contactAdded": "Додано {name}",
+  "@contactAdded": { "placeholders": { "name": { "type": "String" } } },
+  "contactInvalid": "Це не картка контакту",
+  "contactOwnCard": "Це ваша власна картка",
+  "contactUnverified": "Доданий так контакт спершу неперевірений. Будь-хто може створити картку й написати на ній будь-яке ім'я, тож звірте відбитки особисто або по дзвінку, перш ніж довіряти особі.",
+  "contactRelayOff": "Запасний канал через інтернет вимкнено, тож картка поки нікого не досягне.",
+  "contactRelayEnable": "Увімкнути",
+
+  "profileContactCard": "Картка контакту",
+  "profileContactCardSubtitle": "Спілкування з тим, хто поза зоною Bluetooth",
+  "chatsAddContactTooltip": "Додати контакт за карткою"
 }

@@ -1003,6 +1003,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No relays configured — the fallback stays off.'**
   String get relaysEmpty;
+
+  /// No description provided for @contactTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact card'**
+  String get contactTitle;
+
+  /// No description provided for @contactMineLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Your card'**
+  String get contactMineLabel;
+
+  /// No description provided for @contactMineExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.'**
+  String get contactMineExplainer;
+
+  /// No description provided for @contactCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get contactCopy;
+
+  /// No description provided for @contactShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get contactShare;
+
+  /// No description provided for @contactCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Card copied'**
+  String get contactCopied;
+
+  /// No description provided for @contactShareSubject.
+  ///
+  /// In en, this message translates to:
+  /// **'My cubechat contact card'**
+  String get contactShareSubject;
+
+  /// No description provided for @contactAddLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Add someone'**
+  String get contactAddLabel;
+
+  /// No description provided for @contactAddHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a contact card'**
+  String get contactAddHint;
+
+  /// No description provided for @contactAddAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get contactAddAction;
+
+  /// No description provided for @contactPaste.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get contactPaste;
+
+  /// No description provided for @contactAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Added {name}'**
+  String contactAdded(String name);
+
+  /// No description provided for @contactInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn\'t a valid contact card'**
+  String get contactInvalid;
+
+  /// No description provided for @contactOwnCard.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s your own card'**
+  String get contactOwnCard;
+
+  /// No description provided for @contactUnverified.
+  ///
+  /// In en, this message translates to:
+  /// **'A contact added this way starts unverified. Anyone can mint a card and put any name on it, so compare fingerprints in person or over a call before you trust the identity.'**
+  String get contactUnverified;
+
+  /// No description provided for @contactRelayOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet fallback is off, so a card can\'t reach anyone yet.'**
+  String get contactRelayOff;
+
+  /// No description provided for @contactRelayEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get contactRelayEnable;
+
+  /// No description provided for @profileContactCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact card'**
+  String get profileContactCard;
+
+  /// No description provided for @profileContactCardSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat with someone out of Bluetooth range'**
+  String get profileContactCardSubtitle;
+
+  /// No description provided for @chatsAddContactTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a contact by card'**
+  String get chatsAddContactTooltip;
 }
 
 class _AppLocalizationsDelegate

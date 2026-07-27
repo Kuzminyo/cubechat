@@ -156,6 +156,9 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           const _RelayFallbackCard(),
 
+          const SizedBox(height: 8),
+          const _ContactCardRow(),
+
           const SizedBox(height: 12),
 
           // About
@@ -356,6 +359,61 @@ class _RelayFallbackCard extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   on ? t.relaysCardSubtitle : t.relaysStateIdle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+/// Way in to the off-mesh introduction flow — share your own identity bundle,
+/// or import someone else's, for a chat that starts without Bluetooth ever
+/// being involved.
+class _ContactCardRow extends StatelessWidget {
+  const _ContactCardRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return GlassCard(
+      onTap: () => context.push('/contact'),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(Icons.person_add_alt,
+                color: AppColors.textOnGlass, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.profileContactCard,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.profileContactCardSubtitle,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,

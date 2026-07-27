@@ -189,6 +189,12 @@ class ChatsListScreen extends ConsumerWidget {
                             Text(t.chatsTitle, style: AppTypography.display()),
                       ),
                       IconButton(
+                        onPressed: () => context.push('/contact'),
+                        icon: Icon(Icons.person_add_alt,
+                            color: AppColors.brandPrimary),
+                        tooltip: t.chatsAddContactTooltip,
+                      ),
+                      IconButton(
                         onPressed: () => _showNewChannelDialog(context, ref, t),
                         icon: Icon(Icons.group_add_outlined,
                             color: AppColors.brandPrimary),

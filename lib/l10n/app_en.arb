@@ -179,5 +179,28 @@
   "relaysStateConnecting": "Connecting…",
   "relaysStateFailed": "Unreachable",
   "relaysStateIdle": "Off",
-  "relaysEmpty": "No relays configured — the fallback stays off."
+  "relaysEmpty": "No relays configured — the fallback stays off.",
+
+  "contactTitle": "Contact card",
+  "contactMineLabel": "Your card",
+  "contactMineExplainer": "Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.",
+  "contactCopy": "Copy",
+  "contactShare": "Share",
+  "contactCopied": "Card copied",
+  "contactShareSubject": "My cubechat contact card",
+  "contactAddLabel": "Add someone",
+  "contactAddHint": "Paste a contact card",
+  "contactAddAction": "Add",
+  "contactPaste": "Paste",
+  "contactAdded": "Added {name}",
+  "@contactAdded": { "placeholders": { "name": { "type": "String" } } },
+  "contactInvalid": "That isn't a valid contact card",
+  "contactOwnCard": "That's your own card",
+  "contactUnverified": "A contact added this way starts unverified. Anyone can mint a card and put any name on it, so compare fingerprints in person or over a call before you trust the identity.",
+  "contactRelayOff": "Internet fallback is off, so a card can't reach anyone yet.",
+  "contactRelayEnable": "Turn on",
+
+  "profileContactCard": "Contact card",
+  "profileContactCardSubtitle": "Chat with someone out of Bluetooth range",
+  "chatsAddContactTooltip": "Add a contact by card"
 }

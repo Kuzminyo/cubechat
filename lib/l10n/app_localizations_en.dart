@@ -505,4 +505,70 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relaysEmpty => 'No relays configured — the fallback stays off.';
+
+  @override
+  String get contactTitle => 'Contact card';
+
+  @override
+  String get contactMineLabel => 'Your card';
+
+  @override
+  String get contactMineExplainer =>
+      'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.';
+
+  @override
+  String get contactCopy => 'Copy';
+
+  @override
+  String get contactShare => 'Share';
+
+  @override
+  String get contactCopied => 'Card copied';
+
+  @override
+  String get contactShareSubject => 'My cubechat contact card';
+
+  @override
+  String get contactAddLabel => 'Add someone';
+
+  @override
+  String get contactAddHint => 'Paste a contact card';
+
+  @override
+  String get contactAddAction => 'Add';
+
+  @override
+  String get contactPaste => 'Paste';
+
+  @override
+  String contactAdded(String name) {
+    return 'Added $name';
+  }
+
+  @override
+  String get contactInvalid => 'That isn\'t a valid contact card';
+
+  @override
+  String get contactOwnCard => 'That\'s your own card';
+
+  @override
+  String get contactUnverified =>
+      'A contact added this way starts unverified. Anyone can mint a card and put any name on it, so compare fingerprints in person or over a call before you trust the identity.';
+
+  @override
+  String get contactRelayOff =>
+      'Internet fallback is off, so a card can\'t reach anyone yet.';
+
+  @override
+  String get contactRelayEnable => 'Turn on';
+
+  @override
+  String get profileContactCard => 'Contact card';
+
+  @override
+  String get profileContactCardSubtitle =>
+      'Chat with someone out of Bluetooth range';
+
+  @override
+  String get chatsAddContactTooltip => 'Add a contact by card';
 }
