@@ -5,6 +5,73 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 
+/// The canonical smoked-glass texture for the message composer island.
+/// Other chat chrome that must look identical should reuse this widget rather
+/// than copying its gradient, border, blur and shadows.
+class MessageIslandGlass extends StatelessWidget {
+  const MessageIslandGlass({
+    super.key,
+    required this.child,
+    this.padding = EdgeInsets.zero,
+    this.borderRadius = 26,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(borderRadius);
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+              spreadRadius: -4,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.28),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+              spreadRadius: -12,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.07),
+                    Colors.black.withValues(alpha: 0.48),
+                    Colors.black.withValues(alpha: 0.60),
+                  ],
+                  stops: const [0, 0.35, 1],
+                ),
+                borderRadius: radius,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.14),
+                ),
+              ),
+              child: Padding(padding: padding, child: child),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ChatInput extends StatefulWidget {
   const ChatInput({
     super.key,
@@ -111,7 +178,8 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   Widget build(BuildContext context) {
-    final showAttach = widget.onAttach != null && !widget.recording && !_editing;
+    final showAttach =
+        widget.onAttach != null && !widget.recording && !_editing;
     final showVoice = widget.onRecordStart != null &&
         widget.onRecordStop != null &&
         widget.onRecordCancel != null &&
@@ -124,120 +192,76 @@ class _ChatInputState extends State<ChatInput> {
       // through around it. No full-width plate, no welded top border.
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-                spreadRadius: -4,
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
-                blurRadius: 22,
-                offset: const Offset(0, 10),
-                spreadRadius: -12,
+        child: MessageIslandGlass(
+          borderRadius: 26,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_editing)
+                _EditBanner(
+                  text: widget.editingText!,
+                  onCancel: widget.onEditCancel,
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (showAttach) ...[
+                    _AttachButton(onTap: widget.onAttach!),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: widget.recording
+                        ? _RecordingIndicator(
+                            elapsed: widget.recordElapsed,
+                            levels: widget.recordLevels,
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              minLines: 1,
+                              maxLines: 5,
+                              cursorColor: AppColors.brandPrimary,
+                              style: TextStyle(
+                                color: AppColors.textOnGlass,
+                                fontSize: 14.5,
+                              ),
+                              onSubmitted: (_) => _send(),
+                              textInputAction: TextInputAction.send,
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                border: InputBorder.none,
+                                hintText: widget.hint,
+                                hintStyle: TextStyle(
+                                  color: AppColors.textOnGlassFaint,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 6),
+                  if (showVoice)
+                    _VoiceButton(
+                      active: widget.recording,
+                      onStart: widget.onRecordStart!,
+                      onStop: widget.onRecordStop!,
+                      onCancel: widget.onRecordCancel!,
+                    )
+                  else
+                    _SendButton(
+                      enabled: _hasText,
+                      isEdit: _editing,
+                      tooltip: widget.sendTooltip,
+                      onTap: _send,
+                    ),
+                ],
               ),
             ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.07),
-                      Colors.black.withValues(alpha: 0.48),
-                      Colors.black.withValues(alpha: 0.60),
-                    ],
-                    stops: const [0, 0.35, 1],
-                  ),
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_editing)
-                        _EditBanner(
-                          text: widget.editingText!,
-                          onCancel: widget.onEditCancel,
-                        ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (showAttach) ...[
-                            _AttachButton(onTap: widget.onAttach!),
-                            const SizedBox(width: 6),
-                          ],
-                          Expanded(
-                            child: widget.recording
-                                ? _RecordingIndicator(
-                                    elapsed: widget.recordElapsed,
-                                    levels: widget.recordLevels,
-                                  )
-                                : Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
-                                    child: TextField(
-                                      controller: _controller,
-                                      focusNode: _focus,
-                                      minLines: 1,
-                                      maxLines: 5,
-                                      cursorColor: AppColors.brandPrimary,
-                                      style: TextStyle(
-                                        color: AppColors.textOnGlass,
-                                        fontSize: 14.5,
-                                      ),
-                                      onSubmitted: (_) => _send(),
-                                      textInputAction: TextInputAction.send,
-                                      decoration: InputDecoration(
-                                        isCollapsed: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                vertical: 12),
-                                        border: InputBorder.none,
-                                        hintText: widget.hint,
-                                        hintStyle: TextStyle(
-                                          color: AppColors.textOnGlassFaint,
-                                          fontSize: 14.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                          const SizedBox(width: 6),
-                          if (showVoice)
-                            _VoiceButton(
-                              active: widget.recording,
-                              onStart: widget.onRecordStart!,
-                              onStop: widget.onRecordStop!,
-                              onCancel: widget.onRecordCancel!,
-                            )
-                          else
-                            _SendButton(
-                              enabled: _hasText,
-                              isEdit: _editing,
-                              tooltip: widget.sendTooltip,
-                              onTap: _send,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           ),
         ),
       ),
@@ -499,8 +523,7 @@ class _WaveformPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WaveformPainter old) =>
-      old.levels != levels;
+  bool shouldRepaint(covariant _WaveformPainter old) => old.levels != levels;
 }
 
 class _SendButton extends StatefulWidget {
@@ -528,8 +551,10 @@ class _SendButtonState extends State<_SendButton> {
     return Tooltip(
       message: widget.tooltip,
       child: GestureDetector(
-        onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
-        onTapUp: widget.enabled ? (_) => setState(() => _pressed = false) : null,
+        onTapDown:
+            widget.enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapUp:
+            widget.enabled ? (_) => setState(() => _pressed = false) : null,
         onTapCancel: () => setState(() => _pressed = false),
         onTap: widget.enabled ? widget.onTap : null,
         child: AnimatedScale(

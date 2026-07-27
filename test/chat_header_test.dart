@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
-import 'package:cubechat/core/widgets/floating_glass.dart';
+import 'package:cubechat/features/chat/presentation/widgets/chat_input.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/data/pinned_controller.dart';
@@ -13,11 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The chat header is three floating pills (back, identity, actions) with the
-/// pinned island under them. What can go wrong without anyone noticing is
-/// **fit**: the identity pill has to give way to the action icons on a narrow
-/// phone rather than overflow, and a widget test fails on an overflow by itself,
-/// so these run at a real phone width instead of the 800x600 default.
+/// The chat header is one floating capsule with circular edge controls and a
+/// pinned island under it. What can go wrong without anyone noticing is **fit**:
+/// the identity area has to give way to the action icons on a narrow phone
+/// rather than overflow, and a widget test fails on an overflow by itself, so
+/// these run at a real phone width instead of the 800x600 default.
 void main() {
   late Directory tempDir;
 
@@ -67,21 +67,31 @@ void main() {
     return container;
   }
 
-  testWidgets('header pills fit a narrow phone', (tester) async {
+  testWidgets('header capsule fits a narrow phone', (tester) async {
     // The longest name a channel can carry (the invite frame caps it), so the
-    // identity pill is under the most pressure it will ever see.
+    // identity area is under the most pressure it will ever see.
     await openChat(tester, channel: 'kvartira-longest');
+
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(
+      appBar.forceMaterialTransparency,
+      isTrue,
+      reason: 'the floating capsule must not sit on a full-width AppBar fill',
+    );
 
     // Back button, name, and the channel's presence line.
     expect(find.byTooltip('Back'), findsOneWidget);
     expect(find.text('#kvartira-longest'), findsWidgets);
     expect(find.text('Group channel · shared key'), findsOneWidget);
-    // Three pills: back, identity, actions. Bubbles build their own surface, so
-    // an empty chat contributes none.
+    // Header and composer now render through the exact same surface widget.
     expect(
-      find.byType(FloatingGlass),
-      findsAtLeastNWidgets(3),
-      reason: 'back, identity and actions pills',
+      find.byType(MessageIslandGlass),
+      findsNWidgets(2),
+      reason: 'header and composer must share the SMS-island texture',
+    );
+    expect(
+      find.byKey(const ValueKey('chat-header-message-island')),
+      findsOneWidget,
     );
   });
 

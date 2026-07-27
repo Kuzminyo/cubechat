@@ -142,14 +142,14 @@ class ChatScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        forceMaterialTransparency: true,
         toolbarHeight: _headerPillHeight + 8,
         titleSpacing: 0,
         title: _ChatHeader(
           avatarSeed: peerId,
           label: peerLabel,
           statusText: statusText,
-          statusColor:
-              isOnline ? AppColors.online : AppColors.textOnGlassDim,
+          statusColor: isOnline ? AppColors.online : AppColors.textOnGlassDim,
           online: isOnline,
           // Tapping the identity pill goes where the shield goes — the peer's
           // fingerprint screen is the only "profile" this app has.
@@ -223,6 +223,7 @@ class ChatScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        forceMaterialTransparency: true,
         toolbarHeight: _headerPillHeight + 8,
         titleSpacing: 0,
         title: _ChatHeader(
@@ -428,32 +429,29 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
   }
 }
 
-/// Height of the header pills. An avatar (36) plus its breathing room, which is
-/// also what makes the round back button a circle rather than a squashed pill.
-const double _headerPillHeight = 52;
+/// Height of the single header capsule. Its six-pixel inner padding leaves
+/// enough room for the 44-pixel circular edge buttons used by the composer.
+const double _headerPillHeight = 56;
 
-/// A single floating pill in the chat header. Three of them — back, identity,
-/// actions — read as separate islands over the aurora, the same principle the
-/// nav bar and the chat bubbles already use, instead of one bar welded across
-/// the top of the screen.
+/// The one floating glass capsule that owns the whole chat header.
+/// Its contents mirror the message composer: circular controls at the edges
+/// and flexible content in the middle.
 class _HeaderPill extends StatelessWidget {
   const _HeaderPill({
     required this.child,
-    this.onTap,
     this.padding = const EdgeInsets.symmetric(horizontal: 8),
   });
 
   final Widget child;
-  final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: _headerPillHeight,
-      child: FloatingGlass(
+      child: MessageIslandGlass(
+        key: const ValueKey('chat-header-message-island'),
         borderRadius: _headerPillHeight / 2,
-        onTap: onTap,
         padding: padding,
         child: Center(child: child),
       ),
@@ -490,8 +488,36 @@ class _PillIconButton extends StatelessWidget {
   }
 }
 
-/// The chat header: a round back button, the identity pill (avatar, name and
-/// presence line), and a pill holding whatever actions this chat offers.
+/// A circular control embedded in the shared header capsule, matching the
+/// attachment and microphone controls inside the message composer.
+class _HeaderActionCircle extends StatelessWidget {
+  const _HeaderActionCircle({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.18),
+            Colors.white.withValues(alpha: 0.10),
+          ],
+        ),
+      ),
+      child: Center(child: child),
+    );
+  }
+}
+
+/// Telegram-style chat header: one long glass capsule with circular controls
+/// embedded at its edges, just like the message composer.
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.avatarSeed,
@@ -515,12 +541,11 @@ class _ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-      child: Row(
-        children: [
-          _HeaderPill(
-            padding: EdgeInsets.zero,
-            child: SizedBox(
-              width: _headerPillHeight,
+      child: _HeaderPill(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Row(
+          children: [
+            _HeaderActionCircle(
               child: _PillIconButton(
                 icon: Icons.arrow_back_rounded,
                 color: AppColors.textOnGlass,
@@ -528,57 +553,63 @@ class _ChatHeader extends StatelessWidget {
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _HeaderPill(
-              onTap: onTapIdentity,
-              padding: const EdgeInsets.only(left: 8, right: 14),
-              child: Row(
-                children: [
-                  IdentityAvatar(
-                    seed: avatarSeed,
-                    label: label,
-                    size: 36,
-                    online: online,
-                    heroTag: 'avatar-$avatarSeed',
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.heading(
-                            size: 15.5,
-                            color: AppColors.textOnGlass,
-                          ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTapIdentity,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Row(
+                    children: [
+                      IdentityAvatar(
+                        seed: avatarSeed,
+                        label: label,
+                        size: 36,
+                        online: online,
+                        heroTag: 'avatar-$avatarSeed',
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.heading(
+                                size: 15.5,
+                                color: AppColors.textOnGlass,
+                              ),
+                            ),
+                            Text(
+                              statusText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          statusText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: statusColor, fontSize: 11.5),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            _HeaderPill(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(mainAxisSize: MainAxisSize.min, children: actions),
-            ),
+            if (actions.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              for (var i = 0; i < actions.length; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                _HeaderActionCircle(child: actions[i]),
+              ],
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
