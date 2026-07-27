@@ -829,7 +829,7 @@ class MessagingService {
         originPubkeyHash: myHash,
         destPubkeyHash: peerHash,
         msgId: msgId,
-        ttl: TransportEnvelope.defaultTtl,
+        ttl: _meshTtl,
         body: body,
       );
       // Pre-record our own msgId in the dedup cache so a reflected copy of
@@ -1048,7 +1048,7 @@ class MessagingService {
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
           msgId: TransportEnvelope.newMsgId(),
-          ttl: TransportEnvelope.defaultTtl,
+          ttl: _meshTtl,
           body: body,
         );
         _dedup.acceptEnvelope(env);
@@ -1212,7 +1212,7 @@ class MessagingService {
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
           msgId: TransportEnvelope.newMsgId(),
-          ttl: TransportEnvelope.defaultTtl,
+          ttl: _meshTtl,
           body: body,
         );
         _dedup.acceptEnvelope(env);
@@ -1760,7 +1760,7 @@ class MessagingService {
       originPubkeyHash: myHash,
       destPubkeyHash: peerHash,
       msgId: msgId,
-      ttl: TransportEnvelope.defaultTtl,
+      ttl: _meshTtl,
       body: body,
     );
     _dedup.acceptEnvelope(env);
@@ -1829,7 +1829,7 @@ class MessagingService {
       originPubkeyHash: myHash,
       destPubkeyHash: broadcast,
       msgId: msgId,
-      ttl: TransportEnvelope.defaultTtl,
+      ttl: _meshTtl,
       body: _tagBody(_cipherChannel, channelBody),
     );
     _dedup.acceptEnvelope(env);
@@ -3001,7 +3001,7 @@ class MessagingService {
       originPubkeyHash: myHash,
       destPubkeyHash: peerHash,
       msgId: msgId,
-      ttl: TransportEnvelope.defaultTtl,
+      ttl: _meshTtl,
       body: body,
     );
     _dedup.acceptEnvelope(env);
@@ -3106,11 +3106,23 @@ class MessagingService {
     required TransportEnvelope env,
     required String? excludePeerId,
   }) async {
-    final relayed = env.decrementTtl();
+    var relayed = env.decrementTtl();
     if (relayed.ttl <= 0) {
       DebugLog.instance
           .log('MESH', 'not forwarding ${outerType.name}: ttl exhausted');
       return;
+    }
+    // Density cap. This is the point where a flood actually multiplies: we are
+    // about to copy one frame onto every link we hold, and each of those peers
+    // will do the same. A frame minted in a sparse corner arrives carrying the
+    // full budget, and spending all of it once it reaches a crowd is what turns
+    // a message into a storm — so the ceiling is re-applied at every hop, using
+    // the density of whichever node is doing the forwarding. Only ever lowers
+    // the ttl, so a deliberately short hop budget (a relay introduction rides
+    // at 1) is never inflated.
+    final cap = _meshTtl;
+    if (relayed.ttl > cap) {
+      relayed = relayed.withTtl(cap);
     }
     final bytes = Frame(type: outerType, payload: relayed.encode()).encode();
     final fanout = await _fanoutAllLinks(bytes, excludePeerId: excludePeerId);
@@ -3130,6 +3142,19 @@ class MessagingService {
   bool get _hasAnyLink =>
       _clients.values.any((c) => c.isReady) ||
       _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+
+  /// How many peers could hear us right now — the same two paths
+  /// [_fanoutAllLinks] writes to, counted rather than tested. A peer we hold
+  /// both a client and a peripheral link to is counted twice; that over-counts
+  /// our fan-out slightly, which errs toward the cheaper hop budget and is the
+  /// safe direction for a density estimate to be wrong in.
+  int get _linkCount =>
+      _clients.values.where((c) => c.isReady).length +
+      _ref.read(peripheralControllerProvider).connectedCentralIds.length;
+
+  /// Hop budget for anything we put on the mesh, scaled to how dense our
+  /// corner of it is. See [TransportEnvelope.ttlForLinkCount].
+  int get _meshTtl => TransportEnvelope.ttlForLinkCount(_linkCount);
 
   /// Data budget for one media chunk. A live direct link sizes to its real MTU;
   /// any other BLE link uses the conservative MTU (both keep one chunk ≈ one
@@ -3525,7 +3550,7 @@ class MessagingService {
       final frame = _announcementFrame(
         signedBody: signedBody,
         originHash: await _myPubkeyHash(),
-        ttl: TransportEnvelope.defaultTtl,
+        ttl: _meshTtl,
       );
 
       final fanout = await _fanoutAllLinks(frame.encode(), excludePeerId: null);

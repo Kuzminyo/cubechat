@@ -59,9 +59,35 @@ class TransportEnvelope {
   static const int msgIdLen = 16;
   static const int headerLen = hashLen + hashLen + msgIdLen + 1;
 
-  /// Default TTL for sender-originated frames. Matches bitchat's mesh
+  /// Hop budget for a sparse mesh — the full depth. Matches bitchat's mesh
   /// max-hops; experimentally sufficient for typical event-scale crowds.
   static const int defaultTtl = 7;
+
+  /// Hop budget once this node is well connected. See [ttlForLinkCount].
+  static const int denseTtl = 5;
+
+  /// Link count at which a node counts as sitting in a dense mesh.
+  static const int denseLinkThreshold = 6;
+
+  /// How many hops to spend on a frame we're putting on the mesh, given how
+  /// many links *this* node currently holds.
+  ///
+  /// A flood costs roughly `fanout ^ hops`, so the two terms have to be traded
+  /// against each other rather than fixed independently. With one or two links
+  /// the mesh is a chain: each hop advances the frame by one peer and the full
+  /// depth is what makes a distant node reachable at all. With six or more the
+  /// topology is a cluster — every extra hop multiplies the number of copies in
+  /// flight while adding almost no reach, because in a dense graph nearly
+  /// everyone is already a few hops away. That is where a fixed 7 stops buying
+  /// delivery and starts buying duplicate airtime, which on BLE is also battery.
+  ///
+  /// So the budget is cut exactly where the amplification is worst. The trade
+  /// is real and deliberate: a node deep in a crowd will no longer reach a peer
+  /// more than five hops out. In the topology that triggers the cut, a peer that
+  /// far away is rare — and the store-and-forward buffer plus the internet
+  /// fallback both remain as backstops for one that isn't.
+  static int ttlForLinkCount(int links) =>
+      links >= denseLinkThreshold ? denseTtl : defaultTtl;
 
   /// All-zeros destination = broadcast (treat as addressed to me).
   static Uint8List broadcastDest() => Uint8List(hashLen);
@@ -105,12 +131,16 @@ class TransportEnvelope {
 
   /// Returns the envelope with [ttl] decremented by one (or zero if already
   /// at zero). Used by relays before forwarding.
-  TransportEnvelope decrementTtl() {
+  TransportEnvelope decrementTtl() => withTtl(ttl > 0 ? ttl - 1 : 0);
+
+  /// Same envelope with a different hop budget. Used by a relay to apply its
+  /// own density ceiling on top of the decrement.
+  TransportEnvelope withTtl(int newTtl) {
     return TransportEnvelope(
       originPubkeyHash: originPubkeyHash,
       destPubkeyHash: destPubkeyHash,
       msgId: msgId,
-      ttl: ttl > 0 ? ttl - 1 : 0,
+      ttl: newTtl,
       body: body,
     );
   }

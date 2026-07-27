@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **373 passing tests** (`flutter test`, including known-answer
+covered by **383 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -35,7 +35,7 @@ UI work but have no BLE.
 - [x] M6 — Nostr internet fallback (see below)
 - [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
 
-> The `[x]` marks above reflect what's implemented and covered by the 373-test
+> The `[x]` marks above reflect what's implemented and covered by the 383-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -77,7 +77,8 @@ UI work but have no BLE.
 
 **Transport**
 - BLE **central + peripheral** — every phone both scans and advertises
-- **Multi-hop mesh relay** with TTL and per-message deduplication
+- **Multi-hop mesh relay** with a density-scaled TTL (full depth in a chain, cut
+  in a crowd where flooding costs most) and per-message deduplication
 - **Store-and-forward**: messages for an offline peer are held (encrypted) and
   delivered automatically when they come back into range
 - **Internet fallback (optional, off by default)** — when the mesh can't reach a
@@ -236,9 +237,23 @@ Frame
                  receipt · reaction · channelInvite · edit · delete
 ```
 
-`destHash` all-zero = broadcast (announcements, channels). `ttl` starts at 7 and
-each relay decrements it. Short text is padded to a 48-byte bucket to hide
-length from passive sniffers.
+`destHash` all-zero = broadcast (announcements, channels). Each relay decrements
+`ttl`. Short text is padded to a 48-byte bucket to hide length from passive
+sniffers.
+
+**Hop budget scales with density.** A flood costs roughly `fanout ^ hops`, so
+the two can't be set independently. With ≤5 links the mesh is a chain and the
+full depth of **7** is what makes a distant node reachable at all; at **6+
+links** the topology is a cluster, where every extra hop multiplies the copies
+in flight while adding almost no reach — so the budget drops to **5**
+(`TransportEnvelope.ttlForLinkCount`). The ceiling is applied both when minting
+a frame *and* at every forward, using the density of whichever node is relaying:
+a frame minted in a sparse corner carries the full budget, and spending all of
+it once it reaches a crowd is exactly what turns a message into a storm. It only
+ever lowers a ttl, so a deliberately short budget (a relay introduction rides at
+1) is never inflated. The trade is real: a node deep in a crowd no longer reaches
+a peer more than five hops out — rare in the topology that triggers the cut, and
+store-and-forward plus the internet fallback remain as backstops.
 
 **MTU-aware framing.** Real iOS↔Android links often negotiate an ATT MTU well
 below the ~247 the code once assumed, and a frame larger than the link's usable
@@ -318,7 +333,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 373 tests, incl. crypto known-answer vectors
+flutter test         # 383 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -363,7 +378,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **373 tests** across 34 files. Highlights:
+`flutter test` — **383 tests** across 35 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto
@@ -382,6 +397,8 @@ dart run flutter_native_splash:create
   its `ttl: 1` point-to-point budget
 - `channel_crypto_test`, `channel_invite_test`, `receipt_reaction_test`,
   `edit_delete_test` — feature wire formats
+- `mesh_ttl_test` — the density-scaled hop budget: monotonic in link count,
+  never inflating a short ttl, and the decrement-then-cap a relay applies
 - `dedup_cache_test`, `store_forward_cache_test`, `hive_cipher_test` — mesh +
   storage (incl. the storage-key single-flight race)
 - widget tests for the chat/nav UI
