@@ -17,7 +17,6 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
-import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -140,12 +139,18 @@ class ChatScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        forceMaterialTransparency: true,
-        toolbarHeight: _headerPillHeight + 8,
-        titleSpacing: 0,
-        title: _ChatHeader(
+      // No AppBar: the header is an island floating over the conversation (see
+      // _FloatingComposerBody), not a bar that owns a band of the screen.
+      body: _ConversationView(
+        chatId: canonicalId,
+        messages: messages,
+        canSend: canSend,
+        composer: _ChatBottomBar(
+          peerId: peerId,
+          canonicalId: canonicalId,
+          canSend: canSend,
+        ),
+        header: _ChatHeader(
           avatarSeed: peerId,
           label: peerLabel,
           statusText: statusText,
@@ -192,19 +197,6 @@ class ChatScreen extends ConsumerWidget {
           ],
         ),
       ),
-      body: SafeArea(
-        top: false,
-        child: _ConversationView(
-          chatId: canonicalId,
-          messages: messages,
-          canSend: canSend,
-          composer: _ChatBottomBar(
-            peerId: peerId,
-            canonicalId: canonicalId,
-            canSend: canSend,
-          ),
-        ),
-      ),
     );
   }
 
@@ -221,12 +213,17 @@ class ChatScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        forceMaterialTransparency: true,
-        toolbarHeight: _headerPillHeight + 8,
-        titleSpacing: 0,
-        title: _ChatHeader(
+      body: _ConversationView(
+        chatId: peerId,
+        messages: messages,
+        canSend: joined,
+        composer: _ChatBottomBar(
+          peerId: peerId,
+          canonicalId: peerId,
+          canSend: joined,
+          isChannel: true,
+        ),
+        header: _ChatHeader(
           avatarSeed: peerId,
           label: peerLabel,
           statusText: t.channelSubtitle,
@@ -250,20 +247,6 @@ class ChatScreen extends ConsumerWidget {
                 ),
               ),
           ],
-        ),
-      ),
-      body: SafeArea(
-        top: false,
-        child: _ConversationView(
-          chatId: peerId,
-          messages: messages,
-          canSend: joined,
-          composer: _ChatBottomBar(
-            peerId: peerId,
-            canonicalId: peerId,
-            canSend: joined,
-            isChannel: true,
-          ),
         ),
       ),
     );
@@ -540,7 +523,10 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      // Own the status-bar inset here: without an AppBar there is nothing else
+      // holding the capsule clear of the notch, and the conversation behind it
+      // deliberately runs all the way to the top of the screen.
+      padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
       child: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Row(
@@ -637,7 +623,12 @@ class _ConversationView extends ConsumerStatefulWidget {
     required this.messages,
     required this.canSend,
     required this.composer,
+    required this.header,
   });
+
+  /// The floating header capsule. Passed in rather than built here because the
+  /// peer and channel variants fill it differently.
+  final Widget header;
 
   /// Bucket key for this conversation: a peer's pubkey-hex or a `#channel`.
   final String chatId;
@@ -710,7 +701,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // render an empty one.
     final pinnedMessage = _messageByWireId(messages, pin?.wireId);
 
-    final body = _FloatingComposerBody(
+    return _FloatingComposerBody(
       listBuilder: (padding) => messages.isEmpty
           ? _EmptyConversationState(canSend: widget.canSend)
           : ListView.builder(
@@ -728,28 +719,27 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               },
             ),
       composer: widget.composer,
-    );
-
-    // The bar's slot is always in the tree, empty when nothing is pinned.
-    // Adding or removing a child would re-parent the list below it, which
-    // detaches the scroll position — pinning a message while scrolled back
-    // through history would snap the conversation to the bottom.
-    return Column(
-      children: [
-        if (pinnedMessage == null)
-          const SizedBox.shrink()
-        else
-          _PinnedBar(
-            message: pinnedMessage,
-            onTap: () => _jumpTo(pinnedMessage.wireId!),
-            onUnpin: () => ref.read(messagingServiceProvider).sendPin(
-                  widget.chatId,
-                  pinnedMessage.wireId!,
-                  pinned: false,
-                ),
-          ),
-        Expanded(child: body),
-      ],
+      // Header and pinned island are siblings of the list inside the Stack, so
+      // appearing or vanishing no longer re-parents the list — which used to
+      // detach the scroll position and snap the conversation to the bottom
+      // whenever someone pinned a message while reading back through history.
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          widget.header,
+          if (pinnedMessage != null)
+            _PinnedBar(
+              message: pinnedMessage,
+              onTap: () => _jumpTo(pinnedMessage.wireId!),
+              onUnpin: () => ref.read(messagingServiceProvider).sendPin(
+                    widget.chatId,
+                    pinnedMessage.wireId!,
+                    pinned: false,
+                  ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -811,11 +801,15 @@ class _PinnedBar extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-      child: FloatingGlass(
-        borderRadius: 16,
+      child: GestureDetector(
         onTap: onTap,
-        padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
-        child: Row(
+        // Same glass as the composer and the header capsule, so the three read
+        // as one family of islands floating over the conversation rather than
+        // three different treatments stacked down the screen.
+        child: MessageIslandGlass(
+          borderRadius: 20,
+          padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+          child: Row(
           children: [
             // Telegram's pin rail: one segment per pinned message. We keep a
             // single pin per chat, so it reads as one solid marker.
@@ -856,13 +850,14 @@ class _PinnedBar extends StatelessWidget {
                 ],
               ),
             ),
-            _PillIconButton(
-              icon: Icons.push_pin_outlined,
-              color: AppColors.textOnGlassDim,
-              tooltip: t.chatUnpinAction,
-              onPressed: onUnpin,
-            ),
-          ],
+              _PillIconButton(
+                icon: Icons.push_pin_outlined,
+                color: AppColors.textOnGlassDim,
+                tooltip: t.chatUnpinAction,
+                onPressed: onUnpin,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -887,12 +882,17 @@ class _FloatingComposerBody extends StatefulWidget {
   const _FloatingComposerBody({
     required this.listBuilder,
     required this.composer,
+    required this.header,
   });
 
-  /// Builds the conversation, given the padding that keeps it clear of the
-  /// composer.
+  /// Builds the conversation, given the padding that keeps it clear of the two
+  /// floating islands.
   final Widget Function(EdgeInsets padding) listBuilder;
   final Widget composer;
+
+  /// The header stack — identity capsule and, when there is one, the pinned
+  /// island. Floats over the conversation exactly as the composer does.
+  final Widget header;
 
   @override
   State<_FloatingComposerBody> createState() => _FloatingComposerBodyState();
@@ -900,40 +900,58 @@ class _FloatingComposerBody extends StatefulWidget {
 
 class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
   final _composerKey = GlobalKey();
+  final _headerKey = GlobalKey();
 
-  /// Height used until the first real measurement lands — a single-line
-  /// composer. Only ever wrong for one frame.
-  static const double _initialGuess = 76;
+  /// Heights used until the first real measurement lands — a single-line
+  /// composer, and a header with no pinned bar. Only ever wrong for one frame.
+  static const double _initialComposerGuess = 76;
+  static const double _initialHeaderGuess = 72;
 
-  /// Breathing room between the newest message and the composer above it.
+  /// Breathing room between the outermost message and the island beyond it.
   static const double _clearance = 12;
 
-  double _composerHeight = _initialGuess;
+  double _composerHeight = _initialComposerGuess;
+  double _headerHeight = _initialHeaderGuess;
 
   void _measure(Duration _) {
-    final box = _composerKey.currentContext?.findRenderObject() as RenderBox?;
+    _measureOne(_composerKey, _composerHeight, (h) => _composerHeight = h);
+    _measureOne(_headerKey, _headerHeight, (h) => _headerHeight = h);
+  }
+
+  void _measureOne(GlobalKey key, double current, void Function(double) apply) {
+    final box = key.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final h = box.size.height;
     // Sub-pixel churn would otherwise setState on every frame.
-    if ((h - _composerHeight).abs() < 0.5) return;
-    setState(() => _composerHeight = h);
+    if ((h - current).abs() < 0.5) return;
+    setState(() => apply(h));
   }
 
   @override
   Widget build(BuildContext context) {
-    // Re-measured after each build because the composer changes height while
-    // the user types. The guard above makes the steady state a no-op.
+    // Re-measured after each build because both islands change height: the
+    // composer grows with multi-line text and the reply bar, the header gains
+    // and loses the pinned bar. The guard above makes the steady state a no-op.
     WidgetsBinding.instance.addPostFrameCallback(_measure);
 
     return Stack(
       children: [
-        // reverse: true means the list starts at the visual bottom, so this
-        // bottom padding is what the newest message clears itself by.
+        // reverse: true means the list starts at the visual bottom, so `bottom`
+        // is what the newest message clears the composer by and `top` is what
+        // the oldest clears the header by. Both islands float over the
+        // conversation rather than occupying a band of their own, so the chat
+        // stays visible behind them right to the edges of the screen.
         widget.listBuilder(
           EdgeInsets.only(
-            top: _clearance,
+            top: _headerHeight + _clearance,
             bottom: _composerHeight + _clearance,
           ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: KeyedSubtree(key: _headerKey, child: widget.header),
         ),
         Positioned(
           left: 0,
@@ -1373,48 +1391,62 @@ class _ReplyComposeBar extends StatelessWidget {
     } else {
       header = t.chatReplyAction; // 1:1 peer — a plain "Reply".
     }
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        border: Border(
-          left: BorderSide(color: AppColors.brandPrimary, width: 3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  header,
-                  style: TextStyle(
-                    color: AppColors.brandPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  target.preview,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+    // Its own island, not a strip fused to the top of the composer: the same
+    // glass, radius and side margins, so the quote reads as a card you can
+    // dismiss rather than as part of the input box.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      child: MessageIslandGlass(
+        borderRadius: 20,
+        padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+        child: Row(
+          children: [
+            // Same marker rail as the pinned island — a quoted line is quoted
+            // the same way wherever it appears.
+            Container(
+              width: 2.5,
+              height: 30,
+              decoration: BoxDecoration(
+                color: AppColors.brandPrimary,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 18),
-            color: AppColors.textOnGlassDim,
-            onPressed: onCancel,
-            tooltip: t.cancel,
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    header,
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    target.preview,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 12.5,
+                      height: 1.15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _PillIconButton(
+              icon: Icons.close,
+              color: AppColors.textOnGlassDim,
+              tooltip: t.cancel,
+              onPressed: onCancel,
+            ),
+          ],
+        ),
       ),
     );
   }

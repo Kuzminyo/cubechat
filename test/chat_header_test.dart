@@ -72,11 +72,12 @@ void main() {
     // identity area is under the most pressure it will ever see.
     await openChat(tester, channel: 'kvartira-longest');
 
-    final appBar = tester.widget<AppBar>(find.byType(AppBar));
     expect(
-      appBar.forceMaterialTransparency,
-      isTrue,
-      reason: 'the floating capsule must not sit on a full-width AppBar fill',
+      find.byType(AppBar),
+      findsNothing,
+      reason: 'the header is an island floating over the conversation, not a '
+          'bar that owns a band of the screen — an AppBar would put its own '
+          'strip of background between the capsule and the chat',
     );
 
     // Back button, name, and the channel's presence line.
@@ -120,5 +121,21 @@ void main() {
     // in the island.
     expect(find.text('вул. Сагайдачного 12, код 4507'), findsNWidgets(2));
     expect(find.byTooltip('Unpin'), findsOneWidget);
+
+    // The conversation runs *behind* both islands: it reserves room by padding
+    // itself, rather than being pushed down by a bar that would show a band of
+    // background between the header and the first message.
+    final list = tester.widget<ListView>(find.byType(ListView).first);
+    final padding = list.padding as EdgeInsets;
+    expect(
+      padding.top,
+      greaterThan(80),
+      reason: 'top padding must clear the header capsule and the pinned island',
+    );
+    expect(
+      padding.bottom,
+      greaterThan(0),
+      reason: 'and the bottom still clears the composer',
+    );
   });
 }

@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **402 passing tests** (`flutter test`, including known-answer
+covered by **410 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -36,7 +36,7 @@ UI work but have no BLE.
 - [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
 - [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
 
-> The `[x]` marks above reflect what's implemented and covered by the 402-test
+> The `[x]` marks above reflect what's implemented and covered by the 410-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -49,8 +49,10 @@ UI work but have no BLE.
 
 **Messaging**
 - 1:1 chats with delivery **and read receipts**
-- Emoji **reactions** on any message
-- **Replies** — long-press to quote a message; the quote rides in the envelope
+- Emoji **reactions** on any message — long-press for the picker, or
+  **double-tap** for a heart when that's all you meant
+- **Replies** — **swipe a message left** (or long-press → Reply) to quote it;
+  the quote rides in the envelope
 - **Edit** your own messages (inline, Telegram-style) and **delete** them —
   *for me* (local) or *for everyone* (retracted over the wire)
 - **Images** and **voice messages** (chunked, with a signed manifest and SHA-256
@@ -320,7 +322,19 @@ overruns the transmit queue and aborts the transfer.
 
 Flutter + Riverpod (Notifier pattern), `go_router` with a `StatefulShellRoute`
 so tabs keep their state. The floating glass nav bar and chat-input capsule are
-overlays, not welded plates; the animated aurora backdrop is a single
+overlays, not welded plates — and so is the chat header: it has no `AppBar` at
+all. Header capsule, pinned island and composer are three siblings of the
+message list inside one `Stack`, each carrying the same glass, with the list
+padding itself top and bottom to clear them. That padding is *measured* rather
+than guessed, because both ends change height (the composer grows with
+multi-line text and the reply island, the header gains and loses the pinned
+bar). The effect is that the conversation runs edge to edge behind them instead
+of starting below a bar, and nothing ever shows a band of empty backdrop between
+the islands and the chat. It also fixed a real bug for free: the pinned island
+appearing used to re-parent the list, detaching the scroll position and snapping
+the conversation to the bottom mid-read.
+
+The animated aurora backdrop is a single
 `CustomPainter` so it never rebuilds the widget tree, and its drift runs off a
 ~30 fps wall-clock ticker (paused while backgrounded) rather than every vsync —
 the blobs rebuild four shaders per paint, so at 120 fps on ProMotion it ran the
@@ -382,7 +396,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 402 tests, incl. crypto known-answer vectors
+flutter test         # 410 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -427,7 +441,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **402 tests** across 36 files. Highlights:
+`flutter test` — **410 tests** across 37 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto

@@ -26,6 +26,19 @@ import 'voice_bubble.dart';
 /// one line on a narrow phone.
 const _reactionChoices = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
+/// What a double-tap leaves on a message. One emoji, no menu — the whole point
+/// is that the common case costs no decision.
+const _quickReaction = '❤️';
+
+/// How far a bubble follows a leftward drag before it stops moving, and how far
+/// it has to travel for the release to mean "reply".
+///
+/// The gap between the two is deliberate: the bubble keeps moving a little
+/// after the threshold so there is visible confirmation the gesture took, and
+/// the hint icon has somewhere to finish arriving.
+const double _swipeTrigger = 56;
+const double _swipeMax = 76;
+
 class MessageBubble extends ConsumerStatefulWidget {
   const MessageBubble({super.key, required this.message, required this.chatId});
 
@@ -40,11 +53,35 @@ class MessageBubble extends ConsumerStatefulWidget {
 }
 
 class _MessageBubbleState extends ConsumerState<MessageBubble>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 280),
   )..forward();
+
+  /// Drives the spring back to rest after a swipe-to-reply, whether or not the
+  /// gesture crossed the threshold.
+  late final AnimationController _swipe = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..addListener(() {
+      if (_swipeFrom == 0) return;
+      setState(() {
+        _dragX = _swipeFrom * (1 - Curves.easeOutCubic.transform(_swipe.value));
+      });
+    });
+
+  /// Current horizontal offset of the bubble; never positive (this gesture only
+  /// goes left) and never past [_swipeMax].
+  double _dragX = 0;
+
+  /// Where the spring started, so the animation can interpolate home.
+  double _swipeFrom = 0;
+
+  /// True once the drag is far enough that releasing would file a reply. Held
+  /// separately from the offset so crossing the line can fire its own haptic
+  /// exactly once.
+  bool _armed = false;
 
   late final Animation<double> _scale =
       CurvedAnimation(parent: _c, curve: Curves.easeOutBack);
@@ -58,10 +95,60 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   @override
   void dispose() {
     _c.dispose();
+    _swipe.dispose();
     super.dispose();
   }
 
   bool get _canReact => widget.message.wireId != null;
+
+  /// A reply needs the transport id everyone else filed the message under, and
+  /// somewhere to compose it — the composer only builds reply frames in 1:1,
+  /// so offering the gesture in a channel would swallow it silently.
+  bool get _canReply =>
+      widget.message.wireId != null && !widget.chatId.startsWith('#');
+
+  void _startReply() {
+    final m = widget.message;
+    ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
+      chatId: widget.chatId,
+      wireId: m.wireId!,
+      preview: _replyPreview(m),
+      mine: m.isMine,
+      authorName: m.authorName,
+    );
+  }
+
+  /// Double-tap: the one-gesture path to the reaction people actually use.
+  void _quickReact() {
+    if (!_canReact) return;
+    HapticFeedback.lightImpact();
+    _toggleReaction(_quickReaction);
+  }
+
+  void _onSwipeUpdate(DragUpdateDetails d) {
+    if (!_canReply) return;
+    _swipe.stop();
+    final next = (_dragX + d.delta.dx).clamp(-_swipeMax, 0.0);
+    final armed = next <= -_swipeTrigger;
+    // Fires as the threshold is crossed in either direction, so the finger is
+    // told what a release would do while it can still change its mind.
+    if (armed != _armed) HapticFeedback.selectionClick();
+    setState(() {
+      _dragX = next;
+      _armed = armed;
+    });
+  }
+
+  void _onSwipeEnd() {
+    if (!_canReply) return;
+    if (_armed) {
+      HapticFeedback.mediumImpact();
+      _startReply();
+    }
+    _armed = false;
+    _swipeFrom = _dragX;
+    if (_swipeFrom != 0) _swipe.forward(from: 0);
+  }
 
   /// Anything with words in it can be copied — including the caption on a
   /// photo. A voice note or a bare image has nothing to put on the clipboard.
@@ -157,14 +244,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (picked.startsWith('r:')) {
       _toggleReaction(picked.substring(2));
     } else if (picked == 'reply') {
-      final m = widget.message;
-      ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
-        chatId: widget.chatId,
-        wireId: m.wireId!,
-        preview: _replyPreview(m),
-        mine: m.isMine,
-        authorName: m.authorName,
-      );
+      _startReply();
     } else if (picked == 'copy') {
       await Clipboard.setData(ClipboardData(text: widget.message.text));
       if (!mounted) return;
@@ -552,7 +632,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   if (message.replyToWireId != null)
                     _quotedBox(message.replyToWireId!),
                   if (message.kind == MessageKind.image)
-                    _ImagePayload(message: message, chatId: widget.chatId)
+                    _ImagePayload(
+                      message: message,
+                      chatId: widget.chatId,
+                      onDoubleTap: _canReact ? _quickReact : null,
+                    )
                   else if (message.kind == MessageKind.audio)
                     VoiceBubble(message: message)
                   else
@@ -583,35 +667,100 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-            child: Row(
-              mainAxisAlignment:
-                  mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                      maxWidth: MediaQuery.sizeOf(context).width * 0.75),
-                  child: Column(
-                    crossAxisAlignment: mine
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        onLongPressStart: (d) => _showActions(d.globalPosition),
-                        child: bubble,
-                      ),
-                      if (message.reactions.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: _ReactionsRow(
-                            reactions: message.reactions,
-                            onTap: _canReact ? _toggleReaction : null,
+            child: GestureDetector(
+              // Horizontal only: a vertical drag stays with the list, so the
+              // conversation scrolls exactly as before and the gesture arena
+              // decides between them on direction rather than on timing.
+              onHorizontalDragUpdate: _onSwipeUpdate,
+              onHorizontalDragEnd: (_) => _onSwipeEnd(),
+              onHorizontalDragCancel: _onSwipeEnd,
+              child: Stack(
+                children: [
+                  Transform.translate(
+                    offset: Offset(_dragX, 0),
+                    child: Row(
+                      mainAxisAlignment:
+                          mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+                      children: [
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                              maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                          child: Column(
+                            crossAxisAlignment: mine
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                onLongPressStart: (d) =>
+                                    _showActions(d.globalPosition),
+                                onDoubleTap: _canReact ? _quickReact : null,
+                                child: bubble,
+                              ),
+                              if (message.reactions.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: _ReactionsRow(
+                                    reactions: message.reactions,
+                                    onTap: _canReact ? _toggleReaction : null,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (_dragX < -1)
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _SwipeReplyHint(
+                          progress: (_dragX.abs() / _swipeTrigger).clamp(0, 1),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The arrow that arrives from the right edge as a bubble is dragged left,
+/// telling the finger what releasing will do before it commits.
+///
+/// Fills in as the drag approaches the threshold and reaches full strength
+/// exactly when the release would take, so "will this work?" is answered by
+/// looking rather than by trying.
+class _SwipeReplyHint extends StatelessWidget {
+  const _SwipeReplyHint({required this.progress});
+
+  /// 0 at rest, 1 once the drag would file a reply.
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: progress,
+      child: Transform.scale(
+        scale: 0.7 + 0.3 * progress,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.brandPrimary.withValues(alpha: 0.18 * progress),
+            border: Border.all(
+              color: AppColors.brandPrimary.withValues(alpha: 0.5 * progress),
+            ),
+          ),
+          child: Icon(
+            Icons.reply,
+            size: 17,
+            color: AppColors.brandPrimary,
           ),
         ),
       ),
@@ -703,10 +852,24 @@ class _ReactionChip extends StatelessWidget {
 /// placeholder block with a spinner — the bubble still occupies space so
 /// the list doesn't reflow when the image finally appears.
 class _ImagePayload extends StatelessWidget {
-  const _ImagePayload({required this.message, required this.chatId});
+  const _ImagePayload({
+    required this.message,
+    required this.chatId,
+    this.onDoubleTap,
+  });
 
   final Message message;
   final String chatId;
+
+  /// Quick-reaction handler, handed down from the bubble.
+  ///
+  /// A photo owns its own tap (it opens the viewer), and a child's tap wins the
+  /// arena outright — so without this the second tap of a double-tap would just
+  /// open the gallery and the reaction would never fire. Registering both on the
+  /// same detector lets Flutter hold the single tap until the double-tap window
+  /// closes, which costs the viewer a barely perceptible delay and is what makes
+  /// the gesture work on media at all.
+  final VoidCallback? onDoubleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -716,6 +879,7 @@ class _ImagePayload extends StatelessWidget {
     final heroTag = 'image-${message.id}';
     final body = fileExists
         ? GestureDetector(
+            onDoubleTap: onDoubleTap,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 fullscreenDialog: true,
