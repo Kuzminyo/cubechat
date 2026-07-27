@@ -75,6 +75,15 @@ const _handshakeTimeout = Duration(seconds: 15);
 /// heartbeat behind two event-driven paths, minutes are plenty.
 const _announcementInterval = Duration(minutes: 5);
 
+/// Gap between consecutive publishes when one logical send fans out to many
+/// peers over the relays (a presence sweep, a channel post).
+///
+/// Public relays rate-limit per connection, and they do it bluntly: damus
+/// answers a burst with `rate-limited: you are noting too much` and drops the
+/// events — including whatever real message was in the same burst. Pacing costs
+/// a fraction of a second across a full fan-out and keeps us under that.
+const Duration relayFanoutPacing = Duration(milliseconds: 60);
+
 /// Replay window for signed frames. A frame whose signed timestamp is older
 /// than this is rejected. It is deliberately aligned with the dedup-cache
 /// TTL and the store-and-forward hold time (all 1 hour): a held frame is
@@ -1337,7 +1346,7 @@ class MessagingService {
         final msgId = TransportEnvelope.newMsgId();
         final frame = await _buildChannelFrame(
             channel, InnerPayloadType.reaction, body, msgId);
-        await _fanoutAllLinks(frame, excludePeerId: null);
+        await _broadcastChannelFrame(frame);
       } else {
         final peerPub = _resolvePeerPub(chatId);
         if (peerPub == null) return;
@@ -1386,7 +1395,7 @@ class MessagingService {
           body,
           TransportEnvelope.newMsgId(),
         );
-        await _fanoutAllLinks(frame, excludePeerId: null);
+        await _broadcastChannelFrame(frame);
       } else {
         final peerPub = _resolvePeerPub(chatId);
         if (peerPub == null) return;
@@ -1432,7 +1441,7 @@ class MessagingService {
           body,
           TransportEnvelope.newMsgId(),
         );
-        await _fanoutAllLinks(frame, excludePeerId: null);
+        await _broadcastChannelFrame(frame);
       } else {
         final peerPub = _resolvePeerPub(chatId);
         if (peerPub == null) return;
@@ -1492,7 +1501,7 @@ class MessagingService {
           body,
           TransportEnvelope.newMsgId(),
         );
-        await _fanoutAllLinks(frame, excludePeerId: null);
+        await _broadcastChannelFrame(frame);
       } else {
         final peerPub = _resolvePeerPub(chatId);
         if (peerPub == null) return;
@@ -1707,7 +1716,7 @@ class MessagingService {
       final inner = padTextPayload(utf8Text);
       final frame = await _buildChannelFrame(
           channel, InnerPayloadType.text, inner, msgId);
-      final fanout = await _fanoutAllLinks(frame, excludePeerId: null);
+      final fanout = await _broadcastChannelFrame(frame);
       messages.updateStatus(
         canonicalId,
         msg.id,
@@ -1834,6 +1843,63 @@ class MessagingService {
     );
     _dedup.acceptEnvelope(env);
     return Frame(type: FrameType.transport, payload: env.encode()).encode();
+  }
+
+  /// Put a channel frame in front of everyone in the room — over the mesh and
+  /// over the internet both.
+  ///
+  /// A channel is a broadcast with no addressee: on BLE it goes onto every link
+  /// and members pick it out by matching the 8-byte channel tag, while everyone
+  /// else forwards it without being able to open it. Nostr has no broadcast, so
+  /// the same shape is reproduced by publishing to each known peer's `npub` —
+  /// same audience, same rule for non-members (the tag matches no channel of
+  /// theirs, and the body is noise without the key).
+  ///
+  /// The two paths are **additive, not a fallback**. For a 1:1 message the relay
+  /// is a second attempt at one person, so a delivered BLE write ends it. A room
+  /// is different: the member sitting next to you and the member in another city
+  /// are disjoint sets, and stopping because the mesh accepted the frame is
+  /// exactly the bug where a channel post reached nobody who wasn't in radio
+  /// range.
+  ///
+  /// Capped and paced, because relays rate-limit: a burst of publishes earns a
+  /// `rate-limited` that lands on real messages too.
+  Future<int> _broadcastChannelFrame(Uint8List frameBytes) async {
+    final mesh = await _fanoutAllLinks(frameBytes, excludePeerId: null);
+    final relayed = await _broadcastChannelOverNostr(frameBytes);
+    return mesh + relayed;
+  }
+
+  Future<int> _broadcastChannelOverNostr(Uint8List frameBytes) async {
+    if (_nostr == null) return 0;
+    final now = DateTime.now();
+    final peers = _ref
+        .read(knownPeersControllerProvider)
+        .values
+        .where((p) =>
+            p.nostrPubkey != null &&
+            !p.isBlocked &&
+            now.difference(p.lastSeen) < _presenceMaxPeerAge)
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    if (peers.isEmpty) return 0;
+
+    final targets = peers.take(_channelFanoutCap).toList();
+    var sent = 0;
+    for (var i = 0; i < targets.length; i++) {
+      try {
+        if (await _sendOverNostr(targets[i].pubkeyHex, frameBytes)) sent++;
+      } catch (e) {
+        DebugLog.instance.log('CHAN', 'relay post failed: $e');
+      }
+      if (i + 1 < targets.length) {
+        await Future<void>.delayed(relayFanoutPacing);
+      }
+    }
+    if (sent > 0) {
+      DebugLog.instance.log('CHAN', 'channel post relayed to $sent peer(s)');
+    }
+    return sent;
   }
 
   /// Decrypt + route an inbound channel broadcast. The frame has already been
@@ -3410,6 +3476,12 @@ class MessagingService {
   /// ranked.
   static const int _presenceFanoutCap = 10;
 
+  /// Most peers one channel post is published to. Higher than the presence cap
+  /// — missing a room member loses a message, missing a presence beacon only
+  /// dims a dot — but still bounded, since every peer here costs one event per
+  /// configured relay.
+  static const int _channelFanoutCap = 20;
+
   /// Beacon peers we haven't seen on the mesh in this long: nobody needs an
   /// "online" ping from someone they met once, months ago.
   static const Duration _presenceMaxPeerAge = Duration(days: 30);
@@ -3447,6 +3519,44 @@ class MessagingService {
     if (_nostr == null) return;
 
     final now = DateTime.now();
+
+    // Second line of defence behind the lifecycle filter in app.dart. One
+    // beacon is N peers × M relays of published events, so a caller that fires
+    // it in a tight loop is expensive out of proportion to what it conveys —
+    // and the relays answer that with a rate limit that lands on real messages
+    // too. Re-stating a status we already published this recently buys nothing:
+    // the receiver holds it for a TTL that two heartbeats fit inside.
+    final since = _lastPresenceAt;
+    if (_presenceInFlight ||
+        (_lastPresenceOnline == online &&
+            since != null &&
+            now.difference(since) < _presenceMinInterval)) {
+      return;
+    }
+    // Claimed before the first await, so a concurrent caller sees it.
+    _presenceInFlight = true;
+    _lastPresenceOnline = online;
+    _lastPresenceAt = now;
+    try {
+      await _fanOutPresence(online: online, now: now);
+    } finally {
+      _presenceInFlight = false;
+    }
+  }
+
+  /// Shortest gap between two beacons saying the same thing. Comfortably below
+  /// [presenceHeartbeat] so the heartbeat is never throttled, and far above the
+  /// millisecond-scale bursts a lifecycle flap produces.
+  static const Duration _presenceMinInterval = Duration(seconds: 20);
+
+  bool? _lastPresenceOnline;
+  DateTime? _lastPresenceAt;
+  bool _presenceInFlight = false;
+
+  Future<void> _fanOutPresence({
+    required bool online,
+    required DateTime now,
+  }) async {
     final peers = _ref
         .read(knownPeersControllerProvider)
         .values
@@ -3460,7 +3570,9 @@ class MessagingService {
 
     final body = PresenceBeacon(online: online).encode();
     var sent = 0;
-    for (final peer in peers.take(_presenceFanoutCap)) {
+    final targets = peers.take(_presenceFanoutCap).toList();
+    for (var i = 0; i < targets.length; i++) {
+      final peer = targets[i];
       final Uint8List peerPub;
       try {
         peerPub = _hexDecodeBytes(peer.pubkeyHex);
@@ -3479,6 +3591,9 @@ class MessagingService {
       } catch (e) {
         DebugLog.instance
             .log('PRESENCE', 'beacon to ${peer.pubkeyHex.substring(0, 8)}: $e');
+      }
+      if (i + 1 < targets.length) {
+        await Future<void>.delayed(relayFanoutPacing);
       }
     }
     if (sent > 0) {

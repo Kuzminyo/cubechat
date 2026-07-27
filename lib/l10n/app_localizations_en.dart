@@ -571,4 +571,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatsAddContactTooltip => 'Add a contact by card';
+
+  @override
+  String get chatsMenuTooltip => 'More';
+
+  @override
+  String get chatsMenuAddContact => 'Add contact';
+
+  @override
+  String get chatsMenuNewChannel => 'New channel';
 }

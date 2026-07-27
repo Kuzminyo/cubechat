@@ -573,4 +573,13 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatsAddContactTooltip => 'Додати контакт за карткою';
+
+  @override
+  String get chatsMenuTooltip => 'Ще';
+
+  @override
+  String get chatsMenuAddContact => 'Додати контакт';
+
+  @override
+  String get chatsMenuNewChannel => 'Новий канал';
 }

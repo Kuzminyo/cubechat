@@ -188,17 +188,10 @@ class ChatsListScreen extends ConsumerWidget {
                         child:
                             Text(t.chatsTitle, style: AppTypography.display()),
                       ),
-                      IconButton(
-                        onPressed: () => context.push('/contact'),
-                        icon: Icon(Icons.person_add_alt,
-                            color: AppColors.brandPrimary),
-                        tooltip: t.chatsAddContactTooltip,
-                      ),
-                      IconButton(
-                        onPressed: () => _showNewChannelDialog(context, ref, t),
-                        icon: Icon(Icons.group_add_outlined,
-                            color: AppColors.brandPrimary),
-                        tooltip: t.channelsNewTooltip,
+                      _ChatsOverflowMenu(
+                        onAddContact: () => context.push('/contact'),
+                        onNewChannel: () =>
+                            _showNewChannelDialog(context, ref, t),
                       ),
                     ],
                   ),
@@ -549,6 +542,80 @@ Future<void> _showChatActions(
   } else {
     // Forget the roster entry too, otherwise the tile reappears empty.
     await ref.read(knownPeersControllerProvider.notifier).forget(chat.id);
+  }
+}
+
+/// The two ways to start something new, behind one overflow control.
+///
+/// They were a pair of icon buttons in the header, which put two competing
+/// affordances next to the title and still would not have had room for a third.
+/// Both are the same kind of act — "begin a conversation" — so they belong in
+/// one list rather than side by side, and the header gets its width back.
+class _ChatsOverflowMenu extends StatelessWidget {
+  const _ChatsOverflowMenu({
+    required this.onAddContact,
+    required this.onNewChannel,
+  });
+
+  final VoidCallback onAddContact;
+  final VoidCallback onNewChannel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return PopupMenuButton<_ChatsMenuAction>(
+      icon: Icon(Icons.more_vert, color: AppColors.brandPrimary),
+      tooltip: t.chatsMenuTooltip,
+      color: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      position: PopupMenuPosition.under,
+      onSelected: (action) => switch (action) {
+        _ChatsMenuAction.addContact => onAddContact(),
+        _ChatsMenuAction.newChannel => onNewChannel(),
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ChatsMenuAction.addContact,
+          child: _MenuRow(
+            icon: Icons.person_add_alt,
+            label: t.chatsMenuAddContact,
+          ),
+        ),
+        PopupMenuItem(
+          value: _ChatsMenuAction.newChannel,
+          child: _MenuRow(
+            icon: Icons.group_add_outlined,
+            label: t.chatsMenuNewChannel,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum _ChatsMenuAction { addContact, newChannel }
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.brandPrimary),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+        ),
+      ],
+    );
   }
 }
 

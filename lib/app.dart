@@ -102,9 +102,21 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // the app" dot flips now instead of waiting out the heartbeat. The goodbye
     // is best-effort by nature — the OS can kill us without another callback —
     // which is why the beacon also carries a TTL on the receiving side.
-    unawaited(ref.read(messagingServiceProvider).announcePresence(
-          online: state == AppLifecycleState.resumed,
-        ));
+    //
+    // Only the two states that actually mean something. `inactive` is the
+    // transient step the OS passes through whenever anything covers the app for
+    // a moment — the camera, the photo picker, the share sheet, the notification
+    // shade — and treating it as "left the app" made every one of those emit a
+    // goodbye and then a hello, each fanning out to every peer on every relay.
+    // On a real device that read as a burst several times a second and earned a
+    // `rate-limited: you are noting too much` from the relays, which then
+    // rejected real messages too.
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.paused) {
+      unawaited(ref.read(messagingServiceProvider).announcePresence(
+            online: state == AppLifecycleState.resumed,
+          ));
+    }
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+
     // forbids starting a foreground service from the background. Re-apply

@@ -1123,6 +1123,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add a contact by card'**
   String get chatsAddContactTooltip;
+
+  /// No description provided for @chatsMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get chatsMenuTooltip;
+
+  /// No description provided for @chatsMenuAddContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Add contact'**
+  String get chatsMenuAddContact;
+
+  /// No description provided for @chatsMenuNewChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'New channel'**
+  String get chatsMenuNewChannel;
 }
 
 class _AppLocalizationsDelegate

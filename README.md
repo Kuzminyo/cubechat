@@ -57,7 +57,9 @@ UI work but have no BLE.
 - **In-app gallery** — a custom multi-select photo picker (send several at once)
   and a Telegram-style swipeable full-screen viewer with pinch-zoom, save and
   share
-- **Group channels** — shared-key rooms broadcast across the mesh (`/join #room`)
+- **Group channels** — shared-key rooms broadcast across the mesh *and* over the
+  relays, so a room works between people who are nowhere near each other
+  (`/join #room`)
 - **Channel invites** — hand a peer the channel key over their 1:1 encrypted link
 - **Favorites**, real unread tracking (badge + highlighted tile that clears when
   you open the chat), search, and rich **MessagingStyle notifications** with the

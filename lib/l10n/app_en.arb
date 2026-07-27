@@ -202,5 +202,8 @@
 
   "profileContactCard": "Contact card",
   "profileContactCardSubtitle": "Chat with someone out of Bluetooth range",
-  "chatsAddContactTooltip": "Add a contact by card"
+  "chatsAddContactTooltip": "Add a contact by card",
+  "chatsMenuTooltip": "More",
+  "chatsMenuAddContact": "Add contact",
+  "chatsMenuNewChannel": "New channel"
 }

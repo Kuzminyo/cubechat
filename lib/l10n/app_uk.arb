@@ -198,5 +198,8 @@
 
   "profileContactCard": "Картка контакту",
   "profileContactCardSubtitle": "Спілкування з тим, хто поза зоною Bluetooth",
-  "chatsAddContactTooltip": "Додати контакт за карткою"
+  "chatsAddContactTooltip": "Додати контакт за карткою",
+  "chatsMenuTooltip": "Ще",
+  "chatsMenuAddContact": "Додати контакт",
+  "chatsMenuNewChannel": "Новий канал"
 }
