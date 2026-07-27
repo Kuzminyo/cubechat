@@ -52,3 +52,14 @@ coverage/
 flutter_*.log
 devtools_options.yaml
 .kotlin/
+
+# Release builds handed to testers.
+#
+# These live in the repository root because that is where the build script drops
+# them and where they are easiest to pick up from — but they are ~67 MB each and
+# there are already nine, so one absent-minded `git add -A` would put half a
+# gigabyte of binaries in the history, where it cannot be removed without
+# rewriting it. The APK for any commit is reproducible from that commit.
+*.apk
+*.aab
+*.ipa
