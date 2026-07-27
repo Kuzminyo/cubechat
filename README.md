@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **410 passing tests** (`flutter test`, including known-answer
+covered by **420 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -36,7 +36,7 @@ UI work but have no BLE.
 - [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
 - [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
 
-> The `[x]` marks above reflect what's implemented and covered by the 410-test
+> The `[x]` marks above reflect what's implemented and covered by the 420-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -56,7 +56,8 @@ UI work but have no BLE.
 - **Edit** your own messages (inline, Telegram-style) and **delete** them —
   *for me* (local) or *for everyone* (retracted over the wire)
 - **Images** and **voice messages** (chunked, with a signed manifest and SHA-256
-  reassembly check; live waveform while recording)
+  reassembly check; live waveform while recording). Hold the mic to talk,
+  **slide up to lock** it hands-free, **slide left to discard**
 - **In-app gallery** — a custom multi-select photo picker (send several at once)
   and a Telegram-style swipeable full-screen viewer with pinch-zoom, save and
   share
@@ -306,6 +307,18 @@ ever lowers a ttl, so a deliberately short budget (a relay introduction rides at
 a peer more than five hops out — rare in the topology that triggers the cut, and
 store-and-forward plus the internet fallback remain as backstops.
 
+**Media chunks are sized for the fragmenter, not for one write.** Matching a
+chunk to the link's MTU is the obvious thing and it was badly wrong: every chunk
+pays ~124 bytes of envelope, AEAD and chunk header no matter how little it
+carries, so on a real 225-byte link a chunk held 101 bytes of photo and 124 of
+packaging. A field log caught the result — **1367 chunks for one photo**, over
+half the airtime spent on overhead, about two minutes on the radio. Since
+fragmentation already splits oversized frames and rejoins them before dispatch,
+a chunk no longer has to fit one write: at 4 KiB the same photo is ~34 chunks,
+overhead drops under 3%, and both the bytes on air and the number of writes
+roughly halve. `bleMediaChunkData` steps the target down on narrow links so the
+frame can never need more fragments than the 255 the header can count.
+
 **MTU-aware framing.** Real iOS↔Android links often negotiate an ATT MTU well
 below the ~247 the code once assumed, and a frame larger than the link's usable
 payload is silently truncated on the wire (the AEAD open then fails). Media
@@ -396,7 +409,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 410 tests, incl. crypto known-answer vectors
+flutter test         # 420 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -441,7 +454,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **410 tests** across 37 files. Highlights:
+`flutter test` — **420 tests** across 37 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto

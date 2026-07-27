@@ -155,6 +155,8 @@
 
   "chatPinAction": "Pin",
   "chatUnpinAction": "Unpin",
+  "chatUnpinConfirm": "Unpin this message?",
+  "chatUnpinConfirmHint": "It stops being pinned for everyone in this chat.",
   "chatPinnedTitle": "Pinned message",
   "chatPinnedGone": "That message is no longer in this chat",
 

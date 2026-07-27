@@ -436,6 +436,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatUnpinAction => 'Unpin';
 
   @override
+  String get chatUnpinConfirm => 'Unpin this message?';
+
+  @override
+  String get chatUnpinConfirmHint =>
+      'It stops being pinned for everyone in this chat.';
+
+  @override
   String get chatPinnedTitle => 'Pinned message';
 
   @override

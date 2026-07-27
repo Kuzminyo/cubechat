@@ -11,6 +11,8 @@
 /// without a device.
 library;
 
+import 'frame_fragment.dart' show kFragHeaderLen, kMaxFragments;
+
 /// Every BLE notify/write value spends 3 bytes on the ATT header: the usable
 /// application payload is `ATT_MTU - 3`.
 const int kAttHeaderBytes = 3;
@@ -38,6 +40,35 @@ const int kMediaChunkFrameOverhead = 124;
 /// Floor on media-chunk `data` size, so a pathologically small MTU can't
 /// explode a transfer into thousands of near-empty chunks.
 const int kMinMediaChunkData = 40;
+
+/// Target data bytes per media chunk on a BLE link, once the link-layer
+/// fragmenter is doing the splitting.
+///
+/// Sizing a chunk to one BLE write is the obvious thing and it was badly wrong.
+/// Each chunk pays [kMediaChunkFrameOverhead] — envelope, cipher tag, AEAD,
+/// chunk header, mime — no matter how little it carries, so on a real iOS↔
+/// Android link (225 B of usable payload) a chunk held 101 bytes of photo and
+/// 124 bytes of packaging. A field log caught the result: **1367 chunks for one
+/// photo**, 55% of the airtime spent on overhead, about two minutes on the
+/// radio, and 1367 separate AEAD opens on the receiver.
+///
+/// Fragmentation removed the reason for the restriction. `frame_fragment.dart`
+/// splits any oversized frame across writes and rejoins it before dispatch, so
+/// a chunk no longer has to fit one write. At 4 KiB the same photo is 34 chunks
+/// of ~19 fragments: per-chunk overhead falls from 55% to under 3%, roughly
+/// halving both the bytes on air and the number of writes, with the 7-byte
+/// fragment header the only thing replacing it.
+const int kBleMediaChunkData = 4096;
+
+/// Fragments one media chunk may occupy, well under the protocol's
+/// [kMaxFragments].
+///
+/// The headroom is deliberate. A chunk that needs more than 255 fragments makes
+/// `fragmentFrame` throw, which would fail the whole transfer — and the number
+/// of fragments depends on a *negotiated* MTU that can come back far smaller
+/// than anything seen in testing. Budgeting to a quarter of the cap means even
+/// an absurd link degrades to smaller chunks instead of an exception.
+const int kBleMaxFragmentsPerChunk = 64;
 
 /// Target size for an outgoing photo, in bytes.
 ///
@@ -73,6 +104,21 @@ int mediaChunkDataBudget(int effectiveMtu, {required int ceiling}) {
   if (budget < kMinMediaChunkData) return kMinMediaChunkData;
   if (budget > ceiling) return ceiling;
   return budget;
+}
+
+/// Media-chunk `data` size for a BLE link with the given [effectiveMtu].
+///
+/// Aims at [kBleMediaChunkData] and steps down only when the link is so narrow
+/// that the chunk would not fit [kBleMaxFragmentsPerChunk] slices. Never
+/// returns less than [kMinMediaChunkData], and never a size that could make the
+/// fragmenter throw.
+int bleMediaChunkData(int effectiveMtu, {required int ceiling}) {
+  final maxSlice = effectiveMtu - 1 - kFragHeaderLen;
+  if (maxSlice < 1) return kMinMediaChunkData;
+  final fits = maxSlice * kBleMaxFragmentsPerChunk - kMediaChunkFrameOverhead;
+  if (fits < kMinMediaChunkData) return kMinMediaChunkData;
+  final target = fits < kBleMediaChunkData ? fits : kBleMediaChunkData;
+  return target > ceiling ? ceiling : target;
 }
 
 /// Max total wire size (a full encoded [Frame]) for a single forward-secret

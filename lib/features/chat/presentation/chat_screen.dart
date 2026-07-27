@@ -17,6 +17,7 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/utils/time_format.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -732,11 +733,27 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             _PinnedBar(
               message: pinnedMessage,
               onTap: () => _jumpTo(pinnedMessage.wireId!),
-              onUnpin: () => ref.read(messagingServiceProvider).sendPin(
-                    widget.chatId,
-                    pinnedMessage.wireId!,
-                    pinned: false,
-                  ),
+              // Unpinning clears the banner for everyone in the chat, not just
+              // here, and the button sits next to one you tap to jump — easy to
+              // hit by accident, impossible to undo without finding the message
+              // again.
+              onUnpin: () async {
+                final t = AppLocalizations.of(context);
+                if (!await confirmAction(
+                  context,
+                  title: t.chatUnpinConfirm,
+                  message: t.chatUnpinConfirmHint,
+                  confirmLabel: t.chatUnpinAction,
+                  destructive: false,
+                )) {
+                  return;
+                }
+                await ref.read(messagingServiceProvider).sendPin(
+                      widget.chatId,
+                      pinnedMessage.wireId!,
+                      pinned: false,
+                    );
+              },
             ),
         ],
       ),
@@ -985,6 +1002,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Timer? _tick;
   Duration _elapsed = Duration.zero;
 
+  /// True while a voice recording runs hands-free after the finger slid up.
+  /// Cleared by whatever ends the recording, so the next hold starts held.
+  bool _recordLocked = false;
+
   @override
   void initState() {
     super.initState();
@@ -1074,6 +1095,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   }
 
   Future<void> _onRecordStart() async {
+    if (mounted) setState(() => _recordLocked = false);
     final ok = await ref.read(voiceRecorderProvider.notifier).start();
     if (!ok) {
       if (!mounted) return;
@@ -1087,6 +1109,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Future<void> _onRecordStop() async {
     final result = await ref.read(voiceRecorderProvider.notifier).stop();
     _stopTicker();
+    if (mounted) setState(() => _recordLocked = false);
     if (result == null) return;
     if (!widget.canSend) return;
     try {
@@ -1107,6 +1130,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Future<void> _onRecordCancel() async {
     await ref.read(voiceRecorderProvider.notifier).cancel();
     _stopTicker();
+    if (mounted) setState(() => _recordLocked = false);
   }
 
   Future<void> _pickAndSendImage() async {
@@ -1314,6 +1338,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
+      onRecordLock: mediaEnabled ? () => setState(() => _recordLocked = true) : null,
+      recordLocked: _recordLocked,
       recording: voiceState.isRecording,
       recordElapsed: _elapsed,
       recordLevels: voiceState.levels,

@@ -151,6 +151,8 @@
 
   "chatPinAction": "Закріпити",
   "chatUnpinAction": "Відкріпити",
+  "chatUnpinConfirm": "Відкріпити це повідомлення?",
+  "chatUnpinConfirmHint": "Воно перестане бути закріпленим для всіх у цьому чаті.",
   "chatPinnedTitle": "Закріплене повідомлення",
   "chatPinnedGone": "Цього повідомлення вже немає в чаті",
 

@@ -82,6 +82,8 @@ class ChatInput extends StatefulWidget {
     this.onRecordStart,
     this.onRecordStop,
     this.onRecordCancel,
+    this.onRecordLock,
+    this.recordLocked = false,
     this.recording = false,
     this.recordElapsed = Duration.zero,
     this.recordLevels = const <double>[],
@@ -104,6 +106,14 @@ class ChatInput extends StatefulWidget {
   final VoidCallback? onRecordStart;
   final VoidCallback? onRecordStop;
   final VoidCallback? onRecordCancel;
+
+  /// Fired when the finger slides far enough up that the recording should
+  /// continue without it. The caller flips [recordLocked].
+  final VoidCallback? onRecordLock;
+
+  /// True while a locked recording runs hands-free: the strip grows a Cancel
+  /// button and the mic becomes Send.
+  final bool recordLocked;
 
   /// True while a recording is in progress — flips the UI into
   /// "recording" mode (red dot + elapsed counter + live waveform).
@@ -215,6 +225,8 @@ class _ChatInputState extends State<ChatInput> {
                         ? _RecordingIndicator(
                             elapsed: widget.recordElapsed,
                             levels: widget.recordLevels,
+                            locked: widget.recordLocked,
+                            onCancel: widget.onRecordCancel,
                           )
                         : Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -248,9 +260,11 @@ class _ChatInputState extends State<ChatInput> {
                   if (showVoice)
                     _VoiceButton(
                       active: widget.recording,
+                      locked: widget.recordLocked,
                       onStart: widget.onRecordStart!,
                       onStop: widget.onRecordStop!,
                       onCancel: widget.onRecordCancel!,
+                      onLock: widget.onRecordLock ?? () {},
                     )
                   else
                     _SendButton(
@@ -356,56 +370,106 @@ class _AttachButton extends StatelessWidget {
   }
 }
 
-/// Press-and-hold voice record button. Plain mic icon; flips into a brand-green
-/// "recording" state while held (red is reserved for the recording dot).
+/// How far up the finger has to travel from the mic before the recording locks
+/// and carries on without it, and how far left before it is thrown away.
+///
+/// Up is a bigger reach than left because locking is the recoverable outcome
+/// and discarding is not: overshooting into "keep recording" costs a tap to
+/// stop, overshooting into "discard" costs the whole message.
+const double _voiceLockTravel = 56;
+const double _voiceCancelTravel = 88;
+
+/// Press-and-hold voice record button, with the two escapes a held button
+/// needs: slide up to keep recording without holding, slide left to bin it.
+///
+/// Holding a button to talk is fine for five seconds and awful for sixty, and
+/// until now releasing was the *only* outcome — there was no way to send a long
+/// message without keeping a thumb planted, and no way to abandon one you had
+/// started except by sending it and deleting it afterwards.
 class _VoiceButton extends StatelessWidget {
   const _VoiceButton({
     required this.active,
+    required this.locked,
     required this.onStart,
     required this.onStop,
     required this.onCancel,
+    required this.onLock,
   });
 
   final bool active;
+
+  /// True once the recording has been locked: the press has ended but the
+  /// recording continues, and this button becomes "send".
+  final bool locked;
   final VoidCallback onStart;
   final VoidCallback onStop;
   final VoidCallback onCancel;
+  final VoidCallback onLock;
 
   @override
   Widget build(BuildContext context) {
+    // Locked recording is driven by taps, not by a held press: the finger is
+    // gone, so the same widget has to stop meaning "hold me" and start meaning
+    // "send".
+    if (locked) {
+      return GestureDetector(
+        onTap: onStop,
+        child: _circle(context, icon: Icons.send_rounded, filled: true),
+      );
+    }
     return GestureDetector(
       onLongPressStart: (_) => onStart(),
       onLongPressEnd: (_) => onStop(),
       onLongPressCancel: onCancel,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: active
-              ? AppColors.brandGradient
-              : LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.18),
-                    Colors.white.withValues(alpha: 0.10),
-                  ],
+      onLongPressMoveUpdate: (d) {
+        if (!active) return;
+        final offset = d.localOffsetFromOrigin;
+        // Cancel wins a diagonal: a drag that reaches both thresholds was more
+        // likely aimed at the bin than at the lock, and the safe reading of an
+        // ambiguous gesture is the one that doesn't send.
+        if (offset.dx <= -_voiceCancelTravel) {
+          onCancel();
+        } else if (offset.dy <= -_voiceLockTravel) {
+          onLock();
+        }
+      },
+      child: _circle(context, icon: Icons.mic, filled: active),
+    );
+  }
+
+  Widget _circle(
+    BuildContext context, {
+    required IconData icon,
+    required bool filled,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: filled
+            ? AppColors.brandGradient
+            : LinearGradient(
+                colors: [
+                  Colors.white.withValues(alpha: 0.18),
+                  Colors.white.withValues(alpha: 0.10),
+                ],
+              ),
+        boxShadow: filled
+            ? [
+                BoxShadow(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.45),
+                  blurRadius: 16,
+                  spreadRadius: -2,
                 ),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: AppColors.brandPrimary.withValues(alpha: 0.45),
-                    blurRadius: 16,
-                    spreadRadius: -2,
-                  ),
-                ]
-              : null,
-        ),
-        child: Icon(
-          Icons.mic,
-          color: active ? Colors.white : AppColors.textOnGlass,
-          size: 20,
-        ),
+              ]
+            : null,
+      ),
+      child: Icon(
+        icon,
+        color: filled ? Colors.white : AppColors.textOnGlass,
+        size: 20,
       ),
     );
   }
@@ -414,10 +478,20 @@ class _VoiceButton extends StatelessWidget {
 /// Telegram-style recording strip: a pulsing red dot, the elapsed timer, and a
 /// live waveform that grows from the right as you speak.
 class _RecordingIndicator extends StatefulWidget {
-  const _RecordingIndicator({required this.elapsed, required this.levels});
+  const _RecordingIndicator({
+    required this.elapsed,
+    required this.levels,
+    this.locked = false,
+    this.onCancel,
+  });
 
   final Duration elapsed;
   final List<double> levels;
+
+  /// Locked recordings have no finger on the button, so the way out has to be
+  /// on screen: while held, sliding is the way out and the strip says so.
+  final bool locked;
+  final VoidCallback? onCancel;
 
   @override
   State<_RecordingIndicator> createState() => _RecordingIndicatorState();
@@ -478,6 +552,33 @@ class _RecordingIndicatorState extends State<_RecordingIndicator>
               ),
             ),
           ),
+          if (widget.locked && widget.onCancel != null)
+            TextButton(
+              onPressed: widget.onCancel,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 30),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                MaterialLocalizations.of(context).cancelButtonLabel,
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else
+            // While the finger is down, the escapes are gestures — say which.
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                size: 18,
+                color: AppColors.textOnGlassFaint,
+              ),
+            ),
         ],
       ),
     );

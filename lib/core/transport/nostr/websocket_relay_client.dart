@@ -104,7 +104,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       if (_conns.containsKey(url)) continue;
       final conn = _RelayConnection(url, this);
       _conns[url] = conn;
-      conn.open();
+      unawaited(conn.open());
     }
   }
 
@@ -226,11 +226,27 @@ class _RelayConnection {
   Duration _backoff = WebSocketNostrRelayClient._initialBackoff;
   bool _closed = false;
 
+  /// True only once the socket has actually completed its upgrade. Distinct
+  /// from `_channel != null`, which is true the instant the factory returns and
+  /// says nothing about whether anything is on the other end.
+  bool _connected = false;
+
   final String _subId = 'cc-${Random().nextInt(1 << 32).toRadixString(16)}';
 
-  bool get isOpen => _channel != null;
+  bool get isOpen => _connected;
 
-  void open() {
+  /// Open the socket and wait for it to actually be up.
+  ///
+  /// The await is the whole point. [WebSocketChannel.connect] is lazy: it hands
+  /// back a channel object immediately and does the DNS lookup and the upgrade
+  /// afterwards. Treating that return as success meant every attempt logged
+  /// "connected", published `RelayState.connected`, and — the part that really
+  /// hurt — reset the backoff, milliseconds before the failure arrived
+  /// asynchronously on the stream. `_onDown` would double a backoff that the
+  /// next attempt immediately reset, so a phone with no network retried three
+  /// relays every 2 s indefinitely, filling the log and holding the radio awake,
+  /// while `publish` could pick a socket that had never connected.
+  Future<void> open() async {
     if (_closed) return;
     _retryTimer?.cancel();
     _pool._setState(url, RelayState.connecting);
@@ -243,8 +259,11 @@ class _RelayConnection {
         onDone: () => _onDown('closed by relay'),
         cancelOnError: false,
       );
+      await channel.ready;
+      if (_closed) return;
       // A relay accepts REQ/EVENT the moment the socket is writable; there is
       // no handshake beyond the WebSocket upgrade itself.
+      _connected = true;
       _pool._setState(url, RelayState.connected);
       _backoff = WebSocketNostrRelayClient._initialBackoff;
       DebugLog.instance.log('NOSTR', 'connected $url');
@@ -305,12 +324,17 @@ class _RelayConnection {
 
   void _onDown(String reason) {
     if (_closed) return;
+    // A failed connect surfaces twice — the `ready` future rejects *and* the
+    // stream errors — and a dropped socket can report both error and done.
+    // Without this the backoff would double per report rather than per failure,
+    // and two retry timers would race.
+    if (_channel == null) return;
     DebugLog.instance.log('NOSTR', '$url down ($reason) — retry in '
         '${_backoff.inSeconds}s');
     _teardownSocket();
     _pool._setState(url, RelayState.failed);
     _retryTimer?.cancel();
-    _retryTimer = Timer(_backoff, open);
+    _retryTimer = Timer(_backoff, () => unawaited(open()));
     final next = _backoff * 2;
     _backoff =
         next > WebSocketNostrRelayClient._maxBackoff
@@ -319,6 +343,7 @@ class _RelayConnection {
   }
 
   void _teardownSocket() {
+    _connected = false;
     unawaited(_sub?.cancel());
     _sub = null;
     try {

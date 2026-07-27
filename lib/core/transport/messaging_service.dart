@@ -3308,12 +3308,13 @@ class MessagingService {
     required int ceiling,
   }) {
     if (relayOnly) return ceiling;
-    if (direct != null && direct.isConnected) {
-      return mediaChunkDataBudget(effectivePayload(direct.negotiatedMtu),
-          ceiling: ceiling);
-    }
-    return mediaChunkDataBudget(conservativeEffectivePayload(),
-        ceiling: ceiling);
+    // BLE chunks are sized for the fragmenter, not for one write. See
+    // [bleMediaChunkData] for why matching the MTU was the wrong instinct —
+    // it spent more airtime on packaging than on the photo.
+    final effective = (direct != null && direct.isConnected)
+        ? effectivePayload(direct.negotiatedMtu)
+        : conservativeEffectivePayload();
+    return bleMediaChunkData(effective, ceiling: ceiling);
   }
 
   /// Carry one media frame (manifest or chunk) to [canonicalId].

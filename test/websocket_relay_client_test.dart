@@ -314,4 +314,64 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  group('a relay that never answers', () {
+    // Nothing is listening here, so the connect fails the way a phone with no
+    // network does: asynchronously, after WebSocketChannel.connect has already
+    // handed back a channel.
+    const deadUrl = 'ws://localhost:9';
+
+    test('is never reported as connected', () async {
+      final client = WebSocketNostrRelayClient(relayUrls: const [deadUrl]);
+      addTearDown(client.dispose);
+      client.start();
+
+      await _until(
+        () => client.states[deadUrl] == RelayState.failed,
+        reason: 'the failure to surface',
+      );
+      expect(
+        client.isConnected,
+        isFalse,
+        reason: 'claiming connected before the socket is up let publish pick a '
+            'dead relay, and reset the backoff on every attempt',
+      );
+    });
+
+    test('backs off instead of retrying forever at the same interval',
+        () async {
+      final client = WebSocketNostrRelayClient(relayUrls: const [deadUrl]);
+      addTearDown(client.dispose);
+
+      var attempts = 0;
+      final sub = client.stateChanges.listen((states) {
+        if (states[deadUrl] == RelayState.connecting) attempts++;
+      });
+      addTearDown(sub.cancel);
+
+      client.start();
+      // First retry is 2s, so within three seconds a working backoff allows the
+      // initial attempt plus at most one retry. The bug reset the backoff on
+      // every attempt, which pinned it at 2s forever — over a long run that is
+      // a phone holding its radio awake for a network that is not there.
+      await Future<void>.delayed(const Duration(seconds: 3));
+      expect(attempts, lessThanOrEqualTo(2));
+    });
+  });
+
+  test('publish ignores a socket that has not finished connecting', () async {
+    final relay = await _FakeRelayServer.start();
+    addTearDown(relay.stop);
+
+    final client = WebSocketNostrRelayClient(relayUrls: [relay.url]);
+    addTearDown(client.dispose);
+    client.start();
+
+    // Synchronously after start() the channel object exists but the upgrade has
+    // not happened. Publishing here used to write into it and report success.
+    expect(client.isConnected, isFalse);
+
+    await _until(() => client.isConnected, reason: 'connect');
+    expect(client.states[relay.url], RelayState.connected);
+  });
 }

@@ -438,6 +438,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatUnpinAction => 'Відкріпити';
 
   @override
+  String get chatUnpinConfirm => 'Відкріпити це повідомлення?';
+
+  @override
+  String get chatUnpinConfirmHint =>
+      'Воно перестане бути закріпленим для всіх у цьому чаті.';
+
+  @override
   String get chatPinnedTitle => 'Закріплене повідомлення';
 
   @override

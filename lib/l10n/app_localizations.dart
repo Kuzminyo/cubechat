@@ -866,6 +866,18 @@ abstract class AppLocalizations {
   /// **'Unpin'**
   String get chatUnpinAction;
 
+  /// No description provided for @chatUnpinConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin this message?'**
+  String get chatUnpinConfirm;
+
+  /// No description provided for @chatUnpinConfirmHint.
+  ///
+  /// In en, this message translates to:
+  /// **'It stops being pinned for everyone in this chat.'**
+  String get chatUnpinConfirmHint;
+
   /// No description provided for @chatPinnedTitle.
   ///
   /// In en, this message translates to:

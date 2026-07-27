@@ -6,6 +6,7 @@ import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/data/pinned_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -38,6 +39,35 @@ void main() {
   Future<void> beat(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  /// Opens the channel with one message already pinned, for tests about what
+  /// happens *after* pinning rather than about the pin gesture itself.
+  Future<ProviderContainer> openPinnedChat(WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await beat(tester);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+    container.read(messagesControllerProvider.notifier).append(
+          '#test',
+          Message(
+            id: 'm1',
+            chatId: '#test',
+            text: 'адреса зустрічі',
+            sentAt: DateTime(2026, 7, 26, 16, 8),
+            isMine: false,
+            wireId: 'aa' * 16,
+          ),
+        );
+    await container.read(pinnedControllerProvider.notifier).pin('#test', 'aa' * 16);
+    await beat(tester);
+
+    await tester.tap(find.text('#test').first);
+    await beat(tester);
+    return container;
   }
 
   testWidgets('pinning from the long-press menu shows the pinned bar',
@@ -86,10 +116,33 @@ void main() {
     // The bar names the pinned message and previews it.
     expect(find.text('Pinned message'), findsOneWidget);
 
-    // Unpinning from the bar clears both the state and the bar.
+    // Unpinning asks first. The pin is shared state — clearing it takes the
+    // banner away from everyone in the chat — and the button sits right next to
+    // one you tap to jump to the message.
     await tester.tap(find.byTooltip('Unpin'));
+    await beat(tester);
+    expect(find.text('Unpin this message?'), findsOneWidget);
+    expect(
+      container.read(pinnedControllerProvider)['#test'],
+      isNotNull,
+      reason: 'nothing happens until the confirmation is answered',
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Unpin'));
     await beat(tester);
     expect(container.read(pinnedControllerProvider)['#test'], isNull);
     expect(find.text('Pinned message'), findsNothing);
+  });
+
+  testWidgets('cancelling the unpin leaves the message pinned', (tester) async {
+    final container = await openPinnedChat(tester);
+
+    await tester.tap(find.byTooltip('Unpin'));
+    await beat(tester);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await beat(tester);
+
+    expect(container.read(pinnedControllerProvider)['#test']?.wireId, 'aa' * 16);
+    expect(find.text('Pinned message'), findsOneWidget);
   });
 }
