@@ -7,6 +7,7 @@ import 'package:cubechat/features/chat/models/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'support/hive_settle.dart';
 
 /// A relay replays its stored backlog to every fresh subscription, so the same
 /// message reaches us again on each launch. These tests pin the layer that has
@@ -26,6 +27,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     container.dispose();
     await Hive.close();
     try {

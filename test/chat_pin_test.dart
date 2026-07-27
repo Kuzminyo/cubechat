@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/hive_settle.dart';
 
 /// Drives the real chat screen: pin a message from the long-press menu, see the
 /// bar appear, unpin it again. A channel is the cheapest conversation to stand
@@ -26,6 +27,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     await Hive.close();
     try {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/hive_settle.dart';
 
 /// The chat header is one floating capsule with circular edge controls and a
 /// pinned island under it. What can go wrong without anyone noticing is **fit**:
@@ -28,6 +29,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     await Hive.close();
     try {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);

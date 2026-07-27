@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/hive_settle.dart';
 
 void main() {
   late Directory tempDir;
@@ -17,6 +17,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     await Hive.close();
     if (tempDir.existsSync()) {
       tempDir.deleteSync(recursive: true);

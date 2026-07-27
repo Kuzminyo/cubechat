@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/hive_settle.dart';
 
 /// A peripheral we can push inbound writes through by hand.
 class _FakePeripheral implements BlePeripheral {
@@ -69,6 +70,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     debugPrint = originalDebugPrint;
     container.dispose();
     // The service's dispose is async and Riverpod doesn't await it; give it a

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'support/hive_settle.dart';
 
 /// The Dart half of the iOS background window. The native half (BGTaskScheduler
 /// registration, the 25 s deadline) can only be exercised on a device, so what
@@ -22,6 +23,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     await Hive.close();
     try {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/hive_settle.dart';
 
 /// The two shortcuts that replace a long-press and a menu: drag a message left
 /// to reply to it, double-tap it to leave a heart.
@@ -33,6 +34,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     await Hive.close();
     try {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);

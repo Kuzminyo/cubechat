@@ -124,8 +124,26 @@ class MessagingService {
     _startAnnouncementTimer();
     _startPresenceTimer();
     _wireNostrFallback();
-    unawaited(_loadRelayBuffer());
-    unawaited(_ref.read(prekeyServiceProvider).ensureInitialized());
+    _startInBackground('relay buffer', _loadRelayBuffer());
+    _startInBackground(
+      'prekeys',
+      _ref.read(prekeyServiceProvider).ensureInitialized(),
+    );
+  }
+
+  /// Kick off initialisation the constructor cannot await, absorbing failure.
+  ///
+  /// `unawaited` silences the lint but does not handle anything: a future that
+  /// completes with an error still lands in the surrounding zone with nobody to
+  /// receive it. Both callers here open Hive boxes, which fail for reasons
+  /// outside this class — a keystore reset, a storage directory that went away
+  /// underneath us — and neither is worth taking the app down for. The relay
+  /// buffer is a cache that repopulates, and the prekey is re-minted on the
+  /// next attempt.
+  void _startInBackground(String what, Future<void> work) {
+    unawaited(work.catchError((Object e) {
+      DebugLog.instance.log('MESH', '$what init failed: $e');
+    }));
   }
 
   /// Envelope-body cipher tags (first byte of [TransportEnvelope.body]) so

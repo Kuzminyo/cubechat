@@ -173,7 +173,16 @@ class HiveCipherProvider {
       try {
         await Hive.deleteBoxFromDisk(name);
       } catch (_) {}
-      return Hive.openBox<T>(name, encryptionCipher: cipher);
+      try {
+        return await Hive.openBox<T>(name, encryptionCipher: cipher);
+      } catch (retryError) {
+        // Awaited rather than returned bare, so the failure belongs to this
+        // frame and carries a name. Returning the un-awaited future handed the
+        // caller a rejection with no context — and callers of this reach it
+        // through fire-and-forget startup work, where an error with no
+        // provenance is just an unhandled async exception in some zone.
+        throw HiveBoxOpenException(name, retryError);
+      }
     }
   }
 
@@ -187,6 +196,21 @@ class HiveCipherProvider {
     }
     return out;
   }
+}
+
+/// A box that could not be opened even after the delete-and-retry fallback.
+///
+/// Named so the failure is attributable: these surface from startup work that
+/// nothing awaits, where a bare `PathNotFoundException` says nothing about
+/// which part of the app just lost its storage.
+class HiveBoxOpenException implements Exception {
+  const HiveBoxOpenException(this.boxName, this.cause);
+
+  final String boxName;
+  final Object cause;
+
+  @override
+  String toString() => 'could not open Hive box "$boxName": $cause';
 }
 
 /// Singleton - controllers grab the same instance so they share the

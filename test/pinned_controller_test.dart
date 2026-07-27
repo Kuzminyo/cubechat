@@ -4,6 +4,7 @@ import 'package:cubechat/features/chat/data/pinned_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'support/hive_settle.dart';
 
 void main() {
   // The Hive cipher reads its key through a platform channel; without a binding
@@ -20,6 +21,7 @@ void main() {
   });
 
   tearDown(() async {
+    await settleBackgroundStorage();
     container.dispose();
     await Hive.close();
     try {
