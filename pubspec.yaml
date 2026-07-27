@@ -31,6 +31,7 @@ dependencies:
   # Crypto (M2)
   cryptography: ^2.7.0            # X25519, ChaCha20-Poly1305, BLAKE2s, HKDF
   flutter_secure_storage: ^9.2.2  # private key in Keychain / Keystore
+  http: ^1.2.0                    # wake-service client (iOS push)
 
   # Nostr internet fallback (M6) — relay sockets. secp256k1/BIP-340 is
   # implemented in-repo (lib/core/crypto/secp256k1.dart), so no crypto dep.
