@@ -1141,6 +1141,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New channel'**
   String get chatsMenuNewChannel;
+
+  /// No description provided for @profileDiscoverable.
+  ///
+  /// In en, this message translates to:
+  /// **'Discoverable nearby'**
+  String get profileDiscoverable;
+
+  /// No description provided for @profileDiscoverableOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone in range can find you'**
+  String get profileDiscoverableOnHint;
+
+  /// No description provided for @profileDiscoverableOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only your contacts can reach you'**
+  String get profileDiscoverableOffHint;
+
+  /// No description provided for @profileDiscoverableExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.'**
+  String get profileDiscoverableExplainer;
 }
 
 class _AppLocalizationsDelegate

@@ -580,4 +580,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatsMenuNewChannel => 'New channel';
+
+  @override
+  String get profileDiscoverable => 'Discoverable nearby';
+
+  @override
+  String get profileDiscoverableOnHint => 'Anyone in range can find you';
+
+  @override
+  String get profileDiscoverableOffHint => 'Only your contacts can reach you';
+
+  @override
+  String get profileDiscoverableExplainer =>
+      'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.';
 }

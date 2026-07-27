@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **383 passing tests** (`flutter test`, including known-answer
+covered by **402 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -34,8 +34,9 @@ UI work but have no BLE.
 - [x] M5.5 — Group channels, receipts/reactions, message edit/delete, reply/quote, block/mute peers
 - [x] M6 — Nostr internet fallback (see below)
 - [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
+- [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
 
-> The `[x]` marks above reflect what's implemented and covered by the 383-test
+> The `[x]` marks above reflect what's implemented and covered by the 402-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -120,6 +121,52 @@ recipient decrypts, and the signature proves who sent it.
 
 **Replay & dedup.** Signed timestamps + a 1-hour replay window; a dedup cache
 keyed on `(originPubkeyHash, msgId)` drops loops and reflections across the mesh.
+
+### Rotating peer IDs, and the announcement that has to change with them
+
+The 8-byte id on every frame used to be `BLAKE2s(x25519_pubkey)[0:8]`, computed
+once and never again. Anyone recording the air could group a device's entire
+history by those eight bytes without breaking a cipher — across BLE address
+rotations that exist precisely to stop that. It is now
+
+```
+id(pubkey, epoch) = BLAKE2s("cubechat/peer-id/v1" ‖ pubkey ‖ epoch_be64)[0:8]
+epoch             = unix_millis ~/ 1h
+```
+
+Still deterministic, so anyone holding the peer's public key recomputes it with
+no negotiation and no state — which is what lets a recipient recognise its own
+mail. But it is only stable for an hour. Receivers accept the previous, current
+and next epoch (`PeerId.activeEpochs`): a frame held in store-and-forward, or
+sat in a relay backlog, arrives bearing the epoch it was minted in, and phones
+are not NTP-synced. The store-and-forward buffer drains *all* of a peer's live
+ids for the same reason — draining only the current one would strand exactly the
+mail that waited longest. The pre-rotation fixed hash is still accepted on
+receive so a staggered rollout survives; nothing mints it any more.
+
+**Rotation alone would have been theatre.** The ids derive from the static
+public key, and the mesh announcement broadcasts that key in the clear, with a
+full hop budget, to everyone in range and beyond. One overheard announcement and
+a listener recomputes every future id forever. So rotation ships with its
+counterpart: **Profile → Discoverable nearby**.
+
+| | Discoverable (default) | Off |
+|---|---|---|
+| Announcement | cleartext broadcast, relayed mesh-wide | sealed per contact, addressed to their rotating id |
+| A stranger in range | learns your key, name, prekey, npub | sees opaque frames to meaningless ids |
+| Meeting someone new | walk up to them | they need a contact card |
+
+Default on, because meeting someone by standing next to them is the premise of
+the app and silently disabling it would break the Peers screen for a property
+most people did not ask for.
+
+> **The gap that remains.** A stranger who deliberately connects and completes a
+> Noise XX handshake still learns your static key — XX sends it encrypted to the
+> initiator, hidden from observers but readable by whoever is on the other end.
+> Closing that needs a different handshake pattern (IK, or XX with a pre-shared
+> key), which is out of scope here. Discovery-off narrows you to "reachable only
+> by people who already have your card"; it does not make you invisible to
+> someone who dials you directly.
 
 > **Scope note.** Group channels use one shared symmetric key (no per-sender
 > forward secrecy — that needs a group key-agreement protocol like MLS, out of
@@ -335,7 +382,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 383 tests, incl. crypto known-answer vectors
+flutter test         # 402 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -380,7 +427,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **383 tests** across 35 files. Highlights:
+`flutter test` — **402 tests** across 36 files. Highlights:
 
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto
@@ -399,6 +446,10 @@ dart run flutter_native_splash:create
   its `ttl: 1` point-to-point budget
 - `channel_crypto_test`, `channel_invite_test`, `receipt_reaction_test`,
   `edit_delete_test` — feature wire formats
+- `peer_id_test` — rotating ids: determinism, per-epoch change, the ±1 epoch
+  acceptance window against boundary and clock skew, the reverse index
+  (including roster invalidation and legacy ids), and store-and-forward draining
+  mail filed under a previous epoch
 - `mesh_ttl_test` — the density-scaled hop budget: monotonic in link count,
   never inflating a short ttl, and the decrement-then-cap a relay applies
 - `dedup_cache_test`, `store_forward_cache_test`, `hive_cipher_test` — mesh +

@@ -15,6 +15,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
+import '../data/discovery_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/widgets/glass_toast.dart';
 
@@ -155,6 +156,9 @@ class ProfileScreen extends ConsumerWidget {
 
           const SizedBox(height: 8),
           const _RelayFallbackCard(),
+
+          const SizedBox(height: 8),
+          const _DiscoverableCard(),
 
           const SizedBox(height: 8),
           const _ContactCardRow(),
@@ -368,6 +372,81 @@ class _RelayFallbackCard extends ConsumerWidget {
             ),
           ),
           Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+/// Whether the mesh announcement goes out in the clear to everyone in range,
+/// or sealed to contacts we already have.
+class _DiscoverableCard extends ConsumerWidget {
+  const _DiscoverableCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref.watch(discoverySettingsProvider).discoverable;
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                ),
+                child: Icon(
+                  on ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  color: on ? AppColors.textOnGlass : AppColors.brandPrimary,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.profileDiscoverable,
+                      style:
+                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      on
+                          ? t.profileDiscoverableOnHint
+                          : t.profileDiscoverableOffHint,
+                      style: TextStyle(
+                          color: AppColors.textOnGlassDim, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: on,
+                activeThumbColor: AppColors.brandPrimary,
+                onChanged: (v) => ref
+                    .read(discoverySettingsProvider.notifier)
+                    .setDiscoverable(v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            t.profileDiscoverableExplainer,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
         ],
       ),
     );

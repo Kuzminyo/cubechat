@@ -84,12 +84,28 @@ class StoreForwardCache {
 
   /// Removes and returns every (non-expired) frame held for [destHash], in
   /// arrival order. Called when the destination becomes directly reachable.
-  List<Uint8List> drainFor(Uint8List destHash) {
+  List<Uint8List> drainFor(Uint8List destHash) => drainForAny([destHash]);
+
+  /// Same, for a destination that answers to more than one routing id.
+  ///
+  /// Necessary once ids rotate: a frame is filed under whatever id the *sender*
+  /// stamped on it, and this buffer holds frames for up to an hour — long
+  /// enough to cross an epoch boundary. Draining only the peer's current id
+  /// would strand exactly the mail that waited longest, which is the mail this
+  /// buffer exists for. Frames arrive in per-id order, oldest id first.
+  List<Uint8List> drainForAny(Iterable<Uint8List> destHashes) {
     _gc();
-    final list = _byDest.remove(_hex(destHash));
-    if (list == null || list.isEmpty) return const [];
-    _count -= list.length;
-    return list.map((f) => f.frameBytes).toList();
+    final out = <Uint8List>[];
+    final seen = <String>{};
+    for (final hash in destHashes) {
+      final key = _hex(hash);
+      if (!seen.add(key)) continue; // same id passed twice
+      final list = _byDest.remove(key);
+      if (list == null || list.isEmpty) continue;
+      _count -= list.length;
+      out.addAll(list.map((f) => f.frameBytes));
+    }
+    return out;
   }
 
   /// Number of distinct destinations we're currently holding frames for.

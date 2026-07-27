@@ -18,6 +18,7 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/models/known_peer.dart';
+import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
@@ -47,6 +48,7 @@ import 'frame_fragment.dart';
 import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inner_payload.dart';
+import 'peer_id.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
 import 'nostr/relay_watermark_store.dart';
@@ -156,9 +158,13 @@ class MessagingService {
   Timer? _announcementTimer;
   Timer? _presenceTimer;
 
-  /// Cached pubkey hash of the local identity, computed lazily on first use.
-  /// Used as the `originPubkeyHash` on every outbound transport envelope.
-  Uint8List? _myHashCache;
+  /// Our rotating routing id, cached per epoch. See [PeerId] for why it moves
+  /// and [_myPubkeyHash] for how far back the cache is kept.
+  final Map<int, Uint8List> _myIdByEpoch = {};
+
+  /// Reverse index from a routing id to the peer wearing it, rebuilt when the
+  /// epoch turns or the roster changes.
+  final PeerIdIndex _peerIds = PeerIdIndex();
 
   /// Our deterministically-derived Nostr signer (secp256k1). Derivation does a
   /// scalar multiplication, so we compute it once and reuse it for every
@@ -235,19 +241,60 @@ class MessagingService {
   static const Duration _manifestTtl = Duration(minutes: 5);
   static const int _maxPendingMediaManifests = 64;
 
+  /// Our routing id for the current epoch — stamped on everything we
+  /// originate, and rotating out from under a passive listener every
+  /// [PeerId.rotationPeriod]. Cached per epoch, with anything stale enough to
+  /// be outside the acceptance window dropped.
   Future<Uint8List> _myPubkeyHash() async {
-    if (_myHashCache != null) return _myHashCache!;
+    final epoch = PeerId.epochAt(DateTime.now());
+    final cached = _myIdByEpoch[epoch];
+    if (cached != null) return cached;
     final id = await _ref.read(identityProvider.future);
-    final digest = await Blake2s().hash(id.publicKey);
-    _myHashCache = TransportEnvelope.shortHashFromHashBytes(
-        Uint8List.fromList(digest.bytes));
-    return _myHashCache!;
+    final derived =
+        await PeerId.derive(Uint8List.fromList(id.publicKey), epoch);
+    _myIdByEpoch
+      ..removeWhere((e, _) => (epoch - e).abs() > 1)
+      ..[epoch] = derived;
+    return derived;
   }
 
-  Future<Uint8List> _peerPubkeyHash(Uint8List peerPubkey) async {
-    final digest = await Blake2s().hash(peerPubkey);
-    return TransportEnvelope.shortHashFromHashBytes(
-        Uint8List.fromList(digest.bytes));
+  /// The id that addresses [peerPubkey] right now.
+  Future<Uint8List> _peerPubkeyHash(Uint8List peerPubkey) =>
+      PeerId.derive(peerPubkey, PeerId.epochAt(DateTime.now()));
+
+  /// Every id a frame could legitimately be using to address *us* — the three
+  /// live epochs, plus the pre-rotation fixed hash so a peer still running an
+  /// older build can be heard during a staggered rollout.
+  Future<List<Uint8List>> _myInboundIds() async {
+    final identity = await _ref.read(identityProvider.future);
+    final pub = Uint8List.fromList(identity.publicKey);
+    return [
+      ...await PeerId.deriveActive(pub, DateTime.now()),
+      await PeerId.legacy(pub),
+    ];
+  }
+
+  /// Whether [destHash] addresses us under any currently-valid id.
+  Future<bool> _isAddressedToMe(Uint8List destHash) async {
+    for (final id in await _myInboundIds()) {
+      if (_bytesEqual(destHash, id)) return true;
+    }
+    return false;
+  }
+
+  /// Resolve an origin/dest id back to the peer's canonical X25519 pubkey,
+  /// across every epoch they might have used.
+  Future<Uint8List?> _peerForId(Uint8List id) async {
+    final roster = _ref.read(knownPeersControllerProvider);
+    final pubkeys = <Uint8List>[];
+    for (final p in roster.values) {
+      try {
+        pubkeys.add(_hexDecodeBytes(p.pubkeyHex));
+      } catch (_) {
+        // malformed roster entry — skip
+      }
+    }
+    return _peerIds.lookup(id, rosterToken: roster, pubkeys: pubkeys);
   }
 
   /// Lazily derive (and cache) our Nostr signer from the Ed25519 identity seed.
@@ -2315,8 +2362,7 @@ class MessagingService {
       return;
     }
 
-    final myHash = await _myPubkeyHash();
-    final isForMe = _bytesEqual(env.destPubkeyHash, myHash);
+    final isForMe = await _isAddressedToMe(env.destPubkeyHash);
     final addressedToMe = env.isBroadcast || isForMe;
 
     // M3.E forwarding: a frame that isn't ours OR is a broadcast both warrant
@@ -3086,11 +3132,48 @@ class MessagingService {
     }
   }
 
-  /// Peer-announcement RX: unwrap envelope, dedup, verify the inner
-  /// `PeerAnnouncement` signature and upsert the (x25519, ed25519, name)
-  /// triplet into the roster. Announcement signatures defend against an
-  /// attacker on the mesh injecting fake ed25519 pubkeys to break later
-  /// per-message signature verification.
+  /// Verify a signed announcement body and file the peer in the roster.
+  ///
+  /// Returns false when the bundle was rejected, or when it turned out to be
+  /// our own coming back to us — in both cases the caller must not treat it as
+  /// news. Signature verification is what stops an attacker on the mesh from
+  /// injecting a fake Ed25519 key to break later per-message checks.
+  Future<bool> _ingestAnnouncement(Uint8List body, String peerId) async {
+    final PeerAnnouncement ann;
+    try {
+      ann = await PeerAnnouncement.verifyAndDecode(body);
+    } catch (e) {
+      DebugLog.instance.log(
+          'MESH', 'drop announce from $peerId: bad signature / format ($e)');
+      return false;
+    }
+    // Our own, bounced back off a relay or a mesh neighbour. Matched on the
+    // announced pubkey rather than the envelope's origin id: the id rotates, so
+    // a copy that took a while to return can be wearing a previous epoch's
+    // value, while the key inside is what actually says "this is me".
+    final identity = await _ref.read(identityProvider.future);
+    if (_bytesEqual(ann.pubkey, Uint8List.fromList(identity.publicKey))) {
+      DebugLog.instance.log('MESH', 'drop announce: it is mine');
+      return false;
+    }
+    final pubkeyHex = _hexOf(ann.pubkey);
+    _ref.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: pubkeyHex,
+          displayName: ann.nickname,
+          signPublicKey: ann.signPubkey,
+          signedPrekeyPub: ann.signedPrekeyPub,
+          nostrPubkey: ann.nostrPubkey,
+        );
+    DebugLog.instance.log(
+        'MESH',
+        'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
+            '(+ signed prekey + nostr pubkey)');
+    return true;
+  }
+
+  /// Peer-announcement RX: unwrap envelope, dedup, then either open a sealed
+  /// per-recipient introduction or verify a cleartext broadcast, and relay
+  /// onward so peers more than one hop away hear it too.
   Future<void> _handlePeerAnnouncementFrame(String peerId, Frame frame) async {
     final TransportEnvelope env;
     try {
@@ -3109,6 +3192,21 @@ class MessagingService {
     // because a plaintext announcement always opens with version 0x04.
     Uint8List announceBody = env.body;
     if (announceBody.isNotEmpty && announceBody[0] == _announcementSealed) {
+      // A sealed introduction is addressed to exactly one recipient, so a node
+      // in the middle cannot open it — and must still carry it. Forward before
+      // attempting to decrypt, or a private announcement would never reach a
+      // contact more than one hop away: the old code returned on the failed
+      // open, which is indistinguishable from "not for me". Dedup and the hop
+      // budget bound the blind relay, exactly as they do for transport frames,
+      // which are forwarded unverified for the same reason.
+      if (env.ttl > 0 && !await _isAddressedToMe(env.destPubkeyHash)) {
+        unawaited(_forwardEnvelope(
+          outerType: FrameType.peerAnnouncement,
+          env: env,
+          excludePeerId: peerId,
+        ));
+        return;
+      }
       try {
         final identity = await _ref.read(identityProvider.future);
         announceBody = await SealedBox.open(
@@ -3117,40 +3215,15 @@ class MessagingService {
           recipientPubkey: identity.publicKey,
         );
       } catch (e) {
-        // Not for us, or corrupt. Either way there is nothing to learn from it
-        // and nothing to forward — it was addressed to one recipient.
-        DebugLog.instance
-            .log('MESH', 'drop sealed announce from $peerId: $e');
+        DebugLog.instance.log('MESH', 'drop sealed announce from $peerId: $e');
         return;
       }
+      // We opened it, so it was addressed to us and stops here.
+      await _ingestAnnouncement(announceBody, peerId);
+      return;
     }
 
-    final PeerAnnouncement ann;
-    try {
-      ann = await PeerAnnouncement.verifyAndDecode(announceBody);
-    } catch (e) {
-      DebugLog.instance.log(
-          'MESH', 'drop announce from $peerId: bad signature / format ($e)');
-      return;
-    }
-    // Skip our own announcement bouncing back to us through a relay.
-    final myHash = await _myPubkeyHash();
-    if (_bytesEqual(env.originPubkeyHash, myHash)) {
-      DebugLog.instance.log('MESH', 'drop announce: it is mine');
-      return;
-    }
-    final pubkeyHex = _hexOf(ann.pubkey);
-    _ref.read(knownPeersControllerProvider.notifier).upsert(
-          pubkeyHex: pubkeyHex,
-          displayName: ann.nickname,
-          signPublicKey: ann.signPubkey,
-          signedPrekeyPub: ann.signedPrekeyPub,
-          nostrPubkey: ann.nostrPubkey,
-        );
-    DebugLog.instance.log(
-        'MESH',
-        'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
-            '(+ signed prekey + nostr pubkey)');
+    if (!await _ingestAnnouncement(announceBody, peerId)) return;
 
     // M3.E: announcements are mesh-wide — relay onward on every other link
     // until ttl runs out so peers more than one hop away learn about us.
@@ -3371,74 +3444,42 @@ class MessagingService {
     return true;
   }
 
-  /// Returns the cached Ed25519 verifying key for the peer whose X25519
-  /// pubkey hashes to [originPubkeyHash], or null if we've never seen a
-  /// signed announcement from them. Linear-scan over the KnownPeers
-  /// roster; for the current scale (<<1000 peers) this is fine.
+  /// Returns the cached Ed25519 verifying key for the peer wearing
+  /// [originPubkeyHash], or null if we've never seen a signed announcement
+  /// from them.
   Future<Uint8List?> _expectedEdPubFor(Uint8List originPubkeyHash) async {
-    final known = _ref.read(knownPeersControllerProvider);
-    for (final p in known.values) {
-      final pub = p.signPublicKey;
-      if (pub == null) continue;
-      try {
-        final xBytes = _hexDecodeBytes(p.pubkeyHex);
-        final h = await _peerPubkeyHash(xBytes);
-        if (_bytesEqual(h, originPubkeyHash)) {
-          return pub;
-        }
-      } catch (_) {
-        // ignore malformed entries
-      }
-    }
-    return null;
+    final pub = await _peerForId(originPubkeyHash);
+    if (pub == null) return null;
+    return _ref.read(knownPeersControllerProvider)[_hexOf(pub)]?.signPublicKey;
   }
 
   /// Reverse an envelope's [originPubkeyHash] back to the sender's full
-  /// canonical (X25519 static) pubkey by matching it against the known-peer
-  /// roster. Needed on the Nostr path, where there is no Noise session to read
-  /// `remoteStaticPublicKey` from — without it an inbound relay message is filed
-  /// under the 'nostr:relay' placeholder instead of the sender's own chat, so it
-  /// decrypts fine yet never shows up in the conversation.
-  Future<Uint8List?> _canonicalPubForOrigin(Uint8List originPubkeyHash) async {
-    final known = _ref.read(knownPeersControllerProvider);
-    for (final p in known.values) {
-      try {
-        final xBytes = _hexDecodeBytes(p.pubkeyHex);
-        final h = await _peerPubkeyHash(xBytes);
-        if (_bytesEqual(h, originPubkeyHash)) return xBytes;
-      } catch (_) {
-        // ignore malformed entries
-      }
-    }
-    return null;
-  }
+  /// canonical (X25519 static) pubkey. Needed on the Nostr path, where there is
+  /// no Noise session to read `remoteStaticPublicKey` from — without it an
+  /// inbound relay message is filed under the 'nostr:relay' placeholder instead
+  /// of the sender's own chat, so it decrypts fine yet never shows up in the
+  /// conversation.
+  Future<Uint8List?> _canonicalPubForOrigin(Uint8List originPubkeyHash) =>
+      _peerForId(originPubkeyHash);
 
-  /// Caches a fresh (originHash → ed pub) binding learned from a
-  /// successful TOFU-verified message. Bootstraps strict-mode
-  /// verification for subsequent messages from the same peer.
+  /// Caches a fresh (origin → ed pub) binding learned from a successful
+  /// TOFU-verified message. Bootstraps strict-mode verification for subsequent
+  /// messages from the same peer.
   Future<void> _maybeCacheSignerForOrigin({
     required Uint8List originHash,
     required Uint8List edPub,
   }) async {
-    final known = _ref.read(knownPeersControllerProvider);
-    for (final p in known.values) {
-      try {
-        final xBytes = _hexDecodeBytes(p.pubkeyHex);
-        final h = await _peerPubkeyHash(xBytes);
-        if (!_bytesEqual(h, originHash)) continue;
-        if (p.signPublicKey != null) return; // already cached
-        _ref.read(knownPeersControllerProvider.notifier).upsert(
-              pubkeyHex: p.pubkeyHex,
-              displayName: p.displayName,
-              signPublicKey: edPub,
-            );
-        DebugLog.instance
-            .log('CRYPTO', 'cached signer for ${p.pubkeyHex} via TOFU');
-        return;
-      } catch (_) {
-        // ignore
-      }
-    }
+    final pub = await _peerForId(originHash);
+    if (pub == null) return;
+    final pubkeyHex = _hexOf(pub);
+    final peer = _ref.read(knownPeersControllerProvider)[pubkeyHex];
+    if (peer == null || peer.signPublicKey != null) return; // already cached
+    _ref.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: pubkeyHex,
+          displayName: peer.displayName,
+          signPublicKey: edPub,
+        );
+    DebugLog.instance.log('CRYPTO', 'cached signer for $pubkeyHex via TOFU');
   }
 
   static Uint8List _hexDecodeBytes(String hex) {
@@ -3662,9 +3703,16 @@ class MessagingService {
 
     try {
       final signedBody = await buildSignedAnnouncement();
+      final originHash = await _myPubkeyHash();
+
+      if (!_ref.read(discoverySettingsProvider).discoverable) {
+        await _announcePrivately(signedBody: signedBody, originHash: originHash);
+        return;
+      }
+
       final frame = _announcementFrame(
         signedBody: signedBody,
-        originHash: await _myPubkeyHash(),
+        originHash: originHash,
         ttl: _meshTtl,
       );
 
@@ -3676,6 +3724,75 @@ class MessagingService {
       debugPrint('broadcastAnnouncement failed: $e\n$st');
     }
   }
+
+  /// Announce to the people who already know us, and to nobody else.
+  ///
+  /// The broadcast announcement is what makes proximity discovery work, and
+  /// also what makes a device permanently identifiable: it puts a static
+  /// X25519 key and a nickname in the clear, on every link, relayed onward. It
+  /// is likewise what would have made rotating routing ids pointless — the ids
+  /// are derived from that key, so one overheard announcement lets a listener
+  /// recompute every future id.
+  ///
+  /// With discovery off we send the *same* bundle, but sealed to each contact
+  /// individually and addressed to their rotating id. A listener sees one
+  /// opaque frame per contact, addressed to identifiers that mean nothing and
+  /// change every epoch. Someone we've never met learns nothing and cannot find
+  /// us at all — which is the point, and why contact cards exist for the people
+  /// we *do* want to reach.
+  ///
+  /// One honest gap remains: a stranger who connects and completes a Noise XX
+  /// handshake still learns our static key, because XX sends it (encrypted to
+  /// the peer, hidden from observers, but readable by the initiator). Closing
+  /// that needs a different handshake pattern.
+  Future<void> _announcePrivately({
+    required Uint8List signedBody,
+    required Uint8List originHash,
+  }) async {
+    final peers = _ref
+        .read(knownPeersControllerProvider)
+        .values
+        .where((p) => !p.isBlocked)
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    if (peers.isEmpty) return;
+
+    var sent = 0;
+    for (final peer in peers.take(_privateAnnounceCap)) {
+      try {
+        final peerPub = _hexDecodeBytes(peer.pubkeyHex);
+        final env = TransportEnvelope(
+          originPubkeyHash: originHash,
+          destPubkeyHash: await _peerPubkeyHash(peerPub),
+          msgId: TransportEnvelope.newMsgId(),
+          ttl: _meshTtl,
+          body: _tagBody(
+            _announcementSealed,
+            await SealedBox.seal(signedBody, peerPub),
+          ),
+        );
+        _dedup.acceptEnvelope(env);
+        final frame = Frame(
+          type: FrameType.peerAnnouncement,
+          payload: env.encode(),
+        );
+        if (await _fanoutAllLinks(frame.encode(), excludePeerId: null) > 0) {
+          sent++;
+        }
+      } catch (e) {
+        DebugLog.instance.log('MESH', 'private announce failed: $e');
+      }
+    }
+    if (sent > 0) {
+      DebugLog.instance
+          .log('MESH', 'privately announced to $sent contact(s)');
+    }
+  }
+
+  /// Ceiling on a private announcement round. Each contact costs its own sealed
+  /// frame on every link, where the cleartext broadcast cost one — so a large
+  /// roster is bounded, most-recently-seen first.
+  static const int _privateAnnounceCap = 24;
 
   /// Build and Ed25519-sign the current [PeerAnnouncement] for this device —
   /// the identity bundle (X25519 static, Ed25519 verifier, signed prekey, Nostr
@@ -3881,13 +3998,19 @@ class MessagingService {
   Future<void> _flushStoreForwardFor(ChatSession session) async {
     final pub = session.remoteStaticPublicKey;
     if (pub == null) return;
-    final Uint8List hash;
+    final List<Uint8List> hashes;
     try {
-      hash = await _peerPubkeyHash(pub);
+      // Every id this peer may have been addressed under while we held their
+      // mail — the live epochs plus the pre-rotation fixed hash, since a sender
+      // on an older build filed it under that one.
+      hashes = [
+        ...await PeerId.deriveActive(pub, DateTime.now()),
+        await PeerId.legacy(pub),
+      ];
     } catch (_) {
       return;
     }
-    final pending = _store.drainFor(hash);
+    final pending = _store.drainForAny(hashes);
     if (pending.isEmpty) return;
     _scheduleRelayPersist(); // drain mutated the buffer
     DebugLog.instance.log(

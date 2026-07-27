@@ -582,4 +582,17 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatsMenuNewChannel => 'Новий канал';
+
+  @override
+  String get profileDiscoverable => 'Помітність поруч';
+
+  @override
+  String get profileDiscoverableOnHint => 'Вас знайде будь-хто в радіусі';
+
+  @override
+  String get profileDiscoverableOffHint => 'Вас досягнуть лише ваші контакти';
+
+  @override
+  String get profileDiscoverableExplainer =>
+      'Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім\'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв\'язними. Новим людям тоді потрібна картка контакту.';
 }
