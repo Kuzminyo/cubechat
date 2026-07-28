@@ -183,6 +183,12 @@ class PeripheralController extends Notifier<PeripheralState> {
     // A contact resolves this back to us because they hold the key it derives
     // from; to everyone else it is eight bytes that change every hour.
     final advertisedId = await _currentAdvertisedId();
+    log.log(
+      'PERIPH-CTL',
+      advertisedId == null
+          ? 'NO advertised id — contacts cannot recognise us, XX only'
+          : 'advertising id ${PeerId.hex(advertisedId)}',
+    );
 
     log.log('PERIPH-CTL', 'calling native start…');
     final ok = await peripheral.start(

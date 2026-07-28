@@ -693,6 +693,12 @@ class MessagingService {
     // spares them re-sending a key we have, and it is the only opener a peer
     // who has switched discovery off will answer at all.
     final knownStatic = _knownStaticFor(displayName, peerId);
+    DebugLog.instance.log(
+      'NOISE',
+      knownStatic == null
+          ? 'no known key for $peerId — opening with XX'
+          : 'known key for $peerId — opening with IK',
+    );
     final session = knownStatic == null
         ? await manager.startInitiator(peerId, peerLabel: displayName)
         : await manager.startInitiatorIk(

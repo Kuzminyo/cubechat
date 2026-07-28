@@ -10,6 +10,7 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../core/transport/peer_id.dart';
@@ -374,10 +375,16 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
         match = null;
       }
       if (match == null) {
+        DebugLog.instance.log(
+          'BLE-SCAN',
+          'id $id matches nobody in the roster (${roster.length} contacts) '
+              '— stranger, or their epoch is out of our window',
+        );
         out.add(peer);
         continue;
       }
       final hex = PeerId.hex(match);
+      DebugLog.instance.log('BLE-SCAN', 'id $id resolved to $hex — IK is on');
       out.add(peer.copyWith(
         resolvedPubkeyHex: hex,
         // A recognised contact is shown under the name we already know them

@@ -5,6 +5,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../features/peers/models/discovered_peer.dart';
 import '../identity/nickname_controller.dart';
+import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'ble_constants.dart';
 import '../transport/peer_id.dart';
@@ -280,6 +281,17 @@ class BleScanner {
       final key = rotatingId != null
           ? 'r:$rotatingId'
           : (advName.isNotEmpty ? 'n:$advName' : 'm:$mac');
+      // Logged once per newly-seen advertiser, not per scan result — this fires
+      // several times a second otherwise.
+      if (!_peers.containsKey(key)) {
+        DebugLog.instance.log(
+          'BLE-SCAN',
+          rotatingId != null
+              ? 'saw rotating id $rotatingId ($mac)'
+              : 'no rotating id from $mac (advName="$advName", '
+                  '${r.advertisementData.serviceData.length} service-data entries)',
+        );
+      }
       final existing = _peers[key];
       if (existing == null) {
         _peers[key] = DiscoveredPeer(
@@ -327,11 +339,20 @@ class BleScanner {
   String? _rotatingIdOf(ScanResult r) {
     final data = r.advertisementData.serviceData;
     for (final entry in data.entries) {
-      if (entry.key.str.toLowerCase() !=
-          BleConstants.serviceUuid.toLowerCase()) {
+      // Guid.str collapses a 16/32-bit UUID to its short form, so compare the
+      // full 128-bit spelling on both sides rather than whatever each happens
+      // to be stored as.
+      if (entry.key.str128.toLowerCase() !=
+          Guid(BleConstants.serviceUuid).str128.toLowerCase()) {
         continue;
       }
-      if (entry.value.length != PeerId.len) continue;
+      if (entry.value.length != PeerId.len) {
+        DebugLog.instance.log(
+          'BLE-SCAN',
+          'service data is ${entry.value.length}B, expected ${PeerId.len}',
+        );
+        continue;
+      }
       return PeerId.hex(Uint8List.fromList(entry.value));
     }
     // iOS: the local name *is* the id. Anything that isn't exactly the right
