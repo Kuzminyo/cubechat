@@ -4,7 +4,20 @@ import 'package:cryptography/cryptography.dart';
 
 import '../identity_keys.dart';
 import 'noise_cipher_state.dart';
+import 'noise_handshake.dart';
 import 'noise_handshake_state.dart';
+import 'noise_ik_handshake_state.dart';
+
+/// The two handshake patterns cubechat speaks.
+enum NoisePattern {
+  /// Mutual auth with no prior knowledge — the only way to meet a stranger,
+  /// and the reason a stranger can learn our static key by dialling us.
+  xx,
+
+  /// Mutual auth where the initiator already holds the responder's static key.
+  /// The responder never transmits it, so an unknown caller learns nothing.
+  ik,
+}
 
 /// High-level wrapper around the XX handshake.
 ///
@@ -29,9 +42,14 @@ import 'noise_handshake_state.dart';
 ///   established on both sides
 /// ```
 class NoiseSession {
-  NoiseSession._(this._handshake);
+  NoiseSession._(this._handshake, this.pattern);
 
-  final NoiseHandshakeState _handshake;
+  final NoiseHandshake _handshake;
+
+  /// Which pattern this session is running. The caller needs it to label the
+  /// outbound frames, since the two patterns have different message counts.
+  final NoisePattern pattern;
+
   NoiseCipherState? _sendCs;
   NoiseCipherState? _recvCs;
 
@@ -40,7 +58,7 @@ class NoiseSession {
       isInitiator: true,
       localStatic: identity.asKeyPair(),
     );
-    return NoiseSession._(hs);
+    return NoiseSession._(hs, NoisePattern.xx);
   }
 
   static Future<NoiseSession> respond(IdentityKeys identity) async {
@@ -48,7 +66,34 @@ class NoiseSession {
       isInitiator: false,
       localStatic: identity.asKeyPair(),
     );
-    return NoiseSession._(hs);
+    return NoiseSession._(hs, NoisePattern.xx);
+  }
+
+  /// Start an IK handshake against a peer whose static key we already hold.
+  ///
+  /// Preferred over [initiate] whenever we know the peer, because it spares
+  /// them having to reveal that key again — and because a peer who is not
+  /// discoverable will refuse XX outright.
+  static Future<NoiseSession> initiateIk(
+    IdentityKeys identity,
+    Uint8List remoteStatic,
+  ) async {
+    final hs = await NoiseIkHandshakeState.initialize(
+      isInitiator: true,
+      localStatic: identity.asKeyPair(),
+      remoteStatic: remoteStatic,
+    );
+    return NoiseSession._(hs, NoisePattern.ik);
+  }
+
+  /// Accept an IK handshake. We are the key the initiator had to know, so
+  /// there is nothing to supply here.
+  static Future<NoiseSession> respondIk(IdentityKeys identity) async {
+    final hs = await NoiseIkHandshakeState.initialize(
+      isInitiator: false,
+      localStatic: identity.asKeyPair(),
+    );
+    return NoiseSession._(hs, NoisePattern.ik);
   }
 
   bool get established => _handshake.handshakeFinished;

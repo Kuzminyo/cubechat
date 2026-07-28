@@ -24,6 +24,18 @@ enum FrameType {
   /// handshake; may carry the first encrypted application payload.
   noiseHandshake3(0x03),
 
+  /// Initiator → Responder: first Noise **IK** message (`e, es, s, ss`).
+  ///
+  /// Separate types rather than a flag on the XX ones, because the two
+  /// patterns are different lengths and a responder must be able to refuse one
+  /// without parsing it: with "Discoverable nearby" off, [noiseHandshake1] is
+  /// rejected on sight and only this is answered.
+  noiseIk1(0x04),
+
+  /// Responder → Initiator: second Noise IK message (`e, ee, se`) — completes
+  /// the handshake in two messages rather than three.
+  noiseIk2(0x05),
+
   /// Either direction after handshake: encrypted application payload.
   transport(0x10),
 

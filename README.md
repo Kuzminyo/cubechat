@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **420 passing tests** (`flutter test`, including known-answer
+covered by **440 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -35,8 +35,9 @@ UI work but have no BLE.
 - [x] M6 — Nostr internet fallback (see below)
 - [x] M6.5 — Contact cards: open a chat with someone who has never been in BLE range
 - [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
+- [x] M7.5 — Noise IK: a stranger who dials you no longer learns your static key
 
-> The `[x]` marks above reflect what's implemented and covered by the 420-test
+> The `[x]` marks above reflect what's implemented and covered by the 440-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -115,7 +116,8 @@ Noise/X3DH/Nostr-event framing is implemented in-repo and pinned to test vectors
 
 | Layer | Purpose | Primitive |
 |---|---|---|
-| **Noise Protocol XX** | Mutually-authenticated session over a direct BLE link | X25519 + ChaCha20-Poly1305 + BLAKE2s, spec-faithful (§5 SymmetricState, HMAC-BLAKE2s HKDF, correct 96-bit nonce) |
+| **Noise Protocol XX** | Meeting a stranger over a direct BLE link | X25519 + ChaCha20-Poly1305 + BLAKE2s, spec-faithful (§5 SymmetricState, HMAC-BLAKE2s HKDF, correct 96-bit nonce) |
+| **Noise Protocol IK** | Calling a peer whose key we already hold — the responder never transmits its own | Same primitives; two messages, with the responder static as a pre-message |
 | **X3DH** | Per-message forward secrecy for multi-hop / async delivery | X25519 signed prekeys + ephemeral keys |
 | **SealedBox** | Anonymous encryption to a peer we can't hold a session with (relays forward without decrypting) | libsodium-style `crypto_box_seal` |
 | **SignedPayload** | Proves message authorship end-to-end | Ed25519 over a route-bound context (origin ‖ dest ‖ msgId ‖ timestamp) |
@@ -161,20 +163,59 @@ counterpart: **Profile → Discoverable nearby**.
 | | Discoverable (default) | Off |
 |---|---|---|
 | Announcement | cleartext broadcast, relayed mesh-wide | sealed per contact, addressed to their rotating id |
-| A stranger in range | learns your key, name, prekey, npub | sees opaque frames to meaningless ids |
+| Handshake accepted | XX and IK | **IK only** |
+| A stranger in range | learns your key, name, prekey, npub | sees opaque frames to meaningless ids, and gets no answer at all |
 | Meeting someone new | walk up to them | they need a contact card |
 
 Default on, because meeting someone by standing next to them is the premise of
 the app and silently disabling it would break the Peers screen for a property
 most people did not ask for.
 
-> **The gap that remains.** A stranger who deliberately connects and completes a
-> Noise XX handshake still learns your static key — XX sends it encrypted to the
-> initiator, hidden from observers but readable by whoever is on the other end.
-> Closing that needs a different handshake pattern (IK, or XX with a pre-shared
-> key), which is out of scope here. Discovery-off narrows you to "reachable only
-> by people who already have your card"; it does not make you invisible to
-> someone who dials you directly.
+### Two handshake patterns, and why
+
+XX puts the responder's static key in its second message. Encrypted, so a
+listener cannot read it — but the *initiator* can, and the initiator is whoever
+just dialled you. So one deliberate connection hands a stranger the long-term
+key that identifies the device forever and from which every rotating id is
+derived, undoing both of the measures above.
+
+**IK** (`Noise_IK_25519_ChaChaPoly_BLAKE2s`, `noise_ik_handshake_state.dart`)
+never transmits it:
+
+```
+  <- s                     pre-message: the initiator already has it
+  -> e, es, s, ss
+  <- e, ee, se
+```
+
+The opener is encrypted under `es` — a DH against the responder's static key —
+so producing one that decrypts *is* proof of already holding it. Someone
+without it gets no session, no key, and no reply. It is also a round trip
+shorter, and the initiator's own key travels encrypted rather than in the clear.
+
+The two are used together: IK whenever we already know who we are calling
+(a chat opened from the Chats list, a reconnect within the same run), XX
+otherwise. With discovery **off** the responder refuses XX outright, which is
+what closes the hole.
+
+> **What this costs, and what is still open.** BLE advertises a service UUID and
+> a rotating hardware address — not an identity — and a peer's key is only
+> learned *after* a handshake authenticates them. So with discovery off, a
+> contact walking up to you generally cannot tell which advertisement is you,
+> cannot produce an IK opener addressed to you, and will not get in either. In
+> that mode you are reachable over the relay by people holding your card, and
+> effectively closed over Bluetooth.
+>
+> Fixing that means letting contacts *recognise* you without letting strangers
+> do so — advertising the rotating peer id and having contacts resolve it
+> through the index they already build. iOS cannot advertise service or
+> manufacturer data, so it would have to ride in the local name, and it needs
+> native work on both platforms. Not done here.
+>
+> One standard IK caveat also applies: an attacker who later compromises the
+> responder's static key can decrypt a recorded first message and learn *who*
+> was calling. Message contents stay safe — transport keys come from the
+> ephemerals — and the application layer adds its own forward secrecy on top.
 
 > **Scope note.** Group channels use one shared symmetric key (no per-sender
 > forward secrecy — that needs a group key-agreement protocol like MLS, out of
@@ -414,7 +455,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 420 tests, incl. crypto known-answer vectors
+flutter test         # 440 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -459,8 +500,12 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **420 tests** across 37 files. Highlights:
+`flutter test` — **440 tests** across 39 files. Highlights:
 
+- `noise_ik_test`, `noise_ik_session_test` — the IK pattern: two-message
+  round trip, mutual authentication, that neither static key appears on the
+  wire, that a caller with the wrong key gets no session and no reply, and that
+  XX still runs unchanged alongside it
 - `noise_xx_test`, `x3dh_test`, `sealed_box_test`, `signed_payload_test`,
   `fs_message_test`, `announcement_test` — session + message crypto
 - `secp256k1_bip340_test` — pure-Dart secp256k1 signer pinned to the

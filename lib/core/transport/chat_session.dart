@@ -78,12 +78,37 @@ class ChatSession {
   /// the handshake has completed).
   Future<String?> remoteFingerprint() => _noise.remoteFingerprint();
 
+  /// Which handshake pattern this session runs. Decides the frame types and,
+  /// for IK, that there is no third message.
+  NoisePattern get pattern => _noise.pattern;
+
   static Future<ChatSession> initiate({
     required String peerId,
     required String peerLabel,
     required IdentityKeys identity,
   }) async {
     final noise = await NoiseSession.initiate(identity);
+    return ChatSession._(
+      peerId: peerId,
+      peerLabel: peerLabel,
+      identity: identity,
+      noise: noise,
+      isInitiator: true,
+    );
+  }
+
+  /// Open a session with a peer whose static key we already hold.
+  ///
+  /// Costs one round trip fewer than XX and, more to the point, does not ask
+  /// the peer to hand over a key we already have — which is what lets them
+  /// refuse to hand it to anyone else.
+  static Future<ChatSession> initiateIk({
+    required String peerId,
+    required String peerLabel,
+    required IdentityKeys identity,
+    required Uint8List remoteStatic,
+  }) async {
+    final noise = await NoiseSession.initiateIk(identity, remoteStatic);
     return ChatSession._(
       peerId: peerId,
       peerLabel: peerLabel,
@@ -108,19 +133,39 @@ class ChatSession {
     );
   }
 
+  /// Accept an inbound IK handshake.
+  static Future<ChatSession> respondIk({
+    required String peerId,
+    required String peerLabel,
+    required IdentityKeys identity,
+  }) async {
+    final noise = await NoiseSession.respondIk(identity);
+    return ChatSession._(
+      peerId: peerId,
+      peerLabel: peerLabel,
+      identity: identity,
+      noise: noise,
+      isInitiator: false,
+    );
+  }
+
   /// Produces the next outbound frame in the handshake (whichever message
   /// the pattern is currently expecting from our side). Returns null if it's
   /// not our turn or the handshake is done.
   Future<Frame?> nextHandshakeFrame() async {
     if (_noise.established) return null;
 
+    final isIk = pattern == NoisePattern.ik;
     final FrameType type;
     if (isInitiator && _status == ChatSessionStatus.idle) {
-      type = FrameType.noiseHandshake1;
+      type = isIk ? FrameType.noiseIk1 : FrameType.noiseHandshake1;
       _status = ChatSessionStatus.handshakingInitiator;
     } else if (!isInitiator && _status == ChatSessionStatus.handshakingResponder) {
-      type = FrameType.noiseHandshake2;
+      type = isIk ? FrameType.noiseIk2 : FrameType.noiseHandshake2;
     } else if (isInitiator && _status == ChatSessionStatus.handshakingInitiator) {
+      // IK is two messages: the initiator writes once and is finished when the
+      // reply lands. Only XX has a third.
+      if (isIk) return null;
       type = FrameType.noiseHandshake3;
     } else {
       return null;

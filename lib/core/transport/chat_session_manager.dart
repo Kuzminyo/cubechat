@@ -35,6 +35,31 @@ class ChatSessionManager extends Notifier<Map<String, ChatSession>> {
     return session;
   }
 
+  /// Creates a fresh initiator-side session against a peer whose static key we
+  /// already hold, using IK rather than XX.
+  ///
+  /// Preferred whenever the key is known: it is a round trip shorter, and it is
+  /// the only opener a peer who has turned discovery off will answer.
+  Future<ChatSession> startInitiatorIk(
+    String peerId, {
+    required String peerLabel,
+    required Uint8List remoteStatic,
+  }) async {
+    final existing = state[peerId];
+    if (existing != null && existing.status != ChatSessionStatus.failed) {
+      return existing;
+    }
+    final identity = await ref.read(identityProvider.future);
+    final session = await ChatSession.initiateIk(
+      peerId: peerId,
+      peerLabel: peerLabel,
+      identity: identity,
+      remoteStatic: remoteStatic,
+    );
+    state = {...state, peerId: session};
+    return session;
+  }
+
   /// Creates a fresh responder-side session. Used when our peripheral receives
   /// the first handshake byte stream from an unknown central.
   Future<ChatSession> startResponder(String peerId, {String? peerLabel}) async {
@@ -44,6 +69,22 @@ class ChatSessionManager extends Notifier<Map<String, ChatSession>> {
     }
     final identity = await ref.read(identityProvider.future);
     final session = await ChatSession.respond(
+      peerId: peerId,
+      peerLabel: peerLabel ?? 'Peer ${peerId.substring(0, peerId.length.clamp(0, 6))}',
+      identity: identity,
+    );
+    state = {...state, peerId: session};
+    return session;
+  }
+
+  /// Responder side for an inbound IK opener.
+  Future<ChatSession> startResponderIk(String peerId, {String? peerLabel}) async {
+    final existing = state[peerId];
+    if (existing != null && existing.status != ChatSessionStatus.failed) {
+      return existing;
+    }
+    final identity = await ref.read(identityProvider.future);
+    final session = await ChatSession.respondIk(
       peerId: peerId,
       peerLabel: peerLabel ?? 'Peer ${peerId.substring(0, peerId.length.clamp(0, 6))}',
       identity: identity,

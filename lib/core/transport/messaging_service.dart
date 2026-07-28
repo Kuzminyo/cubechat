@@ -466,6 +466,36 @@ class MessagingService {
     }
   }
 
+  /// The peer's Noise static key, if we can tell who is behind [peerId]
+  /// *before* handshaking. Null means we cannot, and the caller falls back to
+  /// XX.
+  ///
+  /// This is deliberately narrow, because BLE gives us very little to go on: an
+  /// advertisement carries a service UUID and a rotating hardware address, not
+  /// an identity, and [DiscoveredPeer.pubkeyFingerprint] is only filled in
+  /// *after* a handshake has authenticated the peer. So the two cases that do
+  /// resolve are:
+  ///
+  ///  * a chat opened from the Chats list, where the route id *is* the peer's
+  ///    pubkey hex rather than a device id;
+  ///  * a reconnect to a device we already authenticated in this run, where the
+  ///    old session still remembers the key.
+  ///
+  /// Everything else — tapping a fresh row in Nearby — genuinely does not know
+  /// yet, which is precisely why XX exists.
+  Uint8List? _knownStaticFor(String displayName, String peerId) {
+    // The Chats list routes by pubkey hex; Nearby routes by device id.
+    if (peerId.length == 64 && RegExp(r'^[0-9a-f]+$').hasMatch(peerId)) {
+      try {
+        return _hexDecodeBytes(peerId);
+      } catch (_) {
+        // Not hex after all — fall through.
+      }
+    }
+    final prior = _ref.read(chatSessionManagerProvider)[peerId];
+    return prior?.remoteStaticPublicKey;
+  }
+
   /// Marks an announcement body as `[0x01][SealedBox blob]` rather than a bare
   /// signed announcement. Only ever used off-mesh — see [_announceOverNostrTo]
   /// for why a relay introduction must not be readable by the relay, and
@@ -643,8 +673,18 @@ class MessagingService {
     });
 
     final manager = _ref.read(chatSessionManagerProvider.notifier);
-    final session =
-        await manager.startInitiator(peerId, peerLabel: displayName);
+    // Prefer IK whenever we already hold this peer's static key — from a past
+    // handshake, an announcement, or a contact card. It saves a round trip, it
+    // spares them re-sending a key we have, and it is the only opener a peer
+    // who has switched discovery off will answer at all.
+    final knownStatic = _knownStaticFor(displayName, peerId);
+    final session = knownStatic == null
+        ? await manager.startInitiator(peerId, peerLabel: displayName)
+        : await manager.startInitiatorIk(
+            peerId,
+            peerLabel: displayName,
+            remoteStatic: knownStatic,
+          );
 
     _armHandshakeWatchdog(peerId);
 
@@ -2323,6 +2363,17 @@ class MessagingService {
       case FrameType.noiseHandshake1:
         // Only valid when we're acting as responder (peripheral side received
         // a fresh HS1 from a central we don't yet have a session with).
+        //
+        // XX hands our static key to whoever asked, which is fine while we are
+        // advertising ourselves to strangers and not fine when we are not. With
+        // discovery off the only accepted opener is IK, which the caller can
+        // only produce if they already hold that key — so an unknown caller
+        // gets nothing, not even confirmation that a cubechat identity is here.
+        if (!_ref.read(discoverySettingsProvider).discoverable) {
+          DebugLog.instance.log(
+              'NOISE', 'refused XX from $peerId: not discoverable');
+          return;
+        }
         _armHandshakeWatchdog(peerId);
         final session = await manager.startResponder(peerId);
         final reply = await session.handleHandshakeFrame(frame);
@@ -2334,6 +2385,21 @@ class MessagingService {
         if (reply != null)
           await _writeBack(peerId, reply, fromCentral: fromCentral);
 
+      case FrameType.noiseIk1:
+        // Always accepted: producing this required our static key already, so
+        // answering it reveals nothing a stranger could not have had.
+        _armHandshakeWatchdog(peerId);
+        final session = await manager.startResponderIk(peerId);
+        final reply = await session.handleHandshakeFrame(frame);
+        manager.touch(peerId);
+        if (session.isEstablished) {
+          _clearHandshakeWatchdog(peerId);
+          _registerKnownPeer(session);
+        }
+        if (reply != null)
+          await _writeBack(peerId, reply, fromCentral: fromCentral);
+
+      case FrameType.noiseIk2:
       case FrameType.noiseHandshake2:
       case FrameType.noiseHandshake3:
         final session = manager.sessionFor(peerId);

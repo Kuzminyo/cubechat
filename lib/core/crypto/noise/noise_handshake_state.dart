@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import 'noise_cipher_state.dart';
+import 'noise_handshake.dart';
 import 'noise_constants.dart';
 import 'noise_symmetric_state.dart';
 
@@ -18,7 +19,7 @@ import 'noise_symmetric_state.dart';
 ///
 /// After the third message both sides Split() the SymmetricState into two
 /// CipherStates used for transport (one per direction).
-class NoiseHandshakeState {
+class NoiseHandshakeState implements NoiseHandshake {
   NoiseHandshakeState._({
     required this.isInitiator,
     required this.localStatic,

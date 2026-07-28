@@ -14,4 +14,12 @@ abstract final class NoiseConstants {
 
   /// Full protocol name string — used as the initial hash material.
   static const String protocolName = 'Noise_XX_25519_ChaChaPoly_BLAKE2s';
+
+  /// Protocol name for the IK pattern.
+  ///
+  /// Distinct from [protocolName] and that matters: the name is the first
+  /// thing hashed into `h`, so the two patterns start from different chaining
+  /// keys and a message from one can never be mistaken for a message of the
+  /// other — it simply fails to decrypt.
+  static const String protocolNameIk = 'Noise_IK_25519_ChaChaPoly_BLAKE2s';
 }
