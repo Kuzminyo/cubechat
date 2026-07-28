@@ -25,6 +25,9 @@ final class CubechatBlePeripheralPlugin: NSObject {
   private var peerInfoUuid: CBUUID?
 
   private var peerName: String = ""
+
+  /// Our rotating peer id, lowercase hex, advertised as the local name.
+  private var advertisedId: String = ""
   private var pubkeyFingerprint: String?
   private var protocolVersion: Int = 1
 
@@ -78,6 +81,7 @@ final class CubechatBlePeripheralPlugin: NSObject {
       self.outboundUuid = CBUUID(string: outb)
       self.peerInfoUuid = CBUUID(string: info)
       self.peerName = (args["peerName"] as? String) ?? ""
+      self.advertisedId = (args["advertisedIdHex"] as? String) ?? ""
       self.pubkeyFingerprint = args["pubkeyFingerprint"] as? String
       self.protocolVersion = (args["protocolVersion"] as? Int) ?? 1
       result(startPeripheral())
@@ -168,8 +172,17 @@ final class CubechatBlePeripheralPlugin: NSObject {
     var advertData: [String: Any] = [
       CBAdvertisementDataServiceUUIDsKey: [svcUuid]
     ]
-    if !peerName.isEmpty {
-      advertData[CBAdvertisementDataLocalNameKey] = peerName
+    // The rotating peer id, not the nickname. A nickname is a permanent label:
+    // broadcast continuously it lets any passive scanner follow the device
+    // forever, which is exactly what the rotating ids exist to prevent. The id
+    // is resolvable by a contact — they hold the key it is derived from — and
+    // meaningless to everyone else.
+    //
+    // It rides in the local name because CoreBluetooth accepts only that and a
+    // service-UUID list when advertising; service data, which Android uses for
+    // the same bytes, is not available here.
+    if !advertisedId.isEmpty {
+      advertData[CBAdvertisementDataLocalNameKey] = advertisedId
     }
     mgr.startAdvertising(advertData)
     running = true

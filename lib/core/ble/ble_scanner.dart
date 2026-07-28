@@ -7,6 +7,7 @@ import '../../features/peers/models/discovered_peer.dart';
 import '../identity/nickname_controller.dart';
 import '../util/platform_info.dart';
 import 'ble_constants.dart';
+import '../transport/peer_id.dart';
 
 /// Cubechat central-role scanner.
 ///
@@ -269,13 +270,16 @@ class BleScanner {
     for (final r in results) {
       final mac = r.device.remoteId.str;
       final advName = r.advertisementData.advName;
+      final rotatingId = _rotatingIdOf(r);
       final advertisedName = _resolveName(r);
-      // Dedup key: Android rotates the BLE MAC for privacy, so the SAME
-      // phone shows up under many addresses. The advertised name (our
-      // nickname, made unique per identity for the default case) is stable
-      // across rotation, so we key on it and keep the freshest MAC for
-      // connecting. Unnamed advertisers fall back to the MAC.
-      final key = advName.isNotEmpty ? 'n:$advName' : 'm:$mac';
+      // Dedup key: Android rotates the BLE MAC for privacy, so the SAME phone
+      // shows up under many addresses. The rotating peer id is stable across
+      // that rotation (for an epoch) and is what a cubechat build now
+      // advertises, so it is the best key we have. Older builds advertising a
+      // name fall back to it, and anything unnamed to the MAC.
+      final key = rotatingId != null
+          ? 'r:$rotatingId'
+          : (advName.isNotEmpty ? 'n:$advName' : 'm:$mac');
       final existing = _peers[key];
       if (existing == null) {
         _peers[key] = DiscoveredPeer(
@@ -283,6 +287,7 @@ class BleScanner {
           advertisedName: advertisedName,
           rssi: r.rssi,
           lastSeen: now,
+          rotatingId: rotatingId,
         );
         changed = true;
         continue;
@@ -298,6 +303,8 @@ class BleScanner {
         lastSeen: now,
         pubkeyFingerprint: existing.pubkeyFingerprint,
         isConnected: existing.isConnected,
+        rotatingId: rotatingId ?? existing.rotatingId,
+        resolvedPubkeyHex: existing.resolvedPubkeyHex,
       );
       if (rssiMoved || macChanged ||
           existing.advertisedName != advertisedName) {
@@ -309,6 +316,33 @@ class BleScanner {
     // and we want the cycle tight again from that moment on.
     if (results.isNotEmpty) _emptyIdleWindows = 0;
     if (changed) _emit();
+  }
+
+  /// The rotating peer id this advertisement carried, lowercase hex, or null.
+  ///
+  /// Two places to look, because the platforms allow different things: Android
+  /// puts it in service data under our own service UUID (setting a local name
+  /// there would mean renaming the Bluetooth adapter system-wide), and iOS puts
+  /// it in the local name (CoreBluetooth cannot advertise service data at all).
+  String? _rotatingIdOf(ScanResult r) {
+    final data = r.advertisementData.serviceData;
+    for (final entry in data.entries) {
+      if (entry.key.str.toLowerCase() !=
+          BleConstants.serviceUuid.toLowerCase()) {
+        continue;
+      }
+      if (entry.value.length != PeerId.len) continue;
+      return PeerId.hex(Uint8List.fromList(entry.value));
+    }
+    // iOS: the local name *is* the id. Anything that isn't exactly the right
+    // number of hex characters is some other advertiser, or an older build
+    // still broadcasting a nickname.
+    final name = r.advertisementData.advName;
+    if (name.length == PeerId.len * 2 &&
+        RegExp(r'^[0-9a-f]+$').hasMatch(name.toLowerCase())) {
+      return name.toLowerCase();
+    }
+    return null;
   }
 
   String _resolveName(ScanResult r) {

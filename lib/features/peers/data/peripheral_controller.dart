@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/ble_peripheral.dart';
 import '../../../core/ble/ble_permissions.dart';
+import '../../../core/crypto/identity_service.dart';
+import '../../../core/transport/peer_id.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 
@@ -75,6 +78,9 @@ class PeripheralController extends Notifier<PeripheralState> {
   /// value to a new listener, so without this the watcher would re-enter
   /// [start] while the first call is still walking its checks.
   bool _starting = false;
+
+  /// Fires when the current epoch ends, so the advertised id never goes stale.
+  Timer? _idTimer;
 
   @override
   PeripheralState build() {
@@ -170,15 +176,67 @@ class PeripheralController extends Notifier<PeripheralState> {
       return;
     }
 
+    // What we actually broadcast: the rotating peer id, not a nickname. A
+    // nickname on the air is a permanent handle — it would let any passive
+    // scanner follow this phone between BLE address rotations, which is exactly
+    // what those rotations exist to prevent, and would undo the rotating ids.
+    // A contact resolves this back to us because they hold the key it derives
+    // from; to everyone else it is eight bytes that change every hour.
+    final advertisedId = await _currentAdvertisedId();
+
     log.log('PERIPH-CTL', 'calling native start…');
     final ok = await peripheral.start(
       peerName: peerName,
       pubkeyFingerprint: pubkeyFingerprint,
+      advertisedId: advertisedId,
     );
     log.log('PERIPH-CTL', 'native start returned $ok');
     state = state.copyWith(
       status: ok ? PeripheralStatus.broadcasting : PeripheralStatus.failed,
     );
+    if (ok) _armIdRotationTimer();
+  }
+
+  /// Our id for the current epoch, or null if the identity isn't ready yet
+  /// (advertising then falls back to the service UUID alone, which is
+  /// unrecognisable rather than wrong).
+  Future<Uint8List?> _currentAdvertisedId() async {
+    try {
+      final identity = await ref.read(identityProvider.future);
+      return PeerId.derive(
+        Uint8List.fromList(identity.publicKey),
+        PeerId.epochAt(DateTime.now()),
+      );
+    } catch (e) {
+      DebugLog.instance.log('PERIPH-CTL', 'no advertised id yet: $e');
+      return null;
+    }
+  }
+
+  /// Re-advertise when the epoch turns.
+  ///
+  /// An id that outlived its epoch would be worse than useless: contacts
+  /// compute the *current* one when they try to recognise us, so a stale
+  /// advertisement makes us unrecognisable to exactly the people it is for,
+  /// while still being a stable handle for anyone watching.
+  void _armIdRotationTimer() {
+    _idTimer?.cancel();
+    final now = DateTime.now();
+    final period = PeerId.rotationPeriod.inMilliseconds;
+    final elapsed = now.millisecondsSinceEpoch % period;
+    // A little past the boundary, so a clock a second out doesn't re-advertise
+    // the epoch we just left.
+    final untilNext = Duration(milliseconds: period - elapsed + 2000);
+    _idTimer = Timer(untilNext, () async {
+      if (state.status != PeripheralStatus.broadcasting) return;
+      final name = _lastPeerName;
+      if (name == null) return;
+      DebugLog.instance.log('PERIPH-CTL', 'epoch turned — re-advertising');
+      // A restart is the only way to change what CoreBluetooth and the Android
+      // advertiser are broadcasting; neither exposes an in-place update.
+      await ref.read(blePeripheralProvider).stop();
+      await start(peerName: name, pubkeyFingerprint: _lastFingerprint);
+    });
   }
 
   Future<void> stop() async {

@@ -13,7 +13,13 @@ import 'ble_constants.dart';
 /// throw, so the rest of the app can be developed with central-only behavior.
 abstract class BlePeripheral {
   Future<bool> isSupported();
-  Future<bool> start({required String peerName, String? pubkeyFingerprint});
+  /// [advertisedId] is our rotating peer id — the eight bytes a contact can
+  /// resolve back to us and nobody else can. See [PeerId].
+  Future<bool> start({
+    required String peerName,
+    String? pubkeyFingerprint,
+    Uint8List? advertisedId,
+  });
   Future<void> stop();
   Stream<PeripheralEvent> events();
 
@@ -46,7 +52,11 @@ class MethodChannelBlePeripheral implements BlePeripheral {
   }
 
   @override
-  Future<bool> start({required String peerName, String? pubkeyFingerprint}) async {
+  Future<bool> start({
+    required String peerName,
+    String? pubkeyFingerprint,
+    Uint8List? advertisedId,
+  }) async {
     try {
       final result = await _channel.invokeMethod<bool>('start', {
         'serviceUuid': BleConstants.serviceUuid,
@@ -55,6 +65,10 @@ class MethodChannelBlePeripheral implements BlePeripheral {
         'peerInfoCharUuid': BleConstants.peerInfoCharUuid,
         'peerName': peerName,
         'pubkeyFingerprint': pubkeyFingerprint,
+        // Android takes the raw bytes (service data); iOS can only advertise a
+        // local name, so it gets the hex.
+        'advertisedId': advertisedId,
+        'advertisedIdHex': advertisedId == null ? null : _hex(advertisedId),
         'protocolVersion': BleConstants.protocolVersion,
       });
       return result ?? false;
@@ -66,6 +80,9 @@ class MethodChannelBlePeripheral implements BlePeripheral {
       return false;
     }
   }
+
+  static String _hex(Uint8List bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   @override
   Future<void> stop() async {

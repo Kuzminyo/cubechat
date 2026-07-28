@@ -52,6 +52,10 @@ class CubechatBlePeripheralPlugin(
     private var outboundCharUuid: UUID? = null
     private var peerInfoCharUuid: UUID? = null
     private var peerName: String = ""
+
+    /// Our rotating peer id, advertised so contacts can recognise us without
+    /// anyone else being able to. Null until Dart supplies one.
+    private var advertisedId: ByteArray? = null
     private var pubkeyFingerprint: String? = null
     private var protocolVersion: Int = 1
 
@@ -97,6 +101,7 @@ class CubechatBlePeripheralPlugin(
                     outboundCharUuid = UUID.fromString(args["outboundCharUuid"] as String)
                     peerInfoCharUuid = UUID.fromString(args["peerInfoCharUuid"] as String)
                     peerName = args["peerName"] as? String ?: ""
+                    advertisedId = args["advertisedId"] as? ByteArray
                     pubkeyFingerprint = args["pubkeyFingerprint"] as? String
                     protocolVersion = (args["protocolVersion"] as? Int) ?: 1
                 } catch (e: Exception) {
@@ -263,10 +268,27 @@ class CubechatBlePeripheralPlugin(
             .addServiceUuid(ParcelUuid(serviceUuid))
             .build()
 
-        // Device name goes in scan response to save room in the primary packet.
-        val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .build()
+        // The scan response used to carry setIncludeDeviceName(true), which is
+        // the *system* Bluetooth name — "Galaxy S24", the user's real device,
+        // broadcast to every scanner in range. That flatly contradicted the
+        // anonymity the rest of the app is built around.
+        //
+        // It now carries the rotating peer id instead: eight bytes that a
+        // contact can resolve (they hold the key it is derived from) and that
+        // mean nothing to anyone else, and that change every epoch so a passive
+        // scanner cannot follow a device between them.
+        //
+        // Service data rather than a local name because setting a local name on
+        // Android means renaming the Bluetooth adapter system-wide. iOS cannot
+        // advertise service data at all, so it uses the local name there; the
+        // scanner reads both.
+        val scanResponseBuilder = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+        val idBytes = advertisedId
+        if (idBytes != null && idBytes.isNotEmpty()) {
+            scanResponseBuilder.addServiceData(ParcelUuid(serviceUuid), idBytes)
+        }
+        val scanResponse = scanResponseBuilder.build()
 
         return try {
             advertiser?.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)

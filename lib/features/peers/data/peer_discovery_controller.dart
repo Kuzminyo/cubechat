@@ -12,7 +12,9 @@ import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/platform_info.dart';
+import '../../../core/transport/peer_id.dart';
 import '../models/discovered_peer.dart';
+import 'known_peers_controller.dart';
 import 'peripheral_controller.dart';
 
 /// All the things that can be wrong with BLE on the current device.
@@ -308,9 +310,10 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   Future<void> _wireStreams() async {
     final scanner = ref.read(bleScannerProvider);
     await _peerSub?.cancel();
-    _peerSub = scanner.peers.listen((peers) {
-      state = state.copyWith(peers: peers);
-      _maybeAutoConnect(peers);
+    _peerSub = scanner.peers.listen((peers) async {
+      final resolved = await _resolveContacts(peers);
+      state = state.copyWith(peers: resolved);
+      _maybeAutoConnect(resolved);
     });
     await _adapterSub?.cancel();
     _adapterSub = scanner.adapterState.listen((s) {
@@ -323,6 +326,79 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
         state = state.copyWith(status: PeerDiscoveryStatus.adapterOff);
       }
     });
+  }
+
+  /// Turn advertised rotating ids into the contacts behind them.
+  ///
+  /// This is what BLE could never tell us before: an advertisement carries a
+  /// service UUID and a rotating hardware address, and a peer's identity only
+  /// emerged *after* a handshake. Now a device that advertises its rotating id
+  /// can be recognised by anyone holding the key it derives from — so a contact
+  /// shows up under their own name, and we can address an IK opener at them
+  /// instead of falling back to XX and asking them to reveal a key we already
+  /// have.
+  ///
+  /// A stranger's id resolves to nothing and they stay anonymous, which is the
+  /// half of the property that matters.
+  Future<List<DiscoveredPeer>> _resolveContacts(
+    List<DiscoveredPeer> peers,
+  ) async {
+    if (peers.every((p) => p.rotatingId == null)) return peers;
+    final roster = ref.read(knownPeersControllerProvider);
+    if (roster.isEmpty) return peers;
+
+    final pubkeys = <Uint8List>[];
+    for (final p in roster.values) {
+      try {
+        pubkeys.add(_hexDecode(p.pubkeyHex));
+      } catch (_) {
+        // malformed roster entry — skip
+      }
+    }
+
+    final out = <DiscoveredPeer>[];
+    for (final peer in peers) {
+      final id = peer.rotatingId;
+      if (id == null || peer.resolvedPubkeyHex != null) {
+        out.add(peer);
+        continue;
+      }
+      Uint8List? match;
+      try {
+        match = await _peerIds.lookup(
+          _hexDecode(id),
+          rosterToken: roster,
+          pubkeys: pubkeys,
+        );
+      } catch (_) {
+        match = null;
+      }
+      if (match == null) {
+        out.add(peer);
+        continue;
+      }
+      final hex = PeerId.hex(match);
+      out.add(peer.copyWith(
+        resolvedPubkeyHex: hex,
+        // A recognised contact is shown under the name we already know them
+        // by, not the meaningless id they broadcast.
+        advertisedName: roster[hex]?.displayName,
+      ));
+    }
+    return out;
+  }
+
+  /// Reverse index over the roster, shared across scan emissions so a busy
+  /// window does not re-hash every contact for every advertisement.
+  final PeerIdIndex _peerIds = PeerIdIndex();
+
+  static Uint8List _hexDecode(String hex) {
+    if (hex.length.isOdd) throw const FormatException('odd-length hex');
+    final out = Uint8List(hex.length ~/ 2);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return out;
   }
 
   // ---- opportunistic auto-connect (store-and-forward delivery) ----

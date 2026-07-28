@@ -29,7 +29,12 @@ class _FakePeripheral implements BlePeripheral {
   Future<bool> isSupported() async => true;
 
   @override
-  Future<bool> start({required String peerName, String? pubkeyFingerprint}) async => true;
+  Future<bool> start({
+    required String peerName,
+    String? pubkeyFingerprint,
+    Uint8List? advertisedId,
+  }) async =>
+      true;
 
   @override
   Future<void> stop() async {}

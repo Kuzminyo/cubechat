@@ -17,7 +17,7 @@ launch.
 Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
 transport, persistent storage, group channels, media, the full messaging
 feature set, and the optional Nostr internet fallback are all implemented and
-covered by **440 passing tests** (`flutter test`, including known-answer
+covered by **449 passing tests** (`flutter test`, including known-answer
 vectors for the crypto).
 
 Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
@@ -37,7 +37,7 @@ UI work but have no BLE.
 - [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
 - [x] M7.5 — Noise IK: a stranger who dials you no longer learns your static key
 
-> The `[x]` marks above reflect what's implemented and covered by the 440-test
+> The `[x]` marks above reflect what's implemented and covered by the 449-test
 > suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
 > is intentionally dropped — it defeats the length-hiding padding.
 >
@@ -198,19 +198,20 @@ The two are used together: IK whenever we already know who we are calling
 otherwise. With discovery **off** the responder refuses XX outright, which is
 what closes the hole.
 
-> **What this costs, and what is still open.** BLE advertises a service UUID and
-> a rotating hardware address — not an identity — and a peer's key is only
-> learned *after* a handshake authenticates them. So with discovery off, a
-> contact walking up to you generally cannot tell which advertisement is you,
-> cannot produce an IK opener addressed to you, and will not get in either. In
-> that mode you are reachable over the relay by people holding your card, and
-> effectively closed over Bluetooth.
+> **How a contact finds you.** BLE advertises a service UUID and a rotating
+> hardware address — not an identity — so an IK opener had nobody to be
+> addressed at. The advertisement now carries the **rotating peer id**: eight
+> bytes a contact resolves through the index they already build, and that mean
+> nothing to anyone else. Android puts it in service data (a local name there
+> would mean renaming the Bluetooth adapter system-wide); iOS puts it in the
+> local name, because CoreBluetooth cannot advertise service data at all. It is
+> re-advertised when the epoch turns, since a contact computes the current one.
 >
-> Fixing that means letting contacts *recognise* you without letting strangers
-> do so — advertising the rotating peer id and having contacts resolve it
-> through the index they already build. iOS cannot advertise service or
-> manufacturer data, so it would have to ride in the local name, and it needs
-> native work on both platforms. Not done here.
+> This replaced broadcasting the **nickname**, which was a permanent handle any
+> passive scanner could follow forever — and on Android it replaced
+> `setIncludeDeviceName(true)`, which was putting the phone's own Bluetooth
+> name ("Galaxy S24") on the air, flatly contradicting the anonymity the rest
+> of the app is built around.
 >
 > One standard IK caveat also applies: an attacker who later compromises the
 > responder's static key can decrypt a recorded first message and learn *who*
@@ -455,7 +456,7 @@ Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 440 tests, incl. crypto known-answer vectors
+flutter test         # 449 tests, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -500,7 +501,7 @@ dart run flutter_native_splash:create
 
 ## Testing
 
-`flutter test` — **440 tests** across 39 files. Highlights:
+`flutter test` — **449 tests** across 40 files. Highlights:
 
 - `noise_ik_test`, `noise_ik_session_test` — the IK pattern: two-message
   round trip, mutual authentication, that neither static key appears on the

@@ -15,6 +15,8 @@ class DiscoveredPeer {
     required this.lastSeen,
     this.pubkeyFingerprint,
     this.isConnected = false,
+    this.rotatingId,
+    this.resolvedPubkeyHex,
   });
 
   final String id;
@@ -23,6 +25,22 @@ class DiscoveredPeer {
   final DateTime lastSeen;
   final String? pubkeyFingerprint;
   final bool isConnected;
+
+  /// The rotating peer id this device advertised, lowercase hex, or null if it
+  /// advertised none (an older build, or one whose identity wasn't ready).
+  ///
+  /// Stable for one epoch and unlinkable across epochs by anyone who does not
+  /// hold the key behind it — which is what makes it safe to broadcast where a
+  /// nickname would not be.
+  final String? rotatingId;
+
+  /// Who [rotatingId] turned out to be, if it matched somebody in the roster.
+  ///
+  /// This is the piece that was missing for IK: BLE otherwise tells us nothing
+  /// about *who* is advertising until after a handshake, so there was no way to
+  /// address an IK opener at them. With this we can, and a contact stays
+  /// reachable even when they have stopped announcing themselves.
+  final String? resolvedPubkeyHex;
 
   /// 0..1 signal strength — handy for UI bars. -45 dBm or better → 1.0,
   /// -95 dBm or worse → 0.0.
@@ -39,6 +57,8 @@ class DiscoveredPeer {
     DateTime? lastSeen,
     String? pubkeyFingerprint,
     bool? isConnected,
+    String? rotatingId,
+    String? resolvedPubkeyHex,
   }) {
     return DiscoveredPeer(
       id: id,
@@ -47,6 +67,8 @@ class DiscoveredPeer {
       lastSeen: lastSeen ?? this.lastSeen,
       pubkeyFingerprint: pubkeyFingerprint ?? this.pubkeyFingerprint,
       isConnected: isConnected ?? this.isConnected,
+      rotatingId: rotatingId ?? this.rotatingId,
+      resolvedPubkeyHex: resolvedPubkeyHex ?? this.resolvedPubkeyHex,
     );
   }
 }

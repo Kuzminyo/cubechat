@@ -15,6 +15,7 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/models/known_peer.dart';
@@ -478,11 +479,14 @@ class MessagingService {
   ///
   ///  * a chat opened from the Chats list, where the route id *is* the peer's
   ///    pubkey hex rather than a device id;
+  ///  * a device whose advertised rotating id the discovery layer resolved back
+  ///    to somebody in the roster — the case that used to be impossible, and
+  ///    the reason the id is advertised at all;
   ///  * a reconnect to a device we already authenticated in this run, where the
   ///    old session still remembers the key.
   ///
-  /// Everything else — tapping a fresh row in Nearby — genuinely does not know
-  /// yet, which is precisely why XX exists.
+  /// A stranger resolves to none of these, so they get XX — which is correct:
+  /// there is no way to address IK at someone you have never met.
   Uint8List? _knownStaticFor(String displayName, String peerId) {
     // The Chats list routes by pubkey hex; Nearby routes by device id.
     if (peerId.length == 64 && RegExp(r'^[0-9a-f]+$').hasMatch(peerId)) {
@@ -490,6 +494,17 @@ class MessagingService {
         return _hexDecodeBytes(peerId);
       } catch (_) {
         // Not hex after all — fall through.
+      }
+    }
+    // A contact recognised from their advertisement.
+    for (final p in _ref.read(peerDiscoveryControllerProvider).peers) {
+      if (p.id != peerId) continue;
+      final hex = p.resolvedPubkeyHex;
+      if (hex == null) break;
+      try {
+        return _hexDecodeBytes(hex);
+      } catch (_) {
+        break;
       }
     }
     final prior = _ref.read(chatSessionManagerProvider)[peerId];
