@@ -559,6 +559,4 @@ dart run flutter_native_splash:create
 
 ---
 
-## License
-
-[MIT](LICENSE) © 2026 Kuzminyo
+© 2026 Kuzminyo. All rights reserved.
