@@ -35,6 +35,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- We encrypt messages with our own implementation — Noise handshakes over
+	     X25519, ChaCha20-Poly1305, and an in-repo secp256k1 — rather than only
+	     calling the encryption iOS provides, and it protects message content
+	     rather than just authenticating a login. Neither of the usual
+	     exemptions covers that, so this is `true` and the export paperwork is
+	     owed. Answering `false` here would be a false declaration to Apple.
+	     Setting the key at all is what stops App Store Connect from asking
+	     again on every single upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

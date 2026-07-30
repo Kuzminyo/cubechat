@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cubechat — Політика конфіденційності / Privacy Policy</title>
+<meta name="description" content="cubechat privacy policy — no account, no server, nothing collected." />
+<link rel="icon" href="/cube.svg" type="image/svg+xml" />
+<style>
+  :root { --bg:#06140d; --fg:#ffffff; --accent:#2edb8f; --mut:rgba(255,255,255,.55); --dim:rgba(255,255,255,.38); --line:rgba(255,255,255,.08); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--fg); }
+  body { font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:760px; margin:0 auto; padding:48px 24px 96px; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding-bottom:28px; border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:10px; font-size:20px; font-weight:600; letter-spacing:-.02em; }
+  .dot { width:9px; height:9px; border-radius:99px; background:var(--accent); box-shadow:0 0 8px 2px rgba(46,219,143,.55); }
+  .toggle { display:flex; gap:4px; background:rgba(255,255,255,.04); border-radius:8px; padding:4px; }
+  .toggle button { appearance:none; border:0; background:transparent; color:var(--mut); font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+                   letter-spacing:.14em; text-transform:uppercase; padding:8px 12px; border-radius:6px; cursor:pointer; }
+  .toggle button[aria-pressed="true"] { background:rgba(46,219,143,.14); color:var(--accent); }
+  h1 { font-size:32px; line-height:1.2; letter-spacing:-.02em; margin:40px 0 8px; }
+  h2 { font-size:19px; letter-spacing:-.01em; margin:40px 0 10px; }
+  p, li { color:var(--mut); }
+  li { margin:6px 0; }
+  ul { padding-left:20px; }
+  .meta { font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim); letter-spacing:.06em; }
+  .lede { color:rgba(255,255,255,.75); font-size:17px; border-left:2px solid var(--accent); padding-left:16px; margin:24px 0 0; }
+  .card { background:rgba(255,255,255,.03); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:18px 0; }
+  .card p:first-child { margin-top:0; } .card p:last-child { margin-bottom:0; }
+  strong { color:rgba(255,255,255,.9); font-weight:600; }
+  code { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; background:rgba(255,255,255,.06); padding:2px 6px; border-radius:4px; color:var(--accent); }
+  footer { margin-top:64px; padding-top:24px; border-top:1px solid var(--line); }
+  [data-lang] { display:none; }
+  [data-lang].on { display:block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand"><span class="dot"></span>cubechat</div>
+    <div class="toggle" role="group" aria-label="Language">
+      <button type="button" data-set="uk" aria-pressed="true">Українська</button>
+      <button type="button" data-set="en" aria-pressed="false">English</button>
+    </div>
+  </header>
+
+  <!-- ============================ УКРАЇНСЬКА ============================ -->
+  <section data-lang="uk" class="on">
+    <h1>Політика конфіденційності</h1>
+    <p class="meta">Редакція від 30 липня 2026 року</p>
+
+    <p class="lede">cubechat не має ані облікових записів, ані серверів, які зберігали б ваше листування.
+      Ми не збираємо, не зберігаємо і не передаємо ваші персональні дані — тому що технічно не маємо куди.</p>
+
+    <h2>1. Хто відповідає за обробку даних</h2>
+    <p>Застосунок cubechat розробляє фізична особа-підприємець (далі — «ми»). Оскільки застосунок не має
+      серверної частини, ми не отримуємо доступу до вмісту вашого листування за жодних обставин.</p>
+
+    <h2>2. Які дані ми збираємо</h2>
+    <div class="card"><p><strong>Жодних.</strong> Ми не збираємо персональні дані. У застосунку немає
+      реєстрації, не потрібні номер телефону, адреса електронної пошти чи будь-який обліковий запис.
+      Ми не використовуємо аналітику, рекламні мережі, трекери й сторонні пакети, що збирають дані.</p></div>
+
+    <h2>3. Що зберігається на вашому пристрої</h2>
+    <p>Уся інформація залишається локально на вашому телефоні:</p>
+    <ul>
+      <li><strong>Криптографічні ключі.</strong> Створюються безпосередньо на пристрої під час першого
+        запуску і зберігаються у захищеному сховищі системи (Keychain на iOS, Keystore на Android).
+        Приватний ключ ніколи не залишає пристрій.</li>
+      <li><strong>Листування, фото та голосові повідомлення.</strong> Зберігаються у зашифрованому
+        локальному сховищі застосунку.</li>
+      <li><strong>Ваше ім’я користувача та налаштування.</strong> Ім’я ви обираєте самі, воно може бути
+        будь-яким і не перевіряється.</li>
+      <li><strong>Список контактів застосунку.</strong> Формується лише з тих контактів, які ви додали
+        вручну. Ми не читаємо телефонну книгу вашого пристрою.</li>
+    </ul>
+
+    <h2>4. Як передаються повідомлення</h2>
+    <p><strong>Bluetooth-мережа.</strong> Основний спосіб — пряма передача між пристроями поблизу.
+      Повідомлення може ретранслюватися через проміжні телефони інших користувачів, щоб дійти далі.
+      Такі проміжні пристрої передають лише зашифрований блок даних і не можуть прочитати ані вміст
+      повідомлення, ані дізнатися, кому воно призначене.</p>
+    <p><strong>Резервний канал через інтернет.</strong> Коли адресат поза зоною дії Bluetooth, застосунок
+      може надіслати повідомлення через публічні релеї мережі Nostr. За замовчуванням це
+      <code>relay.damus.io</code>, <code>nos.lol</code> і <code>relay.primal.net</code> — їх утримують
+      треті сторони, а не ми.</p>
+    <div class="card"><p>Оператори цих релеїв бачать <strong>зашифрований</strong> вміст, який не можуть
+      прочитати, але також бачать час і розмір повідомлення, тимчасовий відкритий ключ та вашу
+      IP-адресу. Якщо це для вас неприйнятно, резервний канал можна вимкнути в налаштуваннях або
+      замінити перелік релеїв на власні.</p></div>
+
+    <h2>5. Захист від стеження</h2>
+    <p>Ідентифікатор, який ваш пристрій передає в радіоефірі, автоматично змінюється щогодини. Це не
+      дозволяє стороннім спостерігачам відстежувати ваші переміщення за сигналом Bluetooth, тоді як ваші
+      збережені контакти впізнають вас коректно.</p>
+
+    <h2>6. Дозволи, які запитує застосунок</h2>
+    <ul>
+      <li><strong>Bluetooth</strong> — пошук пристроїв поблизу та обмін повідомленнями. Це основна функція застосунку.</li>
+      <li><strong>Мікрофон</strong> — лише коли ви записуєте голосове повідомлення.</li>
+      <li><strong>Камера</strong> — лише коли ви робите фото для надсилання.</li>
+      <li><strong>Фотографії</strong> — щоб вибрати зображення для надсилання та зберегти отримані.</li>
+      <li><strong>Сповіщення</strong> — щоб повідомити про нове повідомлення.</li>
+      <li><strong>Геолокація (лише Android 11 і старіші)</strong> — цього вимагає операційна система для
+        пошуку пристроїв через Bluetooth. Застосунок <strong>не визначає та не зберігає ваше
+        місцезнаходження</strong> і ніколи його нікуди не передає.</li>
+    </ul>
+
+    <h2>7. Передавання даних третім сторонам</h2>
+    <p>Ми нікому не передаємо і не продаємо дані. Єдині треті сторони, задіяні в роботі застосунку, —
+      оператори публічних релеїв, описані в розділі 4, і лише в разі використання резервного каналу.</p>
+
+    <h2>8. Зберігання та видалення</h2>
+    <p>Ми не зберігаємо ваших даних, тому не маємо чого видаляти на нашому боці. Усе, що є, лежить на
+      вашому пристрої. <strong>Видалення застосунку остаточно знищує всі повідомлення та ключі</strong> —
+      відновити їх неможливо ані вам, ані нам.</p>
+
+    <h2>9. Діти</h2>
+    <p>Застосунок не призначений для дітей віком до 13 років і не збирає їхніх даних.</p>
+
+    <h2>10. Зміни до політики</h2>
+    <p>Якщо політика зміниться, ми оновимо цю сторінку та дату редакції вгорі.</p>
+
+    <h2>11. Контакти</h2>
+    <p>Питання щодо конфіденційності: <a href="mailto:ЗАПОВНІТЬ@ПОШТА">ЗАПОВНІТЬ@ПОШТА</a></p>
+  </section>
+
+  <!-- ============================== ENGLISH ============================== -->
+  <section data-lang="en">
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated 30 July 2026</p>
+
+    <p class="lede">cubechat has no accounts and no servers that could hold your conversations. We do not
+      collect, store or share your personal data — because there is nowhere for it to go.</p>
+
+    <h2>1. Who is responsible</h2>
+    <p>cubechat is developed by an individual entrepreneur (“we”). Because the app has no backend, we
+      cannot access the contents of your conversations under any circumstances.</p>
+
+    <h2>2. What we collect</h2>
+    <div class="card"><p><strong>Nothing.</strong> We collect no personal data. There is no sign-up, and
+      no phone number, email address or account of any kind is required. We use no analytics, no ad
+      networks, no trackers and no third-party data-collecting SDKs.</p></div>
+
+    <h2>3. What is stored on your device</h2>
+    <ul>
+      <li><strong>Cryptographic keys.</strong> Generated on the device at first launch and held in the
+        system’s secure storage (Keychain on iOS, Keystore on Android). The private key never leaves the device.</li>
+      <li><strong>Messages, photos and voice notes.</strong> Kept in the app’s encrypted local store.</li>
+      <li><strong>Your display name and settings.</strong> You choose the name; it can be anything and is never verified.</li>
+      <li><strong>Your in-app contacts.</strong> Only the ones you add yourself. We do not read your phone’s address book.</li>
+    </ul>
+
+    <h2>4. How messages travel</h2>
+    <p><strong>Bluetooth mesh.</strong> The primary path is directly between nearby devices. A message may
+      be relayed through other people’s phones to reach further. Those relaying devices carry only an
+      encrypted blob — they cannot read the message or tell who it is addressed to.</p>
+    <p><strong>Internet fallback.</strong> When the recipient is out of Bluetooth range, the app may send
+      the message via public Nostr relays — by default <code>relay.damus.io</code>, <code>nos.lol</code>
+      and <code>relay.primal.net</code>, which are operated by third parties, not by us.</p>
+    <div class="card"><p>Those relay operators see <strong>encrypted</strong> content they cannot read,
+      but they do see the timing and size of a message, an ephemeral public key, and your IP address. If
+      that is not acceptable to you, the fallback can be turned off in settings, or the relay list
+      replaced with your own.</p></div>
+
+    <h2>5. Protection against tracking</h2>
+    <p>The identifier your device broadcasts over the air rotates automatically every hour. Passive
+      observers cannot use the Bluetooth signal to follow your movements, while your saved contacts still
+      recognise you correctly.</p>
+
+    <h2>6. Permissions the app requests</h2>
+    <ul>
+      <li><strong>Bluetooth</strong> — to find nearby devices and exchange messages. This is the core function of the app.</li>
+      <li><strong>Microphone</strong> — only while you record a voice message.</li>
+      <li><strong>Camera</strong> — only while you take a photo to send.</li>
+      <li><strong>Photos</strong> — to pick images to send and to save ones you receive.</li>
+      <li><strong>Notifications</strong> — to alert you to a new message.</li>
+      <li><strong>Location (Android 11 and older only)</strong> — required by the operating system in order
+        to scan for Bluetooth devices. The app <strong>does not determine or store your location</strong>
+        and never transmits it anywhere.</li>
+    </ul>
+
+    <h2>7. Sharing with third parties</h2>
+    <p>We share and sell nothing. The only third parties involved are the public relay operators described
+      in section 4, and only when the internet fallback is used.</p>
+
+    <h2>8. Retention and deletion</h2>
+    <p>We hold none of your data, so there is nothing for us to delete on our side. Everything lives on
+      your device. <strong>Uninstalling the app permanently destroys all messages and keys</strong> —
+      neither you nor we can recover them.</p>
+
+    <h2>9. Children</h2>
+    <p>The app is not directed at children under 13 and collects no data from them.</p>
+
+    <h2>10. Changes to this policy</h2>
+    <p>If this policy changes we will update this page and the date shown at the top.</p>
+
+    <h2>11. Contact</h2>
+    <p>Privacy enquiries: <a href="mailto:FILL_IN@EMAIL">FILL_IN@EMAIL</a></p>
+  </section>
+
+  <footer class="meta">© <span id="y"></span> cubechat · <a href="/">cubechat.app</a></footer>
+</div>
+
+<script>
+  document.getElementById('y').textContent = new Date().getFullYear();
+  var btns = document.querySelectorAll('.toggle button');
+  function set(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-lang]').forEach(function (s) {
+      s.classList.toggle('on', s.getAttribute('data-lang') === lang);
+    });
+    btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.set === lang)); });
+    try { localStorage.setItem('cubechat-privacy-lang', lang); } catch (e) {}
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () { set(b.dataset.set); }); });
+  var saved = null;
+  try { saved = localStorage.getItem('cubechat-privacy-lang'); } catch (e) {}
+  if (saved !== 'uk' && saved !== 'en') {
+    // No stored choice: English only for browsers that ask for it, Ukrainian otherwise.
+    saved = (navigator.language || '').toLowerCase().indexOf('en') === 0 ? 'en' : 'uk';
+  }
+  set(saved);
+</script>
+</body>
+</html>

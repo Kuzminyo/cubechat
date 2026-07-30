@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest for the app itself. Plugins ship their own alongside their
+  pods; this one covers our code and anything without a manifest of its own.
+
+  The three collection keys are genuinely empty rather than merely unfilled.
+  cubechat has no account, no analytics, no advertising SDK and no server that
+  could receive anything: messages travel between phones over Bluetooth, and
+  the internet fallback carries ciphertext through relays we do not run.
+-->
+<plist version="1.0">
+<dict>
+	<!-- No tracking as ATT defines it: nothing here is linked to a user or a
+	     device for advertising or shared with a data broker. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Nothing leaves the device that could be tied to a person. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- shared_preferences, for the settings the app remembers between
+		     launches. Read and written only by cubechat itself. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+
+		<!-- File timestamps, from the encrypted message store (Hive), cached
+		     media, and the recorded-audio files the trim plugin rewrites. All
+		     of it lives inside the app container. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
