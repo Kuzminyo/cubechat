@@ -63,3 +63,13 @@ devtools_options.yaml
 *.apk
 *.aab
 *.ipa
+
+# Patent filing and grant paperwork.
+#
+# Generated from the repository at a given revision (the technical disclosure
+# embeds its own commit hash), so they are reproducible and do not belong in the
+# history — and the merged volume alone is over a megabyte.
+cubechat-patent-full.pdf
+cubechat-technical-disclosure.pdf
+cubechat-ui-source-appendix.pdf
+cubechat-бізнес-план-грант.xlsx
