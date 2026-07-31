@@ -1249,6 +1249,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.'**
   String get profilePrivacyExplainer;
+
+  /// No description provided for @avatarSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a photo'**
+  String get avatarSet;
+
+  /// No description provided for @avatarChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change photo'**
+  String get avatarChange;
+
+  /// No description provided for @avatarRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove photo'**
+  String get avatarRemove;
+
+  /// No description provided for @avatarRemoveConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'The avatar will be deleted from this device. The generated gradient comes back in its place.'**
+  String get avatarRemoveConfirm;
+
+  /// No description provided for @avatarFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read that image'**
+  String get avatarFailed;
 }
 
 class _AppLocalizationsDelegate

@@ -641,4 +641,20 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profilePrivacyExplainer =>
       'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.';
+
+  @override
+  String get avatarSet => 'Choose a photo';
+
+  @override
+  String get avatarChange => 'Change photo';
+
+  @override
+  String get avatarRemove => 'Remove photo';
+
+  @override
+  String get avatarRemoveConfirm =>
+      'The avatar will be deleted from this device. The generated gradient comes back in its place.';
+
+  @override
+  String get avatarFailed => 'Could not read that image';
 }

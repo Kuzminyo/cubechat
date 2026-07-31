@@ -275,5 +275,10 @@
   "profileReadReceipts": "Share read receipts",
   "profileReadReceiptsOnHint": "Senders see when you've read them",
   "profileReadReceiptsOffHint": "They don't — and neither do you",
-  "profilePrivacyExplainer": "Both switches cut both ways: hide your own status and you stop seeing everyone else's. Anything else would be a one-way mirror. Message delivery is untouched."
+  "profilePrivacyExplainer": "Both switches cut both ways: hide your own status and you stop seeing everyone else's. Anything else would be a one-way mirror. Message delivery is untouched.",
+  "avatarSet": "Choose a photo",
+  "avatarChange": "Change photo",
+  "avatarRemove": "Remove photo",
+  "avatarRemoveConfirm": "The avatar will be deleted from this device. The generated gradient comes back in its place.",
+  "avatarFailed": "Could not read that image"
 }

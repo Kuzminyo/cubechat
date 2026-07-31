@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
@@ -12,12 +14,18 @@ class IdentityAvatar extends StatelessWidget {
     this.size = 44,
     this.online = false,
     this.heroTag,
+    this.imageBytes,
   });
 
   final String seed;
   final String label;
   final double size;
   final bool online;
+
+  /// A picture to draw instead of the generated gradient. The gradient is the
+  /// fallback rather than the other way round: every identity has one, so the
+  /// avatar is never empty while a photo is missing, loading, or unreadable.
+  final Uint8List? imageBytes;
 
   /// When non-null, wraps the avatar in a Hero for shared-element transitions.
   final String? heroTag;
@@ -34,6 +42,7 @@ class IdentityAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _palettes[seed.hashCode.abs() % _palettes.length];
     final initials = _initials(label);
+    final photo = imageBytes;
     final body = SizedBox(
       width: size,
       height: size,
@@ -44,25 +53,37 @@ class IdentityAvatar extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: palette,
-              ),
+              gradient: photo == null
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: palette,
+                    )
+                  : null,
+              image: photo == null
+                  ? null
+                  : DecorationImage(
+                      image: MemoryImage(photo),
+                      fit: BoxFit.cover,
+                    ),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.2),
                 width: 1,
               ),
             ),
             alignment: Alignment.center,
-            child: Text(
-              initials,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.38,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            // Initials belong to the gradient. Over a photo they would sit on
+            // the person's face.
+            child: photo != null
+                ? null
+                : Text(
+                    initials,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: size * 0.38,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
           if (online)
             Positioned(

@@ -1,0 +1,119 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
+import 'package:image/image.dart' as img;
+
+import '../storage/hive_cipher.dart';
+import '../storage/hive_init.dart';
+
+/// The user's own avatar picture, or null when they haven't set one and the
+/// generated identity gradient stands in.
+///
+/// Stored square and small on purpose. It is only ever drawn inside a circle
+/// at 72 px or less, so anything past a couple of hundred pixels is invisible
+/// detail that still has to be decoded on every rebuild — and it lives in the
+/// encrypted settings box, which is read whole.
+///
+/// The image is re-encoded rather than stored as picked: a gallery photo is
+/// several megabytes of data we would be carrying around forever to draw a
+/// thumbnail.
+class AvatarController extends Notifier<Uint8List?> {
+  static const _key = 'avatar.jpeg';
+
+  /// Side of the stored square. Twice the largest circle the app draws (72 px
+  /// in the profile), which covers 2x and 3x screens without going further.
+  static const int storedSize = 256;
+
+  /// JPEG quality for the stored copy. 82 keeps a face clean at this size;
+  /// higher buys nothing a 72 px circle can show.
+  static const int quality = 82;
+
+  Box<dynamic>? _box;
+
+  @override
+  Uint8List? build() {
+    unawaited(_load());
+    return null;
+  }
+
+  Future<void> _load() async {
+    try {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      _box = box;
+      final stored = box.get(_key);
+      if (stored is Uint8List && stored.isNotEmpty) {
+        state = stored;
+      } else if (stored is List<int> && stored.isNotEmpty) {
+        // Hive can hand back a plain List<int> depending on how it was written.
+        state = Uint8List.fromList(stored);
+      }
+    } catch (e) {
+      debugPrint('Avatar load failed: $e');
+    }
+  }
+
+  /// Square-crop, downscale and store [source]. Returns false when the bytes
+  /// could not be decoded as an image, so the caller can say so rather than
+  /// silently doing nothing.
+  Future<bool> setFromBytes(Uint8List source) async {
+    final encoded = await compute(_squareThumbnail, source);
+    if (encoded == null) return false;
+    state = encoded;
+    try {
+      await _box?.put(_key, encoded);
+    } catch (e) {
+      debugPrint('Avatar persist failed: $e');
+    }
+    return true;
+  }
+
+  Future<void> clear() async {
+    state = null;
+    try {
+      await _box?.delete(_key);
+    } catch (e) {
+      debugPrint('Avatar clear failed: $e');
+    }
+  }
+
+  /// Back to no picture — used by Emergency Wipe, which restores every setting
+  /// to what a fresh install would have.
+  Future<void> reset() => clear();
+}
+
+/// Centre-crop to a square, resize to [AvatarController.storedSize] and encode
+/// as JPEG. Runs off the UI isolate: decoding a full-resolution gallery photo
+/// blocks long enough to drop frames.
+Uint8List? _squareThumbnail(Uint8List source) {
+  final decoded = img.decodeImage(source);
+  if (decoded == null) return null;
+
+  final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+  final square = img.copyCrop(
+    decoded,
+    x: (decoded.width - side) ~/ 2,
+    y: (decoded.height - side) ~/ 2,
+    width: side,
+    height: side,
+  );
+  // Only ever shrink. Upscaling a small picture to 256 would add bytes and no
+  // detail.
+  final sized = side > AvatarController.storedSize
+      ? img.copyResize(
+          square,
+          width: AvatarController.storedSize,
+          height: AvatarController.storedSize,
+        )
+      : square;
+  return Uint8List.fromList(
+    img.encodeJpg(sized, quality: AvatarController.quality),
+  );
+}
+
+final avatarProvider = NotifierProvider<AvatarController, Uint8List?>(
+  AvatarController.new,
+);

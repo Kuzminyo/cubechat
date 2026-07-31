@@ -15,6 +15,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
+import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
@@ -61,7 +62,7 @@ class ProfileScreen extends ConsumerWidget {
             borderRadius: 22,
             child: Column(
               children: [
-                IdentityAvatar(seed: fingerprint, label: nickname, size: 72),
+                TappableAvatar(seed: fingerprint, label: nickname),
                 const SizedBox(height: 14),
                 _EditableNickname(value: nickname),
                 const SizedBox(height: 4),

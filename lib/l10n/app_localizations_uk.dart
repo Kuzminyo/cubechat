@@ -641,4 +641,20 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get profilePrivacyExplainer =>
       'Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само.';
+
+  @override
+  String get avatarSet => 'Обрати фото';
+
+  @override
+  String get avatarChange => 'Змінити фото';
+
+  @override
+  String get avatarRemove => 'Прибрати фото';
+
+  @override
+  String get avatarRemoveConfirm =>
+      'Аватарку буде видалено з цього пристрою. Замість неї повернеться згенерований градієнт.';
+
+  @override
+  String get avatarFailed => 'Не вдалося прочитати зображення';
 }
