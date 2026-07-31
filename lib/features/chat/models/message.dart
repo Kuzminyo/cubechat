@@ -5,7 +5,7 @@ enum MessageStatus { sending, delivered, read, failed }
 /// What kind of payload this message carries. Media messages keep their raw
 /// bytes on disk (see [Message.mediaPath]) and use [text] only for an
 /// optional caption / mime label shown in the bubble.
-enum MessageKind { text, image, audio }
+enum MessageKind { text, image, audio, file }
 
 @immutable
 class Message {
@@ -22,6 +22,9 @@ class Message {
     this.audioPath,
     this.audioMime,
     this.audioDurationMs,
+    this.filePath,
+    this.fileName,
+    this.fileBytes,
     this.forwardSecret = false,
     this.wireId,
     this.authorName,
@@ -94,11 +97,20 @@ class Message {
   final String? audioMime;
   final int? audioDurationMs;
 
+  // Arbitrary-file payload. Unlike images and voice notes, a file keeps the
+  // name it was sent under — it is the only thing that says what the bubble is
+  // and what it saves as. [fileBytes] is the size on disk, shown next to the
+  // name so the recipient knows what they are about to open.
+  final String? filePath;
+  final String? fileName;
+  final int? fileBytes;
+
   Message copyWith({
     MessageStatus? status,
     String? text,
     String? imagePath,
     String? audioPath,
+    String? filePath,
     int? audioDurationMs,
     bool? forwardSecret,
     Map<String, Set<String>>? reactions,
@@ -116,6 +128,9 @@ class Message {
       imagePath: imagePath ?? this.imagePath,
       imageMime: imageMime,
       audioPath: audioPath ?? this.audioPath,
+      filePath: filePath ?? this.filePath,
+      fileName: fileName,
+      fileBytes: fileBytes,
       audioMime: audioMime,
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
       forwardSecret: forwardSecret ?? this.forwardSecret,

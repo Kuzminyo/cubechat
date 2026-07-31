@@ -796,6 +796,8 @@ class _PinnedBar extends StatelessWidget {
         preview = _looksLikeMime(caption) ? '📷 Photo' : caption;
       case MessageKind.audio:
         preview = '🎤 Voice message';
+      case MessageKind.file:
+        preview = '📎 ${message.fileName ?? 'File'}';
       case MessageKind.text:
         preview = message.text.replaceAll('\n', ' ').trim();
     }

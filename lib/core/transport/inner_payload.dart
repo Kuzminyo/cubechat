@@ -68,7 +68,11 @@ enum InnerPayloadType {
 
   /// "I'm in the app" beacon, so a peer reachable only over the internet can
   /// still be shown as online. See [PresenceBeacon].
-  presence(0xC0);
+  presence(0xC0),
+
+  /// One slice of a chunked file transfer. Same manifest-then-chunks scheme as
+  /// images and voice notes; see [FileChunk] for the (leaner) wire layout.
+  fileChunk(0xD0);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -485,12 +489,151 @@ class AudioChunk {
   }
 }
 
+/// One slice of a chunked file transfer.
+///
+/// Wire layout (inside an [InnerPayloadType.fileChunk] body):
+///
+/// ```
+///   [fileId  : 16 bytes — same id as the manifest]
+///   [seq     :  2 bytes BE]
+///   [total   :  2 bytes BE]
+///   [dataLen :  2 bytes BE]
+///   [data    :  dataLen bytes]
+/// ```
+///
+/// Leaner than [ImageChunk] and [AudioChunk] on purpose: those repeat the mime
+/// string in every single chunk, which a photo can afford at a few hundred
+/// chunks and a file cannot at several thousand. The mime and the name live in
+/// the manifest, which arrives first and is signed; a chunk only has to say
+/// which transfer it belongs to and where it goes.
+class FileChunk {
+  FileChunk({
+    required this.fileId,
+    required this.seq,
+    required this.total,
+    required this.data,
+  }) {
+    _validate();
+  }
+
+  final Uint8List fileId;
+  final int seq;
+  final int total;
+  final Uint8List data;
+
+  static const int idLen = 16;
+
+  /// Must stay ≤ 65535 (the u16 length field). Same ceiling as the other
+  /// chunk types so one transport path sizes them all.
+  static const int maxDataBytes = 16384;
+
+  static const int maxChunks = 8192;
+
+  /// Header bytes ahead of `data` — id + seq + total + dataLen. Callers sizing
+  /// a chunk to an MTU need this without constructing one.
+  static const int headerBytes = idLen + 2 + 2 + 2;
+
+  void _validate() {
+    if (fileId.length != idLen) {
+      throw const FormatException('fileId must be 16 bytes');
+    }
+    if (seq < 0 || seq >= 0x10000) {
+      throw const FormatException('file chunk seq out of u16 range');
+    }
+    if (total < 1 || total > maxChunks) {
+      throw const FormatException('file chunk total exceeds protocol cap');
+    }
+    if (seq >= total) {
+      throw const FormatException('file chunk seq must be < total');
+    }
+    if (data.length > maxDataBytes) {
+      throw const FormatException('file chunk data exceeds protocol cap');
+    }
+  }
+
+  Uint8List encode() {
+    final out = Uint8List(headerBytes + data.length);
+    var c = 0;
+    out.setRange(c, c += idLen, fileId);
+    out[c++] = (seq >> 8) & 0xff;
+    out[c++] = seq & 0xff;
+    out[c++] = (total >> 8) & 0xff;
+    out[c++] = total & 0xff;
+    out[c++] = (data.length >> 8) & 0xff;
+    out[c++] = data.length & 0xff;
+    out.setRange(c, c += data.length, data);
+    return out;
+  }
+
+  static FileChunk decode(Uint8List bytes) {
+    if (bytes.length < headerBytes) {
+      throw const FormatException('file chunk truncated');
+    }
+    var c = 0;
+    final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
+    final seq = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    final total = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    final dataLen = (bytes[c] << 8) | bytes[c + 1];
+    c += 2;
+    if (dataLen > maxDataBytes) {
+      throw const FormatException('file chunk data exceeds protocol cap');
+    }
+    if (bytes.length != c + dataLen) {
+      throw const FormatException('file chunk length mismatch');
+    }
+    return FileChunk(
+      fileId: id,
+      seq: seq,
+      total: total,
+      data: Uint8List.fromList(bytes.sublist(c, c + dataLen)),
+    );
+  }
+}
+
+/// Strip a sender-supplied file name down to something safe to write to disk.
+///
+/// The name arrives over the wire from the other side, so it is attacker
+/// input: `../../secrets` would climb out of the app's own directory, a NUL
+/// truncates the path in platform code, and a leading dot hides the result.
+/// Everything separator-like collapses to an underscore and the length is
+/// bounded, because some filesystems still cap a component at 255 bytes.
+String safeFileName(String raw) {
+  var s = raw.replaceAll(RegExp(r'[\x00-\x1f/\\:*?"<>|]'), '_').trim();
+  // "." and ".." are directory entries, not names.
+  while (s.startsWith('.')) {
+    s = s.substring(1);
+  }
+  s = s.trim();
+  if (s.isEmpty) return 'file';
+  if (s.length > 120) {
+    // Keep the extension: it is what decides how the file opens.
+    final dot = s.lastIndexOf('.');
+    if (dot > 0 && s.length - dot <= 12) {
+      final ext = s.substring(dot);
+      s = s.substring(0, 120 - ext.length) + ext;
+    } else {
+      s = s.substring(0, 120);
+    }
+  }
+  return s;
+}
+
 /// What kind of media the [MediaManifest] commits to. Encoded as a single
 /// byte; new kinds get appended without breaking older readers (an unknown
 /// kind throws on decode and the manifest is dropped).
 enum MediaKind {
   image(0x10),
-  audio(0x30);
+  audio(0x30),
+
+  /// An arbitrary file, carried by [FileChunk] and named by the manifest.
+  ///
+  /// Deliberately a new tag rather than a reuse of [image]: a build that
+  /// predates file transfer throws on the unknown byte in [MediaKind.fromByte]
+  /// and drops the manifest, which is exactly the wanted failure — a clean
+  /// rejection rather than an attempt to render a PDF as a photo.
+  file(0x50);
 
   const MediaKind(this.tag);
   final int tag;
@@ -534,6 +677,7 @@ class MediaManifest {
     required this.mime,
     required this.sha256,
     this.durationMs = 0,
+    this.name,
     this.senderIdentityPub,
     this.senderEphemeralPub,
   }) {
@@ -546,6 +690,17 @@ class MediaManifest {
   final int durationMs;
   final String mime;
   final Uint8List sha256;
+
+  /// File name, present only for [MediaKind.file] — a photo or a voice note
+  /// has nothing to be called, and a name field on every manifest would spend
+  /// mesh airtime on an empty length byte for the two kinds that never use it.
+  ///
+  /// **Sender-controlled, therefore untrusted.** It is carried verbatim and
+  /// sanitised at the point of use ([safeFileName]), not here: the wire format
+  /// should record what was actually sent, and a decoder that silently
+  /// rewrites its input makes the signed SHA-256 commitment harder to reason
+  /// about.
+  final String? name;
 
   /// Forward-secrecy setup (v0x02). When present, the media chunks are sealed
   /// with a per-transfer X3DH key ([MediaFsCipher]) rather than SealedBox: the
@@ -560,6 +715,11 @@ class MediaManifest {
   static const int digestLen = 32;
   static const int pubLen = 32;
   static const int maxChunks = ImageChunk.maxChunks;
+
+  /// Longest file name we carry, in UTF-8 bytes. One length byte, so 255 is
+  /// the format ceiling anyway; real names are far shorter and a peer padding
+  /// one out only wastes their own airtime.
+  static const int maxNameBytes = 255;
 
   /// True when this manifest commits the chunks to the forward-secret path.
   bool get isForwardSecret =>
@@ -590,6 +750,20 @@ class MediaManifest {
     if (senderEphemeralPub != null && senderEphemeralPub!.length != pubLen) {
       throw const FormatException('senderEphemeralPub must be $pubLen bytes');
     }
+    // The name rides only on file manifests, and every file manifest must have
+    // one: a file with no name has nothing to show in the bubble and nothing
+    // to save as.
+    if (kind == MediaKind.file) {
+      final n = name;
+      if (n == null || n.isEmpty) {
+        throw const FormatException('file manifest needs a name');
+      }
+      if (utf8.encode(n).length > maxNameBytes) {
+        throw const FormatException('file name > $maxNameBytes UTF-8 bytes');
+      }
+    } else if (name != null) {
+      throw const FormatException('only file manifests carry a name');
+    }
   }
 
   Uint8List encode() {
@@ -597,9 +771,17 @@ class MediaManifest {
     if (mimeBytes.length > 255) {
       throw const FormatException('mime > 255 UTF-8 bytes');
     }
+    // Present only for files. The reader knows whether to expect it because it
+    // has already read the kind byte, so no version bump is needed — and a
+    // build that predates files never gets this far, having thrown on the
+    // unknown kind.
+    final nameBytes =
+        kind == MediaKind.file ? utf8.encode(name!) : const <int>[];
     final fs = isForwardSecret;
     final out = Uint8List(
-      1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length + digestLen +
+      1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length +
+          (kind == MediaKind.file ? 1 + nameBytes.length : 0) +
+          digestLen +
           (fs ? pubLen * 2 : 0),
     );
     var c = 0;
@@ -614,6 +796,10 @@ class MediaManifest {
     out[c++] = durationMs & 0xff;
     out[c++] = mimeBytes.length;
     out.setRange(c, c += mimeBytes.length, mimeBytes);
+    if (kind == MediaKind.file) {
+      out[c++] = nameBytes.length;
+      out.setRange(c, c += nameBytes.length, nameBytes);
+    }
     out.setRange(c, c += digestLen, sha256);
     if (fs) {
       out.setRange(c, c += pubLen, senderIdentityPub!);
@@ -652,6 +838,18 @@ class MediaManifest {
       allowMalformed: true,
     );
     c += mimeLen;
+    String? name;
+    if (kind == MediaKind.file) {
+      if (bytes.length < c + 1) {
+        throw const FormatException('file manifest missing name length');
+      }
+      final nameLen = bytes[c++];
+      if (bytes.length < c + nameLen + trailer) {
+        throw const FormatException('file manifest name overrun');
+      }
+      name = utf8.decode(bytes.sublist(c, c + nameLen), allowMalformed: true);
+      c += nameLen;
+    }
     final sha = Uint8List.fromList(bytes.sublist(c, c += digestLen));
     Uint8List? idPub;
     Uint8List? ephPub;
@@ -668,6 +866,7 @@ class MediaManifest {
       total: total,
       durationMs: durMs,
       mime: mime,
+      name: name,
       sha256: sha,
       senderIdentityPub: idPub,
       senderEphemeralPub: ephPub,

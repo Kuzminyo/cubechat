@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
@@ -47,6 +49,7 @@ import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
 import 'frame_fragment.dart';
+import 'file_reassembly.dart';
 import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inner_payload.dart';
@@ -237,6 +240,22 @@ class MessagingService {
 
   /// Mirror of [_imageReassembler] for voice messages.
   final AudioReassembler _audioReassembler = AudioReassembler();
+
+  /// Files are put back together on disk rather than in memory: a photo capped
+  /// at a few hundred kilobytes can live in RAM, twenty-five megabytes of
+  /// someone else's upload cannot. Created lazily because it needs the
+  /// platform's temp directory.
+  FileReassembler? _fileReassembler;
+
+  Future<FileReassembler> _files() async {
+    final existing = _fileReassembler;
+    if (existing != null) return existing;
+    final tmp = await getTemporaryDirectory();
+    final made = FileReassembler(
+      workDir: Directory('${tmp.path}${Platform.pathSeparator}cubechat-files'),
+    );
+    return _fileReassembler = made;
+  }
 
   /// Verified signed [MediaManifest]s waiting for their chunk stream to
   /// finish reassembling. Keyed by mediaId hex. GC'd after [_manifestTtl].
@@ -2203,6 +2222,7 @@ class MessagingService {
         case InnerPayloadType.channelInvite:
         case InnerPayloadType.imageChunk:
         case InnerPayloadType.audioChunk:
+        case InnerPayloadType.fileChunk:
         case InnerPayloadType.mediaManifest:
         case InnerPayloadType.presence:
           // Not carried in channels — ignore. (An invite is addressed to one
@@ -2817,6 +2837,13 @@ class MessagingService {
             );
           }
 
+        case InnerPayloadType.fileChunk:
+          await _ingestFileChunk(
+            peerId: peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
+
         case InnerPayloadType.imageChunk:
           await _ingestImageChunk(
             peerId: peerId,
@@ -2930,6 +2957,122 @@ class MessagingService {
       mime: done.mime,
       durationMs: 0,
     );
+  }
+
+  /// Same shape as [_ingestImageChunk], but the transfer lands on disk and the
+  /// hash is computed by streaming that file back rather than by holding the
+  /// whole thing in memory.
+  Future<void> _ingestFileChunk({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List chunkBytes,
+  }) async {
+    final FileChunk chunk;
+    try {
+      chunk = FileChunk.decode(chunkBytes);
+    } catch (e) {
+      DebugLog.instance
+          .log('FILE', 'drop file chunk from $peerId: malformed ($e)');
+      return;
+    }
+    final key = _hexOf(chunk.fileId);
+    final pending = _pendingManifests[key];
+    if (pending == null) {
+      DebugLog.instance.log(
+          'FILE', 'drop file chunk from $peerId: no signed manifest for $key');
+      return;
+    }
+    if (pending.manifest.kind != MediaKind.file ||
+        pending.manifest.total != chunk.total) {
+      DebugLog.instance.log(
+          'FILE', 'drop file chunk from $peerId: manifest mismatch for $key');
+      return;
+    }
+
+    final done = await (await _files()).ingest(chunk);
+    if (done == null) return;
+
+    _gcMediaBuffers();
+    final entry = _pendingManifests.remove(key);
+    if (entry == null) {
+      DebugLog.instance
+          .log('FILE', 'drop assembled file $key: manifest expired');
+      await done.file.delete().catchError((_) => done.file);
+      return;
+    }
+    await _emitFile(
+      peerId: entry.peerId,
+      senderPub: entry.senderPub,
+      manifest: entry.manifest,
+      assembled: done,
+    );
+  }
+
+  /// Verify the finished file against the manifest's signed commitment and put
+  /// it in the chat.
+  Future<void> _emitFile({
+    required String peerId,
+    required Uint8List? senderPub,
+    required MediaManifest manifest,
+    required AssembledFile assembled,
+  }) async {
+    try {
+      // Hashed by streaming, not by reading the file into a buffer — the whole
+      // reason the transfer went to disk was to avoid holding it in memory.
+      final sink = Sha256().newHashSink();
+      await for (final part in assembled.file.openRead()) {
+        sink.add(part);
+      }
+      sink.close();
+      final actual = Uint8List.fromList((await sink.hash()).bytes);
+      if (!_bytesEqual(actual, manifest.sha256)) {
+        DebugLog.instance.log(
+            'FILE',
+            'DROP file ${_hexOf(manifest.mediaId)}: sha256 mismatch — '
+                'chunks were substituted or reordered under this id');
+        await assembled.file.delete();
+        return;
+      }
+
+      // The name comes from the sender, so it decides nothing about *where*
+      // the file goes — only what it is called once it is there.
+      final safe = safeFileName(manifest.name ?? 'file');
+      final dir = await getApplicationDocumentsDirectory();
+      final inbox =
+          Directory('${dir.path}${Platform.pathSeparator}cubechat-inbox');
+      if (!await inbox.exists()) await inbox.create(recursive: true);
+      final target = File('${inbox.path}${Platform.pathSeparator}'
+          '${_hexOf(manifest.mediaId).substring(0, 8)}-$safe');
+      await assembled.file.rename(target.path);
+
+      DebugLog.instance.log(
+          'FILE',
+          'file ${_hexOf(manifest.mediaId)} sha256 OK '
+              '(${assembled.bytes}B, "$safe")');
+
+      _appendToAllSessionsForSamePeer(
+        senderPub,
+        fallbackPeerId: peerId,
+        message: Message(
+          id: 'm${DateTime.now().microsecondsSinceEpoch}',
+          chatId: peerId,
+          text: manifest.mime,
+          sentAt: DateTime.now(),
+          isMine: false,
+          kind: MessageKind.file,
+          filePath: target.path,
+          fileName: safe,
+          fileBytes: assembled.bytes,
+          wireId: TransportEnvelope.hashHex(manifest.mediaId),
+        ),
+      );
+    } catch (e, st) {
+      DebugLog.instance.log('FILE', 'file persist failed: $e');
+      debugPrint('$st');
+      try {
+        if (await assembled.file.exists()) await assembled.file.delete();
+      } catch (_) {/* best effort */}
+    }
   }
 
   /// Decode + retain a signed media manifest. Chunks are only accepted after
@@ -3110,6 +3253,16 @@ class MessagingService {
     try {
       final Message message;
       switch (manifest.kind) {
+        case MediaKind.file:
+          // Files never reach here: they complete inside the disk reassembler
+          // and go out through [_emitFile], which hashes by streaming instead
+          // of materialising the whole transfer as a Uint8List. Reaching this
+          // branch would mean a file transfer had been buffered in memory
+          // after all, which is the thing that path exists to prevent.
+          DebugLog.instance.log('FILE',
+              'ignoring in-memory completion for file ${_hexOf(manifest.mediaId)}');
+          return;
+
         case MediaKind.image:
           final path = await ImageReassembler.persistToCache(
             imageId: manifest.mediaId,
@@ -4095,6 +4248,8 @@ class MessagingService {
         preview = '📷 Photo';
       case MessageKind.audio:
         preview = '🎤 Voice message';
+      case MessageKind.file:
+        preview = '📎 ${message.fileName ?? 'File'}';
       case MessageKind.text:
         preview = message.text;
     }

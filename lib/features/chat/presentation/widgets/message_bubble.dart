@@ -330,6 +330,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         return '📷';
       case MessageKind.audio:
         return '🎤';
+      case MessageKind.file:
+        return '📎 ${m.fileName ?? ''}'.trimRight();
       case MessageKind.text:
         final t = m.text.replaceAll('\n', ' ').trim();
         return t.length > 80 ? '${t.substring(0, 80)}…' : t;
