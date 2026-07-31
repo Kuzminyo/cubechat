@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/core/widgets/identity_avatar.dart';
+import 'package:cubechat/features/profile/presentation/avatar_screen.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -116,6 +117,35 @@ void main() {
       expect(afterTop, lessThan(beforeTop - 100),
           reason: 'the header should travel with the scroll, not compress');
     }
+  });
+
+  testWidgets('the photo button actually opens the avatar screen',
+      (tester) async {
+    // "Nothing happens" is the report. A label rendering in the right place
+    // proves only that it is drawn — this presses it and asserts the screen
+    // behind it arrives, which is the part that was in doubt.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    await tester.tap(find.text(t.avatarSet));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AvatarScreen), findsOneWidget,
+        reason: 'tapping the photo action must push the avatar screen');
+  });
+
+  testWidgets('the avatar circle is not sitting on top of the actions',
+      (tester) async {
+    // The tap target is what broke before: the header squeezed, and the circle
+    // ended up over the button. Geometry, not appearance — they must not
+    // intersect.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    final action = tester.getRect(find.text(t.avatarSet));
+    final avatar = tester.getRect(find.byType(GestureDetector).first);
+    expect(action.overlaps(avatar), isFalse,
+        reason: 'the circle must not cover the button that opens the picker');
   });
 
   group('IdentityAvatar.paletteFor', () {
