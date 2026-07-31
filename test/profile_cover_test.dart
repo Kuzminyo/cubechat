@@ -91,6 +91,33 @@ void main() {
         reason: 'pulling down past the top should open the cover');
   });
 
+  testWidgets('nothing in the header overlaps once it is scrolled', (tester) async {
+    // The first build let the header shrink while the avatar stayed pinned to
+    // its top, the actions to its bottom and the name to a point between —
+    // squeezing the box drove all three into each other. Scrolling must move
+    // the header away, not compress it.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    final actions = find.text(t.profileMyCard);
+    final beforeTop = tester.getTopLeft(actions).dy;
+
+    await tester.drag(
+      find.byType(CustomScrollView),
+      const Offset(0, -220),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+
+    // Either scrolled off, or moved up by the full drag — never parked at the
+    // top of the screen on top of the name.
+    if (actions.evaluate().isNotEmpty) {
+      final afterTop = tester.getTopLeft(actions).dy;
+      expect(afterTop, lessThan(beforeTop - 100),
+          reason: 'the header should travel with the scroll, not compress');
+    }
+  });
+
   group('IdentityAvatar.paletteFor', () {
     test('is stable for a seed', () {
       // The cover paints the whole header with it while the circle paints a

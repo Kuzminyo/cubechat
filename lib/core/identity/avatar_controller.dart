@@ -33,9 +33,19 @@ class AvatarController extends Notifier<Uint8List?> {
 
   Box<dynamic>? _box;
 
+  /// Completes once the settings box is open. Opening it goes through the
+  /// platform keystore, which is slow enough that a user can easily pick a
+  /// photo first — and a write against a null box is silently dropped, so the
+  /// avatar would appear to take and then be gone on the next launch.
+  late Future<void> _ready;
+
+  /// Set once the user has chosen a picture this session, so a slow disk read
+  /// arriving afterwards cannot put the old one back.
+  bool _userSet = false;
+
   @override
   Uint8List? build() {
-    unawaited(_load());
+    _ready = _load();
     return null;
   }
 
@@ -44,6 +54,7 @@ class AvatarController extends Notifier<Uint8List?> {
       final box = await hiveCipherProvider
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
+      if (_userSet) return;
       final stored = box.get(_key);
       if (stored is Uint8List && stored.isNotEmpty) {
         state = stored;
@@ -62,7 +73,9 @@ class AvatarController extends Notifier<Uint8List?> {
   Future<bool> setFromBytes(Uint8List source) async {
     final encoded = await compute(_squareThumbnail, source);
     if (encoded == null) return false;
+    _userSet = true;
     state = encoded;
+    await _ready;
     try {
       await _box?.put(_key, encoded);
     } catch (e) {
@@ -72,7 +85,9 @@ class AvatarController extends Notifier<Uint8List?> {
   }
 
   Future<void> clear() async {
+    _userSet = true;
     state = null;
+    await _ready;
     try {
       await _box?.delete(_key);
     } catch (e) {

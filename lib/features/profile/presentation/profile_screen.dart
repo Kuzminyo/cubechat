@@ -957,7 +957,13 @@ class _ProfileCover extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final topInset = MediaQuery.paddingOf(context).top;
     return SliverPersistentHeader(
-      pinned: true,
+      // Not pinned. Pinning meant the header had to survive being squeezed to a
+      // toolbar, and at that size the circle, the name and the three actions
+      // all landed on top of each other — every one of them positioned against
+      // a height that had shrunk out from under it. A profile header has
+      // nothing to keep on screen once you are reading the settings, so it
+      // scrolls away like the content it sits above.
+      pinned: false,
       delegate: _CoverDelegate(
         open: open,
         compact: compactHeightFor(topInset),
@@ -994,23 +1000,18 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
   @override
   double get maxExtent => _max;
 
-  // Collapsing past the actions would clip them mid-tap, so the pinned floor is
-  // the status bar plus a bar's worth of room for the name.
+  /// Equal to [maxExtent] on purpose: the header has one height at a time and
+  /// simply scrolls off. Letting it shrink is what produced the pile-up — the
+  /// avatar was pinned to the top, the actions to the bottom, and the name to a
+  /// point in between, so squeezing the box drove all three together.
   @override
-  double get minExtent => topInset + kToolbarHeight;
+  double get minExtent => _max;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
-    final height = (_max - shrinkOffset).clamp(minExtent, _max);
-    // Two separate fades: `open` is the user pulling the header open, and the
-    // scroll shrink is them pushing it away. The layout only cares about the
-    // combined result.
-    final scrolled = _max <= minExtent
-        ? 0.0
-        : (1 - shrinkOffset / (_max - minExtent)).clamp(0.0, 1.0);
     return SizedBox(
-      height: height,
-      child: builder(context, height, open * scrolled),
+      height: _max,
+      child: builder(context, _max, open),
     );
   }
 
