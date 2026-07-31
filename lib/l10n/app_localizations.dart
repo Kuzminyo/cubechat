@@ -1333,6 +1333,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Card'**
   String get profileMyCard;
+
+  /// No description provided for @mediaCaptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a caption…'**
+  String get mediaCaptionHint;
 }
 
 class _AppLocalizationsDelegate

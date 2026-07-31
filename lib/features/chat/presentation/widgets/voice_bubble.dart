@@ -138,8 +138,7 @@ class _VoiceBubbleState extends State<VoiceBubble> {
                   onSeekUpdate: (frac) => setState(() => _scrubbing = frac),
                   onSeekCommit: (frac) async {
                     final target = Duration(
-                      milliseconds:
-                          (total.inMilliseconds * frac).round(),
+                      milliseconds: (total.inMilliseconds * frac).round(),
                     );
                     setState(() {
                       _position = target;
@@ -158,8 +157,7 @@ class _VoiceBubbleState extends State<VoiceBubble> {
                           ? total
                           : Duration(
                               milliseconds:
-                                  (total.inMilliseconds * _scrubbing!)
-                                      .round(),
+                                  (total.inMilliseconds * _scrubbing!).round(),
                             ))),
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
@@ -212,9 +210,8 @@ class _ScrubBar extends StatelessWidget {
           onHorizontalDragUpdate: enabled
               ? (d) => onSeekUpdate(_fracFor(d.localPosition.dx, width))
               : null,
-          onHorizontalDragEnd: enabled
-              ? (_) => onSeekCommit(progress.clamp(0.0, 1.0))
-              : null,
+          onHorizontalDragEnd:
+              enabled ? (_) => onSeekCommit(progress.clamp(0.0, 1.0)) : null,
           onTapDown: enabled
               ? (d) => onSeekStart(_fracFor(d.localPosition.dx, width))
               : null,

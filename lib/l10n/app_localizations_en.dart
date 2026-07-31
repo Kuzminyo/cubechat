@@ -686,4 +686,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileMyCard => 'Card';
+
+  @override
+  String get mediaCaptionHint => 'Add a caption…';
 }

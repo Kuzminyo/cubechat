@@ -37,6 +37,7 @@ import '../models/message.dart';
 import '../domain/command_processor.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
+import 'media_preview_screen.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
@@ -531,7 +532,8 @@ class _ChatHeader extends StatelessWidget {
       // Own the status-bar inset here: without an AppBar there is nothing else
       // holding the capsule clear of the notch, and the conversation behind it
       // deliberately runs all the way to the top of the screen.
-      padding: EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
+      padding:
+          EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
       child: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Row(
@@ -833,46 +835,46 @@ class _PinnedBar extends StatelessWidget {
           borderRadius: 20,
           padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
           child: Row(
-          children: [
-            // Telegram's pin rail: one segment per pinned message. We keep a
-            // single pin per chat, so it reads as one solid marker.
-            Container(
-              width: 2.5,
-              height: _thumb,
-              decoration: BoxDecoration(
-                color: AppColors.brandPrimary,
-                borderRadius: BorderRadius.circular(2),
+            children: [
+              // Telegram's pin rail: one segment per pinned message. We keep a
+              // single pin per chat, so it reads as one solid marker.
+              Container(
+                width: 2.5,
+                height: _thumb,
+                decoration: BoxDecoration(
+                  color: AppColors.brandPrimary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            if (thumb != null) ...[thumb, const SizedBox(width: 10)],
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    t.chatPinnedTitle,
-                    style: TextStyle(
-                      color: AppColors.brandPrimary,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
+              const SizedBox(width: 10),
+              if (thumb != null) ...[thumb, const SizedBox(width: 10)],
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.chatPinnedTitle,
+                      style: TextStyle(
+                        color: AppColors.brandPrimary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    preview,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 12.5,
-                      height: 1.15,
+                    const SizedBox(height: 1),
+                    Text(
+                      preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 12.5,
+                        height: 1.15,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
               _PillIconButton(
                 icon: Icons.push_pin_outlined,
                 color: AppColors.textOnGlassDim,
@@ -1226,14 +1228,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _captureEditAndSend();
       case MediaPickerAssets(:final assets):
         if (assets.isEmpty) return;
-        // One photo goes through the editor (draw / crop / text, then send);
-        // a multi-select batch sends straight through — editing a dozen photos
-        // one by one isn't the flow anyone wants.
-        if (assets.length == 1) {
-          await _editAndSend(assets.first);
-        } else {
-          await _sendAssetsBatch(assets);
-        }
+        await _previewAndSend(assets);
     }
   }
 
@@ -1273,6 +1268,44 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
+  /// Gallery pick → preview with a caption → send.
+  ///
+  /// Both the single pick and the batch come through here now. The old flow
+  /// forced the editor open for one photo and skipped straight to sending for
+  /// several, which meant the two cases behaved nothing alike and neither gave
+  /// a chance to look at what was about to go out.
+  Future<void> _previewAndSend(List<AssetEntity> assets) async {
+    // Bounded-resolution copies: the preview only has to look right on screen,
+    // and the mesh encoder downscales again afterwards anyway.
+    final loaded = <Uint8List>[];
+    for (final a in assets) {
+      final bytes = await a.thumbnailDataWithSize(
+        const ThumbnailSize(1600, 1600),
+        quality: 90,
+      );
+      if (bytes != null) loaded.add(bytes);
+    }
+    if (loaded.isEmpty || !mounted) return;
+
+    final result = await Navigator.of(context).push<MediaPreviewResult>(
+      MaterialPageRoute<MediaPreviewResult>(
+        builder: (_) => MediaPreviewScreen(items: loaded),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    for (var i = 0; i < result.bytes.length; i++) {
+      // The caption belongs to the set, not to each photo — repeating it under
+      // every picture in a batch would read as a stutter. It goes on the first.
+      await _encodeAndSend(
+        result.bytes[i],
+        '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
+        caption: i == 0 ? result.caption : null,
+      );
+      if (!mounted) return;
+    }
+  }
+
   /// Camera tile → in-app capture → editor → send.
   Future<void> _captureEditAndSend() async {
     final captured = await Navigator.of(context).push<Uint8List>(
@@ -1287,18 +1320,6 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     );
   }
 
-  /// Single gallery pick → editor → send. The editor gets a bounded-resolution
-  /// copy (drawing doesn't need the full-res original), and the *edited* result
-  /// is downscaled for the mesh afterwards.
-  Future<void> _editAndSend(AssetEntity asset) async {
-    final preview = await asset.thumbnailDataWithSize(
-      const ThumbnailSize(1600, 1600),
-      quality: 90,
-    );
-    if (preview == null || !mounted) return;
-    await _editAndSendBytes(preview, idHint: asset.id);
-  }
-
   Future<void> _editAndSendBytes(
     Uint8List source, {
     required String idHint,
@@ -1309,7 +1330,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   }
 
   /// Downscale arbitrary (camera / edited) bytes to the mesh budget and send.
-  Future<void> _encodeAndSend(Uint8List bytes, String idHint) async {
+  Future<void> _encodeAndSend(
+    Uint8List bytes,
+    String idHint, {
+    String? caption,
+  }) async {
     try {
       final wire = await encodeBytesForMesh(bytes);
       if (!mounted) return;
@@ -1318,30 +1343,20 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             tone: ToastTone.danger);
         return;
       }
-      await _sendImageBytes(wire, idHint);
+      await _sendImageBytes(wire, idHint, caption: caption);
     } catch (e) {
       if (!mounted) return;
       showGlassToast(context, '$e', tone: ToastTone.danger);
     }
   }
 
-  /// Multi-select path: each asset downscaled via the native thumbnailer.
-  Future<void> _sendAssetsBatch(List<AssetEntity> assets) async {
-    for (final asset in assets) {
-      try {
-        final bytes = await _encodeForMesh(asset);
-        if (bytes == null) continue;
-        await _sendImageBytes(bytes, asset.id);
-      } catch (e) {
-        if (!mounted) return;
-        showGlassToast(context, '$e', tone: ToastTone.danger);
-      }
-    }
-  }
-
   /// Cache the outgoing bytes (so our own bubble renders at once) and hand them
   /// to the transport.
-  Future<void> _sendImageBytes(Uint8List bytes, String idHint) async {
+  Future<void> _sendImageBytes(
+    Uint8List bytes,
+    String idHint, {
+    String? caption,
+  }) async {
     final messaging = ref.read(messagingServiceProvider);
     final cachedPath = await _cacheOutgoingImage(bytes, idHint);
     await messaging.sendImage(
@@ -1349,38 +1364,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       bytes: bytes,
       mime: 'image/jpeg',
       cachedPath: cachedPath,
+      caption: caption,
     );
-  }
-
-  /// Re-encode a picked photo down to something the BLE mesh can actually
-  /// carry — at most [kMaxOutgoingImageBytes].
-  ///
-  /// A fixed 1280 px / q72 (what this used to do) still produced ~1 MB for a
-  /// detailed photo, which is 10912 chunks against a 8192 cap: the transport
-  /// threw and the user just saw "image too large". Pixel dimensions don't
-  /// predict JPEG size — detail does — so step down the rungs until the bytes
-  /// come in under budget, and send the smallest rung if even that overshoots
-  /// (a 320 px thumbnail beats a failed send).
-  Future<Uint8List?> _encodeForMesh(AssetEntity asset) async {
-    const rungs = <({int size, int quality})>[
-      (size: 1280, quality: 70),
-      (size: 1024, quality: 65),
-      (size: 800, quality: 60),
-      (size: 640, quality: 55),
-      (size: 480, quality: 50),
-      (size: 320, quality: 45),
-    ];
-    Uint8List? smallest;
-    for (final rung in rungs) {
-      final bytes = await asset.thumbnailDataWithSize(
-        ThumbnailSize(rung.size, rung.size),
-        quality: rung.quality,
-      );
-      if (bytes == null) continue;
-      smallest = bytes;
-      if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
-    }
-    return smallest;
   }
 
   /// Persist the downscaled bytes we're about to send to the app cache, so the
@@ -1449,7 +1434,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
-      onRecordLock: mediaEnabled ? () => setState(() => _recordLocked = true) : null,
+      onRecordLock:
+          mediaEnabled ? () => setState(() => _recordLocked = true) : null,
       recordLocked: _recordLocked,
       recording: voiceState.isRecording,
       recordElapsed: _elapsed,

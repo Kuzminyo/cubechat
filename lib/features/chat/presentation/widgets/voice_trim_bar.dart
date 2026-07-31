@@ -344,7 +344,8 @@ class _TrimPainter extends CustomPainter {
   }
 
   void _drawHandle(Canvas canvas, Size size, double at) {
-    final cx = (at * size.width).clamp(handleWidth / 2, size.width - handleWidth / 2);
+    final cx =
+        (at * size.width).clamp(handleWidth / 2, size.width - handleWidth / 2);
     final rect = RRect.fromRectAndRadius(
       Rect.fromLTWH(cx - handleWidth / 2, 0, handleWidth, size.height),
       const Radius.circular(7),

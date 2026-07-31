@@ -92,7 +92,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    final remaining = _scroll.position.maxScrollExtent - _scroll.position.pixels;
+    final remaining =
+        _scroll.position.maxScrollExtent - _scroll.position.pixels;
     // Fetch the next page before the user reaches the bottom, so scrolling
     // doesn't visibly stop at the page boundary.
     if (remaining < 800) unawaited(_loadMore());
@@ -291,27 +292,34 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     );
   }
 
-  Widget _message(String title, String hint,
-      {String? action,
-      VoidCallback? onAction,
-      String? secondaryAction,
-      VoidCallback? onSecondaryAction,}) {
+  Widget _message(
+    String title,
+    String hint, {
+    String? action,
+    VoidCallback? onAction,
+    String? secondaryAction,
+    VoidCallback? onSecondaryAction,
+  }) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title,
-                style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,),),
+            Text(
+              title,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(hint,
-                textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),),
+            Text(
+              hint,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+            ),
             if (secondaryAction != null) ...[
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -328,8 +336,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: onAction,
-                child: Text(action,
-                    style: const TextStyle(color: AppColors.brandPrimary),),
+                child: Text(
+                  action,
+                  style: const TextStyle(color: AppColors.brandPrimary),
+                ),
               ),
             ],
           ],
@@ -353,7 +363,8 @@ class _CameraTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.glassFill,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+          border:
+              Border.all(color: AppColors.brandPrimary.withValues(alpha: 0.4)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -361,11 +372,14 @@ class _CameraTile extends StatelessWidget {
             const Icon(Icons.photo_camera,
                 color: AppColors.brandPrimary, size: 26),
             const SizedBox(height: 6),
-            Text('Camera',
-                style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,),),
+            Text(
+              'Camera',
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -395,15 +409,15 @@ class _ThumbState extends State<_Thumb> {
   /// Started once and held, rather than created in build(): selecting a photo
   /// setStates the whole sheet, and a future built inline would re-decode every
   /// visible thumbnail on each tap.
-  late Future<Uint8List?> _thumb = widget.asset
-      .thumbnailDataWithSize(const ThumbnailSize.square(240));
+  late Future<Uint8List?> _thumb =
+      widget.asset.thumbnailDataWithSize(const ThumbnailSize.square(240));
 
   @override
   void didUpdateWidget(covariant _Thumb old) {
     super.didUpdateWidget(old);
     if (old.asset.id != widget.asset.id) {
-      _thumb = widget.asset
-          .thumbnailDataWithSize(const ThumbnailSize.square(240));
+      _thumb =
+          widget.asset.thumbnailDataWithSize(const ThumbnailSize.square(240));
     }
   }
 
@@ -425,8 +439,7 @@ class _ThumbState extends State<_Thumb> {
               return Image.memory(bytes, fit: BoxFit.cover);
             },
           ),
-          if (selected)
-            Container(color: Colors.black.withValues(alpha: 0.35)),
+          if (selected) Container(color: Colors.black.withValues(alpha: 0.35)),
           Positioned(
             top: 4,
             right: 4,

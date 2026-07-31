@@ -261,5 +261,6 @@
   "attachGallery": "Галерея",
   "attachCamera": "Камера",
   "profileEditName": "Ім'я",
-  "profileMyCard": "Картка"
+  "profileMyCard": "Картка",
+  "mediaCaptionHint": "Додати підпис…"
 }

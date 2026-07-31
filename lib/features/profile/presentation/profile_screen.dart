@@ -843,35 +843,6 @@ class _EmergencyWipeCard extends ConsumerWidget {
   }
 }
 
-class _EditableNickname extends ConsumerWidget {
-  const _EditableNickname({required this.value});
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => editNickname(context, ref, t, value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(value,
-                style: AppTypography.heading(
-                    size: 20, color: AppColors.textOnGlass)),
-            const SizedBox(width: 6),
-            Icon(Icons.edit_outlined,
-                size: 16, color: AppColors.textOnGlassFaint),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ProfileCover extends ConsumerWidget {
   const _ProfileCover({
     required this.nickname,

@@ -109,7 +109,12 @@ class FileBubble extends StatelessWidget {
       'ppt' || 'pptx' || 'odp' => Icons.slideshow_outlined,
       'mp3' || 'wav' || 'flac' || 'ogg' || 'm4a' => Icons.audiotrack_outlined,
       'mp4' || 'mov' || 'mkv' || 'avi' || 'webm' => Icons.movie_outlined,
-      'png' || 'jpg' || 'jpeg' || 'gif' || 'webp' || 'heic' =>
+      'png' ||
+      'jpg' ||
+      'jpeg' ||
+      'gif' ||
+      'webp' ||
+      'heic' =>
         Icons.image_outlined,
       'apk' => Icons.android_outlined,
       _ => Icons.insert_drive_file_outlined,

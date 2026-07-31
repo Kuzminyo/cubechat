@@ -686,4 +686,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get profileMyCard => 'Картка';
+
+  @override
+  String get mediaCaptionHint => 'Додати підпис…';
 }

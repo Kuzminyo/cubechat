@@ -75,8 +75,7 @@ class _AttachTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colour =
-        active ? AppColors.brandPrimary : AppColors.textOnGlassDim;
+    final colour = active ? AppColors.brandPrimary : AppColors.textOnGlassDim;
     return Expanded(
       child: Material(
         color: Colors.transparent,

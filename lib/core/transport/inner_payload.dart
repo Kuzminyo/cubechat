@@ -678,6 +678,7 @@ class MediaManifest {
     required this.sha256,
     this.durationMs = 0,
     this.name,
+    this.caption,
     this.senderIdentityPub,
     this.senderEphemeralPub,
   }) {
@@ -702,6 +703,11 @@ class MediaManifest {
   /// about.
   final String? name;
 
+  /// The line the sender typed under the photo, or null. Lives here rather
+  /// than in a separate message so it arrives with the media and renders as
+  /// one bubble — and so it is covered by the same signature.
+  final String? caption;
+
   /// Forward-secrecy setup (v0x02). When present, the media chunks are sealed
   /// with a per-transfer X3DH key ([MediaFsCipher]) rather than SealedBox: the
   /// sender's identity + ephemeral X25519 publics let the receiver run the
@@ -711,6 +717,21 @@ class MediaManifest {
 
   static const int versionV1 = 0x01;
   static const int versionV2Fs = 0x02;
+
+  /// Same as v1/v2 with a caption appended after the mime (and, for a file,
+  /// after the name). A separate version rather than a trailing optional
+  /// field: the decoder refuses trailing bytes, which is what stops a relay
+  /// padding a manifest, and that check is worth more than the convenience.
+  ///
+  /// Uncaptioned media still encodes as v1/v2, byte for byte, so the common
+  /// case keeps working with any build. Only a captioned photo needs the
+  /// recipient to have this one.
+  static const int versionV3Caption = 0x03;
+  static const int versionV4CaptionFs = 0x04;
+
+  /// Longest caption we carry, in UTF-8 bytes. One length byte caps it at 255
+  /// anyway, and a caption is a line under a photo, not a message.
+  static const int maxCaptionBytes = 255;
   static const int idLen = 16;
   static const int digestLen = 32;
   static const int pubLen = 32;
@@ -764,6 +785,15 @@ class MediaManifest {
     } else if (name != null) {
       throw const FormatException('only file manifests carry a name');
     }
+    final cap = caption;
+    if (cap != null && utf8.encode(cap).length > maxCaptionBytes) {
+      throw const FormatException('caption > $maxCaptionBytes UTF-8 bytes');
+    }
+    if (cap != null && cap.isEmpty) {
+      // An empty caption is the same as none; allowing both would give two
+      // encodings for one state.
+      throw const FormatException('caption must be null rather than empty');
+    }
   }
 
   Uint8List encode() {
@@ -777,15 +807,20 @@ class MediaManifest {
     // unknown kind.
     final nameBytes =
         kind == MediaKind.file ? utf8.encode(name!) : const <int>[];
+    final hasCaption = caption != null;
+    final capBytes = hasCaption ? utf8.encode(caption!) : const <int>[];
     final fs = isForwardSecret;
     final out = Uint8List(
       1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length +
           (kind == MediaKind.file ? 1 + nameBytes.length : 0) +
+          (hasCaption ? 1 + capBytes.length : 0) +
           digestLen +
           (fs ? pubLen * 2 : 0),
     );
     var c = 0;
-    out[c++] = fs ? versionV2Fs : versionV1;
+    out[c++] = hasCaption
+        ? (fs ? versionV4CaptionFs : versionV3Caption)
+        : (fs ? versionV2Fs : versionV1);
     out.setRange(c, c += idLen, mediaId);
     out[c++] = kind.tag;
     out[c++] = (total >> 8) & 0xff;
@@ -800,6 +835,10 @@ class MediaManifest {
       out[c++] = nameBytes.length;
       out.setRange(c, c += nameBytes.length, nameBytes);
     }
+    if (hasCaption) {
+      out[c++] = capBytes.length;
+      out.setRange(c, c += capBytes.length, capBytes);
+    }
     out.setRange(c, c += digestLen, sha256);
     if (fs) {
       out.setRange(c, c += pubLen, senderIdentityPub!);
@@ -813,11 +852,16 @@ class MediaManifest {
       throw const FormatException('media manifest truncated');
     }
     final ver = bytes[0];
-    if (ver != versionV1 && ver != versionV2Fs) {
+    if (ver != versionV1 &&
+        ver != versionV2Fs &&
+        ver != versionV3Caption &&
+        ver != versionV4CaptionFs) {
       throw FormatException(
           'unknown media manifest version 0x${ver.toRadixString(16)}');
     }
-    final fs = ver == versionV2Fs;
+    final fs = ver == versionV2Fs || ver == versionV4CaptionFs;
+    final hasCaption =
+        ver == versionV3Caption || ver == versionV4CaptionFs;
     var c = 1;
     final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
     final kind = MediaKind.fromByte(bytes[c++]);
@@ -850,6 +894,19 @@ class MediaManifest {
       name = utf8.decode(bytes.sublist(c, c + nameLen), allowMalformed: true);
       c += nameLen;
     }
+    String? caption;
+    if (hasCaption) {
+      if (bytes.length < c + 1) {
+        throw const FormatException('media manifest missing caption length');
+      }
+      final capLen = bytes[c++];
+      if (bytes.length < c + capLen + trailer) {
+        throw const FormatException('media manifest caption overrun');
+      }
+      caption =
+          utf8.decode(bytes.sublist(c, c + capLen), allowMalformed: true);
+      c += capLen;
+    }
     final sha = Uint8List.fromList(bytes.sublist(c, c += digestLen));
     Uint8List? idPub;
     Uint8List? ephPub;
@@ -867,6 +924,7 @@ class MediaManifest {
       durationMs: durMs,
       mime: mime,
       name: name,
+      caption: caption,
       sha256: sha,
       senderIdentityPub: idPub,
       senderEphemeralPub: ephPub,

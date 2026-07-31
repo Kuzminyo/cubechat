@@ -66,10 +66,11 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       _cameras = const [];
     }
     if (_cameras.isEmpty) {
-      if (mounted) setState(() {
-        _unavailable = true;
-        _initializing = false;
-      });
+      if (mounted)
+        setState(() {
+          _unavailable = true;
+          _initializing = false;
+        });
       return;
     }
     await _use(_cameraIndex);
@@ -197,13 +198,16 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                 color: Colors.white54, size: 56),
             const SizedBox(height: 12),
             Text('Camera unavailable',
-                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13)),
+                style:
+                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 13)),
           ],
         ),
       );
     }
     final controller = _controller;
-    if (_initializing || controller == null || !controller.value.isInitialized) {
+    if (_initializing ||
+        controller == null ||
+        !controller.value.isInitialized) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.brandPrimary),
       );

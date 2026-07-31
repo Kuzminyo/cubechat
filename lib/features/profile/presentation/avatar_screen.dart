@@ -66,9 +66,7 @@ class AvatarScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: PillButton(
-                      label: bytes == null
-                          ? t.avatarSet
-                          : t.avatarChange,
+                      label: bytes == null ? t.avatarSet : t.avatarChange,
                       icon: Icons.photo_camera_back_outlined,
                       onTap: () => _pick(context, ref),
                     ),
@@ -115,8 +113,7 @@ class AvatarScreen extends ConsumerWidget {
       if (context.mounted) showGlassToast(context, t.avatarFailed);
       return;
     }
-    final ok =
-        await ref.read(avatarProvider.notifier).setFromBytes(preview);
+    final ok = await ref.read(avatarProvider.notifier).setFromBytes(preview);
     if (!ok && context.mounted) showGlassToast(context, t.avatarFailed);
   }
 

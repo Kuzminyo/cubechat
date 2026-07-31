@@ -289,5 +289,6 @@
   "attachGallery": "Gallery",
   "attachCamera": "Camera",
   "profileEditName": "Name",
-  "profileMyCard": "Card"
+  "profileMyCard": "Card",
+  "mediaCaptionHint": "Add a caption…"
 }

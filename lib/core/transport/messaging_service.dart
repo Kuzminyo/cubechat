@@ -1293,6 +1293,7 @@ class MessagingService {
     required Uint8List bytes,
     required String mime,
     String? cachedPath,
+    String? caption,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -1324,10 +1325,13 @@ class MessagingService {
     // lets a read receipt for a photo find its way back to this message (and,
     // with it, the read time in the long-press details).
     final imageId = ImageChunk.newImageId();
+    // The bubble shows the caption when there is one; the mime is the fallback
+    // label the preview line already knows to hide.
+    final caption0 = (caption?.trim().isEmpty ?? true) ? null : caption!.trim();
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
-      text: mime,
+      text: caption0 ?? mime,
       sentAt: DateTime.now(),
       isMine: true,
       status: MessageStatus.sending,
@@ -1370,6 +1374,7 @@ class MessagingService {
         kind: MediaKind.image,
         total: total,
         mime: mime,
+        caption: caption0,
         bytes: bytes,
         myHash: myHash,
         peerHash: peerHash,
@@ -3462,7 +3467,7 @@ class MessagingService {
           message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
-            text: manifest.mime,
+            text: manifest.caption ?? manifest.mime,
             sentAt: DateTime.now(),
             isMine: false,
             kind: MessageKind.image,
@@ -3542,6 +3547,7 @@ class MessagingService {
     required String mime,
     int durationMs = 0,
     String? name,
+    String? caption,
     /// The payload, when it is small enough to have in hand. A file transfer
     /// passes [sha256Digest] instead: the whole point of streaming it off disk
     /// is not to hold twenty-five megabytes in memory just to hash them.
@@ -3566,6 +3572,7 @@ class MessagingService {
       mime: mime,
       durationMs: durationMs,
       name: name,
+      caption: caption,
       sha256: sha,
       senderIdentityPub: senderIdentityPub,
       senderEphemeralPub: senderEphemeralPub,

@@ -684,12 +684,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   Transform.translate(
                     offset: Offset(_dragX, 0),
                     child: Row(
-                      mainAxisAlignment:
-                          mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+                      mainAxisAlignment: mine
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
                       children: [
                         ConstrainedBox(
                           constraints: BoxConstraints(
-                              maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                              maxWidth:
+                                  MediaQuery.sizeOf(context).width * 0.75),
                           child: Column(
                             crossAxisAlignment: mine
                                 ? CrossAxisAlignment.end
