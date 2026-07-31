@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/crypto/identity_service.dart';
+import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
@@ -38,208 +39,186 @@ class ProfileScreen extends ConsumerWidget {
     );
     final fingerprintReady = fingerprintAsync.hasValue;
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-            child: Row(
-              children: [
-                const CubeLogo(size: 32),
-                const SizedBox(width: 12),
-                Expanded(
-                    child:
-                        Text(t.profileTitle, style: AppTypography.display())),
-              ],
+    return CustomScrollView(
+      slivers: [
+        _ProfileCover(nickname: nickname, fingerprint: fingerprint),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+          sliver: SliverList.list(children: [
+            // Identity. The avatar and the name moved up onto the cover, so what
+            // is left here is the fingerprint — the part you actually read out
+            // loud to someone standing next to you.
+            GlassCard(
+              strong: true,
+              padding: const EdgeInsets.all(20),
+              borderRadius: 22,
+              child: _FingerprintRow(
+                label: t.profileFingerprint,
+                value: fingerprint,
+                ready: fingerprintReady,
+              ),
             ),
-          ),
 
-          // Identity
-          GlassCard(
-            strong: true,
-            padding: const EdgeInsets.all(20),
-            borderRadius: 22,
-            child: Column(
-              children: [
-                TappableAvatar(seed: fingerprint, label: nickname),
-                const SizedBox(height: 14),
-                _EditableNickname(value: nickname),
-                const SizedBox(height: 4),
-                Text(
-                  t.profileNickname,
-                  style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-                ),
-                const SizedBox(height: 18),
-                _FingerprintRow(
-                  label: t.profileFingerprint,
-                  value: fingerprint,
-                  ready: fingerprintReady,
-                ),
-              ],
-            ),
-          ),
+            const SizedBox(height: 12),
 
-          const SizedBox(height: 12),
-
-          // Language toggle
-          _SectionLabel(text: t.profileLanguage),
-          GlassCard(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _LangPill(
-                    label: t.profileLanguageEn,
-                    code: 'en',
-                    current: locale.languageCode,
-                    onTap: () => ref
-                        .read(localeControllerProvider.notifier)
-                        .set(const Locale('en')),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _LangPill(
-                    label: t.profileLanguageUk,
-                    code: 'uk',
-                    current: locale.languageCode,
-                    onTap: () => ref
-                        .read(localeControllerProvider.notifier)
-                        .set(const Locale('uk')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Transport
-          _SectionLabel(text: t.profileTransport),
-          GlassCard(
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                    border: Border.all(
-                        color: AppColors.brandPrimary.withValues(alpha: 0.4)),
-                  ),
-                  child: const Icon(Icons.bluetooth,
-                      color: AppColors.brandPrimary, size: 18),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    t.profileTransportMesh,
-                    style:
-                        TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-                  ),
-                ),
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.online,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-          const _BackgroundModeCard(),
-
-          const SizedBox(height: 8),
-          const _RelayFallbackCard(),
-
-          const SizedBox(height: 8),
-          const _DiscoverableCard(),
-
-          const SizedBox(height: 8),
-          const _PrivacyCard(),
-
-          const SizedBox(height: 8),
-          const _ContactCardRow(),
-
-          const SizedBox(height: 12),
-
-          // About
-          _SectionLabel(text: t.profileAbout),
-          GlassCard(
-            child: Row(
-              children: [
-                const CubeLogo(size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cubechat',
-                        style: AppTypography.heading(
-                            size: 15, color: AppColors.textOnGlass),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        t.profileVersion(_appVersion),
-                        style: TextStyle(
-                            color: AppColors.textOnGlassDim, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Diagnostics
-          GlassCard(
-            onTap: () => context.push('/diagnostics'),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.08),
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                  ),
-                  child: Icon(Icons.bug_report_outlined,
-                      color: AppColors.textOnGlass, size: 18),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Diagnostics',
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+            // Language toggle
+            _SectionLabel(text: t.profileLanguage),
+            GlassCard(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _LangPill(
+                      label: t.profileLanguageEn,
+                      code: 'en',
+                      current: locale.languageCode,
+                      onTap: () => ref
+                          .read(localeControllerProvider.notifier)
+                          .set(const Locale('en')),
                     ),
                   ),
-                ),
-                Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _LangPill(
+                      label: t.profileLanguageUk,
+                      code: 'uk',
+                      current: locale.languageCode,
+                      onTap: () => ref
+                          .read(localeControllerProvider.notifier)
+                          .set(const Locale('uk')),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // Emergency wipe
-          _EmergencyWipeCard(),
-        ],
-      ),
+            // Transport
+            _SectionLabel(text: t.profileTransport),
+            GlassCard(
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.brandPrimary.withValues(alpha: 0.18),
+                      border: Border.all(
+                          color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+                    ),
+                    child: const Icon(Icons.bluetooth,
+                        color: AppColors.brandPrimary, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      t.profileTransportMesh,
+                      style:
+                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                    ),
+                  ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.online,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+            const _BackgroundModeCard(),
+
+            const SizedBox(height: 8),
+            const _RelayFallbackCard(),
+
+            const SizedBox(height: 8),
+            const _DiscoverableCard(),
+
+            const SizedBox(height: 8),
+            const _PrivacyCard(),
+
+            const SizedBox(height: 8),
+            const _ContactCardRow(),
+
+            const SizedBox(height: 12),
+
+            // About
+            _SectionLabel(text: t.profileAbout),
+            GlassCard(
+              child: Row(
+                children: [
+                  const CubeLogo(size: 36),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cubechat',
+                          style: AppTypography.heading(
+                              size: 15, color: AppColors.textOnGlass),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          t.profileVersion(_appVersion),
+                          style: TextStyle(
+                              color: AppColors.textOnGlassDim, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Diagnostics
+            GlassCard(
+              onTap: () => context.push('/diagnostics'),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.08),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18)),
+                    ),
+                    child: Icon(Icons.bug_report_outlined,
+                        color: AppColors.textOnGlass, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Diagnostics',
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Emergency wipe
+            _EmergencyWipeCard(),
+          ]),
+        ),
+      ],
     );
   }
 }
@@ -408,7 +387,9 @@ class _DiscoverableCard extends ConsumerWidget {
                       Border.all(color: Colors.white.withValues(alpha: 0.18)),
                 ),
                 child: Icon(
-                  on ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  on
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   color: on ? AppColors.textOnGlass : AppColors.brandPrimary,
                   size: 18,
                 ),
@@ -872,7 +853,7 @@ class _EditableNickname extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => _showEditDialog(context, ref, t, value),
+      onTap: () => editNickname(context, ref, t, value),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
@@ -889,69 +870,261 @@ class _EditableNickname extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Future<void> _showEditDialog(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations t,
-    String current,
-  ) async {
-    final controller = TextEditingController(text: current);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-        ),
-        title: Text(
-          t.profileNicknameEditTitle,
-          style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 16,
-              fontWeight: FontWeight.w600),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: NicknameController.maxLength,
-          cursorColor: AppColors.brandPrimary,
-          style: TextStyle(color: AppColors.textOnGlass, fontSize: 16),
-          decoration: InputDecoration(
-            hintText: t.profileNicknameHint,
-            hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
-            counterStyle:
-                TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.glassBorder),
+class _ProfileCover extends ConsumerWidget {
+  const _ProfileCover({
+    required this.nickname,
+    required this.fingerprint,
+  });
+
+  final String nickname;
+  final String fingerprint;
+
+  static const double _expanded = 380;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final photo = ref.watch(avatarProvider);
+    final discoverable = ref.watch(discoverySettingsProvider).discoverable;
+    final top = MediaQuery.paddingOf(context).top;
+
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight: _expanded,
+      backgroundColor: AppColors.bgTop,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      // Shown only once the cover has collapsed past the photo.
+      title: Text(nickname, style: AppTypography.heading(size: 17)),
+      centerTitle: false,
+      flexibleSpace: FlexibleSpaceBar(
+        collapseMode: CollapseMode.parallax,
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (photo != null)
+              Image.memory(photo, fit: BoxFit.cover)
+            else
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: IdentityAvatar.paletteFor(fingerprint),
+                  ),
+                ),
+              ),
+            // Scrim under the text. Without it a bright photo makes the name
+            // unreadable, and the app has no control over what people pick.
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.center,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0xE606140D)],
+                ),
+              ),
             ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.brandPrimary, width: 1.5),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.display(),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: discoverable
+                              ? AppColors.online
+                              : AppColors.textOnGlassDim,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        discoverable
+                            ? t.profileDiscoverableOnHint
+                            : t.profileDiscoverableOffHint,
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _CoverAction(
+                          icon: Icons.add_a_photo_outlined,
+                          label: photo == null ? t.avatarSet : t.avatarChange,
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute<void>(
+                              builder: (_) => AvatarScreen(
+                                seed: fingerprint,
+                                label: nickname,
+                                heroTag: 'cover-avatar',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _CoverAction(
+                          icon: Icons.edit_outlined,
+                          label: t.profileEditName,
+                          onTap: () => editNickname(context, ref, t, nickname),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _CoverAction(
+                          icon: Icons.qr_code_2_outlined,
+                          label: t.profileMyCard,
+                          onTap: () => context.push('/contact'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+      // Nothing to go back to — the profile is a root tab.
+      automaticallyImplyLeading: false,
+      // Overscrolling at the top stretches the photo rather than showing the
+      // background through a gap.
+      stretch: true,
+    );
+  }
+}
+
+/// One of the three pills sitting on the cover photo.
+class _CoverAction extends StatelessWidget {
+  const _CoverAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: Colors.white),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel,
-                style: TextStyle(color: AppColors.textOnGlassDim)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final value = controller.text.trim();
-              if (value.isEmpty) {
-                Navigator.of(ctx).pop();
-                return;
-              }
-              await ref.read(nicknameControllerProvider.notifier).set(value);
-              if (ctx.mounted) Navigator.of(ctx).pop();
-            },
-            child: Text(t.profileNicknameSave,
-                style: const TextStyle(color: AppColors.brandPrimary)),
-          ),
-        ],
       ),
     );
   }
+}
+
+/// The rename dialog, at top level because two places open it now: the name in
+/// the identity card and the button on the cover.
+Future<void> editNickname(
+  BuildContext context,
+  WidgetRef ref,
+  AppLocalizations t,
+  String current,
+) async {
+  final controller = TextEditingController(text: current);
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      title: Text(
+        t.profileNicknameEditTitle,
+        style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600),
+      ),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLength: NicknameController.maxLength,
+        cursorColor: AppColors.brandPrimary,
+        style: TextStyle(color: AppColors.textOnGlass, fontSize: 16),
+        decoration: InputDecoration(
+          hintText: t.profileNicknameHint,
+          hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
+          counterStyle:
+              TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: AppColors.glassBorder),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: AppColors.brandPrimary, width: 1.5),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () async {
+            final value = controller.text.trim();
+            if (value.isEmpty) {
+              Navigator.of(ctx).pop();
+              return;
+            }
+            await ref.read(nicknameControllerProvider.notifier).set(value);
+            if (ctx.mounted) Navigator.of(ctx).pop();
+          },
+          child: Text(t.profileNicknameSave,
+              style: const TextStyle(color: AppColors.brandPrimary)),
+        ),
+      ],
+    ),
+  );
 }

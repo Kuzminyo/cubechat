@@ -680,4 +680,10 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get attachCamera => 'Камера';
+
+  @override
+  String get profileEditName => 'Ім\'я';
+
+  @override
+  String get profileMyCard => 'Картка';
 }

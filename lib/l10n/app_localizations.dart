@@ -1321,6 +1321,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Camera'**
   String get attachCamera;
+
+  /// No description provided for @profileEditName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get profileEditName;
+
+  /// No description provided for @profileMyCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get profileMyCard;
 }
 
 class _AppLocalizationsDelegate

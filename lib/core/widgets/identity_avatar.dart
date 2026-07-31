@@ -30,6 +30,12 @@ class IdentityAvatar extends StatelessWidget {
   /// When non-null, wraps the avatar in a Hero for shared-element transitions.
   final String? heroTag;
 
+  /// The gradient a seed maps to. Exposed because the profile cover paints the
+  /// same colours across the whole header when there is no photo — two
+  /// hand-picked palettes would drift apart.
+  static List<Color> paletteFor(String seed) =>
+      _palettes[seed.hashCode.abs() % _palettes.length];
+
   static const List<List<Color>> _palettes = [
     [Color(0xFF2EDB8F), Color(0xFF7FD9A6)],
     [Color(0xFF34D399), Color(0xFFA3E635)],
@@ -40,7 +46,7 @@ class IdentityAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _palettes[seed.hashCode.abs() % _palettes.length];
+    final palette = paletteFor(seed);
     final initials = _initials(label);
     final photo = imageBytes;
     final body = SizedBox(

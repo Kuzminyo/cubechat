@@ -680,4 +680,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachCamera => 'Camera';
+
+  @override
+  String get profileEditName => 'Name';
+
+  @override
+  String get profileMyCard => 'Card';
 }

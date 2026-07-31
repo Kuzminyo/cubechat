@@ -259,5 +259,7 @@
   "fileTooLargeRelay": "Через інтернет можна надіслати до 3 МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.",
   "attachFile": "Файл",
   "attachGallery": "Галерея",
-  "attachCamera": "Камера"
+  "attachCamera": "Камера",
+  "profileEditName": "Ім'я",
+  "profileMyCard": "Картка"
 }

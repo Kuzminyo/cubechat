@@ -287,5 +287,7 @@
   "fileTooLargeRelay": "Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.",
   "attachFile": "File",
   "attachGallery": "Gallery",
-  "attachCamera": "Camera"
+  "attachCamera": "Camera",
+  "profileEditName": "Name",
+  "profileMyCard": "Card"
 }
