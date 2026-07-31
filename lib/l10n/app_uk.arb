@@ -1,11 +1,9 @@
 {
   "@@locale": "uk",
   "appName": "Cubechat",
-
   "navChats": "Чати",
   "navPeers": "Поблизу",
   "navProfile": "Профіль",
-
   "chatsTitle": "Чати",
   "chatsSubtitle": "Mesh · наскрізне шифрування",
   "chatsEmptyTitle": "Поки що немає розмов",
@@ -18,15 +16,25 @@
   "chatsStatusViaMesh": "через mesh",
   "chatsStatusOffline": "офлайн",
   "peerKeyRotated": "ключ змінено — підтвердьте знову",
-
   "peersTitle": "Поблизу",
   "peersSubtitle": "Пристрої у радіусі Bluetooth",
   "peersEmpty": "Шукаємо співрозмовників…",
   "peersHopsOne": "{n} пересилання",
   "peersHopsOther": "{n} пересилань",
-  "@peersHopsOne": { "placeholders": { "n": { "type": "int" } } },
-  "@peersHopsOther": { "placeholders": { "n": { "type": "int" } } },
-
+  "@peersHopsOne": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "@peersHopsOther": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "blePermissionTitle": "Потрібен дозвіл на Bluetooth",
   "blePermissionHint": "Cubechat використовує Bluetooth для пошуку співрозмовників і надсилання повідомлень — без інтернету.",
   "blePermissionGrant": "Надати дозвіл",
@@ -46,19 +54,35 @@
   "bleUnknownPeer": "Невідомий пристрій",
   "bleBroadcasting": "В ефірі",
   "bleConnectedCount": "{n, plural, =0{Немає з'єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",
-  "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } },
-
+  "@bleConnectedCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "verifyTitle": "Підтвердження",
   "verifyIntro": "Порівняйте ці два відбитки зі своїм співрозмовником особисто або по голосовому виклику. Якщо вони збігаються з обох сторін — рукостискання Noise не було підмінене.",
   "verifyMine": "ВАШ ВІДБИТОК",
   "verifyTheirs": "ВІДБИТОК {name}",
-  "@verifyTheirs": { "placeholders": { "name": { "type": "String" } } },
+  "@verifyTheirs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "verifyMarkAsVerified": "Підтвердити особу",
   "verifyAlreadyDone": "Особу цього співрозмовника підтверджено.",
   "verifyRevoke": "Скасувати",
   "verifyDoneSnack": "{name}: особу підтверджено",
-  "@verifyDoneSnack": { "placeholders": { "name": { "type": "String" } } },
-
+  "@verifyDoneSnack": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "chatInputHint": "Повідомлення",
   "chatSend": "Надіслати",
   "chatToday": "Сьогодні",
@@ -75,7 +99,6 @@
   "chatSessionFingerprintPending": "Відбиток з'явиться після завершення рукостискання.",
   "chatEmptyEstablished": "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
   "chatEmptyHandshaking": "Очікуємо, поки інший бік завершить рукостискання…",
-
   "profileTitle": "Профіль",
   "profileNickname": "Нікнейм",
   "profileNicknameEditTitle": "Встановіть нікнейм",
@@ -92,7 +115,13 @@
   "profileBatteryExempt": "Вимкнути оптимізацію батареї",
   "profileAbout": "Про застосунок",
   "profileVersion": "Версія {v}",
-  "@profileVersion": { "placeholders": { "v": { "type": "String" } } },
+  "@profileVersion": {
+    "placeholders": {
+      "v": {
+        "type": "String"
+      }
+    }
+  },
   "profileEmergencyWipe": "Аварійне очищення",
   "profileEmergencyWipeHint": "Потрійний тап стирає всі ключі, контакти й повідомлення.",
   "profileEmergencyWipeConfirm": "Стерти все?",
@@ -101,7 +130,6 @@
   "cancel": "Скасувати",
   "copy": "Копіювати",
   "copied": "Скопійовано",
-
   "channelsNewTitle": "Новий канал",
   "channelsNewTooltip": "Новий канал",
   "channelNameLabel": "Назва каналу",
@@ -109,59 +137,48 @@
   "channelJoinAction": "Приєднатися",
   "channelSubtitle": "Груповий канал · спільний ключ",
   "chatsStatusChannel": "канал",
-
   "channelInviteTitle": "Додати учасників",
   "channelInviteAction": "Запросити",
   "channelInviteEmpty": "Поки немає відомих пірів. Спершу знайдіть когось на вкладці «Поруч».",
   "channelInviteSent": "Запрошення надіслано",
   "channelInviteNoneSent": "Зараз нікого не вдалося досягнути",
   "channelNameTooLong": "Назва каналу задовга",
-
   "chatsActionFavorite": "Додати в обрані",
   "chatsActionUnfavorite": "Прибрати з обраних",
   "chatsActionDelete": "Видалити чат",
   "chatsDeleteTitle": "Видалити цей чат?",
   "chatsDeletePeerHint": "Розмову буде видалено, а піра забуто. Він зможе знайти вас знову через меш.",
   "chatsDeleteChannelHint": "Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.",
-
   "chatEditAction": "Редагувати",
   "chatEditTitle": "Редагувати повідомлення",
   "chatEditSave": "Зберегти",
   "chatEdited": "змінено",
-
   "chatDeleteAction": "Видалити",
   "chatDeleteTitle": "Видалити повідомлення?",
   "chatDeleteForMe": "Видалити в мене",
   "chatDeleteForEveryone": "Видалити в усіх",
-
   "chatReplyAction": "Відповісти",
   "chatReplyingTo": "Відповідь для {name}",
   "chatReplyYou": "себе",
-
   "chatCopyAction": "Копіювати",
   "chatCopied": "Скопійовано",
-
   "chatForwardAction": "Переслати",
   "chatForwardTitle": "Переслати в",
   "chatForwardEmpty": "Інших чатів поки немає",
   "chatForwardSent": "Переслано в {name}",
-
   "chatSentAt": "Надіслано {time}",
   "chatReadAt": "Прочитано {time}",
-
   "chatPinAction": "Закріпити",
   "chatUnpinAction": "Відкріпити",
   "chatUnpinConfirm": "Відкріпити це повідомлення?",
   "chatUnpinConfirmHint": "Воно перестане бути закріпленим для всіх у цьому чаті.",
   "chatPinnedTitle": "Закріплене повідомлення",
   "chatPinnedGone": "Цього повідомлення вже немає в чаті",
-
   "peerBlock": "Заблокувати",
   "peerUnblock": "Розблокувати",
   "peerMute": "Без звуку",
   "peerUnmute": "Увімкнути звук",
   "peerBlockedNote": "Заблоковано — повідомлення відхиляються.",
-
   "relaysTitle": "Запасний канал через інтернет",
   "relaysCardTitle": "Досягати співрозмовників через інтернет",
   "relaysCardSubtitle": "Коли Bluetooth не доставляє — надсилати через релеї Nostr",
@@ -178,7 +195,6 @@
   "relaysStateFailed": "Недоступний",
   "relaysStateIdle": "Вимкнено",
   "relaysEmpty": "Релеї не налаштовані — запасний канал вимкнено.",
-
   "contactTitle": "Картка контакту",
   "contactMineLabel": "Ваша картка",
   "contactMineExplainer": "Надішліть її тому, хто поза зоною Bluetooth. Вона містить ваші ключі та адресу на релеях — цього досить, щоб почати з вами зашифрований чат через інтернет.",
@@ -191,28 +207,45 @@
   "contactAddAction": "Додати",
   "contactPaste": "Вставити",
   "contactAdded": "Додано {name}",
-  "@contactAdded": { "placeholders": { "name": { "type": "String" } } },
+  "@contactAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "contactInvalid": "Це не картка контакту",
   "contactOwnCard": "Це ваша власна картка",
   "contactUnverified": "Доданий так контакт спершу неперевірений. Будь-хто може створити картку й написати на ній будь-яке ім'я, тож звірте відбитки особисто або по дзвінку, перш ніж довіряти особі.",
   "contactRelayOff": "Запасний канал через інтернет вимкнено, тож картка поки нікого не досягне.",
   "contactRelayEnable": "Увімкнути",
-
   "profileContactCard": "Картка контакту",
   "profileContactCardSubtitle": "Спілкування з тим, хто поза зоною Bluetooth",
   "chatsAddContactTooltip": "Додати контакт за карткою",
   "chatsMenuTooltip": "Ще",
   "chatsMenuAddContact": "Додати контакт",
   "chatsMenuNewChannel": "Новий канал",
-
   "profileDiscoverable": "Помітність поруч",
   "profileDiscoverableOnHint": "Вас знайде будь-хто в радіусі",
   "profileDiscoverableOffHint": "Вас досягнуть лише ваші контакти",
   "profileDiscoverableExplainer": "Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв'язними. Новим людям тоді потрібна картка контакту.",
-
   "voiceTrimPlay": "Відтворити",
   "voiceTrimPause": "Пауза",
   "voiceTrimDiscard": "Видалити запис",
   "voiceTrimSelection": "Надсилаємо {duration}",
-  "@voiceTrimSelection": { "placeholders": { "duration": { "type": "String" } } }
+  "@voiceTrimSelection": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "profilePrivacy": "Приватність",
+  "profileLastSeen": "Показувати час у мережі",
+  "profileLastSeenOnHint": "Контакти бачать, коли ви в застосунку",
+  "profileLastSeenOffHint": "Ніхто не бачить — і ви теж не бачите",
+  "profileReadReceipts": "Показувати час прочитання",
+  "profileReadReceiptsOnHint": "Відправник бачить, що ви прочитали",
+  "profileReadReceiptsOffHint": "Не бачить — і ви не бачите його",
+  "profilePrivacyExplainer": "Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само."
 }

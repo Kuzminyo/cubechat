@@ -616,4 +616,29 @@ class AppLocalizationsUk extends AppLocalizations {
   String voiceTrimSelection(String duration) {
     return 'Надсилаємо $duration';
   }
+
+  @override
+  String get profilePrivacy => 'Приватність';
+
+  @override
+  String get profileLastSeen => 'Показувати час у мережі';
+
+  @override
+  String get profileLastSeenOnHint => 'Контакти бачать, коли ви в застосунку';
+
+  @override
+  String get profileLastSeenOffHint => 'Ніхто не бачить — і ви теж не бачите';
+
+  @override
+  String get profileReadReceipts => 'Показувати час прочитання';
+
+  @override
+  String get profileReadReceiptsOnHint => 'Відправник бачить, що ви прочитали';
+
+  @override
+  String get profileReadReceiptsOffHint => 'Не бачить — і ви не бачите його';
+
+  @override
+  String get profilePrivacyExplainer =>
+      'Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само.';
 }

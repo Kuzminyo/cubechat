@@ -8,6 +8,7 @@ import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
+import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
@@ -44,6 +45,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Discoverability goes back to the default too — a wipe should leave the app
   // indistinguishable from a fresh install, including how it advertises itself.
   await ref.read(discoverySettingsProvider.notifier).reset();
+  await ref.read(privacySettingsProvider.notifier).reset();
 
   final sessions = ref.read(chatSessionManagerProvider);
   final manager = ref.read(chatSessionManagerProvider.notifier);

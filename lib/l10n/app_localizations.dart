@@ -1201,6 +1201,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sending {duration}'**
   String voiceTrimSelection(String duration);
+
+  /// No description provided for @profilePrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy'**
+  String get profilePrivacy;
+
+  /// No description provided for @profileLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Share last seen'**
+  String get profileLastSeen;
+
+  /// No description provided for @profileLastSeenOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts can see when you\'re in the app'**
+  String get profileLastSeenOnHint;
+
+  /// No description provided for @profileLastSeenOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody sees yours — and you see nobody\'s'**
+  String get profileLastSeenOffHint;
+
+  /// No description provided for @profileReadReceipts.
+  ///
+  /// In en, this message translates to:
+  /// **'Share read receipts'**
+  String get profileReadReceipts;
+
+  /// No description provided for @profileReadReceiptsOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Senders see when you\'ve read them'**
+  String get profileReadReceiptsOnHint;
+
+  /// No description provided for @profileReadReceiptsOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'They don\'t — and neither do you'**
+  String get profileReadReceiptsOffHint;
+
+  /// No description provided for @profilePrivacyExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.'**
+  String get profilePrivacyExplainer;
 }
 
 class _AppLocalizationsDelegate

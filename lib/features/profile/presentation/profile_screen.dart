@@ -16,6 +16,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/discovery_settings_controller.dart';
+import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/widgets/glass_toast.dart';
 
@@ -159,6 +160,9 @@ class ProfileScreen extends ConsumerWidget {
 
           const SizedBox(height: 8),
           const _DiscoverableCard(),
+
+          const SizedBox(height: 8),
+          const _PrivacyCard(),
 
           const SizedBox(height: 8),
           const _ContactCardRow(),
@@ -441,6 +445,131 @@ class _DiscoverableCard extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             t.profileDiscoverableExplainer,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One labelled switch inside a settings card. Three of these were about to be
+/// copy-pasted, and hand-tuned duplicates drift apart the first time any of
+/// them is touched.
+class _SettingSwitch extends StatelessWidget {
+  const _SettingSwitch({
+    required this.icon,
+    required this.title,
+    required this.hint,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String hint;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.08),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          child: Icon(
+            icon,
+            color: value ? AppColors.textOnGlass : AppColors.brandPrimary,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                hint,
+                style:
+                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          activeThumbColor: AppColors.brandPrimary,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+/// Last seen and read receipts — the two things the app says about *you*
+/// rather than about your messages. Both symmetric; see [PrivacySettings].
+class _PrivacyCard extends ConsumerWidget {
+  const _PrivacyCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final s = ref.watch(privacySettingsProvider);
+    final n = ref.read(privacySettingsProvider.notifier);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.profilePrivacy,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _SettingSwitch(
+            icon: s.shareLastSeen
+                ? Icons.schedule_outlined
+                : Icons.history_toggle_off_outlined,
+            title: t.profileLastSeen,
+            hint: s.shareLastSeen
+                ? t.profileLastSeenOnHint
+                : t.profileLastSeenOffHint,
+            value: s.shareLastSeen,
+            onChanged: n.setShareLastSeen,
+          ),
+          const SizedBox(height: 14),
+          _SettingSwitch(
+            icon: s.shareReadReceipts
+                ? Icons.done_all_outlined
+                : Icons.remove_done_outlined,
+            title: t.profileReadReceipts,
+            hint: s.shareReadReceipts
+                ? t.profileReadReceiptsOnHint
+                : t.profileReadReceiptsOffHint,
+            value: s.shareReadReceipts,
+            onChanged: n.setShareReadReceipts,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            t.profilePrivacyExplainer,
             style: TextStyle(
               color: AppColors.textOnGlassDim,
               fontSize: 11.5,

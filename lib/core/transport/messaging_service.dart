@@ -20,6 +20,7 @@ import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
+import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
@@ -1407,6 +1408,9 @@ class MessagingService {
   /// the next view retries.
   Future<void> sendReadReceipts(String canonicalId) async {
     if (canonicalId.startsWith('#')) return;
+    // Opted out of read receipts: say nothing. The messages are still marked
+    // read locally — this only withholds telling the sender about it.
+    if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
     final msgs = _ref.read(messagesControllerProvider)[canonicalId];
     if (msgs == null || msgs.isEmpty) return;
 
@@ -2757,11 +2761,15 @@ class MessagingService {
               fallbackPeerId: peerId, message: message);
 
         case InnerPayloadType.receipt:
-          _ingestReceipt(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
+          // Symmetric with the send side: someone who withholds their own read
+          // receipts does not get to watch other people's.
+          if (_ref.read(privacySettingsProvider).shareReadReceipts) {
+            _ingestReceipt(
+              peerId: peerId,
+              senderPub: senderPub,
+              body: unpacked.body,
+            );
+          }
 
         case InnerPayloadType.reaction:
           _ingestPeerReaction(
@@ -2800,11 +2808,14 @@ class MessagingService {
           );
 
         case InnerPayloadType.presence:
-          _ingestPresence(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
+          // Same symmetry as receipts: no beacon out, no online dots in.
+          if (_ref.read(privacySettingsProvider).shareLastSeen) {
+            _ingestPresence(
+              peerId: peerId,
+              senderPub: senderPub,
+              body: unpacked.body,
+            );
+          }
 
         case InnerPayloadType.imageChunk:
           await _ingestImageChunk(
@@ -3677,6 +3688,10 @@ class MessagingService {
     if (_disposed) return;
     if (online && !AppLifecycle.instance.isForeground) return;
     if (_nostr == null) return;
+    // Opted out of last-seen: publish no beacon at all. Checked here rather
+    // than at the timer so every caller — lifecycle changes included — obeys
+    // the same single rule.
+    if (!_ref.read(privacySettingsProvider).shareLastSeen) return;
 
     final now = DateTime.now();
 

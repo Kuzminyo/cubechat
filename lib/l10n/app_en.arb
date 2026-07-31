@@ -1,11 +1,9 @@
 {
   "@@locale": "en",
   "appName": "Cubechat",
-
   "navChats": "Chats",
   "navPeers": "Nearby",
   "navProfile": "Profile",
-
   "chatsTitle": "Chats",
   "chatsSubtitle": "Mesh · end-to-end encrypted",
   "chatsEmptyTitle": "No conversations yet",
@@ -18,15 +16,25 @@
   "chatsStatusViaMesh": "via mesh",
   "chatsStatusOffline": "offline",
   "peerKeyRotated": "key changed — re-verify",
-
   "peersTitle": "Nearby",
   "peersSubtitle": "Devices in Bluetooth range",
   "peersEmpty": "Looking for peers…",
   "peersHopsOne": "{n} hop away",
   "peersHopsOther": "{n} hops away",
-  "@peersHopsOne": { "placeholders": { "n": { "type": "int" } } },
-  "@peersHopsOther": { "placeholders": { "n": { "type": "int" } } },
-
+  "@peersHopsOne": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "@peersHopsOther": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "blePermissionTitle": "Bluetooth permission needed",
   "blePermissionHint": "Cubechat needs Bluetooth to find peers and send messages — no internet required.",
   "blePermissionGrant": "Grant permission",
@@ -46,19 +54,35 @@
   "bleUnknownPeer": "Unidentified peer",
   "bleBroadcasting": "Broadcasting",
   "bleConnectedCount": "{n, plural, =0{No centrals} =1{1 central connected} other{{n} centrals connected}}",
-  "@bleConnectedCount": { "placeholders": { "n": { "type": "int" } } },
-
+  "@bleConnectedCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "verifyTitle": "Verify peer",
   "verifyIntro": "Compare these two fingerprints with your peer in person or over a voice call. If they match on both sides, you have confirmed the Noise handshake was not tampered with.",
   "verifyMine": "YOUR FINGERPRINT",
   "verifyTheirs": "{name}'s FINGERPRINT",
-  "@verifyTheirs": { "placeholders": { "name": { "type": "String" } } },
+  "@verifyTheirs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "verifyMarkAsVerified": "Mark as verified",
   "verifyAlreadyDone": "This peer is verified.",
   "verifyRevoke": "Revoke",
   "verifyDoneSnack": "{name} marked as verified",
-  "@verifyDoneSnack": { "placeholders": { "name": { "type": "String" } } },
-
+  "@verifyDoneSnack": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "chatInputHint": "Message",
   "chatSend": "Send",
   "chatToday": "Today",
@@ -75,7 +99,6 @@
   "chatSessionFingerprintPending": "Fingerprint will appear once the handshake completes.",
   "chatEmptyEstablished": "The secure channel is up. Send a message to start the conversation.",
   "chatEmptyHandshaking": "Waiting for the other side to finish the handshake…",
-
   "profileTitle": "Profile",
   "profileNickname": "Nickname",
   "profileNicknameEditTitle": "Set your nickname",
@@ -92,7 +115,13 @@
   "profileBatteryExempt": "Disable battery optimisation",
   "profileAbout": "About",
   "profileVersion": "Version {v}",
-  "@profileVersion": { "placeholders": { "v": { "type": "String" } } },
+  "@profileVersion": {
+    "placeholders": {
+      "v": {
+        "type": "String"
+      }
+    }
+  },
   "profileEmergencyWipe": "Emergency wipe",
   "profileEmergencyWipeHint": "Triple-tap to erase all keys, peers, and messages.",
   "profileEmergencyWipeConfirm": "Erase everything?",
@@ -101,7 +130,6 @@
   "cancel": "Cancel",
   "copy": "Copy",
   "copied": "Copied",
-
   "channelsNewTitle": "New channel",
   "channelsNewTooltip": "New channel",
   "channelNameLabel": "Channel name",
@@ -109,63 +137,76 @@
   "channelJoinAction": "Join",
   "channelSubtitle": "Group channel · shared key",
   "chatsStatusChannel": "channel",
-
   "channelInviteTitle": "Add people",
   "channelInviteAction": "Invite",
   "channelInviteEmpty": "No known peers yet. Meet someone on the Nearby tab first.",
   "channelInviteSent": "Invitations sent",
   "channelInviteNoneSent": "Nobody could be reached right now",
   "channelNameTooLong": "That channel name is too long",
-
   "chatsActionFavorite": "Add to favorites",
   "chatsActionUnfavorite": "Remove from favorites",
   "chatsActionDelete": "Delete chat",
   "chatsDeleteTitle": "Delete this chat?",
   "chatsDeletePeerHint": "Removes the conversation and forgets this peer. They can find you again over the mesh.",
   "chatsDeleteChannelHint": "Leaves the channel and removes its history. You will need the key again to rejoin.",
-
   "chatEditAction": "Edit",
   "chatEditTitle": "Edit message",
   "chatEditSave": "Save",
   "chatEdited": "edited",
-
   "chatDeleteAction": "Delete",
   "chatDeleteTitle": "Delete message?",
   "chatDeleteForMe": "Delete for me",
   "chatDeleteForEveryone": "Delete for everyone",
-
   "chatReplyAction": "Reply",
   "chatReplyingTo": "Replying to {name}",
-  "@chatReplyingTo": { "placeholders": { "name": { "type": "String" } } },
+  "@chatReplyingTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "chatReplyYou": "yourself",
-
   "chatCopyAction": "Copy",
   "chatCopied": "Copied",
-
   "chatForwardAction": "Forward",
   "chatForwardTitle": "Forward to",
   "chatForwardEmpty": "No other chats yet",
   "chatForwardSent": "Forwarded to {name}",
-  "@chatForwardSent": { "placeholders": { "name": { "type": "String" } } },
-
+  "@chatForwardSent": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "chatSentAt": "Sent {time}",
-  "@chatSentAt": { "placeholders": { "time": { "type": "String" } } },
+  "@chatSentAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "chatReadAt": "Read {time}",
-  "@chatReadAt": { "placeholders": { "time": { "type": "String" } } },
-
+  "@chatReadAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "chatPinAction": "Pin",
   "chatUnpinAction": "Unpin",
   "chatUnpinConfirm": "Unpin this message?",
   "chatUnpinConfirmHint": "It stops being pinned for everyone in this chat.",
   "chatPinnedTitle": "Pinned message",
   "chatPinnedGone": "That message is no longer in this chat",
-
   "peerBlock": "Block",
   "peerUnblock": "Unblock",
   "peerMute": "Mute",
   "peerUnmute": "Unmute",
   "peerBlockedNote": "Blocked — their messages are dropped.",
-
   "relaysTitle": "Internet fallback",
   "relaysCardTitle": "Reach peers over the internet",
   "relaysCardSubtitle": "When Bluetooth can't deliver, send via Nostr relays",
@@ -182,7 +223,6 @@
   "relaysStateFailed": "Unreachable",
   "relaysStateIdle": "Off",
   "relaysEmpty": "No relays configured — the fallback stays off.",
-
   "contactTitle": "Contact card",
   "contactMineLabel": "Your card",
   "contactMineExplainer": "Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.",
@@ -195,28 +235,45 @@
   "contactAddAction": "Add",
   "contactPaste": "Paste",
   "contactAdded": "Added {name}",
-  "@contactAdded": { "placeholders": { "name": { "type": "String" } } },
+  "@contactAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "contactInvalid": "That isn't a valid contact card",
   "contactOwnCard": "That's your own card",
   "contactUnverified": "A contact added this way starts unverified. Anyone can mint a card and put any name on it, so compare fingerprints in person or over a call before you trust the identity.",
   "contactRelayOff": "Internet fallback is off, so a card can't reach anyone yet.",
   "contactRelayEnable": "Turn on",
-
   "profileContactCard": "Contact card",
   "profileContactCardSubtitle": "Chat with someone out of Bluetooth range",
   "chatsAddContactTooltip": "Add a contact by card",
   "chatsMenuTooltip": "More",
   "chatsMenuAddContact": "Add contact",
   "chatsMenuNewChannel": "New channel",
-
   "profileDiscoverable": "Discoverable nearby",
   "profileDiscoverableOnHint": "Anyone in range can find you",
   "profileDiscoverableOffHint": "Only your contacts can reach you",
   "profileDiscoverableExplainer": "On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.",
-
   "voiceTrimPlay": "Play",
   "voiceTrimPause": "Pause",
   "voiceTrimDiscard": "Discard recording",
   "voiceTrimSelection": "Sending {duration}",
-  "@voiceTrimSelection": { "placeholders": { "duration": { "type": "String" } } }
+  "@voiceTrimSelection": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "profilePrivacy": "Privacy",
+  "profileLastSeen": "Share last seen",
+  "profileLastSeenOnHint": "Contacts can see when you're in the app",
+  "profileLastSeenOffHint": "Nobody sees yours — and you see nobody's",
+  "profileReadReceipts": "Share read receipts",
+  "profileReadReceiptsOnHint": "Senders see when you've read them",
+  "profileReadReceiptsOffHint": "They don't — and neither do you",
+  "profilePrivacyExplainer": "Both switches cut both ways: hide your own status and you stop seeing everyone else's. Anything else would be a one-way mirror. Message delivery is untouched."
 }

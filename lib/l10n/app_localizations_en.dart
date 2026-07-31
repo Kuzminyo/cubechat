@@ -614,4 +614,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String voiceTrimSelection(String duration) {
     return 'Sending $duration';
   }
+
+  @override
+  String get profilePrivacy => 'Privacy';
+
+  @override
+  String get profileLastSeen => 'Share last seen';
+
+  @override
+  String get profileLastSeenOnHint =>
+      'Contacts can see when you\'re in the app';
+
+  @override
+  String get profileLastSeenOffHint =>
+      'Nobody sees yours — and you see nobody\'s';
+
+  @override
+  String get profileReadReceipts => 'Share read receipts';
+
+  @override
+  String get profileReadReceiptsOnHint => 'Senders see when you\'ve read them';
+
+  @override
+  String get profileReadReceiptsOffHint => 'They don\'t — and neither do you';
+
+  @override
+  String get profilePrivacyExplainer =>
+      'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.';
 }
