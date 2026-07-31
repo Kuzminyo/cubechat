@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/notifications/notification_service.dart';
+import 'package:file_picker/file_picker.dart';
+import '../../../core/transport/file_reassembly.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
@@ -1218,6 +1220,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     if (result == null || !mounted) return;
 
     switch (result) {
+      case MediaPickerFile():
+        await _pickAndSendFile();
       case MediaPickerCamera():
         await _captureEditAndSend();
       case MediaPickerAssets(:final assets):
@@ -1230,6 +1234,42 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         } else {
           await _sendAssetsBatch(assets);
         }
+    }
+  }
+
+  /// Файл category → the platform document picker → send as-is.
+  ///
+  /// Nothing is re-encoded or downscaled on this path: a file is whatever the
+  /// sender chose, byte for byte, and the receiver checks it against the
+  /// manifest's signed hash. That is the whole difference from the photo path,
+  /// which shrinks its input to fit the mesh.
+  Future<void> _pickAndSendFile() async {
+    final t = AppLocalizations.of(context);
+    final picked = await FilePicker.platform.pickFiles(withReadStream: false);
+    final path = picked?.files.single.path;
+    if (path == null || !mounted) return;
+
+    try {
+      await ref.read(messagingServiceProvider).sendFile(
+            widget.canonicalId,
+            file: File(path),
+            fileName: picked!.files.single.name,
+          );
+    } on FileTooLarge catch (e) {
+      // The two ceilings are far apart, and which one was hit changes the
+      // advice: over the relay the same file may well go once they are in
+      // Bluetooth range.
+      if (mounted) {
+        showGlassToast(
+          context,
+          e.relayOnly ? t.fileTooLargeRelay : t.fileTooLargeMesh,
+          tone: ToastTone.danger,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showGlassToast(context, '$e', tone: ToastTone.danger);
+      }
     }
   }
 

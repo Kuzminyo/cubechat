@@ -20,6 +20,7 @@ import '../../data/messages_controller.dart';
 import '../../data/pinned_controller.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
+import 'file_bubble.dart';
 import 'voice_bubble.dart';
 
 /// Emoji offered in the long-press reaction picker. Kept short so the row fits
@@ -641,6 +642,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     )
                   else if (message.kind == MessageKind.audio)
                     VoiceBubble(message: message)
+                  else if (message.kind == MessageKind.file)
+                    FileBubble(message: message)
                   else
                     Text(
                       message.text,

@@ -657,4 +657,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get avatarFailed => 'Could not read that image';
+
+  @override
+  String get fileOpenHint => 'Tap to open';
+
+  @override
+  String get fileMissing => 'That file is no longer available';
+
+  @override
+  String get fileTooLargeMesh =>
+      'File is too large — 25 MB is the limit over the mesh';
+
+  @override
+  String get fileTooLargeRelay =>
+      'Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.';
+
+  @override
+  String get attachFile => 'File';
+
+  @override
+  String get attachGallery => 'Gallery';
+
+  @override
+  String get attachCamera => 'Camera';
 }

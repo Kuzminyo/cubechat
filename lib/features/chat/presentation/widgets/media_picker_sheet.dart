@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../../core/theme/colors.dart';
+import 'attach_island.dart';
 
 /// What the picker sheet resolves to when it closes.
 ///
@@ -18,6 +19,13 @@ sealed class MediaPickerResult {
 /// The user tapped the camera tile; the caller should open the capture screen.
 class MediaPickerCamera extends MediaPickerResult {
   const MediaPickerCamera();
+}
+
+/// The user chose the Файл category; the caller opens the document picker.
+/// The sheet does not open it itself — the picker is a platform sheet of its
+/// own, and stacking one modal on another leaves this one orphaned behind it.
+class MediaPickerFile extends MediaPickerResult {
+  const MediaPickerFile();
 }
 
 /// The user confirmed a gallery selection.
@@ -194,17 +202,18 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              'Send photos',
-              style: TextStyle(
-                color: AppColors.textOnGlass,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
             Expanded(child: _body()),
             _sendBar(),
+            AttachIsland(
+              selected: AttachChoice.gallery,
+              onPick: (choice) => switch (choice) {
+                AttachChoice.gallery => null,
+                AttachChoice.camera =>
+                  Navigator.of(context).pop(const MediaPickerCamera()),
+                AttachChoice.file =>
+                  Navigator.of(context).pop(const MediaPickerFile()),
+              },
+            ),
           ],
         ),
       ),

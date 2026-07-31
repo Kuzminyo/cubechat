@@ -55,6 +55,31 @@ class _PendingFile {
   bool get complete => have.length == total;
 }
 
+/// Thrown when a file is past what the current transport can carry.
+///
+/// Typed rather than a bare [StateError] because the answer the user needs is
+/// different in each case: over the mesh they have to send something smaller,
+/// but on the relay path the same file may well go through once they are in
+/// Bluetooth range of the recipient — and that is worth saying rather than
+/// making them guess.
+class FileTooLarge implements Exception {
+  const FileTooLarge({
+    required this.size,
+    required this.cap,
+    required this.relayOnly,
+  });
+
+  final int size;
+  final int cap;
+
+  /// True when the ceiling that was hit is the internet fallback's, which is
+  /// far lower than the mesh's.
+  final bool relayOnly;
+
+  @override
+  String toString() => 'FileTooLarge($size > $cap, relayOnly: $relayOnly)';
+}
+
 /// Result of a completed transfer: where the bytes landed and how many there
 /// are. The caller verifies the manifest's SHA-256 before showing it to
 /// anyone — this class only guarantees that every sequence arrived once.

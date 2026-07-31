@@ -1098,6 +1098,196 @@ class MessagingService {
   /// from re-ordering them on lossy stacks. The caller gets back the
   /// pending Message immediately; status flips to delivered once the last
   /// chunk's BLE write resolves, or failed on the first error.
+  /// Largest file we will put on the mesh. Not a protocol limit — the chunk
+  /// count allows more — but a limit on what is reasonable to push through
+  /// Bluetooth at roughly a quarter of a megabyte a second, and what the
+  /// receiver has agreed to accept ([FileReassembler.maxBytesPerTransfer]).
+  static const int maxFileBytesMesh = 25 * 1024 * 1024;
+
+  /// And over the internet fallback, where every chunk is one relay event.
+  /// Three megabytes is already ~190 publishes; public relays rate-limit long
+  /// before the protocol runs out of room, and that limit lands on ordinary
+  /// messages too.
+  static const int maxFileBytesRelay = 3 * 1024 * 1024;
+
+  /// Send [file] as-is, keeping its name.
+  ///
+  /// Unlike [sendImage] the bytes are never all in memory: the hash is
+  /// computed by streaming the file, and each chunk is read from disk as it
+  /// goes out. A twenty-five megabyte attachment would otherwise be held twice
+  /// over — once as the source buffer and once inside the frames.
+  Future<Message> sendFile(
+    String chatId, {
+    required File file,
+    required String fileName,
+    String mime = 'application/octet-stream',
+  }) async {
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    ChatSession? session = manager.sessionFor(chatId);
+    session ??= _findSessionByPubkeyHex(chatId);
+
+    Uint8List? peerPub;
+    String? canonicalId;
+    if (session != null && session.isEstablished) {
+      peerPub = session.remoteStaticPublicKey;
+      canonicalId = session.remotePubkeyHex ?? chatId;
+    } else {
+      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      if (known != null) {
+        try {
+          peerPub = _hexDecodeBytes(known.pubkeyHex);
+          canonicalId = known.pubkeyHex;
+        } catch (e) {
+          DebugLog.instance
+              .log('FILE', 'sendFile: malformed pubkey hex for $chatId: $e');
+        }
+      }
+    }
+    if (peerPub == null || canonicalId == null) {
+      throw StateError('cannot send file: no recipient pubkey for $chatId');
+    }
+
+    final size = await file.length();
+    final relayOnly = !_hasAnyLink;
+    final cap = relayOnly ? maxFileBytesRelay : maxFileBytesMesh;
+    if (size > cap) {
+      throw FileTooLarge(size: size, cap: cap, relayOnly: relayOnly);
+    }
+    if (size == 0) throw StateError('cannot send an empty file');
+
+    final safe = safeFileName(fileName);
+    final fileId = ImageChunk.newImageId();
+
+    // Kept in the app's own storage so the bubble still resolves after the
+    // picker's temporary copy is collected.
+    final dir = await getApplicationDocumentsDirectory();
+    final outbox =
+        Directory('${dir.path}${Platform.pathSeparator}cubechat-outbox');
+    if (!await outbox.exists()) await outbox.create(recursive: true);
+    final stored = File('${outbox.path}${Platform.pathSeparator}'
+        '${_hexOf(fileId).substring(0, 8)}-$safe');
+    await file.copy(stored.path);
+
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: canonicalId,
+      text: mime,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.file,
+      filePath: stored.path,
+      fileName: safe,
+      fileBytes: size,
+      wireId: TransportEnvelope.hashHex(fileId),
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(canonicalId, msg);
+    if (chatId != canonicalId) messages.append(chatId, msg);
+
+    try {
+      final tid = session?.peerId;
+      final direct = tid != null ? _clients[tid] : null;
+      final chunkData = _mediaChunkData(direct,
+          relayOnly: relayOnly, ceiling: FileChunk.maxDataBytes);
+      final total = (size + chunkData - 1) ~/ chunkData;
+      if (total < 1 || total > FileChunk.maxChunks) {
+        throw StateError(
+          'file too large: $total chunks > ${FileChunk.maxChunks} cap',
+        );
+      }
+
+      // Streamed, so the digest costs one buffer rather than the whole file.
+      final sink = Sha256().newHashSink();
+      await for (final part in stored.openRead()) {
+        sink.add(part);
+      }
+      sink.close();
+      final digest = Uint8List.fromList((await sink.hash()).bytes);
+
+      final myHash = await _myPubkeyHash();
+      final peerHash = await _peerPubkeyHash(peerPub);
+      final fs = await _deriveMediaFsSetup(canonicalId, peerPub);
+      await _sendSignedManifest(
+        mediaId: fileId,
+        kind: MediaKind.file,
+        total: total,
+        mime: mime,
+        name: safe,
+        sha256Digest: digest,
+        myHash: myHash,
+        peerHash: peerHash,
+        peerPub: peerPub,
+        session: session,
+        canonicalId: canonicalId,
+        relayOnly: relayOnly,
+        senderIdentityPub: fs?.identityPub,
+        senderEphemeralPub: fs?.ephemeralPub,
+      );
+
+      final handle = await stored.open();
+      try {
+        for (var i = 0; i < total; i++) {
+          final want = (i == total - 1) ? size - i * chunkData : chunkData;
+          final data = await handle.read(want);
+          final chunk = FileChunk(
+            fileId: fileId,
+            seq: i,
+            total: total,
+            data: data,
+          );
+          final inner =
+              packInnerPayload(InnerPayloadType.fileChunk, chunk.encode());
+          final body = fs != null
+              ? _tagBody(
+                  _cipherX3dhMedia,
+                  await MediaFsCipher.seal(
+                      key: fs.key, mediaId: fileId, plaintext: inner))
+              : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+          final env = TransportEnvelope(
+            originPubkeyHash: myHash,
+            destPubkeyHash: peerHash,
+            msgId: TransportEnvelope.newMsgId(),
+            ttl: _meshTtl,
+            body: body,
+          );
+          _dedup.acceptEnvelope(env);
+          final sent = await _deliverMediaFrame(
+            frameBytes:
+                Frame(type: FrameType.transport, payload: env.encode()).encode(),
+            session: session,
+            canonicalId: canonicalId,
+            relayOnly: relayOnly,
+          );
+          if (!sent) {
+            throw StateError('no mesh link or relay for file chunk $i/$total');
+          }
+          // Same pacing as the photo path: some Android stacks drop notifies
+          // when the sender outruns the receiver's read loop.
+          if (i + 1 < total) {
+            await Future<void>.delayed(const Duration(milliseconds: 15));
+          }
+        }
+      } finally {
+        await handle.close();
+      }
+
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+      }
+    } catch (e, st) {
+      DebugLog.instance.log('FILE', 'sendFile failed: $e');
+      debugPrint('$st');
+      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+      if (chatId != canonicalId) {
+        messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+      }
+      rethrow;
+    }
+    return msg;
+  }
+
   Future<Message> sendImage(
     String chatId, {
     required Uint8List bytes,
@@ -3351,7 +3541,12 @@ class MessagingService {
     required int total,
     required String mime,
     int durationMs = 0,
-    required Uint8List bytes,
+    String? name,
+    /// The payload, when it is small enough to have in hand. A file transfer
+    /// passes [sha256Digest] instead: the whole point of streaming it off disk
+    /// is not to hold twenty-five megabytes in memory just to hash them.
+    Uint8List? bytes,
+    Uint8List? sha256Digest,
     required Uint8List myHash,
     required Uint8List peerHash,
     required Uint8List peerPub,
@@ -3362,14 +3557,16 @@ class MessagingService {
     Uint8List? senderEphemeralPub,
   }) async {
     final identity = await _ref.read(identityProvider.future);
-    final digest = await Sha256().hash(bytes);
+    final sha = sha256Digest ??
+        Uint8List.fromList((await Sha256().hash(bytes!)).bytes);
     final manifest = MediaManifest(
       mediaId: mediaId,
       kind: kind,
       total: total,
       mime: mime,
       durationMs: durationMs,
-      sha256: Uint8List.fromList(digest.bytes),
+      name: name,
+      sha256: sha,
       senderIdentityPub: senderIdentityPub,
       senderEphemeralPub: senderEphemeralPub,
     );

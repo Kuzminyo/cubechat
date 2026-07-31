@@ -280,5 +280,12 @@
   "avatarChange": "Change photo",
   "avatarRemove": "Remove photo",
   "avatarRemoveConfirm": "The avatar will be deleted from this device. The generated gradient comes back in its place.",
-  "avatarFailed": "Could not read that image"
+  "avatarFailed": "Could not read that image",
+  "fileOpenHint": "Tap to open",
+  "fileMissing": "That file is no longer available",
+  "fileTooLargeMesh": "File is too large — 25 MB is the limit over the mesh",
+  "fileTooLargeRelay": "Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.",
+  "attachFile": "File",
+  "attachGallery": "Gallery",
+  "attachCamera": "Camera"
 }

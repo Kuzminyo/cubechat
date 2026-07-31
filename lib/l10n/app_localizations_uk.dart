@@ -657,4 +657,27 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get avatarFailed => 'Не вдалося прочитати зображення';
+
+  @override
+  String get fileOpenHint => 'Торкніться, щоб відкрити';
+
+  @override
+  String get fileMissing => 'Файл більше недоступний';
+
+  @override
+  String get fileTooLargeMesh =>
+      'Файл завеликий — максимум 25 МБ через мережу пристроїв';
+
+  @override
+  String get fileTooLargeRelay =>
+      'Через інтернет можна надіслати до 3 МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.';
+
+  @override
+  String get attachFile => 'Файл';
+
+  @override
+  String get attachGallery => 'Галерея';
+
+  @override
+  String get attachCamera => 'Камера';
 }

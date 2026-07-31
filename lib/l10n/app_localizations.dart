@@ -1279,6 +1279,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not read that image'**
   String get avatarFailed;
+
+  /// No description provided for @fileOpenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to open'**
+  String get fileOpenHint;
+
+  /// No description provided for @fileMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'That file is no longer available'**
+  String get fileMissing;
+
+  /// No description provided for @fileTooLargeMesh.
+  ///
+  /// In en, this message translates to:
+  /// **'File is too large — 25 MB is the limit over the mesh'**
+  String get fileTooLargeMesh;
+
+  /// No description provided for @fileTooLargeRelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.'**
+  String get fileTooLargeRelay;
+
+  /// No description provided for @attachFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get attachFile;
+
+  /// No description provided for @attachGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Gallery'**
+  String get attachGallery;
+
+  /// No description provided for @attachCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera'**
+  String get attachCamera;
 }
 
 class _AppLocalizationsDelegate

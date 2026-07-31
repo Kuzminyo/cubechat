@@ -56,6 +56,10 @@ dependencies:
   flutter_local_notifications: ^17.2.3
   flutter_native_splash: ^2.4.1
 
+  # Attach an arbitrary file. Only the document picker — the photo path keeps
+  # using photo_manager, whose grid is the one the chat already shows.
+  file_picker: ^8.1.4
+
   # Take-a-photo-to-send: in-app camera capture screen.
   camera: ^0.12.0+2
   # Telegram-style photo editor (paint/marker, text, crop, filters) shown before
