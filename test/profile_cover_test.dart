@@ -69,6 +69,28 @@ void main() {
     expect(find.text(t.profileLanguage.toUpperCase()), findsWidgets);
   });
 
+  testWidgets('the header rests compact and opens when pulled', (tester) async {
+    // The whole point of the rework: a photo filling the top of every visit is
+    // the wrong default, so the cover starts as a circle and only opens when
+    // asked. Measured through the content below it — if the header grows, the
+    // settings move down with it.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    final before = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+
+    await tester.drag(
+      find.byType(CustomScrollView),
+      const Offset(0, 260),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+
+    final after = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+    expect(after, greaterThan(before),
+        reason: 'pulling down past the top should open the cover');
+  });
+
   group('IdentityAvatar.paletteFor', () {
     test('is stable for a seed', () {
       // The cover paints the whole header with it while the circle paints a

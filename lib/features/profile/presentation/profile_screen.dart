@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,11 +26,59 @@ import '../../../core/widgets/glass_toast.dart';
 
 const _appVersion = '0.1.0';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with SingleTickerProviderStateMixin {
+  /// 0 = the header is a circle, 1 = it is a full-bleed photo.
+  late final AnimationController _open = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
+
+  /// How far past the top the finger has to pull before the photo opens. Low
+  /// enough to feel like the header answers the gesture, high enough that the
+  /// ordinary bounce at the top of a list does not trip it.
+  static const double _pullToOpen = 64;
+
+  @override
+  void dispose() {
+    _open.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n is! ScrollUpdateNotification) return false;
+    if (n.metrics.axis != Axis.vertical) return false;
+
+    // Both edges are read off `pixels`, not off OverscrollNotification: under
+    // bouncing physics the list is *allowed* past the top, so pulling down is
+    // an ordinary update with a negative offset and no overscroll is ever
+    // reported. Watching for one meant the gesture did nothing at all.
+    final px = n.metrics.pixels;
+    if (px <= -_pullToOpen) {
+      if (_open.value < 1 && !_open.isAnimating) _open.forward();
+    } else if (px > 24) {
+      // Scrolling into the content puts the photo away again; left open it
+      // would sit under the settings and eat the screen.
+      if (_open.value > 0 && !_open.isAnimating) _open.reverse();
+    }
+    return false;
+  }
+
+  void _toggle() =>
+      _open.status == AnimationStatus.completed || _open.value > 0.5
+          ? _open.reverse()
+          : _open.forward();
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final locale = ref.watch(localeControllerProvider);
     final nickname = ref.watch(nicknameControllerProvider);
@@ -39,186 +89,207 @@ class ProfileScreen extends ConsumerWidget {
     );
     final fingerprintReady = fingerprintAsync.hasValue;
 
-    return CustomScrollView(
-      slivers: [
-        _ProfileCover(nickname: nickname, fingerprint: fingerprint),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-          sliver: SliverList.list(children: [
-            // Identity. The avatar and the name moved up onto the cover, so what
-            // is left here is the fingerprint — the part you actually read out
-            // loud to someone standing next to you.
-            GlassCard(
-              strong: true,
-              padding: const EdgeInsets.all(20),
-              borderRadius: 22,
-              child: _FingerprintRow(
-                label: t.profileFingerprint,
-                value: fingerprint,
-                ready: fingerprintReady,
-              ),
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScroll,
+      child: AnimatedBuilder(
+        animation: _open,
+        builder: (context, child) => CustomScrollView(
+          // Bouncing on both platforms, not just iOS. Android's default
+          // clamping physics never lets `pixels` go below zero, so "pull past
+          // the top" has nothing to measure and the cover would only ever open
+          // on an iPhone — the gesture needs somewhere to travel.
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            _ProfileCover(
+              nickname: nickname,
+              fingerprint: fingerprint,
+              open: _open.value,
+              onToggle: _toggle,
             ),
-
-            const SizedBox(height: 12),
-
-            // Language toggle
-            _SectionLabel(text: t.profileLanguage),
-            GlassCard(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _LangPill(
-                      label: t.profileLanguageEn,
-                      code: 'en',
-                      current: locale.languageCode,
-                      onTap: () => ref
-                          .read(localeControllerProvider.notifier)
-                          .set(const Locale('en')),
-                    ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+              sliver: SliverList.list(children: [
+                // Identity. The avatar and the name moved up onto the cover, so what
+                // is left here is the fingerprint — the part you actually read out
+                // loud to someone standing next to you.
+                GlassCard(
+                  strong: true,
+                  padding: const EdgeInsets.all(20),
+                  borderRadius: 22,
+                  child: _FingerprintRow(
+                    label: t.profileFingerprint,
+                    value: fingerprint,
+                    ready: fingerprintReady,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _LangPill(
-                      label: t.profileLanguageUk,
-                      code: 'uk',
-                      current: locale.languageCode,
-                      onTap: () => ref
-                          .read(localeControllerProvider.notifier)
-                          .set(const Locale('uk')),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(height: 12),
+                const SizedBox(height: 12),
 
-            // Transport
-            _SectionLabel(text: t.profileTransport),
-            GlassCard(
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                      border: Border.all(
-                          color: AppColors.brandPrimary.withValues(alpha: 0.4)),
-                    ),
-                    child: const Icon(Icons.bluetooth,
-                        color: AppColors.brandPrimary, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      t.profileTransportMesh,
-                      style:
-                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-                    ),
-                  ),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.online,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-            const _BackgroundModeCard(),
-
-            const SizedBox(height: 8),
-            const _RelayFallbackCard(),
-
-            const SizedBox(height: 8),
-            const _DiscoverableCard(),
-
-            const SizedBox(height: 8),
-            const _PrivacyCard(),
-
-            const SizedBox(height: 8),
-            const _ContactCardRow(),
-
-            const SizedBox(height: 12),
-
-            // About
-            _SectionLabel(text: t.profileAbout),
-            GlassCard(
-              child: Row(
-                children: [
-                  const CubeLogo(size: 36),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Cubechat',
-                          style: AppTypography.heading(
-                              size: 15, color: AppColors.textOnGlass),
+                // Language toggle
+                _SectionLabel(text: t.profileLanguage),
+                GlassCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _LangPill(
+                          label: t.profileLanguageEn,
+                          code: 'en',
+                          current: locale.languageCode,
+                          onTap: () => ref
+                              .read(localeControllerProvider.notifier)
+                              .set(const Locale('en')),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          t.profileVersion(_appVersion),
-                          style: TextStyle(
-                              color: AppColors.textOnGlassDim, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Diagnostics
-            GlassCard(
-              onTap: () => context.push('/diagnostics'),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.08),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.18)),
-                    ),
-                    child: Icon(Icons.bug_report_outlined,
-                        color: AppColors.textOnGlass, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Diagnostics',
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _LangPill(
+                          label: t.profileLanguageUk,
+                          code: 'uk',
+                          current: locale.languageCode,
+                          onTap: () => ref
+                              .read(localeControllerProvider.notifier)
+                              .set(const Locale('uk')),
+                        ),
+                      ),
+                    ],
                   ),
-                  Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
-                ],
-              ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Transport
+                _SectionLabel(text: t.profileTransport),
+                GlassCard(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.brandPrimary.withValues(alpha: 0.18),
+                          border: Border.all(
+                              color: AppColors.brandPrimary
+                                  .withValues(alpha: 0.4)),
+                        ),
+                        child: const Icon(Icons.bluetooth,
+                            color: AppColors.brandPrimary, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          t.profileTransportMesh,
+                          style: TextStyle(
+                              color: AppColors.textOnGlass, fontSize: 14),
+                        ),
+                      ),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.online,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+                const _BackgroundModeCard(),
+
+                const SizedBox(height: 8),
+                const _RelayFallbackCard(),
+
+                const SizedBox(height: 8),
+                const _DiscoverableCard(),
+
+                const SizedBox(height: 8),
+                const _PrivacyCard(),
+
+                const SizedBox(height: 8),
+                const _ContactCardRow(),
+
+                const SizedBox(height: 12),
+
+                // About
+                _SectionLabel(text: t.profileAbout),
+                GlassCard(
+                  child: Row(
+                    children: [
+                      const CubeLogo(size: 36),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cubechat',
+                              style: AppTypography.heading(
+                                  size: 15, color: AppColors.textOnGlass),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              t.profileVersion(_appVersion),
+                              style: TextStyle(
+                                  color: AppColors.textOnGlassDim,
+                                  fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Diagnostics
+                GlassCard(
+                  onTap: () => context.push('/diagnostics'),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.08),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18)),
+                        ),
+                        child: Icon(Icons.bug_report_outlined,
+                            color: AppColors.textOnGlass, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Diagnostics',
+                          style: TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          color: AppColors.textOnGlassFaint),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Emergency wipe
+                _EmergencyWipeCard(),
+              ]),
             ),
-
-            const SizedBox(height: 12),
-
-            // Emergency wipe
-            _EmergencyWipeCard(),
-          ]),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -843,147 +914,304 @@ class _EmergencyWipeCard extends ConsumerWidget {
   }
 }
 
+/// The profile header: a circle at rest, a full-bleed photo when pulled open.
+///
+/// The first cut made the photo the resting state and spent 380 px of every
+/// visit on it. That is the wrong default — you open this screen to change a
+/// setting far more often than to look at your own face. So the header sits
+/// compact (circle, name, three actions) and only opens when asked: pull down
+/// past the top, or tap the circle.
+///
+/// The two states are one layout driven by a single 0..1 value rather than two
+/// widgets swapped over. The circle *becomes* the cover — same rectangle, same
+/// corner radius, both interpolated — which is what makes it read as one
+/// object growing instead of a cut between screens.
 class _ProfileCover extends ConsumerWidget {
   const _ProfileCover({
     required this.nickname,
     required this.fingerprint,
+    required this.open,
+    required this.onToggle,
   });
 
   final String nickname;
   final String fingerprint;
 
-  static const double _expanded = 380;
+  /// 0 = compact, 1 = full-bleed. The *current value*, not the animation:
+  /// the delegate has to compare it against the previous build to know it
+  /// must relayout, and two reads of the same controller are always equal.
+  final double open;
+
+  final VoidCallback onToggle;
+
+  /// Height of the action row, shared by both states so the buttons do not
+  /// jump as the header grows.
+  static const double actionsHeight = 58;
+  static const double avatarSize = 64;
+  static const double expandedHeight = 420;
+
+  static double compactHeightFor(double topInset) =>
+      topInset + 12 + avatarSize + 14 + actionsHeight + 12;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final photo = ref.watch(avatarProvider);
-    final discoverable = ref.watch(discoverySettingsProvider).discoverable;
-    final top = MediaQuery.paddingOf(context).top;
-
-    return SliverAppBar(
+    final topInset = MediaQuery.paddingOf(context).top;
+    return SliverPersistentHeader(
       pinned: true,
-      expandedHeight: _expanded,
-      backgroundColor: AppColors.bgTop,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      // Shown only once the cover has collapsed past the photo.
-      title: Text(nickname, style: AppTypography.heading(size: 17)),
-      centerTitle: false,
-      flexibleSpace: FlexibleSpaceBar(
-        collapseMode: CollapseMode.parallax,
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (photo != null)
-              Image.memory(photo, fit: BoxFit.cover)
-            else
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: IdentityAvatar.paletteFor(fingerprint),
-                  ),
-                ),
-              ),
-            // Scrim under the text. Without it a bright photo makes the name
-            // unreadable, and the app has no control over what people pick.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.center,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0xE606140D)],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    nickname,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.display(),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: discoverable
-                              ? AppColors.online
-                              : AppColors.textOnGlassDim,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        discoverable
-                            ? t.profileDiscoverableOnHint
-                            : t.profileDiscoverableOffHint,
-                        style: TextStyle(
-                          color: AppColors.textOnGlassDim,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CoverAction(
-                          icon: Icons.add_a_photo_outlined,
-                          label: photo == null ? t.avatarSet : t.avatarChange,
-                          onTap: () => Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (_) => AvatarScreen(
-                                seed: fingerprint,
-                                label: nickname,
-                                heroTag: 'cover-avatar',
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _CoverAction(
-                          icon: Icons.edit_outlined,
-                          label: t.profileEditName,
-                          onTap: () => editNickname(context, ref, t, nickname),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _CoverAction(
-                          icon: Icons.qr_code_2_outlined,
-                          label: t.profileMyCard,
-                          onTap: () => context.push('/contact'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+      delegate: _CoverDelegate(
+        open: open,
+        compact: compactHeightFor(topInset),
+        topInset: topInset,
+        builder: (context, height, t) => _CoverBody(
+          nickname: nickname,
+          fingerprint: fingerprint,
+          height: height,
+          t: t,
+          topInset: topInset,
+          onToggle: onToggle,
         ),
       ),
-      // Nothing to go back to — the profile is a root tab.
-      automaticallyImplyLeading: false,
-      // Overscrolling at the top stretches the photo rather than showing the
-      // background through a gap.
-      stretch: true,
+    );
+  }
+}
+
+class _CoverDelegate extends SliverPersistentHeaderDelegate {
+  _CoverDelegate({
+    required this.open,
+    required this.compact,
+    required this.topInset,
+    required this.builder,
+  });
+
+  final double open;
+  final double compact;
+  final double topInset;
+  final Widget Function(BuildContext, double height, double t) builder;
+
+  double get _max =>
+      compact + (_ProfileCover.expandedHeight - compact) * open;
+
+  @override
+  double get maxExtent => _max;
+
+  // Collapsing past the actions would clip them mid-tap, so the pinned floor is
+  // the status bar plus a bar's worth of room for the name.
+  @override
+  double get minExtent => topInset + kToolbarHeight;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    final height = (_max - shrinkOffset).clamp(minExtent, _max);
+    // Two separate fades: `open` is the user pulling the header open, and the
+    // scroll shrink is them pushing it away. The layout only cares about the
+    // combined result.
+    final scrolled = _max <= minExtent
+        ? 0.0
+        : (1 - shrinkOffset / (_max - minExtent)).clamp(0.0, 1.0);
+    return SizedBox(
+      height: height,
+      child: builder(context, height, open * scrolled),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_CoverDelegate old) =>
+      old.open != open ||
+      old.compact != compact ||
+      old.topInset != topInset;
+}
+
+class _CoverBody extends ConsumerWidget {
+  const _CoverBody({
+    required this.nickname,
+    required this.fingerprint,
+    required this.height,
+    required this.t,
+    required this.topInset,
+    required this.onToggle,
+  });
+
+  final String nickname;
+  final String fingerprint;
+  final double height;
+
+  /// 0 = circle in the corner, 1 = photo filling the header.
+  final double t;
+  final double topInset;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tt = AppLocalizations.of(context);
+    final photo = ref.watch(avatarProvider);
+    final discoverable = ref.watch(discoverySettingsProvider).discoverable;
+    final width = MediaQuery.sizeOf(context).width;
+
+    // The circle and the cover are the same rectangle at two sizes; lerping it
+    // (and the corner radius with it) is what makes one grow into the other.
+    final rect = Rect.lerp(
+      Rect.fromLTWH(16, topInset + 12, _ProfileCover.avatarSize,
+          _ProfileCover.avatarSize),
+      Rect.fromLTWH(0, 0, width, height),
+      t,
+    )!;
+    final radius = ui.lerpDouble(_ProfileCover.avatarSize / 2, 0, t)!;
+
+    final nameLeft = ui.lerpDouble(16 + _ProfileCover.avatarSize + 14, 16, t)!;
+    final nameTop = ui.lerpDouble(
+      topInset + 16,
+      height - _ProfileCover.actionsHeight - 66,
+      t,
+    )!;
+
+    return ClipRect(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fromRect(
+            rect: rect,
+            child: GestureDetector(
+              onTap: onToggle,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(radius),
+                  gradient: photo == null
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: IdentityAvatar.paletteFor(fingerprint),
+                        )
+                      : null,
+                  image: photo == null
+                      ? null
+                      : DecorationImage(
+                          image: MemoryImage(photo), fit: BoxFit.cover),
+                  border: t < 0.5
+                      ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+                      : null,
+                ),
+              ),
+            ),
+          ),
+
+          // Only over the photo: at rest the name sits on the app background
+          // and needs nothing, but the app has no say in what people pick and a
+          // bright picture would swallow it.
+          if (t > 0.01)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: height * 0.55,
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: t,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xE606140D)],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          Positioned(
+            left: nameLeft,
+            top: nameTop,
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  nickname,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.heading(
+                    size: ui.lerpDouble(19, 26, t)!,
+                    color: AppColors.textOnGlass,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: discoverable
+                            ? AppColors.online
+                            : AppColors.textOnGlassDim,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        discoverable
+                            ? tt.profileDiscoverableOnHint
+                            : tt.profileDiscoverableOffHint,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 10,
+            height: _ProfileCover.actionsHeight,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _CoverAction(
+                    icon: Icons.add_a_photo_outlined,
+                    label: photo == null ? tt.avatarSet : tt.avatarChange,
+                    onTap: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AvatarScreen(
+                          seed: fingerprint,
+                          label: nickname,
+                          heroTag: 'cover-avatar',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CoverAction(
+                    icon: Icons.edit_outlined,
+                    label: tt.profileEditName,
+                    onTap: () => editNickname(context, ref, tt, nickname),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CoverAction(
+                    icon: Icons.qr_code_2_outlined,
+                    label: tt.profileMyCard,
+                    onTap: () => context.push('/contact'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1008,13 +1236,17 @@ class _CoverAction extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        // Sized to sit inside [_ProfileCover.actionsHeight] with room to spare;
+        // the row gives a fixed height, so anything taller is an overflow
+        // rather than a scroll.
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 20, color: Colors.white),
-              const SizedBox(height: 5),
+              Icon(icon, size: 19, color: Colors.white),
+              const SizedBox(height: 4),
               Text(
                 label,
                 maxLines: 1,
