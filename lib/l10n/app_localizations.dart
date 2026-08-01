@@ -122,6 +122,48 @@ abstract class AppLocalizations {
   /// **'Profile'**
   String get navProfile;
 
+  /// No description provided for @navContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get navContacts;
+
+  /// No description provided for @contactsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get contactsTitle;
+
+  /// No description provided for @contactsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you have messaged'**
+  String get contactsSubtitle;
+
+  /// No description provided for @contactsSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search contacts…'**
+  String get contactsSearchHint;
+
+  /// No description provided for @contactsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No contacts yet'**
+  String get contactsEmptyTitle;
+
+  /// No description provided for @contactsEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a conversation and the person will appear here.'**
+  String get contactsEmptyHint;
+
+  /// No description provided for @contactsSearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching contacts'**
+  String get contactsSearchEmpty;
+
   /// No description provided for @chatsTitle.
   ///
   /// In en, this message translates to:

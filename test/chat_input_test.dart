@@ -12,7 +12,8 @@ Widget _host(Widget child) => MaterialApp(
       ],
       supportedLocales: AppLocalizations.supportedLocales,
       locale: const Locale('en'),
-      home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: child)),
+      home: Scaffold(
+          body: Align(alignment: Alignment.bottomCenter, child: child)),
     );
 
 void main() {
@@ -92,5 +93,24 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pump();
     expect(sent, 'hello');
+  });
+
+  testWidgets('a new message starts with system sentence capitalization',
+      (tester) async {
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+    )));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, isEmpty);
+    expect(field.textCapitalization, TextCapitalization.sentences);
   });
 }

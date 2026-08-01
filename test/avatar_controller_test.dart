@@ -60,12 +60,14 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(avatarProvider);
-    await container.read(avatarProvider.notifier).setFromBytes(_photo());
+    await container.read(avatarProvider.notifier).setFromBytes(
+          _photo(w: 1600, h: 1200),
+        );
 
     final stored = container.read(avatarProvider)!;
     final decoded = img.decodeImage(stored)!;
     expect(decoded.width, decoded.height, reason: 'must be square');
-    expect(decoded.width, lessThanOrEqualTo(AvatarController.storedSize));
+    expect(decoded.width, AvatarController.storedSize);
   });
 
   test('refuses bytes that are not an image', () async {

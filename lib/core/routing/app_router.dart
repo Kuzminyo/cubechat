@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
+import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/peers/presentation/contact_card_screen.dart';
 import '../../features/peers/presentation/peers_screen.dart';
 import '../../features/peers/presentation/verification_screen.dart';
@@ -47,6 +48,14 @@ GoRouter buildRouter() {
               GoRoute(
                 path: '/peers',
                 builder: (context, state) => const PeersScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/contacts',
+                builder: (context, state) => const ContactsScreen(),
               ),
             ],
           ),

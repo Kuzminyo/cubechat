@@ -236,6 +236,7 @@ class _ChatInputState extends State<ChatInput> {
                               minLines: 1,
                               maxLines: 5,
                               cursorColor: AppColors.brandPrimary,
+                              textCapitalization: TextCapitalization.sentences,
                               style: TextStyle(
                                 color: AppColors.textOnGlass,
                                 fontSize: 14.5,

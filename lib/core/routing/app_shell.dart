@@ -29,13 +29,28 @@ class AppShell extends StatelessWidget {
         label: t.navChats,
         showsUnread: true,
       ),
-      _TabSpec(icon: Icons.podcasts, activeIcon: Icons.podcasts, label: t.navPeers),
-      _TabSpec(icon: Icons.person_outline, activeIcon: Icons.person, label: t.navProfile),
+      _TabSpec(
+        icon: Icons.podcasts,
+        activeIcon: Icons.podcasts,
+        label: t.navPeers,
+      ),
+      _TabSpec(
+        icon: Icons.contacts_outlined,
+        activeIcon: Icons.contacts,
+        label: t.navContacts,
+      ),
+      _TabSpec(
+        icon: Icons.person_outline,
+        activeIcon: Icons.person,
+        label: t.navProfile,
+      ),
     ];
 
     return AuroraBackground(
       // The backdrop leans toward whichever tab is open.
-      focus: shell.currentIndex.toDouble(),
+      focus: tabs.length < 2
+          ? 1.0
+          : shell.currentIndex * 2 / (tabs.length - 1),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         // The bar is deliberately NOT Scaffold.bottomNavigationBar. That slot is

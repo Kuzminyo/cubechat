@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -12,6 +10,34 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
+
+Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
+  final t = AppLocalizations.of(context);
+  final result = await showModalBottomSheet<MediaPickerResult>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: AppColors.bgTop,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (_) => const MediaPickerSheet(),
+  );
+  if (result is! MediaPickerAssets || result.assets.isEmpty) return;
+
+  // A preview is plenty: the controller crops to a square and keeps it at 1024
+  // anyway, so pulling the full-resolution original would only cost time.
+  final preview = await result.assets.first.thumbnailDataWithSize(
+    const ThumbnailSize(1024, 1024),
+    quality: 92,
+  );
+  if (preview == null) {
+    if (context.mounted) showGlassToast(context, t.avatarFailed);
+    return;
+  }
+  final ok = await ref.read(avatarProvider.notifier).setFromBytes(preview);
+  if (!ok && context.mounted) showGlassToast(context, t.avatarFailed);
+}
 
 /// The avatar, opened. Tapping the circle in the profile lands here through a
 /// Hero, so the small circle grows into the big one rather than cutting to a
@@ -68,7 +94,7 @@ class AvatarScreen extends ConsumerWidget {
                     child: PillButton(
                       label: bytes == null ? t.avatarSet : t.avatarChange,
                       icon: Icons.photo_camera_back_outlined,
-                      onTap: () => _pick(context, ref),
+                      onTap: () => pickProfileAvatar(context, ref),
                     ),
                   ),
                   if (bytes != null) ...[
@@ -88,33 +114,6 @@ class AvatarScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _pick(BuildContext context, WidgetRef ref) async {
-    final t = AppLocalizations.of(context);
-    final result = await showModalBottomSheet<MediaPickerResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.bgTop,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => const MediaPickerSheet(),
-    );
-    if (result is! MediaPickerAssets || result.assets.isEmpty) return;
-
-    // A preview is plenty: the controller crops to a square and shrinks to 256
-    // anyway, so pulling the full-resolution original would only cost time.
-    final preview = await result.assets.first.thumbnailDataWithSize(
-      const ThumbnailSize(1024, 1024),
-      quality: 92,
-    );
-    if (preview == null) {
-      if (context.mounted) showGlassToast(context, t.avatarFailed);
-      return;
-    }
-    final ok = await ref.read(avatarProvider.notifier).setFromBytes(preview);
-    if (!ok && context.mounted) showGlassToast(context, t.avatarFailed);
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref) async {
@@ -149,7 +148,10 @@ class TappableAvatar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bytes = ref.watch(avatarProvider);
     return GestureDetector(
-      onTap: () => Navigator.of(context).push<void>(
+      onTap: () => Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push<void>(
         PageRouteBuilder<void>(
           opaque: false,
           barrierColor: Colors.transparent,

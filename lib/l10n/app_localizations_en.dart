@@ -21,6 +21,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navProfile => 'Profile';
 
   @override
+  String get navContacts => 'Contacts';
+
+  @override
+  String get contactsTitle => 'Contacts';
+
+  @override
+  String get contactsSubtitle => 'Everyone you have messaged';
+
+  @override
+  String get contactsSearchHint => 'Search contacts…';
+
+  @override
+  String get contactsEmptyTitle => 'No contacts yet';
+
+  @override
+  String get contactsEmptyHint =>
+      'Start a conversation and the person will appear here.';
+
+  @override
+  String get contactsSearchEmpty => 'No matching contacts';
+
+  @override
   String get chatsTitle => 'Chats';
 
   @override

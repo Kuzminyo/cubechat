@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,13 +22,13 @@ import '../storage/hive_init.dart';
 class AvatarController extends Notifier<Uint8List?> {
   static const _key = 'avatar.jpeg';
 
-  /// Side of the stored square. Twice the largest circle the app draws (72 px
-  /// in the profile), which covers 2x and 3x screens without going further.
-  static const int storedSize = 256;
+  /// Side of the stored square. The profile can expand the avatar nearly to
+  /// full-screen, so keep enough detail for modern high-density displays.
+  static const int storedSize = 1024;
 
-  /// JPEG quality for the stored copy. 82 keeps a face clean at this size;
-  /// higher buys nothing a 72 px circle can show.
-  static const int quality = 82;
+  /// JPEG quality for the stored copy. Keeps full-screen avatars crisp without
+  /// retaining the multi-megabyte original gallery image.
+  static const int quality = 90;
 
   Box<dynamic>? _box;
 
@@ -115,7 +114,7 @@ Uint8List? _squareThumbnail(Uint8List source) {
     width: side,
     height: side,
   );
-  // Only ever shrink. Upscaling a small picture to 256 would add bytes and no
+  // Only ever shrink. Upscaling a small picture would add bytes without adding
   // detail.
   final sized = side > AvatarController.storedSize
       ? img.copyResize(

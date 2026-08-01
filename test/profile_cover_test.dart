@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/core/widgets/identity_avatar.dart';
-import 'package:cubechat/features/profile/presentation/avatar_screen.dart';
+import 'package:cubechat/features/chat/presentation/widgets/media_picker_sheet.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -119,8 +119,7 @@ void main() {
     }
   });
 
-  testWidgets('the photo button actually opens the avatar screen',
-      (tester) async {
+  testWidgets('the photo button opens the gallery directly', (tester) async {
     // "Nothing happens" is the report. A label rendering in the right place
     // proves only that it is drawn — this presses it and asserts the screen
     // behind it arrives, which is the part that was in doubt.
@@ -128,10 +127,73 @@ void main() {
     final t = await AppLocalizations.delegate.load(const Locale('en'));
 
     await tester.tap(find.text(t.avatarSet));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byType(AvatarScreen), findsOneWidget,
-        reason: 'tapping the photo action must push the avatar screen');
+    expect(
+      find.byType(MediaPickerSheet),
+      findsOneWidget,
+      reason: 'tapping the photo action must open the gallery immediately',
+    );
+  });
+
+  testWidgets('the gallery opens above the tab shell', (tester) async {
+    final rootNavigatorKey = GlobalKey<NavigatorState>();
+    final branchNavigatorKey = GlobalKey<NavigatorState>();
+    const shellNavigationKey = Key('shell-navigation');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          navigatorKey: rootNavigatorKey,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Navigator(
+                  key: branchNavigatorKey,
+                  onGenerateRoute: (_) => MaterialPageRoute<void>(
+                    builder: (_) => const Scaffold(body: ProfileScreen()),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SizedBox(
+                    key: shellNavigationKey,
+                    height: 96,
+                    width: double.infinity,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    await tester.tap(find.text(t.avatarSet));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(
+      rootNavigatorKey.currentState!.canPop(),
+      isTrue,
+      reason: 'the gallery route must cover the entire tab shell',
+    );
+    expect(
+      branchNavigatorKey.currentState!.canPop(),
+      isFalse,
+      reason: 'the branch navigator must remain on the profile route',
+    );
+    expect(find.byType(MediaPickerSheet), findsOneWidget);
   });
 
   testWidgets('the avatar circle is not sitting on top of the actions',

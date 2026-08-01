@@ -21,6 +21,28 @@ class AppLocalizationsUk extends AppLocalizations {
   String get navProfile => 'Профіль';
 
   @override
+  String get navContacts => 'Контакти';
+
+  @override
+  String get contactsTitle => 'Контакти';
+
+  @override
+  String get contactsSubtitle => 'Усі, з ким ви вже листувалися';
+
+  @override
+  String get contactsSearchHint => 'Пошук контактів…';
+
+  @override
+  String get contactsEmptyTitle => 'Поки що немає контактів';
+
+  @override
+  String get contactsEmptyHint =>
+      'Почніть розмову — і співрозмовник з’явиться тут.';
+
+  @override
+  String get contactsSearchEmpty => 'Контактів не знайдено';
+
+  @override
   String get chatsTitle => 'Чати';
 
   @override

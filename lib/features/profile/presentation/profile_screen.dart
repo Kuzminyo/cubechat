@@ -1181,15 +1181,7 @@ class _CoverBody extends ConsumerWidget {
                   child: _CoverAction(
                     icon: Icons.add_a_photo_outlined,
                     label: photo == null ? tt.avatarSet : tt.avatarChange,
-                    onTap: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AvatarScreen(
-                          seed: fingerprint,
-                          label: nickname,
-                          heroTag: 'cover-avatar',
-                        ),
-                      ),
-                    ),
+                    onTap: () => pickProfileAvatar(context, ref),
                   ),
                 ),
                 const SizedBox(width: 8),
