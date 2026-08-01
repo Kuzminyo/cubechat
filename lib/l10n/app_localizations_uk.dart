@@ -43,6 +43,31 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactsSearchEmpty => 'Контактів не знайдено';
 
   @override
+  String get contactProfileChat => 'Чат';
+
+  @override
+  String get contactProfileSecurity => 'Безпека';
+
+  @override
+  String get contactProfileActions => 'Дії контакту';
+
+  @override
+  String get contactProfileVerify => 'Підтвердити';
+
+  @override
+  String get contactProfileCopyId => 'Копіювати ID контакту';
+
+  @override
+  String get contactProfileIdCopied => 'ID контакту скопійовано';
+
+  @override
+  String get contactProfileId => 'ID контакту';
+
+  @override
+  String get contactProfileVerifyHint =>
+      'Порівняйте відбитки шифрування, щоб підтвердити цю особу.';
+
+  @override
   String get chatsTitle => 'Чати';
 
   @override
@@ -711,4 +736,81 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get mediaCaptionHint => 'Додати підпис…';
+
+  @override
+  String get contactProfileAutoDelete => 'Автоочищення чату';
+
+  @override
+  String get contactProfileAutoDeleteTitle => 'Автовидалення повідомлень';
+
+  @override
+  String get contactProfileAutoDeleteOff => 'Вимкнено';
+
+  @override
+  String get contactProfileAutoDeleteOneDay => 'Через 1 день';
+
+  @override
+  String get contactProfileAutoDeleteSevenDays => 'Через 7 днів';
+
+  @override
+  String get contactProfileAutoDeleteThirtyDays => 'Через 30 днів';
+
+  @override
+  String contactProfileAutoDeleteUpdated(String period) {
+    return 'Автоочищення: $period';
+  }
+
+  @override
+  String get contactProfileShare => 'Поділитися контактом';
+
+  @override
+  String get contactProfileShareTitle => 'Надіслати контакт до';
+
+  @override
+  String get contactProfileShareEmpty => 'Інших чатів ще немає';
+
+  @override
+  String contactProfileShareSent(String name) {
+    return 'Надіслано до $name';
+  }
+
+  @override
+  String get contactProfileRestrictCopying => 'Заборонити копіювання';
+
+  @override
+  String get contactProfileAllowCopying => 'Дозволити копіювання';
+
+  @override
+  String get contactProfileCopyingRestricted =>
+      'Копіювання і пересилання вимкнено';
+
+  @override
+  String get contactProfileCopyingAllowed =>
+      'Копіювання і пересилання дозволено';
+
+  @override
+  String get contactProfileDelete => 'Видалити з контактів';
+
+  @override
+  String get contactProfileDeleteTitle => 'Видалити контакт?';
+
+  @override
+  String contactProfileDeleteMessage(String name) {
+    return '$name зникне з розділу «Контакти». Історія чату залишиться на цьому пристрої.';
+  }
+
+  @override
+  String get contactProfileMedia => 'Медіа';
+
+  @override
+  String get contactProfileVoiceMessages => 'Голосові повідомлення';
+
+  @override
+  String get contactProfileNoMedia => 'Медіа ще немає';
+
+  @override
+  String get contactProfileNoVoiceMessages => 'Голосових повідомлень ще немає';
+
+  @override
+  String get contactProfileOpen => 'Відкрити профіль';
 }

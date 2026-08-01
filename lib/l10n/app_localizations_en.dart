@@ -43,6 +43,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsSearchEmpty => 'No matching contacts';
 
   @override
+  String get contactProfileChat => 'Chat';
+
+  @override
+  String get contactProfileSecurity => 'Security';
+
+  @override
+  String get contactProfileActions => 'Contact actions';
+
+  @override
+  String get contactProfileVerify => 'Verify';
+
+  @override
+  String get contactProfileCopyId => 'Copy contact ID';
+
+  @override
+  String get contactProfileIdCopied => 'Contact ID copied';
+
+  @override
+  String get contactProfileId => 'Contact ID';
+
+  @override
+  String get contactProfileVerifyHint =>
+      'Compare encryption fingerprints to confirm this person.';
+
+  @override
   String get chatsTitle => 'Chats';
 
   @override
@@ -711,4 +736,81 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mediaCaptionHint => 'Add a caption…';
+
+  @override
+  String get contactProfileAutoDelete => 'Auto-delete chat';
+
+  @override
+  String get contactProfileAutoDeleteTitle => 'Auto-delete messages';
+
+  @override
+  String get contactProfileAutoDeleteOff => 'Off';
+
+  @override
+  String get contactProfileAutoDeleteOneDay => 'After 1 day';
+
+  @override
+  String get contactProfileAutoDeleteSevenDays => 'After 7 days';
+
+  @override
+  String get contactProfileAutoDeleteThirtyDays => 'After 30 days';
+
+  @override
+  String contactProfileAutoDeleteUpdated(String period) {
+    return 'Auto-delete: $period';
+  }
+
+  @override
+  String get contactProfileShare => 'Share contact';
+
+  @override
+  String get contactProfileShareTitle => 'Send contact to';
+
+  @override
+  String get contactProfileShareEmpty => 'No other chats yet';
+
+  @override
+  String contactProfileShareSent(String name) {
+    return 'Sent to $name';
+  }
+
+  @override
+  String get contactProfileRestrictCopying => 'Disable copying';
+
+  @override
+  String get contactProfileAllowCopying => 'Allow copying';
+
+  @override
+  String get contactProfileCopyingRestricted =>
+      'Copying and forwarding are disabled';
+
+  @override
+  String get contactProfileCopyingAllowed =>
+      'Copying and forwarding are allowed';
+
+  @override
+  String get contactProfileDelete => 'Delete from contacts';
+
+  @override
+  String get contactProfileDeleteTitle => 'Remove contact?';
+
+  @override
+  String contactProfileDeleteMessage(String name) {
+    return '$name will disappear from Contacts. Chat history stays on this device.';
+  }
+
+  @override
+  String get contactProfileMedia => 'Media';
+
+  @override
+  String get contactProfileVoiceMessages => 'Voice messages';
+
+  @override
+  String get contactProfileNoMedia => 'No media yet';
+
+  @override
+  String get contactProfileNoVoiceMessages => 'No voice messages yet';
+
+  @override
+  String get contactProfileOpen => 'Open profile';
 }

@@ -205,8 +205,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (authorId != null && m.authorId != authorId) return false;
     if (m.text == text) return false;
 
-    final list = [...current]
-      ..[idx] = m.copyWith(text: text, editedAt: DateTime.now());
+    final list = [...current]..[idx] =
+        m.copyWith(text: text, editedAt: DateTime.now());
     state = {...state, peerId: list};
     _persist(peerId, list);
     return true;
@@ -254,8 +254,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     final idx = current.indexWhere((m) => m.id == msgId);
     if (idx == -1) return;
     if (current[idx].forwardSecret) return;
-    final list = [...current]
-      ..[idx] = current[idx].copyWith(forwardSecret: true);
+    final list = [...current]..[idx] =
+        current[idx].copyWith(forwardSecret: true);
     state = {...state, peerId: list};
     _persist(peerId, list);
   }
@@ -274,8 +274,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (current == null) return;
     final idx = current.indexWhere((m) => m.id == msgId);
     if (idx == -1) return;
-    final list = [...current]
-      ..[idx] = current[idx].copyWith(imagePath: imagePath, status: status);
+    final list = [...current]..[idx] =
+        current[idx].copyWith(imagePath: imagePath, status: status);
     state = {...state, peerId: list};
     _persist(peerId, list);
   }
@@ -292,8 +292,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (current == null) return;
     final idx = current.indexWhere((m) => m.id == msgId);
     if (idx == -1) return;
-    final list = [...current]
-      ..[idx] = current[idx].copyWith(
+    final list = [...current]..[idx] = current[idx].copyWith(
         audioPath: audioPath,
         audioDurationMs: durationMs,
         status: status,
@@ -310,6 +309,32 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     } catch (e) {
       debugPrint('Messages box clear failed: $e');
     }
+  }
+
+  /// Remove messages older than [cutoff] from one conversation.
+  ///
+  /// This is the storage-side primitive used by per-chat auto-delete. It is
+  /// intentionally idempotent so the periodic privacy sweep can call it even
+  /// when nothing has expired.
+  Future<int> deleteBefore(String chatId, DateTime cutoff) async {
+    final current = state[chatId];
+    if (current == null || current.isEmpty) return 0;
+    final next =
+        current.where((message) => !message.sentAt.isBefore(cutoff)).toList();
+    final removed = current.length - next.length;
+    if (removed == 0) return 0;
+    if (next.isEmpty) {
+      state = {...state}..remove(chatId);
+      try {
+        await _box?.delete(chatId);
+      } catch (e) {
+        debugPrint('Messages auto-delete($chatId) failed: $e');
+      }
+    } else {
+      state = {...state, chatId: next};
+      await _persist(chatId, next);
+    }
+    return removed;
   }
 
   /// Erase a single chat (the `/clear` IRC command).
@@ -432,4 +457,5 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 }
 
 final messagesControllerProvider =
-    NotifierProvider<MessagesController, Map<String, List<Message>>>(MessagesController.new);
+    NotifierProvider<MessagesController, Map<String, List<Message>>>(
+        MessagesController.new);

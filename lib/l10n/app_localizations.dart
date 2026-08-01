@@ -164,6 +164,54 @@ abstract class AppLocalizations {
   /// **'No matching contacts'**
   String get contactsSearchEmpty;
 
+  /// No description provided for @contactProfileChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat'**
+  String get contactProfileChat;
+
+  /// No description provided for @contactProfileSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get contactProfileSecurity;
+
+  /// No description provided for @contactProfileActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact actions'**
+  String get contactProfileActions;
+
+  /// No description provided for @contactProfileVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get contactProfileVerify;
+
+  /// No description provided for @contactProfileCopyId.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy contact ID'**
+  String get contactProfileCopyId;
+
+  /// No description provided for @contactProfileIdCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact ID copied'**
+  String get contactProfileIdCopied;
+
+  /// No description provided for @contactProfileId.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact ID'**
+  String get contactProfileId;
+
+  /// No description provided for @contactProfileVerifyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare encryption fingerprints to confirm this person.'**
+  String get contactProfileVerifyHint;
+
   /// No description provided for @chatsTitle.
   ///
   /// In en, this message translates to:
@@ -1381,6 +1429,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add a caption…'**
   String get mediaCaptionHint;
+
+  /// No description provided for @contactProfileAutoDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-delete chat'**
+  String get contactProfileAutoDelete;
+
+  /// No description provided for @contactProfileAutoDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-delete messages'**
+  String get contactProfileAutoDeleteTitle;
+
+  /// No description provided for @contactProfileAutoDeleteOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get contactProfileAutoDeleteOff;
+
+  /// No description provided for @contactProfileAutoDeleteOneDay.
+  ///
+  /// In en, this message translates to:
+  /// **'After 1 day'**
+  String get contactProfileAutoDeleteOneDay;
+
+  /// No description provided for @contactProfileAutoDeleteSevenDays.
+  ///
+  /// In en, this message translates to:
+  /// **'After 7 days'**
+  String get contactProfileAutoDeleteSevenDays;
+
+  /// No description provided for @contactProfileAutoDeleteThirtyDays.
+  ///
+  /// In en, this message translates to:
+  /// **'After 30 days'**
+  String get contactProfileAutoDeleteThirtyDays;
+
+  /// No description provided for @contactProfileAutoDeleteUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-delete: {period}'**
+  String contactProfileAutoDeleteUpdated(String period);
+
+  /// No description provided for @contactProfileShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share contact'**
+  String get contactProfileShare;
+
+  /// No description provided for @contactProfileShareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send contact to'**
+  String get contactProfileShareTitle;
+
+  /// No description provided for @contactProfileShareEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No other chats yet'**
+  String get contactProfileShareEmpty;
+
+  /// No description provided for @contactProfileShareSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to {name}'**
+  String contactProfileShareSent(String name);
+
+  /// No description provided for @contactProfileRestrictCopying.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable copying'**
+  String get contactProfileRestrictCopying;
+
+  /// No description provided for @contactProfileAllowCopying.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow copying'**
+  String get contactProfileAllowCopying;
+
+  /// No description provided for @contactProfileCopyingRestricted.
+  ///
+  /// In en, this message translates to:
+  /// **'Copying and forwarding are disabled'**
+  String get contactProfileCopyingRestricted;
+
+  /// No description provided for @contactProfileCopyingAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Copying and forwarding are allowed'**
+  String get contactProfileCopyingAllowed;
+
+  /// No description provided for @contactProfileDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete from contacts'**
+  String get contactProfileDelete;
+
+  /// No description provided for @contactProfileDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove contact?'**
+  String get contactProfileDeleteTitle;
+
+  /// No description provided for @contactProfileDeleteMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will disappear from Contacts. Chat history stays on this device.'**
+  String contactProfileDeleteMessage(String name);
+
+  /// No description provided for @contactProfileMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Media'**
+  String get contactProfileMedia;
+
+  /// No description provided for @contactProfileVoiceMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice messages'**
+  String get contactProfileVoiceMessages;
+
+  /// No description provided for @contactProfileNoMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'No media yet'**
+  String get contactProfileNoMedia;
+
+  /// No description provided for @contactProfileNoVoiceMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'No voice messages yet'**
+  String get contactProfileNoVoiceMessages;
+
+  /// No description provided for @contactProfileOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open profile'**
+  String get contactProfileOpen;
 }
 
 class _AppLocalizationsDelegate

@@ -5,15 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
+import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
+import '../../../../core/widgets/identity_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
+import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
@@ -37,6 +41,21 @@ const _quickReaction = '❤️';
 /// The gap between the two is deliberate: the bubble keeps moving a little
 /// after the threshold so there is visible confirmation the gesture took, and
 /// the hint icon has somewhere to finish arriving.
+bool messageCanBeCopied(
+  Message message, {
+  required bool copyingRestricted,
+}) =>
+    !copyingRestricted && message.text.trim().isNotEmpty;
+
+bool messageCanBeForwarded(
+  Message message, {
+  required bool copyingRestricted,
+}) =>
+    messageCanBeCopied(
+      message,
+      copyingRestricted: copyingRestricted,
+    );
+
 const double _swipeTrigger = 56;
 const double _swipeMax = 76;
 
@@ -153,6 +172,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   /// Anything with words in it can be copied — including the caption on a
   /// photo. A voice note or a bare image has nothing to put on the clipboard.
+  bool get _copyingRestricted =>
+      ref
+          .read(conversationSettingsControllerProvider)[widget.chatId]
+          ?.restrictCopying ??
+      false;
+
+  SharedContact? get _sharedContact => widget.message.kind == MessageKind.text
+      ? SharedContact.tryParse(widget.message.text)
+      : null;
+
   bool get _canCopy => widget.message.text.trim().isNotEmpty;
 
   /// Forwarding re-sends the text into another chat, so it needs text for the
@@ -227,12 +256,22 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             pinnedHere ? t.chatUnpinAction : t.chatPinAction,
             AppColors.textOnGlass,
           ),
-        if (_canCopy)
-          _menuRow('copy', Icons.copy_outlined, t.chatCopyAction,
-              AppColors.textOnGlass),
-        if (_canForward)
-          _menuRow('forward', Icons.shortcut_outlined, t.chatForwardAction,
-              AppColors.textOnGlass),
+        if (messageCanBeCopied(
+          widget.message,
+          copyingRestricted: _copyingRestricted,
+        ))
+          if (!_copyingRestricted)
+            if (_canCopy)
+              _menuRow('copy', Icons.copy_outlined, t.chatCopyAction,
+                  AppColors.textOnGlass),
+        if (messageCanBeForwarded(
+          widget.message,
+          copyingRestricted: _copyingRestricted,
+        ))
+          if (!_copyingRestricted)
+            if (_canForward)
+              _menuRow('forward', Icons.shortcut_outlined, t.chatForwardAction,
+                  AppColors.textOnGlass),
         if (_canEdit)
           _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
               AppColors.textOnGlass),
@@ -326,6 +365,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   /// A one-line snippet of [m] for a reply preview / quote box.
   static String _replyPreview(Message m) {
+    final contact = SharedContact.tryParse(m.text);
+    if (contact != null) return contact.displayName;
     switch (m.kind) {
       case MessageKind.image:
         return '📷';
@@ -561,6 +602,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   Widget build(BuildContext context) {
     final message = widget.message;
     final mine = message.isMine;
+    final copyingRestricted = ref
+            .watch(conversationSettingsControllerProvider)[widget.chatId]
+            ?.restrictCopying ??
+        false;
+    final sharedContact = _sharedContact;
+
     // Marked in the bubble too, not only in the banner up top: scrolling back
     // through history, you want to see which line the banner is pointing at.
     final pinned = message.wireId != null &&
@@ -643,7 +690,26 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   else if (message.kind == MessageKind.audio)
                     VoiceBubble(message: message)
                   else if (message.kind == MessageKind.file)
-                    FileBubble(message: message)
+                    copyingRestricted
+                        ? Opacity(
+                            opacity: 0.68,
+                            child: IgnorePointer(
+                              child: FileBubble(message: message),
+                            ),
+                          )
+                        : FileBubble(message: message)
+                  else if (sharedContact != null)
+                    _SharedContactBubble(
+                      contact: sharedContact,
+                      onTap: () => context.push(
+                        '/person/' +
+                            Uri.encodeComponent(sharedContact.pubkeyHex) +
+                            '?name=' +
+                            Uri.encodeQueryComponent(
+                              sharedContact.displayName,
+                            ),
+                      ),
+                    )
                   else
                     Text(
                       message.text,
@@ -742,6 +808,81 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 /// Fills in as the drag approaches the threshold and reaches full strength
 /// exactly when the release would take, so "will this work?" is answered by
 /// looking rather than by trying.
+class _SharedContactBubble extends StatelessWidget {
+  const _SharedContactBubble({
+    required this.contact,
+    required this.onTap,
+  });
+
+  final SharedContact contact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 210, maxWidth: 250),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              IdentityAvatar(
+                seed: contact.pubkeyHex,
+                label: contact.displayName,
+                size: 46,
+                online: false,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t.profileContactCard,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      contact.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t.contactProfileOpen,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textOnGlassDim,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SwipeReplyHint extends StatelessWidget {
   const _SwipeReplyHint({required this.progress});
 

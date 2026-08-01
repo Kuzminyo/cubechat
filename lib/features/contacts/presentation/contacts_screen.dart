@@ -39,6 +39,9 @@ final contactChatsProvider = Provider<List<Chat>>((ref) {
         .map((entry) => entry.key),
   );
 });
+String routeForContactProfile(Chat contact) =>
+    '/person/${Uri.encodeComponent(contact.peerId)}'
+    '?name=${Uri.encodeQueryComponent(contact.peerName)}';
 
 class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
@@ -156,7 +159,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       child: FloatingGlass(
                         blur: false,
                         borderRadius: 18,
-                        onTap: () => context.push(routeForChat(contact)),
+                        onTap: () =>
+                            context.push(routeForContactProfile(contact)),
                         child: _ContactTile(contact: contact),
                       ),
                     );

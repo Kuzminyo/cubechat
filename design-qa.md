@@ -1,53 +1,48 @@
-# CubeChat Landing QA
+# Design QA: Contact profile
 
-final result: **passed (DOM + behaviour); visual pass still owed by a human**
+## Final result
 
-## Scope
+`passed`
 
-The landing in `landing/` is a React + Vite + TypeScript + Tailwind app
-(`npm run dev --prefix landing`). Sections: hero, stat marquee, how-it-works,
-features, security, philosophy, download, footer. Default language is Ukrainian
-with a live UA/EN toggle.
+## Visual truth and implementation
 
-> **Note.** The previous revision of this file described a *different* landing —
-> a static page with a generated hero raster and a TikTok-style vertical product
-> reel. That page no longer exists; the React rewrite replaced it, and neither
-> the reel nor the raster asset is in the codebase. The old "blocked on comparing
-> the reel against the supplied video" follow-up is therefore moot and has been
-> dropped.
+- Source visual truth: `D:\projects\cubechat\.codex\design-references\target-contact-profile.png`
+- Previous product screen: `D:\projects\cubechat\.codex\design-references\current-verification.png`
+- Implementation, default state: `D:\projects\cubechat\.codex\design-qa\implementation-profile-360x800-with-fonts.png`
+- Implementation, actions menu open: `D:\projects\cubechat\.codex\design-qa\implementation-menu-open-360x800.png`
+- Full comparison: `D:\projects\cubechat\.codex\design-qa\comparison-source-left-implementation-right.jpg`
+- Menu comparison: `D:\projects\cubechat\.codex\design-qa\comparison-menu-source-left-implementation-right.jpg`
 
-## Automated checks
+## Viewport and normalization
 
-Driven against the dev server at `http://localhost:5199`.
+- Source dimensions: 1080 x 2340 physical pixels.
+- Implementation dimensions: 360 x 800 logical pixels.
+- QA viewport: 360 x 800 logical pixels.
+- The source was proportionally normalized to 360 x 780 and centered in a 360 x 800 canvas before side-by-side comparison.
+- State checked: contact profile loaded; actions menu closed and open.
+- The in-app browser renderer was unavailable because its Windows sandbox helper failed. The implementation evidence was therefore rendered directly by Flutter at the exact target logical viewport.
 
-- Desktop (1440×1024) horizontal overflow: **none**.
-- Mobile (375×812) horizontal overflow: **none**, including with the mobile
-  drawer open.
-- Default `html lang`: `uk`. Hero: `Повідомлення, яким не потрібен сигнал.`
-- EN toggle flips `html lang` to `en` and the hero to
-  `Messages that need no signal.`; UA toggle restores it.
-- Sections present and anchored: `top`, `how`, `features`, `security`,
-  philosophy, `download`.
-- Mobile drawer: burger toggles state, locks body scroll, and holds the five
-  expected links.
-- Tailwind stylesheet loads (360 rules); no runtime console errors.
-- Test-count claim in the copy corrected from 186 to **246** to match
-  `flutter test`.
+## Comparison findings
 
-## Known limitation of this QA run
+- The main composition matches the reference: full-width visual hero, identity and status near the hero bottom, a horizontal quick-action row, dark contact details below, and an overlay actions menu.
+- The actions menu now uses a right-aligned translucent panel with a dimmed backdrop, matching the reference interaction and placement.
+- Primary controls are functional: open chat, mute/unmute, verify identity, copy contact ID, block/unblock, open and close the actions menu.
+- Text and interactive content remain inside the 360 x 800 viewport with no overflow.
+- The reference uses a peer photo. The current data model has no peer-photo field, so the implementation deliberately uses the existing Cubechat generated identity avatar and gradient instead of a fake image.
+- The target screenshot contains product-specific actions that Cubechat does not currently support. Only existing, real Cubechat actions were included.
 
-The preview browser used here **cannot capture screenshots** (every capture times
-out) and **does not advance CSS transitions** — a transformed element stays
-pinned at its start value even after its inline style updates. That makes every
-motion-dependent assertion unverifiable from here, and it is what made the
-previous run's visual QA fail too. It is an environment limitation, not a page
-defect: forcing the same transform with `transition: none` moves the element
-exactly where it should go.
+## Focused-region review
 
-So the following still needs a human with a real browser (`npm run dev --prefix
-landing`, open `http://localhost:5199`):
+The menu occupies most of the normalized viewport and all labels remain readable in the full menu comparison, so a separate crop would not add useful inspection detail.
 
-- Eyeball the hero drift, aurora sweep, logo pulse, scroll reveals, hover lift,
-  and CTA shimmer.
-- Confirm the mobile drawer visibly slides in on a tap (state, scroll-lock and
-  layout are all verified; only the animated slide is unproven).
+## Comparison history
+
+1. Initial implementation used a bottom sheet for secondary actions. This was a visible P2 mismatch because the reference uses a right-side overlay panel.
+2. The bottom sheet was replaced with an 82%-width right-aligned glass panel, a full-screen dim backdrop, and an explicit close action.
+3. Revised evidence: `D:\projects\cubechat\.codex\design-qa\comparison-menu-source-left-implementation-right.jpg`.
+
+## Functional verification
+
+- Widget coverage: 360 x 800 layout, localized content, menu open/close, block/unblock state.
+- Route coverage: contact names and public keys are encoded correctly.
+- Static analysis: no errors in the new contact profile screen.

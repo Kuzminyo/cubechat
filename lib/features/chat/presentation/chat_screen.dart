@@ -167,7 +167,7 @@ class ChatScreen extends ConsumerWidget {
           onTapIdentity: pubkeyHex == null
               ? null
               : () => context.push(
-                    '/verify/${Uri.encodeComponent(pubkeyHex)}'
+                    '/person/${Uri.encodeComponent(pubkeyHex)}'
                     '?name=${Uri.encodeQueryComponent(peerLabel)}',
                   ),
           actions: [
@@ -1665,7 +1665,7 @@ class _ShieldButton extends StatelessWidget {
       onPressed: !canVerify
           ? null
           : () => context.push(
-                '/verify/${Uri.encodeComponent(pubkeyHex)}'
+                '/person/${Uri.encodeComponent(pubkeyHex)}'
                 '?name=${Uri.encodeQueryComponent(peerLabel)}',
               ),
     );

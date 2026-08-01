@@ -5,6 +5,8 @@ import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/peers/presentation/contact_card_screen.dart';
+import '../../features/peers/presentation/contact_content_screen.dart';
+import '../../features/peers/presentation/contact_profile_screen.dart';
 import '../../features/peers/presentation/peers_screen.dart';
 import '../../features/peers/presentation/verification_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
@@ -127,6 +129,42 @@ GoRouter buildRouter() {
           child: const AuroraBackground(child: RelaysScreen()),
           state: state,
         ),
+      ),
+      GoRoute(
+        path: '/person/:pubkey',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final pubkey = state.pathParameters['pubkey']!;
+          final name = state.uri.queryParameters['name'] ?? 'Peer';
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: ContactProfileScreen(
+                peerPubkeyHex: pubkey,
+                peerLabel: name,
+              ),
+            ),
+            state: state,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/person/:pubkey/content',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final pubkey = state.pathParameters['pubkey']!;
+          final name = state.uri.queryParameters['name'] ?? 'Peer';
+          final tab = int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0;
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: ContactContentScreen(
+                chatId: pubkey,
+                contactName: name,
+                initialTab: tab,
+              ),
+            ),
+            state: state,
+          );
+        },
       ),
       GoRoute(
         path: '/verify/:pubkey',

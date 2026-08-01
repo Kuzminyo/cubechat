@@ -11,6 +11,14 @@
   "contactsEmptyTitle": "No contacts yet",
   "contactsEmptyHint": "Start a conversation and the person will appear here.",
   "contactsSearchEmpty": "No matching contacts",
+  "contactProfileChat": "Chat",
+  "contactProfileSecurity": "Security",
+  "contactProfileActions": "Contact actions",
+  "contactProfileVerify": "Verify",
+  "contactProfileCopyId": "Copy contact ID",
+  "contactProfileIdCopied": "Contact ID copied",
+  "contactProfileId": "Contact ID",
+  "contactProfileVerifyHint": "Compare encryption fingerprints to confirm this person.",
   "chatsTitle": "Chats",
   "chatsSubtitle": "Mesh · end-to-end encrypted",
   "chatsEmptyTitle": "No conversations yet",
@@ -298,4 +306,43 @@
   "profileEditName": "Name",
   "profileMyCard": "Card",
   "mediaCaptionHint": "Add a caption…"
+  ,
+  "contactProfileAutoDelete": "Auto-delete chat",
+  "contactProfileAutoDeleteTitle": "Auto-delete messages",
+  "contactProfileAutoDeleteOff": "Off",
+  "contactProfileAutoDeleteOneDay": "After 1 day",
+  "contactProfileAutoDeleteSevenDays": "After 7 days",
+  "contactProfileAutoDeleteThirtyDays": "After 30 days",
+  "contactProfileAutoDeleteUpdated": "Auto-delete: {period}",
+  "@contactProfileAutoDeleteUpdated": {
+    "placeholders": {
+      "period": { "type": "String" }
+    }
+  },
+  "contactProfileShare": "Share contact",
+  "contactProfileShareTitle": "Send contact to",
+  "contactProfileShareEmpty": "No other chats yet",
+  "contactProfileShareSent": "Sent to {name}",
+  "@contactProfileShareSent": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "contactProfileRestrictCopying": "Disable copying",
+  "contactProfileAllowCopying": "Allow copying",
+  "contactProfileCopyingRestricted": "Copying and forwarding are disabled",
+  "contactProfileCopyingAllowed": "Copying and forwarding are allowed",
+  "contactProfileDelete": "Delete from contacts",
+  "contactProfileDeleteTitle": "Remove contact?",
+  "contactProfileDeleteMessage": "{name} will disappear from Contacts. Chat history stays on this device.",
+  "@contactProfileDeleteMessage": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "contactProfileMedia": "Media",
+  "contactProfileVoiceMessages": "Voice messages",
+  "contactProfileNoMedia": "No media yet",
+  "contactProfileNoVoiceMessages": "No voice messages yet",
+  "contactProfileOpen": "Open profile"
 }

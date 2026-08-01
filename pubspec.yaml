@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 0.6.1+34
+version: 0.6.2+35
 
 environment:
   sdk: ^3.6.0
@@ -87,6 +87,7 @@ flutter:
   generate: true
   assets:
     - assets/logo/
+    - .codex/fonts/
 
 flutter_launcher_icons:
   android: true

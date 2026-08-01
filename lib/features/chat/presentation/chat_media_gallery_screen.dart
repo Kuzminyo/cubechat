@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/util/share_anchor.dart';
+import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -122,6 +123,10 @@ class _ChatMediaGalleryScreenState
 
   @override
   Widget build(BuildContext context) {
+    final sharingRestricted = ref
+            .watch(conversationSettingsControllerProvider)[widget.chatId]
+            ?.restrictCopying ??
+        false;
     final count = _images.length;
     return Scaffold(
       backgroundColor: Colors.black,
@@ -140,12 +145,13 @@ class _ChatMediaGalleryScreenState
                 style: const TextStyle(color: Colors.white, fontSize: 15),
               ),
         actions: [
-          IconButton(
-            key: _shareButtonKey,
-            icon: const Icon(Icons.ios_share, color: Colors.white),
-            tooltip: 'Share',
-            onPressed: _current == null ? null : _share,
-          ),
+          if (!sharingRestricted)
+            IconButton(
+              key: _shareButtonKey,
+              icon: const Icon(Icons.ios_share, color: Colors.white),
+              tooltip: 'Share',
+              onPressed: _current == null ? null : _share,
+            ),
           IconButton(
             icon: _saving
                 ? const SizedBox(

@@ -15,6 +15,7 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../chat/data/conversation_settings_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
@@ -65,6 +66,7 @@ int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
 }
 
 final chatsProvider = Provider<List<Chat>>((ref) {
+  ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);

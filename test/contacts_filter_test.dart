@@ -28,4 +28,10 @@ void main() {
 
     expect(result.map((chat) => chat.id), ['alice', 'bob']);
   });
+
+  test('contact opens its profile before the chat', () {
+    final route = routeForContactProfile(_chat('ab cd', 'Alice & Bob'));
+
+    expect(route, '/person/ab%20cd?name=Alice+%26+Bob');
+  });
 }
