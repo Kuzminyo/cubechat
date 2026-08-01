@@ -260,30 +260,33 @@ class ChatsListScreen extends ConsumerWidget {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-              sliver: SliverList.separated(
-                itemCount: filtered.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) {
-                  final chat = filtered[i];
-                  return AppearAnimation(
-                    delay: AppearAnimation.stagger(i),
-                    // Each row is its own levitating pane of smoked glass —
-                    // the nav bar's treatment — so the list reads as separate
-                    // floating islands over the aurora, not cards on a plate.
-                    //
-                    // Unblurred: the aurora behind is already a soft gradient,
-                    // and a backdrop filter per row is a full blur pass per row
-                    // per frame. See [FloatingGlass.blur].
-                    child: FloatingGlass(
-                      blur: false,
-                      borderRadius: 18,
-                      onTap: () => context.push(routeForChat(chat)),
-                      onLongPressAt: (pos) =>
-                          _showChatActions(context, ref, chat, t, pos),
-                      child: ChatTile(chat: chat),
-                    ),
-                  );
-                },
+              sliver: AppearOnce(
+                builder: (context, animate) => SliverList.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final chat = filtered[i];
+                    return AppearAnimation(
+                      enabled: animate,
+                      delay: AppearAnimation.stagger(i),
+                      // Each row is its own levitating pane of smoked glass —
+                      // the nav bar's treatment — so the list reads as separate
+                      // floating islands over the aurora, not cards on a plate.
+                      //
+                      // Unblurred: the aurora behind is already a soft gradient,
+                      // and a backdrop filter per row is a full blur pass per row
+                      // per frame. See [FloatingGlass.blur].
+                      child: FloatingGlass(
+                        blur: false,
+                        borderRadius: 18,
+                        onTap: () => context.push(routeForChat(chat)),
+                        onLongPressAt: (pos) =>
+                            _showChatActions(context, ref, chat, t, pos),
+                        child: ChatTile(chat: chat),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
         ],

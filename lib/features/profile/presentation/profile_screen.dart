@@ -1183,7 +1183,21 @@ class _CoverBody extends ConsumerWidget {
                   child: _CoverAction(
                     icon: Icons.add_a_photo_outlined,
                     label: photo == null ? tt.avatarSet : tt.avatarChange,
-                    onTap: () => pickProfileAvatar(context, ref),
+                    // With no photo there is nothing to look at, so go straight
+                    // to the picker. With one, open the screen that can also
+                    // remove it — otherwise there is no way to take an avatar
+                    // back off, which is where this ended up before.
+                    onTap: () => photo == null
+                        ? pickProfileAvatar(context, ref)
+                        : Navigator.of(context, rootNavigator: true).push<void>(
+                            MaterialPageRoute<void>(
+                              builder: (_) => AvatarScreen(
+                                seed: fingerprint,
+                                label: nickname,
+                                heroTag: 'cover-avatar',
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 8),

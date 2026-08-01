@@ -144,21 +144,24 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
-              sliver: SliverList.separated(
-                itemCount: contacts.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final contact = contacts[index];
-                  return AppearAnimation(
-                    delay: AppearAnimation.stagger(index),
-                    child: FloatingGlass(
-                      blur: false,
-                      borderRadius: 18,
-                      onTap: () => context.push(routeForChat(contact)),
-                      child: _ContactTile(contact: contact),
-                    ),
-                  );
-                },
+              sliver: AppearOnce(
+                builder: (context, animate) => SliverList.separated(
+                  itemCount: contacts.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final contact = contacts[index];
+                    return AppearAnimation(
+                      enabled: animate,
+                      delay: AppearAnimation.stagger(index),
+                      child: FloatingGlass(
+                        blur: false,
+                        borderRadius: 18,
+                        onTap: () => context.push(routeForChat(contact)),
+                        child: _ContactTile(contact: contact),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
         ],

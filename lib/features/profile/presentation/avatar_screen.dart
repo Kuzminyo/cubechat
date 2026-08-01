@@ -25,11 +25,16 @@ Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   );
   if (result is! MediaPickerAssets || result.assets.isEmpty) return;
 
-  // A preview is plenty: the controller crops to a square and keeps it at 1024
-  // anyway, so pulling the full-resolution original would only cost time.
+  // Asked for at the size the controller keeps, not below it. This used to
+  // pull 1024 while the store had been raised to full HD, so the extra
+  // resolution was thrown away before it ever arrived — the cover looked no
+  // sharper for it.
   final preview = await result.assets.first.thumbnailDataWithSize(
-    const ThumbnailSize(1024, 1024),
-    quality: 92,
+    const ThumbnailSize(
+      AvatarController.storedSize,
+      AvatarController.storedSize,
+    ),
+    quality: 95,
   );
   if (preview == null) {
     if (context.mounted) showGlassToast(context, t.avatarFailed);
@@ -126,53 +131,5 @@ class AvatarScreen extends ConsumerWidget {
     );
     if (!yes) return;
     await ref.read(avatarProvider.notifier).clear();
-  }
-}
-
-/// Convenience for the profile: the circle plus the tap that opens it.
-class TappableAvatar extends ConsumerWidget {
-  const TappableAvatar({
-    super.key,
-    required this.seed,
-    required this.label,
-    this.size = 72,
-  });
-
-  final String seed;
-  final String label;
-  final double size;
-
-  static const String heroTag = 'profile-avatar';
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bytes = ref.watch(avatarProvider);
-    return GestureDetector(
-      onTap: () => Navigator.of(
-        context,
-        rootNavigator: true,
-      ).push<void>(
-        PageRouteBuilder<void>(
-          opaque: false,
-          barrierColor: Colors.transparent,
-          transitionDuration: const Duration(milliseconds: 260),
-          reverseTransitionDuration: const Duration(milliseconds: 220),
-          pageBuilder: (_, __, ___) => AvatarScreen(
-            seed: seed,
-            label: label,
-            heroTag: heroTag,
-          ),
-          transitionsBuilder: (_, animation, __, child) =>
-              FadeTransition(opacity: animation, child: child),
-        ),
-      ),
-      child: IdentityAvatar(
-        seed: seed,
-        label: label,
-        size: size,
-        heroTag: heroTag,
-        imageBytes: bytes,
-      ),
-    );
   }
 }
