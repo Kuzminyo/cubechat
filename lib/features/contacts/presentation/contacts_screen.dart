@@ -84,6 +84,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                           style: AppTypography.display(),
                         ),
                       ),
+                      // A channel is the one thing here that is not a person,
+                      // so it gets the megaphone rather than a place in the
+                      // list. Same dialog the Chats menu opens.
+                      IconButton(
+                        onPressed: () => showNewChannelDialog(context, ref, t),
+                        icon: const Icon(Icons.campaign_outlined),
+                        color: AppColors.brandPrimary,
+                        iconSize: 26,
+                        tooltip: t.chatsMenuNewChannel,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -107,7 +117,20 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+          // Above the list rather than behind a menu: this screen is the
+          // answer to "who do I know", so the way to add someone belongs in
+          // plain sight — and it stays put while the list below it filters.
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: FloatingGlass(
+                borderRadius: 18,
+                onTap: () => context.push('/contact'),
+                child: _AddContactRow(label: t.chatsMenuAddContact),
+              ),
+            ),
+          ),
           if (contacts.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -136,6 +159,61 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 },
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The pinned row that opens the contact-card screen.
+///
+/// Shaped like a contact tile — same height, same avatar-sized leading circle —
+/// so it reads as the first entry in the list rather than a banner bolted on
+/// above it.
+class _AddContactRow extends StatelessWidget {
+  const _AddContactRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.16),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.38),
+              ),
+            ),
+            child: const Icon(
+              Icons.person_add_alt,
+              color: AppColors.brandPrimary,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.textOnGlassFaint,
+          ),
         ],
       ),
     );

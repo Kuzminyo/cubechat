@@ -115,6 +115,10 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     scanner.shouldScanActively = () =>
         AppLifecycle.instance.isForeground ||
         ref.read(messagingServiceProvider).hasFreshPendingDelivery;
+    // The scanner outlives this controller, and the closure above holds `ref`
+    // — so a scan tick arriving after disposal read from a torn-down container
+    // and threw. Hand the callback back when we go.
+    ref.onDispose(() => scanner.shouldScanActively = null);
 
     // Web/desktop don't have meaningful BLE peripheral support yet, and
     // central support varies. Bail with a clear status.

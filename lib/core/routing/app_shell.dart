@@ -29,15 +29,19 @@ class AppShell extends StatelessWidget {
         label: t.navChats,
         showsUnread: true,
       ),
-      _TabSpec(
-        icon: Icons.podcasts,
-        activeIcon: Icons.podcasts,
-        label: t.navPeers,
-      ),
+      // Contacts before Nearby: people you already know sit next to Chats,
+      // and the radio-range list — the one you only open when meeting someone
+      // new — moves further out. Keep in step with the branch order in
+      // app_router.dart; the shell pairs them by index.
       _TabSpec(
         icon: Icons.contacts_outlined,
         activeIcon: Icons.contacts,
         label: t.navContacts,
+      ),
+      _TabSpec(
+        icon: Icons.podcasts,
+        activeIcon: Icons.podcasts,
+        label: t.navPeers,
       ),
       _TabSpec(
         icon: Icons.person_outline,

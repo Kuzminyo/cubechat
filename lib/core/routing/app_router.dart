@@ -43,19 +43,22 @@ GoRouter buildRouter() {
               ),
             ],
           ),
+          // Branch order is the tab order — StatefulShellRoute matches them by
+          // index, so this list and the one in AppShell have to move together
+          // or a tap lands on someone else's screen.
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/peers',
-                builder: (context, state) => const PeersScreen(),
+                path: '/contacts',
+                builder: (context, state) => const ContactsScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/contacts',
-                builder: (context, state) => const ContactsScreen(),
+                path: '/peers',
+                builder: (context, state) => const PeersScreen(),
               ),
             ],
           ),

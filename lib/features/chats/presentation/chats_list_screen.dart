@@ -191,7 +191,7 @@ class ChatsListScreen extends ConsumerWidget {
                       _ChatsOverflowMenu(
                         onAddContact: () => context.push('/contact'),
                         onNewChannel: () =>
-                            _showNewChannelDialog(context, ref, t),
+                            showNewChannelDialog(context, ref, t),
                       ),
                     ],
                   ),
@@ -622,7 +622,9 @@ class _MenuRow extends StatelessWidget {
 /// Prompt for a channel name + optional password, join it, and open it.
 /// Joining is local — deriving the shared key makes you a member the moment a
 /// matching-key message arrives on the mesh.
-Future<void> _showNewChannelDialog(
+/// Public because the Contacts screen offers the same action from its own
+/// header — one dialog, so the two entry points cannot drift apart.
+Future<void> showNewChannelDialog(
   BuildContext context,
   WidgetRef ref,
   AppLocalizations t,

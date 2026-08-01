@@ -84,10 +84,15 @@ class PeripheralController extends Notifier<PeripheralState> {
 
   @override
   PeripheralState build() {
+    // Resolved now, not inside onDispose. A container being torn down refuses
+    // reads, so reaching for the plugin at disposal threw instead of stopping
+    // the advertisement — and it threw *after* the widget tree was gone, where
+    // nothing was left to catch it.
+    final peripheral = ref.read(blePeripheralProvider);
     ref.onDispose(() {
       _adapterSub?.cancel();
       // Best-effort stop; native side handles a missing plugin gracefully.
-      unawaited(ref.read(blePeripheralProvider).stop());
+      unawaited(peripheral.stop());
     });
     return PeripheralState.initial;
   }
