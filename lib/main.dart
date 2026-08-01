@@ -11,7 +11,7 @@ import 'core/util/debug_log.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-01-contact-actions-media';
+const String _buildStamp = '2026-08-01-heat-and-tester-fixes';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

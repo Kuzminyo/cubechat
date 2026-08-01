@@ -830,6 +830,18 @@ abstract class AppLocalizations {
   /// **'Leaves the channel and removes its history. You will need the key again to rejoin.'**
   String get chatsDeleteChannelHint;
 
+  /// No description provided for @chatsDeleteForThemToo.
+  ///
+  /// In en, this message translates to:
+  /// **'Also delete for them'**
+  String get chatsDeleteForThemToo;
+
+  /// No description provided for @chatsDeleteForThemHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraws the messages you sent from their device too. Their own messages stay.'**
+  String get chatsDeleteForThemHint;
+
   /// No description provided for @chatEditAction.
   ///
   /// In en, this message translates to:

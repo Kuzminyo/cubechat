@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 
-/// Frosted glass surface — `BackdropFilter` + soft white border.
+/// Frosted glass surface — soft white border over an optional backdrop blur.
 /// Matches `.glass` / `.glass-strong` from the mockup.
 class GlassCard extends StatelessWidget {
   const GlassCard({
@@ -15,6 +15,7 @@ class GlassCard extends StatelessWidget {
     this.borderRadius = 20,
     this.strong = false,
     this.onTap,
+    this.blur = false,
   });
 
   final Widget child;
@@ -24,6 +25,26 @@ class GlassCard extends StatelessWidget {
   final bool strong;
   final VoidCallback? onTap;
 
+  /// Whether to sample and blur what is behind the card. See
+  /// [FloatingGlass.blur] for the full argument; the short version is that a
+  /// [BackdropFilter] snapshots the layer below and runs a gaussian over it,
+  /// cards do not share that work, and a screen of them is one full blur pass
+  /// each per frame.
+  ///
+  /// Defaults to **off** because every card in this app sits on the aurora —
+  /// four wide radial gradients. Blurring a soft gradient returns the same soft
+  /// gradient, so the pass costs a phone real heat and returns no pixels. Turn
+  /// it on for a card floating over actual content, where there is detail worth
+  /// softening.
+  final bool blur;
+
+  Widget _maybeBlur(Widget child) => blur
+      ? BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+          child: child,
+        )
+      : child;
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
@@ -31,9 +52,8 @@ class GlassCard extends StatelessWidget {
       padding: margin,
       child: ClipRRect(
         borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-          child: DecoratedBox(
+        child: _maybeBlur(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,

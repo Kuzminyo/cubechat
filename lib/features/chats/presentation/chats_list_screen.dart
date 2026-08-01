@@ -7,6 +7,7 @@ import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
@@ -506,41 +507,91 @@ Future<void> _showChatActions(
   }
   if (action != 'delete' || !context.mounted) return;
 
+  // Retracting only makes sense 1:1 and only for messages we sent: the wire
+  // format can withdraw our own, and nothing can compel the other side to drop
+  // theirs. Offering the choice on a channel, or when we have nothing of our
+  // own in the thread, would promise more than it delivers.
+  final retractable = chat.isChannel
+      ? const <Message>[]
+      : (ref.read(messagesControllerProvider)[chat.id] ?? const <Message>[])
+          .where((m) => m.isMine && m.wireId != null)
+          .toList();
+
+  var alsoForThem = false;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.bgTop,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-      ),
-      title: Text(
-        t.chatsDeleteTitle,
-        style: TextStyle(
-          color: AppColors.textOnGlass,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDialogState) => AlertDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
         ),
-      ),
-      content: Text(
-        chat.isChannel ? t.chatsDeleteChannelHint : t.chatsDeletePeerHint,
-        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child:
-              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        title: Text(
+          t.chatsDeleteTitle,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: Text(t.chatsActionDelete,
-              style: const TextStyle(color: AppColors.danger)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              chat.isChannel ? t.chatsDeleteChannelHint : t.chatsDeletePeerHint,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+            ),
+            if (retractable.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              CheckboxListTile(
+                value: alsoForThem,
+                onChanged: (v) =>
+                    setDialogState(() => alsoForThem = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                activeColor: AppColors.brandPrimary,
+                dense: true,
+                title: Text(
+                  t.chatsDeleteForThemToo,
+                  style:
+                      TextStyle(color: AppColors.textOnGlass, fontSize: 13.5),
+                ),
+                subtitle: Text(
+                  t.chatsDeleteForThemHint,
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+                ),
+              ),
+            ],
+          ],
         ),
-      ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(t.chatsActionDelete,
+                style: const TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
     ),
   );
   if (confirmed != true) return;
+
+  // Retract before the local wipe: sendDeleteForEveryone resolves each target
+  // against the stored message, so clearing first would leave nothing to send.
+  if (alsoForThem) {
+    final messaging = ref.read(messagingServiceProvider);
+    for (final m in retractable) {
+      await messaging.sendDeleteForEveryone(chat.id, m.wireId!);
+    }
+  }
 
   await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
   await ref.read(favoritesControllerProvider.notifier).forget(chat.id);

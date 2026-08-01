@@ -295,6 +295,9 @@ class ContactProfileScreen extends ConsumerWidget {
                 child: GlassCard(
                   strong: true,
                   borderRadius: 28,
+                  // Floats over the scrolled profile, not the aurora — here
+                  // there is real detail behind the panel worth softening.
+                  blur: true,
                   padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

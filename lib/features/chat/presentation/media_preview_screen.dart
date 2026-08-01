@@ -75,6 +75,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // The caption island positions itself off viewInsets.bottom, so the
+      // Scaffold must not ALSO shrink the body for the keyboard — that counted
+      // the keyboard twice and threw the caption bar most of the way up the
+      // photo. Off is the right answer for a full-bleed preview anyway: the
+      // image keeps its height instead of being squashed into the top half.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(

@@ -414,6 +414,13 @@ class AppLocalizationsUk extends AppLocalizations {
       'Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.';
 
   @override
+  String get chatsDeleteForThemToo => 'Видалити і в співрозмовника';
+
+  @override
+  String get chatsDeleteForThemHint =>
+      'Ваші повідомлення зникнуть і з його пристрою. Його власні залишаться.';
+
+  @override
   String get chatEditAction => 'Редагувати';
 
   @override

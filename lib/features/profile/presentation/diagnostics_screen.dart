@@ -1,5 +1,9 @@
+﻿import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -33,6 +37,27 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     if (mounted) setState(() {});
   }
 
+  String _asText(List<DebugLogEntry> entries) => entries
+      .map((e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.line}')
+      .join('\n');
+
+  /// Send the log out as a file rather than through the clipboard.
+  ///
+  /// Copy-all was the only way out of here, and a connection log is thousands
+  /// of lines — too much to paste into a chat, and the part that matters is
+  /// never the part that survives the paste. A file goes to the developer
+  /// intact, which is the difference between "connection is flaky" and a fix.
+  Future<void> _shareLog(List<DebugLogEntry> entries) async {
+    final dir = await getTemporaryDirectory();
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .substring(0, 19);
+    final file = File('${dir.path}/cubechat-log-$stamp.txt');
+    await file.writeAsString(_asText(entries));
+    await Share.shareXFiles([XFile(file.path)], subject: 'cubechat log');
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -47,14 +72,15 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 AppTypography.heading(size: 18, color: AppColors.textOnGlass)),
         actions: [
           IconButton(
+            tooltip: 'Share log file',
+            icon: Icon(Icons.ios_share_rounded, color: AppColors.textOnGlass),
+            onPressed: entries.isEmpty ? null : () => _shareLog(entries),
+          ),
+          IconButton(
             tooltip: 'Copy all',
             icon: Icon(Icons.copy, color: AppColors.textOnGlass),
             onPressed: () async {
-              final text = entries
-                  .map((e) =>
-                      '${e.at.toIso8601String().substring(11, 23)}  ${e.line}')
-                  .join('\n');
-              await Clipboard.setData(ClipboardData(text: text));
+              await Clipboard.setData(ClipboardData(text: _asText(entries)));
               if (!context.mounted) return;
               showCopiedToast(context, t.copied);
             },

@@ -626,10 +626,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // and these have to stay colour-coded by sender), so it wears the shared
     // shadow recipe over its own fill.
     //
-    // The RepaintBoundary is not decoration: the BackdropFilter below was
-    // already here, and without a boundary one bubble's blur repaints its
-    // neighbours on every scroll frame. It makes the list cheaper than before,
-    // which matters on the same phones this branch is trying to cool down.
+    // No BackdropFilter here, deliberately. Every bubble used to run its own
+    // gaussian, which on a full screen of conversation is a dozen blur passes
+    // per frame — the most expensive thing in the app, on its most-scrolled
+    // screen. What it sampled was the aurora: four wide radial gradients.
+    // Blurring a soft gradient returns the same soft gradient, so the passes
+    // bought nothing visible (the same reasoning FloatingGlass.blur already
+    // documents for the rows). The fill, border and shadows are unchanged.
+    //
+    // The RepaintBoundary stays: it keeps one bubble's repaint out of its
+    // neighbours as the list scrolls.
     final bubble = RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -638,91 +644,88 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: mine
-                  ? BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.brandPrimary.withValues(alpha: 0.85),
-                          AppColors.brandSecondary.withValues(alpha: 0.85),
-                        ],
-                      ),
-                      borderRadius: radius,
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.18)),
-                    )
-                  : BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
-                      borderRadius: radius,
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.16)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: mine
+                ? BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.brandPrimary.withValues(alpha: 0.85),
+                        AppColors.brandSecondary.withValues(alpha: 0.85),
+                      ],
                     ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Channel messages from others: show the author's name on top,
-                  // since a channel mixes many senders in one conversation.
-                  if (!mine && message.authorName != null) ...[
-                    Text(
-                      message.authorName!,
-                      style: TextStyle(
-                        color: AppColors.brandPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    borderRadius: radius,
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                  )
+                : BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: radius,
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.16)),
+                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Channel messages from others: show the author's name on top,
+                // since a channel mixes many senders in one conversation.
+                if (!mine && message.authorName != null) ...[
+                  Text(
+                    message.authorName!,
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 2),
-                  ],
-                  if (message.replyToWireId != null)
-                    _quotedBox(message.replyToWireId!),
-                  if (message.kind == MessageKind.image)
-                    _ImagePayload(
-                      message: message,
-                      chatId: widget.chatId,
-                      onDoubleTap: _canReact ? _quickReact : null,
-                    )
-                  else if (message.kind == MessageKind.audio)
-                    VoiceBubble(message: message)
-                  else if (message.kind == MessageKind.file)
-                    copyingRestricted
-                        ? Opacity(
-                            opacity: 0.68,
-                            child: IgnorePointer(
-                              child: FileBubble(message: message),
-                            ),
-                          )
-                        : FileBubble(message: message)
-                  else if (sharedContact != null)
-                    _SharedContactBubble(
-                      contact: sharedContact,
-                      onTap: () => context.push(
-                        '/person/' +
-                            Uri.encodeComponent(sharedContact.pubkeyHex) +
-                            '?name=' +
-                            Uri.encodeQueryComponent(
-                              sharedContact.displayName,
-                            ),
-                      ),
-                    )
-                  else
-                    Text(
-                      message.text,
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 14.5,
-                        height: 1.35,
-                      ),
-                    ),
-                  const SizedBox(height: 4),
-                  _BubbleMeta(message: message, pinned: pinned),
+                  ),
+                  const SizedBox(height: 2),
                 ],
-              ),
+                if (message.replyToWireId != null)
+                  _quotedBox(message.replyToWireId!),
+                if (message.kind == MessageKind.image)
+                  _ImagePayload(
+                    message: message,
+                    chatId: widget.chatId,
+                    onDoubleTap: _canReact ? _quickReact : null,
+                  )
+                else if (message.kind == MessageKind.audio)
+                  VoiceBubble(message: message)
+                else if (message.kind == MessageKind.file)
+                  copyingRestricted
+                      ? Opacity(
+                          opacity: 0.68,
+                          child: IgnorePointer(
+                            child: FileBubble(message: message),
+                          ),
+                        )
+                      : FileBubble(message: message)
+                else if (sharedContact != null)
+                  _SharedContactBubble(
+                    contact: sharedContact,
+                    onTap: () => context.push(
+                      '/person/' +
+                          Uri.encodeComponent(sharedContact.pubkeyHex) +
+                          '?name=' +
+                          Uri.encodeQueryComponent(
+                            sharedContact.displayName,
+                          ),
+                    ),
+                  )
+                else
+                  Text(
+                    message.text,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 14.5,
+                      height: 1.35,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                _BubbleMeta(message: message, pinned: pinned),
+              ],
             ),
           ),
         ),

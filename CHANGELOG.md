@@ -4,9 +4,31 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.6.2+35**.
+Current build: **0.6.3+36**.
 
 ---
+
+## Android heat, and the first round of tester reports (2026‑08‑01)
+
+- Android ran hot for reasons the iOS pass never touched. Two causes:
+  **backdrop blurs that drew nothing** — `GlassCard` and every `MessageBubble`
+  ran a full gaussian over the aurora, which is four soft radial gradients, so
+  a screen of conversation paid a dozen blur passes per frame to reproduce the
+  gradient it already had (measured before removal: max 11/255 per‑channel
+  delta, mean 0.43/255) — and **BLE scanning at the active cadence on every
+  screen**: `shouldScanActively` was plain `isForeground`, so reading a chat
+  held the radio at a 71% duty cycle to refresh a radar nobody was watching.
+  Now gated on the Nearby tab actually being on screen, read off `TickerMode`
+  because the shell keeps every branch mounted for the session.
+- Photo caption no longer flies up the screen when the keyboard opens: the
+  caption island offsets itself by `viewInsets.bottom` and the `Scaffold` was
+  *also* resizing for the keyboard, counting it twice.
+- Deleting a 1:1 chat can now retract your own messages from the other device
+  too, via the existing delete‑for‑everyone frame. Their messages stay — the
+  wire format can withdraw ours and nothing can compel theirs.
+- Diagnostics can share the log as a file. Copy‑all was the only way out, and a
+  connection log is thousands of lines: the part that matters is never the part
+  that survives a paste into a chat.
 
 ## Unreleased polish (2026‑08‑01)
 

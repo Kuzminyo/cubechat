@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
@@ -35,6 +36,22 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(peerDiscoveryControllerProvider.notifier).start();
     });
+  }
+
+  /// The tab shell keeps this branch mounted whether or not it is on screen, so
+  /// initState/dispose can't tell the scanner when anyone is actually watching.
+  /// TickerMode can: the shell disables it for the branches it takes offstage,
+  /// and depending on it here re-runs this the moment the active tab changes.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    AppLifecycle.instance.isWatchingNearby = TickerMode.of(context);
+  }
+
+  @override
+  void dispose() {
+    AppLifecycle.instance.isWatchingNearby = false;
+    super.dispose();
   }
 
   @override

@@ -164,6 +164,8 @@
   "chatsDeleteTitle": "Delete this chat?",
   "chatsDeletePeerHint": "Removes the conversation and forgets this peer. They can find you again over the mesh.",
   "chatsDeleteChannelHint": "Leaves the channel and removes its history. You will need the key again to rejoin.",
+  "chatsDeleteForThemToo": "Also delete for them",
+  "chatsDeleteForThemHint": "Withdraws the messages you sent from their device too. Their own messages stay.",
   "chatEditAction": "Edit",
   "chatEditTitle": "Edit message",
   "chatEditSave": "Save",

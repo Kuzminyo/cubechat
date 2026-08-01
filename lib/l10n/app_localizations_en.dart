@@ -412,6 +412,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Leaves the channel and removes its history. You will need the key again to rejoin.';
 
   @override
+  String get chatsDeleteForThemToo => 'Also delete for them';
+
+  @override
+  String get chatsDeleteForThemHint =>
+      'Withdraws the messages you sent from their device too. Their own messages stay.';
+
+  @override
   String get chatEditAction => 'Edit';
 
   @override

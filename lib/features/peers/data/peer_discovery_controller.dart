@@ -104,16 +104,23 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     ref.read(messagingServiceProvider);
 
     final scanner = ref.read(bleScannerProvider);
-    // Scan hard only when it buys something: while the user is in the app
-    // (watching Nearby, or one tap from it), or while we're still chasing a
-    // handover we only just failed to make. A backgrounded app with nothing
-    // fresh to deliver drops to the idle cadence — see BleConstants.
+    // Scan hard only when it buys something: while someone is actually watching
+    // the Nearby list fill in, or while we're still chasing a handover we only
+    // just failed to make. Everything else runs at the idle cadence — see
+    // BleConstants.
+    //
+    // Deliberately isWatchingNearby, not isForeground: the app being open was
+    // true on every screen, so reading a conversation for ten minutes pinned the
+    // Android radio at the active 71% duty cycle to keep a radar fresh that
+    // nobody was looking at. Idle still surfaces a peer inside ~30 s, which is
+    // the same trade the iOS cadence already makes at a third of the duty.
     //
     // Deliberately hasFreshPendingDelivery, not hasPendingDelivery: the latter
     // stays true for the buffer's full one-hour TTL, so one undeliverable
     // message used to hold the radio at the active cadence for an hour.
     scanner.shouldScanActively = () =>
-        AppLifecycle.instance.isForeground ||
+        (AppLifecycle.instance.isForeground &&
+            AppLifecycle.instance.isWatchingNearby) ||
         ref.read(messagingServiceProvider).hasFreshPendingDelivery;
     // The scanner outlives this controller, and the closure above holds `ref`
     // — so a scan tick arriving after disposal read from a torn-down container
