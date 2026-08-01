@@ -89,10 +89,193 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     );
     final fingerprintReady = fingerprintAsync.hasValue;
 
+    // Hoisted out of the builder below and handed to AnimatedBuilder as its
+    // `child`: the cover animates every frame it is opening, and without
+    // this every settings card was rebuilt on each of those frames. The
+    // CustomScrollView config is cheap to remake; its contents are not.
+    final settings = SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+      sliver: SliverList.list(children: [
+        // Identity. The avatar and the name moved up onto the cover, so what
+        // is left here is the fingerprint — the part you actually read out
+        // loud to someone standing next to you.
+        GlassCard(
+          strong: true,
+          padding: const EdgeInsets.all(20),
+          borderRadius: 22,
+          child: _FingerprintRow(
+            label: t.profileFingerprint,
+            value: fingerprint,
+            ready: fingerprintReady,
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Language toggle
+        _SectionLabel(text: t.profileLanguage),
+        GlassCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(
+                child: _LangPill(
+                  label: t.profileLanguageEn,
+                  code: 'en',
+                  current: locale.languageCode,
+                  onTap: () => ref
+                      .read(localeControllerProvider.notifier)
+                      .set(const Locale('en')),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _LangPill(
+                  label: t.profileLanguageUk,
+                  code: 'uk',
+                  current: locale.languageCode,
+                  onTap: () => ref
+                      .read(localeControllerProvider.notifier)
+                      .set(const Locale('uk')),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Transport
+        _SectionLabel(text: t.profileTransport),
+        GlassCard(
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.brandPrimary.withValues(alpha: 0.18),
+                  border: Border.all(
+                      color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+                ),
+                child: const Icon(Icons.bluetooth,
+                    color: AppColors.brandPrimary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  t.profileTransportMesh,
+                  style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                ),
+              ),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.online,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 8),
+        const _BackgroundModeCard(),
+
+        const SizedBox(height: 8),
+        const _RelayFallbackCard(),
+
+        const SizedBox(height: 8),
+        const _DiscoverableCard(),
+
+        const SizedBox(height: 8),
+        const _PrivacyCard(),
+
+        const SizedBox(height: 8),
+        const _ContactCardRow(),
+
+        const SizedBox(height: 12),
+
+        // About
+        _SectionLabel(text: t.profileAbout),
+        GlassCard(
+          child: Row(
+            children: [
+              const CubeLogo(size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cubechat',
+                      style: AppTypography.heading(
+                          size: 15, color: AppColors.textOnGlass),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t.profileVersion(_appVersion),
+                      style: TextStyle(
+                          color: AppColors.textOnGlassDim, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Diagnostics
+        GlassCard(
+          onTap: () => context.push('/diagnostics'),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                ),
+                child: Icon(Icons.bug_report_outlined,
+                    color: AppColors.textOnGlass, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Diagnostics',
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Emergency wipe
+        _EmergencyWipeCard(),
+      ]),
+    );
+
     return NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
       child: AnimatedBuilder(
         animation: _open,
+        // Passed through untouched on every frame — this is what keeps the
+        // settings out of the animation's rebuild.
+        child: settings,
         builder: (context, child) => CustomScrollView(
           // Bouncing on both platforms, not just iOS. Android's default
           // clamping physics never lets `pixels` go below zero, so "pull past
@@ -108,185 +291,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               open: _open.value,
               onToggle: _toggle,
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-              sliver: SliverList.list(children: [
-                // Identity. The avatar and the name moved up onto the cover, so what
-                // is left here is the fingerprint — the part you actually read out
-                // loud to someone standing next to you.
-                GlassCard(
-                  strong: true,
-                  padding: const EdgeInsets.all(20),
-                  borderRadius: 22,
-                  child: _FingerprintRow(
-                    label: t.profileFingerprint,
-                    value: fingerprint,
-                    ready: fingerprintReady,
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Language toggle
-                _SectionLabel(text: t.profileLanguage),
-                GlassCard(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _LangPill(
-                          label: t.profileLanguageEn,
-                          code: 'en',
-                          current: locale.languageCode,
-                          onTap: () => ref
-                              .read(localeControllerProvider.notifier)
-                              .set(const Locale('en')),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _LangPill(
-                          label: t.profileLanguageUk,
-                          code: 'uk',
-                          current: locale.languageCode,
-                          onTap: () => ref
-                              .read(localeControllerProvider.notifier)
-                              .set(const Locale('uk')),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Transport
-                _SectionLabel(text: t.profileTransport),
-                GlassCard(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                          border: Border.all(
-                              color: AppColors.brandPrimary
-                                  .withValues(alpha: 0.4)),
-                        ),
-                        child: const Icon(Icons.bluetooth,
-                            color: AppColors.brandPrimary, size: 18),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          t.profileTransportMesh,
-                          style: TextStyle(
-                              color: AppColors.textOnGlass, fontSize: 14),
-                        ),
-                      ),
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.online,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-                const _BackgroundModeCard(),
-
-                const SizedBox(height: 8),
-                const _RelayFallbackCard(),
-
-                const SizedBox(height: 8),
-                const _DiscoverableCard(),
-
-                const SizedBox(height: 8),
-                const _PrivacyCard(),
-
-                const SizedBox(height: 8),
-                const _ContactCardRow(),
-
-                const SizedBox(height: 12),
-
-                // About
-                _SectionLabel(text: t.profileAbout),
-                GlassCard(
-                  child: Row(
-                    children: [
-                      const CubeLogo(size: 36),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Cubechat',
-                              style: AppTypography.heading(
-                                  size: 15, color: AppColors.textOnGlass),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              t.profileVersion(_appVersion),
-                              style: TextStyle(
-                                  color: AppColors.textOnGlassDim,
-                                  fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Diagnostics
-                GlassCard(
-                  onTap: () => context.push('/diagnostics'),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.08),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.18)),
-                        ),
-                        child: Icon(Icons.bug_report_outlined,
-                            color: AppColors.textOnGlass, size: 18),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Diagnostics',
-                          style: TextStyle(
-                            color: AppColors.textOnGlass,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.chevron_right,
-                          color: AppColors.textOnGlassFaint),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Emergency wipe
-                _EmergencyWipeCard(),
-              ]),
-            ),
+            child!,
           ],
         ),
       ),
@@ -994,8 +999,7 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
   final double topInset;
   final Widget Function(BuildContext, double height, double t) builder;
 
-  double get _max =>
-      compact + (_ProfileCover.expandedHeight - compact) * open;
+  double get _max => compact + (_ProfileCover.expandedHeight - compact) * open;
 
   @override
   double get maxExtent => _max;
@@ -1017,9 +1021,7 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_CoverDelegate old) =>
-      old.open != open ||
-      old.compact != compact ||
-      old.topInset != topInset;
+      old.open != open || old.compact != compact || old.topInset != topInset;
 }
 
 class _CoverBody extends ConsumerWidget {

@@ -30,12 +30,28 @@ class FloatingGlass extends StatelessWidget {
     this.borderRadius = 18,
     this.onTap,
     this.onLongPressAt,
+    this.blur = true,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
   final VoidCallback? onTap;
+
+  /// Whether to sample and blur what is behind the pane.
+  ///
+  /// A [BackdropFilter] is one of the most expensive things a frame can
+  /// contain: it snapshots the layer below and runs a gaussian over it, and
+  /// panes do not share that work — a list of these is one full blur pass per
+  /// row, every frame. On a phone that is the difference between a cool device
+  /// and a warm one.
+  ///
+  /// It is worth paying where the backdrop has detail worth softening: the nav
+  /// bar over a scrolling list, a bubble over a conversation. It buys nothing
+  /// over the aurora, which is four wide radial gradients — blurring a soft
+  /// gradient returns the same soft gradient. Rows sitting on it pass false and
+  /// keep the identical fill, border and shadows.
+  final bool blur;
 
   /// Long-press reporting the global press point, so a caller can anchor a
   /// popup to the finger. InkWell.onLongPress gives no position, so this rides
@@ -69,6 +85,34 @@ class FloatingGlass extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
 
+    final Widget pane = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.07),
+            Colors.black.withValues(alpha: 0.52),
+            Colors.black.withValues(alpha: 0.66),
+          ],
+          stops: const [0, 0.35, 1],
+        ),
+        borderRadius: radius,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.16),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          hoverColor: AppColors.glassHover,
+          child: Padding(padding: padding, child: child),
+        ),
+      ),
+    );
+
     Widget surface = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
@@ -76,36 +120,12 @@ class FloatingGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white.withValues(alpha: 0.07),
-                  Colors.black.withValues(alpha: 0.52),
-                  Colors.black.withValues(alpha: 0.66),
-                ],
-                stops: const [0, 0.35, 1],
-              ),
-              borderRadius: radius,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.16),
-              ),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: radius,
-                hoverColor: AppColors.glassHover,
-                child: Padding(padding: padding, child: child),
-              ),
-            ),
-          ),
-        ),
+        child: blur
+            ? BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                child: pane,
+              )
+            : pane,
       ),
     );
 

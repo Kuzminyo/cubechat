@@ -22,11 +22,17 @@ import '../storage/hive_init.dart';
 class AvatarController extends Notifier<Uint8List?> {
   static const _key = 'avatar.jpeg';
 
-  /// Side of the stored square. The profile can expand the avatar nearly to
-  /// full-screen, so keep enough detail for modern high-density displays.
-  static const int storedSize = 1024;
+  /// Side of the stored square. Full HD, so the profile cover — which fills
+  /// the screen width — is still sharp on a 3x display.
+  ///
+  /// This is the *stored* size, not the decoded one. Everywhere the avatar is
+  /// drawn small, [IdentityAvatar] decodes it down to the circle it is filling;
+  /// without that a 44 px row avatar would inflate to 1920x1920x4 bytes — about
+  /// 15 MB — in the image cache, which is how a picture this size turns into a
+  /// scrolling problem.
+  static const int storedSize = 1920;
 
-  /// JPEG quality for the stored copy. Keeps full-screen avatars crisp without
+  /// JPEG quality for the stored copy. Keeps a full-screen avatar crisp without
   /// retaining the multi-megabyte original gallery image.
   static const int quality = 90;
 

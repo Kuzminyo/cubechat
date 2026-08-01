@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../identity/avatar_controller.dart';
 import '../theme/colors.dart';
 import '../util/ui_activity.dart';
 
@@ -69,7 +70,17 @@ class IdentityAvatar extends StatelessWidget {
               image: photo == null
                   ? null
                   : DecorationImage(
-                      image: MemoryImage(photo),
+                      // Decoded at the size actually drawn, not at the size
+                      // stored. The avatar is full HD so the profile cover
+                      // stays sharp; handing those bytes to a 44 px circle
+                      // unscaled would put ~15 MB of pixels in the image cache
+                      // per distinct size, and every row of a list pays for it.
+                      image: ResizeImage(
+                        MemoryImage(photo),
+                        width: _decodePx(context, size),
+                        height: _decodePx(context, size),
+                        policy: ResizeImagePolicy.fit,
+                      ),
                       fit: BoxFit.cover,
                     ),
               border: Border.all(
@@ -112,6 +123,26 @@ class IdentityAvatar extends StatelessWidget {
       },
       child: body,
     );
+  }
+
+  /// Pixels to decode for a circle [logical] points across.
+  ///
+  /// Rounded up to a power of two so the handful of sizes the app draws (44,
+  /// 48, 72, and the cover) collapse onto a few cache entries instead of one
+  /// per call site — the image cache keys on the decode size, and near-misses
+  /// would each hold their own full copy.
+  static int _decodePx(BuildContext context, double logical) {
+    final px = logical * MediaQuery.devicePixelRatioOf(context);
+    var bucket = 64;
+    while (bucket < px && bucket < AvatarController.storedSize) {
+      bucket *= 2;
+    }
+    // The doubling can overshoot the source — asking for 2048 from a 1920
+    // original just makes the decoder upscale, which costs memory and adds no
+    // detail. The stored size is the ceiling.
+    return bucket > AvatarController.storedSize
+        ? AvatarController.storedSize
+        : bucket;
   }
 
   String _initials(String text) {

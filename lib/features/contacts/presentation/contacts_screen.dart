@@ -125,6 +125,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: FloatingGlass(
+                blur: false,
                 borderRadius: 18,
                 onTap: () => context.push('/contact'),
                 child: _AddContactRow(label: t.chatsMenuAddContact),
@@ -151,6 +152,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                   return AppearAnimation(
                     delay: AppearAnimation.stagger(index),
                     child: FloatingGlass(
+                      blur: false,
                       borderRadius: 18,
                       onTap: () => context.push(routeForChat(contact)),
                       child: _ContactTile(contact: contact),
@@ -232,6 +234,7 @@ class _ContactsSearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingGlass(
+      blur: false,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       borderRadius: 14,
       child: TextField(

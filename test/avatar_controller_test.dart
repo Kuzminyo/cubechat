@@ -56,7 +56,23 @@ void main() {
         reason: 'the avatar should survive a restart');
   });
 
-  test('shrinks and squares whatever it is given', () async {
+  test('squares and shrinks a photo larger than the stored size', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(avatarProvider);
+    await container.read(avatarProvider.notifier).setFromBytes(
+          _photo(w: 2400, h: 2000),
+        );
+
+    final stored = container.read(avatarProvider)!;
+    final decoded = img.decodeImage(stored)!;
+    expect(decoded.width, decoded.height, reason: 'must be square');
+    expect(decoded.width, AvatarController.storedSize);
+  });
+
+  test('leaves a photo smaller than the stored size alone', () async {
+    // Only ever shrink. Upscaling to reach the target would add bytes and no
+    // detail — and the cover would look no better for carrying them.
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(avatarProvider);
@@ -64,10 +80,9 @@ void main() {
           _photo(w: 1600, h: 1200),
         );
 
-    final stored = container.read(avatarProvider)!;
-    final decoded = img.decodeImage(stored)!;
+    final decoded = img.decodeImage(container.read(avatarProvider)!)!;
     expect(decoded.width, decoded.height, reason: 'must be square');
-    expect(decoded.width, AvatarController.storedSize);
+    expect(decoded.width, 1200, reason: 'the short side, not upscaled');
   });
 
   test('refuses bytes that are not an image', () async {
