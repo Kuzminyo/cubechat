@@ -75,27 +75,7 @@ class ContactCardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SelectableText(
-                    card.valueOrNull ?? '…',
-                    maxLines: 4,
-                    style: AppTypography.mono(
-                      size: 10.5,
-                      color: AppColors.textOnGlassDim,
-                    ),
-                  ),
-                ),
+                _CardPreview(card: card.valueOrNull),
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -318,6 +298,85 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact stand-in for the ~275-character card.
+///
+/// Nothing about the payload can be made shorter — every field it carries has
+/// to be there for a peer with no server between us to reach us. So instead
+/// the *display* is trimmed: two dozen characters and a length, with the rest
+/// behind a tap. Copy and Share below still take the whole thing.
+class _CardPreview extends StatefulWidget {
+  const _CardPreview({required this.card});
+
+  final String? card;
+
+  @override
+  State<_CardPreview> createState() => _CardPreviewState();
+}
+
+class _CardPreviewState extends State<_CardPreview> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = widget.card;
+    final loading = card == null;
+    // Head-tail: matches the shape people already read fingerprints as, so a
+    // glance can tell two cards apart without having to compare 275 characters.
+    final compact = loading
+        ? '…'
+        : (card.length > 40 ? '${card.substring(0, 22)}…${card.substring(card.length - 12)}' : card);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(
+            _expanded && !loading ? card : compact,
+            maxLines: _expanded ? 8 : 2,
+            style: AppTypography.mono(
+              size: 10.5,
+              color: AppColors.textOnGlassDim,
+            ),
+          ),
+          if (!loading) ...[
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _expanded ? Icons.unfold_less : Icons.unfold_more,
+                    size: 13,
+                    color: AppColors.brandPrimary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _expanded ? 'Сховати' : 'Показати повний код · ${card.length} симв.',
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
