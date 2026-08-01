@@ -4175,7 +4175,50 @@ class MessagingService {
   /// nickname taking minutes to reach someone we are already talking to; with
   /// it, the change lands at once and the heartbeat stays cheap. No-ops
   /// harmlessly when no link is up.
-  Future<void> announceNow() => _broadcastAnnouncement();
+  Future<void> announceNow() async {
+    await _broadcastAnnouncement();
+    await _reintroduceOverNostr();
+  }
+
+  /// Push a fresh introduction to contacts we can only reach over the internet.
+  ///
+  /// Two things conspired to make a rename invisible to them.
+  /// [_broadcastAnnouncement] returns early unless a Bluetooth link exists —
+  /// correct for the heartbeat it was written for, since there is nothing on
+  /// the mesh to hear it, but it also skipped the relay. And
+  /// [_announceOverNostrTo] introduces us to a given npub once per process, so
+  /// even a later relay send would not carry the new name. The peer kept the
+  /// old nickname until one side restarted.
+  ///
+  /// Clearing the marks is what makes the next publish go through. Only ever
+  /// on an explicit [announceNow] — a rename or a wipe — never on the
+  /// heartbeat, which is how the relay rate-limit was hit before.
+  Future<void> _reintroduceOverNostr() async {
+    if (_nostr == null) return;
+    _announcedOverNostr.clear();
+
+    final peers = _ref
+        .read(knownPeersControllerProvider)
+        .values
+        .where((p) => !p.isBlocked && (p.nostrPubkey?.length ?? 0) == 32)
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    if (peers.isEmpty) return;
+
+    // Bounded, and newest-seen first: one event per contact per relay is
+    // affordable for something the user did on purpose, a hundred is not.
+    for (final peer in peers.take(_presenceFanoutCap)) {
+      try {
+        await _announceOverNostrTo(
+          _hexOf(peer.nostrPubkey!),
+          _hexDecodeBytes(peer.pubkeyHex),
+        );
+      } catch (e) {
+        DebugLog.instance
+            .log('NOSTR', 're-introduction to ${peer.pubkeyHex} failed: $e');
+      }
+    }
+  }
 
   /// Build and send one [PeerAnnouncement] across every active client and the
   /// peripheral notify pipe. Safe to call before any link exists — the

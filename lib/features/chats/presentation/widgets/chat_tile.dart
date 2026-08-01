@@ -88,51 +88,51 @@ class ChatTile extends StatelessWidget {
                         icon: Icons.hub_outlined,
                         label: t.chatsStatusViaMesh,
                       ),
-                    ] else if (!chat.isOnline) ...[
-                      const SizedBox(width: 6),
-                      _StatusPill(
-                        icon: Icons.cloud_off_outlined,
-                        label: t.chatsStatusOffline,
-                        tone: _PillTone.muted,
-                      ),
                     ],
-                    const Spacer(),
-                    Text(
-                      formatChatListTime(context, chat.lastTime),
-                      style: TextStyle(
-                        color: AppColors.textOnGlassFaint,
-                        fontSize: 11,
-                      ),
-                    ),
+                    // No "offline" pill. The dot on the avatar already says
+                    // who is here, and its absence says the rest — spelling it
+                    // out put a grey badge on almost every row, which is a lot
+                    // of ink for the state a list is usually in.
                   ],
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        chat.lastMessage,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: unread
-                              ? AppColors.textOnGlass
-                              : AppColors.textOnGlassDim,
-                          fontSize: 13,
-                          height: 1.3,
-                          fontWeight:
-                              unread ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                    if (chat.unreadCount > 0) ...[
-                      const SizedBox(width: 8),
-                      UnreadBadge(count: chat.unreadCount),
-                    ],
-                  ],
+                Text(
+                  chat.lastMessage,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: unread
+                        ? AppColors.textOnGlass
+                        : AppColors.textOnGlassDim,
+                    fontSize: 13,
+                    height: 1.3,
+                    fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+                  ),
                 ),
               ],
             ),
+          ),
+          // Time and unread count as their own column, not trailing the name.
+          // Inside the name row their position moved with whatever preceded
+          // them — a long name or an extra pill — so the timestamps came out
+          // ragged down the list instead of forming a column.
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                formatChatListTime(context, chat.lastTime),
+                style: TextStyle(
+                  color: AppColors.textOnGlassFaint,
+                  fontSize: 11,
+                ),
+              ),
+              if (chat.unreadCount > 0) ...[
+                const SizedBox(height: 6),
+                UnreadBadge(count: chat.unreadCount),
+              ],
+            ],
           ),
         ],
       ),
