@@ -4,9 +4,29 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.3+41**.
+Current build: **0.7.4+42**.
 
 ---
+
+## Hiding your last seen now says "offline" instead of nothing (2026‑08‑03)
+
+Turning the switch off made contacts show you *permanently online* — the
+opposite of the promise — and leaving the app never corrected it.
+
+Silence was the obvious reading of "don't share my presence" and it was the
+wrong one. A peer with no beacon to go on falls back to "did they announce
+recently", and announcements are not presence: they are not gated by this
+setting and over a relay they never stop. The goodbye was suppressed by the
+same rule, so closing the app could not fix it either.
+
+The hider now asserts `offline` rather than falling silent. It is also the
+honest meaning of the setting — others see you as not‑online and never learn
+when you were — it costs nothing extra, since the heartbeat that carried
+"online" now carries "offline", and because a fresh beacon outranks that
+fallback, a 45 s heartbeat inside a 150 s TTL keeps the answer pinned. Flipping
+the switch pushes a beacon immediately rather than waiting out a heartbeat,
+because turning it off is something people do precisely when they want to stop
+being visible.
 
 ## A 512 px avatar, and one relay fewer (2026‑08‑03)
 

@@ -9,6 +9,7 @@ import '../../../core/ble/ble_scanner.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/avatar_controller.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/debug_log.dart';
@@ -220,6 +221,18 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       // change, and an identical picture re-picked is not worth an announce.
       if (_sameBytes(prev, next)) return;
       unawaited(ref.read(messagingServiceProvider).announceNow());
+    });
+
+    // Flipping the last-seen switch has to reach contacts now, not at the next
+    // heartbeat: turning it off is something people do *because* they want to
+    // stop being visible, and 45 s of still showing "online" is the whole
+    // complaint. announcePresence turns the requested state into whatever the
+    // setting permits, so passing `true` here means "say whatever is now true".
+    ref.listen<PrivacySettings>(privacySettingsProvider, (prev, next) {
+      if (prev?.shareLastSeen == next.shareLastSeen) return;
+      unawaited(
+        ref.read(messagingServiceProvider).announcePresence(online: true),
+      );
     });
   }
 

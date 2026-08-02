@@ -173,6 +173,27 @@ void main() {
       );
     });
 
+    test('an explicit offline beacon beats a fresh lastSeen', () {
+      // The other half of the same toggle. The hider now asserts "offline"
+      // rather than falling silent, because silence let the *reader* fall back
+      // to "did they announce recently" — always yes over a relay — so leaving
+      // the app never cleared the online dot on the other phone. This is what
+      // makes the assertion worth sending: a fresh beacon has to win against a
+      // lastSeen that announcements keep refreshing.
+      expect(
+        peerIsOnline(
+          hasLiveSession: false,
+          beacon: PeerPresence(
+            online: false,
+            at: now.subtract(const Duration(seconds: 5)),
+          ),
+          lastSeen: now,
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
     test('a live session still counts, because nobody had to tell us', () {
       expect(
         peerIsOnline(

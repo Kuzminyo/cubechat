@@ -4186,12 +4186,28 @@ class MessagingService {
   ///     anyway — but on a fixed cadence rather than only when you type.
   Future<void> announcePresence({required bool online}) async {
     if (_disposed) return;
-    if (online && !AppLifecycle.instance.isForeground) return;
     if (_nostr == null) return;
-    // Opted out of last-seen: publish no beacon at all. Checked here rather
-    // than at the timer so every caller — lifecycle changes included — obeys
-    // the same single rule.
-    if (!_ref.read(privacySettingsProvider).shareLastSeen) return;
+
+    // Opted out of last-seen: say "offline", don't fall silent.
+    //
+    // Silence was the obvious reading and it produced the opposite of what the
+    // toggle promises. A peer with no beacon to go on falls back to "did they
+    // announce recently" — and announcements are not presence, are not gated by
+    // this setting, and over a relay never stop. So turning the toggle on left
+    // contacts showing you permanently online, and leaving the app never
+    // corrected it because the goodbye was suppressed too.
+    //
+    // Asserting offline is also the honest meaning of the setting: others see
+    // you as not-online, and never learn when you were. It costs nothing extra
+    // — the heartbeat that carried "online" now carries "offline" — and because
+    // [peerIsOnline] gives a fresh beacon precedence over that fallback, the
+    // 45 s heartbeat inside a 150 s TTL keeps the answer pinned.
+    final shareLastSeen = _ref.read(privacySettingsProvider).shareLastSeen;
+    if (!shareLastSeen) online = false;
+
+    // Checked after the override: a backgrounded process must not claim to be
+    // in the app, but it may still say it has left.
+    if (online && !AppLifecycle.instance.isForeground) return;
 
     final now = DateTime.now();
 
