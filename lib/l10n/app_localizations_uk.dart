@@ -896,4 +896,13 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get contactProfileAutoDeleteSet => 'Встановити';
+
+  @override
+  String get contactProfileFiles => 'Файли';
+
+  @override
+  String get contactProfileNoFiles => 'Файлів ще немає';
+
+  @override
+  String get presenceHidden => 'статус приховано';
 }

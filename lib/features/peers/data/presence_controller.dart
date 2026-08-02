@@ -90,8 +90,16 @@ bool peerIsOnline({
   required PeerPresence? beacon,
   required DateTime? lastSeen,
   DateTime? now,
+  bool presenceShared = true,
 }) {
   if (hasLiveSession) return true;
+  // The last-seen toggle is symmetric: turning it off stops us receiving other
+  // people's beacons as well as sending our own. Having chosen not to know, the
+  // honest answer is "no idea", and the mesh fallback below is not allowed to
+  // guess one — `lastSeen` is refreshed by every announcement, and over a relay
+  // those never stop, so the guess was permanently "online". A tester turned
+  // the toggle on and watched every contact stick there.
+  if (!presenceShared) return false;
   final at = now ?? DateTime.now();
   if (beacon != null && at.difference(beacon.at) < PeerPresence.ttl) {
     return beacon.online;

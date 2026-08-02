@@ -1358,10 +1358,14 @@ class AvatarPayload {
 
   static const int version = 0x01;
 
-  /// Ceiling on the encoded thumbnail. A 128 px square JPEG at quality 70 lands
-  /// around 4 KB; 24 KB leaves generous headroom for a busy picture while still
-  /// fitting the fragmenter (255 × ~230 B ≈ 58 KB) several times over.
-  static const int maxBytes = 24576;
+  /// Ceiling on the encoded thumbnail.
+  ///
+  /// A 320 px square JPEG at quality 82 typically lands around 20–35 KB. 48 KB
+  /// leaves room for a busy picture and still fits the fragmenter, whose hard
+  /// limit is 255 fragments of ~230 B ≈ 58 KB — a frame that cannot be split
+  /// cannot be delivered at all, so this ceiling has to stay below it rather
+  /// than merely near it.
+  static const int maxBytes = 49152;
 
   Uint8List encode() {
     final out = Uint8List(1 + 2 + jpeg.length);

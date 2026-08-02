@@ -21,6 +21,7 @@ import '../../chat/models/message.dart';
 import '../../chats/data/favorites_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../data/known_peers_controller.dart';
 import '../data/peer_avatars_controller.dart';
 import '../models/known_peer.dart';
@@ -389,6 +390,8 @@ class ContactProfileScreen extends ConsumerWidget {
         messages.where((message) => message.kind == MessageKind.image).length;
     final voiceCount =
         messages.where((message) => message.kind == MessageKind.audio).length;
+    final fileCount =
+        messages.where((message) => message.kind == MessageKind.file).length;
     final chats = ref.watch(chatsProvider);
     Chat? contact;
     for (final chat in chats) {
@@ -398,18 +401,28 @@ class ContactProfileScreen extends ConsumerWidget {
       }
     }
 
-    final active =
-        contact?.isOnline == true || contact?.isReachableViaMesh == true;
-    final status = contact?.isOnline == true
-        ? t.presenceOnline
-        : contact?.isReachableViaMesh == true
-            ? t.chatsStatusViaMesh
-            : peer == null
-                ? t.presenceOffline
-                : [
-                    t.presenceOffline,
-                    formatChatListTime(context, peer.lastSeen),
-                  ].join(' \u00B7 ');
+    // Hiding last-seen is symmetric \u2014 it stops us receiving presence as well as
+    // sending it \u2014 so with it on there is nothing here we are entitled to
+    // claim, including the mesh-reachability guess, which never goes stale
+    // while announcements keep arriving.
+    final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
+    final active = presenceShared &&
+        (contact?.isOnline == true || contact?.isReachableViaMesh == true);
+    final String status;
+    if (!presenceShared) {
+      status = t.presenceHidden;
+    } else if (contact?.isOnline == true) {
+      status = t.presenceOnline;
+    } else if (contact?.isReachableViaMesh == true) {
+      status = t.chatsStatusViaMesh;
+    } else if (peer == null) {
+      status = t.presenceOffline;
+    } else {
+      status = [
+        t.presenceOffline,
+        formatChatListTime(context, peer.lastSeen),
+      ].join(' \u00B7 ');
+    }
     final heroHeight =
         (MediaQuery.sizeOf(context).height * 0.61).clamp(430.0, 560.0);
 
@@ -526,10 +539,13 @@ class ContactProfileScreen extends ConsumerWidget {
                         _SharedContentCard(
                           mediaLabel: t.contactProfileMedia,
                           voiceLabel: t.contactProfileVoiceMessages,
+                          fileLabel: t.contactProfileFiles,
                           mediaCount: mediaCount,
                           voiceCount: voiceCount,
+                          fileCount: fileCount,
                           onMedia: () => context.push(_contentRoute(0)),
                           onVoice: () => context.push(_contentRoute(1)),
+                          onFiles: () => context.push(_contentRoute(2)),
                         ),
                         if (peer?.isBlocked == true) ...[
                           const SizedBox(height: 12),
@@ -875,18 +891,24 @@ class _SharedContentCard extends StatelessWidget {
   const _SharedContentCard({
     required this.mediaLabel,
     required this.voiceLabel,
+    required this.fileLabel,
     required this.mediaCount,
     required this.voiceCount,
+    required this.fileCount,
     required this.onMedia,
     required this.onVoice,
+    required this.onFiles,
   });
 
   final String mediaLabel;
   final String voiceLabel;
+  final String fileLabel;
   final int mediaCount;
   final int voiceCount;
+  final int fileCount;
   final VoidCallback onMedia;
   final VoidCallback onVoice;
+  final VoidCallback onFiles;
 
   @override
   Widget build(BuildContext context) => GlassCard(
@@ -906,6 +928,13 @@ class _SharedContentCard extends StatelessWidget {
               label: voiceLabel,
               count: voiceCount,
               onTap: onVoice,
+            ),
+            const Divider(height: 1, color: Color(0x26FFFFFF)),
+            _ContentRow(
+              icon: Icons.folder_outlined,
+              label: fileLabel,
+              count: fileCount,
+              onTap: onFiles,
             ),
           ],
         ),

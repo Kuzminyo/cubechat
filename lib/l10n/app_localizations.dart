@@ -1657,6 +1657,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Set'**
   String get contactProfileAutoDeleteSet;
+
+  /// No description provided for @contactProfileFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get contactProfileFiles;
+
+  /// No description provided for @contactProfileNoFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'No files yet'**
+  String get contactProfileNoFiles;
+
+  /// No description provided for @presenceHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'status hidden'**
+  String get presenceHidden;
 }
 
 class _AppLocalizationsDelegate

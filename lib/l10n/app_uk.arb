@@ -364,5 +364,8 @@
   "autoDeleteUnitMinutes": "хв",
   "autoDeleteUnitHours": "год",
   "autoDeleteUnitDays": "дні",
-  "contactProfileAutoDeleteSet": "Встановити"
+  "contactProfileAutoDeleteSet": "Встановити",
+  "contactProfileFiles": "Файли",
+  "contactProfileNoFiles": "Файлів ще немає",
+  "presenceHidden": "статус приховано"
 }

@@ -10,6 +10,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../chat/presentation/chat_media_gallery_screen.dart';
+import '../../chat/presentation/widgets/file_bubble.dart';
 import '../../chat/presentation/widgets/voice_bubble.dart';
 
 class ContactContentScreen extends ConsumerWidget {
@@ -39,10 +40,15 @@ class ContactContentScreen extends ConsumerWidget {
             message.kind == MessageKind.audio && message.audioPath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+    final files = messages
+        .where((message) =>
+            message.kind == MessageKind.file && message.filePath != null)
+        .toList()
+      ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
 
     return DefaultTabController(
-      length: 2,
-      initialIndex: initialTab.clamp(0, 1),
+      length: 3,
+      initialIndex: initialTab.clamp(0, 2),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -59,9 +65,12 @@ class ContactContentScreen extends ConsumerWidget {
             indicatorColor: AppColors.brandPrimary,
             labelColor: AppColors.brandPrimary,
             unselectedLabelColor: AppColors.textOnGlassDim,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: t.contactProfileMedia),
               Tab(text: t.contactProfileVoiceMessages),
+              Tab(text: t.contactProfileFiles),
             ],
           ),
         ),
@@ -76,6 +85,7 @@ class ContactContentScreen extends ConsumerWidget {
               voices: voices,
               emptyLabel: t.contactProfileNoVoiceMessages,
             ),
+            _FileList(files: files, emptyLabel: t.contactProfileNoFiles),
           ],
         ),
       ),
@@ -159,6 +169,32 @@ class _VoiceList extends StatelessWidget {
         strong: true,
         child: VoiceBubble(message: voices[index]),
       ),
+    );
+  }
+}
+
+/// Everything that was sent as a file, newest first.
+///
+/// Reuses [FileBubble] rather than re-describing a file: the row already knows
+/// how to name it, size it, pick an icon from the extension, and hand it to the
+/// system on a tap — and a second implementation would drift from that one.
+class _FileList extends StatelessWidget {
+  const _FileList({required this.files, required this.emptyLabel});
+
+  final List<Message> files;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (files.isEmpty) {
+      return _EmptyContent(
+          icon: Icons.insert_drive_file_outlined, label: emptyLabel);
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      itemCount: files.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, index) => FileBubble(message: files[index]),
     );
   }
 }

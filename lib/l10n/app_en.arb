@@ -392,5 +392,8 @@
   "autoDeleteUnitMinutes": "min",
   "autoDeleteUnitHours": "hours",
   "autoDeleteUnitDays": "days",
-  "contactProfileAutoDeleteSet": "Set"
+  "contactProfileAutoDeleteSet": "Set",
+  "contactProfileFiles": "Files",
+  "contactProfileNoFiles": "No files yet",
+  "presenceHidden": "status hidden"
 }

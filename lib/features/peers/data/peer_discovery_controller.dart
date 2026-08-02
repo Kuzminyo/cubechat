@@ -8,6 +8,7 @@ import '../../../core/ble/ble_permissions.dart';
 import '../../../core/ble/ble_scanner.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/anon_name.dart';
+import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/debug_log.dart';
@@ -205,6 +206,31 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       // rename is pushed on the spot instead of waiting for it.
       unawaited(ref.read(messagingServiceProvider).announceNow());
     });
+
+    // The picture needs the same push, for the same reason and one more.
+    //
+    // The announcement carries a digest of it, and nothing was re-announcing
+    // when that digest changed — so a new picture only reached contacts on the
+    // next heartbeat, and *removing* one never reached them at all: the
+    // announcement that says "no picture" is the only thing that tells the
+    // other side to drop what it cached, and it was never sent. A tester
+    // cleared their avatar and watched it stay on the other phone.
+    ref.listen<Uint8List?>(avatarProvider, (prev, next) {
+      // Bytes, not identity: the controller replaces the whole image on every
+      // change, and an identical picture re-picked is not worth an announce.
+      if (_sameBytes(prev, next)) return;
+      unawaited(ref.read(messagingServiceProvider).announceNow());
+    });
+  }
+
+  static bool _sameBytes(Uint8List? a, Uint8List? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<void> _readvertise() => _serializeAdvertise(() async {

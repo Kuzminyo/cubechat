@@ -104,15 +104,19 @@ class AvatarController extends Notifier<Uint8List?> {
     }
   }
 
-  /// Side of the copy that goes to other people. Two orders of magnitude
-  /// smaller than [storedSize], because this one crosses a mesh where a frame
-  /// is ~240 bytes — and it is only ever drawn as somebody else's row avatar or
-  /// contact header, never full-screen.
-  static const int shareSize = 128;
+  /// Side of the copy that goes to other people.
+  ///
+  /// 128 was sized for a 44 px row avatar and looked it: the contact profile
+  /// draws this at ~200 pt, which on a 3x phone is 600 physical pixels of a
+  /// 128 px source, and the tester's screenshot shows exactly that mush. 320
+  /// covers the profile header at 3x with a little to spare while staying far
+  /// under the fragmenter's ceiling.
+  static const int shareSize = 320;
 
-  /// Quality for the shared copy. Lower than [quality]: at 128 px the
-  /// difference is invisible in a circle and the bytes are the whole cost.
-  static const int shareQuality = 70;
+  /// Quality for the shared copy. Still below [quality] — this is a circle a
+  /// few centimetres across, not a photo to be examined — but no longer low
+  /// enough to add its own artefacts on top of the upscale.
+  static const int shareQuality = 82;
 
   ({Uint8List jpeg, Uint8List hash})? _shareable;
 

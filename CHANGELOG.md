@@ -4,9 +4,35 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.1+39**.
+Current build: **0.7.2+40**.
 
 ---
+
+## Avatar round two, and a toggle that meant the opposite (2026‑08‑02)
+
+Avatars now arrive — the tester's log has `[AVATAR] stored 5662B` on both
+phones — which turned up the next three things about them.
+
+- **Removing your avatar left it on everyone else's phone.** The announcement
+  carries a digest of the picture and nothing re‑announced when that digest
+  changed, so a new picture waited for the next heartbeat and a *removed* one
+  never propagated at all: the announcement saying "no picture" is the only
+  thing that tells the other side to drop what it cached. The picture now has
+  the same watcher the nickname has had.
+- **The shared copy was sized for a 44 px row** (128 px), and the contact
+  profile draws it at ~200 pt — 600 physical pixels on a 3x phone. Now 320 px
+  at quality 82, with the payload ceiling raised to 48 KB, which stays under
+  the fragmenter's hard limit of 255 × ~230 B ≈ 58 KB.
+- **Hiding "last seen" made everyone permanently online.** The toggle is
+  symmetric, so with it on no beacon arrives — and `peerIsOnline` then fell
+  through to "did they announce recently", which over a relay is always yes,
+  because announcements refresh `lastSeen` and never stop. Having chosen not to
+  know, it now says so instead of guessing, and the header reads "status
+  hidden". A live Noise session still counts: nobody had to tell us about that.
+- Shared **Files** section on the contact profile, beside Media and Voice, and
+  a third tab on the content screen. Reuses the file bubble rather than
+  re‑describing a file, so naming, sizing, the icon and the tap behaviour stay
+  in one place.
 
 ## What two device logs turned up (2026‑08‑02)
 

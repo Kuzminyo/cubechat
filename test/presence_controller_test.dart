@@ -141,4 +141,49 @@ void main() {
       );
     });
   });
+
+  group('hiding last-seen', () {
+    final now = DateTime(2026, 8, 2, 23, 30);
+
+    test('never reports online off a stale-proof lastSeen', () {
+      // The toggle is symmetric, so with it off no beacon ever arrives and
+      // peerIsOnline used to fall through to "did they announce recently".
+      // Over a relay that is always yes — announcements refresh lastSeen and
+      // never stop — so every contact sat permanently at "online", which is
+      // what a tester reported the moment they turned the toggle on.
+      expect(
+        peerIsOnline(
+          hasLiveSession: false,
+          beacon: null,
+          lastSeen: now.subtract(const Duration(seconds: 1)),
+          now: now,
+          presenceShared: false,
+        ),
+        isFalse,
+      );
+      // Same input with sharing on is the old behaviour, unchanged.
+      expect(
+        peerIsOnline(
+          hasLiveSession: false,
+          beacon: null,
+          lastSeen: now.subtract(const Duration(seconds: 1)),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a live session still counts, because nobody had to tell us', () {
+      expect(
+        peerIsOnline(
+          hasLiveSession: true,
+          beacon: null,
+          lastSeen: null,
+          now: now,
+          presenceShared: false,
+        ),
+        isTrue,
+      );
+    });
+  });
 }

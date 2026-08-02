@@ -29,6 +29,7 @@ import '../../chats/data/read_markers_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_reply_target.dart';
 import '../data/conversation_settings_controller.dart';
@@ -126,10 +127,12 @@ class ChatScreen extends ConsumerWidget {
         ?.autoDelete ??
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
+    final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
     final isOnline = peerIsOnline(
       hasLiveSession: session?.isEstablished ?? false,
       beacon: ref.watch(presenceControllerProvider)[canonicalId],
       lastSeen: lastSeen,
+      presenceShared: presenceShared,
     );
     final String statusText;
     if (session != null &&
@@ -141,6 +144,11 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.chatSessionFailed;
     } else if (isOnline) {
       statusText = t.presenceOnline;
+    } else if (!presenceShared) {
+      // Say why the line is empty of presence rather than showing a stale time
+      // that reads as fact. A live session is still reported above, because
+      // that is something we know without anybody telling us.
+      statusText = t.presenceHidden;
     } else if (lastSeen != null) {
       // "offline · 14:05" / "offline · Mon" — precise last-seen.
       statusText =

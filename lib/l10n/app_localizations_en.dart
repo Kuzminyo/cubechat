@@ -892,4 +892,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactProfileAutoDeleteSet => 'Set';
+
+  @override
+  String get contactProfileFiles => 'Files';
+
+  @override
+  String get contactProfileNoFiles => 'No files yet';
+
+  @override
+  String get presenceHidden => 'status hidden';
 }
