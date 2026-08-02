@@ -4,9 +4,28 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.4+42**.
+Current build: **0.7.5+43**.
 
 ---
+
+## The logo that hung, on Android (2026‑08‑03)
+
+Fully closing the app and reopening it could leave the launch logo on screen
+for a long time, sometimes taking several attempts — Android only.
+
+Android holds the launch theme until the first Flutter frame, and `main()`
+awaited four things before `runApp`. Anything that stalls there does not look
+like a slow feature; it looks like an app that will not open. One of those
+four steps was `flutter_displaymode`, added two builds ago, guarded to Android
+— which is exactly the platform the symptom appears on, and it has no business
+gating a frame, since the panel changing mode a moment later is invisible. It
+now runs after `runApp`, unawaited.
+
+The rest of the path is bounded rather than trusted: each step has a time limit
+and starting without it beats not starting. The boot line also moved to the
+very first statement — it used to sit after Hive and notifications, so a hang
+left no log at all — and any step slower than 250 ms now records how long it
+took, so the next report can name the step instead of the symptom.
 
 ## Hiding your last seen now says "offline" instead of nothing (2026‑08‑03)
 

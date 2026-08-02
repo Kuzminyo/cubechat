@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -14,7 +15,7 @@ import 'core/util/debug_log.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-03-hidden-presence-says-offline';
+const String _buildStamp = '2026-08-03-bounded-boot';
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -43,17 +44,68 @@ Future<void> _matchDisplayRefreshRate() async {
   }
 }
 
+/// Run one startup step under a time limit, and say how it went.
+///
+/// Everything awaited before [runApp] postpones the first frame, and on Android
+/// the launch theme — the logo — stays on screen for exactly that long. So a
+/// platform channel that stalls does not look like a slow feature; it looks
+/// like an app that will not open, which is what a tester saw when it took four
+/// attempts to get in. None of these steps is worth that: a bound turns "never
+/// starts" into "starts without that one thing", which is always the better
+/// failure.
+///
+/// The line it logs is also the diagnosis. Without it a hang here leaves no
+/// trace at all — the log is in memory and the app never got far enough to show
+/// it — so the next report can name the step instead of the symptom.
+Future<void> _bootStep(
+  String what,
+  Future<void> Function() step, {
+  Duration limit = const Duration(seconds: 5),
+}) async {
+  final watch = Stopwatch()..start();
+  try {
+    await step().timeout(limit);
+    // Only worth a line when it was slow enough to be felt; a healthy boot
+    // should not have to push the interesting entries out of the buffer.
+    if (watch.elapsedMilliseconds >= 250) {
+      DebugLog.instance.log('BOOT', '$what took ${watch.elapsedMilliseconds}ms');
+    }
+  } on TimeoutException {
+    DebugLog.instance.log(
+      'BOOT',
+      '$what still going after ${limit.inSeconds}s — starting without it',
+    );
+  } catch (e) {
+    DebugLog.instance.log('BOOT', '$what failed after '
+        '${watch.elapsedMilliseconds}ms: $e');
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
-  await HiveInit.ensureInitialized();
-  await NotificationService.instance.init();
+  // First, so that a stall in any step below still leaves a log that says which
+  // build was trying to start. This used to sit after Hive and notifications,
+  // where a hang meant no boot line at all.
   DebugLog.instance.log('BOOT', 'cubechat $_buildStamp '
       'debug=$kDebugMode profile=$kProfileMode release=$kReleaseMode');
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-  ]);
-  await _matchDisplayRefreshRate();
+
+  // Storage genuinely gates the first frame — the tree reads it immediately —
+  // so it gets the longest leash. It also goes through the platform keystore,
+  // which is the slowest thing here on a cold Android start.
+  await _bootStep('hive', HiveInit.ensureInitialized,
+      limit: const Duration(seconds: 10));
+  // Kept ahead of runApp for iOS, where this call is what raises the very first
+  // permission prompt; bounded because on Android it is a plugin channel like
+  // any other.
+  await _bootStep('notifications', NotificationService.instance.init);
+  await _bootStep(
+    'orientation',
+    () => SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]),
+    limit: const Duration(seconds: 2),
+  );
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -75,4 +127,13 @@ Future<void> main() async {
       child: const CubechatApp(),
     ),
   );
+
+  // Deliberately after runApp, and deliberately not awaited.
+  //
+  // This is an Android-only platform call that was sitting in the critical
+  // path, which is the shape of the bug it is being moved out of: the logo
+  // hanging, on Android only. Nothing it does decides what the first frame
+  // contains — the panel switching mode a few frames later is invisible — so it
+  // has no business delaying one.
+  unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
 }
