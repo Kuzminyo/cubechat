@@ -719,6 +719,16 @@ class AppLocalizationsUk extends AppLocalizations {
   String get fileMissing => 'Файл більше недоступний';
 
   @override
+  String get fileNoHandlerTitle => 'Немає застосунку для цього файлу';
+
+  @override
+  String get fileNoHandlerHint =>
+      'Жоден встановлений застосунок не відкриває цей тип. Можна надіслати його в інший застосунок.';
+
+  @override
+  String get fileShareAction => 'Надіслати в застосунок';
+
+  @override
   String get fileTooLargeMesh =>
       'Файл завеликий — максимум 25 МБ через мережу пристроїв';
 

@@ -4,9 +4,33 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.6.3+36**.
+Current build: **0.6.4+37**.
 
 ---
+
+## Rename over the relay, 90 Hz, opening files (2026‑08‑02)
+
+- **A rename never reached anyone off‑mesh, on the phones where that was the
+  only way to reach them.** `announceNow()` is the only thing that pushes a new
+  nickname over the relay, and the listener that calls it was registered inside
+  `_bootPeripheral` — which sits behind four early returns (not mobile, no BLE
+  support, permission not granted). Deny the Bluetooth permission and the
+  listener was never wired at all, so renaming yourself was invisible to your
+  contacts until one side reinstalled. Now registered ahead of every bail‑out,
+  because a rename is not a Bluetooth event.
+- Android asks for the panel's real refresh rate (`flutter_displaymode`). MIUI
+  leaves an app that states no preference on 60 Hz while the system UI around
+  it runs at 90, so every scroll was a 60 Hz animation on a 90 Hz panel — uneven
+  pacing, which reads as stutter even when no frame is missed. iOS deliberately
+  untouched: it is held at 60 Hz for heat.
+- Tapping a received file opens it instead of offering to send it onward. The
+  share sheet answers "who else should get this?"; a tap is asking "what is
+  it?". Sharing remains, one level down, and is offered as the fallback when
+  nothing installed claims the type.
+- Test suite no longer depends on the wall clock: `chat_tile_layout_test`
+  pinned a calendar date against a formatter that only renders HH:mm for the
+  current day, so it passed on the day it was written and failed every day
+  after.
 
 ## Android heat, and the first round of tester reports (2026‑08‑01)
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/colors.dart';
@@ -14,8 +15,9 @@ import '../../models/message.dart';
 /// and a bubble that tries to render an unknown file either guesses wrong or
 /// hands attacker-supplied bytes to a decoder it did not choose. The name and
 /// the size are what the recipient needs to decide whether to open it, and
-/// opening is left to the system's own share sheet — where the choice of app,
-/// and the permission that comes with it, is the user's.
+/// opening is left to the system — which resolves the handler, and asks when
+/// more than one app claims the type, so the choice of app and the permission
+/// that comes with it stay the user's.
 class FileBubble extends StatelessWidget {
   const FileBubble({super.key, required this.message});
 
@@ -91,8 +93,52 @@ class FileBubble extends StatelessWidget {
       if (context.mounted) showGlassToast(context, t.fileMissing);
       return;
     }
-    // Handed to the system sheet rather than opened directly: which app gets
-    // to read this, and whether it gets to at all, is the user's call.
+
+    // Tapping a received file used to hand it straight to the share sheet,
+    // which answers "who else should get this?" — not "what is it?", which is
+    // what a tap is asking. Open it; the OS resolves the handler (and asks,
+    // when more than one claims the type). Sharing is still available, one
+    // level down, for when passing it on really is the intent.
+    final result = await OpenFilex.open(path);
+    if (result.type == ResultType.done || !context.mounted) return;
+
+    // No installed app claims this type — offer the sheet as the way out
+    // rather than a dead end.
+    final share = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        ),
+        title: Text(
+          t.fileNoHandlerTitle,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          t.fileNoHandlerHint,
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(t.fileShareAction,
+                style: TextStyle(color: AppColors.brandPrimary)),
+          ),
+        ],
+      ),
+    );
+    if (share != true) return;
     await Share.shareXFiles([XFile(path)], subject: message.fileName);
   }
 

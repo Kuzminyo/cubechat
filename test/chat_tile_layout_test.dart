@@ -43,7 +43,13 @@ Future<void> _pumpList(WidgetTester tester, List<Chat> chats) async {
 }
 
 void main() {
-  final now = DateTime(2026, 8, 1, 12, 30);
+  // Midday *today*, not a hardcoded date. formatChatListTime compares against
+  // the real clock and only renders a HH:mm time for the current day —
+  // anything older comes back as "Yesterday" or a weekday, with no colon for
+  // the column-alignment test below to find. Pinned to a calendar date, this
+  // suite passed on the day it was written and failed every day after.
+  final today = DateTime.now();
+  final now = DateTime(today.year, today.month, today.day, 12, 30);
 
   testWidgets('an offline peer is not labelled, only an online one is marked',
       (tester) async {

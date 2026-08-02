@@ -719,6 +719,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileMissing => 'That file is no longer available';
 
   @override
+  String get fileNoHandlerTitle => 'No app can open this';
+
+  @override
+  String get fileNoHandlerHint =>
+      'Nothing installed handles this file type. You can send it to another app instead.';
+
+  @override
+  String get fileShareAction => 'Send to app';
+
+  @override
   String get fileTooLargeMesh =>
       'File is too large — 25 MB is the limit over the mesh';
 

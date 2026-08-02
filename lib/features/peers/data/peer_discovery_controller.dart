@@ -127,6 +127,16 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // and threw. Hand the callback back when we go.
     ref.onDispose(() => scanner.shouldScanActively = null);
 
+    // Before every bail-out below, because a rename is not a Bluetooth event.
+    // This used to be wired inside _bootPeripheral, which is reached only after
+    // the four early returns that follow — so on a phone that denied the
+    // Bluetooth permission, or has no BLE at all, the listener was never
+    // registered and renaming yourself called announceNow() never. Those are
+    // exactly the phones that live on the relay, where announceNow() is the
+    // *only* thing that pushes a new name: contacts kept showing the old one
+    // until one side reinstalled. Registering costs nothing when BLE is fine.
+    _watchNickname();
+
     // Web/desktop don't have meaningful BLE peripheral support yet, and
     // central support varies. Bail with a clear status.
     if (!PlatformInfo.isMobile) {
@@ -171,9 +181,8 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
   Future<void> retuneScan() => ref.read(bleScannerProvider).retune();
 
   Future<void> _bootPeripheral() async {
-    // Wired before the first start, not after: a start that fails still needs
-    // to pick up a later rename.
-    _watchNickname();
+    // (The nickname watch is registered by the caller, ahead of every bail-out
+    // — a start that fails, or never happens, still has to pick up a rename.)
     await _serializeAdvertise(() async {
       final peripheral = ref.read(peripheralControllerProvider.notifier);
       await peripheral.start(peerName: await _advertiseName());

@@ -1394,6 +1394,24 @@ abstract class AppLocalizations {
   /// **'That file is no longer available'**
   String get fileMissing;
 
+  /// No description provided for @fileNoHandlerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No app can open this'**
+  String get fileNoHandlerTitle;
+
+  /// No description provided for @fileNoHandlerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing installed handles this file type. You can send it to another app instead.'**
+  String get fileNoHandlerHint;
+
+  /// No description provided for @fileShareAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to app'**
+  String get fileShareAction;
+
   /// No description provided for @fileTooLargeMesh.
   ///
   /// In en, this message translates to:
