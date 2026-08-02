@@ -8,31 +8,71 @@ import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import 'messages_controller.dart';
 
-enum ChatAutoDeletePeriod { off, oneDay, sevenDays, thirtyDays }
+/// How long a message survives in one conversation, as a plain duration.
+///
+/// Was a four-value enum (off / 1 / 7 / 30 days). Any fixed set is wrong for
+/// somebody: the interesting choices are usually much shorter than a day, and
+/// "a week" is nobody's threat model. Seconds carry every preset the enum had
+/// plus whatever the user actually wants, and the presets survive only as
+/// suggestions in the picker.
+@immutable
+class ChatAutoDelete {
+  const ChatAutoDelete(this.seconds);
 
-extension ChatAutoDeletePeriodDuration on ChatAutoDeletePeriod {
-  Duration? get duration => switch (this) {
-        ChatAutoDeletePeriod.off => null,
-        ChatAutoDeletePeriod.oneDay => const Duration(days: 1),
-        ChatAutoDeletePeriod.sevenDays => const Duration(days: 7),
-        ChatAutoDeletePeriod.thirtyDays => const Duration(days: 30),
+  /// Zero (and anything negative, which cannot be entered but can be decoded
+  /// from a mangled store) means messages are kept.
+  final int seconds;
+
+  static const off = ChatAutoDelete(0);
+
+  /// Offered in the picker, in order. Not a constraint — just the shortcuts.
+  static const presets = <ChatAutoDelete>[
+    off,
+    ChatAutoDelete(60),
+    ChatAutoDelete(60 * 60),
+    ChatAutoDelete(24 * 60 * 60),
+    ChatAutoDelete(7 * 24 * 60 * 60),
+    ChatAutoDelete(30 * 24 * 60 * 60),
+  ];
+
+  /// Longest we accept, so a typo cannot set something indistinguishable from
+  /// off while still reading as "on" in the UI.
+  static const maxSeconds = 365 * 24 * 60 * 60;
+
+  bool get isOn => seconds > 0;
+
+  Duration? get duration => isOn ? Duration(seconds: seconds) : null;
+
+  /// Decode a value stored before this was a duration.
+  static ChatAutoDelete fromLegacyName(String? name) => switch (name) {
+        'oneDay' => const ChatAutoDelete(24 * 60 * 60),
+        'sevenDays' => const ChatAutoDelete(7 * 24 * 60 * 60),
+        'thirtyDays' => const ChatAutoDelete(30 * 24 * 60 * 60),
+        _ => off,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChatAutoDelete && other.seconds == seconds;
+
+  @override
+  int get hashCode => seconds.hashCode;
 }
 
 @immutable
 class ConversationSettings {
   const ConversationSettings({
-    this.autoDelete = ChatAutoDeletePeriod.off,
+    this.autoDelete = ChatAutoDelete.off,
     this.restrictCopying = false,
   });
 
   static const initial = ConversationSettings();
 
-  final ChatAutoDeletePeriod autoDelete;
+  final ChatAutoDelete autoDelete;
   final bool restrictCopying;
 
   ConversationSettings copyWith({
-    ChatAutoDeletePeriod? autoDelete,
+    ChatAutoDelete? autoDelete,
     bool? restrictCopying,
   }) =>
       ConversationSettings(
@@ -41,7 +81,7 @@ class ConversationSettings {
       );
 
   bool get isDefault =>
-      autoDelete == ChatAutoDeletePeriod.off && !restrictCopying;
+      !autoDelete.isOn && !restrictCopying;
 
   @override
   bool operator ==(Object other) =>
@@ -84,7 +124,7 @@ class ConversationSettingsController
 
   Future<void> setAutoDelete(
     String chatId,
-    ChatAutoDeletePeriod period,
+    ChatAutoDelete period,
   ) async {
     await _put(chatId, forChat(chatId).copyWith(autoDelete: period));
     await _pruneChat(chatId, period);
@@ -116,7 +156,7 @@ class ConversationSettingsController
 
   Future<void> _pruneChat(
     String chatId,
-    ChatAutoDeletePeriod period,
+    ChatAutoDelete period,
   ) async {
     final lifetime = period.duration;
     if (lifetime == null) return;
@@ -148,11 +188,13 @@ class ConversationSettingsController
         for (final entry in raw.entries) {
           if (entry.key is! String || entry.value is! Map) continue;
           final value = entry.value as Map;
-          final periodName = value['autoDelete'] as String?;
-          final period = ChatAutoDeletePeriod.values.firstWhere(
-            (candidate) => candidate.name == periodName,
-            orElse: () => ChatAutoDeletePeriod.off,
-          );
+          // `autoDeleteSeconds` is what this build writes; `autoDelete` is
+          // the enum name older installs stored, and is still read so an
+          // existing setting is not silently switched off by an update.
+          final rawSeconds = value['autoDeleteSeconds'];
+          final period = rawSeconds is int
+              ? ChatAutoDelete(rawSeconds.clamp(0, ChatAutoDelete.maxSeconds))
+              : ChatAutoDelete.fromLegacyName(value['autoDelete'] as String?);
           final settings = ConversationSettings(
             autoDelete: period,
             restrictCopying: value['restrictCopying'] == true,
@@ -174,7 +216,7 @@ class ConversationSettingsController
       await box.put(_key, {
         for (final entry in state.entries)
           entry.key: {
-            'autoDelete': entry.value.autoDelete.name,
+            'autoDeleteSeconds': entry.value.autoDelete.seconds,
             'restrictCopying': entry.value.restrictCopying,
           },
       });

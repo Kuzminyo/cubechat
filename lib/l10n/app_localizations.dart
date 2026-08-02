@@ -1597,6 +1597,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open profile'**
   String get contactProfileOpen;
+
+  /// No description provided for @autoDeleteDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} day} other{{count} days}}'**
+  String autoDeleteDays(int count);
+
+  /// No description provided for @autoDeleteHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} hour} other{{count} hours}}'**
+  String autoDeleteHours(int count);
+
+  /// No description provided for @autoDeleteMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} minute} other{{count} minutes}}'**
+  String autoDeleteMinutes(int count);
+
+  /// No description provided for @autoDeleteSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} second} other{{count} seconds}}'**
+  String autoDeleteSeconds(int count);
+
+  /// No description provided for @autoDeleteCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom…'**
+  String get autoDeleteCustom;
+
+  /// No description provided for @autoDeleteCustomHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount'**
+  String get autoDeleteCustomHint;
+
+  /// No description provided for @autoDeleteUnitMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'min'**
+  String get autoDeleteUnitMinutes;
+
+  /// No description provided for @autoDeleteUnitHours.
+  ///
+  /// In en, this message translates to:
+  /// **'hours'**
+  String get autoDeleteUnitHours;
+
+  /// No description provided for @autoDeleteUnitDays.
+  ///
+  /// In en, this message translates to:
+  /// **'days'**
+  String get autoDeleteUnitDays;
+
+  /// No description provided for @contactProfileAutoDeleteSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Set'**
+  String get contactProfileAutoDeleteSet;
 }
 
 class _AppLocalizationsDelegate

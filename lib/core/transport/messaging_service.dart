@@ -1265,8 +1265,10 @@ class MessagingService {
             throw StateError('no mesh link or relay for file chunk $i/$total');
           }
           // Same pacing as the photo path: some Android stacks drop notifies
-          // when the sender outruns the receiver's read loop.
-          if (i + 1 < total) {
+          // when the sender outruns the receiver's read loop. Skipped when the
+          // relay is carrying this — the gap exists for a BLE notify pipe, and
+          // a relay transfer already pays a round trip per chunk.
+          if (i + 1 < total && !relayOnly) {
             await Future<void>.delayed(const Duration(milliseconds: 15));
           }
         }
@@ -1435,8 +1437,8 @@ class MessagingService {
         // a fast sender outpaces the receiver's read loop. 15ms is below
         // human perception in aggregate (~5s for a 300-chunk image) and
         // well above the worst-case per-chunk turn-around on tested
-        // hardware.
-        if (i + 1 < total) {
+        // hardware. Pointless over the relay, which is not a notify pipe.
+        if (i + 1 < total && !relayOnly) {
           await Future<void>.delayed(const Duration(milliseconds: 15));
         }
       }
@@ -1595,7 +1597,8 @@ class MessagingService {
         if (!sent) {
           throw StateError('no mesh link or relay for audio chunk $i/$total');
         }
-        if (i + 1 < total) {
+        // BLE notify pacing; see sendImage. Not needed over the relay.
+        if (i + 1 < total && !relayOnly) {
           await Future<void>.delayed(const Duration(milliseconds: 15));
         }
       }
@@ -3802,33 +3805,50 @@ class MessagingService {
     Uint8List announceBody = env.body;
     if (announceBody.isNotEmpty && announceBody[0] == _announcementSealed) {
       // A sealed introduction is addressed to exactly one recipient, so a node
-      // in the middle cannot open it — and must still carry it. Forward before
-      // attempting to decrypt, or a private announcement would never reach a
-      // contact more than one hop away: the old code returned on the failed
-      // open, which is indistinguishable from "not for me". Dedup and the hop
-      // budget bound the blind relay, exactly as they do for transport frames,
-      // which are forwarded unverified for the same reason.
-      if (env.ttl > 0 && !await _isAddressedToMe(env.destPubkeyHash)) {
-        unawaited(_forwardEnvelope(
-          outerType: FrameType.peerAnnouncement,
-          env: env,
-          excludePeerId: peerId,
-        ));
-        return;
-      }
+      // in the middle cannot open it — and must still carry it. Whether we are
+      // that recipient is decided by whether the box opens, and *only* by that.
+      //
+      // It used to be decided by `_isAddressedToMe(env.destPubkeyHash)`, which
+      // could never be true: [_announcementFrame] stamps every announcement —
+      // sealed ones included — with `broadcastDest()`. So a private
+      // introduction always took the forward-and-return branch and was never
+      // read, and since a relay introduction rides at ttl 1 the forward then
+      // died on the spot. Introductions over Nostr therefore did nothing at
+      // all: the peer's own log shows the frame arriving and going straight
+      // out again as "ttl exhausted", with no registration between. That is why
+      // an avatar digest never landed off-mesh, and why a rename could still
+      // fail to arrive even once the sender was pushing it.
+      //
+      // Trying the open first costs one failed AEAD on a frame that is not ours
+      // and keeps the property the dest check was reaching for: what we cannot
+      // read, we still carry.
+      Uint8List? opened;
       try {
         final identity = await _ref.read(identityProvider.future);
-        announceBody = await SealedBox.open(
+        opened = await SealedBox.open(
           Uint8List.sublistView(announceBody, 1),
           recipientKeyPair: identity.asKeyPair(),
           recipientPubkey: identity.publicKey,
         );
-      } catch (e) {
-        DebugLog.instance.log('MESH', 'drop sealed announce from $peerId: $e');
+      } on Object {
+        opened = null;
+      }
+
+      if (opened == null) {
+        // Not for us — pass it on blind. Dedup and the hop budget bound this
+        // exactly as they do for transport frames.
+        if (env.ttl > 0) {
+          unawaited(_forwardEnvelope(
+            outerType: FrameType.peerAnnouncement,
+            env: env,
+            excludePeerId: peerId,
+          ));
+        }
         return;
       }
+
       // We opened it, so it was addressed to us and stops here.
-      await _ingestAnnouncement(announceBody, peerId);
+      await _ingestAnnouncement(opened, peerId);
       return;
     }
 
@@ -4284,9 +4304,16 @@ class MessagingService {
     _ref
         .read(presenceControllerProvider.notifier)
         .record(canonical, online: beacon.online);
-    if (beacon.online) {
-      _ref.read(knownPeersControllerProvider.notifier).touch(canonical);
-    }
+    // Both kinds of beacon are evidence of life *now* — a goodbye most of all,
+    // since it is the last thing they did before closing the app. Refreshing
+    // only on "hello" left the header showing the moment they *arrived*
+    // ("offline · 00:57" an hour into a conversation), when what the reader
+    // wants is when they left.
+    //
+    // Safe because [peerIsOnline] gives a fresh beacon precedence over
+    // lastSeen: a peer who just said goodbye still reads as offline, now with
+    // a timestamp that means "just now" instead of one that means nothing.
+    _ref.read(knownPeersControllerProvider.notifier).touch(canonical);
     DebugLog.instance.log('PRESENCE',
         '${canonical.substring(0, 8)} is ${beacon.online ? 'online' : 'offline'}');
   }
@@ -4532,7 +4559,13 @@ class MessagingService {
           signPublicKey: ann.signPubkey,
           signedPrekeyPub: ann.signedPrekeyPub,
           nostrPubkey: ann.nostrPubkey,
+          avatarHash: ann.avatarHash,
+          avatarKnown: ann.isAvatarAware,
         );
+    // A card is a signed announcement, so it commits to a picture the same way
+    // — and someone added from a card is exactly the contact we have never been
+    // in radio range of, i.e. the one whose avatar has no other way to arrive.
+    unawaited(_reconcileAvatar(pubkeyHex, ann));
     DebugLog.instance.log(
         'MESH',
         'imported contact card: "${ann.nickname}" ($pubkeyHex) '

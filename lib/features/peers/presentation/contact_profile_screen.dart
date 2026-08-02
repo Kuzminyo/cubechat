@@ -14,6 +14,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/conversation_settings_controller.dart';
+import '../../chat/presentation/widgets/auto_delete_picker.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
@@ -74,50 +75,16 @@ class ContactProfileScreen extends ConsumerWidget {
   }
 
   // contact profile actions
-  String _autoDeleteLabel(
-    AppLocalizations t,
-    ChatAutoDeletePeriod period,
-  ) =>
-      switch (period) {
-        ChatAutoDeletePeriod.off => t.contactProfileAutoDeleteOff,
-        ChatAutoDeletePeriod.oneDay => t.contactProfileAutoDeleteOneDay,
-        ChatAutoDeletePeriod.sevenDays => t.contactProfileAutoDeleteSevenDays,
-        ChatAutoDeletePeriod.thirtyDays => t.contactProfileAutoDeleteThirtyDays,
-      };
+  String _autoDeleteLabel(AppLocalizations t, ChatAutoDelete period) =>
+      formatAutoDelete(t, period);
 
   Future<void> _chooseAutoDelete(
     BuildContext context,
     WidgetRef ref,
-    ChatAutoDeletePeriod current,
+    ChatAutoDelete current,
   ) async {
     final t = AppLocalizations.of(context);
-    final chosen = await showDialog<ChatAutoDeletePeriod>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-        ),
-        title: Text(
-          t.contactProfileAutoDeleteTitle,
-          style: TextStyle(color: AppColors.textOnGlass),
-        ),
-        children: [
-          for (final period in ChatAutoDeletePeriod.values)
-            RadioListTile<ChatAutoDeletePeriod>(
-              value: period,
-              groupValue: current,
-              activeColor: AppColors.brandPrimary,
-              title: Text(
-                _autoDeleteLabel(t, period),
-                style: TextStyle(color: AppColors.textOnGlass),
-              ),
-              onChanged: (value) => Navigator.of(dialogContext).pop(value),
-            ),
-        ],
-      ),
-    );
+    final chosen = await showAutoDeletePicker(context, current);
     if (chosen == null || chosen == current) return;
     await ref
         .read(conversationSettingsControllerProvider.notifier)

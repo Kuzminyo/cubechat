@@ -31,7 +31,9 @@ import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_reply_target.dart';
+import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
+import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../models/message.dart';
@@ -118,6 +120,11 @@ class ChatScreen extends ConsumerWidget {
 
     // Presence: a live session, else a fresh beacon (the internet case), else
     // how recently they were announcing on the mesh. See [peerIsOnline].
+    // Drives the timer beside the name in the header.
+    final autoDelete = ref
+        .watch(conversationSettingsControllerProvider)[canonicalId]
+        ?.autoDelete ??
+        ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
     final isOnline = peerIsOnline(
       hasLiveSession: session?.isEstablished ?? false,
@@ -160,6 +167,9 @@ class ChatScreen extends ConsumerWidget {
         header: _ChatHeader(
           avatarSeed: peerId,
           label: peerLabel,
+          autoDeleteLabel: autoDelete.isOn
+              ? formatAutoDelete(t, autoDelete)
+              : null,
           statusText: statusText,
           statusColor: isOnline ? AppColors.online : AppColors.textOnGlassDim,
           online: isOnline,
@@ -513,6 +523,7 @@ class _ChatHeader extends StatelessWidget {
     required this.avatarSeed,
     required this.label,
     required this.statusText,
+    this.autoDeleteLabel,
     required this.statusColor,
     required this.online,
     required this.actions,
@@ -521,6 +532,10 @@ class _ChatHeader extends StatelessWidget {
 
   final String avatarSeed;
   final String label;
+
+  /// Message lifetime for this conversation when one is set, so the header can
+  /// carry a timer next to the name. Null when messages are kept.
+  final String? autoDeleteLabel;
   final String statusText;
   final Color statusColor;
   final bool online;
@@ -569,14 +584,36 @@ class _ChatHeader extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.heading(
-                                size: 15.5,
-                                color: AppColors.textOnGlass,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.heading(
+                                      size: 15.5,
+                                      color: AppColors.textOnGlass,
+                                    ),
+                                  ),
+                                ),
+                                // A timer beside the name, the way every
+                                // messenger marks a disappearing conversation.
+                                // The exact period is one tap away in the
+                                // profile; here the point is only that this
+                                // chat does not keep what you say in it.
+                                if (autoDeleteLabel != null) ...[
+                                  const SizedBox(width: 6),
+                                  Tooltip(
+                                    message: autoDeleteLabel!,
+                                    child: Icon(
+                                      Icons.timer_outlined,
+                                      size: 14,
+                                      color: AppColors.brandPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             Text(
                               statusText,

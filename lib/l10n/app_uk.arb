@@ -11,14 +11,14 @@
   "contactsEmptyTitle": "Поки що немає контактів",
   "contactsEmptyHint": "Почніть розмову — і співрозмовник з’явиться тут.",
   "contactsSearchEmpty": "Контактів не знайдено",
-  "contactProfileChat": "\u0427\u0430\u0442",
-  "contactProfileSecurity": "\u0411\u0435\u0437\u043f\u0435\u043a\u0430",
-  "contactProfileActions": "\u0414\u0456\u0457 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0443",
-  "contactProfileVerify": "\u041f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438",
-  "contactProfileCopyId": "\u041a\u043e\u043f\u0456\u044e\u0432\u0430\u0442\u0438 ID \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0443",
-  "contactProfileIdCopied": "ID \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0443 \u0441\u043a\u043e\u043f\u0456\u0439\u043e\u0432\u0430\u043d\u043e",
-  "contactProfileId": "ID \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0443",
-  "contactProfileVerifyHint": "\u041f\u043e\u0440\u0456\u0432\u043d\u044f\u0439\u0442\u0435 \u0432\u0456\u0434\u0431\u0438\u0442\u043a\u0438 \u0448\u0438\u0444\u0440\u0443\u0432\u0430\u043d\u043d\u044f, \u0449\u043e\u0431 \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438 \u0446\u044e \u043e\u0441\u043e\u0431\u0443.",
+  "contactProfileChat": "Чат",
+  "contactProfileSecurity": "Безпека",
+  "contactProfileActions": "Дії контакту",
+  "contactProfileVerify": "Підтвердити",
+  "contactProfileCopyId": "Копіювати ID контакту",
+  "contactProfileIdCopied": "ID контакту скопійовано",
+  "contactProfileId": "ID контакту",
+  "contactProfileVerifyHint": "Порівняйте відбитки шифрування, щоб підтвердити цю особу.",
   "chatsTitle": "Чати",
   "chatsSubtitle": "Mesh · наскрізне шифрування",
   "chatsEmptyTitle": "Поки що немає розмов",
@@ -282,44 +282,87 @@
   "attachCamera": "Камера",
   "profileEditName": "Ім'я",
   "profileMyCard": "Картка",
-  "mediaCaptionHint": "Додати підпис…"
-  ,
-  "contactProfileAutoDelete": "\u0410\u0432\u0442\u043e\u043e\u0447\u0438\u0449\u0435\u043d\u043d\u044f \u0447\u0430\u0442\u0443",
-  "contactProfileAutoDeleteTitle": "\u0410\u0432\u0442\u043e\u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043d\u044f \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u044c",
-  "contactProfileAutoDeleteOff": "\u0412\u0438\u043c\u043a\u043d\u0435\u043d\u043e",
-  "contactProfileAutoDeleteOneDay": "\u0427\u0435\u0440\u0435\u0437 1 \u0434\u0435\u043d\u044c",
-  "contactProfileAutoDeleteSevenDays": "\u0427\u0435\u0440\u0435\u0437 7 \u0434\u043d\u0456\u0432",
-  "contactProfileAutoDeleteThirtyDays": "\u0427\u0435\u0440\u0435\u0437 30 \u0434\u043d\u0456\u0432",
-  "contactProfileAutoDeleteUpdated": "\u0410\u0432\u0442\u043e\u043e\u0447\u0438\u0449\u0435\u043d\u043d\u044f: {period}",
+  "mediaCaptionHint": "Додати підпис…",
+  "contactProfileAutoDelete": "Автоочищення чату",
+  "contactProfileAutoDeleteTitle": "Автовидалення повідомлень",
+  "contactProfileAutoDeleteOff": "Вимкнено",
+  "contactProfileAutoDeleteOneDay": "Через 1 день",
+  "contactProfileAutoDeleteSevenDays": "Через 7 днів",
+  "contactProfileAutoDeleteThirtyDays": "Через 30 днів",
+  "contactProfileAutoDeleteUpdated": "Автоочищення: {period}",
   "@contactProfileAutoDeleteUpdated": {
     "placeholders": {
-      "period": { "type": "String" }
+      "period": {
+        "type": "String"
+      }
     }
   },
-  "contactProfileShare": "\u041f\u043e\u0434\u0456\u043b\u0438\u0442\u0438\u0441\u044f \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u043e\u043c",
-  "contactProfileShareTitle": "\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u0442\u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442 \u0434\u043e",
-  "contactProfileShareEmpty": "\u0406\u043d\u0448\u0438\u0445 \u0447\u0430\u0442\u0456\u0432 \u0449\u0435 \u043d\u0435\u043c\u0430\u0454",
-  "contactProfileShareSent": "\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u043d\u043e \u0434\u043e {name}",
+  "contactProfileShare": "Поділитися контактом",
+  "contactProfileShareTitle": "Надіслати контакт до",
+  "contactProfileShareEmpty": "Інших чатів ще немає",
+  "contactProfileShareSent": "Надіслано до {name}",
   "@contactProfileShareSent": {
     "placeholders": {
-      "name": { "type": "String" }
+      "name": {
+        "type": "String"
+      }
     }
   },
-  "contactProfileRestrictCopying": "\u0417\u0430\u0431\u043e\u0440\u043e\u043d\u0438\u0442\u0438 \u043a\u043e\u043f\u0456\u044e\u0432\u0430\u043d\u043d\u044f",
-  "contactProfileAllowCopying": "\u0414\u043e\u0437\u0432\u043e\u043b\u0438\u0442\u0438 \u043a\u043e\u043f\u0456\u044e\u0432\u0430\u043d\u043d\u044f",
-  "contactProfileCopyingRestricted": "\u041a\u043e\u043f\u0456\u044e\u0432\u0430\u043d\u043d\u044f \u0456 \u043f\u0435\u0440\u0435\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u0432\u0438\u043c\u043a\u043d\u0435\u043d\u043e",
-  "contactProfileCopyingAllowed": "\u041a\u043e\u043f\u0456\u044e\u0432\u0430\u043d\u043d\u044f \u0456 \u043f\u0435\u0440\u0435\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u0434\u043e\u0437\u0432\u043e\u043b\u0435\u043d\u043e",
-  "contactProfileDelete": "\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u0437 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0456\u0432",
-  "contactProfileDeleteTitle": "\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442?",
-  "contactProfileDeleteMessage": "{name} \u0437\u043d\u0438\u043a\u043d\u0435 \u0437 \u0440\u043e\u0437\u0434\u0456\u043b\u0443 \u00ab\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u0438\u00bb. \u0406\u0441\u0442\u043e\u0440\u0456\u044f \u0447\u0430\u0442\u0443 \u0437\u0430\u043b\u0438\u0448\u0438\u0442\u044c\u0441\u044f \u043d\u0430 \u0446\u044c\u043e\u043c\u0443 \u043f\u0440\u0438\u0441\u0442\u0440\u043e\u0457.",
+  "contactProfileRestrictCopying": "Заборонити копіювання",
+  "contactProfileAllowCopying": "Дозволити копіювання",
+  "contactProfileCopyingRestricted": "Копіювання і пересилання вимкнено",
+  "contactProfileCopyingAllowed": "Копіювання і пересилання дозволено",
+  "contactProfileDelete": "Видалити з контактів",
+  "contactProfileDeleteTitle": "Видалити контакт?",
+  "contactProfileDeleteMessage": "{name} зникне з розділу «Контакти». Історія чату залишиться на цьому пристрої.",
   "@contactProfileDeleteMessage": {
     "placeholders": {
-      "name": { "type": "String" }
+      "name": {
+        "type": "String"
+      }
     }
   },
-  "contactProfileMedia": "\u041c\u0435\u0434\u0456\u0430",
-  "contactProfileVoiceMessages": "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u0456 \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u043d\u044f",
-  "contactProfileNoMedia": "\u041c\u0435\u0434\u0456\u0430 \u0449\u0435 \u043d\u0435\u043c\u0430\u0454",
-  "contactProfileNoVoiceMessages": "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u0438\u0445 \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u044c \u0449\u0435 \u043d\u0435\u043c\u0430\u0454",
-  "contactProfileOpen": "\u0412\u0456\u0434\u043a\u0440\u0438\u0442\u0438 \u043f\u0440\u043e\u0444\u0456\u043b\u044c"
+  "contactProfileMedia": "Медіа",
+  "contactProfileVoiceMessages": "Голосові повідомлення",
+  "contactProfileNoMedia": "Медіа ще немає",
+  "contactProfileNoVoiceMessages": "Голосових повідомлень ще немає",
+  "contactProfileOpen": "Відкрити профіль",
+  "autoDeleteDays": "{count, plural, one{{count} день} few{{count} дні} other{{count} днів}}",
+  "@autoDeleteDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "autoDeleteHours": "{count, plural, one{{count} година} few{{count} години} other{{count} годин}}",
+  "@autoDeleteHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "autoDeleteMinutes": "{count, plural, one{{count} хвилина} few{{count} хвилини} other{{count} хвилин}}",
+  "@autoDeleteMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "autoDeleteSeconds": "{count, plural, one{{count} секунда} few{{count} секунди} other{{count} секунд}}",
+  "@autoDeleteSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "autoDeleteCustom": "Свій варіант…",
+  "autoDeleteCustomHint": "Кількість",
+  "autoDeleteUnitMinutes": "хв",
+  "autoDeleteUnitHours": "год",
+  "autoDeleteUnitDays": "дні",
+  "contactProfileAutoDeleteSet": "Встановити"
 }

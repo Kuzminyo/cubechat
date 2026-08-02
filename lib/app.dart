@@ -86,8 +86,56 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     ref.read(readMarkersControllerProvider.notifier).markRead(chatId);
   }
 
+  /// Pending "I'm gone" beacon — see [_announcePresenceDebounced].
+  Timer? _goodbyeTimer;
+
+  /// What our contacts currently believe. Starts true because the app is in the
+  /// foreground when this observer is installed.
+  bool _announcedOnline = true;
+
+  /// How long the app has to come back before its contacts are told it left.
+  ///
+  /// `inactive` was already excluded for this reason, but Android reports a
+  /// full `paused` for the file picker, the camera and the share sheet — so a
+  /// tester sending one screenshot produced goodbye/hello pairs seconds apart,
+  /// each fanning out to every contact on every relay. Their own log shows the
+  /// result: presence flipping four times in fifteen seconds, and
+  /// `rate-limited: you are noting too much` on nearly every publish, which
+  /// then also refused the file they were trying to send.
+  ///
+  /// Long enough to cover picking a file, short enough that genuinely leaving
+  /// still shows up promptly.
+  static const Duration _goodbyeGrace = Duration(seconds: 6);
+
+  void _announcePresenceDebounced({required bool online}) {
+    _goodbyeTimer?.cancel();
+    _goodbyeTimer = null;
+
+    if (online) {
+      // Coming back before the grace ran out means nobody was ever told we
+      // left, so there is nothing to correct — staying quiet is the whole
+      // point.
+      if (_announcedOnline) return;
+      _announcedOnline = true;
+      unawaited(
+        ref.read(messagingServiceProvider).announcePresence(online: true),
+      );
+      return;
+    }
+
+    _goodbyeTimer = Timer(_goodbyeGrace, () {
+      _goodbyeTimer = null;
+      if (!mounted || !_announcedOnline) return;
+      _announcedOnline = false;
+      unawaited(
+        ref.read(messagingServiceProvider).announcePresence(online: false),
+      );
+    });
+  }
+
   @override
   void dispose() {
+    _goodbyeTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -113,9 +161,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // rejected real messages too.
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused) {
-      unawaited(ref.read(messagingServiceProvider).announcePresence(
-            online: state == AppLifecycleState.resumed,
-          ));
+      _announcePresenceDebounced(
+        online: state == AppLifecycleState.resumed,
+      );
     }
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+

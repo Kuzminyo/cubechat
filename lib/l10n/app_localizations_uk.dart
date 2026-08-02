@@ -830,4 +830,70 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get contactProfileOpen => 'Відкрити профіль';
+
+  @override
+  String autoDeleteDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count днів',
+      few: '$count дні',
+      one: '$count день',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count годин',
+      few: '$count години',
+      one: '$count година',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count хвилин',
+      few: '$count хвилини',
+      one: '$count хвилина',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteSeconds(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count секунд',
+      few: '$count секунди',
+      one: '$count секунда',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get autoDeleteCustom => 'Свій варіант…';
+
+  @override
+  String get autoDeleteCustomHint => 'Кількість';
+
+  @override
+  String get autoDeleteUnitMinutes => 'хв';
+
+  @override
+  String get autoDeleteUnitHours => 'год';
+
+  @override
+  String get autoDeleteUnitDays => 'дні';
+
+  @override
+  String get contactProfileAutoDeleteSet => 'Встановити';
 }

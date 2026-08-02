@@ -68,7 +68,7 @@ void main() {
       ),
     );
 
-    await settings.setAutoDelete(chatId, ChatAutoDeletePeriod.oneDay);
+    await settings.setAutoDelete(chatId, const ChatAutoDelete(24 * 60 * 60));
 
     expect(
       container.read(messagesControllerProvider)[chatId]!.map((m) => m.id),
@@ -167,4 +167,32 @@ void main() {
     expect(find.text('Delete'), findsOneWidget);
   });
   */
+
+  group('ChatAutoDelete', () {
+    test('a setting stored as the old enum name survives the upgrade', () {
+      // The worst outcome of moving from an enum to a duration would be an
+      // update quietly turning somebody's auto-delete off, so the old names
+      // stay readable.
+      expect(ChatAutoDelete.fromLegacyName('oneDay').duration,
+          const Duration(days: 1));
+      expect(ChatAutoDelete.fromLegacyName('sevenDays').duration,
+          const Duration(days: 7));
+      expect(ChatAutoDelete.fromLegacyName('thirtyDays').duration,
+          const Duration(days: 30));
+      expect(ChatAutoDelete.fromLegacyName('off'), ChatAutoDelete.off);
+      expect(ChatAutoDelete.fromLegacyName(null), ChatAutoDelete.off);
+      // An unknown name keeps messages rather than deleting on some guess.
+      expect(ChatAutoDelete.fromLegacyName('someFutureValue'),
+          ChatAutoDelete.off);
+    });
+
+    test('off is off, and every other value has a lifetime', () {
+      expect(ChatAutoDelete.off.isOn, isFalse);
+      expect(ChatAutoDelete.off.duration, isNull);
+      expect(const ChatAutoDelete(-5).duration, isNull,
+          reason: 'a mangled store must not become an instant purge');
+      expect(const ChatAutoDelete(90).duration, const Duration(seconds: 90));
+      expect(ChatAutoDelete.presets.first, ChatAutoDelete.off);
+    });
+  });
 }

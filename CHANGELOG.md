@@ -4,9 +4,44 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.0+38**.
+Current build: **0.7.1+39**.
 
 ---
+
+## What two device logs turned up (2026‑08‑02)
+
+- **A sealed introduction over Nostr was never read.** `_announcementFrame`
+  stamps every announcement — sealed ones included — with `broadcastDest()`, so
+  the `_isAddressedToMe(env.destPubkeyHash)` check that decided whether to open
+  it could never be true; and since a relay introduction rides at ttl 1, the
+  forward it fell through to died immediately. The tester's log shows exactly
+  that: the frame arriving and going straight back out as "ttl exhausted", with
+  no registration between. Now decided by whether the SealedBox opens, which is
+  the only thing that actually answers the question. This is why an avatar
+  digest never landed off‑mesh, and it could swallow a rename too.
+- **Files crawled over the relay because a publish waited for every relay to
+  answer.** One acceptance is delivery — the event is stored and the recipient's
+  subscription finds it. The log has chunks landing ~300 ms apart with
+  damus.io refusing nearly all of them as `rate-limited`, i.e. a 1 MB / 63‑chunk
+  transfer pacing itself against relays that were never going to store it.
+  Refusal still waits for the full count, because "everyone refused" is only
+  knowable once everyone has spoken. The 15 ms BLE notify pacing is also skipped
+  when the relay is carrying the transfer; it exists for a notify pipe.
+- **Presence stopped flapping.** `inactive` was already excluded, but Android
+  reports a full `paused` for the file picker, the camera and the share sheet —
+  so sending one screenshot produced goodbye/hello pairs seconds apart, each
+  fanning out to every contact on every relay (four flips in fifteen seconds in
+  the log, and a share of the rate‑limiting above). The goodbye now waits out a
+  6 s grace and is cancelled by coming back.
+- **"Last seen" means when they left, not when they arrived.** A goodbye beacon
+  refreshes `lastSeen` too — it is the last thing they did. Safe because
+  `peerIsOnline` gives a fresh beacon precedence, so they still read as offline,
+  now with a timestamp that means something.
+- **Auto‑delete takes any duration**, not four fixed choices: presets stay as
+  shortcuts and a custom entry takes a number plus a unit. Values stored under
+  the old enum names are still read, so an update cannot quietly switch
+  somebody's auto‑delete off. A timer icon now sits beside the name in the chat
+  header when the conversation is set to forget.
 
 ## Avatars actually reach other people (2026‑08‑02)
 

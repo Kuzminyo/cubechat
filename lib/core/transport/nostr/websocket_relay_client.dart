@@ -281,8 +281,17 @@ class _PendingPublish {
       _rejected++;
       if (message.isNotEmpty) _rejections.add(message);
     }
-    // Everyone has spoken — no reason to sit out the rest of the timeout.
-    if (_accepted + _rejected >= sentTo) settle();
+    // One acceptance is delivery: the event is stored and the recipient's
+    // subscription will find it there. Waiting for the rest bought nothing and
+    // cost the slowest relay's round trip on *every* publish — which a file
+    // pays once per chunk. A 1 MB transfer is 63 chunks, and a field log had
+    // them landing ~300 ms apart with damus.io refusing nearly all of them as
+    // rate-limited; the transfer was pacing itself against relays that were not
+    // going to store it anyway.
+    //
+    // Refusal still needs the full count, because "every relay refused" is only
+    // knowable once every relay has spoken.
+    if (_accepted > 0 || _accepted + _rejected >= sentTo) settle();
   }
 
   Future<PublishReceipt> wait(Duration timeout) {

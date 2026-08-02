@@ -830,4 +830,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactProfileOpen => 'Open profile';
+
+  @override
+  String autoDeleteDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '$count day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '$count hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '$count minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String autoDeleteSeconds(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seconds',
+      one: '$count second',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get autoDeleteCustom => 'Custom…';
+
+  @override
+  String get autoDeleteCustomHint => 'Amount';
+
+  @override
+  String get autoDeleteUnitMinutes => 'min';
+
+  @override
+  String get autoDeleteUnitHours => 'hours';
+
+  @override
+  String get autoDeleteUnitDays => 'days';
+
+  @override
+  String get contactProfileAutoDeleteSet => 'Set';
 }

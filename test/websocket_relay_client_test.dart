@@ -216,10 +216,13 @@ void main() {
           .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
 
       expect(receipt.accepted, 1);
-      expect(receipt.rejected, 1);
       expect(receipt.isAccepted, isTrue,
           reason: 'the recipient reads every relay in their own list');
       expect(receipt.isRefused, isFalse);
+      // Deliberately not asserting `rejected`: a publish settles the moment one
+      // relay accepts, so whether the refusal arrived before that is a race.
+      // Waiting for it is what made a file pay the slowest relay's round trip
+      // on every one of its chunks.
     });
   });
 
