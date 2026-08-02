@@ -72,7 +72,15 @@ enum InnerPayloadType {
 
   /// One slice of a chunked file transfer. Same manifest-then-chunks scheme as
   /// images and voice notes; see [FileChunk] for the (leaner) wire layout.
-  fileChunk(0xD0);
+  fileChunk(0xD0),
+
+  /// "Send me your picture" — sent when a peer's signed announcement carries an
+  /// avatar digest we have no bytes for. Empty body; the asking is the message.
+  avatarRequest(0xE0),
+
+  /// The sender's avatar thumbnail, in answer to an [avatarRequest]. See
+  /// [AvatarPayload].
+  avatar(0xE1);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -1312,6 +1320,74 @@ class PresenceBeacon {
         throw FormatException(
             'unknown presence state 0x${bytes[0].toRadixString(16)}');
     }
+  }
+}
+
+/// A peer's avatar thumbnail, sent in answer to an
+/// [InnerPayloadType.avatarRequest].
+///
+/// Wire layout (inside an [InnerPayloadType.avatar] body):
+///
+/// ```
+///   [ver     : 1 byte = 0x01]
+///   [jpegLen : 2 bytes BE]
+///   [jpeg    : jpegLen bytes]
+/// ```
+///
+/// No digest field: the receiver already holds one, from the peer's *signed*
+/// announcement, and that is the only one worth checking against. A hash
+/// carried next to the bytes it describes proves nothing — whoever supplied the
+/// bytes supplied the hash.
+///
+/// The cap is deliberately small. This is drawn in a circle, at 72 px at the
+/// very largest, and it travels over a mesh where a frame is ~240 bytes and
+/// anything bigger is fragmented into up to 255 pieces. [maxBytes] keeps a
+/// picture inside that budget with room to spare, and bounds what an
+/// unsolicited sender can make a receiver hold.
+class AvatarPayload {
+  AvatarPayload({required this.jpeg}) {
+    if (jpeg.isEmpty) {
+      throw const FormatException('avatar payload is empty');
+    }
+    if (jpeg.length > maxBytes) {
+      throw const FormatException('avatar exceeds the protocol cap');
+    }
+  }
+
+  final Uint8List jpeg;
+
+  static const int version = 0x01;
+
+  /// Ceiling on the encoded thumbnail. A 128 px square JPEG at quality 70 lands
+  /// around 4 KB; 24 KB leaves generous headroom for a busy picture while still
+  /// fitting the fragmenter (255 × ~230 B ≈ 58 KB) several times over.
+  static const int maxBytes = 24576;
+
+  Uint8List encode() {
+    final out = Uint8List(1 + 2 + jpeg.length);
+    out[0] = version;
+    out[1] = (jpeg.length >> 8) & 0xff;
+    out[2] = jpeg.length & 0xff;
+    out.setRange(3, out.length, jpeg);
+    return out;
+  }
+
+  static AvatarPayload decode(Uint8List bytes) {
+    if (bytes.length < 3) {
+      throw const FormatException('avatar payload truncated');
+    }
+    if (bytes[0] != version) {
+      throw FormatException(
+          'unknown avatar payload version 0x${bytes[0].toRadixString(16)}');
+    }
+    final len = (bytes[1] << 8) | bytes[2];
+    if (len > maxBytes) {
+      throw const FormatException('avatar exceeds the protocol cap');
+    }
+    if (bytes.length != 3 + len) {
+      throw const FormatException('avatar payload length mismatch');
+    }
+    return AvatarPayload(jpeg: Uint8List.fromList(bytes.sublist(3)));
   }
 }
 

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart' show Sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
@@ -79,6 +81,7 @@ class AvatarController extends Notifier<Uint8List?> {
     final encoded = await compute(_squareThumbnail, source);
     if (encoded == null) return false;
     _userSet = true;
+    _shareable = null; // a new picture invalidates the derived copy
     state = encoded;
     await _ready;
     try {
@@ -92,6 +95,7 @@ class AvatarController extends Notifier<Uint8List?> {
   Future<void> clear() async {
     _userSet = true;
     state = null;
+    _shareable = null;
     await _ready;
     try {
       await _box?.delete(_key);
@@ -99,6 +103,39 @@ class AvatarController extends Notifier<Uint8List?> {
       debugPrint('Avatar clear failed: $e');
     }
   }
+
+  /// Side of the copy that goes to other people. Two orders of magnitude
+  /// smaller than [storedSize], because this one crosses a mesh where a frame
+  /// is ~240 bytes — and it is only ever drawn as somebody else's row avatar or
+  /// contact header, never full-screen.
+  static const int shareSize = 128;
+
+  /// Quality for the shared copy. Lower than [quality]: at 128 px the
+  /// difference is invisible in a circle and the bytes are the whole cost.
+  static const int shareQuality = 70;
+
+  ({Uint8List jpeg, Uint8List hash})? _shareable;
+
+  /// The small copy handed to peers, with its SHA-256 — the digest we announce
+  /// and the one they check the bytes against.
+  ///
+  /// Cached because it is recomputed on nothing but a change of picture, and
+  /// re-encoding a JPEG for every peer that asks would be work per *request*
+  /// rather than per *avatar*. Null when the user has no picture set.
+  Future<({Uint8List jpeg, Uint8List hash})?> shareable() async {
+    final source = state;
+    if (source == null) return null;
+    final cached = _shareable;
+    if (cached != null) return cached;
+    final jpeg = await compute(_shareThumbnail, source);
+    if (jpeg == null) return null;
+    final hash = Uint8List.fromList((await Sha256().hash(jpeg)).bytes);
+    return _shareable = (jpeg: jpeg, hash: hash);
+  }
+
+  /// Just the digest, for the announcement. Null when there is no picture, and
+  /// the announcement then carries all-zero.
+  Future<Uint8List?> shareableHash() async => (await shareable())?.hash;
 
   /// Back to no picture — used by Emergency Wipe, which restores every setting
   /// to what a fresh install would have.
@@ -131,6 +168,25 @@ Uint8List? _squareThumbnail(Uint8List source) {
       : square;
   return Uint8List.fromList(
     img.encodeJpg(sized, quality: AvatarController.quality),
+  );
+}
+
+/// Re-encode the stored avatar down to the size that crosses the wire. Runs off
+/// the UI isolate like [_squareThumbnail]: the stored copy is a 1920px JPEG and
+/// decoding one blocks long enough to drop frames.
+Uint8List? _shareThumbnail(Uint8List stored) {
+  final decoded = img.decodeImage(stored);
+  if (decoded == null) return null;
+  // Already square — the stored copy was centre-cropped on the way in.
+  final sized = decoded.width > AvatarController.shareSize
+      ? img.copyResize(
+          decoded,
+          width: AvatarController.shareSize,
+          height: AvatarController.shareSize,
+        )
+      : decoded;
+  return Uint8List.fromList(
+    img.encodeJpg(sized, quality: AvatarController.shareQuality),
   );
 }
 

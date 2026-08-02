@@ -7,9 +7,9 @@ import 'announcement.dart';
 /// **never met over BLE**.
 ///
 /// Everything cubechat needs to reach a peer already exists in one place: the
-/// signed [PeerAnnouncement] (v0x04), which binds their X25519 static key,
-/// Ed25519 verifying key, signed prekey, Nostr pubkey and nickname under one
-/// Ed25519 signature. On the mesh that bundle travels as a broadcast frame. The
+/// signed [PeerAnnouncement], which binds their X25519 static key, Ed25519
+/// verifying key, signed prekey, Nostr pubkey, nickname and avatar digest
+/// under one Ed25519 signature. On the mesh that bundle travels as a broadcast frame. The
 /// only thing missing for an off-mesh first contact was a way to hand the same
 /// bundle to someone out of radio range — so that is exactly what a card is:
 /// the announcement bytes, verbatim, in a form you can paste into any other
@@ -35,8 +35,10 @@ import 'announcement.dart';
 class ContactCard {
   ContactCard._();
 
-  /// Scheme + version prefix. `c1` is contact-card v1; the payload is a v0x04
-  /// signed announcement.
+  /// Scheme + version prefix. `c1` is contact-card v1; the payload is whatever
+  /// announcement version this build signs, and the card needs no version of
+  /// its own because [PeerAnnouncement.verifyAndDecode] reads that from the
+  /// bytes and still accepts the older layout.
   static const String scheme = 'cubechat:c1:';
 
   /// Alternate spelling accepted on input — some chat apps only linkify (and
@@ -58,11 +60,28 @@ class ContactCard {
   static Uint8List? tryDecodeBytes(String raw) {
     final token = _extractToken(raw);
     if (token == null || token.isEmpty) return null;
-    try {
-      return base64.decode(base64.normalize(token));
-    } on FormatException {
-      return null;
+
+    // The token runs to the first non-base64 character, so "…card\nsee you"
+    // hands back the card *plus* "seeyou" — every letter of it is a legal
+    // base64 character. Whether that still decodes is pure arithmetic: it
+    // depends on where the announcement's length leaves the 4-character group
+    // boundary, which is why this survived a v0x04 card and broke on the 32
+    // bytes v0x05 added. Shave the tail back to the nearest boundary that
+    // decodes.
+    //
+    // Any surplus bytes that come with it are harmless: an announcement is
+    // self-describing and [PeerAnnouncement.verifyAndDecode] slices to exactly
+    // the length it declares, so trailing rubbish is neither read nor signed
+    // over. And the signature remains the real gate — this only decides how
+    // many characters to hand it.
+    for (var end = token.length; end > 0 && token.length - end <= 4; end--) {
+      try {
+        return base64.decode(base64.normalize(token.substring(0, end)));
+      } on FormatException {
+        continue;
+      }
     }
+    return null;
   }
 
   /// Decode **and cryptographically verify** a pasted card.

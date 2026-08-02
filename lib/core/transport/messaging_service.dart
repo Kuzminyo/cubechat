@@ -17,6 +17,7 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
@@ -33,6 +34,7 @@ import '../crypto/prekey_service.dart';
 import '../crypto/sealed_box.dart';
 import '../crypto/signed_payload.dart';
 import '../crypto/x3dh.dart';
+import '../identity/avatar_controller.dart';
 import '../identity/nickname_controller.dart';
 import '../notifications/notification_service.dart';
 import '../storage/hive_cipher.dart';
@@ -2420,9 +2422,12 @@ class MessagingService {
         case InnerPayloadType.fileChunk:
         case InnerPayloadType.mediaManifest:
         case InnerPayloadType.presence:
+        case InnerPayloadType.avatarRequest:
+        case InnerPayloadType.avatar:
           // Not carried in channels — ignore. (An invite is addressed to one
-          // peer; broadcasting one to the channel would be circular, and
-          // presence is per-peer, not per-channel.)
+          // peer; broadcasting one to the channel would be circular, presence
+          // is per-peer, and an avatar answers a request from one peer — a
+          // channel-wide broadcast of a picture is a fan-out nobody asked for.)
           break;
       }
     } catch (e) {
@@ -3030,6 +3035,18 @@ class MessagingService {
               senderPub: senderPub,
               body: unpacked.body,
             );
+          }
+
+        case InnerPayloadType.avatarRequest:
+          // Only for a peer we can name: the reply is addressed to a canonical
+          // identity, and an unauthenticated frame has none to address.
+          if (senderPub != null) {
+            await _sendAvatarTo(_hexOf(senderPub));
+          }
+
+        case InnerPayloadType.avatar:
+          if (senderPub != null) {
+            await _ingestAvatar(_hexOf(senderPub), unpacked.body);
           }
 
         case InnerPayloadType.fileChunk:
@@ -3649,12 +3666,118 @@ class MessagingService {
           signPublicKey: ann.signPubkey,
           signedPrekeyPub: ann.signedPrekeyPub,
           nostrPubkey: ann.nostrPubkey,
+          avatarHash: ann.avatarHash,
+          // A v0x05 announcement is authoritative about the picture, including
+          // its absence. A v0x04 one has no field for it and must not be read
+          // as "they removed it".
+          avatarKnown: ann.isAvatarAware,
         );
+    unawaited(_reconcileAvatar(pubkeyHex, ann));
     DebugLog.instance.log(
         'MESH',
         'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
             '(+ signed prekey + nostr pubkey)');
     return true;
+  }
+
+  /// Peers we have already asked for a picture this process, by
+  /// `pubkeyHex:hashHex`.
+  ///
+  /// Keyed by the hash as well as the peer so a *changed* picture is asked for
+  /// again while an unchanged one is not: announcements arrive on a heartbeat
+  /// and from every mesh neighbour that relays them, and without this each of
+  /// those would fire a request for a picture already on its way.
+  final Set<String> _avatarRequested = <String>{};
+
+  /// Decide whether this announcement's picture is worth asking for.
+  ///
+  /// Three cases: they have none (drop whatever we cached — they cleared it),
+  /// we already hold the bytes for this digest (nothing to do, the common case
+  /// on every heartbeat), or it is new to us (ask once).
+  Future<void> _reconcileAvatar(String pubkeyHex, PeerAnnouncement ann) async {
+    if (!ann.isAvatarAware) return; // older build, no claim either way
+    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    await avatars.loaded;
+
+    final hash = ann.avatarHash;
+    if (hash == null) {
+      await avatars.forget(pubkeyHex);
+      return;
+    }
+    if (await avatars.holds(pubkeyHex, hash)) return;
+
+    final mark = '$pubkeyHex:${_hexOf(hash)}';
+    if (!_avatarRequested.add(mark)) return;
+    try {
+      await _sendAvatarRequest(pubkeyHex);
+    } catch (e) {
+      // Let a failed ask be retried rather than remembered as done.
+      _avatarRequested.remove(mark);
+      DebugLog.instance.log('AVATAR', 'request to $pubkeyHex failed: $e');
+    }
+  }
+
+  Future<void> _sendAvatarRequest(String pubkeyHex) async {
+    final peerPub = _resolvePeerPub(pubkeyHex);
+    if (peerPub == null) return;
+    await _sendControlToPeer(
+      canonicalId: pubkeyHex,
+      peerPub: peerPub,
+      type: InnerPayloadType.avatarRequest,
+      innerBody: Uint8List(0),
+    );
+    DebugLog.instance.log('AVATAR', 'asked ${pubkeyHex.substring(0, 8)}');
+  }
+
+  /// Answer someone's [InnerPayloadType.avatarRequest] with our thumbnail.
+  /// Silent when we have no picture — the announcement already said so, and a
+  /// reply saying it again would only cost airtime.
+  Future<void> _sendAvatarTo(String pubkeyHex) async {
+    final share = await _ref.read(avatarProvider.notifier).shareable();
+    if (share == null) return;
+    final peerPub = _resolvePeerPub(pubkeyHex);
+    if (peerPub == null) return;
+    await _sendControlToPeer(
+      canonicalId: pubkeyHex,
+      peerPub: peerPub,
+      type: InnerPayloadType.avatar,
+      innerBody: AvatarPayload(jpeg: share.jpeg).encode(),
+    );
+    DebugLog.instance.log(
+      'AVATAR',
+      'sent ${share.jpeg.length}B to ${pubkeyHex.substring(0, 8)}',
+    );
+  }
+
+  /// Cache a picture someone sent us — but only if it is the one their signed
+  /// announcement committed to.
+  ///
+  /// The bytes and the promise travel separately and by different routes; this
+  /// is where they are made to agree. Without the check, anything that could
+  /// deliver a frame could choose what a contact's face looks like.
+  Future<void> _ingestAvatar(String pubkeyHex, Uint8List body) async {
+    final AvatarPayload payload;
+    try {
+      payload = AvatarPayload.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('AVATAR', 'drop from $pubkeyHex: $e');
+      return;
+    }
+    final expected = _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
+    if (expected == null) {
+      DebugLog.instance
+          .log('AVATAR', 'drop from $pubkeyHex: nothing announced to match');
+      return;
+    }
+    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    await avatars.loaded;
+    final ok = await avatars.store(pubkeyHex, payload.jpeg, expected);
+    DebugLog.instance.log(
+      'AVATAR',
+      ok
+          ? 'stored ${payload.jpeg.length}B from ${pubkeyHex.substring(0, 8)}'
+          : 'drop from $pubkeyHex: does not match the announced digest',
+    );
   }
 
   /// Peer-announcement RX: unwrap envelope, dedup, then either open a sealed
@@ -4341,12 +4464,18 @@ class MessagingService {
     final prekeys = _ref.read(prekeyServiceProvider);
     await prekeys.ensureInitialized();
     final nostrSigner = await _myNostrSigner();
+    // Only the digest — the picture itself is fetched on request. Cached by the
+    // controller, so this costs a map lookup per announcement rather than a
+    // JPEG re-encode on a heartbeat.
+    final avatarHash =
+        await _ref.read(avatarProvider.notifier).shareableHash();
     final ann = PeerAnnouncement(
       pubkey: Uint8List.fromList(identity.publicKey),
       signPubkey: identity.signPublicKey,
       signedPrekeyPub: prekeys.signedPrekeyPub,
       nostrPubkey: nostrSigner.nostrPubkeyBytes,
       nickname: nickname,
+      avatarHash: avatarHash,
     );
     return ann.sign(identity.asSignKeyPair());
   }

@@ -22,6 +22,7 @@ import '../../../core/util/audio_trimmer.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/identity_avatar.dart';
+import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../chats/data/read_markers_controller.dart';
@@ -555,8 +556,8 @@ class _ChatHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   child: Row(
                     children: [
-                      IdentityAvatar(
-                        seed: avatarSeed,
+                      PeerAvatar(
+                        peerId: avatarSeed,
                         label: label,
                         size: 36,
                         online: online,

@@ -6,7 +6,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/floating_glass.dart';
-import '../../../core/widgets/identity_avatar.dart';
+import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chats/models/chat.dart';
@@ -290,8 +290,8 @@ class _ContactTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          IdentityAvatar(
-            seed: contact.peerId,
+          PeerAvatar(
+            peerId: contact.peerId,
             label: contact.peerName,
             size: 48,
             online: contact.isOnline,

@@ -4,9 +4,43 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.6.4+37**.
+Current build: **0.7.0+38**.
 
 ---
+
+## Avatars actually reach other people (2026‑08‑02)
+
+Until now an avatar was a local decoration: `avatar` appeared nowhere in
+`lib/core/transport/`, so a picture never left the phone that set it and
+everyone saw everyone else as a generated gradient. The transfer is a hash in
+the announcement plus a picture on request:
+
+- **Announcement v0x05** appends a 32-byte SHA-256 of the sender's avatar, all
+  zero for "no picture". Only the digest is broadcast — the picture is
+  kilobytes and the announcement rides a heartbeat to every peer in range, most
+  of whom already have it. It sits *inside* the existing signature, which is
+  what makes the picture trustworthy later. v0x04 still decodes, and is
+  distinguished from "no picture" (`isAvatarAware`) so an older peer's silence
+  never deletes an avatar we hold.
+- **Pull, not push.** A receiver that sees a digest it has no bytes for sends
+  an `avatarRequest`; the answer is an `avatar` payload carrying a 128 px JPEG
+  (~4 KB, under the fragmenter's ceiling several times over). Requests are
+  marked per `peer:hash`, so a heartbeat arriving from six mesh neighbours asks
+  once, and a *changed* picture asks again.
+- **The bytes are bound to the digest their owner signed.** They travel by a
+  different route than the promise, and `PeerAvatarsController.store` refuses
+  anything that doesn't hash to the announced value — otherwise whatever could
+  deliver a frame could choose what a contact's face looks like.
+- Received pictures live in their own Hive box, not on the roster: that map is
+  read whole on load and rewritten on every `lastSeen` touch, and a few KB of
+  JPEG per contact would have ridden along with each one. Cleared by Emergency
+  Wipe and when a contact is deleted.
+- Fixed a latent contact-card bug this exposed. `_extractToken` runs to the
+  first non-base64 character, so "…card\nsee you" hands back the card plus
+  "seeyou" — every letter of which is legal base64. Whether that still decoded
+  was pure arithmetic about where the announcement's length fell relative to
+  the 4-character group boundary; it survived a v0x04 card and broke on the 32
+  bytes v0x05 added. The tail is now shaved back to a boundary that decodes.
 
 ## Rename over the relay, 90 Hz, opening files (2026‑08‑02)
 

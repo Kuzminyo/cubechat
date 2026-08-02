@@ -6,6 +6,7 @@ import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import 'avatar_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
@@ -34,6 +35,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // 1. In-memory state first so nothing tries to re-persist mid-wipe.
   await ref.read(messagesControllerProvider.notifier).clearAll();
   await ref.read(knownPeersControllerProvider.notifier).clear();
+  // Other people's pictures are other people's data, and they live in their own
+  // box — clearing the roster does not reach them.
+  await ref.read(peerAvatarsControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(readMarkersControllerProvider.notifier).clear();

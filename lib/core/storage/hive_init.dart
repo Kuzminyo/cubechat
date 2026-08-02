@@ -20,6 +20,13 @@ abstract final class HiveBoxes {
   /// Forward-secret signed prekey private material.
   static const prekeys = 'cubechat.prekeys';
 
+  /// Avatar thumbnails received from peers, keyed by pubkey hex.
+  ///
+  /// Its own box rather than a field on [knownPeers]: the roster is read whole
+  /// on every load and written whole on every `lastSeen` touch, and a few KB of
+  /// JPEG per contact would ride along with each of those.
+  static const peerAvatars = 'cubechat.peer_avatars';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -27,6 +34,7 @@ abstract final class HiveBoxes {
     relayBuffer,
     channels,
     prekeys,
+    peerAvatars,
   ];
 }
 

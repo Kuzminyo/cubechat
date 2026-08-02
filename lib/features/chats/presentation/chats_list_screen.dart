@@ -21,6 +21,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peer_avatars_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/read_markers_controller.dart';
@@ -604,6 +605,7 @@ Future<void> _showChatActions(
   } else {
     // Forget the roster entry too, otherwise the tile reappears empty.
     await ref.read(knownPeersControllerProvider.notifier).forget(chat.id);
+    await ref.read(peerAvatarsControllerProvider.notifier).forget(chat.id);
   }
 }
 

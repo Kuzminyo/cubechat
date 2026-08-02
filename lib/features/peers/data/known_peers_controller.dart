@@ -61,6 +61,10 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     Uint8List? signPublicKey,
     Uint8List? signedPrekeyPub,
     Uint8List? nostrPubkey,
+    Uint8List? avatarHash,
+    // Only an announcement can say "I have no picture" — every other caller
+    // simply doesn't know, and must not be able to erase one by omission.
+    bool avatarKnown = false,
   }) {
     final now = DateTime.now();
     final existing = state[pubkeyHex];
@@ -131,6 +135,12 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       signKeyRotatedAt: resolvedRotatedAt,
       signedPrekeyPub: resolvedSignedPrekeyPub,
       nostrPubkey: resolvedNostrPubkey,
+      // A quarantined rotation means this announcement's signing key isn't the
+      // one we trust for this identity, so nothing it claims — picture
+      // included — should displace what the real peer told us.
+      avatarHash: quarantineRotation
+          ? existing?.avatarHash
+          : (avatarKnown ? avatarHash : existing?.avatarHash),
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
@@ -252,6 +262,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         if (p.nostrPubkey != null) 'nostrPubHex': _hexOf(p.nostrPubkey!),
         if (p.blockedAt != null) 'blockedAtIso': p.blockedAt!.toIso8601String(),
         if (p.mutedAt != null) 'mutedAtIso': p.mutedAt!.toIso8601String(),
+        if (p.avatarHash != null) 'avatarHashHex': _hexOf(p.avatarHash!),
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
@@ -262,6 +273,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     final nostrRaw = m['nostrPubHex'] as String?;
     final blockedRaw = m['blockedAtIso'] as String?;
     final mutedRaw = m['mutedAtIso'] as String?;
+    final avatarRaw = m['avatarHashHex'] as String?;
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
@@ -275,6 +287,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       nostrPubkey: nostrRaw == null ? null : _hexDecode(nostrRaw),
       blockedAt: blockedRaw == null ? null : DateTime.tryParse(blockedRaw),
       mutedAt: mutedRaw == null ? null : DateTime.tryParse(mutedRaw),
+      avatarHash: avatarRaw == null ? null : _hexDecode(avatarRaw),
     );
   }
 

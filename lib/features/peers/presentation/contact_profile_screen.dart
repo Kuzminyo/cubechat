@@ -11,6 +11,7 @@ import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
+import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../../chat/data/messages_controller.dart';
@@ -20,6 +21,7 @@ import '../../chats/data/favorites_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../data/known_peers_controller.dart';
+import '../data/peer_avatars_controller.dart';
 import '../models/known_peer.dart';
 
 class ContactProfileScreen extends ConsumerWidget {
@@ -256,6 +258,7 @@ class ContactProfileScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(knownPeersControllerProvider.notifier).forget(peerPubkeyHex);
+    await ref.read(peerAvatarsControllerProvider.notifier).forget(peerPubkeyHex);
     await ref
         .read(conversationSettingsControllerProvider.notifier)
         .forget(peerPubkeyHex);
@@ -673,8 +676,8 @@ class _ProfileHero extends StatelessWidget {
           ),
           Align(
             alignment: const Alignment(0, -0.30),
-            child: IdentityAvatar(
-              seed: peerId,
+            child: PeerAvatar(
+              peerId: peerId,
               label: label,
               size: avatarSize,
               online: online,

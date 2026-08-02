@@ -13,7 +13,7 @@ import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
-import '../../../../core/widgets/identity_avatar.dart';
+import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
@@ -832,8 +832,8 @@ class _SharedContactBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(
             children: [
-              IdentityAvatar(
-                seed: contact.pubkeyHex,
+              PeerAvatar(
+                peerId: contact.pubkeyHex,
                 label: contact.displayName,
                 size: 46,
                 online: false,

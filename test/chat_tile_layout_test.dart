@@ -3,6 +3,7 @@ import 'package:cubechat/features/chats/presentation/widgets/chat_tile.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Chat _chat({
@@ -23,8 +24,11 @@ Chat _chat({
     );
 
 Future<void> _pumpList(WidgetTester tester, List<Chat> chats) async {
+  // A row draws the peer's avatar if we hold one, so the tile now reads from a
+  // provider and needs a container even when no picture exists.
   await tester.pumpWidget(
-    MaterialApp(
+    ProviderScope(
+        child: MaterialApp(
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -37,7 +41,7 @@ Future<void> _pumpList(WidgetTester tester, List<Chat> chats) async {
           children: [for (final c in chats) ChatTile(chat: c)],
         ),
       ),
-    ),
+    )),
   );
   await tester.pump();
 }

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
-import '../../../../core/widgets/identity_avatar.dart';
 import '../../../../core/widgets/unread_badge.dart';
+import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
 
@@ -26,8 +26,8 @@ class ChatTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          IdentityAvatar(
-            seed: chat.peerId,
+          PeerAvatar(
+            peerId: chat.peerId,
             label: chat.peerName,
             size: 48,
             online: chat.isOnline,

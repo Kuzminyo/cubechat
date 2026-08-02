@@ -31,6 +31,7 @@ class KnownPeer {
     this.nostrPubkey,
     this.blockedAt,
     this.mutedAt,
+    this.avatarHash,
   });
 
   final String pubkeyHex;
@@ -57,6 +58,15 @@ class KnownPeer {
   /// Set when the user mutes this peer: messages still arrive and are stored,
   /// but no notification fires. Null = not muted.
   final DateTime? mutedAt;
+
+  /// SHA-256 of the picture this peer last announced, or null when they have
+  /// none (or are on a build older than announcement v0x05).
+  ///
+  /// The bytes live in `PeerAvatarsController`, not here. This is the *claim*,
+  /// learned from a signed announcement; comparing it against what we hold is
+  /// what tells us a picture changed and is worth asking for, and it is the
+  /// digest a received picture has to match before it is cached.
+  final Uint8List? avatarHash;
 
   bool get isBlocked => blockedAt != null;
   bool get isMuted => mutedAt != null;
@@ -87,10 +97,12 @@ class KnownPeer {
     Uint8List? nostrPubkey,
     DateTime? blockedAt,
     DateTime? mutedAt,
+    Uint8List? avatarHash,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
     bool clearBlockedAt = false,
     bool clearMutedAt = false,
+    bool clearAvatarHash = false,
   }) {
     return KnownPeer(
       pubkeyHex: pubkeyHex,
@@ -105,6 +117,7 @@ class KnownPeer {
       nostrPubkey: nostrPubkey ?? this.nostrPubkey,
       blockedAt: clearBlockedAt ? null : (blockedAt ?? this.blockedAt),
       mutedAt: clearMutedAt ? null : (mutedAt ?? this.mutedAt),
+      avatarHash: clearAvatarHash ? null : (avatarHash ?? this.avatarHash),
     );
   }
 }
