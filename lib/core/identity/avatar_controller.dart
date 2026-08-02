@@ -106,17 +106,29 @@ class AvatarController extends Notifier<Uint8List?> {
 
   /// Side of the copy that goes to other people.
   ///
-  /// 128 was sized for a 44 px row avatar and looked it: the contact profile
-  /// draws this at ~200 pt, which on a 3x phone is 600 physical pixels of a
-  /// 128 px source, and the tester's screenshot shows exactly that mush. 320
-  /// covers the profile header at 3x with a little to spare while staying far
-  /// under the fragmenter's ceiling.
-  static const int shareSize = 320;
+  /// Sized from the largest place it is drawn, which is the contact profile's
+  /// hero circle: `width * 0.48` is ~173 pt on a 360 pt phone, and at 3x that
+  /// is 518 physical pixels. 128 was picked for a 44 px row and 320 still left
+  /// the big circle upscaling; 512 covers it.
+  static const int shareSize = 512;
 
-  /// Quality for the shared copy. Still below [quality] — this is a circle a
-  /// few centimetres across, not a photo to be examined — but no longer low
-  /// enough to add its own artefacts on top of the upscale.
-  static const int shareQuality = 82;
+  /// Sizes to fall back through when the picture will not fit [shareByteBudget]
+  /// even at the lowest quality. A smaller sharp image beats a larger smeared
+  /// one, and beats not arriving at all.
+  static const List<int> shareSizeLadder = [512, 384, 256];
+
+  /// Qualities to try at each size, best first.
+  static const List<int> shareQualityLadder = [82, 74, 66, 58, 50];
+
+  /// Hard ceiling on the bytes we will *send*.
+  ///
+  /// Not a matter of taste — it is what the BLE link-layer fragmenter can
+  /// carry. On a conservative 185-byte ATT MTU a frame splits into at most
+  /// 255 slices of 167 bytes = 42,585 bytes, and the envelope, SealedBox and
+  /// signature take ~192 of that. A frame above the limit cannot be split, so
+  /// it is not "slow", it is undeliverable. 36 KB leaves real margin under the
+  /// ~42.4 KB that arithmetic allows.
+  static const int shareByteBudget = 36864;
 
   ({Uint8List jpeg, Uint8List hash})? _shareable;
 
@@ -181,17 +193,28 @@ Uint8List? _squareThumbnail(Uint8List source) {
 Uint8List? _shareThumbnail(Uint8List stored) {
   final decoded = img.decodeImage(stored);
   if (decoded == null) return null;
-  // Already square — the stored copy was centre-cropped on the way in.
-  final sized = decoded.width > AvatarController.shareSize
-      ? img.copyResize(
-          decoded,
-          width: AvatarController.shareSize,
-          height: AvatarController.shareSize,
-        )
-      : decoded;
-  return Uint8List.fromList(
-    img.encodeJpg(sized, quality: AvatarController.shareQuality),
-  );
+
+  // Step down until it fits the send budget: quality first at the target size,
+  // then a smaller size. A fixed quality cannot work here — how many bytes a
+  // JPEG costs depends on the picture, and a busy photo at 512/82 can be twice
+  // a plain one. Overshooting is not a slow avatar, it is a frame the BLE
+  // fragmenter refuses to split, so the cap has to be met by construction
+  // rather than checked afterwards.
+  Uint8List? best;
+  for (final side in AvatarController.shareSizeLadder) {
+    // Already square — the stored copy was centre-cropped on the way in.
+    final sized = decoded.width > side
+        ? img.copyResize(decoded, width: side, height: side)
+        : decoded;
+    for (final q in AvatarController.shareQualityLadder) {
+      final bytes = Uint8List.fromList(img.encodeJpg(sized, quality: q));
+      // Keep the smallest attempt seen, so a pathological picture still ends up
+      // with *something* to send rather than nothing.
+      if (best == null || bytes.length < best.length) best = bytes;
+      if (bytes.length <= AvatarController.shareByteBudget) return bytes;
+    }
+  }
+  return best;
 }
 
 final avatarProvider = NotifierProvider<AvatarController, Uint8List?>(

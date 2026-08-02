@@ -4,9 +4,29 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.2+40**.
+Current build: **0.7.3+41**.
 
 ---
+
+## A 512 px avatar, and one relay fewer (2026‑08‑03)
+
+- **Dropped `wss://relay.damus.io` from the defaults.** Two device logs had it
+  answering `rate-limited: you are noting too much` to very nearly every
+  publish, and dropping its socket between times. It cost a third of every
+  fan‑out to store nothing. Changing the default alone would have reached
+  nobody — the stored list wins, and enabling the fallback writes one — so a
+  one‑time migration prunes it from saved lists, behind a flag that leaves it
+  alone if a user adds it back deliberately.
+- **The big circle is no longer chewed.** The shared copy is now sized from the
+  largest place it is drawn: the profile hero is `width * 0.48` ≈ 173 pt, which
+  is 518 physical pixels at 3x, so 128 and then 320 were both upscaling. Now
+  512, with quality and then size stepped down until the bytes fit.
+- **The previous ceiling was undeliverable.** 48 KB is above what the BLE
+  fragmenter can carry: a conservative 185‑byte ATT MTU allows 255 slices of
+  167 bytes = 42,585 bytes total, less ~192 for the envelope, SealedBox and
+  signature. A frame over that is not slow, it cannot be split at all. The
+  sender now fits a 36 KB budget by construction and the receiver accepts up to
+  40 KB; a test pins both against the fragmenter's own constants.
 
 ## Avatar round two, and a toggle that meant the opposite (2026‑08‑02)
 

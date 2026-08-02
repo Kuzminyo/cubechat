@@ -1358,14 +1358,17 @@ class AvatarPayload {
 
   static const int version = 0x01;
 
-  /// Ceiling on the encoded thumbnail.
+  /// Ceiling on an *accepted* thumbnail.
   ///
-  /// A 320 px square JPEG at quality 82 typically lands around 20–35 KB. 48 KB
-  /// leaves room for a busy picture and still fits the fragmenter, whose hard
-  /// limit is 255 fragments of ~230 B ≈ 58 KB — a frame that cannot be split
-  /// cannot be delivered at all, so this ceiling has to stay below it rather
-  /// than merely near it.
-  static const int maxBytes = 49152;
+  /// Deliberately looser than what we send. The sender fits a hard budget by
+  /// construction (`AvatarController.shareByteBudget`, 36 KB) because a frame
+  /// the BLE fragmenter cannot split is undeliverable, not merely slow — on a
+  /// conservative 185-byte ATT MTU the arithmetic allows 255 × 167 = 42,585
+  /// bytes total, and the envelope, SealedBox and signature take ~192 of it.
+  /// 40 KB leaves room for a peer whose ladder settled a little higher than
+  /// ours while staying under that limit; the previous 48 KB was over it, so a
+  /// large avatar would have thrown on the way out.
+  static const int maxBytes = 40960;
 
   Uint8List encode() {
     final out = Uint8List(1 + 2 + jpeg.length);

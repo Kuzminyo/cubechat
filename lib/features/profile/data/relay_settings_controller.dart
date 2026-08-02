@@ -22,8 +22,13 @@ class RelaySettings {
   /// recipient only has to be listening on one.
   final List<String> urls;
 
+  /// Dropped `wss://relay.damus.io`. Two device logs had it answering
+  /// `rate-limited: you are noting too much` to very nearly every publish, and
+  /// dropping its socket with "not upgraded to websocket" between times. It was
+  /// costing a third of every fan-out — a presence beacon goes to each relay per
+  /// contact — to store nothing at all. A relay that refuses is worse than one
+  /// fewer relay: the recipient only has to be listening on one.
   static const defaultUrls = <String>[
-    'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
   ];
@@ -53,6 +58,19 @@ class RelaySettingsController extends Notifier<RelaySettings> {
   static const _enabledKey = 'nostr.enabled';
   static const _urlsKey = 'nostr.relays';
 
+  /// Relay endpoints retired from the defaults, dropped once from lists that
+  /// were saved while they were still stock.
+  ///
+  /// Changing [RelaySettings.defaultUrls] alone reaches nobody who has ever
+  /// touched the relay screen: the stored list wins over the defaults, and
+  /// enabling the fallback at all writes one. Every phone actually testing this
+  /// therefore had the retired relay saved.
+  static const _retiredUrls = <String>['wss://relay.damus.io'];
+
+  /// Marks the one-time removal as done, so a user who deliberately adds a
+  /// retired relay back keeps it.
+  static const _retiredAppliedKey = 'nostr.relays.retiredApplied';
+
   Box<dynamic>? _box;
 
   @override
@@ -67,10 +85,26 @@ class RelaySettingsController extends Notifier<RelaySettings> {
           await hiveCipherProvider.openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
       final enabled = box.get(_enabledKey) as bool? ?? false;
-      final stored = (box.get(_urlsKey) as List<dynamic>?)
+      var stored = (box.get(_urlsKey) as List<dynamic>?)
           ?.map((e) => e.toString())
           .where(isValidRelayUrl)
           .toList();
+
+      final retiredApplied = box.get(_retiredAppliedKey) as bool? ?? false;
+      if (!retiredApplied) {
+        if (stored != null) {
+          final pruned =
+              stored.where((u) => !_retiredUrls.contains(u)).toList();
+          // Never leave someone with no relay at all: an empty list falls back
+          // to the defaults below, which is the right answer anyway.
+          if (pruned.length != stored.length) {
+            stored = pruned;
+            await box.put(_urlsKey, stored);
+          }
+        }
+        await box.put(_retiredAppliedKey, true);
+      }
+
       state = RelaySettings(
         enabled: enabled,
         urls: (stored == null || stored.isEmpty)

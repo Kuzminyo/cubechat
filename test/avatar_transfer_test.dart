@@ -1,8 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/core/identity/avatar_controller.dart';
 import 'package:cubechat/core/transport/announcement.dart';
+import 'package:cubechat/core/transport/frame_fragment.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
+import 'package:cubechat/core/transport/mtu_budget.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<({SimpleKeyPairData kp, Uint8List pub})> _newEd() async {
@@ -132,6 +135,46 @@ void main() {
       wire[0] = 0x99;
       expect(
           () => AvatarPayload.decode(wire), throwsA(isA<FormatException>()));
+    });
+  });
+
+  group('an avatar has to fit the link that carries it', () {
+    test('the send budget and the accept ceiling both fit the fragmenter', () {
+      // A frame larger than the fragmenter can split is not slow, it is
+      // undeliverable — fragmentFrame throws rather than truncating. On a
+      // conservative 185-byte ATT MTU:
+      const usable = kConservativeAttMtu - kAttHeaderBytes - kMtuSafetyMargin;
+      const slice = usable - 1 - kFragHeaderLen;
+      const maxFrame = kMaxFragments * slice;
+      // Envelope + cipher tag + SealedBox + SignedPayload + tags, rounded up.
+      const frameOverhead = 200;
+      const maxJpeg = maxFrame - frameOverhead;
+
+      expect(AvatarController.shareByteBudget, lessThan(maxJpeg),
+          reason: 'what we send must be splittable');
+      expect(AvatarPayload.maxBytes, lessThan(maxJpeg),
+          reason: 'what we accept must be forwardable over BLE too');
+      expect(AvatarController.shareByteBudget,
+          lessThanOrEqualTo(AvatarPayload.maxBytes),
+          reason: 'be strict in what you send, lenient in what you accept');
+    });
+
+    test('the size ladder starts at the largest circle we draw', () {
+      // The contact profile hero is width * 0.48, ~173 pt on a 360 pt phone,
+      // which is 518 physical pixels at 3x. Anything smaller upscales, which
+      // is what made the big circle look chewed.
+      expect(AvatarController.shareSizeLadder.first,
+          AvatarController.shareSize);
+      expect(AvatarController.shareSize, greaterThanOrEqualTo(512));
+      // Descending, so the first entry that fits is also the best available.
+      final ladder = AvatarController.shareSizeLadder;
+      for (var i = 1; i < ladder.length; i++) {
+        expect(ladder[i], lessThan(ladder[i - 1]));
+      }
+      final q = AvatarController.shareQualityLadder;
+      for (var i = 1; i < q.length; i++) {
+        expect(q[i], lessThan(q[i - 1]));
+      }
     });
   });
 
