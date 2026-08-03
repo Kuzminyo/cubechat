@@ -99,7 +99,13 @@ jobs:
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
           path: build/ios/iphoneos/cubechat-unsigned.ipa
-          retention-days: 30
+          # 7, not 30. This is a private repo, so artifact storage is a small
+          # fixed allowance rather than the unlimited one public repos get, and
+          # a 30-day window meant ~90 IPAs alive at once — 1.1 GB on its own,
+          # which was still over the limit even after the far larger pile of
+          # duplicate Android APKs was removed. A sideload is re-signed every
+          # 7 days anyway, so an IPA older than that has nothing to offer.
+          retention-days: 7
           if-no-files-found: error
 
       - name: Summary
