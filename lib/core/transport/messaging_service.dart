@@ -2480,7 +2480,10 @@ class MessagingService {
     return mesh + relayed;
   }
 
-  Future<int> _broadcastChannelOverNostr(Uint8List frameBytes) async {
+  Future<int> _broadcastChannelOverNostr(
+    Uint8List frameBytes, {
+    String? excludePubkeyHex,
+  }) async {
     if (_nostr == null) return 0;
     final now = DateTime.now();
     final peers = _ref
@@ -2489,6 +2492,7 @@ class MessagingService {
         .where((p) =>
             p.nostrPubkey != null &&
             !p.isBlocked &&
+            p.pubkeyHex != excludePubkeyHex &&
             now.difference(p.lastSeen) < _presenceMaxPeerAge)
         .toList()
       ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
@@ -2510,6 +2514,46 @@ class MessagingService {
       DebugLog.instance.log('CHAN', 'channel post relayed to $sent peer(s)');
     }
     return sent;
+  }
+
+  /// Pass a room frame we just received on to *our* contacts over the relay.
+  ///
+  /// The mesh forwards a broadcast on every BLE link it holds, but the relay
+  /// path had no equivalent: [_broadcastChannelOverNostr] publishes to the
+  /// author's own known peers and nobody else, and a member who received the
+  /// frame re-emitted it over Bluetooth only. In a three-person room where A
+  /// and C have never met — they were each invited by B — that is exactly the
+  /// bug people hit: C sees everything B writes and nothing A writes, because
+  /// A has no npub to publish to for C and B never carried it across.
+  ///
+  /// So a member relays too. Only members: the frame is opaque to everyone
+  /// else, and having non-members spray unreadable traffic at their contacts
+  /// would be bandwidth spent on nothing. The ttl is decremented like any mesh
+  /// hop and the flood terminates on the (origin, msgId) dedup every node
+  /// already applies — including the author, who pre-records their own msgId,
+  /// so a frame coming back around is dropped rather than re-relayed.
+  Future<void> _relayChannelFrameOverNostr(TransportEnvelope env) async {
+    if (_nostr == null) return;
+    final relayed = env.decrementTtl();
+    if (relayed.ttl <= 0) return;
+    // Don't bounce it straight back at whoever we can identify as the author.
+    String? originHex;
+    try {
+      final originPub = await _peerForId(env.originPubkeyHash);
+      if (originPub != null) originHex = _hexOf(originPub);
+    } catch (_) {
+      // Unknown origin — the dedup on their side handles the echo.
+    }
+    final bytes =
+        Frame(type: FrameType.transport, payload: relayed.encode()).encode();
+    final sent = await _broadcastChannelOverNostr(
+      bytes,
+      excludePubkeyHex: originHex,
+    );
+    if (sent > 0) {
+      DebugLog.instance.log(
+          'CHAN', 'room frame carried on to $sent peer(s) ttl=${relayed.ttl}');
+    }
   }
 
   /// Decrypt + route an inbound channel broadcast. The frame has already been
@@ -2536,6 +2580,12 @@ class MessagingService {
     // Skip our own broadcast reflected back through a relay.
     final myHash = await _myPubkeyHash();
     if (_bytesEqual(env.originPubkeyHash, myHash)) return;
+
+    // We are in this room, so we are also a route into it for the members we
+    // know and the author may not. Fired before the frame is opened: whether
+    // it decrypts, verifies or turns out to be a payload we don't understand
+    // is our business, not the next member's.
+    unawaited(_relayChannelFrameOverNostr(env));
 
     final blob = Uint8List.fromList(channelBody.sublist(ChannelCrypto.tagLen));
     final Uint8List plain;

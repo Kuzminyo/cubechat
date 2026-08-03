@@ -249,7 +249,7 @@ class _GlassPillState extends State<_GlassPill>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withValues(alpha: 0.07),
+                  AppColors.glass(0.07),
                   Colors.black.withValues(alpha: 0.52),
                   Colors.black.withValues(alpha: 0.66),
                 ],
@@ -259,7 +259,7 @@ class _GlassPillState extends State<_GlassPill>
               // A crisp hairline is what separates "a pane of glass" from "a
               // darker area of the background".
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.16),
+                color: AppColors.glass(0.16),
               ),
             ),
             child: Padding(
@@ -361,9 +361,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active
-        ? AppColors.brandPrimary
-        : Colors.white.withValues(alpha: 0.88);
+    final color = active ? AppColors.brandPrimary : AppColors.ink(0.88);
 
     return Material(
       color: Colors.transparent,

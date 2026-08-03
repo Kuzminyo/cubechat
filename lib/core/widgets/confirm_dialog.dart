@@ -30,7 +30,7 @@ Future<bool> confirmAction(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
         title,

@@ -29,9 +29,8 @@ class SignalBars extends StatelessWidget {
               width: 3,
               height: h,
               decoration: BoxDecoration(
-                color: isActive
-                    ? AppColors.brandPrimary
-                    : Colors.white.withValues(alpha: 0.18),
+                color:
+                    isActive ? AppColors.brandPrimary : AppColors.glass(0.18),
                 borderRadius: BorderRadius.circular(2),
                 boxShadow: isActive
                     ? [

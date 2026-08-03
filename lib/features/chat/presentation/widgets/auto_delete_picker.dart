@@ -38,7 +38,7 @@ Future<ChatAutoDelete?> showAutoDeletePicker(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
         t.contactProfileAutoDeleteTitle,
@@ -120,7 +120,7 @@ Future<ChatAutoDelete?> _askCustom(
           backgroundColor: AppColors.bgTop,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+            side: BorderSide(color: AppColors.glass(0.15)),
           ),
           title: Text(
             t.autoDeleteCustom,
@@ -144,7 +144,8 @@ Future<ChatAutoDelete?> _askCustom(
               const SizedBox(height: 14),
               SegmentedButton<int>(
                 segments: [
-                  ButtonSegment(value: 60, label: Text(t.autoDeleteUnitMinutes)),
+                  ButtonSegment(
+                      value: 60, label: Text(t.autoDeleteUnitMinutes)),
                   ButtonSegment(
                       value: 60 * 60, label: Text(t.autoDeleteUnitHours)),
                   ButtonSegment(

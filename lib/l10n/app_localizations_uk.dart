@@ -1287,6 +1287,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileThemeRose => 'Троянда';
 
   @override
+  String get profileThemeFuchsia => 'Фуксія';
+
+  @override
+  String get profileThemeViolet => 'Фіалка';
+
+  @override
+  String get profileThemeOcean => 'Океан';
+
+  @override
   String get profileThemeSlate => 'Графіт';
 
   @override

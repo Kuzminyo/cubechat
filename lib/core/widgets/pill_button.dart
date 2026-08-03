@@ -39,13 +39,11 @@ class _PillButtonState extends State<PillButton> {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: widget.active
-                ? Colors.white.withValues(alpha: 0.18)
-                : Colors.white.withValues(alpha: 0.10),
+            color:
+                widget.active ? AppColors.glass(0.18) : AppColors.glass(0.10),
             border: Border.all(
-              color: widget.active
-                  ? Colors.white.withValues(alpha: 0.30)
-                  : Colors.white.withValues(alpha: 0.15),
+              color:
+                  widget.active ? AppColors.glass(0.30) : AppColors.glass(0.15),
             ),
             borderRadius: BorderRadius.circular(999),
             boxShadow: widget.active

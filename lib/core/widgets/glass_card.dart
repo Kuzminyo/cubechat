@@ -60,13 +60,15 @@ class GlassCard extends StatelessWidget {
                 end: Alignment.bottomRight,
                 stops: const [0.0, 0.4, 1.0],
                 colors: [
-                  Colors.white.withValues(alpha: strong ? 0.22 : 0.18),
-                  Colors.white.withValues(alpha: 0.04),
-                  Colors.white.withValues(alpha: 0.10),
+                  AppColors.glass(strong ? 0.22 : 0.18),
+                  AppColors.glass(0.04),
+                  AppColors.glass(0.10),
                 ],
               ),
               border: Border.all(
-                color: strong ? AppColors.glassBorderStrong : AppColors.glassBorder,
+                color: strong
+                    ? AppColors.glassBorderStrong
+                    : AppColors.glassBorder,
                 width: 1,
               ),
               borderRadius: radius,

@@ -430,7 +430,7 @@ Future<void> _confirmWipe(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
         t.profileEmergencyWipeConfirm,
@@ -544,7 +544,7 @@ Future<void> _showChatActions(
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.chatsDeleteTitle,
@@ -653,7 +653,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
       color: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       position: PopupMenuPosition.under,
       onSelected: (action) => switch (action) {
@@ -743,7 +743,7 @@ Future<void> showNewChannelDialog(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
         t.channelsNewTitle,

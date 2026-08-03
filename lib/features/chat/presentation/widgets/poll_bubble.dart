@@ -91,7 +91,7 @@ class PollBubble extends ConsumerWidget {
                         border: Border.all(
                           color: selected == index
                               ? AppColors.brandPrimary
-                              : Colors.white.withValues(alpha: .12),
+                              : AppColors.glass(.12),
                         ),
                       ),
                       child: Row(

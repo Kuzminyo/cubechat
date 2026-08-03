@@ -112,7 +112,7 @@ class ContactProfileScreen extends ConsumerWidget {
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.contactProfileShareTitle,
@@ -200,7 +200,7 @@ class ContactProfileScreen extends ConsumerWidget {
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.contactProfileDeleteTitle,

@@ -23,6 +23,9 @@ class AppPalette {
     required this.bgDeep,
     required this.bgTop,
     required this.bgBottom,
+    this.glassTint,
+    this.glassStrength = 0.42,
+    this.inkStrength = 0.10,
   });
 
   final String id;
@@ -31,6 +34,23 @@ class AppPalette {
   final Color bgDeep;
   final Color bgTop;
   final Color bgBottom;
+
+  /// The hue every pane of glass is mixed with. Defaults to [brandSecondary],
+  /// which is what makes an interface *of* the palette rather than a grey one
+  /// wearing its accents; a palette overrides it when the brand colour is too
+  /// hot to spread across whole surfaces.
+  final Color? glassTint;
+
+  /// How far the glass is pulled from white toward [glassTint] (0 = the old
+  /// neutral white, 1 = the tint itself). Above roughly 0.5 the panes stop
+  /// reading as glass and start reading as coloured plastic.
+  final double glassStrength;
+
+  /// The same for text and icons, and deliberately much smaller: a label is
+  /// there to be read.
+  final double inkStrength;
+
+  Color get glassHue => glassTint ?? brandSecondary;
 
   /// The original. Kept first and used as the fallback for an unknown id, so a
   /// palette removed in a later build cannot leave someone on a blank theme.
@@ -70,6 +90,38 @@ class AppPalette {
     bgBottom: Color(0xFF3F1A2E),
   );
 
+  /// Pink on black, and nothing else. The backdrop is as close to off as the
+  /// aurora allows and the glass carries almost all of the colour, so the whole
+  /// screen is the theme rather than a dark screen with pink on it.
+  static const fuchsia = AppPalette(
+    id: 'fuchsia',
+    brandPrimary: Color(0xFFFF3D8A),
+    brandSecondary: Color(0xFFFF8FC0),
+    bgDeep: Color(0xFF080406),
+    bgTop: Color(0xFF17060F),
+    bgBottom: Color(0xFF260A1A),
+    glassStrength: 0.5,
+    inkStrength: 0.13,
+  );
+
+  static const violet = AppPalette(
+    id: 'violet',
+    brandPrimary: Color(0xFFB57BFF),
+    brandSecondary: Color(0xFFD3B0FF),
+    bgDeep: Color(0xFF0B0616),
+    bgTop: Color(0xFF190F2D),
+    bgBottom: Color(0xFF261547),
+  );
+
+  static const ocean = AppPalette(
+    id: 'ocean',
+    brandPrimary: Color(0xFF32C6E6),
+    brandSecondary: Color(0xFF8ADCEF),
+    bgDeep: Color(0xFF04101A),
+    bgTop: Color(0xFF0A2233),
+    bgBottom: Color(0xFF0D3247),
+  );
+
   static const slate = AppPalette(
     id: 'slate',
     brandPrimary: Color(0xFF8FA3B8),
@@ -77,9 +129,23 @@ class AppPalette {
     bgDeep: Color(0xFF0A0D10),
     bgTop: Color(0xFF161B20),
     bgBottom: Color(0xFF232B33),
+    // Graphite is meant to be the colourless one — tinting its glass toward its
+    // own grey would be a no-op with extra steps, so it keeps plain white.
+    glassTint: Colors.white,
+    glassStrength: 0,
+    inkStrength: 0,
   );
 
-  static const all = <AppPalette>[emerald, indigo, amber, rose, slate];
+  static const all = <AppPalette>[
+    emerald,
+    indigo,
+    amber,
+    rose,
+    fuchsia,
+    violet,
+    ocean,
+    slate,
+  ];
 
   static AppPalette byId(String? id) =>
       all.firstWhere((p) => p.id == id, orElse: () => emerald);
@@ -145,6 +211,24 @@ class ThemeController extends Notifier<AppPalette> {
     AppColors.bgDeep = p.bgDeep;
     AppColors.bgTop = p.bgTop;
     AppColors.bgBottom = p.bgBottom;
+    // The interface itself, not just the accents on it. Every pane of glass in
+    // the app is white at some low opacity; pulling that white toward the
+    // palette is what turns "dark app with pink buttons" into a pink app.
+    AppColors.glassBase =
+        Color.lerp(Colors.white, p.glassHue, p.glassStrength) ?? Colors.white;
+    AppColors.inkBase =
+        Color.lerp(Colors.white, p.glassHue, p.inkStrength) ?? Colors.white;
+    AppColors.glassFill = AppColors.glass(0.08);
+    AppColors.glassFillStrong = AppColors.glass(0.12);
+    AppColors.glassBorder = AppColors.glass(0.18);
+    AppColors.glassBorderStrong = AppColors.glass(0.22);
+    AppColors.glassHover = AppColors.glass(0.06);
+    AppColors.textPrimary =
+        Color.lerp(const Color(0xFFE8E8F0), p.glassHue, p.inkStrength) ??
+            const Color(0xFFE8E8F0);
+    AppColors.textOnGlass = AppColors.ink(0.95);
+    AppColors.textOnGlassDim = AppColors.ink(0.6);
+    AppColors.textOnGlassFaint = AppColors.ink(0.4);
     // The aurora blobs are the brand colours at different weights; leaving them
     // green under an indigo palette was the one thing that gave the shortcut
     // away.

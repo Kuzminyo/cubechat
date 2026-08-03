@@ -42,7 +42,7 @@ abstract final class AppTheme {
         elevation: 6,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+          side: BorderSide(color: AppColors.glass(0.16)),
         ),
       ),
       splashFactory: NoSplash.splashFactory,

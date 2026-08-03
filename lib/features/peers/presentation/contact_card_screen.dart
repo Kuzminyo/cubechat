@@ -349,8 +349,8 @@ class _CardPreviewState extends State<_CardPreview> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        color: AppColors.glass(0.06),
+        border: Border.all(color: AppColors.glass(0.1)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -424,9 +424,8 @@ class _ActionButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: primary && enabled ? AppColors.brandGradient : null,
-          color:
-              primary && enabled ? null : Colors.white.withValues(alpha: 0.08),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          color: primary && enabled ? null : AppColors.glass(0.08),
+          border: Border.all(color: AppColors.glass(0.15)),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(

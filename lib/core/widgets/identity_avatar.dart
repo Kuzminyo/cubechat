@@ -84,7 +84,7 @@ class IdentityAvatar extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: AppColors.glass(0.2),
                 width: 1,
               ),
             ),

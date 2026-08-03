@@ -2342,6 +2342,24 @@ abstract class AppLocalizations {
   /// **'Rose'**
   String get profileThemeRose;
 
+  /// No description provided for @profileThemeFuchsia.
+  ///
+  /// In en, this message translates to:
+  /// **'Fuchsia'**
+  String get profileThemeFuchsia;
+
+  /// No description provided for @profileThemeViolet.
+  ///
+  /// In en, this message translates to:
+  /// **'Violet'**
+  String get profileThemeViolet;
+
+  /// No description provided for @profileThemeOcean.
+  ///
+  /// In en, this message translates to:
+  /// **'Ocean'**
+  String get profileThemeOcean;
+
   /// No description provided for @profileThemeSlate.
   ///
   /// In en, this message translates to:

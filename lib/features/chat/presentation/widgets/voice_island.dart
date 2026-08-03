@@ -209,8 +209,7 @@ class _VoicePanel extends ConsumerWidget {
                         child: LinearProgressIndicator(
                           value: playback.progress,
                           minHeight: 2.5,
-                          backgroundColor:
-                              Colors.white.withValues(alpha: 0.12),
+                          backgroundColor: AppColors.glass(0.12),
                           valueColor: AlwaysStoppedAnimation(
                             AppColors.brandPrimary,
                           ),

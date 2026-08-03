@@ -43,7 +43,7 @@ Future<T?> showContextPopup<T>({
     shadowColor: Colors.black,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
-      side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+      side: BorderSide(color: AppColors.glass(0.16)),
     ),
     items: items,
   );

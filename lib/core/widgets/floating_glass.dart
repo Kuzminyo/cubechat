@@ -91,7 +91,7 @@ class FloatingGlass extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.07),
+            AppColors.glass(0.07),
             Colors.black.withValues(alpha: 0.52),
             Colors.black.withValues(alpha: 0.66),
           ],
@@ -99,7 +99,7 @@ class FloatingGlass extends StatelessWidget {
         ),
         borderRadius: radius,
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.16),
+          color: AppColors.glass(0.16),
         ),
       ),
       child: Material(

@@ -172,7 +172,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: _cameraError == null
-                          ? Colors.white.withValues(alpha: 0.82)
+                          ? AppColors.ink(0.82)
                           : AppColors.danger,
                       fontSize: 13,
                       height: 1.35,

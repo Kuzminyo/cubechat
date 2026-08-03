@@ -4,7 +4,40 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.8.1+45**.
+Current build: **0.11.0+54**.
+
+---
+
+## A palette that reaches the whole app, every emoji, and a room that reaches everyone in it (2026‑08‑03)
+
+- **Choosing a colour now recolours the interface, not the accents on it.**
+  Every pane of glass in the app was `Colors.white` at some low opacity, so a
+  palette moved the buttons and the aurora and left the app the same grey it
+  always was. White is now a palette value (`AppColors.glass` / `.ink`) pulled
+  toward the theme's tint, and the ~100 call sites that hardcoded it were
+  converted. Three palettes join the five: **Fuchsia** (pink on near-black),
+  **Violet** and **Ocean**. Graphite deliberately keeps a neutral white — it is
+  meant to be the colourless one. The swatch in Settings now shows the
+  background with the brand over it rather than the brand alone.
+- **Reactions are no longer six emoji chosen in the source.** The strip on the
+  long-press menu ends in a `+` that opens the full system emoji sheet —
+  eight categories, everything the platform font can draw. Whatever you pick
+  joins the strip, so the row converges on your own habits, and a double-tap
+  leaves whichever emoji you reached for last (a heart until you change it).
+- **A jump lands somewhere visible.** Tapping a quote or the pinned bar drew a
+  2‑pixel ring around the bubble; it now washes the whole row edge to edge and
+  fades, the way Telegram marks it — a ring reads as "this message is
+  special", a band reads as "you were brought here". The jump also finishes on
+  the message it was asked for: it used to scroll to whichever message was
+  *pinned*, whatever the destination was, which put a tapped quote near its
+  target rather than on it.
+- **A member of a room relays the room.** A channel post went over the relay to
+  the author's own known peers and no further; a member who received one
+  re-emitted it over Bluetooth only. In a three-person room where two members
+  had never met each other directly — both invited by the third — that is
+  exactly the reported bug: you see everything one of them writes and nothing
+  from the other. Members now carry room frames onward over the relay too,
+  ttl-decremented, terminating on the dedup every node already applies.
 
 ---
 

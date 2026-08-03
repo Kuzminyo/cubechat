@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 /// Palette extracted from the Cubegram glass mockup.
+///
+/// Every field here is mutable and rewritten by `ThemeController` when a
+/// palette is chosen — see that class for why the colours are pushed into
+/// statics instead of down through a `Theme`.
 abstract final class AppColors {
   // Base background
   static Color bgDeep = Color(0xFF06140D);
@@ -22,7 +26,27 @@ abstract final class AppColors {
     colors: [brandPrimary, brandSecondary],
   );
 
-  // Glass surface tints (white at varying opacity)
+  /// What "white" means for a pane of glass under the current palette.
+  ///
+  /// Every surface in the app is white at some low opacity over the aurora, and
+  /// for a long time that was literally `Colors.white` — which is why changing
+  /// the palette moved the accents and left the interface itself the same grey
+  /// it always was. This is white pulled some way toward the palette's tint, so
+  /// a rose theme is genuinely a rose interface rather than a grey one with
+  /// pink buttons. Rewritten by `ThemeController`; call it through [glass].
+  static Color glassBase = Colors.white;
+
+  /// The same idea for text and icons, tinted far more lightly — legibility is
+  /// the point of a label, and a saturated one reads as a link.
+  static Color inkBase = Colors.white;
+
+  /// A glass surface at [alpha]: fills, borders, dividers, scrims.
+  static Color glass(double alpha) => glassBase.withValues(alpha: alpha);
+
+  /// Text or an icon at [alpha], over glass.
+  static Color ink(double alpha) => inkBase.withValues(alpha: alpha);
+
+  // Glass surface tints (the palette's white at varying opacity)
   static Color glassFill = Colors.white.withValues(alpha: 0.08);
   static Color glassFillStrong = Colors.white.withValues(alpha: 0.12);
   static Color glassBorder = Colors.white.withValues(alpha: 0.18);
@@ -30,7 +54,7 @@ abstract final class AppColors {
   static Color glassHover = Colors.white.withValues(alpha: 0.06);
 
   // Text
-  static const Color textPrimary = Color(0xFFE8E8F0);
+  static Color textPrimary = Color(0xFFE8E8F0);
   static Color textOnGlass = Colors.white.withValues(alpha: 0.95);
   static Color textOnGlassDim = Colors.white.withValues(alpha: 0.6);
   static Color textOnGlassFaint = Colors.white.withValues(alpha: 0.4);

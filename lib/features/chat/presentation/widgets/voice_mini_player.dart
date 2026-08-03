@@ -144,7 +144,7 @@ class _Bar extends ConsumerWidget {
                 child: LinearProgressIndicator(
                   value: playback.progress,
                   minHeight: 2.5,
-                  backgroundColor: Colors.white.withValues(alpha: 0.10),
+                  backgroundColor: AppColors.glass(0.10),
                   valueColor: AlwaysStoppedAnimation(
                     AppColors.brandPrimary,
                   ),

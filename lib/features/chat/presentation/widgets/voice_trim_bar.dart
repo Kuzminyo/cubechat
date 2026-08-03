@@ -313,7 +313,7 @@ class _TrimPainter extends CustomPainter {
     final bars = (size.width / slot).floor().clamp(1, 4096);
 
     final inside = Paint()..color = AppColors.brandPrimary;
-    final outside = Paint()..color = Colors.white.withValues(alpha: 0.16);
+    final outside = Paint()..color = AppColors.glass(0.16);
 
     for (var i = 0; i < bars; i++) {
       final f = bars <= 1 ? 0.0 : i / (bars - 1);
@@ -335,7 +335,7 @@ class _TrimPainter extends CustomPainter {
     if (p != null && p >= start && p <= end) {
       canvas.drawRect(
         Rect.fromLTWH(p * size.width - 1, 4, 2, size.height - 8),
-        Paint()..color = Colors.white.withValues(alpha: 0.85),
+        Paint()..color = AppColors.ink(0.85),
       );
     }
 
@@ -354,7 +354,7 @@ class _TrimPainter extends CustomPainter {
     // Grip line, so the handle reads as draggable rather than as a marker.
     canvas.drawRect(
       Rect.fromLTWH(cx - 1, size.height * 0.32, 2, size.height * 0.36),
-      Paint()..color = Colors.white.withValues(alpha: 0.9),
+      Paint()..color = AppColors.ink(0.9),
     );
   }
 

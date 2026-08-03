@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -23,20 +24,14 @@ import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../data/pinned_controller.dart';
+import '../../data/reaction_emoji_controller.dart';
+import 'emoji_picker_sheet.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import 'file_bubble.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
 import 'voice_bubble.dart';
-
-/// Emoji offered in the long-press reaction picker. Kept short so the row fits
-/// one line on a narrow phone.
-const _reactionChoices = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
-
-/// What a double-tap leaves on a message. One emoji, no menu — the whole point
-/// is that the common case costs no decision.
-const _quickReaction = '❤️';
 
 /// How far a bubble follows a leftward drag before it stops moving, and how far
 /// it has to travel for the release to mean "reply".
@@ -141,11 +136,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
-  /// Double-tap: the one-gesture path to the reaction people actually use.
+  /// Double-tap: the one-gesture path to the reaction people actually use —
+  /// which is now the last one *they* used, not a constant in this file.
   void _quickReact() {
     if (!_canReact) return;
     HapticFeedback.lightImpact();
-    _toggleReaction(_quickReaction);
+    _toggleReaction(
+      ref.read(reactionEmojiControllerProvider.notifier).quickReaction,
+    );
   }
 
   void _onSwipeUpdate(DragUpdateDetails d) {
@@ -202,12 +200,27 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   void _toggleReaction(String emoji) {
     final mineSet = widget.message.reactions[emoji];
     final alreadyMine = mineSet != null && mineSet.contains('me');
+    // Adding one is a choice worth learning from; taking one back is not, and
+    // promoting an emoji you just removed would be the strip learning exactly
+    // the wrong thing.
+    if (!alreadyMine) {
+      unawaited(
+        ref.read(reactionEmojiControllerProvider.notifier).remember(emoji),
+      );
+    }
     ref.read(messagingServiceProvider).sendReaction(
           widget.chatId,
           widget.message.wireId!,
           emoji,
           add: !alreadyMine,
         );
+  }
+
+  /// The whole keyboard, for the reaction the strip doesn't carry.
+  Future<void> _reactFromPicker() async {
+    final emoji = await showEmojiPicker(context);
+    if (emoji == null || !mounted || !_canReact) return;
+    _toggleReaction(emoji);
   }
 
   /// Telegram-style long-press menu: a small popup anchored at the finger,
@@ -219,6 +232,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         ref
             .read(pinnedControllerProvider.notifier)
             .isPinned(widget.chatId, widget.message.wireId!);
+    final strip = ref.read(reactionEmojiControllerProvider);
 
     final picked = await showContextPopup<String>(
       context: context,
@@ -232,7 +246,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                for (final e in _reactionChoices)
+                // Five, not six: the picker button takes the sixth slot, and
+                // the row is inside a popup menu that stops widening at 280
+                // logical pixels. A seventh cell is where it starts clipping.
+                for (final e in strip.take(5))
                   // Builder so the pop targets the menu route, not this bubble.
                   Builder(
                     builder: (ctx) => InkWell(
@@ -244,6 +261,24 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ),
                     ),
                   ),
+                // The way out of the six. Everything the system can draw is
+                // behind it, and whatever is chosen there joins the strip — so
+                // the row in front of you drifts toward the emoji you actually
+                // use rather than staying the set that shipped.
+                Builder(
+                  builder: (ctx) => InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => Navigator.of(ctx).pop('r+'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        Icons.add_reaction_outlined,
+                        size: 22,
+                        color: AppColors.textOnGlassDim,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -284,7 +319,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
 
     if (picked == null || !mounted) return;
-    if (picked.startsWith('r:')) {
+    if (picked == 'r+') {
+      await _reactFromPicker();
+    } else if (picked.startsWith('r:')) {
       _toggleReaction(picked.substring(2));
     } else if (picked == 'reply') {
       _startReply();
@@ -338,40 +375,40 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               .read(chatJumpRequestProvider(widget.chatId).notifier)
               .state = wireId,
       child: Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: AppColors.brandPrimary, width: 2),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        decoration: BoxDecoration(
+          color: AppColors.glass(0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(color: AppColors.brandPrimary, width: 2),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (quoted?.authorName != null)
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (quoted?.authorName != null)
+              Text(
+                quoted!.authorName!,
+                style: TextStyle(
+                  color: AppColors.brandPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             Text(
-              quoted!.authorName!,
+              preview,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: AppColors.brandPrimary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+                color: AppColors.textOnGlassDim,
+                fontSize: 12.5,
+                height: 1.2,
               ),
             ),
-          Text(
-            preview,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 12.5,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -493,7 +530,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.chatForwardTitle,
@@ -588,7 +625,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.chatDeleteTitle,
@@ -677,18 +714,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // The RepaintBoundary stays: it keeps one bubble's repaint out of its
     // neighbours as the list scrolls.
     final bubble = RepaintBoundary(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
           boxShadow: FloatingGlass.shadows,
-          // A ring rather than a wash: the bubble is already colour-coded by
-          // sender, and tinting its fill would read as a different kind of
-          // message rather than "this is the one".
-          border: highlighted
-              ? Border.all(color: AppColors.brandPrimary, width: 2)
-              : Border.all(color: Colors.transparent, width: 2),
         ),
         child: ClipRRect(
           borderRadius: radius,
@@ -705,14 +734,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ],
                     ),
                     borderRadius: radius,
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                    border: Border.all(color: AppColors.glass(0.18)),
                   )
                 : BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.10),
+                    color: AppColors.glass(0.10),
                     borderRadius: radius,
-                    border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.16)),
+                    border: Border.all(color: AppColors.glass(0.16)),
                   ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,7 +814,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         child: ScaleTransition(
           scale: Tween<double>(begin: 0.92, end: 1.0).animate(_scale),
           alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
-          child: Padding(
+          // The jump marker is a band across the whole row, edge to edge, the
+          // way Telegram does it — not a ring around the bubble. A ring is
+          // read as a property of the message ("this one is special"); a band
+          // is read as a place ("you were brought here"), which is what a
+          // tapped quote, the pinned bar and a search hit all mean. It fades
+          // in and back out on its own, so nothing is left marked.
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            color: highlighted
+                ? AppColors.brandPrimary.withValues(alpha: 0.16)
+                : Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
             child: GestureDetector(
               // Horizontal only: a vertical drag stays with the list, so the
@@ -1028,9 +1066,9 @@ class _ReadByChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: AppColors.glass(0.06),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          border: Border.all(color: AppColors.glass(0.12)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1078,12 +1116,12 @@ class _ReactionChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: mine
               ? AppColors.brandPrimary.withValues(alpha: 0.22)
-              : Colors.white.withValues(alpha: 0.08),
+              : AppColors.glass(0.08),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: mine
                 ? AppColors.brandPrimary.withValues(alpha: 0.6)
-                : Colors.white.withValues(alpha: 0.14),
+                : AppColors.glass(0.14),
           ),
         ),
         child: Row(
@@ -1197,7 +1235,7 @@ class _ImagePlaceholder extends StatelessWidget {
       width: 200,
       height: 140,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: AppColors.glass(0.08),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -1251,7 +1289,7 @@ class _BubbleMeta extends StatelessWidget {
           Icon(
             Icons.push_pin,
             size: 11,
-            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.55),
+            color: AppColors.ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: t.chatPinnedTitle,
           ),
           const SizedBox(width: 4),
@@ -1260,7 +1298,7 @@ class _BubbleMeta extends StatelessWidget {
           Icon(
             Icons.lock_clock,
             size: 11,
-            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.55),
+            color: AppColors.ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: 'forward secret',
           ),
           const SizedBox(width: 4),
@@ -1271,8 +1309,7 @@ class _BubbleMeta extends StatelessWidget {
             style: TextStyle(
               fontSize: 10.5,
               fontStyle: FontStyle.italic,
-              color:
-                  Colors.white.withValues(alpha: message.isMine ? 0.7 : 0.45),
+              color: AppColors.ink(message.isMine ? 0.7 : 0.45),
             ),
           ),
           const SizedBox(width: 4),
@@ -1281,7 +1318,7 @@ class _BubbleMeta extends StatelessWidget {
           time,
           style: TextStyle(
             fontSize: 10.5,
-            color: Colors.white.withValues(alpha: message.isMine ? 0.8 : 0.5),
+            color: AppColors.ink(message.isMine ? 0.8 : 0.5),
           ),
         ),
         if (message.isMine) ...[
@@ -1297,7 +1334,7 @@ class _BubbleMeta extends StatelessWidget {
             color: switch (message.status) {
               MessageStatus.failed => AppColors.danger,
               MessageStatus.read => _readColor,
-              _ => Colors.white.withValues(alpha: 0.85),
+              _ => AppColors.ink(0.85),
             },
             semanticLabel: switch (message.status) {
               MessageStatus.sending => t.chatSending,

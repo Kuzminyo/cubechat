@@ -88,7 +88,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
                 shape: BoxShape.circle,
                 color: hasFile
                     ? AppColors.brandPrimary.withValues(alpha: 0.25)
-                    : Colors.white.withValues(alpha: 0.08),
+                    : AppColors.glass(0.08),
               ),
               child: Icon(
                 playing ? Icons.pause : Icons.play_arrow,
@@ -198,7 +198,7 @@ class _ScrubBar extends StatelessWidget {
                 Container(
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: AppColors.glass(0.12),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -222,8 +222,7 @@ class _ScrubBar extends StatelessWidget {
                       color: enabled
                           ? AppColors.brandPrimary
                           : AppColors.textOnGlassFaint,
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.4)),
+                      border: Border.all(color: AppColors.ink(0.4)),
                     ),
                   ),
                 ),

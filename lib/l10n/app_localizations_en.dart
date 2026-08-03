@@ -1278,6 +1278,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileThemeRose => 'Rose';
 
   @override
+  String get profileThemeFuchsia => 'Fuchsia';
+
+  @override
+  String get profileThemeViolet => 'Violet';
+
+  @override
+  String get profileThemeOcean => 'Ocean';
+
+  @override
   String get profileThemeSlate => 'Slate';
 
   @override

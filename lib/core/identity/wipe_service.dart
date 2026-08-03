@@ -6,6 +6,7 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/drafts_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
+import '../../features/chat/data/reaction_emoji_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
@@ -63,6 +64,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Back to the stock look: a wipe should leave the app looking like a fresh
   // install, and a chosen palette is a visible trace of the person who chose it.
   await ref.read(themeControllerProvider.notifier).reset();
+  // Which emoji you reach for is a habit, and a habit is a trace.
+  await ref.read(reactionEmojiControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

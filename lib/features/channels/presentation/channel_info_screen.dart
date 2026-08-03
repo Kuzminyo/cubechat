@@ -116,7 +116,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                     leading: CircleAvatar(
                       backgroundColor: member.isAdmin
                           ? AppColors.brandPrimary.withValues(alpha: .22)
-                          : Colors.white.withValues(alpha: .08),
+                          : AppColors.glass(.08),
                       child: Text(
                         member.name.isEmpty
                             ? '?'

@@ -52,7 +52,7 @@ class MessageIslandGlass extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.07),
+                    AppColors.glass(0.07),
                     Colors.black.withValues(alpha: 0.48),
                     Colors.black.withValues(alpha: 0.60),
                   ],
@@ -60,7 +60,7 @@ class MessageIslandGlass extends StatelessWidget {
                 ),
                 borderRadius: radius,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.14),
+                  color: AppColors.glass(0.14),
                 ),
               ),
               child: Padding(padding: padding, child: child),
@@ -378,7 +378,7 @@ class _AttachButton extends StatelessWidget {
         height: 40,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.08),
+          color: AppColors.glass(0.08),
         ),
         child: Icon(
           Icons.image_outlined,
@@ -472,8 +472,8 @@ class _VoiceButton extends StatelessWidget {
             ? AppColors.brandGradient
             : LinearGradient(
                 colors: [
-                  Colors.white.withValues(alpha: 0.18),
-                  Colors.white.withValues(alpha: 0.10),
+                  AppColors.glass(0.18),
+                  AppColors.glass(0.10),
                 ],
               ),
         boxShadow: filled
@@ -692,8 +692,8 @@ class _SendButtonState extends State<_SendButton> {
                   ? AppColors.brandGradient
                   : LinearGradient(
                       colors: [
-                        Colors.white.withValues(alpha: 0.18),
-                        Colors.white.withValues(alpha: 0.10),
+                        AppColors.glass(0.18),
+                        AppColors.glass(0.10),
                       ],
                     ),
               boxShadow: widget.enabled
@@ -708,9 +708,7 @@ class _SendButtonState extends State<_SendButton> {
             ),
             child: Icon(
               widget.isEdit ? Icons.check : Icons.arrow_upward,
-              color: widget.enabled
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.55),
+              color: widget.enabled ? Colors.white : AppColors.ink(0.55),
               size: 20,
             ),
           ),

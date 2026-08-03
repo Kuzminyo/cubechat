@@ -138,7 +138,7 @@ class _TransferCard extends ConsumerWidget {
               child: LinearProgressIndicator(
                 value: task.totalUnits == 0 ? null : task.progress,
                 minHeight: 5,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                backgroundColor: AppColors.glass(0.08),
                 valueColor: AlwaysStoppedAnimation(_tone(task.status)),
               ),
             ),

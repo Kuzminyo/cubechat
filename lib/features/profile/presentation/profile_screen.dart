@@ -314,8 +314,8 @@ class _RelayFallbackCard extends ConsumerWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.08),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
             ),
             child: Icon(
               on ? Icons.public : Icons.public_off,
@@ -501,9 +501,8 @@ class _DiscoverableCard extends ConsumerWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                  color: AppColors.glass(0.08),
+                  border: Border.all(color: AppColors.glass(0.18)),
                 ),
                 child: Icon(
                   on
@@ -585,8 +584,8 @@ class _SettingSwitch extends StatelessWidget {
           height: 36,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            color: AppColors.glass(0.08),
+            border: Border.all(color: AppColors.glass(0.18)),
           ),
           child: Icon(
             icon,
@@ -707,8 +706,8 @@ class _ContactCardRow extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.08),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
             ),
             child: Icon(Icons.person_add_alt,
                 color: AppColors.textOnGlass, size: 18),
@@ -838,6 +837,9 @@ class _ThemeRow extends ConsumerWidget {
         'indigo' => t.profileThemeIndigo,
         'amber' => t.profileThemeAmber,
         'rose' => t.profileThemeRose,
+        'fuchsia' => t.profileThemeFuchsia,
+        'violet' => t.profileThemeViolet,
+        'ocean' => t.profileThemeOcean,
         'slate' => t.profileThemeSlate,
         _ => t.profileThemeEmerald,
       };
@@ -872,24 +874,42 @@ class _ThemeRow extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // The swatch is the palette in miniature, not just its
+                      // accent: the disc is the background the app will
+                      // actually wear, the crescent inside it the brand over
+                      // that background. A palette now recolours the whole
+                      // interface, so a swatch showing only the accent would
+                      // be advertising the smaller half of the change.
                       Container(
                         width: 34,
                         height: 34,
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [
-                              palette.brandPrimary,
-                              palette.brandSecondary,
-                            ],
+                            colors: [palette.bgTop, palette.bgDeep],
                           ),
                           border: Border.all(
-                            color: selected
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.22),
+                            color:
+                                selected ? Colors.white : AppColors.glass(0.22),
                             width: selected ? 2.5 : 1,
+                          ),
+                        ),
+                        child: Container(
+                          width: 17,
+                          height: 17,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                palette.brandPrimary,
+                                palette.brandSecondary,
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1005,8 +1025,8 @@ class _DiagnosticsRow extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.08),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
             ),
             child: Icon(Icons.bug_report_outlined,
                 color: AppColors.textOnGlass, size: 18),
@@ -1203,8 +1223,8 @@ class _FingerprintRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        color: AppColors.glass(0.06),
+        border: Border.all(color: AppColors.glass(0.1)),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1274,11 +1294,9 @@ class _LangPill extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: active ? AppColors.brandGradient : null,
-          color: active ? null : Colors.white.withValues(alpha: 0.08),
+          color: active ? null : AppColors.glass(0.08),
           border: Border.all(
-            color: active
-                ? Colors.white.withValues(alpha: 0.3)
-                : Colors.white.withValues(alpha: 0.15),
+            color: active ? AppColors.glass(0.3) : AppColors.glass(0.15),
           ),
           borderRadius: BorderRadius.circular(14),
         ),
@@ -1354,7 +1372,7 @@ class _EmergencyWipeCard extends ConsumerWidget {
         backgroundColor: AppColors.bgTop,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+          side: BorderSide(color: AppColors.glass(0.15)),
         ),
         title: Text(
           t.profileEmergencyWipeConfirm,
@@ -1558,9 +1576,8 @@ class _CoverBody extends ConsumerWidget {
                       ? null
                       : DecorationImage(
                           image: MemoryImage(photo), fit: BoxFit.cover),
-                  border: t < 0.5
-                      ? Border.all(color: Colors.white.withValues(alpha: 0.2))
-                      : null,
+                  border:
+                      t < 0.5 ? Border.all(color: AppColors.glass(0.2)) : null,
                 ),
               ),
             ),
@@ -1709,7 +1726,7 @@ class _CoverAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.14),
+      color: AppColors.glass(0.14),
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1758,7 +1775,7 @@ Future<void> editNickname(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
         t.profileNicknameEditTitle,

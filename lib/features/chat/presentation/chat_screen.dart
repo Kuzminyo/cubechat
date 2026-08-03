@@ -692,8 +692,8 @@ class _HeaderActionCircle extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.18),
-            Colors.white.withValues(alpha: 0.10),
+            AppColors.glass(0.18),
+            AppColors.glass(0.10),
           ],
         ),
       ),
@@ -1003,9 +1003,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   /// Attached to the pinned message's bubble (and only to that one) so a jump
   /// can finish with [Scrollable.ensureVisible] once it is actually built.
-  final _pinnedKey = GlobalKey();
   final _initialMessageKey = GlobalKey();
   final _searchResultKey = GlobalKey();
+
+  /// Rides on whichever message is currently flashing, so a jump can finish on
+  /// the message it was asked for. It used to finish on the *pinned* message
+  /// whatever the destination was — fine while the only jump was the pinned
+  /// bar, wrong as soon as a tapped quote pointed somewhere else, which landed
+  /// you near the message instead of on it.
+  final _jumpTargetKey = GlobalKey();
   String _searchQuery = '';
   int _searchIndex = 0;
   int _pinIndex = 0;
@@ -1104,34 +1110,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Future<void> _jumpTo(String wireId) async {
     final messages = widget.messages;
     final index = messages.indexWhere((m) => m.wireId == wireId);
-    if (index >= 0) _flash(messages[index].id);
     if (index < 0) {
       final t = AppLocalizations.of(context);
       showGlassToast(context, t.chatPinnedGone);
       return;
     }
-    if (_scroll.hasClients && messages.length > 1) {
-      // The list is reversed: offset 0 is the newest message.
-      final fromNewest = messages.length - 1 - index;
-      final max = _scroll.position.maxScrollExtent;
-      final estimate = max * (fromNewest / (messages.length - 1));
-      _scroll.jumpTo(estimate.clamp(0.0, max));
-    }
-    for (var attempt = 0; attempt < 3; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 32));
-      if (!mounted) return;
-      // The bubble's own context, not this widget's: it can be scrolled out of
-      // the cache and disposed between attempts, so `mounted` on the State says
-      // nothing about it.
-      final ctx = _pinnedKey.currentContext;
-      if (ctx == null || !ctx.mounted) continue;
-      await Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 220),
-      );
-      return;
-    }
+    // Flash first: the marker is also what puts [_jumpTargetKey] on the
+    // destination, so the scroll below has something to finish against.
+    _flash(messages[index].id);
+    await _jumpToMessageId(messages[index].id, _jumpTargetKey);
   }
 
   void _updateSearch(String query) {
@@ -1219,6 +1206,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       unawaited(_jumpTo(wireId));
     });
 
+    final flashing = ref.watch(chatHighlightProvider(widget.chatId));
     final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
     final matches = messagesMatchingQuery(messages, _searchQuery);
     final selectedIndex = matches.isEmpty
@@ -1245,11 +1233,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                 final m = messages[messages.length - 1 - i];
                 Widget bubble =
                     MessageBubble(message: m, chatId: widget.chatId);
-                if (pinnedMessage != null && m.id == pinnedMessage.id) {
-                  bubble = KeyedSubtree(key: _pinnedKey, child: bubble);
-                }
                 if (m.id == widget.initialMessageId) {
                   bubble = KeyedSubtree(key: _initialMessageKey, child: bubble);
+                }
+                if (m.id == flashing) {
+                  bubble = KeyedSubtree(key: _jumpTargetKey, child: bubble);
                 }
                 if (selectedMessage?.id == m.id) {
                   bubble = KeyedSubtree(

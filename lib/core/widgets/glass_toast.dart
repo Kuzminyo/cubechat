@@ -201,14 +201,14 @@ class _GlassToastState extends State<_GlassToast>
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.white.withValues(alpha: 0.07),
+                              AppColors.glass(0.07),
                               Colors.black.withValues(alpha: 0.62),
                             ],
                           ),
                           borderRadius: radius,
                           border: Border.all(
                             color: widget.tone == ToastTone.neutral
-                                ? Colors.white.withValues(alpha: 0.16)
+                                ? AppColors.glass(0.16)
                                 : _accent.withValues(alpha: 0.45),
                           ),
                         ),
