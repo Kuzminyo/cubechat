@@ -1,87 +1,42 @@
-import 'dart:async';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../data/voice_playback_controller.dart';
 import '../../models/message.dart';
 
 /// Renders a voice message: play/pause button + progress bar + duration.
 ///
-/// Each instance owns its own [AudioPlayer]. Switching to the next bubble
-/// stops the previous one — there's no global single-player coordinator yet,
-/// but tapping a new bubble while another is playing seamlessly cuts the
-/// first because the first widget unwinds its `_position` subscription when
-/// it sees `isPlaying == false`.
-class VoiceBubble extends StatefulWidget {
-  const VoiceBubble({super.key, required this.message});
+/// Owns no player. It used to own one each, disposed with the widget — which
+/// meant scrolling the bubble off screen, or leaving the chat, cut the audio
+/// mid-sentence. Playback lives in [voicePlaybackControllerProvider] now and
+/// outlives every screen; this widget only shows the state of the one message
+/// it represents, and hands taps on.
+class VoiceBubble extends ConsumerStatefulWidget {
+  const VoiceBubble({
+    super.key,
+    required this.message,
+    this.chatTitle,
+  });
 
   final Message message;
 
+  /// Whose voice this is, for the mini player's caption. Falls back to the
+  /// chat id when a caller has nothing better.
+  final String? chatTitle;
+
   @override
-  State<VoiceBubble> createState() => _VoiceBubbleState();
+  ConsumerState<VoiceBubble> createState() => _VoiceBubbleState();
 }
 
-class _VoiceBubbleState extends State<VoiceBubble> {
-  final _player = AudioPlayer();
-  Duration _position = Duration.zero;
-  Duration _total = Duration.zero;
-  bool _playing = false;
-
+class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
   /// Fraction (0..1) of the bar the user is currently dragging the thumb
   /// to. Non-null = drag in progress; the actual seek commits on release.
   /// While dragging we render the thumb at this position so the UI feels
   /// responsive even when the underlying decoder hasn't seeked yet.
   double? _scrubbing;
-
-  StreamSubscription<Duration>? _posSub;
-  StreamSubscription<Duration>? _durSub;
-  StreamSubscription<void>? _completeSub;
-
-  @override
-  void initState() {
-    super.initState();
-    final ms = widget.message.audioDurationMs;
-    if (ms != null) {
-      _total = Duration(milliseconds: ms);
-    }
-    _posSub = _player.onPositionChanged.listen((d) {
-      if (mounted) setState(() => _position = d);
-    });
-    _durSub = _player.onDurationChanged.listen((d) {
-      if (mounted && d > Duration.zero) setState(() => _total = d);
-    });
-    _completeSub = _player.onPlayerComplete.listen((_) {
-      if (mounted) {
-        setState(() {
-          _playing = false;
-          _position = Duration.zero;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _posSub?.cancel();
-    _durSub?.cancel();
-    _completeSub?.cancel();
-    _player.dispose();
-    super.dispose();
-  }
-
-  Future<void> _toggle() async {
-    final path = widget.message.audioPath;
-    if (path == null || !File(path).existsSync()) return;
-    if (_playing) {
-      await _player.pause();
-      if (mounted) setState(() => _playing = false);
-    } else {
-      await _player.play(DeviceFileSource(path));
-      if (mounted) setState(() => _playing = true);
-    }
-  }
 
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString();
@@ -91,14 +46,33 @@ class _VoiceBubbleState extends State<VoiceBubble> {
 
   @override
   Widget build(BuildContext context) {
+    final playback = ref.watch(voicePlaybackControllerProvider);
+    final isCurrent = playback.isCurrent(widget.message.id);
     final hasFile = widget.message.audioPath != null &&
         File(widget.message.audioPath!).existsSync();
-    final total = _total > Duration.zero
-        ? _total
-        : Duration(milliseconds: widget.message.audioDurationMs ?? 0);
+
+    final declared =
+        Duration(milliseconds: widget.message.audioDurationMs ?? 0);
+    // The decoder's own duration is better than the declared one, but only
+    // exists for the message actually loaded.
+    final total = isCurrent && playback.duration > Duration.zero
+        ? playback.duration
+        : declared;
+    final position = isCurrent ? playback.position : Duration.zero;
+    final playing = isCurrent && playback.playing;
     final progress = total > Duration.zero
-        ? (_position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
+        ? (position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
+
+    Future<void> toggle() => ref
+        .read(voicePlaybackControllerProvider.notifier)
+        .toggle(
+          messageId: widget.message.id,
+          path: widget.message.audioPath!,
+          chatId: widget.message.chatId,
+          chatTitle: widget.chatTitle ?? widget.message.chatId,
+          knownDuration: declared > Duration.zero ? declared : null,
+        );
 
     return SizedBox(
       width: 200,
@@ -106,7 +80,7 @@ class _VoiceBubbleState extends State<VoiceBubble> {
         mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            onTap: hasFile ? _toggle : null,
+            onTap: hasFile ? toggle : null,
             child: Container(
               width: 36,
               height: 36,
@@ -117,7 +91,7 @@ class _VoiceBubbleState extends State<VoiceBubble> {
                     : Colors.white.withValues(alpha: 0.08),
               ),
               child: Icon(
-                _playing ? Icons.pause : Icons.play_arrow,
+                playing ? Icons.pause : Icons.play_arrow,
                 color: hasFile
                     ? AppColors.textOnGlass
                     : AppColors.textOnGlassFaint,
@@ -137,22 +111,19 @@ class _VoiceBubbleState extends State<VoiceBubble> {
                   onSeekStart: (frac) => setState(() => _scrubbing = frac),
                   onSeekUpdate: (frac) => setState(() => _scrubbing = frac),
                   onSeekCommit: (frac) async {
-                    final target = Duration(
-                      milliseconds: (total.inMilliseconds * frac).round(),
-                    );
-                    setState(() {
-                      _position = target;
-                      _scrubbing = null;
-                    });
-                    try {
-                      await _player.seek(target);
-                    } catch (_) {}
+                    setState(() => _scrubbing = null);
+                    // Seeking a message that is not the current one has nothing
+                    // to seek: start it there instead.
+                    if (!isCurrent) await toggle();
+                    await ref
+                        .read(voicePlaybackControllerProvider.notifier)
+                        .seekFraction(frac);
                   },
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _fmt(_playing
-                      ? _position
+                  _fmt(playing
+                      ? position
                       : (_scrubbing == null
                           ? total
                           : Duration(

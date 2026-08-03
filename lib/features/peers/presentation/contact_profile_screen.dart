@@ -14,6 +14,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/conversation_settings_controller.dart';
+import '../../chat/data/drafts_controller.dart';
 import '../../chat/presentation/widgets/auto_delete_picker.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
@@ -226,12 +227,15 @@ class ContactProfileScreen extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(knownPeersControllerProvider.notifier).forget(peerPubkeyHex);
-    await ref.read(peerAvatarsControllerProvider.notifier).forget(peerPubkeyHex);
+    await ref
+        .read(peerAvatarsControllerProvider.notifier)
+        .forget(peerPubkeyHex);
     await ref
         .read(conversationSettingsControllerProvider.notifier)
         .forget(peerPubkeyHex);
     await ref.read(favoritesControllerProvider.notifier).forget(peerPubkeyHex);
     await ref.read(pinnedControllerProvider.notifier).forget(peerPubkeyHex);
+    await ref.read(draftsControllerProvider.notifier).clear(peerPubkeyHex);
     if (context.mounted) Navigator.of(context).maybePop();
   }
 

@@ -13,6 +13,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../profile/data/relay_settings_controller.dart';
+import '../../qr/presentation/qr_display.dart';
 import '../data/known_peers_controller.dart';
 
 /// Our own contact card, rebuilt whenever the identity or nickname behind it
@@ -75,6 +76,10 @@ class ContactCardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (card.valueOrNull case final qr?) ...[
+                  Center(child: QrDisplay(data: qr, size: 190)),
+                  const SizedBox(height: 12),
+                ],
                 _CardPreview(card: card.valueOrNull),
                 const SizedBox(height: 10),
                 Row(
@@ -119,6 +124,13 @@ class ContactCardScreen extends ConsumerWidget {
           _Label(text: t.contactAddLabel),
           const _AddContactField(),
           const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          _ActionButton(
+            icon: Icons.qr_code_scanner_rounded,
+            label: t.qrScanAction,
+            primary: true,
+            onTap: (buttonContext) => buttonContext.push('/qr/scan'),
+          ),
           GlassCard(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,9 +302,8 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
             child: Text(
               t.contactAddAction,
               style: TextStyle(
-                color: _busy
-                    ? AppColors.textOnGlassFaint
-                    : AppColors.brandPrimary,
+                color:
+                    _busy ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
               ),
@@ -330,7 +341,9 @@ class _CardPreviewState extends State<_CardPreview> {
     // glance can tell two cards apart without having to compare 275 characters.
     final compact = loading
         ? '…'
-        : (card.length > 40 ? '${card.substring(0, 22)}…${card.substring(card.length - 12)}' : card);
+        : (card.length > 40
+            ? '${card.substring(0, 22)}…${card.substring(card.length - 12)}'
+            : card);
 
     return Container(
       width: double.infinity,
@@ -366,8 +379,10 @@ class _CardPreviewState extends State<_CardPreview> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _expanded ? 'Сховати' : 'Показати повний код · ${card.length} симв.',
-                    style: TextStyle(
+                    _expanded
+                        ? 'Сховати'
+                        : 'Показати повний код · ${card.length} симв.',
+                    style: const TextStyle(
                       color: AppColors.brandPrimary,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
@@ -409,9 +424,8 @@ class _ActionButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           gradient: primary && enabled ? AppColors.brandGradient : null,
-          color: primary && enabled
-              ? null
-              : Colors.white.withValues(alpha: 0.08),
+          color:
+              primary && enabled ? null : Colors.white.withValues(alpha: 0.08),
           border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
           borderRadius: BorderRadius.circular(12),
         ),

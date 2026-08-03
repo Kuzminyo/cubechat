@@ -18,7 +18,8 @@ class IdentityService {
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
-              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+              iOptions:
+                  IOSOptions(accessibility: KeychainAccessibility.first_unlock),
             );
 
   static const _privateKeyKey = 'cubechat.identity.priv';
@@ -123,6 +124,39 @@ class IdentityService {
     }
   }
 
+  /// Replaces the long-term identity during an authenticated backup restore.
+  /// Both seeds are validated and materialized before secure storage changes.
+  Future<IdentityKeys> restorePrivateKeys(
+    Uint8List xPrivateKey,
+    Uint8List signingSeed,
+  ) async {
+    if (xPrivateKey.length != 32 || signingSeed.length != 32) {
+      throw const FormatException('identity seeds must be 32 bytes');
+    }
+    final restored = await _materialize(xPrivateKey, signingSeed);
+    final oldX = await _storage.read(key: _privateKeyKey);
+    final oldEd = await _storage.read(key: _signSeedKey);
+    try {
+      await _storage.write(
+        key: _privateKeyKey,
+        value: _hexEncode(xPrivateKey),
+      );
+      await _storage.write(
+        key: _signSeedKey,
+        value: _hexEncode(signingSeed),
+      );
+    } catch (_) {
+      await _restoreStoredValue(_privateKeyKey, oldX);
+      await _restoreStoredValue(_signSeedKey, oldEd);
+      rethrow;
+    }
+    _cached = restored;
+    return restored;
+  }
+
+  Future<void> _restoreStoredValue(String key, String? value) => value == null
+      ? _storage.delete(key: key)
+      : _storage.write(key: key, value: value);
   Future<IdentityKeys> _materialize(Uint8List xPriv, Uint8List edSeed) async {
     final xPair = await _x25519.newKeyPairFromSeed(xPriv);
     final xPub = await xPair.extractPublicKey();
@@ -148,7 +182,8 @@ class IdentityService {
   }
 }
 
-final identityServiceProvider = Provider<IdentityService>((_) => IdentityService());
+final identityServiceProvider =
+    Provider<IdentityService>((_) => IdentityService());
 
 final identityProvider = FutureProvider<IdentityKeys>((ref) {
   return ref.watch(identityServiceProvider).load();

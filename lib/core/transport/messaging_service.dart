@@ -12,10 +12,12 @@ import 'package:hive/hive.dart';
 import 'package:cryptography/cryptography.dart';
 
 import '../../features/channels/data/channel_controller.dart';
+import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
+import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -55,6 +57,8 @@ import 'file_reassembly.dart';
 import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inner_payload.dart';
+import 'channel_poll.dart';
+import 'channel_admin.dart';
 import 'peer_id.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
@@ -134,6 +138,7 @@ class MessagingService {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
     _startPresenceTimer();
+    _startFileQueueTimer();
     _wireNostrFallback();
     _startInBackground('relay buffer', _loadRelayBuffer());
     _startInBackground(
@@ -186,6 +191,8 @@ class MessagingService {
   StreamSubscription<PeripheralEvent>? _peripheralEventsSub;
   Timer? _announcementTimer;
   Timer? _presenceTimer;
+  Timer? _fileQueueTimer;
+  bool _drainingFileQueue = false;
 
   /// Our rotating routing id, cached per epoch. See [PeerId] for why it moves
   /// and [_myPubkeyHash] for how far back the cache is kept.
@@ -897,7 +904,7 @@ class MessagingService {
     // Mint the transport msgId up front so the local Message can record it as
     // its wireId — the stable handle a read receipt / reaction from the peer
     // will reference back.
-    final msgId = TransportEnvelope.newMsgId();
+    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -1021,6 +1028,7 @@ class MessagingService {
       final transportId = session?.peerId;
       final wireBytes = outboundFrame.encode();
       var deliveredVia = 0;
+      MessageRoute? deliveredRoute;
       // Every delivery attempt is wrapped so a transient BLE failure (stale
       // link, peer's Bluetooth turned off, write rejected) leaves
       // deliveredVia == 0 and routes the message into the pending outbox —
@@ -1031,6 +1039,7 @@ class MessagingService {
           try {
             await _writeFrameToClient(client, wireBytes);
             deliveredVia = 1;
+            deliveredRoute = MessageRoute.bluetooth;
           } catch (e) {
             DebugLog.instance
                 .log('MESH', 'direct write failed ($e) — will queue');
@@ -1039,14 +1048,19 @@ class MessagingService {
         if (deliveredVia == 0) {
           try {
             final ok = await _notifyFrameToPeripheral(wireBytes);
-            if (ok) deliveredVia = 1;
+            if (ok) {
+              deliveredVia = 1;
+              deliveredRoute = MessageRoute.bluetooth;
+            }
           } catch (_) {}
         }
         if (deliveredVia == 0) {
           deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
+          if (deliveredVia > 0) deliveredRoute = MessageRoute.mesh;
         }
       } else {
         deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
+        if (deliveredVia > 0) deliveredRoute = MessageRoute.mesh;
       }
 
       // Mesh couldn't carry it → try the internet fallback before queueing.
@@ -1055,14 +1069,25 @@ class MessagingService {
       // is a dumb pipe that learns only who talks to whom, and when.
       if (deliveredVia == 0 && await _sendOverNostr(canonicalId, wireBytes)) {
         deliveredVia = 1;
+        deliveredRoute = MessageRoute.internet;
       }
 
       if (deliveredVia > 0) {
         messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
+        messages.updateRoute(
+            canonicalId, msg.id, deliveredRoute ?? MessageRoute.mesh,
+            hops: deliveredRoute == MessageRoute.bluetooth ? 1 : null);
         if (chatId != canonicalId) {
           messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
+          messages.updateRoute(
+              chatId, msg.id, deliveredRoute ?? MessageRoute.mesh,
+              hops: deliveredRoute == MessageRoute.bluetooth ? 1 : null);
         }
       } else {
+        messages.updateRoute(canonicalId, msg.id, MessageRoute.queued);
+        if (chatId != canonicalId) {
+          messages.updateRoute(chatId, msg.id, MessageRoute.queued);
+        }
         // Recipient unreachable right now → opportunistic store-and-forward:
         // hold the encrypted frame and hand it over the moment they connect
         // (handled by _flushStoreForwardFor on the next handshake). The
@@ -1152,10 +1177,9 @@ class MessagingService {
     if (peerPub == null || canonicalId == null) {
       throw StateError('cannot send file: no recipient pubkey for $chatId');
     }
-    _requireMediaRoute(canonicalId);
 
     final size = await file.length();
-    final relayOnly = !_hasAnyLink;
+    final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
     final cap = relayOnly ? maxFileBytesRelay : maxFileBytesMesh;
     if (size > cap) {
       throw FileTooLarge(size: size, cap: cap, relayOnly: relayOnly);
@@ -1192,6 +1216,29 @@ class MessagingService {
     messages.append(canonicalId, msg);
     if (chatId != canonicalId) messages.append(chatId, msg);
 
+    final transferId = _hexOf(fileId);
+    final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    transfers.register(
+      FileTransferTask(
+        id: transferId,
+        chatId: canonicalId,
+        fileName: safe,
+        messageId: msg.id,
+        filePath: stored.path,
+        mime: mime,
+        bytesTotal: size,
+        completedUnits: 0,
+        totalUnits: 0,
+        direction: FileTransferDirection.outgoing,
+        status: FileTransferStatus.queued,
+        createdAt: msg.sentAt,
+        updatedAt: msg.sentAt,
+      ),
+    );
+    if (!_hasMediaRoute(canonicalId)) {
+      return msg;
+    }
+
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
@@ -1203,6 +1250,7 @@ class MessagingService {
           'file too large: $total chunks > ${FileChunk.maxChunks} cap',
         );
       }
+      transfers.setProgress(transferId, 0, total);
 
       // Streamed, so the digest costs one buffer rather than the whole file.
       final sink = Sha256().newHashSink();
@@ -1235,6 +1283,17 @@ class MessagingService {
       final handle = await stored.open();
       try {
         for (var i = 0; i < total; i++) {
+          if (!await transfers.waitUntilRunnable(transferId)) {
+            messages.updateStatus(
+              canonicalId,
+              msg.id,
+              MessageStatus.failed,
+            );
+            if (chatId != canonicalId) {
+              messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+            }
+            return msg;
+          }
           final want = (i == total - 1) ? size - i * chunkData : chunkData;
           final data = await handle.read(want);
           final chunk = FileChunk(
@@ -1255,7 +1314,7 @@ class MessagingService {
           final env = TransportEnvelope(
             originPubkeyHash: myHash,
             destPubkeyHash: peerHash,
-            msgId: TransportEnvelope.newMsgId(),
+            msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
             ttl: _meshTtl,
             body: body,
           );
@@ -1270,6 +1329,7 @@ class MessagingService {
           if (!sent) {
             throw const MediaRouteUnavailable();
           }
+          transfers.setProgress(transferId, i + 1, total);
           // Same pacing as the photo path: some Android stacks drop notifies
           // when the sender outruns the receiver's read loop. Skipped when the
           // relay is carrying this — the gap exists for a BLE notify pipe, and
@@ -1286,6 +1346,7 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
+      transfers.setStatus(transferId, FileTransferStatus.completed);
     } catch (e, st) {
       DebugLog.instance.log('FILE', 'sendFile failed: $e');
       debugPrint('$st');
@@ -1293,9 +1354,43 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
+      transfers.setStatus(
+        transferId,
+        FileTransferStatus.failed,
+        error: e.toString(),
+      );
       rethrow;
     }
     return msg;
+  }
+
+  Future<void> retryFileTransfer(String transferId) async {
+    final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    final task = _ref.read(fileTransferControllerProvider)[transferId];
+    if (task == null || task.direction != FileTransferDirection.outgoing) {
+      return;
+    }
+    if (!_hasMediaRoute(task.chatId)) return;
+    final file = File(task.filePath);
+    if (!await file.exists()) {
+      transfers.setStatus(
+        transferId,
+        FileTransferStatus.failed,
+        error: 'source file is missing',
+      );
+      return;
+    }
+    await transfers.remove(transferId);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    if (task.messageId case final messageId?) {
+      messages.deleteLocal(task.chatId, messageId);
+    }
+    await sendFile(
+      task.chatId,
+      file: file,
+      fileName: task.fileName,
+      mime: task.mime,
+    );
   }
 
   Future<Message> sendImage(
@@ -1421,7 +1516,7 @@ class MessagingService {
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
-          msgId: TransportEnvelope.newMsgId(),
+          msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           ttl: _meshTtl,
           body: body,
         );
@@ -1586,7 +1681,7 @@ class MessagingService {
         final env = TransportEnvelope(
           originPubkeyHash: myHash,
           destPubkeyHash: peerHash,
-          msgId: TransportEnvelope.newMsgId(),
+          msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           ttl: _meshTtl,
           body: body,
         );
@@ -1678,7 +1773,7 @@ class MessagingService {
             channel,
             InnerPayloadType.receipt,
             receipt.encode(),
-            TransportEnvelope.newMsgId(),
+            TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           );
           await _broadcastChannelFrame(frame);
         } else {
@@ -1735,7 +1830,7 @@ class MessagingService {
         final channel =
             _ref.read(channelControllerProvider.notifier).byName(chatId);
         if (channel == null) return;
-        final msgId = TransportEnvelope.newMsgId();
+        final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
         final frame = await _buildChannelFrame(
             channel, InnerPayloadType.reaction, body, msgId);
         await _broadcastChannelFrame(frame);
@@ -1785,7 +1880,7 @@ class MessagingService {
           channel,
           InnerPayloadType.edit,
           body,
-          TransportEnvelope.newMsgId(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         );
         await _broadcastChannelFrame(frame);
       } else {
@@ -1831,7 +1926,7 @@ class MessagingService {
           channel,
           InnerPayloadType.delete,
           body,
-          TransportEnvelope.newMsgId(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         );
         await _broadcastChannelFrame(frame);
       } else {
@@ -1891,7 +1986,7 @@ class MessagingService {
           channel,
           InnerPayloadType.pin,
           body,
-          TransportEnvelope.newMsgId(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         );
         await _broadcastChannelFrame(frame);
       } else {
@@ -2055,6 +2150,16 @@ class MessagingService {
       final channel = await _ref
           .read(channelControllerProvider.notifier)
           .joinWithKey(invite.name, invite.key);
+      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      await roster.record(
+        channel.name,
+        ChannelMember(
+          id: _hexOf(senderEdPub).substring(0, 16),
+          name: inviter.displayName,
+          isAdmin: true,
+          lastSeen: DateTime.now(),
+        ),
+      );
       DebugLog.instance.log('CHAN',
           'auto-joined ${channel.name} on invite from ${inviter.displayName}');
       if (!AppLifecycle.instance.isViewingChat(channel.name)) {
@@ -2066,6 +2171,7 @@ class MessagingService {
           isGroup: true,
         ));
       }
+      await roster.ensureSelf(channel.name);
     } catch (e) {
       DebugLog.instance.log('CHAN', 'channel invite join failed: $e');
     }
@@ -2089,8 +2195,11 @@ class MessagingService {
     if (channel == null) {
       throw StateError('not a member of $channelName');
     }
+    await _ref
+        .read(channelRosterControllerProvider.notifier)
+        .ensureSelf(channel.name, adminWhenFirst: true);
     final canonicalId = channel.name;
-    final msgId = TransportEnvelope.newMsgId();
+    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -2116,11 +2225,120 @@ class MessagingService {
       );
       DebugLog.instance
           .log('CHAN', 'channel post to ${channel.name} fanout=$fanout');
+      messages.updateRoute(
+        canonicalId,
+        msg.id,
+        fanout > 0 ? MessageRoute.mesh : MessageRoute.queued,
+      );
     } catch (e, st) {
       debugPrint('sendChannelText failed: $e\n$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
     }
     return msg;
+  }
+
+  /// Publishes a signed poll to a joined channel.
+  Future<Message> sendChannelPoll(
+    String channelName,
+    String question,
+    List<String> options,
+  ) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final payload = ChannelPollPayload.create(question, options);
+    await _ref
+        .read(channelRosterControllerProvider.notifier)
+        .ensureSelf(channel.name, adminWhenFirst: true);
+
+    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
+    final message = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: channel.name,
+      text: payload.question!,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.poll,
+      wireId: TransportEnvelope.hashHex(msgId),
+      pollOptions: payload.options,
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(channel.name, message);
+    try {
+      final frame = await _buildChannelFrame(
+        channel,
+        InnerPayloadType.channelPoll,
+        payload.encode(),
+        msgId,
+      );
+      final fanout = await _broadcastChannelFrame(frame);
+      messages.updateStatus(
+        channel.name,
+        message.id,
+        fanout > 0 ? MessageStatus.delivered : MessageStatus.sending,
+      );
+      messages.updateRoute(
+        channel.name,
+        message.id,
+        fanout > 0 ? MessageRoute.mesh : MessageRoute.queued,
+      );
+    } catch (error) {
+      messages.updateStatus(channel.name, message.id, MessageStatus.failed);
+      rethrow;
+    }
+    return message;
+  }
+
+  /// Casts or changes the local user's vote and broadcasts the signed choice.
+  Future<void> sendChannelPollVote(
+    String channelName,
+    String pollWireId,
+    int option,
+  ) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final payload = ChannelPollPayload.vote(pollWireId, option);
+    _ref.read(messagesControllerProvider.notifier).applyPollVote(
+          channel.name,
+          pollWireId: pollWireId,
+          voterId: 'me',
+          option: option,
+        );
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelPoll,
+      payload.encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    await _broadcastChannelFrame(frame);
+  }
+
+  /// Changes an administrator role locally and broadcasts the signed change.
+  /// Only a signer already known as an administrator may create the event.
+  Future<void> sendChannelAdminChange(
+    String channelName,
+    String memberId,
+    bool isAdmin,
+  ) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('administrator permission required');
+    }
+    final change = ChannelAdminChange(memberId: memberId, isAdmin: isAdmin);
+    await roster.setAdmin(channel.name, memberId, isAdmin);
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelAdmin,
+      change.encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    await _broadcastChannelFrame(frame);
   }
 
   /// Sign + SealedBox-encrypt a small control payload (read receipt /
@@ -2142,7 +2360,7 @@ class MessagingService {
     final identity = await _ref.read(identityProvider.future);
     final myHash = await _myPubkeyHash();
     final peerHash = await _peerPubkeyHash(peerPub);
-    final msgId = TransportEnvelope.newMsgId();
+    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final ctx = SignedPayload.contextBytes(
       originPubkeyHash: myHash,
       destPubkeyHash: peerHash,
@@ -2365,6 +2583,16 @@ class MessagingService {
       final unpacked = unpackInnerPayload(innerBytes);
       final authorName = _resolveAuthorName(senderEdPub);
       final reactorId = _hexOf(senderEdPub).substring(0, 16);
+      await _ref.read(channelRosterControllerProvider.notifier).record(
+            channel.name,
+            ChannelMember(
+              id: reactorId,
+              name: authorName,
+              isAdmin: false,
+              lastSeen: DateTime.now(),
+            ),
+          );
+      final incomingHops = peerId == _nostrPeerId ? null : env.traversedHops;
       switch (unpacked.type) {
         case InnerPayloadType.text:
           final plaintext = utf8.decode(
@@ -2382,6 +2610,12 @@ class MessagingService {
             // The fingerprint, not the name: an inbound edit is checked
             // against it, and display names are not identities.
             authorId: reactorId,
+            route: peerId == _nostrPeerId
+                ? MessageRoute.internet
+                : (incomingHops ?? 2) > 1
+                    ? MessageRoute.mesh
+                    : MessageRoute.bluetooth,
+            routeHops: incomingHops,
           );
           // append() is idempotent on wireId; only a genuinely new message
           // warrants a notification.
@@ -2408,6 +2642,12 @@ class MessagingService {
             authorName: authorName,
             authorId: reactorId,
             replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+            route: peerId == _nostrPeerId
+                ? MessageRoute.internet
+                : (incomingHops ?? 2) > 1
+                    ? MessageRoute.mesh
+                    : MessageRoute.bluetooth,
+            routeHops: incomingHops,
           );
           if (_ref
               .read(messagesControllerProvider.notifier)
@@ -2460,6 +2700,54 @@ class MessagingService {
             );
           }
 
+        case InnerPayloadType.channelPoll:
+          final poll = ChannelPollPayload.decode(unpacked.body);
+          if (poll.operation == ChannelPollOperation.create) {
+            final message = Message(
+              id: 'm${DateTime.now().microsecondsSinceEpoch}',
+              chatId: channel.name,
+              text: poll.question!,
+              sentAt: DateTime.now(),
+              isMine: false,
+              kind: MessageKind.poll,
+              wireId: TransportEnvelope.hashHex(env.msgId),
+              authorName: authorName,
+              authorId: reactorId,
+              pollOptions: poll.options,
+              route: peerId == _nostrPeerId
+                  ? MessageRoute.internet
+                  : (incomingHops ?? 2) > 1
+                      ? MessageRoute.mesh
+                      : MessageRoute.bluetooth,
+              routeHops: incomingHops,
+            );
+            if (_ref
+                .read(messagesControllerProvider.notifier)
+                .append(channel.name, message)) {
+              _notifyChannel(
+                channel: channel,
+                authorName: authorName,
+                message: message,
+              );
+            }
+          } else {
+            _ref.read(messagesControllerProvider.notifier).applyPollVote(
+                  channel.name,
+                  pollWireId: poll.targetWireId!,
+                  voterId: reactorId,
+                  option: poll.option!,
+                );
+          }
+        case InnerPayloadType.channelAdmin:
+          final change = ChannelAdminChange.decode(unpacked.body);
+          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          if (roster.isAdmin(channel.name, reactorId)) {
+            await roster.setAdmin(
+              channel.name,
+              change.memberId,
+              change.isAdmin,
+            );
+          }
         case InnerPayloadType.channelInvite:
         case InnerPayloadType.imageChunk:
         case InnerPayloadType.audioChunk:
@@ -2607,9 +2895,15 @@ class MessagingService {
     required Message message,
   }) {
     if (AppLifecycle.instance.isViewingChat(channel.name)) return;
+    final nickname =
+        _ref.read(nicknameControllerProvider).replaceAll(RegExp(r'\s+'), '_');
+    final mentioned = RegExp(
+      r'(^|\s)@' + RegExp.escape(nickname) + r'(\s|$)',
+      caseSensitive: false,
+    ).hasMatch(message.text);
     unawaited(NotificationService.instance.showMessage(
       threadKey: channel.name,
-      title: channel.name,
+      title: mentioned ? '@ ${channel.name}' : channel.name,
       body: '$authorName: ${message.text}',
       senderId: channel.name,
       isGroup: true,
@@ -2999,6 +3293,15 @@ class MessagingService {
       final senderPub = session?.remoteStaticPublicKey ??
           await _canonicalPubForOrigin(env.originPubkeyHash);
 
+      final traversedHops = env.traversedHops;
+      final directLegacy =
+          senderPub != null && session?.remotePubkeyHex == _hexOf(senderPub);
+      final incomingRoute = peerId == _nostrPeerId
+          ? MessageRoute.internet
+          : (traversedHops ?? (directLegacy ? 1 : 2)) > 1
+              ? MessageRoute.mesh
+              : MessageRoute.bluetooth;
+      final incomingHops = peerId == _nostrPeerId ? null : traversedHops;
       // Blocked peer: drop everything they send (messages, receipts,
       // reactions, edits) before it can touch the store or the UI.
       if (senderPub != null &&
@@ -3035,6 +3338,8 @@ class MessagingService {
             isMine: false,
             forwardSecret: cipher == _cipherX3dh,
             wireId: TransportEnvelope.hashHex(env.msgId),
+            route: incomingRoute,
+            routeHops: incomingHops,
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);
@@ -3054,6 +3359,8 @@ class MessagingService {
             forwardSecret: cipher == _cipherX3dh,
             wireId: TransportEnvelope.hashHex(env.msgId),
             replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+            route: incomingRoute,
+            routeHops: incomingHops,
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);
@@ -3076,6 +3383,12 @@ class MessagingService {
             senderEdPub: verifiedSenderEdPub,
             body: unpacked.body,
           );
+
+        case InnerPayloadType.channelPoll:
+          break;
+
+        case InnerPayloadType.channelAdmin:
+          break;
 
         case InnerPayloadType.channelInvite:
           await _ingestChannelInvite(
@@ -3279,8 +3592,15 @@ class MessagingService {
       return;
     }
 
-    final done = await (await _files()).ingest(chunk);
-    if (done == null) return;
+    final files = await _files();
+    final done = await files.ingest(chunk);
+    if (done == null) {
+      final completed = (files.progressOf(chunk.fileId) * chunk.total).round();
+      _ref
+          .read(fileTransferControllerProvider.notifier)
+          .setProgress(key, completed, chunk.total);
+      return;
+    }
 
     _gcMediaBuffers();
     final entry = _pendingManifests.remove(key);
@@ -3334,6 +3654,11 @@ class MessagingService {
       final target = File('${inbox.path}${Platform.pathSeparator}'
           '${_hexOf(manifest.mediaId).substring(0, 8)}-$safe');
       await assembled.file.rename(target.path);
+      _ref.read(fileTransferControllerProvider.notifier).complete(
+            _hexOf(manifest.mediaId),
+            filePath: target.path,
+            bytesTotal: assembled.bytes,
+          );
 
       DebugLog.instance.log(
           'FILE',
@@ -3420,6 +3745,26 @@ class MessagingService {
       peerId: peerId,
       senderPub: senderPub,
     );
+
+    if (manifest.kind == MediaKind.file) {
+      final now = DateTime.now();
+      _ref.read(fileTransferControllerProvider.notifier).register(
+            FileTransferTask(
+              id: key,
+              chatId: peerId,
+              fileName: manifest.name ?? 'file',
+              filePath: '',
+              mime: manifest.mime,
+              bytesTotal: 0,
+              completedUnits: 0,
+              totalUnits: manifest.total,
+              direction: FileTransferDirection.incoming,
+              status: FileTransferStatus.transferring,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+    }
     DebugLog.instance.log(
         'CRYPTO',
         'cached signed manifest $key '
@@ -3677,7 +4022,7 @@ class MessagingService {
       InnerPayloadType.mediaManifest,
       manifest.encode(),
     );
-    final msgId = TransportEnvelope.newMsgId();
+    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final ctx = SignedPayload.contextBytes(
       originPubkeyHash: myHash,
       destPubkeyHash: peerHash,
@@ -3987,6 +4332,44 @@ class MessagingService {
   bool get _hasAnyLink =>
       _clients.values.any((c) => c.isReady) ||
       _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+
+  bool hasMediaRouteFor(String chatId) => _hasMediaRoute(chatId);
+
+  void _startFileQueueTimer() {
+    _fileQueueTimer?.cancel();
+    _fileQueueTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_drainFileQueue()),
+    );
+  }
+
+  Future<void> _drainFileQueue() async {
+    if (_drainingFileQueue || _disposed) return;
+    _drainingFileQueue = true;
+    try {
+      await _ref.read(fileTransferControllerProvider.notifier).loaded;
+      final queued = _ref
+          .read(fileTransferControllerProvider)
+          .values
+          .where(
+            (task) =>
+                task.direction == FileTransferDirection.outgoing &&
+                task.status == FileTransferStatus.queued &&
+                _hasMediaRoute(task.chatId),
+          )
+          .toList();
+      for (final task in queued) {
+        if (_disposed) break;
+        try {
+          await retryFileTransfer(task.id);
+        } catch (e) {
+          DebugLog.instance.log('FILE', 'queued retry failed: $e');
+        }
+      }
+    } finally {
+      _drainingFileQueue = false;
+    }
+  }
 
   bool _hasMediaRoute(String canonicalId) {
     if (_hasAnyLink) return true;
@@ -4556,7 +4939,7 @@ class MessagingService {
         final env = TransportEnvelope(
           originPubkeyHash: originHash,
           destPubkeyHash: await _peerPubkeyHash(peerPub),
-          msgId: TransportEnvelope.newMsgId(),
+          msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           ttl: _meshTtl,
           body: _tagBody(
             _announcementSealed,
@@ -4624,7 +5007,7 @@ class MessagingService {
     final env = TransportEnvelope(
       originPubkeyHash: originHash,
       destPubkeyHash: TransportEnvelope.broadcastDest(),
-      msgId: TransportEnvelope.newMsgId(),
+      msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
       ttl: ttl,
       body: signedBody,
     );
@@ -4767,6 +5150,8 @@ class MessagingService {
         preview = '📎 ${message.fileName ?? 'File'}';
       case MessageKind.text:
         preview = message.text;
+      case MessageKind.poll:
+        preview = '📊 ${message.text}';
     }
     unawaited(NotificationService.instance.showMessage(
       threadKey: canonicalId,
@@ -4859,9 +5244,14 @@ class MessagingService {
       messages.updateStatus(
           ref.canonicalId, ref.messageId, MessageStatus.delivered);
       if (ref.chatId != ref.canonicalId) {
+        messages.updateRoute(
+            ref.canonicalId, ref.messageId, MessageRoute.bluetooth,
+            hops: 1);
         messages.updateStatus(
             ref.chatId, ref.messageId, MessageStatus.delivered);
       }
+      messages.updateRoute(ref.chatId, ref.messageId, MessageRoute.bluetooth,
+          hops: 1);
       DebugLog.instance.log(
           'MESH', 'outbox delivered: ${ref.messageId} → ${ref.canonicalId}');
     } catch (_) {
@@ -5049,6 +5439,8 @@ class MessagingService {
     _announcementTimer = null;
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _fileQueueTimer?.cancel();
+    _fileQueueTimer = null;
     // Flush any pending buffer write synchronously so a held frame isn't
     // lost if we're disposed inside the debounce window.
     _relayPersistTimer?.cancel();

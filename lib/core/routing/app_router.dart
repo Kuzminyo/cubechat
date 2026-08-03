@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/chat/presentation/chat_screen.dart';
+import '../../features/backup/presentation/backup_screen.dart';
+import '../../features/backup/presentation/phone_transfer_screen.dart';
+import '../../features/channels/presentation/channel_info_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
+import '../../features/files/presentation/file_transfer_center_screen.dart';
+import '../../features/qr/presentation/qr_scanner_screen.dart';
 import '../../features/peers/presentation/contact_card_screen.dart';
 import '../../features/peers/presentation/contact_content_screen.dart';
 import '../../features/peers/presentation/contact_profile_screen.dart';
@@ -122,10 +127,54 @@ GoRouter buildRouter() {
         },
       ),
       GoRoute(
+        path: '/channel-info/:name',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final channel = '#${state.pathParameters['name']!}';
+          return fadeSlidePage(
+            child: ChannelInfoScreen(channelName: channel),
+            state: state,
+          );
+        },
+      ),
+
+      GoRoute(
         path: '/diagnostics',
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/transfers',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: FileTransferCenterScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/backup',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: BackupScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/phone-transfer',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: PhoneTransferScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/qr/scan',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const QrScannerScreen(),
           state: state,
         ),
       ),

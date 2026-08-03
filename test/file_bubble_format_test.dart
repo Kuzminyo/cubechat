@@ -1,3 +1,4 @@
+import 'package:cubechat/core/utils/file_mime.dart';
 import 'package:cubechat/features/chat/presentation/widgets/file_bubble.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,6 +25,31 @@ void main() {
 
     test('stops at gigabytes rather than inventing a unit', () {
       expect(formatBytes(5 * 1024 * 1024 * 1024), endsWith('GB'));
+    });
+  });
+
+  group('fileMimeType', () {
+    test('routes common image files to gallery-capable handlers', () {
+      expect(fileMimeType('photo.jpg'), 'image/jpeg');
+      expect(fileMimeType('PHOTO.JPEG'), 'image/jpeg');
+      expect(fileMimeType('screenshot.png'), 'image/png');
+    });
+
+    test('replaces an unhelpful generic type using the extension', () {
+      expect(
+        fileMimeType(
+          'photo.png',
+          declaredMime: 'application/octet-stream',
+        ),
+        'image/png',
+      );
+    });
+
+    test('keeps a specific type supplied by the sender', () {
+      expect(
+        fileMimeType('download.bin', declaredMime: 'application/pdf'),
+        'application/pdf',
+      );
     });
   });
 }

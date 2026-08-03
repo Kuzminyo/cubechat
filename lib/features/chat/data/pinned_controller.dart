@@ -30,22 +30,19 @@ class PinnedMessage {
   int get hashCode => Object.hash(wireId, pinnedAt);
 }
 
-/// Pinned message per chat, keyed the way the chat list keys chats: a peer's
-/// pubkey-hex or a `#channel` name.
+/// Pinned messages per chat, keyed the way the chat list keys chats: a peer's
+/// pubkey-hex or a `#channel` name. Up to 20 pins are retained in chronological
+/// order and the public provider value exposes the newest pin for compatibility.
 ///
-/// One pin per chat, deliberately: a stack of pins needs its own list screen and
-/// a way to page between them, and the thing people actually reach for is "keep
-/// this one where I can see it". Pinning something else replaces it.
-///
-/// Kept in the shared settings box next to favourites — it's small, and it is
-/// *not* part of a peer's identity record. Unlike favourites, though, a pin is
-/// conversation state rather than a private preference: [MessagingService]
-/// mirrors every change to the other side, so both people see the same banner.
+/// Pins live in the encrypted settings box. They are conversation state rather
+/// than a private preference, so [MessagingService] mirrors every change to the
+/// other side and both people see the same carousel.
 class PinnedController extends Notifier<Map<String, PinnedMessage>> {
   static const _key = 'pinned_messages';
 
   Box<dynamic>? _box;
   Future<void>? _loading;
+  final Map<String, List<PinnedMessage>> _all = {};
 
   /// Completes once the persisted pins have been merged into [state]; tests
   /// await it.
@@ -67,12 +64,14 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
       final loaded = <String, PinnedMessage>{};
       for (final entry in raw.entries) {
         final chatId = entry.key;
-        final value = entry.value;
-        if (chatId is! String || value is! Map) continue;
-        final wireId = value['wireId'];
-        final at = DateTime.tryParse((value['atIso'] as String?) ?? '');
-        if (wireId is! String || at == null) continue;
-        loaded[chatId] = PinnedMessage(wireId: wireId, pinnedAt: at);
+        if (chatId is! String) continue;
+        final values =
+            entry.value is List ? entry.value as List : [entry.value];
+        final pins = values.map(_decodePin).whereType<PinnedMessage>().toList()
+          ..sort((a, b) => a.pinnedAt.compareTo(b.pinnedAt));
+        if (pins.isEmpty) continue;
+        _all[chatId] = pins;
+        loaded[chatId] = pins.last;
       }
       if (loaded.isNotEmpty) {
         // Merge under anything pinned while the box was still opening.
@@ -85,35 +84,49 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
 
   PinnedMessage? pinnedIn(String chatId) => state[chatId];
 
+  List<PinnedMessage> pinnedAllIn(String chatId) =>
+      List.unmodifiable(_all[chatId] ?? const <PinnedMessage>[]);
+
   bool isPinned(String chatId, String wireId) =>
-      state[chatId]?.wireId == wireId;
+      _all[chatId]?.any((pin) => pin.wireId == wireId) ?? false;
 
-  /// Pin [wireId] in [chatId], replacing whatever was pinned there. [at] lets
-  /// the caller stamp a peer's pin with the time it arrived.
+  /// Adds another pin. Re-pinning the same message moves it to the front of
+  /// the banner carousel without duplicating it.
   Future<void> pin(String chatId, String wireId, {DateTime? at}) async {
-    state = {
-      ...state,
-      chatId: PinnedMessage(wireId: wireId, pinnedAt: at ?? DateTime.now()),
-    };
+    final next = [...?_all[chatId]]
+      ..removeWhere((pin) => pin.wireId == wireId)
+      ..add(PinnedMessage(wireId: wireId, pinnedAt: at ?? DateTime.now()));
+    if (next.length > 20) next.removeAt(0);
+    _all[chatId] = next;
+    state = {...state, chatId: next.last};
     await _persist();
   }
 
-  /// Clear the pin in [chatId]. Passing [wireId] makes it conditional — an
-  /// unpin that names a message which is no longer the pinned one is stale (two
-  /// devices racing) and must not clear the newer pin.
+  /// Removes one named pin, or all pins in the conversation when no id is
+  /// supplied. Old single-pin persisted data is accepted during migration.
   Future<void> unpin(String chatId, {String? wireId}) async {
-    final current = state[chatId];
-    if (current == null) return;
-    if (wireId != null && current.wireId != wireId) return;
-    state = {...state}..remove(chatId);
+    final current = _all[chatId];
+    if (current == null || current.isEmpty) return;
+    final next = wireId == null
+        ? <PinnedMessage>[]
+        : current.where((pin) => pin.wireId != wireId).toList();
+    if (next.length == current.length) return;
+    if (next.isEmpty) {
+      _all.remove(chatId);
+      state = {...state}..remove(chatId);
+    } else {
+      _all[chatId] = next;
+      state = {...state, chatId: next.last};
+    }
     await _persist();
   }
 
-  /// Drop a chat's pin because the chat itself is gone.
+  /// Drop all of a chat's pins because the chat itself is gone.
   Future<void> forget(String chatId) => unpin(chatId);
 
   /// Used by Emergency Wipe.
   Future<void> clear() async {
+    _all.clear();
     state = const <String, PinnedMessage>{};
     try {
       await _box?.delete(_key);
@@ -122,16 +135,27 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
     }
   }
 
+  static PinnedMessage? _decodePin(dynamic value) {
+    if (value is! Map) return null;
+    final wireId = value['wireId'];
+    final at = DateTime.tryParse((value['atIso'] as String?) ?? '');
+    if (wireId is! String || at == null) return null;
+    return PinnedMessage(wireId: wireId, pinnedAt: at);
+  }
+
   Future<void> _persist() async {
     final box = _box;
     if (box == null) return; // not loaded yet; next change rewrites the lot
     try {
       await box.put(_key, {
-        for (final e in state.entries)
-          e.key: {
-            'wireId': e.value.wireId,
-            'atIso': e.value.pinnedAt.toIso8601String(),
-          },
+        for (final e in _all.entries)
+          e.key: [
+            for (final pin in e.value)
+              {
+                'wireId': pin.wireId,
+                'atIso': pin.pinnedAt.toIso8601String(),
+              },
+          ],
       });
     } catch (e) {
       debugPrint('PinnedController persist failed: $e');

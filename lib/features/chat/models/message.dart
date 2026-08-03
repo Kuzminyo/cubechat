@@ -36,7 +36,9 @@ class ChannelRead {
 /// What kind of payload this message carries. Media messages keep their raw
 /// bytes on disk (see [Message.mediaPath]) and use [text] only for an
 /// optional caption / mime label shown in the bubble.
-enum MessageKind { text, image, audio, file }
+enum MessageKind { text, image, audio, file, poll }
+
+enum MessageRoute { bluetooth, mesh, internet, queued }
 
 @immutable
 class Message {
@@ -65,6 +67,10 @@ class Message {
     this.reactions = const <String, Set<String>>{},
     this.readBy = const <String, ChannelRead>{},
     this.replyToWireId,
+    this.route,
+    this.routeHops,
+    this.pollOptions = const <String>[],
+    this.pollVotes = const <String, int>{},
   });
 
   final String id;
@@ -73,7 +79,15 @@ class Message {
   final DateTime sentAt;
   final bool isMine;
   final MessageStatus status;
+  final MessageRoute? route;
+  final int? routeHops;
 
+  /// Poll choices and one signed vote per participant fingerprint. Polls are
+  /// channel-only; [text] is the question and [wireId] is the poll id.
+  final List<String> pollOptions;
+
+  /// voter fingerprint (`me` locally) -> selected option index.
+  final Map<String, int> pollVotes;
   final MessageKind kind;
 
   /// True when this message was encrypted with a per-message forward-secret
@@ -158,6 +172,10 @@ class Message {
     Map<String, ChannelRead>? readBy,
     DateTime? editedAt,
     DateTime? readAt,
+    MessageRoute? route,
+    int? routeHops,
+    List<String>? pollOptions,
+    Map<String, int>? pollVotes,
   }) {
     return Message(
       id: id,
@@ -184,6 +202,10 @@ class Message {
       reactions: reactions ?? this.reactions,
       readBy: readBy ?? this.readBy,
       replyToWireId: replyToWireId,
+      route: route ?? this.route,
+      routeHops: routeHops ?? this.routeHops,
+      pollOptions: pollOptions ?? this.pollOptions,
+      pollVotes: pollVotes ?? this.pollVotes,
     );
   }
 }

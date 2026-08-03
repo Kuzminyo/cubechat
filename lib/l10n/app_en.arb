@@ -408,8 +408,154 @@
   "chatsSearchRecent": "Recent",
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search your chats and channels by name.",
-  "chatsSearchEmpty": "Nothing matches that"
-  ,
+  "chatsSearchEmpty": "Nothing matches that",
   "contactProfileViewInChat": "View in chat",
-  "chatAttachmentUnavailable": "No connection is available. Connect over Bluetooth or the internet and try again."
+  "chatDraft": "Draft",
+  "chatSearchTitle": "Search",
+  "chatSearchHint": "Search messages",
+  "chatSearchNoResults": "No matches",
+  "chatSearchPrevious": "Previous result",
+  "chatSearchNext": "Next result",
+  "chatMessageCount": "{count} messages",
+  "@chatMessageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatRouteBluetooth": "Bluetooth",
+  "chatRouteMesh": "Mesh",
+  "chatRouteInternet": "Internet",
+  "chatRouteQueued": "Queued",
+  "chatAttachmentUnavailable": "No connection is available. Connect over Bluetooth or the internet and try again.",
+  "fileTransfersTitle": "File transfers",
+  "fileTransfersClear": "Clear history",
+  "fileTransfersEmpty": "No file transfers yet",
+  "fileTransfersActive": "Active",
+  "fileTransfersHistory": "History",
+  "fileTransferPause": "Pause",
+  "fileTransferResume": "Resume",
+  "fileTransferRetry": "Retry",
+  "fileTransferQueued": "Waiting for connection",
+  "fileTransferRunning": "Transferring",
+  "fileTransferPaused": "Paused",
+  "fileTransferCompleted": "Completed",
+  "fileTransferFailed": "Failed",
+  "fileTransferCanceled": "Canceled",
+  "profileFileTransfers": "File transfers",
+  "profileFileTransfersSubtitle": "Progress, queue and transfer history",
+  "qrScanAction": "Scan QR code",
+  "qrScanTitle": "Scan QR code",
+  "qrScanHint": "Point the camera at a Cubechat contact or channel QR code.",
+  "qrFlash": "Flashlight",
+  "qrCameraError": "Camera is unavailable. Check camera permission and try again.",
+  "qrInvalid": "This is not a valid Cubechat QR code.",
+  "qrChannelAdded": "{name} added",
+  "@qrChannelAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "qrShow": "Show QR code",
+  "qrChannelTitle": "Join {name}",
+  "@qrChannelTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "profileBackup": "Encrypted backup",
+  "profileBackupSubtitle": "Move keys, contacts and history safely",
+  "backupTitle": "Encrypted backup",
+  "backupExplainer": "The backup contains your private identity keys, contacts, channels, settings and message history. It is encrypted on this phone with the password you choose; Cubechat cannot recover a forgotten password.",
+  "backupCreate": "Create backup",
+  "backupCreateSubtitle": "Encrypt everything and save a .cchatbackup file",
+  "backupRestore": "Restore backup",
+  "backupRestoreSubtitle": "Replace this phone’s Cubechat profile from a backup file",
+  "backupPasswordTitle": "Backup password",
+  "backupPasswordHint": "At least 8 characters",
+  "backupConfirmPassword": "Repeat password",
+  "backupPasswordMismatch": "Passwords do not match",
+  "backupPasswordShort": "Use at least 8 characters",
+  "backupSaveTitle": "Save Cubechat backup",
+  "backupSaved": "Encrypted backup saved",
+  "backupFailed": "Could not complete the backup operation",
+  "backupRestoreConfirmTitle": "Replace this profile?",
+  "backupRestoreConfirmMessage": "Current keys, contacts, channels, settings and history on this phone will be replaced by the selected backup.",
+  "backupRestoreConfirmAction": "Restore",
+  "backupRestored": "Backup restored",
+  "backupInvalid": "Wrong password, damaged file, or unsupported backup",
+  "channelInfoTitle": "Channel details",
+  "channelParticipantsTitle": "Participants",
+  "channelAdministratorsTitle": "Administrators",
+  "channelMakeAdmin": "Make administrator",
+  "channelRemoveAdmin": "Remove administrator",
+  "channelNoParticipants": "Participants will appear after signed activity",
+  "channelPollTitle": "Poll",
+  "channelCreatePoll": "Create poll",
+  "channelPollQuestion": "Question",
+  "channelPollOption": "Option {number}",
+  "@channelPollOption": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "channelPollAddOption": "Add option",
+  "channelPollCreate": "Publish poll",
+  "channelPollVotes": "{count, plural, =0{No votes} =1{1 vote} other{{count} votes}}",
+  "@channelPollVotes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneTransferTitle": "Transfer to a new phone",
+  "phoneTransferIntro": "Move your profile, keys, contacts, channels, settings and history directly between two phones.",
+  "phoneTransferSend": "This is the old phone",
+  "phoneTransferReceive": "This is the new phone",
+  "phoneTransferSameWifi": "Connect both phones to the same Wi-Fi. Keep this screen open until the transfer finishes.",
+  "phoneTransferPreparing": "Preparing encrypted transfer…",
+  "phoneTransferReady": "Scan this one-use QR code on the new phone",
+  "phoneTransferScan": "Scan old phone",
+  "phoneTransferConfirmTitle": "Replace this phone’s profile?",
+  "phoneTransferConfirmMessage": "The profile currently stored on this phone will be replaced by the encrypted local transfer.",
+  "phoneTransferConfirmAction": "Transfer profile",
+  "phoneTransferSuccess": "Profile transferred successfully",
+  "phoneTransferFailed": "Could not complete the phone transfer",
+  "profileGroupConnection": "Connection",
+  "profileGroupPrivacy": "Privacy",
+  "profileGroupData": "Sharing & data",
+  "profileGroupApp": "App",
+  "profileSummaryMeshOnly": "Mesh only",
+  "profileSummaryMeshInternet": "Mesh · internet",
+  "profileSummaryBackgroundOn": "runs in background",
+  "profileSummaryDiscoverable": "Discoverable",
+  "profileSummaryHidden": "Hidden",
+  "profileSummaryLastSeenHidden": "last seen hidden",
+  "profileSummaryTransfersActive": "{count} in progress",
+  "@profileSummaryTransfersActive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSummaryCardBackup": "Contact card, files, backup",
+  "chatPlay": "Play",
+  "chatPause": "Pause",
+  "voicePlayingFrom": "Voice from {name}",
+  "@voicePlayingFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

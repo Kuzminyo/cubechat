@@ -932,6 +932,333 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileViewInChat => 'View in chat';
 
   @override
+  String get chatDraft => 'Draft';
+
+  @override
+  String get chatSearchTitle => 'Search';
+
+  @override
+  String get chatSearchHint => 'Search messages';
+
+  @override
+  String get chatSearchNoResults => 'No matches';
+
+  @override
+  String get chatSearchPrevious => 'Previous result';
+
+  @override
+  String get chatSearchNext => 'Next result';
+
+  @override
+  String chatMessageCount(int count) {
+    return '$count messages';
+  }
+
+  @override
+  String get chatRouteBluetooth => 'Bluetooth';
+
+  @override
+  String get chatRouteMesh => 'Mesh';
+
+  @override
+  String get chatRouteInternet => 'Internet';
+
+  @override
+  String get chatRouteQueued => 'Queued';
+
+  @override
   String get chatAttachmentUnavailable =>
       'No connection is available. Connect over Bluetooth or the internet and try again.';
+
+  @override
+  String get fileTransfersTitle => 'File transfers';
+
+  @override
+  String get fileTransfersClear => 'Clear history';
+
+  @override
+  String get fileTransfersEmpty => 'No file transfers yet';
+
+  @override
+  String get fileTransfersActive => 'Active';
+
+  @override
+  String get fileTransfersHistory => 'History';
+
+  @override
+  String get fileTransferPause => 'Pause';
+
+  @override
+  String get fileTransferResume => 'Resume';
+
+  @override
+  String get fileTransferRetry => 'Retry';
+
+  @override
+  String get fileTransferQueued => 'Waiting for connection';
+
+  @override
+  String get fileTransferRunning => 'Transferring';
+
+  @override
+  String get fileTransferPaused => 'Paused';
+
+  @override
+  String get fileTransferCompleted => 'Completed';
+
+  @override
+  String get fileTransferFailed => 'Failed';
+
+  @override
+  String get fileTransferCanceled => 'Canceled';
+
+  @override
+  String get profileFileTransfers => 'File transfers';
+
+  @override
+  String get profileFileTransfersSubtitle =>
+      'Progress, queue and transfer history';
+
+  @override
+  String get qrScanAction => 'Scan QR code';
+
+  @override
+  String get qrScanTitle => 'Scan QR code';
+
+  @override
+  String get qrScanHint =>
+      'Point the camera at a Cubechat contact or channel QR code.';
+
+  @override
+  String get qrFlash => 'Flashlight';
+
+  @override
+  String get qrCameraError =>
+      'Camera is unavailable. Check camera permission and try again.';
+
+  @override
+  String get qrInvalid => 'This is not a valid Cubechat QR code.';
+
+  @override
+  String qrChannelAdded(String name) {
+    return '$name added';
+  }
+
+  @override
+  String get qrShow => 'Show QR code';
+
+  @override
+  String qrChannelTitle(String name) {
+    return 'Join $name';
+  }
+
+  @override
+  String get profileBackup => 'Encrypted backup';
+
+  @override
+  String get profileBackupSubtitle => 'Move keys, contacts and history safely';
+
+  @override
+  String get backupTitle => 'Encrypted backup';
+
+  @override
+  String get backupExplainer =>
+      'The backup contains your private identity keys, contacts, channels, settings and message history. It is encrypted on this phone with the password you choose; Cubechat cannot recover a forgotten password.';
+
+  @override
+  String get backupCreate => 'Create backup';
+
+  @override
+  String get backupCreateSubtitle =>
+      'Encrypt everything and save a .cchatbackup file';
+
+  @override
+  String get backupRestore => 'Restore backup';
+
+  @override
+  String get backupRestoreSubtitle =>
+      'Replace this phone’s Cubechat profile from a backup file';
+
+  @override
+  String get backupPasswordTitle => 'Backup password';
+
+  @override
+  String get backupPasswordHint => 'At least 8 characters';
+
+  @override
+  String get backupConfirmPassword => 'Repeat password';
+
+  @override
+  String get backupPasswordMismatch => 'Passwords do not match';
+
+  @override
+  String get backupPasswordShort => 'Use at least 8 characters';
+
+  @override
+  String get backupSaveTitle => 'Save Cubechat backup';
+
+  @override
+  String get backupSaved => 'Encrypted backup saved';
+
+  @override
+  String get backupFailed => 'Could not complete the backup operation';
+
+  @override
+  String get backupRestoreConfirmTitle => 'Replace this profile?';
+
+  @override
+  String get backupRestoreConfirmMessage =>
+      'Current keys, contacts, channels, settings and history on this phone will be replaced by the selected backup.';
+
+  @override
+  String get backupRestoreConfirmAction => 'Restore';
+
+  @override
+  String get backupRestored => 'Backup restored';
+
+  @override
+  String get backupInvalid =>
+      'Wrong password, damaged file, or unsupported backup';
+
+  @override
+  String get channelInfoTitle => 'Channel details';
+
+  @override
+  String get channelParticipantsTitle => 'Participants';
+
+  @override
+  String get channelAdministratorsTitle => 'Administrators';
+
+  @override
+  String get channelMakeAdmin => 'Make administrator';
+
+  @override
+  String get channelRemoveAdmin => 'Remove administrator';
+
+  @override
+  String get channelNoParticipants =>
+      'Participants will appear after signed activity';
+
+  @override
+  String get channelPollTitle => 'Poll';
+
+  @override
+  String get channelCreatePoll => 'Create poll';
+
+  @override
+  String get channelPollQuestion => 'Question';
+
+  @override
+  String channelPollOption(int number) {
+    return 'Option $number';
+  }
+
+  @override
+  String get channelPollAddOption => 'Add option';
+
+  @override
+  String get channelPollCreate => 'Publish poll';
+
+  @override
+  String channelPollVotes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count votes',
+      one: '1 vote',
+      zero: 'No votes',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get phoneTransferTitle => 'Transfer to a new phone';
+
+  @override
+  String get phoneTransferIntro =>
+      'Move your profile, keys, contacts, channels, settings and history directly between two phones.';
+
+  @override
+  String get phoneTransferSend => 'This is the old phone';
+
+  @override
+  String get phoneTransferReceive => 'This is the new phone';
+
+  @override
+  String get phoneTransferSameWifi =>
+      'Connect both phones to the same Wi-Fi. Keep this screen open until the transfer finishes.';
+
+  @override
+  String get phoneTransferPreparing => 'Preparing encrypted transfer…';
+
+  @override
+  String get phoneTransferReady => 'Scan this one-use QR code on the new phone';
+
+  @override
+  String get phoneTransferScan => 'Scan old phone';
+
+  @override
+  String get phoneTransferConfirmTitle => 'Replace this phone’s profile?';
+
+  @override
+  String get phoneTransferConfirmMessage =>
+      'The profile currently stored on this phone will be replaced by the encrypted local transfer.';
+
+  @override
+  String get phoneTransferConfirmAction => 'Transfer profile';
+
+  @override
+  String get phoneTransferSuccess => 'Profile transferred successfully';
+
+  @override
+  String get phoneTransferFailed => 'Could not complete the phone transfer';
+
+  @override
+  String get profileGroupConnection => 'Connection';
+
+  @override
+  String get profileGroupPrivacy => 'Privacy';
+
+  @override
+  String get profileGroupData => 'Sharing & data';
+
+  @override
+  String get profileGroupApp => 'App';
+
+  @override
+  String get profileSummaryMeshOnly => 'Mesh only';
+
+  @override
+  String get profileSummaryMeshInternet => 'Mesh · internet';
+
+  @override
+  String get profileSummaryBackgroundOn => 'runs in background';
+
+  @override
+  String get profileSummaryDiscoverable => 'Discoverable';
+
+  @override
+  String get profileSummaryHidden => 'Hidden';
+
+  @override
+  String get profileSummaryLastSeenHidden => 'last seen hidden';
+
+  @override
+  String profileSummaryTransfersActive(int count) {
+    return '$count in progress';
+  }
+
+  @override
+  String get profileSummaryCardBackup => 'Contact card, files, backup';
+
+  @override
+  String get chatPlay => 'Play';
+
+  @override
+  String get chatPause => 'Pause';
+
+  @override
+  String voicePlayingFrom(String name) {
+    return 'Voice from $name';
+  }
 }

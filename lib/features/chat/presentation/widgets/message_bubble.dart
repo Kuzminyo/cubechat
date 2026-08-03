@@ -25,6 +25,8 @@ import '../../data/pinned_controller.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import 'file_bubble.dart';
+import 'poll_bubble.dart';
+import 'mention_text.dart';
 import 'voice_bubble.dart';
 
 /// Emoji offered in the long-press reaction picker. Kept short so the row fits
@@ -374,6 +376,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         return '🎤';
       case MessageKind.file:
         return '📎 ${m.fileName ?? ''}'.trimRight();
+      case MessageKind.poll:
+        return '📊 ${m.text}';
       case MessageKind.text:
         final t = m.text.replaceAll('\n', ' ').trim();
         return t.length > 80 ? '${t.substring(0, 80)}…' : t;
@@ -627,9 +631,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
     // Marked in the bubble too, not only in the banner up top: scrolling back
     // through history, you want to see which line the banner is pointing at.
+    ref.watch(pinnedControllerProvider);
     final pinned = message.wireId != null &&
-        ref.watch(pinnedControllerProvider)[widget.chatId]?.wireId ==
-            message.wireId;
+        ref
+            .read(pinnedControllerProvider.notifier)
+            .isPinned(widget.chatId, message.wireId!);
 
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
@@ -719,6 +725,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           ),
                         )
                       : FileBubble(message: message)
+                else if (message.kind == MessageKind.poll)
+                  PollBubble(
+                    message: message,
+                    chatId: widget.chatId,
+                  )
                 else if (sharedContact != null)
                   _SharedContactBubble(
                     contact: sharedContact,
@@ -732,14 +743,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     ),
                   )
                 else
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: AppColors.textOnGlass,
-                      fontSize: 14.5,
-                      height: 1.35,
-                    ),
-                  ),
+                  MentionText(message.text),
                 const SizedBox(height: 4),
                 _BubbleMeta(message: message, pinned: pinned),
               ],
@@ -805,8 +809,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                   padding: const EdgeInsets.only(top: 4),
                                   child: _ReadByChip(
                                     label: AppLocalizations.of(context)
-                                        .chatReadByCount(
-                                            message.readBy.length),
+                                        .chatReadByCount(message.readBy.length),
                                     onTapAt: _showActions,
                                   ),
                                 ),

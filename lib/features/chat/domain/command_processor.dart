@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../channels/data/channel_roster_controller.dart';
 import '../../channels/models/channel.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/messages_controller.dart';
@@ -126,6 +127,9 @@ class CommandProcessor {
       return CommandResult.fail('Usage: /leave #channel');
     }
     await _ref.read(channelControllerProvider.notifier).leave(normalized);
+    await _ref
+        .read(channelRosterControllerProvider.notifier)
+        .forget(normalized);
     return CommandResult.ok('Left $normalized');
   }
 

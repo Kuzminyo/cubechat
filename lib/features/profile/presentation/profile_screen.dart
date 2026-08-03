@@ -15,11 +15,13 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
+import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -110,161 +112,67 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Language toggle
-        _SectionLabel(text: t.profileLanguage),
-        GlassCard(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Expanded(
-                child: _LangPill(
-                  label: t.profileLanguageEn,
-                  code: 'en',
-                  current: locale.languageCode,
-                  onTap: () => ref
-                      .read(localeControllerProvider.notifier)
-                      .set(const Locale('en')),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _LangPill(
-                  label: t.profileLanguageUk,
-                  code: 'uk',
-                  current: locale.languageCode,
-                  onTap: () => ref
-                      .read(localeControllerProvider.notifier)
-                      .set(const Locale('uk')),
-                ),
-              ),
-            ],
-          ),
+        // Four groups, all closed to start with. Flat, this screen was thirteen
+        // identical panes you had to read end to end to find anything; the
+        // summary line on each header is what keeps that from becoming four
+        // taps instead — coming here to *check* a setting needs none.
+        _ExpandableSection(
+          icon: Icons.podcasts_rounded,
+          title: t.profileGroupConnection,
+          summary: _connectionSummary(ref, t),
+          children: const [
+            _TransportRow(),
+            _BackgroundModeCard(framed: false),
+            _RelayFallbackCard(framed: false),
+          ],
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Transport
-        _SectionLabel(text: t.profileTransport),
-        GlassCard(
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.brandPrimary.withValues(alpha: 0.18),
-                  border: Border.all(
-                      color: AppColors.brandPrimary.withValues(alpha: 0.4)),
-                ),
-                child: const Icon(Icons.bluetooth,
-                    color: AppColors.brandPrimary, size: 18),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  t.profileTransportMesh,
-                  style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-                ),
-              ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.online,
-                ),
-              ),
-            ],
-          ),
+        _ExpandableSection(
+          icon: Icons.shield_outlined,
+          title: t.profileGroupPrivacy,
+          summary: _privacySummary(ref, t),
+          children: const [
+            _DiscoverableCard(framed: false),
+            _PrivacyCard(framed: false),
+          ],
         ),
 
-        const SizedBox(height: 8),
-        const _BackgroundModeCard(),
+        const SizedBox(height: 10),
 
-        const SizedBox(height: 8),
-        const _RelayFallbackCard(),
-
-        const SizedBox(height: 8),
-        const _DiscoverableCard(),
-
-        const SizedBox(height: 8),
-        const _PrivacyCard(),
-
-        const SizedBox(height: 8),
-        const _ContactCardRow(),
-
-        const SizedBox(height: 12),
-
-        // About
-        _SectionLabel(text: t.profileAbout),
-        GlassCard(
-          child: Row(
-            children: [
-              const CubeLogo(size: 36),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Cubechat',
-                      style: AppTypography.heading(
-                          size: 15, color: AppColors.textOnGlass),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      t.profileVersion(_appVersion),
-                      style: TextStyle(
-                          color: AppColors.textOnGlassDim, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        _ExpandableSection(
+          icon: Icons.swap_horiz_rounded,
+          title: t.profileGroupData,
+          summary: _dataSummary(ref, t),
+          children: const [
+            _ContactCardRow(framed: false),
+            _FileTransfersCard(framed: false),
+            PhoneTransferCard(framed: false),
+            _BackupCard(framed: false),
+          ],
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Diagnostics
-        GlassCard(
-          onTap: () => context.push('/diagnostics'),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                ),
-                child: Icon(Icons.bug_report_outlined,
-                    color: AppColors.textOnGlass, size: 18),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Diagnostics',
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
-            ],
-          ),
+        _ExpandableSection(
+          icon: Icons.tune_rounded,
+          title: t.profileGroupApp,
+          summary: t.profileVersion(_appVersion),
+          children: [
+            _LanguageRow(locale: locale),
+            const _AboutRow(),
+            const _DiagnosticsRow(),
+          ],
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
-        // Emergency wipe
+        // Deliberately outside the groups and left last. It is the one control
+        // here you might need in a hurry, and a panic button behind a
+        // disclosure triangle is not one.
         _EmergencyWipeCard(),
       ]),
     );
@@ -300,14 +208,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 }
 
 class _BackgroundModeCard extends ConsumerWidget {
-  const _BackgroundModeCard();
+  const _BackgroundModeCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final enabled = ref.watch(backgroundModeProvider);
     final controller = ref.read(backgroundModeProvider.notifier);
-    return GlassCard(
+    return _frame(framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -381,7 +292,10 @@ class _BackgroundModeCard extends ConsumerWidget {
 /// Entry point to the Nostr internet fallback (M6). Shows at a glance whether
 /// the mesh is currently the only transport, or whether relays are backing it.
 class _RelayFallbackCard extends ConsumerWidget {
-  const _RelayFallbackCard();
+  const _RelayFallbackCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -389,7 +303,7 @@ class _RelayFallbackCard extends ConsumerWidget {
     final settings = ref.watch(relaySettingsProvider);
     final on = settings.isActive;
 
-    return GlassCard(
+    return _frame(framed,
       onTap: () => context.push('/relays'),
       child: Row(
         children: [
@@ -438,16 +352,143 @@ class _RelayFallbackCard extends ConsumerWidget {
   }
 }
 
+class _FileTransfersCard extends ConsumerWidget {
+  const _FileTransfersCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final tasks = ref.watch(fileTransferControllerProvider).values;
+    final active = tasks.where((task) => task.active).length;
+    return _frame(framed,
+      onTap: () => context.push('/transfers'),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.18),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: const Icon(
+              Icons.swap_vert_circle_outlined,
+              color: AppColors.brandPrimary,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.profileFileTransfers,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  active == 0
+                      ? t.profileFileTransfersSubtitle
+                      : '$active · ${t.profileFileTransfersSubtitle}',
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupCard extends StatelessWidget {
+  const _BackupCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return _frame(framed,
+      onTap: () => context.push('/backup'),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.18),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: const Icon(
+              Icons.lock_outline_rounded,
+              color: AppColors.brandPrimary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.profileBackup,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.profileBackupSubtitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
 /// Whether the mesh announcement goes out in the clear to everyone in range,
 /// or sealed to contacts we already have.
 class _DiscoverableCard extends ConsumerWidget {
-  const _DiscoverableCard();
+  const _DiscoverableCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final on = ref.watch(discoverySettingsProvider).discoverable;
-    return GlassCard(
+    return _frame(framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -582,14 +623,17 @@ class _SettingSwitch extends StatelessWidget {
 /// Last seen and read receipts — the two things the app says about *you*
 /// rather than about your messages. Both symmetric; see [PrivacySettings].
 class _PrivacyCard extends ConsumerWidget {
-  const _PrivacyCard();
+  const _PrivacyCard({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final s = ref.watch(privacySettingsProvider);
     final n = ref.read(privacySettingsProvider.notifier);
-    return GlassCard(
+    return _frame(framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -644,12 +688,15 @@ class _PrivacyCard extends ConsumerWidget {
 /// or import someone else's, for a chat that starts without Bluetooth ever
 /// being involved.
 class _ContactCardRow extends StatelessWidget {
-  const _ContactCardRow();
+  const _ContactCardRow({this.framed = true});
+
+  /// False inside an [_ExpandableSection], which frames the group.
+  final bool framed;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return GlassCard(
+    return _frame(framed,
       onTap: () => context.push('/contact'),
       child: Row(
         children: [
@@ -695,22 +742,355 @@ class _ContactCardRow extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.text});
+/// The one-line state a closed group reports.
+///
+/// Each reads the same providers the rows inside do, so the header cannot drift
+/// out of step with what opening it would show.
+String _connectionSummary(WidgetRef ref, AppLocalizations t) {
+  final parts = <String>[
+    ref.watch(relaySettingsProvider).isActive
+        ? t.profileSummaryMeshInternet
+        : t.profileSummaryMeshOnly,
+    if (ref.watch(backgroundModeProvider)) t.profileSummaryBackgroundOn,
+  ];
+  return parts.join(' · ');
+}
 
-  final String text;
+String _privacySummary(WidgetRef ref, AppLocalizations t) {
+  final parts = <String>[
+    ref.watch(discoverySettingsProvider).discoverable
+        ? t.profileSummaryDiscoverable
+        : t.profileSummaryHidden,
+    if (!ref.watch(privacySettingsProvider).shareLastSeen)
+      t.profileSummaryLastSeenHidden,
+  ];
+  return parts.join(' · ');
+}
+
+String _dataSummary(WidgetRef ref, AppLocalizations t) {
+  final active = ref
+      .watch(fileTransferControllerProvider)
+      .values
+      .where((task) => task.active)
+      .length;
+  // A transfer in progress is the only thing in this group that is *happening*
+  // rather than merely available, so it takes the line when there is one.
+  return active > 0
+      ? t.profileSummaryTransfersActive(active)
+      : t.profileSummaryCardBackup;
+}
+
+/// Static "how messages travel" row. Was a card of its own; inside the
+/// connection group it is the first line of an answer the rest of the group
+/// completes.
+class _TransportRow extends StatelessWidget {
+  const _TransportRow();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 14, 8, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          color: AppColors.textOnGlassFaint,
-          fontSize: 11,
-          letterSpacing: 1.1,
-          fontWeight: FontWeight.w500,
+    final t = AppLocalizations.of(context);
+    return _frame(
+      false,
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.18),
+              border: Border.all(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.4)),
+            ),
+            child: const Icon(Icons.bluetooth,
+                color: AppColors.brandPrimary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              t.profileTransportMesh,
+              style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+            ),
+          ),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.online,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageRow extends ConsumerWidget {
+  const _LanguageRow({required this.locale});
+
+  final Locale locale;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return _frame(
+      false,
+      child: Row(
+        children: [
+          Expanded(
+            child: _LangPill(
+              label: t.profileLanguageEn,
+              code: 'en',
+              current: locale.languageCode,
+              onTap: () => ref
+                  .read(localeControllerProvider.notifier)
+                  .set(const Locale('en')),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _LangPill(
+              label: t.profileLanguageUk,
+              code: 'uk',
+              current: locale.languageCode,
+              onTap: () => ref
+                  .read(localeControllerProvider.notifier)
+                  .set(const Locale('uk')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutRow extends StatelessWidget {
+  const _AboutRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return _frame(
+      false,
+      child: Row(
+        children: [
+          const CubeLogo(size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cubechat',
+                  style: AppTypography.heading(
+                      size: 15, color: AppColors.textOnGlass),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.profileVersion(_appVersion),
+                  style:
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagnosticsRow extends StatelessWidget {
+  const _DiagnosticsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return _frame(
+      false,
+      onTap: () => context.push('/diagnostics'),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(Icons.bug_report_outlined,
+                color: AppColors.textOnGlass, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Diagnostics',
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+/// A settings row's own frame — or, inside an [_ExpandableSection], nothing,
+/// because the section already supplies one.
+///
+/// Every card here was its own pane of glass, which is how the screen ended up
+/// as thirteen identical slabs with no shape to it. Grouped, the outer pane is
+/// the group and a second border inside it would only redraw the clutter one
+/// level down. The parameters deliberately mirror [GlassCard]'s, so a card
+/// swaps between the two by changing the constructor name and nothing else.
+Widget _frame(
+  bool framed, {
+  VoidCallback? onTap,
+  required Widget child,
+  EdgeInsets padding = const EdgeInsets.all(16),
+}) {
+  if (framed) return GlassCard(padding: padding, onTap: onTap, child: child);
+  final bare = Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: child,
+  );
+  if (onTap == null) return bare;
+  // Keeps the ripple a row has when it is its own card. The section wraps its
+  // body in a transparent Material so this has something to paint on.
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(12),
+    child: bare,
+  );
+}
+
+/// One collapsible group of settings.
+///
+/// Collapsed by default and independent of its neighbours: an accordion that
+/// closes one thing to open another hides state the user was mid-way through
+/// comparing, and there is nothing here expensive enough to justify that.
+///
+/// [summary] is the point of the header. A group that only says "Connection"
+/// makes you open it to learn anything, which is a worse screen than the flat
+/// list it replaced; saying "Mesh · internet on" means the common case — coming
+/// to check a setting rather than change one — needs no tap at all.
+class _ExpandableSection extends StatefulWidget {
+  const _ExpandableSection({
+    required this.icon,
+    required this.title,
+    required this.children,
+    this.summary,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? summary;
+  final List<Widget> children;
+
+  @override
+  State<_ExpandableSection> createState() => _ExpandableSectionState();
+}
+
+class _ExpandableSectionState extends State<_ExpandableSection>
+    with SingleTickerProviderStateMixin {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: EdgeInsets.zero,
+      borderRadius: 22,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => setState(() => _open = !_open),
+              borderRadius: BorderRadius.circular(22),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.brandPrimary.withValues(alpha: 0.16),
+                        border: Border.all(
+                          color: AppColors.brandPrimary.withValues(alpha: 0.36),
+                        ),
+                      ),
+                      child: Icon(widget.icon,
+                          color: AppColors.brandPrimary, size: 18),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              color: AppColors.textOnGlass,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (widget.summary != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.summary!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.textOnGlassDim,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: _open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(Icons.expand_more,
+                          color: AppColors.textOnGlassFaint),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // AnimatedSize over an if: the children keep their state across a
+            // collapse, so a switch mid-flight is not rebuilt from scratch when
+            // the group is reopened.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: _open
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(height: 1, color: Color(0x1FFFFFFF)),
+                          ...widget.children,
+                        ],
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
         ),
       ),
     );

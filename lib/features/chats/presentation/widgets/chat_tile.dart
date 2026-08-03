@@ -97,13 +97,17 @@ class ChatTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  chat.lastMessage,
+                  chat.isDraft
+                      ? '${t.chatDraft}: ${chat.lastMessage}'
+                      : chat.lastMessage,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: unread
-                        ? AppColors.textOnGlass
-                        : AppColors.textOnGlassDim,
+                    color: chat.isDraft
+                        ? AppColors.brandPrimary
+                        : unread
+                            ? AppColors.textOnGlass
+                            : AppColors.textOnGlassDim,
                     fontSize: 13,
                     height: 1.3,
                     fontWeight: unread ? FontWeight.w600 : FontWeight.w400,

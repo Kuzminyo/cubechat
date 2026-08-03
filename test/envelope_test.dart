@@ -77,5 +77,28 @@ void main() {
       expect(b.length, 16);
       expect(a, isNot(equals(b))); // 1 in 2^128 collision chance, ignore
     });
+
+    test('route marker reports actual hops without changing the header', () {
+      final id = TransportEnvelope.newMsgId(initialTtl: 7);
+      final direct = TransportEnvelope(
+        originPubkeyHash: Uint8List(8),
+        destPubkeyHash: Uint8List(8),
+        msgId: id,
+        ttl: 7,
+        body: Uint8List(0),
+      );
+      expect(direct.initialTtl, 7);
+      expect(direct.traversedHops, 1);
+      expect(direct.decrementTtl().traversedHops, 2);
+      expect(TransportEnvelope.decode(direct.encode()).traversedHops, 1);
+
+      final legacy = TransportEnvelope(
+          originPubkeyHash: Uint8List(8),
+          destPubkeyHash: Uint8List(8),
+          msgId: Uint8List(16),
+          ttl: 7,
+          body: Uint8List(0));
+      expect(legacy.traversedHops, isNull);
+    });
   });
 }

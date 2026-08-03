@@ -5,6 +5,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/utils/file_mime.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
@@ -105,8 +106,10 @@ class FileBubble extends StatelessWidget {
     // what a tap is asking. Open it; the OS resolves the handler (and asks,
     // when more than one claims the type). Sharing is still available, one
     // level down, for when passing it on really is the intent.
-    final declaredMime = message.text.trim();
-    final mime = declaredMime.contains('/') ? declaredMime : null;
+    final mime = fileMimeType(
+      message.fileName ?? path,
+      declaredMime: message.text,
+    );
     final result = await OpenFilex.open(path, type: mime);
     if (result.type == ResultType.done || !context.mounted) return;
 

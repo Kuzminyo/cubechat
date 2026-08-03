@@ -80,7 +80,13 @@ enum InnerPayloadType {
 
   /// The sender's avatar thumbnail, in answer to an [avatarRequest]. See
   /// [AvatarPayload].
-  avatar(0xE1);
+  avatar(0xE1),
+
+  /// Signed channel poll creation or vote. See `channel_poll.dart`.
+  channelPoll(0xF0),
+
+  /// Signed administrator role change inside a channel.
+  channelAdmin(0xF1);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -137,7 +143,8 @@ Uint8List packTextReply(Uint8List targetMsgId, Uint8List paddedText) {
 }
 
 /// Split a [packTextReply] body back into (target msgId, padded text).
-({Uint8List targetMsgId, Uint8List paddedText}) unpackTextReply(Uint8List body) {
+({Uint8List targetMsgId, Uint8List paddedText}) unpackTextReply(
+    Uint8List body) {
   if (body.length < replyTargetLen) {
     throw const FormatException('text reply truncated');
   }
@@ -819,7 +826,13 @@ class MediaManifest {
     final capBytes = hasCaption ? utf8.encode(caption!) : const <int>[];
     final fs = isForwardSecret;
     final out = Uint8List(
-      1 + idLen + 1 + 2 + 4 + 1 + mimeBytes.length +
+      1 +
+          idLen +
+          1 +
+          2 +
+          4 +
+          1 +
+          mimeBytes.length +
           (kind == MediaKind.file ? 1 + nameBytes.length : 0) +
           (hasCaption ? 1 + capBytes.length : 0) +
           digestLen +
@@ -868,8 +881,7 @@ class MediaManifest {
           'unknown media manifest version 0x${ver.toRadixString(16)}');
     }
     final fs = ver == versionV2Fs || ver == versionV4CaptionFs;
-    final hasCaption =
-        ver == versionV3Caption || ver == versionV4CaptionFs;
+    final hasCaption = ver == versionV3Caption || ver == versionV4CaptionFs;
     var c = 1;
     final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
     final kind = MediaKind.fromByte(bytes[c++]);
@@ -911,8 +923,7 @@ class MediaManifest {
       if (bytes.length < c + capLen + trailer) {
         throw const FormatException('media manifest caption overrun');
       }
-      caption =
-          utf8.decode(bytes.sublist(c, c + capLen), allowMalformed: true);
+      caption = utf8.decode(bytes.sublist(c, c + capLen), allowMalformed: true);
       c += capLen;
     }
     final sha = Uint8List.fromList(bytes.sublist(c, c += digestLen));
@@ -1086,8 +1097,8 @@ class Reaction {
       throw const FormatException('reaction body overrun');
     }
     var c = 2;
-    final emoji = utf8.decode(bytes.sublist(c, c + emojiLen),
-        allowMalformed: true);
+    final emoji =
+        utf8.decode(bytes.sublist(c, c + emojiLen), allowMalformed: true);
     c += emojiLen;
     final target = Uint8List.fromList(bytes.sublist(c, c + idLen));
     return Reaction(op: op, emoji: emoji, targetMsgId: target);
@@ -1304,8 +1315,7 @@ class PresenceBeacon {
   static const int _onlineTag = 0x01;
   static const int _offlineTag = 0x00;
 
-  Uint8List encode() =>
-      Uint8List.fromList([online ? _onlineTag : _offlineTag]);
+  Uint8List encode() => Uint8List.fromList([online ? _onlineTag : _offlineTag]);
 
   static PresenceBeacon decode(Uint8List bytes) {
     if (bytes.length != 1) {

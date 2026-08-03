@@ -12,6 +12,7 @@ import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
+import 'features/chat/presentation/widgets/voice_mini_player.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
@@ -233,12 +234,15 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // animations park themselves against. A Listener at the root sees every
       // pointer event without claiming any of them, so nothing downstream
       // changes behaviour; `poke` only re-arms a timer.
+      // The voice bar wraps everything the router builds, so it survives a
+      // push into a profile, a search, or another chat — which is the whole
+      // point of playback outliving the bubble that started it.
       builder: (context, child) => Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) => UiActivity.instance.poke(),
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
-        child: child ?? const SizedBox.shrink(),
+        child: VoiceMiniPlayer(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

@@ -937,6 +937,337 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileViewInChat => 'Переглянути в чаті';
 
   @override
+  String get chatDraft => 'Чернетка';
+
+  @override
+  String get chatSearchTitle => 'Пошук';
+
+  @override
+  String get chatSearchHint => 'Пошук у повідомленнях';
+
+  @override
+  String get chatSearchNoResults => 'Нічого не знайдено';
+
+  @override
+  String get chatSearchPrevious => 'Попередній результат';
+
+  @override
+  String get chatSearchNext => 'Наступний результат';
+
+  @override
+  String chatMessageCount(int count) {
+    return '$count повідомлень';
+  }
+
+  @override
+  String get chatRouteBluetooth => 'Bluetooth';
+
+  @override
+  String get chatRouteMesh => 'Меш';
+
+  @override
+  String get chatRouteInternet => 'Інтернет';
+
+  @override
+  String get chatRouteQueued => 'У черзі';
+
+  @override
   String get chatAttachmentUnavailable =>
       'Немає доступного з\'єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.';
+
+  @override
+  String get fileTransfersTitle => 'Центр передачі файлів';
+
+  @override
+  String get fileTransfersClear => 'Очистити історію';
+
+  @override
+  String get fileTransfersEmpty => 'Передач файлів ще немає';
+
+  @override
+  String get fileTransfersActive => 'Активні';
+
+  @override
+  String get fileTransfersHistory => 'Історія';
+
+  @override
+  String get fileTransferPause => 'Призупинити';
+
+  @override
+  String get fileTransferResume => 'Продовжити';
+
+  @override
+  String get fileTransferRetry => 'Повторити';
+
+  @override
+  String get fileTransferQueued => 'Очікує з’єднання';
+
+  @override
+  String get fileTransferRunning => 'Передавання';
+
+  @override
+  String get fileTransferPaused => 'Призупинено';
+
+  @override
+  String get fileTransferCompleted => 'Завершено';
+
+  @override
+  String get fileTransferFailed => 'Помилка';
+
+  @override
+  String get fileTransferCanceled => 'Скасовано';
+
+  @override
+  String get profileFileTransfers => 'Передача файлів';
+
+  @override
+  String get profileFileTransfersSubtitle =>
+      'Прогрес, черга та історія передач';
+
+  @override
+  String get qrScanAction => 'Сканувати QR-код';
+
+  @override
+  String get qrScanTitle => 'Сканування QR-коду';
+
+  @override
+  String get qrScanHint =>
+      'Наведіть камеру на QR-код контакту або каналу Cubechat.';
+
+  @override
+  String get qrFlash => 'Ліхтарик';
+
+  @override
+  String get qrCameraError =>
+      'Камера недоступна. Перевірте дозвіл на камеру та спробуйте ще раз.';
+
+  @override
+  String get qrInvalid => 'Це недійсний QR-код Cubechat.';
+
+  @override
+  String qrChannelAdded(String name) {
+    return '$name додано';
+  }
+
+  @override
+  String get qrShow => 'Показати QR-код';
+
+  @override
+  String qrChannelTitle(String name) {
+    return 'Приєднатися до $name';
+  }
+
+  @override
+  String get profileBackup => 'Зашифрована резервна копія';
+
+  @override
+  String get profileBackupSubtitle =>
+      'Безпечне перенесення ключів, контактів та історії';
+
+  @override
+  String get backupTitle => 'Зашифрована резервна копія';
+
+  @override
+  String get backupExplainer =>
+      'Резервна копія містить приватні ключі профілю, контакти, канали, налаштування та історію повідомлень. Вона шифрується на цьому телефоні вибраним паролем; Cubechat не зможе відновити забутий пароль.';
+
+  @override
+  String get backupCreate => 'Створити копію';
+
+  @override
+  String get backupCreateSubtitle =>
+      'Зашифрувати все та зберегти файл .cchatbackup';
+
+  @override
+  String get backupRestore => 'Відновити копію';
+
+  @override
+  String get backupRestoreSubtitle =>
+      'Замінити профіль Cubechat на цьому телефоні даними з копії';
+
+  @override
+  String get backupPasswordTitle => 'Пароль резервної копії';
+
+  @override
+  String get backupPasswordHint => 'Щонайменше 8 символів';
+
+  @override
+  String get backupConfirmPassword => 'Повторіть пароль';
+
+  @override
+  String get backupPasswordMismatch => 'Паролі не збігаються';
+
+  @override
+  String get backupPasswordShort => 'Використайте щонайменше 8 символів';
+
+  @override
+  String get backupSaveTitle => 'Зберегти резервну копію Cubechat';
+
+  @override
+  String get backupSaved => 'Зашифровану копію збережено';
+
+  @override
+  String get backupFailed => 'Не вдалося завершити операцію з резервною копією';
+
+  @override
+  String get backupRestoreConfirmTitle => 'Замінити цей профіль?';
+
+  @override
+  String get backupRestoreConfirmMessage =>
+      'Поточні ключі, контакти, канали, налаштування та історію на цьому телефоні буде замінено вибраною резервною копією.';
+
+  @override
+  String get backupRestoreConfirmAction => 'Відновити';
+
+  @override
+  String get backupRestored => 'Резервну копію відновлено';
+
+  @override
+  String get backupInvalid =>
+      'Неправильний пароль, пошкоджений файл або непідтримувана копія';
+
+  @override
+  String get channelInfoTitle => 'Про канал';
+
+  @override
+  String get channelParticipantsTitle => 'Учасники';
+
+  @override
+  String get channelAdministratorsTitle => 'Адміністратори';
+
+  @override
+  String get channelMakeAdmin => 'Зробити адміністратором';
+
+  @override
+  String get channelRemoveAdmin => 'Забрати права адміністратора';
+
+  @override
+  String get channelNoParticipants =>
+      'Учасники з’являться після підписаної активності';
+
+  @override
+  String get channelPollTitle => 'Опитування';
+
+  @override
+  String get channelCreatePoll => 'Створити опитування';
+
+  @override
+  String get channelPollQuestion => 'Запитання';
+
+  @override
+  String channelPollOption(int number) {
+    return 'Варіант $number';
+  }
+
+  @override
+  String get channelPollAddOption => 'Додати варіант';
+
+  @override
+  String get channelPollCreate => 'Опублікувати';
+
+  @override
+  String channelPollVotes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count голосу',
+      many: '$count голосів',
+      few: '$count голоси',
+      one: '1 голос',
+      zero: 'Немає голосів',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get phoneTransferTitle => 'Перенесення на новий телефон';
+
+  @override
+  String get phoneTransferIntro =>
+      'Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.';
+
+  @override
+  String get phoneTransferSend => 'Це старий телефон';
+
+  @override
+  String get phoneTransferReceive => 'Це новий телефон';
+
+  @override
+  String get phoneTransferSameWifi =>
+      'Під’єднайте обидва телефони до однієї Wi-Fi мережі й не закривайте цей екран до завершення.';
+
+  @override
+  String get phoneTransferPreparing => 'Готуємо зашифроване перенесення…';
+
+  @override
+  String get phoneTransferReady =>
+      'Відскануйте цей одноразовий QR-код на новому телефоні';
+
+  @override
+  String get phoneTransferScan => 'Сканувати старий телефон';
+
+  @override
+  String get phoneTransferConfirmTitle => 'Замінити профіль на цьому телефоні?';
+
+  @override
+  String get phoneTransferConfirmMessage =>
+      'Поточний профіль на цьому телефоні буде замінено даними із зашифрованого локального перенесення.';
+
+  @override
+  String get phoneTransferConfirmAction => 'Перенести профіль';
+
+  @override
+  String get phoneTransferSuccess => 'Профіль успішно перенесено';
+
+  @override
+  String get phoneTransferFailed => 'Не вдалося завершити перенесення телефону';
+
+  @override
+  String get profileGroupConnection => 'З\'єднання';
+
+  @override
+  String get profileGroupPrivacy => 'Приватність';
+
+  @override
+  String get profileGroupData => 'Обмін і дані';
+
+  @override
+  String get profileGroupApp => 'Застосунок';
+
+  @override
+  String get profileSummaryMeshOnly => 'Тільки mesh';
+
+  @override
+  String get profileSummaryMeshInternet => 'Mesh · інтернет';
+
+  @override
+  String get profileSummaryBackgroundOn => 'працює у фоні';
+
+  @override
+  String get profileSummaryDiscoverable => 'Вас видно';
+
+  @override
+  String get profileSummaryHidden => 'Приховано';
+
+  @override
+  String get profileSummaryLastSeenHidden => 'час у мережі приховано';
+
+  @override
+  String profileSummaryTransfersActive(int count) {
+    return '$count у процесі';
+  }
+
+  @override
+  String get profileSummaryCardBackup => 'Картка, файли, бекап';
+
+  @override
+  String get chatPlay => 'Відтворити';
+
+  @override
+  String get chatPause => 'Пауза';
+
+  @override
+  String voicePlayingFrom(String name) {
+    return 'Голосове від $name';
+  }
 }

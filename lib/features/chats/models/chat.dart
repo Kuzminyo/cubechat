@@ -16,6 +16,7 @@ class Chat {
     this.isVerified = false,
     this.signKeyRotated = false,
     this.isChannel = false,
+    this.isDraft = false,
   });
 
   final String id;
@@ -46,4 +47,7 @@ class Chat {
   /// rather than a 1:1 peer conversation. Channels have no online/verified
   /// state — anyone with the key is a member.
   final bool isChannel;
+
+  /// True when [lastMessage] is the unsent composer text for this chat.
+  final bool isDraft;
 }

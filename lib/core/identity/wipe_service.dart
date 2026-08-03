@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/channels/data/channel_controller.dart';
+import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
+import '../../features/chat/data/drafts_controller.dart';
+import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
@@ -39,12 +42,15 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Other people's pictures are other people's data, and they live in their own
   // box — clearing the roster does not reach them.
   await ref.read(peerAvatarsControllerProvider.notifier).clear();
+  await ref.read(channelRosterControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
   await ref.read(favoritesControllerProvider.notifier).clear();
   // Who you went looking for is its own trace, and it lives in its own list.
   await ref.read(recentSearchesControllerProvider.notifier).clear();
   await ref.read(readMarkersControllerProvider.notifier).clear();
   await ref.read(pinnedControllerProvider.notifier).clear();
+  await ref.read(draftsControllerProvider.notifier).clearAll();
+  await ref.read(fileTransferControllerProvider.notifier).clearAll();
   ref.read(presenceControllerProvider.notifier).clear();
   await ref.read(nicknameControllerProvider.notifier).reset();
   // Switches the internet fallback off and forgets any custom relay list, so

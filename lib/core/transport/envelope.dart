@@ -30,8 +30,10 @@ class TransportEnvelope {
     required this.msgId,
     required this.ttl,
     required this.body,
-  })  : assert(originPubkeyHash.length == hashLen, 'origin hash must be $hashLen B'),
-        assert(destPubkeyHash.length == hashLen, 'dest hash must be $hashLen B'),
+  })  : assert(originPubkeyHash.length == hashLen,
+            'origin hash must be $hashLen B'),
+        assert(
+            destPubkeyHash.length == hashLen, 'dest hash must be $hashLen B'),
         assert(msgId.length == msgIdLen, 'msgId must be $msgIdLen B'),
         assert(ttl >= 0 && ttl <= 255, 'ttl out of byte range');
 
@@ -65,6 +67,26 @@ class TransportEnvelope {
 
   /// Hop budget once this node is well connected. See [ttlForLinkCount].
   static const int denseTtl = 5;
+
+  // New clients stamp the initial hop budget into the otherwise-random
+  // message id. This keeps the wire header compatible with old clients while
+  // letting the receiver calculate the actual route length.
+  static const int _routeMarker0 = 0xca;
+  static const int _routeMarker1 = 0x7e;
+
+  /// Initial hop budget recorded by the sender, or null for legacy frames.
+  int? get initialTtl {
+    if (msgId[0] != _routeMarker0 || msgId[1] != _routeMarker1) return null;
+    final value = msgId[2];
+    return value > 0 && value <= defaultTtl ? value : null;
+  }
+
+  /// Number of radio links crossed before reaching this receiver.
+  int? get traversedHops {
+    final initial = initialTtl;
+    if (initial == null || ttl > initial) return null;
+    return initial - ttl + 1;
+  }
 
   /// Link count at which a node counts as sitting in a dense mesh.
   static const int denseLinkThreshold = 6;
@@ -149,11 +171,20 @@ class TransportEnvelope {
 
   static final _random = Random.secure();
 
-  /// Mints a fresh random 16-byte message id.
-  static Uint8List newMsgId() {
+  /// Mints a fresh random 16-byte message id. When [initialTtl] is supplied,
+  /// embeds it in a legacy-safe prefix so receivers can show the real hops.
+  static Uint8List newMsgId({int? initialTtl}) {
     final out = Uint8List(msgIdLen);
     for (var i = 0; i < out.length; i++) {
       out[i] = _random.nextInt(256);
+    }
+    if (initialTtl != null) {
+      if (initialTtl <= 0 || initialTtl > defaultTtl) {
+        throw ArgumentError.value(initialTtl, 'initialTtl');
+      }
+      out[0] = _routeMarker0;
+      out[1] = _routeMarker1;
+      out[2] = initialTtl;
     }
     return out;
   }

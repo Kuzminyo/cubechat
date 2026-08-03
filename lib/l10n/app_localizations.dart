@@ -1718,11 +1718,599 @@ abstract class AppLocalizations {
   /// **'View in chat'**
   String get contactProfileViewInChat;
 
+  /// No description provided for @chatDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get chatDraft;
+
+  /// No description provided for @chatSearchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get chatSearchTitle;
+
+  /// No description provided for @chatSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search messages'**
+  String get chatSearchHint;
+
+  /// No description provided for @chatSearchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches'**
+  String get chatSearchNoResults;
+
+  /// No description provided for @chatSearchPrevious.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous result'**
+  String get chatSearchPrevious;
+
+  /// No description provided for @chatSearchNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next result'**
+  String get chatSearchNext;
+
+  /// No description provided for @chatMessageCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} messages'**
+  String chatMessageCount(int count);
+
+  /// No description provided for @chatRouteBluetooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth'**
+  String get chatRouteBluetooth;
+
+  /// No description provided for @chatRouteMesh.
+  ///
+  /// In en, this message translates to:
+  /// **'Mesh'**
+  String get chatRouteMesh;
+
+  /// No description provided for @chatRouteInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet'**
+  String get chatRouteInternet;
+
+  /// No description provided for @chatRouteQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get chatRouteQueued;
+
   /// No description provided for @chatAttachmentUnavailable.
   ///
   /// In en, this message translates to:
   /// **'No connection is available. Connect over Bluetooth or the internet and try again.'**
   String get chatAttachmentUnavailable;
+
+  /// No description provided for @fileTransfersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'File transfers'**
+  String get fileTransfersTitle;
+
+  /// No description provided for @fileTransfersClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear history'**
+  String get fileTransfersClear;
+
+  /// No description provided for @fileTransfersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No file transfers yet'**
+  String get fileTransfersEmpty;
+
+  /// No description provided for @fileTransfersActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get fileTransfersActive;
+
+  /// No description provided for @fileTransfersHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get fileTransfersHistory;
+
+  /// No description provided for @fileTransferPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get fileTransferPause;
+
+  /// No description provided for @fileTransferResume.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get fileTransferResume;
+
+  /// No description provided for @fileTransferRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get fileTransferRetry;
+
+  /// No description provided for @fileTransferQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for connection'**
+  String get fileTransferQueued;
+
+  /// No description provided for @fileTransferRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Transferring'**
+  String get fileTransferRunning;
+
+  /// No description provided for @fileTransferPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get fileTransferPaused;
+
+  /// No description provided for @fileTransferCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get fileTransferCompleted;
+
+  /// No description provided for @fileTransferFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get fileTransferFailed;
+
+  /// No description provided for @fileTransferCanceled.
+  ///
+  /// In en, this message translates to:
+  /// **'Canceled'**
+  String get fileTransferCanceled;
+
+  /// No description provided for @profileFileTransfers.
+  ///
+  /// In en, this message translates to:
+  /// **'File transfers'**
+  String get profileFileTransfers;
+
+  /// No description provided for @profileFileTransfersSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Progress, queue and transfer history'**
+  String get profileFileTransfersSubtitle;
+
+  /// No description provided for @qrScanAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan QR code'**
+  String get qrScanAction;
+
+  /// No description provided for @qrScanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan QR code'**
+  String get qrScanTitle;
+
+  /// No description provided for @qrScanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at a Cubechat contact or channel QR code.'**
+  String get qrScanHint;
+
+  /// No description provided for @qrFlash.
+  ///
+  /// In en, this message translates to:
+  /// **'Flashlight'**
+  String get qrFlash;
+
+  /// No description provided for @qrCameraError.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera is unavailable. Check camera permission and try again.'**
+  String get qrCameraError;
+
+  /// No description provided for @qrInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not a valid Cubechat QR code.'**
+  String get qrInvalid;
+
+  /// No description provided for @qrChannelAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} added'**
+  String qrChannelAdded(String name);
+
+  /// No description provided for @qrShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show QR code'**
+  String get qrShow;
+
+  /// No description provided for @qrChannelTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Join {name}'**
+  String qrChannelTitle(String name);
+
+  /// No description provided for @profileBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted backup'**
+  String get profileBackup;
+
+  /// No description provided for @profileBackupSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Move keys, contacts and history safely'**
+  String get profileBackupSubtitle;
+
+  /// No description provided for @backupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted backup'**
+  String get backupTitle;
+
+  /// No description provided for @backupExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup contains your private identity keys, contacts, channels, settings and message history. It is encrypted on this phone with the password you choose; Cubechat cannot recover a forgotten password.'**
+  String get backupExplainer;
+
+  /// No description provided for @backupCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create backup'**
+  String get backupCreate;
+
+  /// No description provided for @backupCreateSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypt everything and save a .cchatbackup file'**
+  String get backupCreateSubtitle;
+
+  /// No description provided for @backupRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore backup'**
+  String get backupRestore;
+
+  /// No description provided for @backupRestoreSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace this phone’s Cubechat profile from a backup file'**
+  String get backupRestoreSubtitle;
+
+  /// No description provided for @backupPasswordTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup password'**
+  String get backupPasswordTitle;
+
+  /// No description provided for @backupPasswordHint.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 8 characters'**
+  String get backupPasswordHint;
+
+  /// No description provided for @backupConfirmPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat password'**
+  String get backupConfirmPassword;
+
+  /// No description provided for @backupPasswordMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get backupPasswordMismatch;
+
+  /// No description provided for @backupPasswordShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least 8 characters'**
+  String get backupPasswordShort;
+
+  /// No description provided for @backupSaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Save Cubechat backup'**
+  String get backupSaveTitle;
+
+  /// No description provided for @backupSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted backup saved'**
+  String get backupSaved;
+
+  /// No description provided for @backupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not complete the backup operation'**
+  String get backupFailed;
+
+  /// No description provided for @backupRestoreConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace this profile?'**
+  String get backupRestoreConfirmTitle;
+
+  /// No description provided for @backupRestoreConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Current keys, contacts, channels, settings and history on this phone will be replaced by the selected backup.'**
+  String get backupRestoreConfirmMessage;
+
+  /// No description provided for @backupRestoreConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get backupRestoreConfirmAction;
+
+  /// No description provided for @backupRestored.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restored'**
+  String get backupRestored;
+
+  /// No description provided for @backupInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong password, damaged file, or unsupported backup'**
+  String get backupInvalid;
+
+  /// No description provided for @channelInfoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel details'**
+  String get channelInfoTitle;
+
+  /// No description provided for @channelParticipantsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Participants'**
+  String get channelParticipantsTitle;
+
+  /// No description provided for @channelAdministratorsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrators'**
+  String get channelAdministratorsTitle;
+
+  /// No description provided for @channelMakeAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Make administrator'**
+  String get channelMakeAdmin;
+
+  /// No description provided for @channelRemoveAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove administrator'**
+  String get channelRemoveAdmin;
+
+  /// No description provided for @channelNoParticipants.
+  ///
+  /// In en, this message translates to:
+  /// **'Participants will appear after signed activity'**
+  String get channelNoParticipants;
+
+  /// No description provided for @channelPollTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Poll'**
+  String get channelPollTitle;
+
+  /// No description provided for @channelCreatePoll.
+  ///
+  /// In en, this message translates to:
+  /// **'Create poll'**
+  String get channelCreatePoll;
+
+  /// No description provided for @channelPollQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Question'**
+  String get channelPollQuestion;
+
+  /// No description provided for @channelPollOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Option {number}'**
+  String channelPollOption(int number);
+
+  /// No description provided for @channelPollAddOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Add option'**
+  String get channelPollAddOption;
+
+  /// No description provided for @channelPollCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish poll'**
+  String get channelPollCreate;
+
+  /// No description provided for @channelPollVotes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No votes} =1{1 vote} other{{count} votes}}'**
+  String channelPollVotes(int count);
+
+  /// No description provided for @phoneTransferTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer to a new phone'**
+  String get phoneTransferTitle;
+
+  /// No description provided for @phoneTransferIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Move your profile, keys, contacts, channels, settings and history directly between two phones.'**
+  String get phoneTransferIntro;
+
+  /// No description provided for @phoneTransferSend.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the old phone'**
+  String get phoneTransferSend;
+
+  /// No description provided for @phoneTransferReceive.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the new phone'**
+  String get phoneTransferReceive;
+
+  /// No description provided for @phoneTransferSameWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect both phones to the same Wi-Fi. Keep this screen open until the transfer finishes.'**
+  String get phoneTransferSameWifi;
+
+  /// No description provided for @phoneTransferPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing encrypted transfer…'**
+  String get phoneTransferPreparing;
+
+  /// No description provided for @phoneTransferReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this one-use QR code on the new phone'**
+  String get phoneTransferReady;
+
+  /// No description provided for @phoneTransferScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan old phone'**
+  String get phoneTransferScan;
+
+  /// No description provided for @phoneTransferConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace this phone’s profile?'**
+  String get phoneTransferConfirmTitle;
+
+  /// No description provided for @phoneTransferConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The profile currently stored on this phone will be replaced by the encrypted local transfer.'**
+  String get phoneTransferConfirmMessage;
+
+  /// No description provided for @phoneTransferConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer profile'**
+  String get phoneTransferConfirmAction;
+
+  /// No description provided for @phoneTransferSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile transferred successfully'**
+  String get phoneTransferSuccess;
+
+  /// No description provided for @phoneTransferFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not complete the phone transfer'**
+  String get phoneTransferFailed;
+
+  /// No description provided for @profileGroupConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get profileGroupConnection;
+
+  /// No description provided for @profileGroupPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy'**
+  String get profileGroupPrivacy;
+
+  /// No description provided for @profileGroupData.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing & data'**
+  String get profileGroupData;
+
+  /// No description provided for @profileGroupApp.
+  ///
+  /// In en, this message translates to:
+  /// **'App'**
+  String get profileGroupApp;
+
+  /// No description provided for @profileSummaryMeshOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Mesh only'**
+  String get profileSummaryMeshOnly;
+
+  /// No description provided for @profileSummaryMeshInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Mesh · internet'**
+  String get profileSummaryMeshInternet;
+
+  /// No description provided for @profileSummaryBackgroundOn.
+  ///
+  /// In en, this message translates to:
+  /// **'runs in background'**
+  String get profileSummaryBackgroundOn;
+
+  /// No description provided for @profileSummaryDiscoverable.
+  ///
+  /// In en, this message translates to:
+  /// **'Discoverable'**
+  String get profileSummaryDiscoverable;
+
+  /// No description provided for @profileSummaryHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get profileSummaryHidden;
+
+  /// No description provided for @profileSummaryLastSeenHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'last seen hidden'**
+  String get profileSummaryLastSeenHidden;
+
+  /// No description provided for @profileSummaryTransfersActive.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} in progress'**
+  String profileSummaryTransfersActive(int count);
+
+  /// No description provided for @profileSummaryCardBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact card, files, backup'**
+  String get profileSummaryCardBackup;
+
+  /// No description provided for @chatPlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get chatPlay;
+
+  /// No description provided for @chatPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get chatPause;
+
+  /// No description provided for @voicePlayingFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice from {name}'**
+  String voicePlayingFrom(String name);
 }
 
 class _AppLocalizationsDelegate

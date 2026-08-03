@@ -100,6 +100,22 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  void updateRoute(
+    String peerId,
+    String msgId,
+    MessageRoute route, {
+    int? hops,
+  }) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    final list = [...current]..[idx] =
+        current[idx].copyWith(route: route, routeHops: hops);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   /// Flip our own outgoing messages to [MessageStatus.read] when the peer's
   /// read receipt lands, stamping [Message.readAt] with the moment it did.
   /// Messages are matched by their transport [wireId] (the id both sides share);
@@ -290,6 +306,28 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   }
 
   /// Ceiling on [Message.readBy] entries for one message.
+  /// Applies a signed channel-poll vote. A later vote by the same participant
+  /// replaces their earlier choice, making retries and route duplicates safe.
+  void applyPollVote(
+    String chatId, {
+    required String pollWireId,
+    required String voterId,
+    required int option,
+  }) {
+    final current = state[chatId];
+    if (current == null) return;
+    final index = current.indexWhere((message) =>
+        message.wireId == pollWireId && message.kind == MessageKind.poll);
+    if (index == -1) return;
+    final message = current[index];
+    if (option < 0 || option >= message.pollOptions.length) return;
+    if (message.pollVotes[voterId] == option) return;
+    final votes = {...message.pollVotes, voterId: option};
+    final next = [...current]..[index] = message.copyWith(pollVotes: votes);
+    state = {...state, chatId: next};
+    _persist(chatId, next);
+  }
+
   static const int maxReadersPerMessage = 64;
 
   /// Flags an outgoing message as forward-secret once the send path has
@@ -467,6 +505,10 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
               },
           },
         if (m.replyToWireId != null) 'replyTo': m.replyToWireId,
+        if (m.route != null) 'route': m.route!.name,
+        if (m.routeHops != null) 'routeHops': m.routeHops,
+        if (m.pollOptions.isNotEmpty) 'pollOptions': m.pollOptions,
+        if (m.pollVotes.isNotEmpty) 'pollVotes': m.pollVotes,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -531,6 +573,21 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       reactions: reactions,
       readBy: readBy,
       replyToWireId: m['replyTo'] as String?,
+      route: (m['route'] as String?) == null
+          ? null
+          : MessageRoute.values.firstWhere(
+              (value) => value.name == m['route'],
+              orElse: () => MessageRoute.queued,
+            ),
+      routeHops: m['routeHops'] as int?,
+      pollOptions: (m['pollOptions'] as List?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const <String>[],
+      pollVotes: (m['pollVotes'] as Map?)?.map<String, int>(
+            (key, value) => MapEntry(key as String, value as int),
+          ) ??
+          const <String, int>{},
     );
   }
 }

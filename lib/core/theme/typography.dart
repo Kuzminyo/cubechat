@@ -90,9 +90,19 @@ abstract final class AppTypography {
     );
   }
 
+  /// Fingerprints, contact ids — anything read character by character.
+  ///
+  /// w500, not w400, because `.codex/fonts` bundles JetBrainsMono-**Medium**
+  /// and google_fonts matches an asset by exact weight. Asking for Regular
+  /// found nothing locally and fell through to a download from
+  /// fonts.gstatic.com — on an app whose whole point is working with no
+  /// internet, so the mesh-only case silently got the system font instead, and
+  /// the online case made a request to Google to render a key fingerprint.
+  /// The other two families already line up this way: display is w700 against
+  /// SpaceGrotesk-Bold, heading w600 against SpaceGrotesk-SemiBold.
   static TextStyle mono({
     double size = 12,
-    FontWeight weight = FontWeight.w400,
+    FontWeight weight = FontWeight.w500,
     Color? color,
   }) {
     return GoogleFonts.jetBrainsMono(

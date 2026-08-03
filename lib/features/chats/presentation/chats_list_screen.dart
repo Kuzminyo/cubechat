@@ -17,6 +17,8 @@ import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../chat/data/conversation_settings_controller.dart';
+import '../../channels/data/channel_roster_controller.dart';
+import '../../chat/data/drafts_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
@@ -76,6 +78,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final favorites = ref.watch(favoritesControllerProvider);
   final readMarkers = ref.watch(readMarkersControllerProvider);
   final presence = ref.watch(presenceControllerProvider);
+  final drafts = ref.watch(draftsControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -95,12 +98,13 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
     final isReachableViaMesh =
         !isOnline && now.difference(peer.lastSeen) <= _meshReachableWindow;
+    final draft = drafts[peer.pubkeyHex];
     return Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
       peerName: displayNameForPeer(peer.displayName, peer.pubkeyHex),
-      lastMessage: last?.text ?? 'Secured · Noise XX',
-      lastTime: last?.sentAt ?? peer.lastSeen,
+      lastMessage: draft?.text ?? last?.text ?? 'Secured · Noise XX',
+      lastTime: draft?.updatedAt ?? last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,
       isMesh: true,
       isOnline: isOnline,
@@ -108,6 +112,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       isVerified: peer.isVerified,
       signKeyRotated: peer.hasUnacknowledgedRotation,
       isFavorite: favorites.contains(peer.pubkeyHex),
+      isDraft: draft != null,
     );
   }).toList();
 
@@ -118,22 +123,25 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     final msgs = messagesByChat[ch.name] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
     final unread = unreadMessageCount(msgs, readMarkers[ch.name]);
-    final preview = last == null
-        ? 'Group channel'
-        : (!last.isMine && last.authorName != null
-            ? '${last.authorName}: ${last.text}'
-            : last.text);
+    final draft = drafts[ch.name];
+    final preview = draft?.text ??
+        (last == null
+            ? 'Group channel'
+            : (!last.isMine && last.authorName != null
+                ? '${last.authorName}: ${last.text}'
+                : last.text));
     entries.add(Chat(
       id: ch.name,
       peerId: ch.name,
       peerName: ch.name,
       lastMessage: preview,
-      lastTime: last?.sentAt ?? ch.joinedAt,
+      lastTime: draft?.updatedAt ?? last?.sentAt ?? ch.joinedAt,
       unreadCount: unread,
       isMesh: true,
       isOnline: false,
       isChannel: true,
       isFavorite: favorites.contains(ch.name),
+      isDraft: draft != null,
     ));
   }
 
@@ -608,10 +616,12 @@ Future<void> _showChatActions(
   await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
   await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
   await ref.read(pinnedControllerProvider.notifier).forget(chat.id);
+  await ref.read(draftsControllerProvider.notifier).clear(chat.id);
   if (chat.isChannel) {
     // Leaving forgets the key; without it the channel's broadcasts become
     // unreadable noise we simply relay.
     await ref.read(channelControllerProvider.notifier).leave(chat.id);
+    await ref.read(channelRosterControllerProvider.notifier).forget(chat.id);
   } else {
     // Forget the roster entry too, otherwise the tile reappears empty.
     await ref.read(knownPeersControllerProvider.notifier).forget(chat.id);

@@ -90,6 +90,8 @@ class ChatInput extends StatefulWidget {
     this.editingText,
     this.onEditCommit,
     this.onEditCancel,
+    this.initialText,
+    this.onChanged,
   });
 
   final String hint;
@@ -123,6 +125,11 @@ class ChatInput extends StatefulWidget {
   /// Rolling input-loudness samples (0..1, newest last) for the waveform.
   final List<double> recordLevels;
 
+  /// Persisted draft for this conversation. It is restored after inline edit
+  /// mode as well, so editing an old message never destroys an unsent draft.
+  final String? initialText;
+  final ValueChanged<String>? onChanged;
+
   /// Non-null puts the input in edit mode: the field is prefilled with this
   /// text, an "editing" banner shows, and the send button commits via
   /// [onEditCommit] instead of [onSend].
@@ -135,7 +142,7 @@ class ChatInput extends StatefulWidget {
 }
 
 class _ChatInputState extends State<ChatInput> {
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   final _focus = FocusNode();
   bool _hasText = false;
 
@@ -144,6 +151,8 @@ class _ChatInputState extends State<ChatInput> {
   @override
   void initState() {
     super.initState();
+    _controller = TextEditingController(text: widget.initialText ?? '');
+    _hasText = _controller.text.trim().isNotEmpty;
     _controller.addListener(() {
       final has = _controller.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
@@ -154,8 +163,8 @@ class _ChatInputState extends State<ChatInput> {
   void didUpdateWidget(covariant ChatInput old) {
     super.didUpdateWidget(old);
     // Entering edit mode (or switching to a different message): load its text
-    // and drop the caret at the end, ready to change. Leaving edit mode clears
-    // the draft the edit left behind.
+    // and drop the caret at the end. Leaving edit mode restores the unsent
+    // conversation draft instead of discarding it.
     if (widget.editingText != old.editingText) {
       if (widget.editingText != null) {
         _controller.text = widget.editingText!;
@@ -163,9 +172,17 @@ class _ChatInputState extends State<ChatInput> {
             TextSelection.collapsed(offset: _controller.text.length);
         _focus.requestFocus();
       } else if (old.editingText != null) {
-        _controller.clear();
+        _replaceText(widget.initialText ?? '');
       }
+    } else if (!_editing && widget.initialText != old.initialText) {
+      final next = widget.initialText ?? '';
+      if (_controller.text != next) _replaceText(next);
     }
+  }
+
+  void _replaceText(String text) {
+    _controller.text = text;
+    _controller.selection = TextSelection.collapsed(offset: text.length);
   }
 
   @override
@@ -182,6 +199,7 @@ class _ChatInputState extends State<ChatInput> {
       widget.onEditCommit?.call(text);
     } else {
       widget.onSend(text);
+      widget.onChanged?.call('');
     }
     _controller.clear();
   }
@@ -233,6 +251,7 @@ class _ChatInputState extends State<ChatInput> {
                             child: TextField(
                               controller: _controller,
                               focusNode: _focus,
+                              onChanged: _editing ? null : widget.onChanged,
                               minLines: 1,
                               maxLines: 5,
                               cursorColor: AppColors.brandPrimary,

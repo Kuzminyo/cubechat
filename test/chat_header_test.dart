@@ -140,4 +140,41 @@ void main() {
       reason: 'and the bottom still clears the composer',
     );
   });
+
+  testWidgets('search shows total messages and navigates matching results',
+      (tester) async {
+    final container = await openChat(tester, channel: 'search-room');
+    final messages = container.read(messagesControllerProvider.notifier);
+    for (var i = 0; i < 3; i++) {
+      messages.append(
+        '#search-room',
+        Message(
+          id: 'search-$i',
+          chatId: '#search-room',
+          text: i == 1 ? 'different' : 'needle $i',
+          sentAt: DateTime(2026, 8, 3, 12, i),
+          isMine: false,
+          wireId: (i + 1).toString() * 32,
+        ),
+      );
+    }
+    await beat(tester);
+
+    // The header no longer carries a message count — it answered a question
+    // nobody asks mid-conversation and sat where the name wants to be. The
+    // total is still reported, inside the search bar, which is where it means
+    // something; that is what the "2 / 2" below checks.
+    await tester.tap(find.byTooltip('Search'));
+    await beat(tester);
+
+    final searchField = find.widgetWithText(TextField, 'Search messages');
+    expect(searchField, findsOneWidget);
+    await tester.enterText(searchField, 'needle');
+    await beat(tester);
+    expect(find.text('2 / 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Previous result'));
+    await beat(tester);
+    expect(find.text('1 / 2'), findsOneWidget);
+  });
 }

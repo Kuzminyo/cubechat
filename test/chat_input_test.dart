@@ -113,4 +113,39 @@ void main() {
     expect(field.controller!.text, isEmpty);
     expect(field.textCapitalization, TextCapitalization.sentences);
   });
+
+  testWidgets('an existing draft is restored into the composer',
+      (tester) async {
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      initialText: 'unfinished message',
+      onSend: (_) {},
+    )));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, 'unfinished message');
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+  });
+
+  testWidgets('typing updates the draft and sending clears it', (tester) async {
+    final changes = <String>[];
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      initialText: 'old',
+      onChanged: changes.add,
+      onSend: (_) {},
+    )));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'new draft');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+
+    expect(changes, contains('new draft'));
+    expect(changes.last, isEmpty);
+  });
 }

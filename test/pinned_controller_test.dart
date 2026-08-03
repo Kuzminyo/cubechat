@@ -46,11 +46,12 @@ void main() {
     expect(n.isPinned(chat, second), isFalse);
   });
 
-  test('pinning something else replaces the previous pin', () async {
+  test('pinning another message keeps both and selects the newest', () async {
     final n = notifier();
     await n.pin(chat, first);
     await n.pin(chat, second);
     expect(n.pinnedIn(chat)?.wireId, second);
+    expect(n.pinnedAllIn(chat).map((pin) => pin.wireId), [first, second]);
     expect(container.read(pinnedControllerProvider), hasLength(1));
   });
 

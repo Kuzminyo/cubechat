@@ -67,7 +67,28 @@ void main() {
     final t = await AppLocalizations.delegate.load(const Locale('en'));
 
     expect(find.text(t.profileFingerprint), findsOneWidget);
-    expect(find.text(t.profileLanguage.toUpperCase()), findsWidgets);
+    // The settings are four collapsible groups now rather than a flat run of
+    // cards, so the thing to check is that a group header is built — the
+    // uppercase section labels this used to look for are gone with the layout
+    // that needed them.
+    expect(find.text(t.profileGroupConnection), findsOneWidget);
+    expect(find.text(t.profileGroupApp), findsOneWidget);
+  });
+
+  testWidgets('a group opens to reveal its settings', (tester) async {
+    // Closed by default is the whole point — thirteen cards became six rows —
+    // so the rows inside must genuinely be absent until asked for, not merely
+    // scrolled past.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    expect(find.text(t.profileTransportMesh), findsNothing);
+
+    await tester.tap(find.text(t.profileGroupConnection));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text(t.profileTransportMesh), findsOneWidget);
   });
 
   testWidgets('the header rests compact and opens when pulled', (tester) async {

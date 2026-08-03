@@ -16,22 +16,30 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
 import '../../../core/utils/time_format.dart';
+import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../channels/presentation/channel_poll_composer.dart';
+import '../../qr/data/channel_qr_payload.dart';
+import '../../qr/presentation/qr_display.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
+import '../../profile/data/relay_settings_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_reply_target.dart';
 import '../data/conversation_settings_controller.dart';
+import '../data/drafts_controller.dart';
 import '../data/messages_controller.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
@@ -46,6 +54,7 @@ import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/voice_trim_bar.dart';
+import 'widgets/mention_suggestions.dart';
 import '../../../core/widgets/glass_toast.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
@@ -53,6 +62,61 @@ import '../../../core/widgets/glass_toast.dart';
 /// be handed to `BluetoothDevice.fromId` for a reconnect.
 bool _isBleDeviceId(String id) =>
     !(id.length == 64 && RegExp(r'^[0-9a-f]+$').hasMatch(id));
+
+final _chatSearchOpenProvider =
+    StateProvider.autoDispose.family<bool, String>((_, __) => false);
+
+enum ChatRoute { bluetooth, mesh, internet, queued }
+
+ChatRoute resolveChatRoute({
+  required bool directBluetooth,
+  required bool meshAvailable,
+  required bool relayAvailable,
+}) {
+  if (directBluetooth) return ChatRoute.bluetooth;
+  if (meshAvailable) return ChatRoute.mesh;
+  if (relayAvailable) return ChatRoute.internet;
+  return ChatRoute.queued;
+}
+
+({ChatRoute route, int? hops}) displayedChatRoute(
+  List<Message> messages,
+  ChatRoute fallback,
+) {
+  for (var index = messages.length - 1; index >= 0; index--) {
+    final message = messages[index];
+    final stored = message.route;
+    if (stored == null) continue;
+    final route = switch (stored) {
+      MessageRoute.bluetooth => ChatRoute.bluetooth,
+      MessageRoute.mesh => ChatRoute.mesh,
+      MessageRoute.internet => ChatRoute.internet,
+      MessageRoute.queued => ChatRoute.queued,
+    };
+    return (route: route, hops: message.routeHops);
+  }
+  return (route: fallback, hops: null);
+}
+
+List<Message> messagesMatchingQuery(List<Message> messages, String query) {
+  final needle = query.trim().toLowerCase();
+  if (needle.isEmpty) return const <Message>[];
+  return messages.where((message) {
+    final searchable = <String>[
+      message.text,
+      if (message.fileName != null) message.fileName!,
+      if (message.authorName != null) message.authorName!,
+    ];
+    return searchable.any((value) => value.toLowerCase().contains(needle));
+  }).toList(growable: false);
+}
+
+bool _hasMeshLink(Map<String, ChatSession> sessions, int peripheralLinks) =>
+    peripheralLinks > 0 ||
+    sessions.values.any((session) => session.isEstablished);
+
+bool _hasRelay(Map<String, RelayState> statuses) =>
+    statuses.values.any((state) => state == RelayState.connected);
 
 /// Real-transport chat screen.
 ///
@@ -128,6 +192,16 @@ class ChatScreen extends ConsumerWidget {
     // Nostr npub) even with no live BLE session — enough for sendText to carry
     // a frame over the mesh, the Nostr internet fallback, or store-and-forward.
     final known = ref.watch(knownPeersControllerProvider)[canonicalId];
+    final availableRoute = resolveChatRoute(
+      directBluetooth: session?.isEstablished ?? false,
+      meshAvailable: _hasMeshLink(
+        sessions,
+        ref.watch(peripheralControllerProvider).connectedCount,
+      ),
+      relayAvailable: known?.nostrPubkey != null &&
+          _hasRelay(ref.watch(relayStatusProvider)),
+    );
+    final route = displayedChatRoute(messages, availableRoute);
     // Sending needs a recipient pubkey, not a live handshake. Gating on
     // isEstablished made Send a silent no-op whenever the peer wasn't a direct
     // BLE neighbour: two phones talking only over the internet could type but
@@ -208,6 +282,9 @@ class ChatScreen extends ConsumerWidget {
               autoDeleteLabel:
                   autoDelete.isOn ? formatAutoDelete(t, autoDelete) : null,
               statusText: statusText,
+              verification: _VerificationMark(session: session, ref: ref),
+              route: route.route,
+              routeHops: route.hops,
               statusColor:
                   isOnline ? AppColors.online : AppColors.textOnGlassDim,
               online: isOnline,
@@ -220,6 +297,14 @@ class ChatScreen extends ConsumerWidget {
                         '?name=${Uri.encodeQueryComponent(peerLabel)}',
                       ),
               actions: [
+                _PillIconButton(
+                  icon: Icons.search_rounded,
+                  color: AppColors.textOnGlass,
+                  tooltip: t.chatSearchTitle,
+                  onPressed: () => ref
+                      .read(_chatSearchOpenProvider(canonicalId).notifier)
+                      .state = true,
+                ),
                 if (showRetry)
                   _PillIconButton(
                     icon: Icons.refresh,
@@ -245,11 +330,11 @@ class ChatScreen extends ConsumerWidget {
                       }
                     },
                   ),
-                _ShieldButton(
-                  session: session,
-                  ref: ref,
-                  peerLabel: peerLabel,
-                ),
+                // No shield here. Verification is a property of the person,
+                // not of this conversation, and the contact profile already
+                // carries a Security card that opens the same screen. What the
+                // header needs to say is only *whether* they are verified,
+                // which is now a mark beside the name.
               ],
             ),
           ),
@@ -267,6 +352,16 @@ class ChatScreen extends ConsumerWidget {
     final joined = ref.watch(channelControllerProvider).containsKey(peerId);
     final messages = ref.watch(messagesControllerProvider)[peerId] ?? const [];
 
+    final sessions = ref.watch(chatSessionManagerProvider);
+    final availableRoute = resolveChatRoute(
+      directBluetooth: false,
+      meshAvailable: _hasMeshLink(
+        sessions,
+        ref.watch(peripheralControllerProvider).connectedCount,
+      ),
+      relayAvailable: _hasRelay(ref.watch(relayStatusProvider)),
+    );
+    final route = displayedChatRoute(messages, availableRoute);
     return _withBackHandling(
         context,
         Scaffold(
@@ -288,24 +383,45 @@ class ChatScreen extends ConsumerWidget {
               label: peerLabel,
               statusText: t.channelSubtitle,
               statusColor: AppColors.textOnGlassDim,
+              route: route.route,
+              routeHops: route.hops,
               online: false,
+              onTapIdentity: () => context.push(
+                '/channel-info/${Uri.encodeComponent(peerId.substring(1))}',
+              ),
               actions: [
                 if (joined)
                   _PillIconButton(
-                    icon: Icons.person_add_alt_1_outlined,
-                    color: AppColors.brandPrimary,
-                    tooltip: t.channelInviteTitle,
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      backgroundColor: AppColors.bgTop,
-                      isScrollControlled: true,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(22)),
-                      ),
-                      builder: (_) => _ChannelInviteSheet(channelName: peerId),
-                    ),
+                    icon: Icons.search_rounded,
+                    color: AppColors.textOnGlass,
+                    tooltip: t.chatSearchTitle,
+                    onPressed: () => ref
+                        .read(_chatSearchOpenProvider(peerId).notifier)
+                        .state = true,
                   ),
+                if (joined)
+                  _PillIconButton(
+                    icon: Icons.poll_outlined,
+                    color: AppColors.brandSecondary,
+                    tooltip: t.channelCreatePoll,
+                    onPressed: () =>
+                        showChannelPollComposer(context, ref, peerId),
+                  ),
+                _PillIconButton(
+                  icon: Icons.person_add_alt_1_outlined,
+                  color: AppColors.brandPrimary,
+                  tooltip: t.channelInviteTitle,
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    backgroundColor: AppColors.bgTop,
+                    isScrollControlled: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(22)),
+                    ),
+                    builder: (_) => _ChannelInviteSheet(channelName: peerId),
+                  ),
+                ),
               ],
             ),
           ),
@@ -371,6 +487,8 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
     final t = AppLocalizations.of(context);
     final peers = ref.watch(knownPeersControllerProvider).values.toList()
       ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    final channel = ref.watch(channelControllerProvider)[widget.channelName];
+    final qrData = channel == null ? null : ChannelQrPayload.encode(channel);
 
     return SafeArea(
       child: Column(
@@ -387,6 +505,16 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
             widget.channelName,
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
+          if (qrData != null)
+            TextButton.icon(
+              onPressed: () => showQrDialog(
+                context,
+                title: t.qrChannelTitle(widget.channelName),
+                data: qrData,
+              ),
+              icon: const Icon(Icons.qr_code_2_rounded),
+              label: Text(t.qrShow),
+            ),
           const SizedBox(height: 12),
           if (peers.isEmpty)
             Padding(
@@ -567,7 +695,10 @@ class _ChatHeader extends StatelessWidget {
     required this.avatarSeed,
     required this.label,
     required this.statusText,
+    this.verification,
+    required this.route,
     this.autoDeleteLabel,
+    this.routeHops,
     required this.statusColor,
     required this.online,
     required this.actions,
@@ -582,6 +713,11 @@ class _ChatHeader extends StatelessWidget {
   /// carry a timer next to the name. Null when messages are kept.
   final String? autoDeleteLabel;
   final String statusText;
+  /// Small mark beside the name — verified, or key-changed. Null for a
+  /// channel, which has no single person to vouch for.
+  final Widget? verification;
+  final ChatRoute route;
+  final int? routeHops;
   final Color statusColor;
   final bool online;
   final List<Widget> actions;
@@ -628,8 +764,17 @@ class _ChatHeader extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
+                          // Centred against the avatar. The two lines have
+                          // different natural heights, so left to itself the
+                          // block sat high and the name looked off its own
+                          // picture.
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Row(
+                              // Baseline-ish: the marks beside the name are
+                              // smaller than the name, and centring them on the
+                              // row made them float above its middle.
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Flexible(
                                   child: Text(
@@ -647,6 +792,16 @@ class _ChatHeader extends StatelessWidget {
                                 // The exact period is one tap away in the
                                 // profile; here the point is only that this
                                 // chat does not keep what you say in it.
+                                // Verified — or key-changed — reads as a mark on
+                                // the name, which is whose property it is. It
+                                // replaces the shield that used to sit out at
+                                // the end of the row, where it looked like
+                                // another button rather than a statement about
+                                // this person.
+                                if (verification != null) ...[
+                                  const SizedBox(width: 5),
+                                  verification!,
+                                ],
                                 if (autoDeleteLabel != null) ...[
                                   const SizedBox(width: 6),
                                   Tooltip(
@@ -658,16 +813,36 @@ class _ChatHeader extends StatelessWidget {
                                     ),
                                   ),
                                 ],
+                                // The message count is gone. It answered a
+                                // question nobody asks mid-conversation and sat
+                                // where a name wants to be.
                               ],
                             ),
-                            Text(
-                              statusText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: statusColor,
-                                fontSize: 11.5,
-                              ),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final compactRoute = constraints.maxWidth < 140;
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        statusText,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: statusColor,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: compactRoute ? 4 : 6),
+                                    _ChatRouteIndicator(
+                                      route: route,
+                                      hops: routeHops,
+                                      compact: compactRoute,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -687,6 +862,70 @@ class _ChatHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ChatRouteIndicator extends StatelessWidget {
+  const _ChatRouteIndicator({
+    required this.route,
+    this.hops,
+    this.compact = false,
+  });
+
+  final ChatRoute route;
+  final int? hops;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final (icon, baseLabel, color) = switch (route) {
+      ChatRoute.bluetooth => (
+          Icons.bluetooth_rounded,
+          t.chatRouteBluetooth,
+          AppColors.brandPrimary,
+        ),
+      ChatRoute.mesh => (
+          Icons.hub_outlined,
+          t.chatRouteMesh,
+          AppColors.brandSecondary,
+        ),
+      ChatRoute.internet => (
+          Icons.public_rounded,
+          t.chatRouteInternet,
+          AppColors.online,
+        ),
+      ChatRoute.queued => (
+          Icons.schedule_send_outlined,
+          t.chatRouteQueued,
+          AppColors.warning,
+        ),
+    };
+    final label = route == ChatRoute.mesh && hops != null
+        ? '$baseLabel · $hops'
+        : baseLabel;
+    return Tooltip(
+      message: label,
+      child: compact
+          ? Icon(icon, size: 13, color: color)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 12, color: color),
+                const SizedBox(width: 3),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -739,6 +978,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// can finish with [Scrollable.ensureVisible] once it is actually built.
   final _pinnedKey = GlobalKey();
   final _initialMessageKey = GlobalKey();
+  final _searchResultKey = GlobalKey();
+  String _searchQuery = '';
+  int _searchIndex = 0;
+  int _pinIndex = 0;
   bool _initialMessageRevealed = false;
 
   @override
@@ -832,14 +1075,88 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
+  void _updateSearch(String query) {
+    final matches = messagesMatchingQuery(widget.messages, query);
+    setState(() {
+      _searchQuery = query;
+      _searchIndex = matches.isEmpty ? 0 : matches.length - 1;
+    });
+    if (matches.isNotEmpty) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _revealSearchResult());
+    }
+  }
+
+  void _moveSearch(int delta) {
+    final matches = messagesMatchingQuery(widget.messages, _searchQuery);
+    if (matches.isEmpty) return;
+    setState(() {
+      _searchIndex = (_searchIndex + delta) % matches.length;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealSearchResult());
+  }
+
+  void _closeSearch() {
+    ref.read(_chatSearchOpenProvider(widget.chatId).notifier).state = false;
+    setState(() {
+      _searchQuery = '';
+      _searchIndex = 0;
+    });
+  }
+
+  Future<void> _revealSearchResult() async {
+    final matches = messagesMatchingQuery(widget.messages, _searchQuery);
+    if (matches.isEmpty || !mounted) return;
+    final index =
+        _searchIndex >= matches.length ? matches.length - 1 : _searchIndex;
+    await _jumpToMessageId(matches[index].id, _searchResultKey);
+  }
+
+  Future<void> _jumpToMessageId(String messageId, GlobalKey targetKey) async {
+    final messages = widget.messages;
+    final index = messages.indexWhere((message) => message.id == messageId);
+    if (index < 0) return;
+    if (_scroll.hasClients && messages.length > 1) {
+      final fromNewest = messages.length - 1 - index;
+      final max = _scroll.position.maxScrollExtent;
+      final estimate = max * (fromNewest / (messages.length - 1));
+      _scroll.jumpTo(estimate.clamp(0.0, max));
+    }
+    for (var attempt = 0; attempt < 5; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+      if (!mounted) return;
+      final targetContext = targetKey.currentContext;
+      if (targetContext == null || !targetContext.mounted) continue;
+      await Scrollable.ensureVisible(
+        targetContext,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 220),
+      );
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
-    final pin = ref.watch(pinnedControllerProvider)[widget.chatId];
+    ref.watch(pinnedControllerProvider);
+    final pins =
+        ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
     // A pin whose message isn't in this chat any more (deleted, or history
     // cleared) has nothing to show or scroll to — hide the bar rather than
     // render an empty one.
-    final pinnedMessage = _messageByWireId(messages, pin?.wireId);
+    final visiblePins = pins
+        .map((pin) => _messageByWireId(messages, pin.wireId))
+        .whereType<Message>()
+        .toList();
+    final pinIndex = visiblePins.isEmpty ? 0 : _pinIndex % visiblePins.length;
+    final pinnedMessage = visiblePins.isEmpty ? null : visiblePins[pinIndex];
+    final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
+    final matches = messagesMatchingQuery(messages, _searchQuery);
+    final selectedIndex = matches.isEmpty
+        ? 0
+        : (_searchIndex >= matches.length ? matches.length - 1 : _searchIndex);
+    final selectedMessage = matches.isEmpty ? null : matches[selectedIndex];
 
     return _FloatingComposerBody(
       listBuilder: (padding) => messages.isEmpty
@@ -859,6 +1176,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                 if (m.id == widget.initialMessageId) {
                   bubble = KeyedSubtree(key: _initialMessageKey, child: bubble);
                 }
+                if (selectedMessage?.id == m.id) {
+                  bubble = KeyedSubtree(
+                    key: _searchResultKey,
+                    child: _SearchResultHighlight(child: bubble),
+                  );
+                }
                 return bubble;
               },
             ),
@@ -871,10 +1194,30 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          widget.header,
+          // Searching *replaces* the identity row rather than stacking under
+          // it. Two pills deep, the conversation started below the middle of
+          // the screen and the thing you were reading was the thing pushed off
+          // it — and while you are typing a query, whose chat it is is the one
+          // thing you already know.
+          if (!searchOpen) widget.header,
+          if (searchOpen)
+            _ChatSearchBar(
+              totalMessages: messages.length,
+              resultIndex: matches.isEmpty ? null : selectedIndex + 1,
+              resultCount: matches.length,
+              onChanged: _updateSearch,
+              onPrevious: () => _moveSearch(-1),
+              onNext: () => _moveSearch(1),
+              onClose: _closeSearch,
+            ),
           if (pinnedMessage != null)
             _PinnedBar(
               message: pinnedMessage,
+              index: pinIndex,
+              count: visiblePins.length,
+              onNext: visiblePins.length < 2
+                  ? null
+                  : () => setState(() => _pinIndex = pinIndex + 1),
               onTap: () => _jumpTo(pinnedMessage.wireId!),
               // Unpinning clears the banner for everyone in the chat, not just
               // here, and the button sits next to one you tap to jump — easy to
@@ -904,6 +1247,172 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   }
 }
 
+class _SearchResultHighlight extends StatelessWidget {
+  const _SearchResultHighlight({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.brandPrimary.withValues(alpha: 0.08),
+        border: Border(
+          left: BorderSide(
+            color: AppColors.brandPrimary.withValues(alpha: 0.85),
+            width: 3,
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ChatSearchBar extends StatefulWidget {
+  const _ChatSearchBar({
+    required this.totalMessages,
+    required this.resultIndex,
+    required this.resultCount,
+    required this.onChanged,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onClose,
+  });
+
+  final int totalMessages;
+  final int? resultIndex;
+  final int resultCount;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onClose;
+
+  @override
+  State<_ChatSearchBar> createState() => _ChatSearchBarState();
+}
+
+class _ChatSearchBarState extends State<_ChatSearchBar> {
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final counter = widget.resultIndex != null
+        ? widget.resultIndex.toString() + ' / ' + widget.resultCount.toString()
+        : _query.trim().isEmpty
+            ? widget.totalMessages.toString()
+            : t.chatSearchNoResults;
+    final canNavigate = widget.resultCount > 1;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      child: _HeaderPill(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                textInputAction: TextInputAction.search,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: t.chatSearchHint,
+                  hintStyle: TextStyle(color: AppColors.textOnGlassDim),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: AppColors.brandPrimary,
+                    size: 19,
+                  ),
+                  prefixIconConstraints:
+                      const BoxConstraints(minWidth: 34, minHeight: 34),
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+                onChanged: (value) {
+                  setState(() => _query = value);
+                  widget.onChanged(value);
+                },
+              ),
+            ),
+            Text(
+              counter,
+              style: TextStyle(
+                color: widget.resultIndex == null && _query.trim().isNotEmpty
+                    ? AppColors.textOnGlassDim
+                    : AppColors.brandPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            _SearchIconButton(
+              icon: Icons.keyboard_arrow_up_rounded,
+              tooltip: t.chatSearchPrevious,
+              onPressed: canNavigate ? widget.onPrevious : null,
+            ),
+            _SearchIconButton(
+              icon: Icons.keyboard_arrow_down_rounded,
+              tooltip: t.chatSearchNext,
+              onPressed: canNavigate ? widget.onNext : null,
+            ),
+            _SearchIconButton(
+              icon: Icons.close_rounded,
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              onPressed: widget.onClose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchIconButton extends StatelessWidget {
+  const _SearchIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 20),
+      color: AppColors.textOnGlass,
+      disabledColor: AppColors.textOnGlassFaint,
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 34),
+    );
+  }
+}
+
 /// The pinned-message island under the header. Tapping it jumps to that
 /// message; the button on the right clears the pin for both sides.
 ///
@@ -914,6 +1423,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 class _PinnedBar extends StatelessWidget {
   const _PinnedBar({
     required this.message,
+    required this.index,
+    required this.count,
+    this.onNext,
     required this.onTap,
     required this.onUnpin,
   });
@@ -921,6 +1433,9 @@ class _PinnedBar extends StatelessWidget {
   final Message message;
   final VoidCallback onTap;
   final VoidCallback onUnpin;
+  final int index;
+  final int count;
+  final VoidCallback? onNext;
 
   /// Side of the square media thumbnail.
   static const double _thumb = 34;
@@ -934,11 +1449,13 @@ class _PinnedBar extends StatelessWidget {
         // The thumbnail carries the "it's a photo" part, so the line beside it
         // is free for the caption — or, failing that, a plain label.
         final caption = message.text.trim();
-        preview = _looksLikeMime(caption) ? '📷 Photo' : caption;
+        preview = _looksLikeMime(caption) ? 'рџ“· Photo' : caption;
       case MessageKind.audio:
-        preview = '🎤 Voice message';
+        preview = 'рџЋ¤ Voice message';
       case MessageKind.file:
-        preview = '📎 ${message.fileName ?? 'File'}';
+        preview = 'рџ“Ћ ${message.fileName ?? 'File'}';
+      case MessageKind.poll:
+        preview = 'рџ“Љ ${message.text}';
       case MessageKind.text:
         preview = message.text.replaceAll('\n', ' ').trim();
     }
@@ -991,7 +1508,9 @@ class _PinnedBar extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      t.chatPinnedTitle,
+                      count > 1
+                          ? '${t.chatPinnedTitle} ${index + 1}/$count'
+                          : t.chatPinnedTitle,
                       style: TextStyle(
                         color: AppColors.brandPrimary,
                         fontSize: 11.5,
@@ -1012,6 +1531,13 @@ class _PinnedBar extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onNext != null)
+                _PillIconButton(
+                  icon: Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.brandPrimary,
+                  tooltip: '${index + 1}/$count',
+                  onPressed: onNext!,
+                ),
               _PillIconButton(
                 icon: Icons.push_pin_outlined,
                 color: AppColors.textOnGlassDim,
@@ -1398,6 +1924,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             widget.canonicalId,
             file: File(path),
             fileName: picked!.files.single.name,
+            mime: fileMimeType(picked.files.single.name),
           );
     } on FileTooLarge catch (e) {
       // The two ceilings are far apart, and which one was hit changes the
@@ -1417,7 +1944,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Gallery pick → preview with a caption → send.
+  /// Gallery pick в†’ preview with a caption в†’ send.
   ///
   /// Both the single pick and the batch come through here now. The old flow
   /// forced the editor open for one photo and skipped straight to sending for
@@ -1455,7 +1982,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Camera tile → in-app capture → editor → send.
+  /// Camera tile в†’ in-app capture в†’ editor в†’ send.
   Future<void> _captureEditAndSend() async {
     final captured = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute<Uint8List>(
@@ -1539,6 +2066,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
+    final draft = ref.watch(draftsControllerProvider)[widget.canonicalId];
     // A new inbound message while the chat is open should be acknowledged and
     // counted as read (so its badge never appears on the list behind us).
     ref.listen(messagesControllerProvider, (_, __) {
@@ -1568,6 +2096,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       hint: t.chatInputHint,
       sendTooltip: t.chatSend,
       editingText: editingText,
+      initialText: draft?.text,
+      onChanged: (text) => ref
+          .read(draftsControllerProvider.notifier)
+          .update(widget.canonicalId, text),
       onEditCancel: () =>
           ref.read(messageEditTargetProvider.notifier).state = null,
       onEditCommit: (newText) async {
@@ -1631,6 +2163,17 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // A recording waiting to be reviewed takes the composer's place entirely.
     // Leaving the input underneath would invite starting a second recording,
     // or typing, on top of one that has not been dealt with.
+    final composerWithMentions = widget.isChannel
+        ? MentionSuggestions(
+            channelName: widget.canonicalId,
+            text: draft?.text ?? '',
+            onTextChanged: (text) => ref
+                .read(draftsControllerProvider.notifier)
+                .update(widget.canonicalId, text),
+            child: composer,
+          )
+        : composer;
+
     final pending = _pendingVoice;
     if (pending != null) {
       return VoiceTrimBar(
@@ -1642,7 +2185,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       );
     }
 
-    if (activeReply == null) return composer;
+    if (activeReply == null) return composerWithMentions;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1652,7 +2195,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           onCancel: () =>
               ref.read(messageReplyTargetProvider.notifier).state = null,
         ),
-        composer,
+        composerWithMentions,
       ],
     );
   }
@@ -1771,52 +2314,49 @@ class _EmptyConversationState extends StatelessWidget {
   }
 }
 
-/// Shield icon in the chat header that opens the verification screen.
+/// The mark beside a peer's name saying whether their key has been checked.
 ///
-/// Three visual states:
-///   - dimmed shield_outlined: handshake not yet complete (peer pubkey unknown)
-///   - white shield_outlined:  handshake complete, peer not yet verified
-///   - brand-green verified:   user has compared fingerprints and confirmed
-class _ShieldButton extends StatelessWidget {
-  const _ShieldButton({
-    required this.session,
-    required this.ref,
-    required this.peerLabel,
-  });
+/// Was a shield button out at the end of the header row, which read as a third
+/// control next to Search and Back and invited a tap that only ever led to the
+/// same place the name already leads. Verification is a fact about the person,
+/// so it belongs on the person: three states, no tap of its own.
+///
+///   - nothing: handshake not finished, so there is no key to have verified
+///   - dim shield: key known, fingerprints not yet compared
+///   - green check: compared and confirmed
+///   - amber warning: the signing key changed since — the one state loud
+///     enough to interrupt, because it is the one that means something is off
+class _VerificationMark extends StatelessWidget {
+  const _VerificationMark({required this.session, required this.ref});
 
   final ChatSession? session;
   final WidgetRef ref;
-  final String peerLabel;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final pubkeyHex = session?.remotePubkeyHex;
-    final known = ref.watch(knownPeersControllerProvider);
-    final entry = pubkeyHex == null ? null : known[pubkeyHex];
-    final isVerified = entry?.isVerified ?? false;
-    final rotated = entry?.hasUnacknowledgedRotation ?? false;
-    final canVerify = pubkeyHex != null;
+    if (pubkeyHex == null) return const SizedBox.shrink();
 
-    final IconData icon = rotated
-        ? Icons.gpp_maybe_outlined
-        : (isVerified ? Icons.verified : Icons.shield_outlined);
-    final Color color = rotated
-        ? AppColors.danger
-        : (isVerified
-            ? AppColors.brandPrimary
-            : (canVerify ? AppColors.textOnGlass : AppColors.textOnGlassFaint));
+    final entry = ref.watch(knownPeersControllerProvider)[pubkeyHex];
+    if (entry == null) return const SizedBox.shrink();
 
-    return _PillIconButton(
-      icon: icon,
-      color: color,
-      tooltip: rotated ? t.peerKeyRotated : t.verifyTitle,
-      onPressed: !canVerify
-          ? null
-          : () => context.push(
-                '/person/${Uri.encodeComponent(pubkeyHex)}'
-                '?name=${Uri.encodeQueryComponent(peerLabel)}',
-              ),
+    final rotated = entry.hasUnacknowledgedRotation;
+    final verified = entry.isVerified;
+    if (!rotated && !verified) {
+      return Tooltip(
+        message: t.verifyTitle,
+        child: Icon(Icons.shield_outlined,
+            size: 13, color: AppColors.textOnGlassFaint),
+      );
+    }
+    return Tooltip(
+      message: rotated ? t.peerKeyRotated : t.verifyAlreadyDone,
+      child: Icon(
+        rotated ? Icons.gpp_maybe_rounded : Icons.verified_rounded,
+        size: 14,
+        color: rotated ? AppColors.danger : AppColors.brandPrimary,
+      ),
     );
   }
 }

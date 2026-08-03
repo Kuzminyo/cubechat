@@ -380,8 +380,154 @@
   "chatsSearchRecent": "Недавні",
   "chatsSearchClear": "Очистити",
   "chatsSearchStartHint": "Шукайте чати та канали за назвою.",
-  "chatsSearchEmpty": "Нічого не знайдено"
-  ,
-  "contactProfileViewInChat": "\u041f\u0435\u0440\u0435\u0433\u043b\u044f\u043d\u0443\u0442\u0438 \u0432 \u0447\u0430\u0442\u0456",
-  "chatAttachmentUnavailable": "\u041d\u0435\u043c\u0430\u0454 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0433\u043e \u0437'\u0454\u0434\u043d\u0430\u043d\u043d\u044f. \u041f\u0456\u0434\u043a\u043b\u044e\u0447\u0456\u0442\u044c\u0441\u044f \u0447\u0435\u0440\u0435\u0437 Bluetooth \u0430\u0431\u043e \u0456\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u0456 \u0441\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0449\u0435 \u0440\u0430\u0437."
+  "chatsSearchEmpty": "Нічого не знайдено",
+  "contactProfileViewInChat": "Переглянути в чаті",
+  "chatDraft": "Чернетка",
+  "chatSearchTitle": "Пошук",
+  "chatSearchHint": "Пошук у повідомленнях",
+  "chatSearchNoResults": "Нічого не знайдено",
+  "chatSearchPrevious": "Попередній результат",
+  "chatSearchNext": "Наступний результат",
+  "chatMessageCount": "{count} повідомлень",
+  "@chatMessageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatRouteBluetooth": "Bluetooth",
+  "chatRouteMesh": "Меш",
+  "chatRouteInternet": "Інтернет",
+  "chatRouteQueued": "У черзі",
+  "chatAttachmentUnavailable": "Немає доступного з'єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.",
+  "fileTransfersTitle": "Центр передачі файлів",
+  "fileTransfersClear": "Очистити історію",
+  "fileTransfersEmpty": "Передач файлів ще немає",
+  "fileTransfersActive": "Активні",
+  "fileTransfersHistory": "Історія",
+  "fileTransferPause": "Призупинити",
+  "fileTransferResume": "Продовжити",
+  "fileTransferRetry": "Повторити",
+  "fileTransferQueued": "Очікує з’єднання",
+  "fileTransferRunning": "Передавання",
+  "fileTransferPaused": "Призупинено",
+  "fileTransferCompleted": "Завершено",
+  "fileTransferFailed": "Помилка",
+  "fileTransferCanceled": "Скасовано",
+  "profileFileTransfers": "Передача файлів",
+  "profileFileTransfersSubtitle": "Прогрес, черга та історія передач",
+  "qrScanAction": "Сканувати QR-код",
+  "qrScanTitle": "Сканування QR-коду",
+  "qrScanHint": "Наведіть камеру на QR-код контакту або каналу Cubechat.",
+  "qrFlash": "Ліхтарик",
+  "qrCameraError": "Камера недоступна. Перевірте дозвіл на камеру та спробуйте ще раз.",
+  "qrInvalid": "Це недійсний QR-код Cubechat.",
+  "qrChannelAdded": "{name} додано",
+  "@qrChannelAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "qrShow": "Показати QR-код",
+  "qrChannelTitle": "Приєднатися до {name}",
+  "@qrChannelTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "profileBackup": "Зашифрована резервна копія",
+  "profileBackupSubtitle": "Безпечне перенесення ключів, контактів та історії",
+  "backupTitle": "Зашифрована резервна копія",
+  "backupExplainer": "Резервна копія містить приватні ключі профілю, контакти, канали, налаштування та історію повідомлень. Вона шифрується на цьому телефоні вибраним паролем; Cubechat не зможе відновити забутий пароль.",
+  "backupCreate": "Створити копію",
+  "backupCreateSubtitle": "Зашифрувати все та зберегти файл .cchatbackup",
+  "backupRestore": "Відновити копію",
+  "backupRestoreSubtitle": "Замінити профіль Cubechat на цьому телефоні даними з копії",
+  "backupPasswordTitle": "Пароль резервної копії",
+  "backupPasswordHint": "Щонайменше 8 символів",
+  "backupConfirmPassword": "Повторіть пароль",
+  "backupPasswordMismatch": "Паролі не збігаються",
+  "backupPasswordShort": "Використайте щонайменше 8 символів",
+  "backupSaveTitle": "Зберегти резервну копію Cubechat",
+  "backupSaved": "Зашифровану копію збережено",
+  "backupFailed": "Не вдалося завершити операцію з резервною копією",
+  "backupRestoreConfirmTitle": "Замінити цей профіль?",
+  "backupRestoreConfirmMessage": "Поточні ключі, контакти, канали, налаштування та історію на цьому телефоні буде замінено вибраною резервною копією.",
+  "backupRestoreConfirmAction": "Відновити",
+  "backupRestored": "Резервну копію відновлено",
+  "backupInvalid": "Неправильний пароль, пошкоджений файл або непідтримувана копія",
+  "channelInfoTitle": "Про канал",
+  "channelParticipantsTitle": "Учасники",
+  "channelAdministratorsTitle": "Адміністратори",
+  "channelMakeAdmin": "Зробити адміністратором",
+  "channelRemoveAdmin": "Забрати права адміністратора",
+  "channelNoParticipants": "Учасники з’являться після підписаної активності",
+  "channelPollTitle": "Опитування",
+  "channelCreatePoll": "Створити опитування",
+  "channelPollQuestion": "Запитання",
+  "channelPollOption": "Варіант {number}",
+  "@channelPollOption": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "channelPollAddOption": "Додати варіант",
+  "channelPollCreate": "Опублікувати",
+  "channelPollVotes": "{count, plural, =0{Немає голосів} =1{1 голос} few{{count} голоси} many{{count} голосів} other{{count} голосу}}",
+  "@channelPollVotes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneTransferTitle": "Перенесення на новий телефон",
+  "phoneTransferIntro": "Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.",
+  "phoneTransferSend": "Це старий телефон",
+  "phoneTransferReceive": "Це новий телефон",
+  "phoneTransferSameWifi": "Під’єднайте обидва телефони до однієї Wi-Fi мережі й не закривайте цей екран до завершення.",
+  "phoneTransferPreparing": "Готуємо зашифроване перенесення…",
+  "phoneTransferReady": "Відскануйте цей одноразовий QR-код на новому телефоні",
+  "phoneTransferScan": "Сканувати старий телефон",
+  "phoneTransferConfirmTitle": "Замінити профіль на цьому телефоні?",
+  "phoneTransferConfirmMessage": "Поточний профіль на цьому телефоні буде замінено даними із зашифрованого локального перенесення.",
+  "phoneTransferConfirmAction": "Перенести профіль",
+  "phoneTransferSuccess": "Профіль успішно перенесено",
+  "phoneTransferFailed": "Не вдалося завершити перенесення телефону",
+  "profileGroupConnection": "З'єднання",
+  "profileGroupPrivacy": "Приватність",
+  "profileGroupData": "Обмін і дані",
+  "profileGroupApp": "Застосунок",
+  "profileSummaryMeshOnly": "Тільки mesh",
+  "profileSummaryMeshInternet": "Mesh · інтернет",
+  "profileSummaryBackgroundOn": "працює у фоні",
+  "profileSummaryDiscoverable": "Вас видно",
+  "profileSummaryHidden": "Приховано",
+  "profileSummaryLastSeenHidden": "час у мережі приховано",
+  "profileSummaryTransfersActive": "{count} у процесі",
+  "@profileSummaryTransfersActive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSummaryCardBackup": "Картка, файли, бекап",
+  "chatPlay": "Відтворити",
+  "chatPause": "Пауза",
+  "voicePlayingFrom": "Голосове від {name}",
+  "@voicePlayingFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }
