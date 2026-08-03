@@ -367,5 +367,13 @@
   "contactProfileAutoDeleteSet": "Встановити",
   "contactProfileFiles": "Файли",
   "contactProfileNoFiles": "Файлів ще немає",
-  "presenceHidden": "статус приховано"
+  "presenceHidden": "статус приховано",
+  "chatReadByCount": "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
+  "@chatReadByCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

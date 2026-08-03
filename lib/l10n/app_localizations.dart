@@ -1675,6 +1675,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'status hidden'**
   String get presenceHidden;
+
+  /// No description provided for @chatReadByCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{Read by {count}} other{Read by {count}}}'**
+  String chatReadByCount(int count);
 }
 
 class _AppLocalizationsDelegate

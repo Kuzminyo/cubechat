@@ -1620,18 +1620,30 @@ class MessagingService {
 
   // -------------------- read receipts / reactions / channels --------------
 
-  /// Acknowledge every not-yet-acked inbound message in the [canonicalId]
-  /// (pubkey-hex) chat as *read*. Called when the user opens / views a chat.
-  /// No-op for channels (no per-recipient read state) and when there's
-  /// nothing new to ack. Best-effort: a send failure rolls the ack back so
-  /// the next view retries.
+  /// Acknowledge every not-yet-acked inbound message in [canonicalId] as
+  /// *read*. Called when the user opens / views a chat.
+  ///
+  /// Works for a `#channel` as well as a pubkey-hex peer. The difference is
+  /// only in who hears it: a 1:1 receipt is sealed to the one person who sent
+  /// the message, while a channel receipt is broadcast under the channel key
+  /// like any other channel payload, because a channel has no member roster to
+  /// address and the sender is not knowable from the transport. Every member
+  /// therefore sees every other member's acknowledgement — which is what makes
+  /// "read by" possible there at all.
+  ///
+  /// Best-effort: a send failure rolls the ack back so the next view retries.
   Future<void> sendReadReceipts(String canonicalId) async {
-    if (canonicalId.startsWith('#')) return;
     // Opted out of read receipts: say nothing. The messages are still marked
-    // read locally — this only withholds telling the sender about it.
+    // read locally — this only withholds telling anyone else about it.
     if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
     final msgs = _ref.read(messagesControllerProvider)[canonicalId];
     if (msgs == null || msgs.isEmpty) return;
+
+    final isChannel = canonicalId.startsWith('#');
+    final channel = isChannel
+        ? _ref.read(channelControllerProvider.notifier).byName(canonicalId)
+        : null;
+    if (isChannel && channel == null) return; // left it, or never joined
 
     final fresh = <Uint8List>[];
     for (final m in msgs) {
@@ -1645,20 +1657,30 @@ class MessagingService {
     }
     if (fresh.isEmpty) return;
 
-    final peerPub = _resolvePeerPub(canonicalId);
-    if (peerPub == null) return;
+    final peerPub = isChannel ? null : _resolvePeerPub(canonicalId);
+    if (!isChannel && peerPub == null) return;
 
     for (var i = 0; i < fresh.length; i += ReadReceipt.maxIdsPerFrame) {
       final end = (i + ReadReceipt.maxIdsPerFrame).clamp(0, fresh.length);
       final slice = fresh.sublist(i, end);
       final receipt = ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
       try {
-        await _sendControlToPeer(
-          canonicalId: canonicalId,
-          peerPub: peerPub,
-          type: InnerPayloadType.receipt,
-          innerBody: receipt.encode(),
-        );
+        if (channel != null) {
+          final frame = await _buildChannelFrame(
+            channel,
+            InnerPayloadType.receipt,
+            receipt.encode(),
+            TransportEnvelope.newMsgId(),
+          );
+          await _broadcastChannelFrame(frame);
+        } else {
+          await _sendControlToPeer(
+            canonicalId: canonicalId,
+            peerPub: peerPub!,
+            type: InnerPayloadType.receipt,
+            innerBody: receipt.encode(),
+          );
+        }
       } catch (e) {
         for (final id in slice) {
           _sentReadAcks.remove(TransportEnvelope.hashHex(id));
@@ -2419,6 +2441,17 @@ class MessagingService {
           );
 
         case InnerPayloadType.receipt:
+          // Symmetric with the 1:1 path: withholding your own receipts also
+          // gives up watching other people's.
+          if (_ref.read(privacySettingsProvider).shareReadReceipts) {
+            _ingestChannelReceipt(
+              channel: channel,
+              readerId: reactorId,
+              readerName: authorName,
+              body: unpacked.body,
+            );
+          }
+
         case InnerPayloadType.channelInvite:
         case InnerPayloadType.imageChunk:
         case InnerPayloadType.audioChunk:
@@ -2458,6 +2491,41 @@ class MessagingService {
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
     messages.markRead(canonical, ids);
     if (canonical != peerId) messages.markRead(peerId, ids);
+  }
+
+  /// The channel counterpart: record *who* read, rather than flipping a status.
+  ///
+  /// A 1:1 receipt can move [MessageStatus.read] because there is only one
+  /// person it could have come from. A channel has as many readers as hold the
+  /// key and no roster to enumerate them, so the answer to "has this been read"
+  /// is a list of the people who said so — accumulated per reader, exactly the
+  /// way reactions accumulate per reactor.
+  ///
+  /// [readerId] and [readerName] are the ones [_handleChannelBody] already
+  /// derived from the frame's signature, so identity here is as strong as it is
+  /// for authorship: a relay cannot invent a reader.
+  void _ingestChannelReceipt({
+    required Channel channel,
+    required String readerId,
+    required String readerName,
+    required Uint8List body,
+  }) {
+    final ReadReceipt r;
+    try {
+      r = ReadReceipt.decode(body);
+    } catch (e) {
+      DebugLog.instance
+          .log('RECEIPT', 'drop ${channel.name} receipt: $e');
+      return;
+    }
+    if (r.status != ReceiptStatus.read) return;
+    _ref.read(messagesControllerProvider.notifier).applyChannelRead(
+          channel.name,
+          readerId: readerId,
+          readerName: readerName,
+          wireIds: r.msgIds.map(TransportEnvelope.hashHex).toSet(),
+          at: DateTime.now(),
+        );
   }
 
   /// A reaction from a peer, applied to both the canonical (pubkey-hex) and

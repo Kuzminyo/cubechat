@@ -392,9 +392,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   PopupMenuItem<String> _detailsHeader(AppLocalizations t) {
     final m = widget.message;
     final readAt = m.readAt;
+    // In a channel the answer to "who has seen this" is a list, because there
+    // is no roster to count against — only the people who said so. Newest last,
+    // so the order matches the order they arrived in.
+    final readers = m.readBy.entries.toList()
+      ..sort((a, b) => a.value.at.compareTo(b.value.at));
+    final lines = 1 + (readAt != null ? 1 : 0) + readers.length;
     return PopupMenuItem<String>(
       enabled: false,
-      height: readAt == null ? 30 : 48,
+      height: (18.0 * lines + 12).clamp(30.0, 220.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,6 +412,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           if (readAt != null)
             Text(
               t.chatReadAt(formatMessageDetailsTime(context, readAt)),
+              style: const TextStyle(
+                color: _BubbleMeta._readColor,
+                fontSize: 11.5,
+              ),
+            ),
+          for (final r in readers)
+            Text(
+              '${r.value.name} · '
+              '${formatMessageDetailsTime(context, r.value.at)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: _BubbleMeta._readColor,
                 fontSize: 11.5,
@@ -780,6 +797,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                     onTap: _canReact ? _toggleReaction : null,
                                   ),
                                 ),
+                              // Only under our own: "who has seen mine" is the
+                              // question people ask. On someone else's it would
+                              // put a counter under every line of the channel.
+                              if (message.isMine && message.readBy.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: _ReadByChip(
+                                    label: AppLocalizations.of(context)
+                                        .chatReadByCount(
+                                            message.readBy.length),
+                                    onTapAt: _showActions,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -942,6 +972,56 @@ class _ReactionsRow extends StatelessWidget {
               onTap: onTap == null ? null : () => onTap!(entry.key),
             ),
       ],
+    );
+  }
+}
+
+/// "Read by N" under one of our own channel messages.
+///
+/// Deliberately just a count. The names and times are one tap away in the same
+/// details popup that already answers "when was this sent / read", because a
+/// channel with a dozen members would otherwise put a dozen names under every
+/// line — and the count is what anyone glancing at the chat actually wants.
+class _ReadByChip extends StatelessWidget {
+  const _ReadByChip({required this.label, required this.onTapAt});
+
+  final String label;
+
+  /// Takes the tap's global position, because the details popup opens anchored
+  /// to where it was tapped — same as a long-press on the bubble itself.
+  final void Function(Offset) onTapAt;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (d) => onTapAt(d.globalPosition),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.done_all,
+              size: 12,
+              color: _BubbleMeta._readColor,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _BubbleMeta._readColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

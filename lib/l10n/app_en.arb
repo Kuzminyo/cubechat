@@ -395,5 +395,13 @@
   "contactProfileAutoDeleteSet": "Set",
   "contactProfileFiles": "Files",
   "contactProfileNoFiles": "No files yet",
-  "presenceHidden": "status hidden"
+  "presenceHidden": "status hidden",
+  "chatReadByCount": "{count, plural, one{Read by {count}} other{Read by {count}}}",
+  "@chatReadByCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

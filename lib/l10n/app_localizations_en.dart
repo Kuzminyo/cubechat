@@ -901,4 +901,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get presenceHidden => 'status hidden';
+
+  @override
+  String chatReadByCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Read by $count',
+      one: 'Read by $count',
+    );
+    return '$_temp0';
+  }
 }

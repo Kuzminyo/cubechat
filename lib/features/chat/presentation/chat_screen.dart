@@ -1087,15 +1087,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Acknowledge the peer's messages as read now that the user is looking at
-  /// them. No-op for channels (no per-recipient read state).
+  /// Acknowledge the messages as read now that the user is looking at them.
+  ///
+  /// Channels included: the receipt goes out under the channel key rather than
+  /// sealed to one peer, so every member learns who has caught up. Which member
+  /// sent it comes from the frame's signature, not from the payload.
   void _maybeSendReadReceipts() {
-    if (widget.isChannel || !mounted) return;
+    if (!mounted) return;
     ref.read(messagingServiceProvider).sendReadReceipts(widget.canonicalId);
   }
 
   /// Advance this chat's local read marker so its unread badge clears on the
-  /// main Chats list. Applies to channels too (unlike the peer-only receipts).
+  /// main Chats list.
   void _markChatRead() {
     if (!mounted) return;
     ref

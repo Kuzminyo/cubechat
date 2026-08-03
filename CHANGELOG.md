@@ -4,9 +4,46 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.7.5+43**.
+Current build: **0.8.0+44**.
 
 ---
+
+## Read receipts in channels (2026‑08‑03)
+
+Asked for in the first round of tester feedback: *«добавить в каналах надо типо
+кто прочитал во сколько»*. 1:1 chats have had read state all along; channels
+did not, because `InnerPayloadType.receipt` was excluded from them on both
+sides — `sendReadReceipts` returned early for a `#` chat, and the ingest switch
+lumped `receipt` into a catch-all "not carried in channels" list whose comment
+justified the *other* entries and said nothing about this one.
+
+**No wire format change.** `ReadReceipt` already carries only msgIds; who sent
+it comes from the signature on the channel frame, exactly as authorship and
+reactions already do. `_handleChannelBody` was in fact already deriving both
+the reader's fingerprint and their display name before its switch — everything
+needed was sitting there unused.
+
+The shape is dictated by a fact about channels: **there is no member roster.**
+Holding the key is membership, joining tells nobody, and a message goes out as
+a blind broadcast. So there is no denominator — "3 of 5" is unknowable — and
+the honest answer is the list of people who said they read it. That makes the
+state additive and per-reader, which is the same problem reactions already
+solved, so `readBy` follows `reactions`: a map on the message, merged
+idempotently, capped (64 readers) so a peer minting signing keys cannot grow
+one message without limit.
+
+A repeat receipt keeps the **first** timestamp. Mesh and relay both redeliver,
+and a duplicate means the frame was sent again, not that they read it again.
+
+Times are our own clock, matching the existing 1:1 `readAt` for the same
+reason: a timestamp from the other side is neither trustworthy nor comparable
+with the rest of the timeline. Names are stored beside them rather than
+resolved at render, the way `authorName` already is.
+
+Surfaced as a "read by N" chip under your own channel messages, with the names
+and times one tap away in the details popup that already answers "sent at /
+read at". Worth knowing: a silent channel member is invisible today until they
+speak — reading now makes them visible.
 
 ## The logo that hung, on Android (2026‑08‑03)
 

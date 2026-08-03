@@ -2,6 +2,37 @@ import 'package:flutter/foundation.dart';
 
 enum MessageStatus { sending, delivered, read, failed }
 
+/// One person's acknowledgement that they have seen a channel message.
+///
+/// A channel has no member roster — holding the key *is* membership, joining
+/// tells nobody, and a message goes out as a blind broadcast. So "who has read
+/// this" can only ever be the people who said so; there is no denominator to
+/// show a "3 of 5" against.
+@immutable
+class ChannelRead {
+  const ChannelRead({required this.name, required this.at});
+
+  /// The reader's display name as it resolved when their receipt arrived.
+  ///
+  /// Stored rather than looked up later, the same way [Message.authorName] is:
+  /// the wire carries a signing-key fingerprint, and the widget drawing a
+  /// bubble is the wrong place to be resolving one.
+  final String name;
+
+  /// Our own clock at the moment their receipt landed — not theirs.
+  ///
+  /// Same reasoning as [Message.readAt]: a timestamp supplied by the other side
+  /// is neither trustworthy nor comparable with the rest of this timeline.
+  final DateTime at;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChannelRead && other.name == name && other.at == at;
+
+  @override
+  int get hashCode => Object.hash(name, at);
+}
+
 /// What kind of payload this message carries. Media messages keep their raw
 /// bytes on disk (see [Message.mediaPath]) and use [text] only for an
 /// optional caption / mime label shown in the bubble.
@@ -32,6 +63,7 @@ class Message {
     this.editedAt,
     this.readAt,
     this.reactions = const <String, Set<String>>{},
+    this.readBy = const <String, ChannelRead>{},
     this.replyToWireId,
   });
 
@@ -84,6 +116,15 @@ class Message {
   /// own reaction off. Persisted as `{emoji: [reactorIds]}`.
   final Map<String, Set<String>> reactions;
 
+  /// Who has acknowledged reading this message, keyed by a short fingerprint of
+  /// the reader's Ed25519 signing key — the same identity channel authorship
+  /// and reactions already use.
+  ///
+  /// Channels only. A 1:1 chat has exactly one possible reader, which [readAt]
+  /// and [status] already say everything about; a map there would be one entry
+  /// wide and two ways of storing the same fact.
+  final Map<String, ChannelRead> readBy;
+
   /// [wireId] of the message this one quotes (a reply), or null. The UI looks
   /// the quoted message up in the store to render its snippet.
   final String? replyToWireId;
@@ -114,6 +155,7 @@ class Message {
     int? audioDurationMs,
     bool? forwardSecret,
     Map<String, Set<String>>? reactions,
+    Map<String, ChannelRead>? readBy,
     DateTime? editedAt,
     DateTime? readAt,
   }) {
@@ -140,6 +182,7 @@ class Message {
       editedAt: editedAt ?? this.editedAt,
       readAt: readAt ?? this.readAt,
       reactions: reactions ?? this.reactions,
+      readBy: readBy ?? this.readBy,
       replyToWireId: replyToWireId,
     );
   }

@@ -905,4 +905,16 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get presenceHidden => 'статус приховано';
+
+  @override
+  String chatReadByCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Прочитали $count',
+      few: 'Прочитали $count',
+      one: 'Прочитав $count',
+    );
+    return '$_temp0';
+  }
 }

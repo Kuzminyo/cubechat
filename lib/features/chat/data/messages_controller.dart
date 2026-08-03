@@ -245,6 +245,53 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Record that [readerId] has seen every message in [wireIds], in a channel.
+  ///
+  /// The 1:1 equivalent is [markRead], which flips a single status because a
+  /// 1:1 chat has exactly one possible reader. A channel has as many as hold
+  /// the key, so this accumulates them instead — the same additive, per-actor,
+  /// idempotent shape as [applyReaction], and for the same reason: mesh and
+  /// relay both resend, so applying an acknowledgement twice has to be free.
+  ///
+  /// **First write wins on the timestamp.** A repeat receipt means the frame
+  /// was resent, not that they read it again, and letting the later copy
+  /// overwrite would drift every reader's time forward on every duplicate.
+  void applyChannelRead(
+    String chatId, {
+    required String readerId,
+    required String readerName,
+    required Set<String> wireIds,
+    required DateTime at,
+  }) {
+    final current = state[chatId];
+    if (current == null || wireIds.isEmpty) return;
+
+    var changed = false;
+    final list = [...current];
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      final id = m.wireId;
+      if (id == null || !wireIds.contains(id)) continue;
+      if (m.readBy.containsKey(readerId)) continue; // already recorded
+      // Bounded so a peer that keeps inventing signing keys cannot grow one
+      // message without limit. Far above any channel a phone can hold.
+      if (m.readBy.length >= maxReadersPerMessage) continue;
+      list[i] = m.copyWith(
+        readBy: <String, ChannelRead>{
+          ...m.readBy,
+          readerId: ChannelRead(name: readerName, at: at),
+        },
+      );
+      changed = true;
+    }
+    if (!changed) return;
+    state = {...state, chatId: list};
+    _persist(chatId, list);
+  }
+
+  /// Ceiling on [Message.readBy] entries for one message.
+  static const int maxReadersPerMessage = 64;
+
   /// Flags an outgoing message as forward-secret once the send path has
   /// confirmed the X3DH cipher was actually used (the placeholder is
   /// appended before the body is built).
@@ -374,6 +421,17 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     }
   }
 
+  /// The persistence codec, reachable from tests without a Hive box.
+  ///
+  /// What survives a restart is only checkable by round-tripping it, and doing
+  /// that through a real encrypted box would test the keystore rather than the
+  /// codec.
+  @visibleForTesting
+  static Map<String, dynamic> encodeForTest(Message m) => _encode(m);
+
+  @visibleForTesting
+  static Message decodeForTest(Map<String, dynamic> m) => _decode(m);
+
   static Map<String, dynamic> _encode(Message m) => {
         'id': m.id,
         'chatId': m.chatId,
@@ -400,6 +458,14 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           'reactions': {
             for (final e in m.reactions.entries) e.key: e.value.toList(),
           },
+        if (m.readBy.isNotEmpty)
+          'readBy': {
+            for (final e in m.readBy.entries)
+              e.key: {
+                'name': e.value.name,
+                'atIso': e.value.at.toIso8601String(),
+              },
+          },
         if (m.replyToWireId != null) 'replyTo': m.replyToWireId,
       };
 
@@ -421,6 +487,18 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (k is String && v is List) {
           reactions[k] = v.whereType<String>().toSet();
         }
+      });
+    }
+    final readBy = <String, ChannelRead>{};
+    final readByRaw = m['readBy'];
+    if (readByRaw is Map) {
+      readByRaw.forEach((k, v) {
+        if (k is! String || v is! Map) return;
+        final at = DateTime.tryParse((v['atIso'] as String?) ?? '');
+        // A reader with no readable timestamp is dropped rather than given a
+        // made-up one: the whole point of the entry is when they saw it.
+        if (at == null) return;
+        readBy[k] = ChannelRead(name: (v['name'] as String?) ?? '', at: at);
       });
     }
     return Message(
@@ -451,6 +529,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           ? null
           : DateTime.tryParse(m['readAtIso'] as String),
       reactions: reactions,
+      readBy: readBy,
       replyToWireId: m['replyTo'] as String?,
     );
   }
