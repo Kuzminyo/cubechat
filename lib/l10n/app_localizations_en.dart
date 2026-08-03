@@ -1261,4 +1261,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String voicePlayingFrom(String name) {
     return 'Voice from $name';
   }
+
+  @override
+  String get profileTheme => 'Colour';
+
+  @override
+  String get profileThemeEmerald => 'Emerald';
+
+  @override
+  String get profileThemeIndigo => 'Indigo';
+
+  @override
+  String get profileThemeAmber => 'Amber';
+
+  @override
+  String get profileThemeRose => 'Rose';
+
+  @override
+  String get profileThemeSlate => 'Slate';
+
+  @override
+  String get savedTitle => 'Saved';
+
+  @override
+  String get savedSubtitle => 'Notes to yourself, on this device';
+
+  @override
+  String get savedEmpty => 'Anything you write here stays on this phone.';
 }

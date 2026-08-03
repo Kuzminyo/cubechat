@@ -63,7 +63,7 @@ class ChatTile extends StatelessWidget {
                     ],
                     if (chat.isVerified) ...[
                       const SizedBox(width: 4),
-                      const Icon(
+                      Icon(
                         Icons.verified,
                         color: AppColors.brandPrimary,
                         size: 14,

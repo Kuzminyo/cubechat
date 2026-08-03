@@ -208,7 +208,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     if (_initializing ||
         controller == null ||
         !controller.value.isInitialized) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: AppColors.brandPrimary),
       );
     }

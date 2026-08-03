@@ -171,7 +171,7 @@ class _VoiceTrimBarState extends State<VoiceTrimBar> {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: t.chatSend,
-                  icon: const Icon(Icons.send_rounded,
+                  icon: Icon(Icons.send_rounded,
                       color: AppColors.brandPrimary, size: 22),
                   onPressed: () => widget.onSend(_startMs, _endMs),
                 ),

@@ -657,10 +657,18 @@ class _ChatsOverflowMenu extends StatelessWidget {
       ),
       position: PopupMenuPosition.under,
       onSelected: (action) => switch (action) {
+        _ChatsMenuAction.saved => context.push('/saved'),
         _ChatsMenuAction.addContact => onAddContact(),
         _ChatsMenuAction.newChannel => onNewChannel(),
       },
       itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ChatsMenuAction.saved,
+          child: _MenuRow(
+            icon: Icons.bookmark_border_rounded,
+            label: t.savedTitle,
+          ),
+        ),
         PopupMenuItem(
           value: _ChatsMenuAction.addContact,
           child: _MenuRow(
@@ -680,7 +688,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
   }
 }
 
-enum _ChatsMenuAction { addContact, newChannel }
+enum _ChatsMenuAction { saved, addContact, newChannel }
 
 class _MenuRow extends StatelessWidget {
   const _MenuRow({required this.icon, required this.label});
@@ -724,7 +732,7 @@ Future<void> showNewChannelDialog(
         enabledBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.glassBorder),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.brandPrimary),
         ),
       );
@@ -792,7 +800,7 @@ Future<void> showNewChannelDialog(
             }
           },
           child: Text(t.channelJoinAction,
-              style: const TextStyle(color: AppColors.brandPrimary)),
+              style: TextStyle(color: AppColors.brandPrimary)),
         ),
       ],
     ),

@@ -12,6 +12,7 @@ import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -162,6 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupApp,
           summary: t.profileVersion(_appVersion),
           children: [
+            const _ThemeRow(),
             _LanguageRow(locale: locale),
             const _AboutRow(),
             const _DiagnosticsRow(),
@@ -233,7 +235,7 @@ class _BackgroundModeCard extends ConsumerWidget {
                   border: Border.all(
                       color: AppColors.brandPrimary.withValues(alpha: 0.4)),
                 ),
-                child: const Icon(Icons.podcasts,
+                child: Icon(Icons.podcasts,
                     color: AppColors.brandPrimary, size: 18),
               ),
               const SizedBox(width: 12),
@@ -268,11 +270,11 @@ class _BackgroundModeCard extends ConsumerWidget {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: () => controller.requestBatteryExemption(),
-                icon: const Icon(Icons.battery_saver,
+                icon: Icon(Icons.battery_saver,
                     size: 16, color: AppColors.brandPrimary),
                 label: Text(
                   t.profileBatteryExempt,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppColors.brandPrimary, fontSize: 12.5),
                 ),
                 style: TextButton.styleFrom(
@@ -377,7 +379,7 @@ class _FileTransfersCard extends ConsumerWidget {
                 color: AppColors.brandPrimary.withValues(alpha: 0.4),
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.swap_vert_circle_outlined,
               color: AppColors.brandPrimary,
               size: 19,
@@ -439,7 +441,7 @@ class _BackupCard extends StatelessWidget {
                 color: AppColors.brandPrimary.withValues(alpha: 0.4),
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.lock_outline_rounded,
               color: AppColors.brandPrimary,
               size: 18,
@@ -802,7 +804,7 @@ class _TransportRow extends StatelessWidget {
               border: Border.all(
                   color: AppColors.brandPrimary.withValues(alpha: 0.4)),
             ),
-            child: const Icon(Icons.bluetooth,
+            child: Icon(Icons.bluetooth,
                 color: AppColors.brandPrimary, size: 18),
           ),
           const SizedBox(width: 12),
@@ -815,9 +817,96 @@ class _TransportRow extends StatelessWidget {
           Container(
             width: 8,
             height: 8,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.online,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Palette swatches. A row of the actual colours rather than a list of names:
+/// the thing being chosen is how the app looks, so it should be shown, not
+/// described.
+class _ThemeRow extends ConsumerWidget {
+  const _ThemeRow();
+
+  static String _label(AppLocalizations t, String id) => switch (id) {
+        'indigo' => t.profileThemeIndigo,
+        'amber' => t.profileThemeAmber,
+        'rose' => t.profileThemeRose,
+        'slate' => t.profileThemeSlate,
+        _ => t.profileThemeEmerald,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(themeControllerProvider);
+    return _frame(
+      false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.profileTheme,
+            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 58,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: AppPalette.all.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final palette = AppPalette.all[i];
+                final selected = palette.id == current.id;
+                return GestureDetector(
+                  onTap: () => ref
+                      .read(themeControllerProvider.notifier)
+                      .select(palette),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              palette.brandPrimary,
+                              palette.brandSecondary,
+                            ],
+                          ),
+                          border: Border.all(
+                            color: selected
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.22),
+                            width: selected ? 2.5 : 1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _label(t, palette.id),
+                        style: TextStyle(
+                          color: selected
+                              ? AppColors.textOnGlass
+                              : AppColors.textOnGlassDim,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -1714,7 +1803,7 @@ Future<void> editNickname(
             if (ctx.mounted) Navigator.of(ctx).pop();
           },
           child: Text(t.profileNicknameSave,
-              style: const TextStyle(color: AppColors.brandPrimary)),
+              style: TextStyle(color: AppColors.brandPrimary)),
         ),
       ],
     ),

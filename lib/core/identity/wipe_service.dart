@@ -13,6 +13,7 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import 'avatar_controller.dart';
+import '../theme/theme_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -59,6 +60,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Discoverability goes back to the default too — a wipe should leave the app
   // indistinguishable from a fresh install, including how it advertises itself.
   await ref.read(avatarProvider.notifier).reset();
+  // Back to the stock look: a wipe should leave the app looking like a fresh
+  // install, and a chosen palette is a visible trace of the person who chose it.
+  await ref.read(themeControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

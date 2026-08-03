@@ -75,7 +75,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.contacts_rounded,
                         color: AppColors.brandPrimary,
                         size: 30,
@@ -200,7 +200,7 @@ class _AddContactRow extends StatelessWidget {
                 color: AppColors.brandPrimary.withValues(alpha: 0.38),
               ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.person_add_alt,
               color: AppColors.brandPrimary,
               size: 22,
@@ -318,7 +318,7 @@ class _ContactTile extends StatelessWidget {
                     ),
                     if (contact.isVerified) ...[
                       const SizedBox(width: 5),
-                      const Icon(
+                      Icon(
                         Icons.verified,
                         color: AppColors.brandPrimary,
                         size: 15,

@@ -211,7 +211,7 @@ class _VoicePanel extends ConsumerWidget {
                           minHeight: 2.5,
                           backgroundColor:
                               Colors.white.withValues(alpha: 0.12),
-                          valueColor: const AlwaysStoppedAnimation(
+                          valueColor: AlwaysStoppedAnimation(
                             AppColors.brandPrimary,
                           ),
                         ),

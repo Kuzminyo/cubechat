@@ -31,6 +31,7 @@ import '../../channels/presentation/channel_poll_composer.dart';
 import '../../qr/data/channel_qr_payload.dart';
 import '../../qr/presentation/qr_display.dart';
 import '../../chats/data/read_markers_controller.dart';
+import '../../chats/data/saved_messages.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
@@ -167,7 +168,10 @@ class ChatScreen extends ConsumerWidget {
 
     // Group channel (`#name`): no Noise session, no presence — membership is
     // just holding the shared key. Send is enabled while we're a member.
-    if (peerId.startsWith('#')) {
+    // Saved notes and channels are the same shape on screen: no presence, no
+    // handshake, no route indicator — just a conversation. Saved goes through
+    // the channel build for that reason, and the composer tells them apart.
+    if (peerId.startsWith('#') || isSavedChat(peerId)) {
       return _buildChannel(context, ref, t);
     }
 
@@ -353,7 +357,11 @@ class ChatScreen extends ConsumerWidget {
     WidgetRef ref,
     AppLocalizations t,
   ) {
-    final joined = ref.watch(channelControllerProvider).containsKey(peerId);
+    // A saved-notes chat is never "joined" — there is nothing to join — but it
+    // is always writable, which is the only thing `joined` gates.
+    final saved = isSavedChat(peerId);
+    final joined =
+        saved || ref.watch(channelControllerProvider).containsKey(peerId);
     final messages = ref.watch(messagesControllerProvider)[peerId] ?? const [];
 
     final sessions = ref.watch(chatSessionManagerProvider);
@@ -379,14 +387,16 @@ class ChatScreen extends ConsumerWidget {
               peerId: peerId,
               canonicalId: peerId,
               canSend: joined,
-              isChannel: true,
+              // Saved notes are not a broadcast; the composer branches on the
+              // reserved id before it consults this.
+              isChannel: !saved,
             ),
             header: _ChatHeader(
               onBack: () => _goBack(context),
               chatId: peerId,
               avatarSeed: peerId,
               label: peerLabel,
-              statusText: t.channelSubtitle,
+              statusText: saved ? t.savedSubtitle : t.channelSubtitle,
               statusColor: AppColors.textOnGlassDim,
               route: route.route,
               routeHops: route.hops,
@@ -566,7 +576,7 @@ class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
                     subtitle: p.isVerified
                         ? Text(
                             t.bleVerified,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.brandPrimary,
                               fontSize: 11,
                             ),
@@ -1409,7 +1419,7 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
                 decoration: InputDecoration(
                   hintText: t.chatSearchHint,
                   hintStyle: TextStyle(color: AppColors.textOnGlassDim),
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.search_rounded,
                     color: AppColors.brandPrimary,
                     size: 19,
@@ -2227,7 +2237,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           ref.read(messageReplyTargetProvider.notifier).state = null;
         }
         try {
-          if (widget.isChannel) {
+          if (isSavedChat(widget.peerId)) {
+            // Nowhere to send it: this conversation has no other end.
+            await ref.read(savedMessagesControllerProvider).saveText(text);
+          } else if (widget.isChannel) {
             await ref
                 .read(messagingServiceProvider)
                 .sendChannelText(widget.peerId, text);

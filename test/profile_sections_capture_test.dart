@@ -47,7 +47,7 @@ void main() {
           theme: ThemeData.dark(useMaterial3: true),
           home: RepaintBoundary(
             key: boundaryKey,
-            child: const DecoratedBox(
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,

@@ -247,7 +247,7 @@ class _BroadcastChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.podcasts, color: AppColors.brandPrimary, size: 14),
+          Icon(Icons.podcasts, color: AppColors.brandPrimary, size: 14),
           const SizedBox(width: 8),
           Text(
             label,

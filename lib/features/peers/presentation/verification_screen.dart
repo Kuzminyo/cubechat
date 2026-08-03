@@ -111,7 +111,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                 strong: true,
                 child: Row(
                   children: [
-                    const Icon(Icons.verified,
+                    Icon(Icons.verified,
                         color: AppColors.brandPrimary, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
@@ -217,7 +217,7 @@ class _IntroCard extends StatelessWidget {
     return GlassCard(
       child: Row(
         children: [
-          const Icon(Icons.shield_outlined,
+          Icon(Icons.shield_outlined,
               color: AppColors.brandPrimary, size: 22),
           const SizedBox(width: 12),
           Expanded(

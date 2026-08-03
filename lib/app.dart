@@ -14,6 +14,7 @@ import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
@@ -217,7 +218,13 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // the persisted preference. (Foreground-service start is (re)triggered on
     // resume above, since a headless start would be blocked.)
     ref.watch(backgroundModeProvider);
-    return MaterialApp.router(
+    // Keyed on the palette revision. AppColors' fields are mutated in place
+    // (see ThemeController for why), so widgets already built are holding the
+    // old colours — changing the key throws the tree away and builds it again.
+    final palette = ref.watch(themeControllerProvider);
+    return KeyedSubtree(
+      key: ValueKey('palette-${palette.id}'),
+      child: MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
@@ -244,6 +251,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
         child: VoiceMiniPlayer(child: child ?? const SizedBox.shrink()),
+      ),
       ),
       ),
     );

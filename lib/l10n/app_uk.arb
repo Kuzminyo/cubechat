@@ -529,5 +529,14 @@
         "type": "String"
       }
     }
-  }
+  },
+  "profileTheme": "Колір",
+  "profileThemeEmerald": "Смарагд",
+  "profileThemeIndigo": "Індиго",
+  "profileThemeAmber": "Бурштин",
+  "profileThemeRose": "Троянда",
+  "profileThemeSlate": "Графіт",
+  "savedTitle": "Збережені",
+  "savedSubtitle": "Нотатки для себе, на цьому пристрої",
+  "savedEmpty": "Усе, що ви тут напишете, залишиться на цьому телефоні."
 }

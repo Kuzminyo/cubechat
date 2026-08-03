@@ -58,7 +58,7 @@ class RelaysScreen extends ConsumerWidget {
                           color: AppColors.brandPrimary.withValues(alpha: 0.4),
                         ),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.public,
                         color: AppColors.brandPrimary,
                         size: 18,
@@ -295,7 +295,7 @@ class _AddRelayFieldState extends State<_AddRelayField> {
             onPressed: _submit,
             child: Text(
               t.relaysAdd,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.brandPrimary,
                 fontSize: 12.5,
               ),

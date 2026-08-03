@@ -557,5 +557,14 @@
         "type": "String"
       }
     }
-  }
+  },
+  "profileTheme": "Colour",
+  "profileThemeEmerald": "Emerald",
+  "profileThemeIndigo": "Indigo",
+  "profileThemeAmber": "Amber",
+  "profileThemeRose": "Rose",
+  "profileThemeSlate": "Slate",
+  "savedTitle": "Saved",
+  "savedSubtitle": "Notes to yourself, on this device",
+  "savedEmpty": "Anything you write here stays on this phone."
 }

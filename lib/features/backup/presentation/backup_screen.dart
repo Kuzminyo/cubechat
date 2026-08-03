@@ -133,7 +133,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
+                Icon(
                   Icons.lock_rounded,
                   color: AppColors.brandPrimary,
                 ),
@@ -168,7 +168,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
           ),
           if (_busy) ...[
             const SizedBox(height: 20),
-            const Center(
+            Center(
               child: CircularProgressIndicator(color: AppColors.brandPrimary),
             ),
           ],

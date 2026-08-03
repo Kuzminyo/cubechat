@@ -223,7 +223,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: AppColors.brandPrimary),
       );
     }
@@ -338,7 +338,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 onPressed: onAction,
                 child: Text(
                   action,
-                  style: const TextStyle(color: AppColors.brandPrimary),
+                  style: TextStyle(color: AppColors.brandPrimary),
                 ),
               ),
             ],
@@ -369,7 +369,7 @@ class _CameraTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.photo_camera,
+            Icon(Icons.photo_camera,
                 color: AppColors.brandPrimary, size: 26),
             const SizedBox(height: 6),
             Text(

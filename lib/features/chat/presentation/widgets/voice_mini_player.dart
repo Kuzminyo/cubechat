@@ -145,7 +145,7 @@ class _Bar extends ConsumerWidget {
                   value: playback.progress,
                   minHeight: 2.5,
                   backgroundColor: Colors.white.withValues(alpha: 0.10),
-                  valueColor: const AlwaysStoppedAnimation(
+                  valueColor: AlwaysStoppedAnimation(
                     AppColors.brandPrimary,
                   ),
                 ),

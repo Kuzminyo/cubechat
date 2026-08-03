@@ -2311,6 +2311,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Voice from {name}'**
   String voicePlayingFrom(String name);
+
+  /// No description provided for @profileTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Colour'**
+  String get profileTheme;
+
+  /// No description provided for @profileThemeEmerald.
+  ///
+  /// In en, this message translates to:
+  /// **'Emerald'**
+  String get profileThemeEmerald;
+
+  /// No description provided for @profileThemeIndigo.
+  ///
+  /// In en, this message translates to:
+  /// **'Indigo'**
+  String get profileThemeIndigo;
+
+  /// No description provided for @profileThemeAmber.
+  ///
+  /// In en, this message translates to:
+  /// **'Amber'**
+  String get profileThemeAmber;
+
+  /// No description provided for @profileThemeRose.
+  ///
+  /// In en, this message translates to:
+  /// **'Rose'**
+  String get profileThemeRose;
+
+  /// No description provided for @profileThemeSlate.
+  ///
+  /// In en, this message translates to:
+  /// **'Slate'**
+  String get profileThemeSlate;
+
+  /// No description provided for @savedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get savedTitle;
+
+  /// No description provided for @savedSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes to yourself, on this device'**
+  String get savedSubtitle;
+
+  /// No description provided for @savedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Anything you write here stays on this phone.'**
+  String get savedEmpty;
 }
 
 class _AppLocalizationsDelegate

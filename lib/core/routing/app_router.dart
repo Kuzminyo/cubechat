@@ -6,6 +6,8 @@ import '../../features/backup/presentation/backup_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
 import '../../features/channels/presentation/channel_info_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
+import '../../features/chats/data/saved_messages.dart';
+import '../../l10n/app_localizations.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/files/presentation/file_transfer_center_screen.dart';
@@ -181,6 +183,21 @@ GoRouter buildRouter() {
       // A root route, not a branch one: the search screen owns the whole
       // screen including where the nav bar would be, and pushing it inside the
       // shell would leave the bar floating over its results.
+      // Its own route rather than /chat/@saved: the chat route's path
+      // parameter is a peer pubkey, and this conversation has no peer.
+      GoRoute(
+        path: '/saved',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: AuroraBackground(
+            child: ChatScreen(
+              peerId: savedChatId,
+              peerLabel: AppLocalizations.of(context).savedTitle,
+            ),
+          ),
+          state: state,
+        ),
+      ),
       GoRoute(
         path: '/search',
         parentNavigatorKey: _rootNavKey,

@@ -1270,4 +1270,32 @@ class AppLocalizationsUk extends AppLocalizations {
   String voicePlayingFrom(String name) {
     return 'Голосове від $name';
   }
+
+  @override
+  String get profileTheme => 'Колір';
+
+  @override
+  String get profileThemeEmerald => 'Смарагд';
+
+  @override
+  String get profileThemeIndigo => 'Індиго';
+
+  @override
+  String get profileThemeAmber => 'Бурштин';
+
+  @override
+  String get profileThemeRose => 'Троянда';
+
+  @override
+  String get profileThemeSlate => 'Графіт';
+
+  @override
+  String get savedTitle => 'Збережені';
+
+  @override
+  String get savedSubtitle => 'Нотатки для себе, на цьому пристрої';
+
+  @override
+  String get savedEmpty =>
+      'Усе, що ви тут напишете, залишиться на цьому телефоні.';
 }

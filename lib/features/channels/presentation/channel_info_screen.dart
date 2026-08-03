@@ -60,7 +60,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                     radius: 28,
                     backgroundColor:
                         AppColors.brandPrimary.withValues(alpha: .2),
-                    child: const Icon(Icons.tag_rounded,
+                    child: Icon(Icons.tag_rounded,
                         color: AppColors.brandPrimary, size: 30),
                   ),
                   const SizedBox(width: 14),

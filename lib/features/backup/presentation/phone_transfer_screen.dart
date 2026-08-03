@@ -70,7 +70,7 @@ class _PhoneTransferScreenState extends ConsumerState<PhoneTransferScreen> {
           GlassCard(
             child: Column(
               children: [
-                const Icon(
+                Icon(
                   Icons.phonelink_rounded,
                   size: 42,
                   color: AppColors.brandPrimary,

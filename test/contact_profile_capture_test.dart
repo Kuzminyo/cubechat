@@ -69,7 +69,7 @@ void main() {
           // every run and the capture never matches itself.
           home: RepaintBoundary(
             key: boundaryKey,
-            child: const DecoratedBox(
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,

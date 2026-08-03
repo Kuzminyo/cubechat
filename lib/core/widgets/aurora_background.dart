@@ -216,7 +216,9 @@ class _AuroraPainter extends CustomPainter {
   final double focusFrom;
   final double focusTo;
 
-  static const _base = LinearGradient(
+  // `final`, not `const`: the backdrop colours are themeable now, so this
+  // gradient is built once at first use rather than baked in at compile time.
+  static final _base = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [AppColors.bgTop, AppColors.bgBottom],

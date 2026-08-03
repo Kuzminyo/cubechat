@@ -194,7 +194,7 @@ class _RelayOffBanner extends ConsumerWidget {
             ),
             child: Text(
               t.contactRelayEnable,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.brandPrimary,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -382,7 +382,7 @@ class _CardPreviewState extends State<_CardPreview> {
                     _expanded
                         ? 'Сховати'
                         : 'Показати повний код · ${card.length} симв.',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.brandPrimary,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
