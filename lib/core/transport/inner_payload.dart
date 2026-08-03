@@ -251,7 +251,14 @@ class ImageChunk {
   /// per image. The receiver's memory is bounded by the reassembler's
   /// total-byte cap (4 MiB), not by this value, so a larger ceiling does not
   /// widen the DoS surface. Must stay ≤ 65535 (the u16 chunk-length field).
-  static const int maxDataBytes = 16384;
+  ///
+  /// 32 KiB rather than 16: the relay event count is what caps what can be sent
+  /// over the internet, since every chunk is one publish and one round trip.
+  /// The ceiling above it is the relay's, not ours — a chunk goes out as
+  /// `"cc1:" + base64(frame)`, so 32 KiB of payload lands at ~44 KB of event,
+  /// comfortably inside the 64 KiB most relays (strfry's default included)
+  /// accept and refuse just past. Doubling again would not be.
+  static const int maxDataBytes = 32768;
 
   /// Hard protocol cap on the chunk *count* for one transfer (also the u16
   /// seq/total range). Total transfer size is bounded separately by the
@@ -392,7 +399,7 @@ class AudioChunk {
   /// Max raw audio bytes per chunk. Like [ImageChunk.maxDataBytes] this is only
   /// reached on the Nostr relay path; over BLE the sender sizes chunks down to
   /// the link MTU. Must stay ≤ 65535 (the u16 chunk-length field).
-  static const int maxDataBytes = 16384;
+  static const int maxDataBytes = 32768;
 
   /// Hard protocol cap on the chunk *count* for one transfer; total size is
   /// bounded separately by the receiver's reassembler byte cap (4 MiB).
@@ -540,7 +547,7 @@ class FileChunk {
 
   /// Must stay ≤ 65535 (the u16 length field). Same ceiling as the other
   /// chunk types so one transport path sizes them all.
-  static const int maxDataBytes = 16384;
+  static const int maxDataBytes = 32768;
 
   static const int maxChunks = 8192;
 

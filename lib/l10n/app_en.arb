@@ -303,8 +303,15 @@
   "fileNoHandlerTitle": "No app can open this",
   "fileNoHandlerHint": "Nothing installed handles this file type. You can send it to another app instead.",
   "fileShareAction": "Send to app",
-  "fileTooLargeMesh": "File is too large — 25 MB is the limit over the mesh",
-  "fileTooLargeRelay": "Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.",
+  "fileTooLargeMesh": "File is too large — {limit} MB is the limit over the mesh",
+  "@fileTooLargeMesh": {
+    "placeholders": { "limit": { "type": "int" } }
+  },
+  "fileTooLargeRelay": "Over the internet the limit is {limit} MB. Get closer to the recipient to send a bigger file.",
+  "@fileTooLargeRelay": {
+    "placeholders": { "limit": { "type": "int" } }
+  },
+  "mediaSendOriginal": "Original",
   "attachFile": "File",
   "attachGallery": "Gallery",
   "attachCamera": "Camera",

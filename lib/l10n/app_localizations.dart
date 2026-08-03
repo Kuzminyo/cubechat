@@ -1415,14 +1415,20 @@ abstract class AppLocalizations {
   /// No description provided for @fileTooLargeMesh.
   ///
   /// In en, this message translates to:
-  /// **'File is too large — 25 MB is the limit over the mesh'**
-  String get fileTooLargeMesh;
+  /// **'File is too large — {limit} MB is the limit over the mesh'**
+  String fileTooLargeMesh(int limit);
 
   /// No description provided for @fileTooLargeRelay.
   ///
   /// In en, this message translates to:
-  /// **'Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.'**
-  String get fileTooLargeRelay;
+  /// **'Over the internet the limit is {limit} MB. Get closer to the recipient to send a bigger file.'**
+  String fileTooLargeRelay(int limit);
+
+  /// No description provided for @mediaSendOriginal.
+  ///
+  /// In en, this message translates to:
+  /// **'Original'**
+  String get mediaSendOriginal;
 
   /// No description provided for @attachFile.
   ///

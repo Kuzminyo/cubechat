@@ -729,12 +729,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileShareAction => 'Send to app';
 
   @override
-  String get fileTooLargeMesh =>
-      'File is too large — 25 MB is the limit over the mesh';
+  String fileTooLargeMesh(int limit) {
+    return 'File is too large — $limit MB is the limit over the mesh';
+  }
 
   @override
-  String get fileTooLargeRelay =>
-      'Over the internet the limit is 3 MB. Get closer to the recipient to send a bigger file.';
+  String fileTooLargeRelay(int limit) {
+    return 'Over the internet the limit is $limit MB. Get closer to the recipient to send a bigger file.';
+  }
+
+  @override
+  String get mediaSendOriginal => 'Original';
 
   @override
   String get attachFile => 'File';

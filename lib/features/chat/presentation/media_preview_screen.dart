@@ -9,13 +9,26 @@ import 'widgets/image_editor.dart';
 
 /// What the preview returns: the (possibly edited) bytes and the caption.
 class MediaPreviewResult {
-  const MediaPreviewResult({required this.bytes, required this.caption});
+  const MediaPreviewResult({
+    required this.bytes,
+    required this.caption,
+    this.asFile = false,
+  });
 
   final List<Uint8List> bytes;
 
   /// Null when nothing was typed — an empty caption and no caption are the
   /// same thing, and only one of them should reach the wire.
   final String? caption;
+
+  /// Send the originals through the file path instead of the photo path.
+  ///
+  /// The photo path exists to fit a picture through Bluetooth: it downscales
+  /// and re-encodes, which is the right trade for a snapshot and the wrong one
+  /// for a document photographed to be read, or for anything that has to arrive
+  /// as it left. Telegram calls this sending without compression; here it also
+  /// means [bytes] is ignored and the caller reaches for the asset's own file.
+  final bool asFile;
 }
 
 /// Last stop before a photo goes out: see it full-size, write a line under it,
@@ -45,6 +58,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   late final List<Uint8List> _bytes = [...widget.items];
   int _index = 0;
 
+  /// Send the file as it sits on disk rather than a re-encoded copy.
+  bool _asFile = false;
+
   @override
   void dispose() {
     _caption.dispose();
@@ -64,6 +80,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
       MediaPreviewResult(
         bytes: _bytes,
         caption: text.isEmpty ? null : text,
+        asFile: _asFile,
       ),
     );
   }
@@ -125,7 +142,17 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                     ),
                   ),
                 const Spacer(),
-                _RoundAction(icon: Icons.brush_outlined, onTap: _edit),
+                // Editing a photo you are about to send untouched is a
+                // contradiction — the edit would be the one thing that got
+                // re-encoded — so the brush stands down while this is on.
+                if (!_asFile)
+                  _RoundAction(icon: Icons.brush_outlined, onTap: _edit),
+                if (!_asFile) const SizedBox(width: 8),
+                _OriginalToggle(
+                  label: t.mediaSendOriginal,
+                  active: _asFile,
+                  onTap: () => setState(() => _asFile = !_asFile),
+                ),
               ],
             ),
           ),
@@ -173,6 +200,61 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Send as a file" — a labelled pill rather than another round icon.
+///
+/// It is the one control up here that changes what the *recipient* gets rather
+/// than what this screen shows, and an unlabelled glyph for that is a guess. It
+/// also has a state, which a round icon has nowhere to put.
+class _OriginalToggle extends StatelessWidget {
+  const _OriginalToggle({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active
+          ? AppColors.brandPrimary.withValues(alpha: 0.9)
+          : Colors.black.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                active
+                    ? Icons.insert_drive_file_rounded
+                    : Icons.insert_drive_file_outlined,
+                size: 17,
+                color: active ? const Color(0xFF06140D) : Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: active ? const Color(0xFF06140D) : Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

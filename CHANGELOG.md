@@ -4,7 +4,35 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.11.1+55**.
+Current build: **0.12.0+56**.
+
+---
+
+## Twelve megabytes over the internet, and photos that arrive as they left (2026‑08‑03)
+
+- **The internet ceiling went from 3 MB to 12 MB.** What capped it was never
+  bytes but publishes: every chunk is one relay event and one round trip, and
+  relays rate-limit — a limit that lands on ordinary messages too. The relay
+  chunk is 32 KiB now instead of 16, so the same ~190 publishes that used to
+  carry three megabytes carry six, and twelve costs ~380. 32 KiB is the
+  ceiling, not a round number: a chunk goes out as `"cc1:" + base64(frame)`,
+  which puts it at ~44 KB of event, comfortably inside the 64 KiB most relays
+  accept and refuse just past. A test pins that arithmetic, along with the
+  receiver's reassembly cap and the protocol's chunk-count limit.
+- **⚠️ Both phones need this build** to send a file over the internet: a 32 KiB
+  chunk arriving at an older build is rejected as malformed, and the transfer
+  stalls. Bluetooth is unaffected — chunks are sized to the link's MTU there
+  and always have been.
+- **Photos can be sent as files, uncompressed** — Telegram's "send without
+  compression". The preview screen has an **Original** toggle; with it on, the
+  asset's own file goes out through the file path, byte for byte, checked
+  against the manifest's signed hash on arrival. The photo path exists to fit a
+  picture through Bluetooth, which is the right trade for a snapshot and the
+  wrong one for a document photographed to be read — the text is the first
+  thing the encoder spends. The brush stands down while Original is on, since
+  an edit is the one thing that would have to be re-encoded.
+- The two "file is too large" messages now carry the number from the constant
+  that produced them, so the advice and the ceiling cannot drift apart again.
 
 ---
 

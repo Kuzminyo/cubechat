@@ -2028,9 +2028,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       // advice: over the relay the same file may well go once they are in
       // Bluetooth range.
       if (mounted) {
+        // The number comes off the exception, so the advice and the ceiling
+        // that produced it cannot drift apart.
+        final limit = e.cap ~/ (1024 * 1024);
         showGlassToast(
           context,
-          e.relayOnly ? t.fileTooLargeRelay : t.fileTooLargeMesh,
+          e.relayOnly ? t.fileTooLargeRelay(limit) : t.fileTooLargeMesh(limit),
           tone: ToastTone.danger,
         );
       }
@@ -2067,6 +2070,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     );
     if (result == null || !mounted) return;
 
+    if (result.asFile) {
+      await _sendOriginals(assets, caption: result.caption);
+      return;
+    }
+
     for (var i = 0; i < result.bytes.length; i++) {
       // The caption belongs to the set, not to each photo — repeating it under
       // every picture in a batch would read as a stutter. It goes on the first.
@@ -2076,6 +2084,60 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         caption: i == 0 ? result.caption : null,
       );
       if (!mounted) return;
+    }
+  }
+
+  /// The picked photos, sent as they sit in the gallery.
+  ///
+  /// The ordinary photo path downscales and re-encodes to fit a picture through
+  /// Bluetooth, which is right for a snapshot and wrong for a document you
+  /// photographed to be read — the text is the first thing the encoder spends.
+  /// This one hands the asset's own file to [MessagingService.sendFile], the
+  /// same route the document picker uses, so the bytes that arrive are the
+  /// bytes that left and the receiver checks them against the signed hash.
+  ///
+  /// A caption follows as its own message: a file carries its mime type where a
+  /// photo carries a caption, and there is nowhere in the manifest to put one.
+  Future<void> _sendOriginals(
+    List<AssetEntity> assets, {
+    String? caption,
+  }) async {
+    final t = AppLocalizations.of(context);
+    final messaging = ref.read(messagingServiceProvider);
+    var sent = 0;
+    for (final asset in assets) {
+      try {
+        final origin = await asset.originFile;
+        if (origin == null || !mounted) continue;
+        final name = await asset.titleAsync;
+        final safe = name.trim().isEmpty
+            ? 'photo-${asset.id}.jpg'
+            : name;
+        await messaging.sendFile(
+          widget.canonicalId,
+          file: origin,
+          fileName: safe,
+          mime: fileMimeType(safe),
+        );
+        sent++;
+      } on FileTooLarge catch (e) {
+        if (!mounted) return;
+        final limit = e.cap ~/ (1024 * 1024);
+        showGlassToast(
+          context,
+          e.relayOnly ? t.fileTooLargeRelay(limit) : t.fileTooLargeMesh(limit),
+          tone: ToastTone.danger,
+        );
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        _showAttachmentFailure(e);
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (sent > 0 && caption != null) {
+      await messaging.sendText(widget.peerId, caption);
     }
   }
 

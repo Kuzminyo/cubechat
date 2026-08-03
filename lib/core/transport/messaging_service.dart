@@ -1136,10 +1136,16 @@ class MessagingService {
   static const int maxFileBytesMesh = 25 * 1024 * 1024;
 
   /// And over the internet fallback, where every chunk is one relay event.
-  /// Three megabytes is already ~190 publishes; public relays rate-limit long
-  /// before the protocol runs out of room, and that limit lands on ordinary
-  /// messages too.
-  static const int maxFileBytesRelay = 3 * 1024 * 1024;
+  ///
+  /// The number that matters here is the publish count, not the byte count:
+  /// public relays rate-limit, and that limit lands on ordinary messages too.
+  /// Three megabytes was ~190 publishes at the old 16 KiB chunk — and three
+  /// megabytes is less than one photo off a modern phone camera, which is
+  /// exactly what people were trying to send. At 32 KiB a chunk (see
+  /// [FileChunk.maxDataBytes] for why that is the ceiling) the same 190
+  /// publishes now carry six, and twelve megabytes costs ~380 — slow, visibly
+  /// so, but it is a progress bar you can watch and pause rather than a refusal.
+  static const int maxFileBytesRelay = 12 * 1024 * 1024;
 
   /// Send [file] as-is, keeping its name.
   ///

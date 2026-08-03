@@ -729,12 +729,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get fileShareAction => 'Надіслати в застосунок';
 
   @override
-  String get fileTooLargeMesh =>
-      'Файл завеликий — максимум 25 МБ через мережу пристроїв';
+  String fileTooLargeMesh(int limit) {
+    return 'Файл завеликий — максимум $limit МБ через мережу пристроїв';
+  }
 
   @override
-  String get fileTooLargeRelay =>
-      'Через інтернет можна надіслати до 3 МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.';
+  String fileTooLargeRelay(int limit) {
+    return 'Через інтернет можна надіслати до $limit МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.';
+  }
+
+  @override
+  String get mediaSendOriginal => 'Оригінал';
 
   @override
   String get attachFile => 'Файл';
