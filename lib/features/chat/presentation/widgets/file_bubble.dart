@@ -19,9 +19,14 @@ import '../../models/message.dart';
 /// more than one app claims the type, so the choice of app and the permission
 /// that comes with it stay the user's.
 class FileBubble extends StatelessWidget {
-  const FileBubble({super.key, required this.message});
+  const FileBubble({
+    super.key,
+    required this.message,
+    this.onLongPress,
+  });
 
   final Message message;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +37,7 @@ class FileBubble extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => _open(context),
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -99,7 +105,9 @@ class FileBubble extends StatelessWidget {
     // what a tap is asking. Open it; the OS resolves the handler (and asks,
     // when more than one claims the type). Sharing is still available, one
     // level down, for when passing it on really is the intent.
-    final result = await OpenFilex.open(path);
+    final declaredMime = message.text.trim();
+    final mime = declaredMime.contains('/') ? declaredMime : null;
+    final result = await OpenFilex.open(path, type: mime);
     if (result.type == ResultType.done || !context.mounted) return;
 
     // No installed app claims this type — offer the sheet as the way out

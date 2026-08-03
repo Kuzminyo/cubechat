@@ -1711,6 +1711,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
+
+  /// No description provided for @contactProfileViewInChat.
+  ///
+  /// In en, this message translates to:
+  /// **'View in chat'**
+  String get contactProfileViewInChat;
+
+  /// No description provided for @chatAttachmentUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection is available. Connect over Bluetooth or the internet and try again.'**
+  String get chatAttachmentUnavailable;
 }
 
 class _AppLocalizationsDelegate

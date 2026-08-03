@@ -80,4 +80,11 @@ void main() {
     expect(ordered.length, 10);
     expect(ordered.first.id, 'p0', reason: 'busiest first');
   });
+
+  test('opening a search result remembers to return to chats', () {
+    final route = Uri.parse(routeForChatFromSearch(chat('alice')));
+
+    expect(route.path, '/chat/alice');
+    expect(route.queryParameters['from'], 'search');
+  });
 }

@@ -409,4 +409,7 @@
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search your chats and channels by name.",
   "chatsSearchEmpty": "Nothing matches that"
+  ,
+  "contactProfileViewInChat": "View in chat",
+  "chatAttachmentUnavailable": "No connection is available. Connect over Bluetooth or the internet and try again."
 }

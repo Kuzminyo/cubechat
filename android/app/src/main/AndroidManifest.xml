@@ -105,6 +105,13 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- open_filex resolves ACTION_VIEW before launching it. Android 11+
+             hides handlers that are not declared here, which made valid
+             received files look as if no app could open them. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="content" android:mimeType="*/*"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

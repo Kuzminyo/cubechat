@@ -106,6 +106,10 @@ const int _replayMaxAgeMs = 60 * 60 * 1000;
 /// allow a couple of minutes of forward skew.
 const int _replayMaxFutureMs = 2 * 60 * 1000;
 
+class MediaRouteUnavailable implements Exception {
+  const MediaRouteUnavailable();
+}
+
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
 ///
@@ -592,8 +596,8 @@ class MessagingService {
         recipientNpubHex: npubHex,
         frameBytes: frame.encode(),
       );
-      DebugLog.instance.log(
-          'NOSTR', 'introduced ourselves to ${npubHex.substring(0, 12)}…');
+      DebugLog.instance
+          .log('NOSTR', 'introduced ourselves to ${npubHex.substring(0, 12)}…');
     } catch (e) {
       // Un-mark so the next send retries; a peer that never receives the
       // introduction can never answer us.
@@ -1148,6 +1152,7 @@ class MessagingService {
     if (peerPub == null || canonicalId == null) {
       throw StateError('cannot send file: no recipient pubkey for $chatId');
     }
+    _requireMediaRoute(canonicalId);
 
     final size = await file.length();
     final relayOnly = !_hasAnyLink;
@@ -1245,7 +1250,8 @@ class MessagingService {
                   _cipherX3dhMedia,
                   await MediaFsCipher.seal(
                       key: fs.key, mediaId: fileId, plaintext: inner))
-              : _tagBody(_cipherSealedBox, await SealedBox.seal(inner, peerPub));
+              : _tagBody(
+                  _cipherSealedBox, await SealedBox.seal(inner, peerPub));
           final env = TransportEnvelope(
             originPubkeyHash: myHash,
             destPubkeyHash: peerHash,
@@ -1255,14 +1261,14 @@ class MessagingService {
           );
           _dedup.acceptEnvelope(env);
           final sent = await _deliverMediaFrame(
-            frameBytes:
-                Frame(type: FrameType.transport, payload: env.encode()).encode(),
+            frameBytes: Frame(type: FrameType.transport, payload: env.encode())
+                .encode(),
             session: session,
             canonicalId: canonicalId,
             relayOnly: relayOnly,
           );
           if (!sent) {
-            throw StateError('no mesh link or relay for file chunk $i/$total');
+            throw const MediaRouteUnavailable();
           }
           // Same pacing as the photo path: some Android stacks drop notifies
           // when the sender outruns the receiver's read loop. Skipped when the
@@ -1323,6 +1329,7 @@ class MessagingService {
     if (peerPub == null || canonicalId == null) {
       throw StateError('cannot send image: no recipient pubkey for $chatId');
     }
+    _requireMediaRoute(canonicalId);
 
     // Minted before the bubble so it can carry the media id as its wireId — the
     // same handle the receiver files this photo under. That symmetry is what
@@ -1431,7 +1438,7 @@ class MessagingService {
           relayOnly: relayOnly,
         );
         if (!sent) {
-          throw StateError('no mesh link or relay for image chunk $i/$total');
+          throw const MediaRouteUnavailable();
         }
         // Tiny pacing gap. Some Android BLE stacks lose notify packets when
         // a fast sender outpaces the receiver's read loop. 15ms is below
@@ -1493,6 +1500,7 @@ class MessagingService {
     if (peerPub == null || canonicalId == null) {
       throw StateError('cannot send audio: no recipient pubkey for $chatId');
     }
+    _requireMediaRoute(canonicalId);
 
     // Media id up front, so the bubble's wireId matches what the receiver files
     // this voice note under (see sendImage).
@@ -1595,7 +1603,7 @@ class MessagingService {
           relayOnly: relayOnly,
         );
         if (!sent) {
-          throw StateError('no mesh link or relay for audio chunk $i/$total');
+          throw const MediaRouteUnavailable();
         }
         // BLE notify pacing; see sendImage. Not needed over the relay.
         if (i + 1 < total && !relayOnly) {
@@ -2514,8 +2522,7 @@ class MessagingService {
     try {
       r = ReadReceipt.decode(body);
     } catch (e) {
-      DebugLog.instance
-          .log('RECEIPT', 'drop ${channel.name} receipt: $e');
+      DebugLog.instance.log('RECEIPT', 'drop ${channel.name} receipt: $e');
       return;
     }
     if (r.status != ReceiptStatus.read) return;
@@ -2686,8 +2693,8 @@ class MessagingService {
         // only produce if they already hold that key — so an unknown caller
         // gets nothing, not even confirmation that a cubechat identity is here.
         if (!_ref.read(discoverySettingsProvider).discoverable) {
-          DebugLog.instance.log(
-              'NOISE', 'refused XX from $peerId: not discoverable');
+          DebugLog.instance
+              .log('NOISE', 'refused XX from $peerId: not discoverable');
           return;
         }
         _armHandshakeWatchdog(peerId);
@@ -3636,6 +3643,7 @@ class MessagingService {
     int durationMs = 0,
     String? name,
     String? caption,
+
     /// The payload, when it is small enough to have in hand. A file transfer
     /// passes [sha256Digest] instead: the whole point of streaming it off disk
     /// is not to hold twenty-five megabytes in memory just to hash them.
@@ -3651,8 +3659,8 @@ class MessagingService {
     Uint8List? senderEphemeralPub,
   }) async {
     final identity = await _ref.read(identityProvider.future);
-    final sha = sha256Digest ??
-        Uint8List.fromList((await Sha256().hash(bytes!)).bytes);
+    final sha =
+        sha256Digest ?? Uint8List.fromList((await Sha256().hash(bytes!)).bytes);
     final manifest = MediaManifest(
       mediaId: mediaId,
       kind: kind,
@@ -3702,7 +3710,7 @@ class MessagingService {
       relayOnly: relayOnly,
     );
     if (!delivered) {
-      throw StateError('no mesh link or relay for media manifest');
+      throw const MediaRouteUnavailable();
     }
   }
 
@@ -3834,7 +3842,8 @@ class MessagingService {
       DebugLog.instance.log('AVATAR', 'drop from $pubkeyHex: $e');
       return;
     }
-    final expected = _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
+    final expected =
+        _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
     if (expected == null) {
       DebugLog.instance
           .log('AVATAR', 'drop from $pubkeyHex: nothing announced to match');
@@ -3978,6 +3987,20 @@ class MessagingService {
   bool get _hasAnyLink =>
       _clients.values.any((c) => c.isReady) ||
       _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+
+  bool _hasMediaRoute(String canonicalId) {
+    if (_hasAnyLink) return true;
+    if (_relayClient?.isConnected != true) return false;
+    final npub =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+    return npub != null && npub.length == 32;
+  }
+
+  void _requireMediaRoute(String canonicalId) {
+    if (!_hasMediaRoute(canonicalId)) {
+      throw const MediaRouteUnavailable();
+    }
+  }
 
   /// How many peers could hear us right now — the same two paths
   /// [_fanoutAllLinks] writes to, counted rather than tested. A peer we hold
@@ -4474,7 +4497,8 @@ class MessagingService {
       final originHash = await _myPubkeyHash();
 
       if (!_ref.read(discoverySettingsProvider).discoverable) {
-        await _announcePrivately(signedBody: signedBody, originHash: originHash);
+        await _announcePrivately(
+            signedBody: signedBody, originHash: originHash);
         return;
       }
 
@@ -4552,8 +4576,7 @@ class MessagingService {
       }
     }
     if (sent > 0) {
-      DebugLog.instance
-          .log('MESH', 'privately announced to $sent contact(s)');
+      DebugLog.instance.log('MESH', 'privately announced to $sent contact(s)');
     }
   }
 
@@ -4578,8 +4601,7 @@ class MessagingService {
     // Only the digest — the picture itself is fetched on request. Cached by the
     // controller, so this costs a map lookup per announcement rather than a
     // JPEG re-encode on a heartbeat.
-    final avatarHash =
-        await _ref.read(avatarProvider.notifier).shareableHash();
+    final avatarHash = await _ref.read(avatarProvider.notifier).shareableHash();
     final ann = PeerAnnouncement(
       pubkey: Uint8List.fromList(identity.publicKey),
       signPubkey: identity.signPublicKey,

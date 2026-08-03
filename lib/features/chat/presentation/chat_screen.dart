@@ -16,7 +16,6 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
-import '../../../core/transport/mtu_budget.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
 import '../../../core/utils/time_format.dart';
@@ -62,10 +61,37 @@ bool _isBleDeviceId(String id) =>
 /// [messagingServiceProvider]. The handshake state is reflected in the AppBar
 /// subtitle so the user can tell whether their messages will actually go out.
 class ChatScreen extends ConsumerWidget {
-  const ChatScreen({super.key, required this.peerId, required this.peerLabel});
+  const ChatScreen({
+    super.key,
+    required this.peerId,
+    required this.peerLabel,
+    this.initialMessageId,
+    this.returnToChats = false,
+  });
 
   final String peerId;
   final String peerLabel;
+  final String? initialMessageId;
+  final bool returnToChats;
+
+  void _goBack(BuildContext context) {
+    if (returnToChats) {
+      context.go('/chats');
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  Widget _withBackHandling(BuildContext context, Widget child) {
+    if (!returnToChats) return child;
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go('/chats');
+      },
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -123,8 +149,8 @@ class ChatScreen extends ConsumerWidget {
     // how recently they were announcing on the mesh. See [peerIsOnline].
     // Drives the timer beside the name in the header.
     final autoDelete = ref
-        .watch(conversationSettingsControllerProvider)[canonicalId]
-        ?.autoDelete ??
+            .watch(conversationSettingsControllerProvider)[canonicalId]
+            ?.autoDelete ??
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
@@ -159,70 +185,75 @@ class ChatScreen extends ConsumerWidget {
 
     final pubkeyHex = session?.remotePubkeyHex ?? known?.pubkeyHex;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      // No AppBar: the header is an island floating over the conversation (see
-      // _FloatingComposerBody), not a bar that owns a band of the screen.
-      body: _ConversationView(
-        chatId: canonicalId,
-        messages: messages,
-        canSend: canSend,
-        composer: _ChatBottomBar(
-          peerId: peerId,
-          canonicalId: canonicalId,
-          canSend: canSend,
-        ),
-        header: _ChatHeader(
-          avatarSeed: peerId,
-          label: peerLabel,
-          autoDeleteLabel: autoDelete.isOn
-              ? formatAutoDelete(t, autoDelete)
-              : null,
-          statusText: statusText,
-          statusColor: isOnline ? AppColors.online : AppColors.textOnGlassDim,
-          online: isOnline,
-          // Tapping the identity pill goes where the shield goes — the peer's
-          // fingerprint screen is the only "profile" this app has.
-          onTapIdentity: pubkeyHex == null
-              ? null
-              : () => context.push(
-                    '/person/${Uri.encodeComponent(pubkeyHex)}'
-                    '?name=${Uri.encodeQueryComponent(peerLabel)}',
-                  ),
-          actions: [
-            if (showRetry)
-              _PillIconButton(
-                icon: Icons.refresh,
-                color: AppColors.brandPrimary,
-                tooltip: t.bleRetry,
-                onPressed: () async {
-                  final manager = ref.read(chatSessionManagerProvider.notifier);
-                  manager.drop(peerId);
-                  final scanner = ref.read(bleScannerProvider);
-                  try {
-                    await ref
-                        .read(messagingServiceProvider)
-                        .connectAsInitiatorWithRetry(
-                          deviceId: peerId,
-                          displayName: peerLabel,
-                          refreshId: () => scanner.refreshPeerId(peerLabel),
-                        );
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    showGlassToast(context, t.bleConnectFailed,
-                        tone: ToastTone.danger);
-                  }
-                },
-              ),
-            _ShieldButton(
-              session: session,
-              ref: ref,
-              peerLabel: peerLabel,
+    return _withBackHandling(
+        context,
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          // No AppBar: the header is an island floating over the conversation (see
+          // _FloatingComposerBody), not a bar that owns a band of the screen.
+          body: _ConversationView(
+            chatId: canonicalId,
+            messages: messages,
+            initialMessageId: initialMessageId,
+            canSend: canSend,
+            composer: _ChatBottomBar(
+              peerId: peerId,
+              canonicalId: canonicalId,
+              canSend: canSend,
             ),
-          ],
-        ),
-      ),
-    );
+            header: _ChatHeader(
+              onBack: () => _goBack(context),
+              avatarSeed: peerId,
+              label: peerLabel,
+              autoDeleteLabel:
+                  autoDelete.isOn ? formatAutoDelete(t, autoDelete) : null,
+              statusText: statusText,
+              statusColor:
+                  isOnline ? AppColors.online : AppColors.textOnGlassDim,
+              online: isOnline,
+              // Tapping the identity pill goes where the shield goes — the peer's
+              // fingerprint screen is the only "profile" this app has.
+              onTapIdentity: pubkeyHex == null
+                  ? null
+                  : () => context.push(
+                        '/person/${Uri.encodeComponent(pubkeyHex)}'
+                        '?name=${Uri.encodeQueryComponent(peerLabel)}',
+                      ),
+              actions: [
+                if (showRetry)
+                  _PillIconButton(
+                    icon: Icons.refresh,
+                    color: AppColors.brandPrimary,
+                    tooltip: t.bleRetry,
+                    onPressed: () async {
+                      final manager =
+                          ref.read(chatSessionManagerProvider.notifier);
+                      manager.drop(peerId);
+                      final scanner = ref.read(bleScannerProvider);
+                      try {
+                        await ref
+                            .read(messagingServiceProvider)
+                            .connectAsInitiatorWithRetry(
+                              deviceId: peerId,
+                              displayName: peerLabel,
+                              refreshId: () => scanner.refreshPeerId(peerLabel),
+                            );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        showGlassToast(context, t.bleConnectFailed,
+                            tone: ToastTone.danger);
+                      }
+                    },
+                  ),
+                _ShieldButton(
+                  session: session,
+                  ref: ref,
+                  peerLabel: peerLabel,
+                ),
+              ],
+            ),
+          ),
+        ));
   }
 
   /// Dedicated build for a group channel — a flat, presence-free variant of
@@ -236,45 +267,49 @@ class ChatScreen extends ConsumerWidget {
     final joined = ref.watch(channelControllerProvider).containsKey(peerId);
     final messages = ref.watch(messagesControllerProvider)[peerId] ?? const [];
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: _ConversationView(
-        chatId: peerId,
-        messages: messages,
-        canSend: joined,
-        composer: _ChatBottomBar(
-          peerId: peerId,
-          canonicalId: peerId,
-          canSend: joined,
-          isChannel: true,
-        ),
-        header: _ChatHeader(
-          avatarSeed: peerId,
-          label: peerLabel,
-          statusText: t.channelSubtitle,
-          statusColor: AppColors.textOnGlassDim,
-          online: false,
-          actions: [
-            if (joined)
-              _PillIconButton(
-                icon: Icons.person_add_alt_1_outlined,
-                color: AppColors.brandPrimary,
-                tooltip: t.channelInviteTitle,
-                onPressed: () => showModalBottomSheet<void>(
-                  context: context,
-                  backgroundColor: AppColors.bgTop,
-                  isScrollControlled: true,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(22)),
+    return _withBackHandling(
+        context,
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          body: _ConversationView(
+            chatId: peerId,
+            messages: messages,
+            initialMessageId: initialMessageId,
+            canSend: joined,
+            composer: _ChatBottomBar(
+              peerId: peerId,
+              canonicalId: peerId,
+              canSend: joined,
+              isChannel: true,
+            ),
+            header: _ChatHeader(
+              onBack: () => _goBack(context),
+              avatarSeed: peerId,
+              label: peerLabel,
+              statusText: t.channelSubtitle,
+              statusColor: AppColors.textOnGlassDim,
+              online: false,
+              actions: [
+                if (joined)
+                  _PillIconButton(
+                    icon: Icons.person_add_alt_1_outlined,
+                    color: AppColors.brandPrimary,
+                    tooltip: t.channelInviteTitle,
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: AppColors.bgTop,
+                      isScrollControlled: true,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(22)),
+                      ),
+                      builder: (_) => _ChannelInviteSheet(channelName: peerId),
+                    ),
                   ),
-                  builder: (_) => _ChannelInviteSheet(channelName: peerId),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+              ],
+            ),
+          ),
+        ));
   }
 }
 
@@ -528,6 +563,7 @@ class _HeaderActionCircle extends StatelessWidget {
 /// embedded at its edges, just like the message composer.
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
+    required this.onBack,
     required this.avatarSeed,
     required this.label,
     required this.statusText,
@@ -538,6 +574,7 @@ class _ChatHeader extends StatelessWidget {
     this.onTapIdentity,
   });
 
+  final VoidCallback onBack;
   final String avatarSeed;
   final String label;
 
@@ -567,7 +604,7 @@ class _ChatHeader extends StatelessWidget {
                 icon: Icons.arrow_back_rounded,
                 color: AppColors.textOnGlass,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: onBack,
               ),
             ),
             const SizedBox(width: 6),
@@ -674,6 +711,7 @@ class _ConversationView extends ConsumerStatefulWidget {
   const _ConversationView({
     required this.chatId,
     required this.messages,
+    this.initialMessageId,
     required this.canSend,
     required this.composer,
     required this.header,
@@ -686,6 +724,7 @@ class _ConversationView extends ConsumerStatefulWidget {
   /// Bucket key for this conversation: a peer's pubkey-hex or a `#channel`.
   final String chatId;
   final List<Message> messages;
+  final String? initialMessageId;
   final bool canSend;
   final Widget composer;
 
@@ -699,6 +738,26 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// Attached to the pinned message's bubble (and only to that one) so a jump
   /// can finish with [Scrollable.ensureVisible] once it is actually built.
   final _pinnedKey = GlobalKey();
+  final _initialMessageKey = GlobalKey();
+  bool _initialMessageRevealed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _revealInitialMessage());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ConversationView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_initialMessageRevealed) return;
+    if (oldWidget.initialMessageId != widget.initialMessageId ||
+        oldWidget.messages.length != widget.messages.length) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _revealInitialMessage());
+    }
+  }
 
   @override
   void dispose() {
@@ -713,6 +772,34 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// lands within a screen or two, then let `ensureVisible` finish the job once
   /// the target has been built. If it never builds — the estimate was too far
   /// off — the user is at least in the right region of the history.
+  Future<void> _revealInitialMessage() async {
+    final messageId = widget.initialMessageId;
+    if (messageId == null || _initialMessageRevealed || !mounted) return;
+    final messages = widget.messages;
+    final index = messages.indexWhere((message) => message.id == messageId);
+    if (index < 0) return;
+
+    if (_scroll.hasClients && messages.length > 1) {
+      final fromNewest = messages.length - 1 - index;
+      final max = _scroll.position.maxScrollExtent;
+      final estimate = max * (fromNewest / (messages.length - 1));
+      _scroll.jumpTo(estimate.clamp(0.0, max));
+    }
+    for (var attempt = 0; attempt < 5; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+      if (!mounted) return;
+      final targetContext = _initialMessageKey.currentContext;
+      if (targetContext == null || !targetContext.mounted) continue;
+      await Scrollable.ensureVisible(
+        targetContext,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 240),
+      );
+      _initialMessageRevealed = true;
+      return;
+    }
+  }
+
   Future<void> _jumpTo(String wireId) async {
     final messages = widget.messages;
     final index = messages.indexWhere((m) => m.wireId == wireId);
@@ -764,11 +851,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               itemCount: messages.length,
               itemBuilder: (_, i) {
                 final m = messages[messages.length - 1 - i];
-                final bubble = MessageBubble(message: m, chatId: widget.chatId);
-                if (pinnedMessage == null || m.id != pinnedMessage.id) {
-                  return bubble;
+                Widget bubble =
+                    MessageBubble(message: m, chatId: widget.chatId);
+                if (pinnedMessage != null && m.id == pinnedMessage.id) {
+                  bubble = KeyedSubtree(key: _pinnedKey, child: bubble);
                 }
-                return KeyedSubtree(key: _pinnedKey, child: bubble);
+                if (m.id == widget.initialMessageId) {
+                  bubble = KeyedSubtree(key: _initialMessageKey, child: bubble);
+                }
+                return bubble;
               },
             ),
       composer: widget.composer,
@@ -1065,6 +1156,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// start a second recording on top of an unreviewed one.
   PendingVoice? _pendingVoice;
 
+  void _showAttachmentFailure(Object error) {
+    final t = AppLocalizations.of(context);
+    showGlassToast(
+      context,
+      error is MediaRouteUnavailable ? t.chatAttachmentUnavailable : '$error',
+      tone: ToastTone.danger,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1216,7 +1316,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           );
     } catch (e) {
       if (!mounted) return;
-      showGlassToast(context, '$e', tone: ToastTone.danger);
+      _showAttachmentFailure(e);
     }
   }
 
@@ -1312,7 +1412,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       }
     } catch (e) {
       if (mounted) {
-        showGlassToast(context, '$e', tone: ToastTone.danger);
+        _showAttachmentFailure(e);
       }
     }
   }
@@ -1395,7 +1495,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       await _sendImageBytes(wire, idHint, caption: caption);
     } catch (e) {
       if (!mounted) return;
-      showGlassToast(context, '$e', tone: ToastTone.danger);
+      _showAttachmentFailure(e);
     }
   }
 

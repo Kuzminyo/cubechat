@@ -932,4 +932,11 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatsSearchEmpty => 'Нічого не знайдено';
+
+  @override
+  String get contactProfileViewInChat => 'Переглянути в чаті';
+
+  @override
+  String get chatAttachmentUnavailable =>
+      'Немає доступного з\'єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.';
 }

@@ -45,7 +45,16 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    AppLifecycle.instance.isWatchingNearby = TickerMode.of(context);
+    final watching = TickerMode.valuesOf(context).enabled;
+    AppLifecycle.instance.isWatchingNearby = watching;
+    if (watching) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(
+          ref.read(peerDiscoveryControllerProvider.notifier).retuneScan(),
+        );
+      });
+    }
   }
 
   @override

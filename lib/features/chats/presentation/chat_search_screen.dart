@@ -40,6 +40,13 @@ List<Chat> frequentChats(
   return people.take(limit).toList();
 }
 
+@visibleForTesting
+String routeForChatFromSearch(Chat chat) {
+  final route = Uri.parse(routeForChat(chat));
+  return route.replace(
+      queryParameters: {...route.queryParameters, 'from': 'search'}).toString();
+}
+
 /// Full-screen chat search.
 ///
 /// A screen rather than a field that filters the list in place: with nothing
@@ -79,7 +86,7 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
     // Remembered on the way out, not on the way in: the list is "who I went
     // looking for and found", and typing a name you never open says nothing.
     ref.read(recentSearchesControllerProvider.notifier).remember(chat.id);
-    context.push(routeForChat(chat));
+    context.push(routeForChatFromSearch(chat));
   }
 
   @override
@@ -90,9 +97,7 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
 
     final results = query.isEmpty
         ? const <Chat>[]
-        : chats
-            .where((c) => c.peerName.toLowerCase().contains(query))
-            .toList();
+        : chats.where((c) => c.peerName.toLowerCase().contains(query)).toList();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -142,7 +147,8 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
       ),
       body: query.isEmpty
           ? _Suggestions(onOpen: _open)
-          : _Results(results: results, onOpen: _open, emptyLabel: t.chatsSearchEmpty),
+          : _Results(
+              results: results, onOpen: _open, emptyLabel: t.chatsSearchEmpty),
     );
   }
 }
@@ -157,7 +163,8 @@ class _Suggestions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final chats = ref.watch(chatsProvider);
-    final frequent = frequentChats(chats, ref.watch(messagesControllerProvider));
+    final frequent =
+        frequentChats(chats, ref.watch(messagesControllerProvider));
     final recentIds = ref.watch(recentSearchesControllerProvider);
 
     // An id can outlive the chat it named — the contact was deleted, the

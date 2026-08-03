@@ -81,9 +81,16 @@ GoRouter buildRouter() {
         pageBuilder: (context, state) {
           final peerId = state.pathParameters['peerId']!;
           final peerLabel = state.uri.queryParameters['name'] ?? 'Peer';
+          final initialMessageId = state.uri.queryParameters['message'];
+          final returnToChats = state.uri.queryParameters['from'] == 'search';
           return fadeSlidePage(
             child: AuroraBackground(
-              child: ChatScreen(peerId: peerId, peerLabel: peerLabel),
+              child: ChatScreen(
+                peerId: peerId,
+                peerLabel: peerLabel,
+                initialMessageId: initialMessageId,
+                returnToChats: returnToChats,
+              ),
             ),
             state: state,
           );
@@ -99,9 +106,16 @@ GoRouter buildRouter() {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) {
           final channel = '#${state.pathParameters['name']!}';
+          final initialMessageId = state.uri.queryParameters['message'];
+          final returnToChats = state.uri.queryParameters['from'] == 'search';
           return fadeSlidePage(
             child: AuroraBackground(
-              child: ChatScreen(peerId: channel, peerLabel: channel),
+              child: ChatScreen(
+                peerId: channel,
+                peerLabel: channel,
+                initialMessageId: initialMessageId,
+                returnToChats: returnToChats,
+              ),
             ),
             state: state,
           );

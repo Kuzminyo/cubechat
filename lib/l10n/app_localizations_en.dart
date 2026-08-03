@@ -927,4 +927,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatsSearchEmpty => 'Nothing matches that';
+
+  @override
+  String get contactProfileViewInChat => 'View in chat';
+
+  @override
+  String get chatAttachmentUnavailable =>
+      'No connection is available. Connect over Bluetooth or the internet and try again.';
 }
