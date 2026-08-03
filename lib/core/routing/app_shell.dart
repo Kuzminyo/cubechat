@@ -57,6 +57,19 @@ class AppShell extends StatelessWidget {
           : shell.currentIndex * 2 / (tabs.length - 1),
       child: Scaffold(
         backgroundColor: Colors.transparent,
+        // The keyboard must cover the bar, not push it.
+        //
+        // With the default (true) the Scaffold shrinks its body by the keyboard
+        // height, and since the bar is pinned to the *bottom of that body* it
+        // rode up and sat on top of the keyboard — tapping the chat search made
+        // a nav bar appear in the middle of the screen. It is an overlay on the
+        // content, so it belongs at the bottom of the screen, full stop.
+        //
+        // Nothing in a tab branch relies on the resize: every text field in one
+        // sits at the top (the Chats and Contacts search), and the screens with
+        // low-sitting inputs — the chat composer, the contact card — are pushed
+        // routes with their own Scaffolds, which still resize normally.
+        resizeToAvoidBottomInset: false,
         // The bar is deliberately NOT Scaffold.bottomNavigationBar. That slot is
         // a full-width strip in the Scaffold's own layout — the bar becomes a
         // bottom *section* of the page, sized and reserved by the Scaffold, no

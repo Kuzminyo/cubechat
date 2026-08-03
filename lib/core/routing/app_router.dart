@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/chat/presentation/chat_screen.dart';
+import '../../features/chats/presentation/chat_search_screen.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/peers/presentation/contact_card_screen.dart';
@@ -111,6 +112,17 @@ GoRouter buildRouter() {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
+      ),
+      // A root route, not a branch one: the search screen owns the whole
+      // screen including where the nav bar would be, and pushing it inside the
+      // shell would leave the bar floating over its results.
+      GoRoute(
+        path: '/search',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: ChatSearchScreen()),
           state: state,
         ),
       ),

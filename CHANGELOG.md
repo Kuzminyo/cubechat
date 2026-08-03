@@ -4,9 +4,33 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.8.0+44**.
+Current build: **0.8.1+45**.
 
 ---
+
+## A search screen, and a nav bar that stays put (2026‑08‑03)
+
+- **The keyboard pushed the floating nav bar up instead of covering it**, so
+  tapping the chat search left a nav bar sitting in the middle of the screen.
+  The bar is an overlay pinned to the bottom of the shell's `Scaffold` body,
+  and `resizeToAvoidBottomInset` defaults to true — the body shrank by the
+  keyboard height and took the bar with it. Off now: nothing in a tab branch
+  needs the resize (every field in one is at the top), and the screens with
+  low-sitting inputs are pushed routes with their own Scaffolds.
+- **Tapping search opens a screen** rather than filtering in place. With
+  nothing typed there is something worth showing — a row of the people you
+  actually talk to, and the chats you last looked up — and neither fits above a
+  list already full of chats.
+  - The row puts favourites first, because that is the user stating who matters
+    and nothing inferred from traffic should outrank it; the rest fills by how
+    much has been said, which is steadier than recency (recency is just the top
+    of the chat list one screen back). Channels are excluded — the row is
+    faces, and a channel has none.
+  - "Recent" is its own stored list of chats opened *from search*, not a read
+    of the existing read markers. Those would give a plausible order for free
+    but the wrong list, and the "Clear" button beside it would have to either
+    lie or wipe the state unread badges depend on. Cleared by Emergency Wipe
+    too — who you went looking for is its own trace.
 
 ## Read receipts in channels (2026‑08‑03)
 

@@ -1681,6 +1681,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, one{Read by {count}} other{Read by {count}}}'**
   String chatReadByCount(int count);
+
+  /// No description provided for @chatsSearchFrequent.
+  ///
+  /// In en, this message translates to:
+  /// **'People you talk to'**
+  String get chatsSearchFrequent;
+
+  /// No description provided for @chatsSearchRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get chatsSearchRecent;
+
+  /// No description provided for @chatsSearchClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get chatsSearchClear;
+
+  /// No description provided for @chatsSearchStartHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search your chats and channels by name.'**
+  String get chatsSearchStartHint;
+
+  /// No description provided for @chatsSearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matches that'**
+  String get chatsSearchEmpty;
 }
 
 class _AppLocalizationsDelegate

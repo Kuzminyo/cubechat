@@ -403,5 +403,10 @@
         "type": "int"
       }
     }
-  }
+  },
+  "chatsSearchFrequent": "People you talk to",
+  "chatsSearchRecent": "Recent",
+  "chatsSearchClear": "Clear",
+  "chatsSearchStartHint": "Search your chats and channels by name.",
+  "chatsSearchEmpty": "Nothing matches that"
 }

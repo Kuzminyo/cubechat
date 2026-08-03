@@ -4,6 +4,7 @@ import '../../features/channels/data/channel_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
+import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
@@ -40,6 +41,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(peerAvatarsControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
   await ref.read(favoritesControllerProvider.notifier).clear();
+  // Who you went looking for is its own trace, and it lives in its own list.
+  await ref.read(recentSearchesControllerProvider.notifier).clear();
   await ref.read(readMarkersControllerProvider.notifier).clear();
   await ref.read(pinnedControllerProvider.notifier).clear();
   ref.read(presenceControllerProvider.notifier).clear();

@@ -375,5 +375,10 @@
         "type": "int"
       }
     }
-  }
+  },
+  "chatsSearchFrequent": "З ким ви спілкуєтесь",
+  "chatsSearchRecent": "Недавні",
+  "chatsSearchClear": "Очистити",
+  "chatsSearchStartHint": "Шукайте чати та канали за назвою.",
+  "chatsSearchEmpty": "Нічого не знайдено"
 }

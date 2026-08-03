@@ -912,4 +912,19 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get chatsSearchFrequent => 'People you talk to';
+
+  @override
+  String get chatsSearchRecent => 'Recent';
+
+  @override
+  String get chatsSearchClear => 'Clear';
+
+  @override
+  String get chatsSearchStartHint => 'Search your chats and channels by name.';
+
+  @override
+  String get chatsSearchEmpty => 'Nothing matches that';
 }

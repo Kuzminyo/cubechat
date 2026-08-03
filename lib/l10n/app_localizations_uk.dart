@@ -917,4 +917,19 @@ class AppLocalizationsUk extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get chatsSearchFrequent => 'З ким ви спілкуєтесь';
+
+  @override
+  String get chatsSearchRecent => 'Недавні';
+
+  @override
+  String get chatsSearchClear => 'Очистити';
+
+  @override
+  String get chatsSearchStartHint => 'Шукайте чати та канали за назвою.';
+
+  @override
+  String get chatsSearchEmpty => 'Нічого не знайдено';
 }

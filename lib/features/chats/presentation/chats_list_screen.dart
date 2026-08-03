@@ -214,9 +214,12 @@ class ChatsListScreen extends ConsumerWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
+              // Looks like a field, behaves like a button. Typing happens on
+              // the search screen, which has room to offer who you talk to and
+              // who you last looked up — neither of which fits above a list
+              // that is already full of chats.
               child: _SearchField(
-                onChanged: (v) =>
-                    ref.read(chatsQueryProvider.notifier).state = v,
+                onTap: () => context.push('/search'),
                 hint: t.chatsSearchHint,
               ),
             ),
@@ -299,10 +302,13 @@ class ChatsListScreen extends ConsumerWidget {
   }
 }
 
+/// The search affordance on the Chats tab: a field to look at, a button to
+/// press. Tapping it opens [ChatSearchScreen] rather than raising a keyboard
+/// here — see the call site.
 class _SearchField extends StatelessWidget {
-  const _SearchField({required this.onChanged, required this.hint});
+  const _SearchField({required this.onTap, required this.hint});
 
-  final ValueChanged<String> onChanged;
+  final VoidCallback onTap;
   final String hint;
 
   @override
@@ -311,17 +317,21 @@ class _SearchField extends StatelessWidget {
       blur: false,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       borderRadius: 14,
-      child: TextField(
-        onChanged: onChanged,
-        cursorColor: AppColors.brandPrimary,
-        style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-        decoration: InputDecoration(
-          icon: Icon(Icons.search, size: 18, color: AppColors.textOnGlassFaint),
-          border: InputBorder.none,
-          isCollapsed: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          hintText: hint,
-          hintStyle: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.search, size: 18, color: AppColors.textOnGlassFaint),
+            const SizedBox(width: 12),
+            Text(
+              hint,
+              style: TextStyle(
+                color: AppColors.textOnGlassFaint,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ),
     );
