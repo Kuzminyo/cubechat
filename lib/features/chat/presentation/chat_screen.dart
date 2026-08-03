@@ -53,6 +53,7 @@ import 'widgets/chat_input.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
+import 'widgets/voice_island.dart';
 import 'widgets/voice_trim_bar.dart';
 import 'widgets/mention_suggestions.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -277,6 +278,7 @@ class ChatScreen extends ConsumerWidget {
             ),
             header: _ChatHeader(
               onBack: () => _goBack(context),
+              chatId: canonicalId,
               avatarSeed: peerId,
               label: peerLabel,
               autoDeleteLabel:
@@ -379,6 +381,7 @@ class ChatScreen extends ConsumerWidget {
             ),
             header: _ChatHeader(
               onBack: () => _goBack(context),
+              chatId: peerId,
               avatarSeed: peerId,
               label: peerLabel,
               statusText: t.channelSubtitle,
@@ -692,6 +695,7 @@ class _HeaderActionCircle extends StatelessWidget {
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.onBack,
+    required this.chatId,
     required this.avatarSeed,
     required this.label,
     required this.statusText,
@@ -706,6 +710,10 @@ class _ChatHeader extends StatelessWidget {
   });
 
   final VoidCallback onBack;
+
+  /// Which conversation this header belongs to — the voice island claims it
+  /// so the app-wide bar stands down while we are here.
+  final String chatId;
   final String avatarSeed;
   final String label;
 
@@ -731,7 +739,13 @@ class _ChatHeader extends StatelessWidget {
       // deliberately runs all the way to the top of the screen.
       padding:
           EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
-      child: _HeaderPill(
+      // The capsule can be showing either this header or the voice note that
+      // is playing — same height, same radius, swapped by a swipe. See
+      // [VoiceIsland].
+      child: VoiceIsland(
+        chatId: chatId,
+        height: _headerPillHeight,
+        header: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Row(
           children: [
@@ -860,6 +874,7 @@ class _ChatHeader extends StatelessWidget {
               ],
             ],
           ],
+        ),
         ),
       ),
     );

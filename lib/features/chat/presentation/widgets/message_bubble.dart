@@ -717,14 +717,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 else if (message.kind == MessageKind.audio)
                   VoiceBubble(message: message)
                 else if (message.kind == MessageKind.file)
-                  copyingRestricted
-                      ? Opacity(
-                          opacity: 0.68,
-                          child: IgnorePointer(
-                            child: FileBubble(message: message),
-                          ),
-                        )
-                      : FileBubble(message: message)
+                  // Restricted means "do not take this elsewhere", not "do not
+                  // look at it". Wrapping the row in an IgnorePointer made a
+                  // received file unopenable on the device it was sent to,
+                  // which is not a privacy control — it is the file simply not
+                  // working. The restriction belongs one level in, on the
+                  // share-to-another-app fallback.
+                  FileBubble(
+                    message: message,
+                    sharingRestricted: copyingRestricted,
+                  )
                 else if (message.kind == MessageKind.poll)
                   PollBubble(
                     message: message,

@@ -237,13 +237,50 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // The voice bar wraps everything the router builds, so it survives a
       // push into a profile, a search, or another chat — which is the whole
       // point of playback outliving the bubble that started it.
-      builder: (context, child) => Listener(
+      builder: (context, child) => _ClampedTextScale(
+        child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) => UiActivity.instance.poke(),
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
         child: VoiceMiniPlayer(child: child ?? const SizedBox.shrink()),
       ),
+      ),
+    );
+  }
+}
+
+/// Bound how far the system font scale can stretch this UI.
+///
+/// The app is built from capsules of fixed height — the 56-pixel chat header,
+/// the nav bar, the settings rows — so a phone set to its largest font pushed
+/// labels out of them, which is what "the text runs off" looked like on some
+/// devices. Clamping rather than ignoring: an accessibility setting is a
+/// request, and honouring most of it beats honouring none, which is what
+/// `textScaler: TextScaler.noScaling` would do.
+///
+/// The ceiling is where the fixed heights stop coping; below 1 nothing breaks,
+/// but going much smaller makes the timestamps unreadable, which is its own
+/// accessibility failure.
+class _ClampedTextScale extends StatelessWidget {
+  const _ClampedTextScale({required this.child});
+
+  final Widget child;
+
+  static const double _min = 0.85;
+  static const double _max = 1.3;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        textScaler: media.textScaler.clamp(
+          minScaleFactor: _min,
+          maxScaleFactor: _max,
+        ),
+      ),
+      child: child,
     );
   }
 }

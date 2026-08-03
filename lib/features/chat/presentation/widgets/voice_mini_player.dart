@@ -6,6 +6,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../data/voice_playback_controller.dart';
+import 'voice_island.dart';
 
 /// The bar that follows a playing voice message around the app.
 ///
@@ -28,13 +29,17 @@ class VoiceMiniPlayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playback = ref.watch(voicePlaybackControllerProvider);
+    // A chat showing its own island is already saying all of this, in the same
+    // place. Two of them would stack, and the lower one would sit over the
+    // conversation for no reason.
+    final ownedByChat = ref.watch(voiceIslandOwnerProvider) != null;
 
     return Stack(
       children: [
         Positioned.fill(child: child),
         // Nothing playing, nothing painted — and no hit-testing either, or an
         // invisible bar would eat taps meant for the header beneath it.
-        if (playback.isActive)
+        if (playback.isActive && !ownedByChat)
           Positioned(
             top: MediaQuery.paddingOf(context).top + 6,
             left: 10,

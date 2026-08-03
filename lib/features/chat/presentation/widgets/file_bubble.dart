@@ -24,10 +24,16 @@ class FileBubble extends StatelessWidget {
     super.key,
     required this.message,
     this.onLongPress,
+    this.sharingRestricted = false,
   });
 
   final Message message;
   final VoidCallback? onLongPress;
+
+  /// When the conversation forbids copying, the file still opens — reading it
+  /// is the point of having received it — but the hand-off to another app is
+  /// withheld, because that is the step that takes it out of here.
+  final bool sharingRestricted;
 
   @override
   Widget build(BuildContext context) {
@@ -112,6 +118,14 @@ class FileBubble extends StatelessWidget {
     );
     final result = await OpenFilex.open(path, type: mime);
     if (result.type == ResultType.done || !context.mounted) return;
+
+    if (sharingRestricted) {
+      // No offer to share instead: that is the one route this setting exists
+      // to close. Say why, rather than leaving a tap that appears to do
+      // nothing.
+      showGlassToast(context, t.contactProfileCopyingRestricted);
+      return;
+    }
 
     // No installed app claims this type — offer the sheet as the way out
     // rather than a dead end.
