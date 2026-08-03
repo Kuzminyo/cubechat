@@ -5,14 +5,19 @@ name: iOS build (unsigned IPA for sideloading)
 # - manual run from the Actions tab (Run workflow button)
 #
 # Add a feature branch to the list below to get device builds off it without
-# merging first, then take it back out when it merges. Unlike the Android
-# workflow this one only uploads a per-SHA workflow artifact — there is no
-# rolling release for a branch build to overwrite — so the only cost of leaving
-# one behind is runner minutes spent on a branch nobody is testing.
+# merging first — and take it back out when it merges, or its pushes keep
+# overwriting the ipa-latest release with a build that isn't main's. (That
+# caveat used to not apply here: this job only produced a per-SHA artifact
+# until the artifact storage allowance ran out.)
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+# Needed to upsert the rolling "ipa-latest" prerelease the IPA is delivered
+# through — see the publish step for why it is not a workflow artifact.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -94,7 +99,38 @@ jobs:
           zip -qr cubechat-unsigned.ipa Payload
           ls -lh cubechat-unsigned.ipa
 
+      # Delivered through a release, not an artifact.
+      #
+      # This repo is private, so Actions artifact storage is a small fixed
+      # allowance, and it filled up: the build compiled an IPA, packaged it,
+      # and then had nowhere to put it. Pruning got real usage from 7.5 GB down
+      # to 47 MB and the upload still failed, because the quota is recalculated
+      # only every 6-12 hours — so an accounting delay could block iOS builds
+      # for half a day at a time.
+      #
+      # A release asset does not draw on that allowance at all, and it is how
+      # the Android job has always shipped its APK: one stable URL, no zip
+      # around it, nothing to expire. The artifact upload is kept as a
+      # convenience but must never fail the build again.
+      - name: Publish IPA to the rolling prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ipa-latest
+          name: Latest unsigned IPA (${{ github.ref_name }})
+          prerelease: true
+          body: |
+            Auto-built **unsigned** IPA for sideloading on iOS.
+
+            - Commit: `${{ github.sha }}`
+            - Branch: `${{ github.ref_name }}`
+
+            Download `cubechat-unsigned.ipa` below and sideload it with
+            Sideloadly and a free Apple ID. Valid for 7 days, then re-install
+            from a fresh build.
+          files: build/ios/iphoneos/cubechat-unsigned.ipa
+
       - name: Upload IPA as workflow artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
@@ -116,13 +152,13 @@ jobs:
             echo ""
             echo "**Commit:** \`${{ github.sha }}\`"
             echo ""
-            echo "**Artifact:** \`cubechat-ios-unsigned-${{ github.sha }}\`"
+            echo "**Download:** the \`ipa-latest\` release →"
+            echo "  \`${{ github.server_url }}/${{ github.repository }}/releases/tag/ipa-latest\`"
             echo ""
             echo "### How to install on iPhone (free Apple ID, 7-day re-sign)"
-            echo "1. Download the artifact from this run (Summary tab → Artifacts)"
-            echo "2. Unzip — you'll get \`cubechat.ipa\`"
-            echo "3. Open Sideloadly on Windows, plug iPhone via USB"
-            echo "4. Drag the IPA into Sideloadly, enter your free Apple ID, click Start"
-            echo "5. On iPhone: Settings → General → VPN & Device Management → trust the new profile"
-            echo "6. App is valid for 7 days, repeat to refresh"
+            echo "1. Download \`cubechat-unsigned.ipa\` from the release above"
+            echo "2. Open Sideloadly on Windows, plug iPhone via USB"
+            echo "3. Drag the IPA into Sideloadly, enter your free Apple ID, click Start"
+            echo "4. On iPhone: Settings → General → VPN & Device Management → trust the new profile"
+            echo "5. App is valid for 7 days, repeat to refresh"
           } >> "$GITHUB_STEP_SUMMARY"
