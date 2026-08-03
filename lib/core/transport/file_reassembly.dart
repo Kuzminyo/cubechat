@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -140,9 +141,44 @@ class FileReassembler {
     return p.have.length / p.total;
   }
 
-  /// Feed one chunk. Returns the assembled file once the last piece lands,
-  /// null while the transfer is still incomplete or was dropped.
+  /// One chunk at a time, per transfer.
+  ///
+  /// Chunks arrive as independent inbound frames, so nothing stopped two of the
+  /// same file being processed at once — and [_writeAt] is two awaits on one
+  /// [RandomAccessFile]: a `setPosition` starting while the previous
+  /// `writeFrom` is still in flight throws `FileSystemException: An async
+  /// operation is currently pending`. That exception surfaced far from here, as
+  /// `SealedBox open FAILED` on the enclosing frame, so the chunk was simply
+  /// lost and the file never completed. On the sender it looked delivered,
+  /// because it was — the relay took it.
+  ///
+  /// Even without the throw the interleaving is wrong: position and write are
+  /// separate calls, so two writers can swap offsets between them and put
+  /// bytes in each other's place. The counters below (`have`, `bytesOnDisk`,
+  /// `complete`) are read-modify-write across awaits for the same reason.
+  ///
+  /// A queue per transfer rather than one global lock: two different files
+  /// arriving together have no reason to wait on each other.
+  final Map<String, Future<void>> _chain = {};
+
   Future<AssembledFile?> ingest(FileChunk chunk) async {
+    final key = _keyOf(chunk.fileId);
+    final previous = _chain[key] ?? Future<void>.value();
+    final completer = Completer<void>();
+    _chain[key] = completer.future;
+    try {
+      // Wait for the transfer's previous chunk, but never inherit its failure.
+      await previous.catchError((_) {});
+      return await _ingestSerially(chunk);
+    } finally {
+      completer.complete();
+      // Only clear when nobody queued behind us, or the next chunk would find
+      // no chain and race the one still running.
+      if (identical(_chain[key], completer.future)) _chain.remove(key);
+    }
+  }
+
+  Future<AssembledFile?> _ingestSerially(FileChunk chunk) async {
     await _gc();
     final key = _keyOf(chunk.fileId);
     if (_dropped.containsKey(key)) return null;

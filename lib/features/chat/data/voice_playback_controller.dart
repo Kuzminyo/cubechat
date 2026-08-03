@@ -105,9 +105,15 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
       if (d > Duration.zero) state = state.copyWith(duration: d);
     });
     _doneSub = player.onPlayerComplete.listen((_) {
-      // Kept on the bar rather than dismissed: having just heard it, the thing
-      // you most often want next is to hear it again.
-      state = state.copyWith(playing: false, position: Duration.zero);
+      // Finished means finished: the bar goes away on its own.
+      //
+      // It first stayed put, on the theory that you might want to replay it.
+      // In practice a bar that outlives what it was reporting is just something
+      // to dismiss, and it sits over the header of whatever screen you moved
+      // on to. Nothing advances to the next voice note either — messages
+      // playing themselves one after another is a thing you ask for, not
+      // something that should start happening because you tapped one.
+      state = VoicePlayback(speed: state.speed);
     });
     return _player = player;
   }
