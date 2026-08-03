@@ -72,13 +72,18 @@ jobs:
           cp build/app/outputs/flutter-apk/app-debug.apk cubechat-debug.apk
           ls -lh cubechat-debug.apk
 
-      - name: Upload APK as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cubechat-android-debug-${{ github.sha }}
-          path: cubechat-debug.apk
-          retention-days: 30
-          if-no-files-found: error
+      # Deliberately NOT uploaded as a workflow artifact.
+      #
+      # The rolling release below already publishes this exact file, from a
+      # stable URL that is nicer to open on a phone — so an artifact was a
+      # second copy of an 88 MB APK on every push, kept for 30 days. That is
+      # what exhausted the account's artifact storage: 73 of them had piled up
+      # to 6.4 GB, against 1.1 GB for every iOS build ever made, and the first
+      # thing it broke was the iOS job, which could build an IPA but no longer
+      # had anywhere to put it.
+      #
+      # If a per-commit APK is ever wanted again, prefer shortening
+      # retention-days over reinstating the duplicate.
 
       # Attach the APK to a rolling prerelease so there's a stable, direct
       # download URL that opens straight to install on a phone (no zip, no
@@ -111,8 +116,9 @@ jobs:
             echo "### Download the APK"
             echo "- **Direct link (best on a phone):** the \`apk-latest\` release →"
             echo "  \`${{ github.server_url }}/${{ github.repository }}/releases/tag/apk-latest\`"
-            echo "- **Or** this run's artifact: Summary tab → Artifacts →"
-            echo "  \`cubechat-android-debug-${{ github.sha }}\` (downloads as a zip)"
+            echo ""
+            echo "_No workflow artifact: the release above is the same file, and"
+            echo "a second 88 MB copy per push is what filled the artifact quota._"
             echo ""
             echo "### Install on Android"
             echo "1. Open the download link on your phone"
