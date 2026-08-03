@@ -17,6 +17,7 @@ import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
+import '../../data/chat_navigation.dart';
 import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
@@ -327,7 +328,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   Widget _quotedBox(String wireId) {
     final quoted = _resolveQuoted(wireId);
     final preview = quoted == null ? '…' : _replyPreview(quoted);
-    return Container(
+    // Tappable: a quote names a message, and the thing anyone wants from it is
+    // to see the message. Nothing to go to when the original is gone, so the
+    // tap is withheld rather than bouncing off a toast.
+    return GestureDetector(
+      onTap: quoted == null
+          ? null
+          : () => ref
+              .read(chatJumpRequestProvider(widget.chatId).notifier)
+              .state = wireId,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
       decoration: BoxDecoration(
@@ -361,6 +371,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -637,6 +648,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             .read(pinnedControllerProvider.notifier)
             .isPinned(widget.chatId, message.wireId!);
 
+    // Set for a moment after a jump lands on this message — from a tapped
+    // quote, the pinned bar, or a search result. Without it the screen simply
+    // moves and nothing says which line you were sent to.
+    final highlighted =
+        ref.watch(chatHighlightProvider(widget.chatId)) == message.id;
+
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -660,10 +677,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // The RepaintBoundary stays: it keeps one bubble's repaint out of its
     // neighbours as the list scrolls.
     final bubble = RepaintBoundary(
-      child: DecoratedBox(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           borderRadius: radius,
           boxShadow: FloatingGlass.shadows,
+          // A ring rather than a wash: the bubble is already colour-coded by
+          // sender, and tinting its fill would read as a different kind of
+          // message rather than "this is the one".
+          border: highlighted
+              ? Border.all(color: AppColors.brandPrimary, width: 2)
+              : Border.all(color: Colors.transparent, width: 2),
         ),
         child: ClipRRect(
           borderRadius: radius,

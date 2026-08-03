@@ -22,6 +22,7 @@ import '../../../core/util/audio_trimmer.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -38,6 +39,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_reply_target.dart';
+import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/drafts_controller.dart';
 import '../data/messages_controller.dart';
@@ -1002,6 +1004,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   @override
   void initState() {
     super.initState();
+    _scroll.addListener(_onScrollChanged);
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _revealInitialMessage());
   }
@@ -1019,8 +1022,22 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
+    _scroll.removeListener(_onScrollChanged);
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// True once the newest message is comfortably off screen. The threshold is
+  /// about a screenful: a button that appears the instant you nudge the list
+  /// flickers in and out while reading.
+  bool _canScrollDown = false;
+
+  void _onScrollChanged() {
+    if (!_scroll.hasClients) return;
+    // reverse: true, so offset 0 *is* the bottom.
+    final next = _scroll.offset > 600;
+    if (next != _canScrollDown) setState(() => _canScrollDown = next);
   }
 
   /// Scroll the conversation to the message the pinned bar names.
@@ -1058,9 +1075,26 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
+  /// Flash the message we just landed on, then let it fade.
+  ///
+  /// Arriving somewhere in the middle of a scrollback with nothing marking the
+  /// destination is why jumping felt like the screen had simply moved.
+  Timer? _highlightTimer;
+
+  void _flash(String messageId) {
+    ref.read(chatHighlightProvider(widget.chatId).notifier).state = messageId;
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (!mounted) return;
+      final marker = ref.read(chatHighlightProvider(widget.chatId).notifier);
+      if (marker.state == messageId) marker.state = null;
+    });
+  }
+
   Future<void> _jumpTo(String wireId) async {
     final messages = widget.messages;
     final index = messages.indexWhere((m) => m.wireId == wireId);
+    if (index >= 0) _flash(messages[index].id);
     if (index < 0) {
       final t = AppLocalizations.of(context);
       showGlassToast(context, t.chatPinnedGone);
@@ -1166,6 +1200,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         .toList();
     final pinIndex = visiblePins.isEmpty ? 0 : _pinIndex % visiblePins.length;
     final pinnedMessage = visiblePins.isEmpty ? null : visiblePins[pinIndex];
+    // Anything in the tree can ask to be taken to a message — a tapped quote,
+    // most of all. Answered here because this is where the scroll controller
+    // lives, and cleared immediately so the same request cannot re-fire.
+    ref.listen<String?>(chatJumpRequestProvider(widget.chatId), (_, wireId) {
+      if (wireId == null) return;
+      ref.read(chatJumpRequestProvider(widget.chatId).notifier).state = null;
+      unawaited(_jumpTo(wireId));
+    });
+
     final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
     final matches = messagesMatchingQuery(messages, _searchQuery);
     final selectedIndex = matches.isEmpty
@@ -1174,6 +1217,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final selectedMessage = matches.isEmpty ? null : matches[selectedIndex];
 
     return _FloatingComposerBody(
+      scrollToBottom: _canScrollDown
+          ? () => _scroll.animateTo(
+                0,
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+              )
+          : null,
       listBuilder: (padding) => messages.isEmpty
           ? _EmptyConversationState(canSend: widget.canSend)
           : ListView.builder(
@@ -1337,7 +1387,12 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
             : t.chatSearchNoResults;
     final canNavigate = widget.resultCount > 1;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      // Owns the status-bar inset, because it is now the top of the screen.
+      // It used to sit *under* the header, which held that inset for both of
+      // them — once search started replacing the header instead of stacking
+      // below it, nothing was left holding the bar clear of the clock.
+      padding:
+          EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
       child: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
@@ -1586,11 +1641,15 @@ class _FloatingComposerBody extends StatefulWidget {
     required this.listBuilder,
     required this.composer,
     required this.header,
+    this.scrollToBottom,
   });
 
   /// Builds the conversation, given the padding that keeps it clear of the two
   /// floating islands.
   final Widget Function(EdgeInsets padding) listBuilder;
+
+  /// Null while the newest message is already on screen — see the call site.
+  final VoidCallback? scrollToBottom;
   final Widget composer;
 
   /// The header stack — identity capsule and, when there is one, the pinned
@@ -1656,6 +1715,15 @@ class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
           top: 0,
           child: KeyedSubtree(key: _headerKey, child: widget.header),
         ),
+        // Only once there is somewhere to go. The list is reversed, so being
+        // at the newest message means offset ~0 — showing the button there
+        // would be a control that does nothing, parked over the conversation.
+        if (widget.scrollToBottom != null)
+          Positioned(
+            right: 16,
+            bottom: _composerHeight + _clearance + 8,
+            child: _ScrollToBottomButton(onTap: widget.scrollToBottom!),
+          ),
         Positioned(
           left: 0,
           right: 0,
@@ -2371,6 +2439,41 @@ class _VerificationMark extends StatelessWidget {
         rotated ? Icons.gpp_maybe_rounded : Icons.verified_rounded,
         size: 14,
         color: rotated ? AppColors.danger : AppColors.brandPrimary,
+      ),
+    );
+  }
+}
+
+/// Jump to the newest message.
+///
+/// Reading back through a long scrollback, the way out is otherwise a lot of
+/// flinging — and in a conversation the newest message is where you almost
+/// always want to end up.
+class _ScrollToBottomButton extends StatelessWidget {
+  const _ScrollToBottomButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingGlass(
+      borderRadius: 22,
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 26,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              Icons.keyboard_double_arrow_down_rounded,
+              color: AppColors.textOnGlass,
+              size: 22,
+            ),
+          ),
+        ),
       ),
     );
   }
