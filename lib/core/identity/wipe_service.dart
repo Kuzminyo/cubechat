@@ -18,6 +18,7 @@ import '../theme/theme_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
+import '../../features/profile/data/ui_scale_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
 import '../storage/hive_cipher.dart';
@@ -66,6 +67,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(themeControllerProvider.notifier).reset();
   // Which emoji you reach for is a habit, and a habit is a trace.
   await ref.read(reactionEmojiControllerProvider.notifier).reset();
+  // Same for how big you like the interface: a fresh install follows the phone.
+  await ref.read(uiScaleControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

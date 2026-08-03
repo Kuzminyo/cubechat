@@ -22,6 +22,7 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
+import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
@@ -164,6 +165,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           summary: t.profileVersion(_appVersion),
           children: [
             const _ThemeRow(),
+            const _ScaleRow(),
             _LanguageRow(locale: locale),
             const _AboutRow(),
             const _DiagnosticsRow(),
@@ -935,6 +937,115 @@ class _ThemeRow extends ConsumerWidget {
   }
 }
 
+/// How big the app draws itself.
+///
+/// The same build lands visibly larger on one phone than on another — Android's
+/// Display size and iOS's Larger Text both feed the text scaler, and neither is
+/// visible from inside the app. Following the phone stays the default, because
+/// someone who made everything bigger meant this too; the other three are for
+/// the phone that was tuned for something else.
+///
+/// A preview of the actual size sits under the row, so the choice can be made
+/// by looking rather than by guessing what "Larger" means here.
+class _ScaleRow extends ConsumerWidget {
+  const _ScaleRow();
+
+  static String _label(AppLocalizations t, UiScale scale) => switch (scale) {
+        UiScale.system => t.profileScaleSystem,
+        UiScale.small => t.profileScaleSmall,
+        UiScale.normal => t.profileScaleNormal,
+        UiScale.large => t.profileScaleLarge,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(uiScaleControllerProvider);
+    return _frame(
+      false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.profileScale,
+            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (final scale in UiScale.values) ...[
+                if (scale != UiScale.values.first) const SizedBox(width: 8),
+                Expanded(
+                  child: _ScalePill(
+                    label: _label(t, scale),
+                    active: scale == current,
+                    onTap: () => ref
+                        .read(uiScaleControllerProvider.notifier)
+                        .select(scale),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            t.profileScaleSample,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScalePill extends StatelessWidget {
+  const _ScalePill({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: active ? AppColors.brandGradient : null,
+          color: active ? null : AppColors.glass(0.08),
+          border: Border.all(
+            color: active ? AppColors.glass(0.3) : AppColors.glass(0.15),
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          // Fixed, and deliberately not scaled: this row is how you *change*
+          // the scale, so it has to stay reachable at every setting — including
+          // the one that broke the layout.
+          textScaler: TextScaler.noScaling,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 12.5,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LanguageRow extends ConsumerWidget {
   const _LanguageRow({required this.locale});
 
@@ -1511,6 +1622,11 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
       old.open != open || old.compact != compact || old.topInset != topInset;
 }
 
+/// The discoverability line under the name, and the room left between that
+/// block and the buttons below it.
+const double _coverStatusSize = 11.5;
+const double _coverActionsGap = 18;
+
 class _CoverBody extends ConsumerWidget {
   const _CoverBody({
     required this.nickname,
@@ -1548,9 +1664,21 @@ class _CoverBody extends ConsumerWidget {
     final radius = ui.lerpDouble(_ProfileCover.avatarSize / 2, 0, t)!;
 
     final nameLeft = ui.lerpDouble(16 + _ProfileCover.avatarSize + 14, 16, t)!;
+
+    // Measured, not guessed. Open, the name block sits directly above the
+    // action row, and where its *top* goes therefore depends on how tall it is
+    // — which depends on the font scale. The old fixed 66-point offset was cut
+    // for the stock size, so a phone set to larger text (an iPhone in
+    // particular, where the system default already runs bigger) pushed the name
+    // and the line under it straight down onto the buttons.
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleSize = ui.lerpDouble(19, 26, t)!;
+    final nameBlockHeight = scaler.scale(titleSize) * 1.25 +
+        3 +
+        scaler.scale(_coverStatusSize) * 1.4;
     final nameTop = ui.lerpDouble(
       topInset + 16,
-      height - _ProfileCover.actionsHeight - 66,
+      height - _ProfileCover.actionsHeight - _coverActionsGap - nameBlockHeight,
       t,
     )!;
 
@@ -1621,7 +1749,7 @@ class _CoverBody extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.heading(
-                    size: ui.lerpDouble(19, 26, t)!,
+                    size: titleSize,
                     color: AppColors.textOnGlass,
                   ),
                 ),
@@ -1648,7 +1776,7 @@ class _CoverBody extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: _coverStatusSize,
                         ),
                       ),
                     ),

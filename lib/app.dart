@@ -19,6 +19,7 @@ import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
 import 'features/peers/data/peer_discovery_controller.dart';
+import 'features/profile/data/ui_scale_controller.dart';
 import 'l10n/app_localizations.dart';
 
 class CubechatApp extends ConsumerStatefulWidget {
@@ -258,7 +259,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   }
 }
 
-/// Bound how far the system font scale can stretch this UI.
+/// Decide how large this UI draws, and bound how far that can go.
 ///
 /// The app is built from capsules of fixed height — the 56-pixel chat header,
 /// the nav bar, the settings rows — so a phone set to its largest font pushed
@@ -270,7 +271,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 /// The ceiling is where the fixed heights stop coping; below 1 nothing breaks,
 /// but going much smaller makes the timestamps unreadable, which is its own
 /// accessibility failure.
-class _ClampedTextScale extends StatelessWidget {
+///
+/// On top of that the user can override the phone entirely — see [UiScale] for
+/// why anyone would want to. An override is still clamped, so a setting in here
+/// can never break the layout either.
+class _ClampedTextScale extends ConsumerWidget {
   const _ClampedTextScale({required this.child});
 
   final Widget child;
@@ -279,11 +284,15 @@ class _ClampedTextScale extends StatelessWidget {
   static const double _max = 1.3;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final media = MediaQuery.of(context);
+    final chosen = ref.watch(uiScaleControllerProvider).factor;
+    final scaler = chosen == null
+        ? media.textScaler
+        : TextScaler.linear(chosen);
     return MediaQuery(
       data: media.copyWith(
-        textScaler: media.textScaler.clamp(
+        textScaler: scaler.clamp(
           minScaleFactor: _min,
           maxScaleFactor: _max,
         ),

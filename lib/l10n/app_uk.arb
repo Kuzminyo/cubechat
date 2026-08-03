@@ -539,6 +539,12 @@
   "profileThemeViolet": "Фіалка",
   "profileThemeOcean": "Океан",
   "profileThemeSlate": "Графіт",
+  "profileScale": "Розмір інтерфейсу",
+  "profileScaleSystem": "Системний",
+  "profileScaleSmall": "Менший",
+  "profileScaleNormal": "Звичайний",
+  "profileScaleLarge": "Більший",
+  "profileScaleSample": "Текст і рядки малюються цього розміру.",
   "savedTitle": "Збережені",
   "savedSubtitle": "Нотатки для себе, на цьому пристрої",
   "savedEmpty": "Усе, що ви тут напишете, залишиться на цьому телефоні."

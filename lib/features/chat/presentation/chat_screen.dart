@@ -398,12 +398,19 @@ class ChatScreen extends ConsumerWidget {
               label: peerLabel,
               statusText: saved ? t.savedSubtitle : t.channelSubtitle,
               statusColor: AppColors.textOnGlassDim,
-              route: route.route,
-              routeHops: route.hops,
+              route: saved ? null : route.route,
+              routeHops: saved ? null : route.hops,
               online: false,
-              onTapIdentity: () => context.push(
-                '/channel-info/${Uri.encodeComponent(peerId.substring(1))}',
-              ),
+              // Notes to yourself have no other end to look at. The tap used to
+              // open channel info for a channel called `saved`, which not only
+              // showed a room that does not exist but *created* one on the way
+              // in — ensureSelf writes a roster entry for whatever name it is
+              // handed.
+              onTapIdentity: saved
+                  ? null
+                  : () => context.push(
+                        '/channel-info/${Uri.encodeComponent(peerId.substring(1))}',
+                      ),
               actions: [
                 if (joined)
                   _PillIconButton(
@@ -414,7 +421,10 @@ class ChatScreen extends ConsumerWidget {
                         .read(_chatSearchOpenProvider(peerId).notifier)
                         .state = true,
                   ),
-                if (joined)
+                // A poll needs voters and an invitation needs someone to
+                // invite. Search is the one action that still means something
+                // in a notebook, so it stays.
+                if (joined && !saved)
                   _PillIconButton(
                     icon: Icons.poll_outlined,
                     color: AppColors.brandSecondary,
@@ -422,21 +432,22 @@ class ChatScreen extends ConsumerWidget {
                     onPressed: () =>
                         showChannelPollComposer(context, ref, peerId),
                   ),
-                _PillIconButton(
-                  icon: Icons.person_add_alt_1_outlined,
-                  color: AppColors.brandPrimary,
-                  tooltip: t.channelInviteTitle,
-                  onPressed: () => showModalBottomSheet<void>(
-                    context: context,
-                    backgroundColor: AppColors.bgTop,
-                    isScrollControlled: true,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.vertical(top: Radius.circular(22)),
+                if (!saved)
+                  _PillIconButton(
+                    icon: Icons.person_add_alt_1_outlined,
+                    color: AppColors.brandPrimary,
+                    tooltip: t.channelInviteTitle,
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: AppColors.bgTop,
+                      isScrollControlled: true,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(22)),
+                      ),
+                      builder: (_) => _ChannelInviteSheet(channelName: peerId),
                     ),
-                    builder: (_) => _ChannelInviteSheet(channelName: peerId),
                   ),
-                ),
               ],
             ),
           ),
@@ -736,7 +747,10 @@ class _ChatHeader extends StatelessWidget {
   /// Small mark beside the name — verified, or key-changed. Null for a
   /// channel, which has no single person to vouch for.
   final Widget? verification;
-  final ChatRoute route;
+  /// How a message would leave here. Null when none would: notes to yourself
+  /// are written straight to disk, and a globe over a notebook claims the
+  /// opposite of what is true.
+  final ChatRoute? route;
   final int? routeHops;
   final Color statusColor;
   final bool online;
@@ -860,12 +874,14 @@ class _ChatHeader extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                    SizedBox(width: compactRoute ? 4 : 6),
-                                    _ChatRouteIndicator(
-                                      route: route,
-                                      hops: routeHops,
-                                      compact: compactRoute,
-                                    ),
+                                    if (route != null) ...[
+                                      SizedBox(width: compactRoute ? 4 : 6),
+                                      _ChatRouteIndicator(
+                                        route: route!,
+                                        hops: routeHops,
+                                        compact: compactRoute,
+                                      ),
+                                    ],
                                   ],
                                 );
                               },

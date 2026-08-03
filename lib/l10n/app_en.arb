@@ -567,6 +567,12 @@
   "profileThemeViolet": "Violet",
   "profileThemeOcean": "Ocean",
   "profileThemeSlate": "Slate",
+  "profileScale": "Interface size",
+  "profileScaleSystem": "System",
+  "profileScaleSmall": "Smaller",
+  "profileScaleNormal": "Normal",
+  "profileScaleLarge": "Larger",
+  "profileScaleSample": "Text and rows are drawn at this size.",
   "savedTitle": "Saved",
   "savedSubtitle": "Notes to yourself, on this device",
   "savedEmpty": "Anything you write here stays on this phone."

@@ -1290,6 +1290,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileThemeSlate => 'Slate';
 
   @override
+  String get profileScale => 'Interface size';
+
+  @override
+  String get profileScaleSystem => 'System';
+
+  @override
+  String get profileScaleSmall => 'Smaller';
+
+  @override
+  String get profileScaleNormal => 'Normal';
+
+  @override
+  String get profileScaleLarge => 'Larger';
+
+  @override
+  String get profileScaleSample => 'Text and rows are drawn at this size.';
+
+  @override
   String get savedTitle => 'Saved';
 
   @override

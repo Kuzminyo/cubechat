@@ -4,7 +4,38 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.11.0+54**.
+Current build: **0.11.1+55**.
+
+---
+
+## A size you can choose, and a notebook that stops pretending to be a room (2026‑08‑03)
+
+- **The interface has a size setting.** The same build lands visibly larger on
+  one phone than another — Android's Display size and iOS's Larger Text both
+  feed the text scaler, and neither is visible from inside the app. Profile →
+  Застосунок now offers System / Smaller / Normal / Larger, with a sample line
+  underneath so the choice is made by looking. Following the phone stays the
+  default: someone who made every app bigger meant this one. An override is
+  clamped like the platform value, because a setting that can break the layout
+  is not a setting — and the buttons that set it never scale, so the way out is
+  reachable from every choice.
+- **The profile name no longer lands on the buttons under it.** With the cover
+  photo open, the name and the discoverability line are positioned from the
+  bottom of the header, and that offset was a constant measured at the stock
+  font size. On a phone asking for larger text — an iPhone especially, where
+  the default already runs bigger — the block grew down into the action row.
+  It is measured against the real scale now, and a test pins the invariant at
+  three of them.
+- **Saved notes stopped borrowing things a room needs.** No poll composer (no
+  voters), no invite button (nobody to invite), and no route indicator (nothing
+  is sent — a globe over a notebook claims the opposite of the truth). Tapping
+  the name opened channel info for a room called `saved`, which not only showed
+  a room that does not exist but *created* one on the way in: the info screen
+  registers you as a member of whatever name it is handed.
+- **And it has its own mark**: a bookmark on the identity gradient rather than
+  the first letter of its own title, which said nothing except which language
+  the app was in — the same notebook was a "З" in Ukrainian and an "S" in
+  English.
 
 ---
 

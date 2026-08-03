@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/widgets/identity_avatar.dart';
+import '../../../chats/data/saved_messages.dart';
 import '../../data/peer_avatars_controller.dart';
 
 /// Somebody else's avatar: their picture if we hold it, the generated identity
@@ -46,6 +47,10 @@ class PeerAvatar extends ConsumerWidget {
       online: online,
       heroTag: heroTag,
       imageBytes: bytes,
+      // Saved notes are the one chat in the list that is not somebody, so it
+      // gets a bookmark instead of a letter — the mark every messenger uses for
+      // the same thing, and the only tile you can find by shape alone.
+      mark: isSavedChat(peerId) ? Icons.bookmark_rounded : null,
     );
   }
 }

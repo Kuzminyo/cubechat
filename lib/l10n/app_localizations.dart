@@ -2366,6 +2366,42 @@ abstract class AppLocalizations {
   /// **'Slate'**
   String get profileThemeSlate;
 
+  /// No description provided for @profileScale.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface size'**
+  String get profileScale;
+
+  /// No description provided for @profileScaleSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get profileScaleSystem;
+
+  /// No description provided for @profileScaleSmall.
+  ///
+  /// In en, this message translates to:
+  /// **'Smaller'**
+  String get profileScaleSmall;
+
+  /// No description provided for @profileScaleNormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal'**
+  String get profileScaleNormal;
+
+  /// No description provided for @profileScaleLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Larger'**
+  String get profileScaleLarge;
+
+  /// No description provided for @profileScaleSample.
+  ///
+  /// In en, this message translates to:
+  /// **'Text and rows are drawn at this size.'**
+  String get profileScaleSample;
+
   /// No description provided for @savedTitle.
   ///
   /// In en, this message translates to:

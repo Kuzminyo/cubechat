@@ -1299,6 +1299,24 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileThemeSlate => 'Графіт';
 
   @override
+  String get profileScale => 'Розмір інтерфейсу';
+
+  @override
+  String get profileScaleSystem => 'Системний';
+
+  @override
+  String get profileScaleSmall => 'Менший';
+
+  @override
+  String get profileScaleNormal => 'Звичайний';
+
+  @override
+  String get profileScaleLarge => 'Більший';
+
+  @override
+  String get profileScaleSample => 'Текст і рядки малюються цього розміру.';
+
+  @override
   String get savedTitle => 'Збережені';
 
   @override

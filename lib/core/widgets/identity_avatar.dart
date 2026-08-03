@@ -16,12 +16,19 @@ class IdentityAvatar extends StatelessWidget {
     this.online = false,
     this.heroTag,
     this.imageBytes,
+    this.mark,
   });
 
   final String seed;
   final String label;
   final double size;
   final bool online;
+
+  /// A glyph drawn instead of initials. Saved notes uses it: that chat is a
+  /// place rather than a person, and an initial taken off its title says only
+  /// which language the app happens to be in — the same notebook was a "З" in
+  /// Ukrainian and an "S" in English.
+  final IconData? mark;
 
   /// A picture to draw instead of the generated gradient. The gradient is the
   /// fallback rather than the other way round: every identity has one, so the
@@ -93,14 +100,16 @@ class IdentityAvatar extends StatelessWidget {
             // the person's face.
             child: photo != null
                 ? null
-                : Text(
-                    initials,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: size * 0.38,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                : mark != null
+                    ? Icon(mark, color: Colors.white, size: size * 0.5)
+                    : Text(
+                        initials,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: size * 0.38,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
           ),
           if (online)
             Positioned(
