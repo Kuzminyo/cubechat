@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'floating_glass.dart';
+import 'bar_glass.dart';
 
 /// How every bottom sheet in the app arrives and leaves.
 ///
@@ -25,8 +25,8 @@ const AnimationStyle glassSheetMotion = AnimationStyle(
 /// from another application.
 ///
 /// So: no background of its own, no scrim of fill behind the content — the
-/// caller's content sits inside one [FloatingGlass] island with air on all
-/// sides, exactly like the bar it appears above.
+/// caller's content sits inside one [BarGlass] island with air on all sides,
+/// which is not merely *like* the nav bar's surface, it is the same widget.
 Future<T?> showGlassSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -53,9 +53,11 @@ Future<T?> showGlassSheet<T>({
           // there is not.
           bottom: margin.bottom + MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: FloatingGlass(
-          borderRadius: 28,
-          padding: EdgeInsets.zero,
+        // The bar's own glass, not an approximation of it: same blur, same
+        // neutral gradient, same hairline, same two black shadows. A sheet that
+        // mixed its own recipe was the surface that still looked filled.
+        child: BarGlass(
+          radius: 28,
           child: builder(context),
         ),
       ),

@@ -4,7 +4,29 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.16.0+62**.
+Current build: **0.17.0+63**.
+
+---
+
+## Drag back from anywhere, and a contact's photo is a photograph (2026‑08‑04)
+
+- **Pull from the left edge to go back.** Every pushed screen — a chat, a
+  channel, a profile, the folder list — now hands its own transition to your
+  thumb: the screen follows the finger, the one underneath comes forward with
+  it, past halfway it leaves and short of it it springs back. This is
+  Cupertino's route mixin, used deliberately on both platforms: the gesture and
+  the interruptibility are precisely what a hand-rolled transition cannot have,
+  and every "jumpy" animation in the app was a fixed-duration tween being
+  restarted from wherever it happened to be. Kept at 300 ms rather than iOS's
+  400, so it sits with the tab strip and the sheets.
+- **A contact's header shows their photo full-bleed**, the way your own profile
+  shows yours, with the round portrait below it. A circle floating on a
+  gradient was the one place in the app where somebody's face was drawn as a
+  token rather than as a photograph.
+- **The media sheet is the nav bar's glass, not an imitation of it.** The bar's
+  surface moved into a `BarGlass` widget — the same blur, the same neutral
+  gradient, the same hairline and the same two black shadows — and both the bar
+  and every sheet now use it, so they cannot drift apart again.
 
 ---
 

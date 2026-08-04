@@ -9,6 +9,7 @@ import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../l10n/app_localizations.dart';
 import '../theme/colors.dart';
 import '../widgets/aurora_background.dart';
+import '../widgets/bar_glass.dart';
 import '../widgets/unread_badge.dart';
 
 class AppShell extends StatelessWidget {
@@ -215,63 +216,13 @@ class _GlassPillState extends State<_GlassPill>
   Widget build(BuildContext context) {
     final n = widget.tabs.length;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(_radius),
-        // Neutral shadows only. A brand-tinted glow here paints a green halo on
-        // the screen around the capsule — exactly the "plate" this bar must not
-        // have. Depth comes from two black shadows: one tight contact shadow,
-        // one wide ambient one.
-        // Kept tight on purpose. A wide, soft drop shadow smears a dark band
-        // across the full width beneath the bar, and that band is what reads as
-        // "a bottom panel the bar sits in".
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.50),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-            spreadRadius: -4,
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -14,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(_radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              // Neutral dark glass. The blurred aurora shows through; the panel
-              // itself contributes no colour of its own, so it reads as a
-              // separate pane of smoked glass rather than a green plate.
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppColors.glass(0.07),
-                  Colors.black.withValues(alpha: 0.52),
-                  Colors.black.withValues(alpha: 0.66),
-                ],
-                stops: const [0, 0.35, 1],
-              ),
-              borderRadius: BorderRadius.circular(_radius),
-              // A crisp hairline is what separates "a pane of glass" from "a
-              // darker area of the background".
-              border: Border.all(
-                color: AppColors.glass(0.16),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: _padV,
-                horizontal: _padH,
-              ),
-              child: LayoutBuilder(
+    // The bar's own surface, extracted so the media sheet can be the same pane
+    // rather than a copy of it that drifts. See [BarGlass] for why each part of
+    // the recipe is there.
+    return BarGlass(
+      radius: _radius,
+      padding: const EdgeInsets.symmetric(vertical: _padV, horizontal: _padH),
+      child: LayoutBuilder(
                 builder: (context, constraints) {
                   final slot = constraints.maxWidth / n;
                   return Stack(
@@ -314,10 +265,6 @@ class _GlassPillState extends State<_GlassPill>
                     ],
                   );
                 },
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

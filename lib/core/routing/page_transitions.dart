@@ -1,85 +1,69 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// How a pushed screen arrives and leaves.
+/// How a pushed screen arrives, leaves, and is dragged back.
 ///
-/// Sideways, not upward. The tabs became a strip you drag between, and a chat
-/// opened from that strip belongs to the same geography: it comes in from the
-/// right, over a list that steps back rather than staying nailed in place, and
-/// it leaves the way it came. Fading a screen up from below made every push
-/// read as a modal — something appearing *over* the app rather than the next
-/// thing along in it.
+/// This is Cupertino's page transition, on both platforms and deliberately.
+/// Not for the look — the slide it gives is the one this app already wanted,
+/// sideways with the screen underneath stepping back — but for the two things
+/// a hand-rolled `CustomTransitionPage` cannot have:
 ///
-/// The outgoing screen only travels a quarter of the width. Moving it the full
-/// distance would say the two are side by side, which is what the tab strip
-/// says and this is not: you can come back from here, and the screen you came
-/// from is still underneath.
-CustomTransitionPage<T> fadeSlidePage<T>({
+///  * **A back gesture.** Pull from the left edge and the screen follows the
+///    finger, at the distance the finger put it, and the one underneath comes
+///    forward with it. Let go past halfway and it leaves; let go short and it
+///    springs back. That is the whole request, and it is not something to
+///    reimplement: the route has to hand its own animation over to a drag,
+///    reclaim it on release, and stay correct if a second push arrives
+///    mid-gesture.
+///  * **Interruptibility.** A tween driven by a fixed-duration controller
+///    cannot be caught halfway; every "jumpy" transition in this app was one of
+///    those being restarted from wherever it happened to be.
+///
+/// The name stays [fadeSlidePage] because forty call sites use it and none of
+/// them care how it moves.
+Page<T> fadeSlidePage<T>({
   required Widget child,
   required GoRouterState state,
-  Duration duration = const Duration(milliseconds: 300),
-  Duration reverseDuration = const Duration(milliseconds: 260),
+  Duration? duration,
+  Duration? reverseDuration,
 }) {
-  return CustomTransitionPage<T>(
-    key: state.pageKey,
-    child: child,
-    transitionDuration: duration,
-    reverseTransitionDuration: reverseDuration,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      // easeOutCubic in, easeInCubic out — the same pair the tab strip settles
-      // on, so the whole app decelerates alike.
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      final secondaryCurved = CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-
-      final incoming = Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(curved);
-
-      // What is left behind: a short step back and a little darker, so the
-      // arriving screen has something to arrive in front of.
-      final outgoing = Tween<Offset>(
-        begin: Offset.zero,
-        end: const Offset(-0.25, 0),
-      ).animate(secondaryCurved);
-      final outgoingFade =
-          Tween<double>(begin: 1, end: 0.7).animate(secondaryCurved);
-
-      return SlideTransition(
-        position: outgoing,
-        child: FadeTransition(
-          opacity: outgoingFade,
-          child: SlideTransition(
-            position: incoming,
-            // Only the first stretch of the travel carries a fade, so the
-            // screen is not translucent while it moves — a solid thing sliding
-            // in, rather than two images being mixed.
-            child: FadeTransition(
-              opacity: Tween<double>(begin: 0.5, end: 1).animate(
-                CurvedAnimation(
-                  parent: animation,
-                  curve: const Interval(0, 0.45, curve: Curves.easeOut),
-                ),
-              ),
-              child: child,
-            ),
-          ),
-        ),
-      );
-    },
-  );
+  return _SlidePage<T>(key: state.pageKey, child: child);
 }
 
-/// How a full-screen picture opens: a fade with a whisper of scale, the same
-/// timings as [fadeSlidePage].
+/// Cupertino's route, at this app's pace.
+///
+/// [CupertinoPage] would do everything here except the timing: iOS spends
+/// 400 ms on a push, which next to a 240 ms tab strip and a 260 ms sheet reads
+/// as the app hesitating. Everything else — the parallax, the shadow on the
+/// leading edge, the edge-drag that hands the animation to your thumb — comes
+/// from the mixin, because those are the parts worth not reimplementing.
+class _SlidePage<T> extends Page<T> {
+  const _SlidePage({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Route<T> createRoute(BuildContext context) => _SlideRoute<T>(page: this);
+}
+
+class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> {
+  _SlideRoute({required _SlidePage<T> page}) : super(settings: page);
+
+  @override
+  Widget buildContent(BuildContext context) => (settings as _SlidePage<T>).child;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 300);
+
+  @override
+  String? get title => null;
+
+  @override
+  bool get maintainState => true;
+}
+
+/// How a full-screen picture opens: a fade with a whisper of scale.
 ///
 /// Not a side-slide — a photo, the editor and the camera are not "the next
 /// screen along", they are the same thing at a different size, and sliding one

@@ -594,7 +594,7 @@ class ContactProfileScreen extends ConsumerWidget {
   }
 }
 
-class _ProfileHero extends StatelessWidget {
+class _ProfileHero extends ConsumerWidget {
   const _ProfileHero({
     required this.height,
     required this.peerId,
@@ -638,31 +638,49 @@ class _ProfileHero extends StatelessWidget {
   final String moreTooltip;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = IdentityAvatar.paletteFor(peerId);
     final avatarSize =
-        (MediaQuery.sizeOf(context).width * 0.48).clamp(154.0, 210.0);
+        (MediaQuery.sizeOf(context).width * 0.42).clamp(132.0, 176.0);
+    // Their picture, full-bleed across the header — the same thing your own
+    // profile does with yours. A round portrait floating on a gradient was the
+    // one place in the app where somebody's face was shown as a token rather
+    // than as a photograph, and the round one below it is still there for the
+    // identity it carries (the online dot, the letters when there is no photo).
+    final photo = ref.watch(peerAvatarsControllerProvider)[peerId];
     return SizedBox(
       height: height,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  palette.first.withValues(alpha: 0.78),
-                  AppColors.bgBottom,
-                  AppColors.bgDeep,
-                ],
-                stops: const [0, 0.58, 1],
+          if (photo != null)
+            Image.memory(
+              photo,
+              fit: BoxFit.cover,
+              // The bytes are full HD so the header stays sharp; decoding them
+              // at the size actually drawn keeps the cache honest.
+              cacheWidth: (MediaQuery.sizeOf(context).width *
+                      MediaQuery.devicePixelRatioOf(context))
+                  .round(),
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            )
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    palette.first.withValues(alpha: 0.78),
+                    AppColors.bgBottom,
+                    AppColors.bgDeep,
+                  ],
+                  stops: const [0, 0.58, 1],
+                ),
               ),
             ),
-          ),
           Align(
-            alignment: const Alignment(0, -0.30),
+            alignment: const Alignment(0, -0.34),
             child: PeerAvatar(
               peerId: peerId,
               label: label,
