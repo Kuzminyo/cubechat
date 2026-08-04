@@ -4,7 +4,29 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.14.0+59**.
+Current build: **0.14.1+60**.
+
+---
+
+## Notes that hold photos, and boxes that move rather than jump (2026‑08‑04)
+
+- **"Bad state: cannot send image: no recipient pubkey for @saved" is gone.**
+  Saved notes only ever handled text; every media path reached for a recipient
+  pubkey and threw at the one conversation that cannot have one. Photos, files
+  and voice notes are now written straight to the app's own storage and
+  appended like any other note — copied in, so clearing the source leaves the
+  note intact. Nothing is downscaled on the way, because the encoder exists to
+  fit a picture through Bluetooth and there is no Bluetooth on this path.
+- **The pinned bar and the voice bar grow and shrink instead of appearing.**
+  The conversation's top padding is measured off that column, so a bar that
+  simply arrived shoved every message down a notch in one frame and unpinning
+  snapped them back. Both ends are 220 ms of easing now — and the measurement
+  follows the *layout* rather than the build, or the padding would have held
+  the old height until something unrelated rebuilt the screen.
+- **A tab arrives rather than replacing the last one**: a 16-point slide in the
+  direction the bar implies, plus a short fade. Deliberately a transform over
+  the existing IndexedStack rather than a switcher — anything that keys on the
+  index would remount all four branches and throw away their scroll positions.
 
 ---
 

@@ -83,7 +83,7 @@ class AppShell extends StatelessWidget {
                 index: shell.currentIndex,
                 count: tabs.length,
                 onGoTo: (i) => shell.goBranch(i),
-                child: shell,
+                child: _TabArrival(index: shell.currentIndex, child: shell),
               ),
             ),
             Positioned(
@@ -140,6 +140,75 @@ class _TabSpec {
 
 /// Floating glass island, Telegram-style: it levitates over the content rather
 /// than sitting on a coloured plate welded to the bottom edge.
+/// The new tab arrives rather than replacing the old one in a single frame.
+///
+/// Deliberately not an [AnimatedSwitcher] and not a [PageView]: the branches
+/// are an IndexedStack, all four alive at once with their own scroll positions
+/// and open keyboards, and anything that keys on the index would remount them
+/// and throw that away. This wraps the stack — which has already switched — in
+/// a transform and a fade that run once per change, so nothing is rebuilt and
+/// the tab still looks like it moved into place.
+///
+/// The travel is 16 points, in the direction the bar implies: forward tabs
+/// enter from the right. Short on purpose — a tab switch is a jump between
+/// places, not a scroll along a strip, and a long slide starts to claim
+/// otherwise.
+class _TabArrival extends StatefulWidget {
+  const _TabArrival({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_TabArrival> createState() => _TabArrivalState();
+}
+
+class _TabArrivalState extends State<_TabArrival>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 240),
+    value: 1, // the first tab is already where it belongs
+  );
+
+  double _from = 0;
+
+  @override
+  void didUpdateWidget(covariant _TabArrival old) {
+    super.didUpdateWidget(old);
+    if (old.index == widget.index) return;
+    _from = widget.index > old.index ? 16 : -16;
+    _c.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      // Passed as `child` so the whole branch subtree is not rebuilt on each
+      // frame of the animation — only the transform above it changes.
+      child: widget.child,
+      builder: (context, child) {
+        if (_c.isCompleted) return child!;
+        final t = Curves.easeOutCubic.transform(_c.value);
+        return Opacity(
+          opacity: 0.4 + 0.6 * t,
+          child: Transform.translate(
+            offset: Offset(_from * (1 - t), 0),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Flick left or right anywhere on a tab to land on the next one.
 ///
 /// The bar is four taps at the bottom of a tall phone, and the tabs are in a

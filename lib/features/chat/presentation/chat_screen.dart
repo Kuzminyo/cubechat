@@ -1288,37 +1288,44 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               onNext: () => _moveSearch(1),
               onClose: _closeSearch,
             ),
-          if (pinnedMessage != null)
-            _PinnedBar(
-              message: pinnedMessage,
-              index: pinIndex,
-              count: visiblePins.length,
-              onNext: visiblePins.length < 2
-                  ? null
-                  : () => setState(() => _pinIndex = pinIndex + 1),
-              onTap: () => _jumpTo(pinnedMessage.wireId!),
-              // Unpinning clears the banner for everyone in the chat, not just
-              // here, and the button sits next to one you tap to jump — easy to
-              // hit by accident, impossible to undo without finding the message
-              // again.
-              onUnpin: () async {
-                final t = AppLocalizations.of(context);
-                if (!await confirmAction(
-                  context,
-                  title: t.chatUnpinConfirm,
-                  message: t.chatUnpinConfirmHint,
-                  confirmLabel: t.chatUnpinAction,
-                  destructive: false,
-                )) {
-                  return;
-                }
-                await ref.read(messagingServiceProvider).sendPin(
-                      widget.chatId,
-                      pinnedMessage.wireId!,
-                      pinned: false,
-                    );
-              },
-            ),
+          // Grown and shrunk, not swapped. Pinning a message moved the whole
+          // conversation down a notch in a single frame, and unpinning yanked
+          // it back — the list's top padding is measured off this column, so
+          // easing the box eases the conversation with it.
+          _HeaderSlot(
+            child: pinnedMessage == null
+                ? null
+                : _PinnedBar(
+                    message: pinnedMessage,
+                    index: pinIndex,
+                    count: visiblePins.length,
+                    onNext: visiblePins.length < 2
+                        ? null
+                        : () => setState(() => _pinIndex = pinIndex + 1),
+                    onTap: () => _jumpTo(pinnedMessage.wireId!),
+                    // Unpinning clears the banner for everyone in the chat, not
+                    // just here, and the button sits next to one you tap to
+                    // jump — easy to hit by accident, impossible to undo
+                    // without finding the message again.
+                    onUnpin: () async {
+                      final t = AppLocalizations.of(context);
+                      if (!await confirmAction(
+                        context,
+                        title: t.chatUnpinConfirm,
+                        message: t.chatUnpinConfirmHint,
+                        confirmLabel: t.chatUnpinAction,
+                        destructive: false,
+                      )) {
+                        return;
+                      }
+                      await ref.read(messagingServiceProvider).sendPin(
+                            widget.chatId,
+                            pinnedMessage.wireId!,
+                            pinned: false,
+                          );
+                    },
+                  ),
+          ),
           // Last in the stack, and only while something is playing: whose chat
           // this is comes first, then what is pinned in it, then what is coming
           // out of the speaker. The list pads itself to whatever this column
@@ -1349,6 +1356,36 @@ class _SearchResultHighlight extends StatelessWidget {
         ),
       ),
       child: child,
+    );
+  }
+}
+
+/// One row of the header stack that may or may not be there.
+///
+/// The conversation's top padding is measured off the whole column, so a bar
+/// that simply appeared moved every message down a notch in one frame, and
+/// removing it snapped them back. Growing the box eases the list with it, and
+/// the fade keeps content from arriving at full strength before there is room
+/// for it.
+class _HeaderSlot extends StatelessWidget {
+  const _HeaderSlot({required this.child});
+
+  /// Null when the row is not there.
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedOpacity(
+          opacity: child == null ? 0 : 1,
+          duration: const Duration(milliseconds: 160),
+          child: child ?? const SizedBox(width: double.infinity),
+        ),
+      ),
     );
   }
 }
@@ -1732,7 +1769,11 @@ class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
           left: 0,
           right: 0,
           top: 0,
-          child: KeyedSubtree(key: _headerKey, child: widget.header),
+          child: _RemeasureOnResize(
+            onResize: () =>
+                WidgetsBinding.instance.addPostFrameCallback(_measure),
+            child: KeyedSubtree(key: _headerKey, child: widget.header),
+          ),
         ),
         // Only once there is somewhere to go. The list is reversed, so being
         // at the newest message means offset ~0 — showing the button there
@@ -1747,9 +1788,40 @@ class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
           left: 0,
           right: 0,
           bottom: 0,
-          child: KeyedSubtree(key: _composerKey, child: widget.composer),
+          child: _RemeasureOnResize(
+            onResize: () =>
+                WidgetsBinding.instance.addPostFrameCallback(_measure),
+            child: KeyedSubtree(key: _composerKey, child: widget.composer),
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// Calls back whenever [child] changes size, even without a rebuild here.
+///
+/// The islands are measured in a post-frame callback scheduled from this
+/// widget's build — which was enough while they appeared and vanished in one
+/// frame, and stopped being enough the moment they started animating: an
+/// [AnimatedSize] relayouts without rebuilding its ancestors, so the padding
+/// under it would hold the height the header had when the animation *started*
+/// until something unrelated rebuilt the screen. This notices the layout
+/// instead of the build.
+class _RemeasureOnResize extends StatelessWidget {
+  const _RemeasureOnResize({required this.onResize, required this.child});
+
+  final VoidCallback onResize;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        onResize();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(child: child),
     );
   }
 }
@@ -1934,6 +2006,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     required int durationMs,
   }) async {
     try {
+      // Notes to yourself have no other end, so nothing goes on the wire —
+      // every media path used to reach for a recipient pubkey and throw
+      // "no recipient pubkey for @saved" at the one chat that cannot have one.
+      if (isSavedChat(widget.canonicalId)) {
+        await ref
+            .read(savedMessagesControllerProvider)
+            .saveVoice(File(path), durationMs: durationMs);
+        return;
+      }
       final bytes = await File(path).readAsBytes();
       await ref.read(messagingServiceProvider).sendAudio(
             widget.peerId,
@@ -2022,11 +2103,20 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     if (path == null || !mounted) return;
 
     try {
+      final name = picked!.files.single.name;
+      if (isSavedChat(widget.canonicalId)) {
+        await ref.read(savedMessagesControllerProvider).saveFile(
+              File(path),
+              fileName: name,
+              mime: fileMimeType(name),
+            );
+        return;
+      }
       await ref.read(messagingServiceProvider).sendFile(
             widget.canonicalId,
             file: File(path),
-            fileName: picked!.files.single.name,
-            mime: fileMimeType(picked.files.single.name),
+            fileName: name,
+            mime: fileMimeType(name),
           );
     } on FileTooLarge catch (e) {
       // The two ceilings are far apart, and which one was hit changes the
@@ -2118,6 +2208,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         final safe = name.trim().isEmpty
             ? 'photo-${asset.id}.jpg'
             : name;
+        if (isSavedChat(widget.canonicalId)) {
+          await ref.read(savedMessagesControllerProvider).saveFile(
+                origin,
+                fileName: safe,
+                mime: fileMimeType(safe),
+              );
+          sent++;
+          continue;
+        }
         await messaging.sendFile(
           widget.canonicalId,
           file: origin,
@@ -2197,6 +2296,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     String idHint, {
     String? caption,
   }) async {
+    if (isSavedChat(widget.canonicalId)) {
+      await ref
+          .read(savedMessagesControllerProvider)
+          .saveImage(bytes, caption: caption);
+      return;
+    }
     final messaging = ref.read(messagingServiceProvider);
     final cachedPath = await _cacheOutgoingImage(bytes, idHint);
     await messaging.sendImage(

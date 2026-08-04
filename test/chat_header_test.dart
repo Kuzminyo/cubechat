@@ -41,6 +41,10 @@ void main() {
   Future<void> beat(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    // One more, for the islands' measure-then-pad loop: the pinned bar grows
+    // into place over 220 ms and the list's padding is measured off it in a
+    // post-frame callback, so the padding lands a frame after the animation.
+    await tester.pump();
   }
 
   /// Opens a channel chat on a 360x780 phone. A channel is the cheapest

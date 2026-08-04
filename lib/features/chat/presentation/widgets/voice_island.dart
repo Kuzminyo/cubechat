@@ -87,15 +87,32 @@ class _ChatVoiceBarState extends ConsumerState<ChatVoiceBar> {
   @override
   Widget build(BuildContext context) {
     final playback = ref.watch(voicePlaybackControllerProvider);
-    if (!playback.isActive) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-      child: SizedBox(
-        height: _height,
-        child: MessageIslandGlass(
-          borderRadius: _height / 2,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: _VoicePanel(playback: playback, height: _height),
+    // Grown and shrunk rather than swapped in and out. The conversation's top
+    // padding follows this column's height, so an island that simply appeared
+    // shoved the whole conversation down a notch in one frame — and closing one
+    // yanked it back up. Both ends are 220 ms of easing now, and the list rides
+    // the same curve because it is measuring the same box.
+    return ClipRect(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedOpacity(
+          opacity: playback.isActive ? 1 : 0,
+          duration: const Duration(milliseconds: 160),
+          child: playback.isActive
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                  child: SizedBox(
+                    height: _height,
+                    child: MessageIslandGlass(
+                      borderRadius: _height / 2,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: _VoicePanel(playback: playback, height: _height),
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
         ),
       ),
     );
