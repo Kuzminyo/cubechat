@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/routing/page_transitions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
@@ -42,15 +45,12 @@ class ContactContentScreen extends ConsumerWidget {
     Message message,
   ) async {
     final t = AppLocalizations.of(context);
-    final openInChat = await showModalBottomSheet<bool>(
+    final openInChat = await showGlassSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: GlassCard(
-          strong: true,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: ListTile(
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Builder(
+          builder: (_) => ListTile(
             leading: Icon(
               Icons.chat_bubble_outline_rounded,
               color: AppColors.brandPrimary,
@@ -200,8 +200,8 @@ class _MediaGrid extends StatelessWidget {
           child: InkWell(
             onLongPress: () => onLongPress(message),
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => ChatMediaGalleryScreen(
+              mediaRoute<void>(
+                (_) => ChatMediaGalleryScreen(
                   chatId: chatId,
                   initialMessageId: message.id,
                 ),

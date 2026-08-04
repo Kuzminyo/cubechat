@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
+import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/transport/shared_contact.dart';
@@ -1180,9 +1181,8 @@ class _ImagePayload extends StatelessWidget {
         ? GestureDetector(
             onDoubleTap: onDoubleTap,
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (_) => ChatMediaGalleryScreen(
+              mediaRoute<void>(
+                (_) => ChatMediaGalleryScreen(
                   chatId: chatId,
                   initialMessageId: message.id,
                 ),

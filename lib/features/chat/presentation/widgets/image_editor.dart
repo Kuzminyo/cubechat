@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import '../../../../core/routing/page_transitions.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 
 /// Open the full-screen image editor on [source] and return the edited JPEG
@@ -23,9 +25,8 @@ Future<Uint8List?> openImageEditor(
 ) async {
   Uint8List? edited;
   await Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (routeContext) => ProImageEditor.memory(
+    mediaRoute<void>(
+      (routeContext) => ProImageEditor.memory(
         source,
         callbacks: ProImageEditorCallbacks(
           onImageEditingComplete: (bytes) async {

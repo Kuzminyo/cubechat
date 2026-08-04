@@ -59,6 +59,8 @@ import 'widgets/message_bubble.dart';
 import 'widgets/voice_island.dart';
 import 'widgets/voice_trim_bar.dart';
 import 'widgets/mention_suggestions.dart';
+import '../../../core/routing/page_transitions.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
@@ -438,15 +440,10 @@ class ChatScreen extends ConsumerWidget {
                     icon: Icons.person_add_alt_1_outlined,
                     color: AppColors.brandPrimary,
                     tooltip: t.channelInviteTitle,
-                    onPressed: () => showModalBottomSheet<void>(
+                    onPressed: () => showGlassSheet<void>(
                       context: context,
-                      backgroundColor: AppColors.bgTop,
-                      isScrollControlled: true,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(22)),
-                      ),
-                      builder: (_) => _ChannelInviteSheet(channelName: peerId),
+                      builder: (_) =>
+                          _ChannelInviteSheet(channelName: peerId),
                     ),
                   ),
               ],
@@ -2068,13 +2065,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
   Future<void> _pickAndSendImage() async {
     // Custom in-app picker: a photo grid (multi-select) with a camera tile.
-    final result = await showModalBottomSheet<MediaPickerResult>(
+    final result = await showGlassSheet<MediaPickerResult>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.bgTop,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
       builder: (_) => const MediaPickerSheet(),
     );
     if (result == null || !mounted) return;
@@ -2159,8 +2151,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     if (loaded.isEmpty || !mounted) return;
 
     final result = await Navigator.of(context).push<MediaPreviewResult>(
-      MaterialPageRoute<MediaPreviewResult>(
-        builder: (_) => MediaPreviewScreen(items: loaded),
+      mediaRoute<MediaPreviewResult>(
+        (_) => MediaPreviewScreen(items: loaded),
       ),
     );
     if (result == null || !mounted) return;
@@ -2248,9 +2240,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// Camera tile в†’ in-app capture в†’ editor в†’ send.
   Future<void> _captureEditAndSend() async {
     final captured = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute<Uint8List>(
-        builder: (_) => const CameraCaptureScreen(),
-      ),
+      mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
     );
     if (captured == null || !mounted) return;
     await _editAndSendBytes(

@@ -1,6 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import '../../../core/routing/page_transitions.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1551,7 +1553,17 @@ class _ProfileCover extends ConsumerWidget {
   /// jump as the header grows.
   static const double actionsHeight = 58;
   static const double avatarSize = 64;
-  static const double expandedHeight = 420;
+
+  /// How tall the cover goes when it is pulled open.
+  ///
+  /// Most of the screen, rather than a fixed 420 points that was under half of
+  /// it on a modern phone — the gesture is "show me the picture", and a picture
+  /// shown at half size is answering a different question. The remainder is
+  /// deliberate: a strip of the settings stays visible under it, which is what
+  /// says the screen scrolls and the photo is part of it rather than a viewer
+  /// that has taken over.
+  static double expandedHeightFor(BuildContext context) =>
+      MediaQuery.sizeOf(context).height * 0.82;
 
   static double compactHeightFor(double topInset) =>
       topInset + 12 + avatarSize + 14 + actionsHeight + 12;
@@ -1570,6 +1582,7 @@ class _ProfileCover extends ConsumerWidget {
       delegate: _CoverDelegate(
         open: open,
         compact: compactHeightFor(topInset),
+        expanded: expandedHeightFor(context),
         topInset: topInset,
         builder: (context, height, t) => _CoverBody(
           nickname: nickname,
@@ -1588,16 +1601,18 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
   _CoverDelegate({
     required this.open,
     required this.compact,
+    required this.expanded,
     required this.topInset,
     required this.builder,
   });
 
   final double open;
+  final double expanded;
   final double compact;
   final double topInset;
   final Widget Function(BuildContext, double height, double t) builder;
 
-  double get _max => compact + (_ProfileCover.expandedHeight - compact) * open;
+  double get _max => compact + (expanded - compact) * open;
 
   @override
   double get maxExtent => _max;
@@ -1619,7 +1634,10 @@ class _CoverDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_CoverDelegate old) =>
-      old.open != open || old.compact != compact || old.topInset != topInset;
+      old.open != open ||
+      old.compact != compact ||
+      old.expanded != expanded ||
+      old.topInset != topInset;
 }
 
 /// The discoverability line under the name, and the room left between that
@@ -1804,8 +1822,8 @@ class _CoverBody extends ConsumerWidget {
                     onTap: () => photo == null
                         ? pickProfileAvatar(context, ref)
                         : Navigator.of(context, rootNavigator: true).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (_) => AvatarScreen(
+                            mediaRoute<void>(
+                              (_) => AvatarScreen(
                                 seed: fingerprint,
                                 label: nickname,
                                 heroTag: 'cover-avatar',

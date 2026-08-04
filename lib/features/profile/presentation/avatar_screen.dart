@@ -4,6 +4,7 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -13,14 +14,9 @@ import '../../chat/presentation/widgets/media_picker_sheet.dart';
 
 Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   final t = AppLocalizations.of(context);
-  final result = await showModalBottomSheet<MediaPickerResult>(
+  final result = await showGlassSheet<MediaPickerResult>(
     context: context,
     useRootNavigator: true,
-    isScrollControlled: true,
-    backgroundColor: AppColors.bgTop,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
     builder: (_) => const MediaPickerSheet(),
   );
   if (result is! MediaPickerAssets || result.assets.isEmpty) return;

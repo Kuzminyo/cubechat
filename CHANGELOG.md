@@ -4,7 +4,31 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.15.0+61**.
+Current build: **0.16.0+62**.
+
+---
+
+## One motion for the whole app (2026‑08‑04)
+
+- **Pushed screens arrive sideways.** A chat, a channel, a profile, the folder
+  screen: in from the right over a screen that steps back a quarter of the
+  width and dims, out the way they came. Fading up from below made every push
+  read as a modal — something over the app rather than the next thing along in
+  it — and it is now the same geography as the tab strip.
+- **Photos, the editor, the camera and the gallery fade in and out** instead of
+  appearing and vanishing outright, which is what "closing media is abrupt"
+  was: not a fast animation, no animation at all.
+- **Bottom sheets are islands, not plates.** One `showGlassSheet` for all of
+  them: no opaque fill, no square corners welded to the screen edge, no card
+  inside a card — the media picker's attach row lost its own pane, since the
+  sheet is now the pane. They open in 340 ms and close in 280 with easing at
+  both ends, where Material's default snapped shut.
+- **Menus open and close on the same curve** — the long-press message menu and
+  the chats overflow menu both. The default was 300 ms in and an instant snap
+  out, which is what made a menu feel deleted rather than dismissed.
+- **The profile cover opens to most of the screen** (82% of its height) rather
+  than a fixed 420 points, which was under half a modern phone. Pull it open
+  and the picture is a picture.
 
 ---
 

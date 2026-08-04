@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/widgets/glass_sheet.dart';
 import '../../data/reaction_emoji_controller.dart';
 import 'emoji_catalog.dart';
 
@@ -12,14 +13,9 @@ import 'emoji_catalog.dart';
 /// popup, which is itself a route: pushing onto the same navigator would put
 /// the sheet behind the popup it was opened from.
 Future<String?> showEmojiPicker(BuildContext context) {
-  return showModalBottomSheet<String>(
+  return showGlassSheet<String>(
     context: context,
     useRootNavigator: true,
-    isScrollControlled: true,
-    backgroundColor: AppColors.bgTop,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
     builder: (_) => const EmojiPickerSheet(),
   );
 }

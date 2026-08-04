@@ -653,6 +653,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
         side: BorderSide(color: AppColors.glass(0.15)),
       ),
       position: PopupMenuPosition.under,
+      popUpAnimationStyle: glassMenuMotion,
       onSelected: (action) => switch (action) {
         _ChatsMenuAction.saved => context.push('/saved'),
         _ChatsMenuAction.folders => context.push('/folders'),

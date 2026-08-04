@@ -19,42 +19,55 @@ class AttachIsland extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onPick,
+    this.bare = false,
   });
 
   final AttachChoice selected;
   final ValueChanged<AttachChoice> onPick;
 
+  /// True when the row already sits on a pane of glass — inside the picker
+  /// sheet, which is one island itself. A second glass surface inside the
+  /// first is the "card on a plate" look this app does not have anywhere else.
+  final bool bare;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final row = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _AttachTab(
+          icon: Icons.photo_library_outlined,
+          label: t.attachGallery,
+          active: selected == AttachChoice.gallery,
+          onTap: () => onPick(AttachChoice.gallery),
+        ),
+        _AttachTab(
+          icon: Icons.photo_camera_outlined,
+          label: t.attachCamera,
+          active: selected == AttachChoice.camera,
+          onTap: () => onPick(AttachChoice.camera),
+        ),
+        _AttachTab(
+          icon: Icons.insert_drive_file_outlined,
+          label: t.attachFile,
+          active: selected == AttachChoice.file,
+          onTap: () => onPick(AttachChoice.file),
+        ),
+      ],
+    );
+    if (bare) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
+        child: row,
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: FloatingGlass(
         borderRadius: 26,
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _AttachTab(
-              icon: Icons.photo_library_outlined,
-              label: t.attachGallery,
-              active: selected == AttachChoice.gallery,
-              onTap: () => onPick(AttachChoice.gallery),
-            ),
-            _AttachTab(
-              icon: Icons.photo_camera_outlined,
-              label: t.attachCamera,
-              active: selected == AttachChoice.camera,
-              onTap: () => onPick(AttachChoice.camera),
-            ),
-            _AttachTab(
-              icon: Icons.insert_drive_file_outlined,
-              label: t.attachFile,
-              active: selected == AttachChoice.file,
-              onTap: () => onPick(AttachChoice.file),
-            ),
-          ],
-        ),
+        child: row,
       ),
     );
   }

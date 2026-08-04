@@ -188,35 +188,45 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    return SafeArea(
-      child: SizedBox(
-        height: media.size.height * 0.7,
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
+    // No surface of its own: the sheet *is* one pane of glass now (see
+    // showGlassSheet), so everything in here sits directly on it. A card inside
+    // a card was the thing that made this look like a dialog stacked on a
+    // plate rather than one island floating over the conversation.
+    return SizedBox(
+      height: media.size.height * 0.7,
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.glass(0.24),
+              borderRadius: BorderRadius.circular(2),
             ),
-            const SizedBox(height: 10),
-            Expanded(child: _body()),
-            _sendBar(),
-            AttachIsland(
-              selected: AttachChoice.gallery,
-              onPick: (choice) => switch (choice) {
-                AttachChoice.gallery => null,
-                AttachChoice.camera =>
-                  Navigator.of(context).pop(const MediaPickerCamera()),
-                AttachChoice.file =>
-                  Navigator.of(context).pop(const MediaPickerFile()),
-              },
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            // Rounded to the island's own corners, so the grid ends where the
+            // glass does instead of squaring it off.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _body(),
             ),
-          ],
-        ),
+          ),
+          _sendBar(),
+          AttachIsland(
+            bare: true,
+            selected: AttachChoice.gallery,
+            onPick: (choice) => switch (choice) {
+              AttachChoice.gallery => null,
+              AttachChoice.camera =>
+                Navigator.of(context).pop(const MediaPickerCamera()),
+              AttachChoice.file =>
+                Navigator.of(context).pop(const MediaPickerFile()),
+            },
+          ),
+        ],
       ),
     );
   }

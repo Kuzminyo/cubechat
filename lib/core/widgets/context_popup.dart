@@ -11,6 +11,19 @@ import '../theme/colors.dart';
 /// that bar; presenting it here is what puts it back on top.
 ///
 /// Returns the value of the tapped entry, or null if dismissed.
+/// How menus open and close.
+///
+/// Material's default is 300 ms in and an instant snap out, which is what made
+/// every menu in the app feel like it was deleted rather than dismissed. Both
+/// ends are eased here, and the whole app uses this one style so a long-press
+/// menu, the overflow menu and a sheet all decelerate alike.
+const AnimationStyle glassMenuMotion = AnimationStyle(
+  duration: Duration(milliseconds: 260),
+  reverseDuration: Duration(milliseconds: 200),
+  curve: Curves.easeOutCubic,
+  reverseCurve: Curves.easeInCubic,
+);
+
 Future<T?> showContextPopup<T>({
   required BuildContext context,
   required Offset globalPosition,
@@ -41,6 +54,7 @@ Future<T?> showContextPopup<T>({
     color: AppColors.bgTop.withValues(alpha: 0.92),
     elevation: 16,
     shadowColor: Colors.black,
+    popUpAnimationStyle: glassMenuMotion,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(18),
       side: BorderSide(color: AppColors.glass(0.16)),
