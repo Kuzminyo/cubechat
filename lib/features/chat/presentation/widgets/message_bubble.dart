@@ -566,7 +566,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         child: Row(
                           children: [
                             Icon(
-                              c.isChannel ? Icons.tag : Icons.person_outline,
+                              c.isChannel ? Icons.campaign_rounded : Icons.person_outline,
                               size: 18,
                               color: AppColors.textOnGlassDim,
                             ),

@@ -401,13 +401,14 @@ class ChatScreen extends ConsumerWidget {
               route: saved ? null : route.route,
               routeHops: saved ? null : route.hops,
               online: false,
-              // Notes to yourself have no other end to look at. The tap used to
-              // open channel info for a channel called `saved`, which not only
-              // showed a room that does not exist but *created* one on the way
-              // in — ensureSelf writes a roster entry for whatever name it is
-              // handed.
+              // Notes to yourself have no other end to look at, so the tap
+              // opens what a notebook does have: everything in it, sorted —
+              // media, voice, files, links. (It used to open channel info for
+              // a channel called `saved`, which not only showed a room that
+              // does not exist but *created* one on the way in: ensureSelf
+              // writes a roster entry for whatever name it is handed.)
               onTapIdentity: saved
-                  ? null
+                  ? () => context.push('/saved/content')
                   : () => context.push(
                         '/channel-info/${Uri.encodeComponent(peerId.substring(1))}',
                       ),

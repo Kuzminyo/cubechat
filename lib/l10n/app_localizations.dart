@@ -260,6 +260,36 @@ abstract class AppLocalizations {
   /// **'Favorites'**
   String get chatsFilterFavorites;
 
+  /// No description provided for @chatsFolderDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get chatsFolderDirect;
+
+  /// No description provided for @chatsFolderChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels'**
+  String get chatsFolderChannels;
+
+  /// No description provided for @chatsFolderOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable'**
+  String get chatsFolderOnline;
+
+  /// No description provided for @chatsFoldersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders'**
+  String get chatsFoldersTitle;
+
+  /// No description provided for @chatsFoldersHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders are cuts of this list, not places chats are moved to. Switch on the ones you want above the chats.'**
+  String get chatsFoldersHint;
+
   /// No description provided for @chatsSearchHint.
   ///
   /// In en, this message translates to:
@@ -1675,6 +1705,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No files yet'**
   String get contactProfileNoFiles;
+
+  /// No description provided for @contactProfileLinks.
+  ///
+  /// In en, this message translates to:
+  /// **'Links'**
+  String get contactProfileLinks;
+
+  /// No description provided for @contactProfileNoLinks.
+  ///
+  /// In en, this message translates to:
+  /// **'No links yet'**
+  String get contactProfileNoLinks;
 
   /// No description provided for @presenceHidden.
   ///

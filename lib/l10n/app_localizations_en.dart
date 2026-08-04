@@ -93,6 +93,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsFilterFavorites => 'Favorites';
 
   @override
+  String get chatsFolderDirect => 'Direct';
+
+  @override
+  String get chatsFolderChannels => 'Channels';
+
+  @override
+  String get chatsFolderOnline => 'Reachable';
+
+  @override
+  String get chatsFoldersTitle => 'Folders';
+
+  @override
+  String get chatsFoldersHint =>
+      'Folders are cuts of this list, not places chats are moved to. Switch on the ones you want above the chats.';
+
+  @override
   String get chatsSearchHint => 'Search chats…';
 
   @override
@@ -903,6 +919,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactProfileNoFiles => 'No files yet';
+
+  @override
+  String get contactProfileLinks => 'Links';
+
+  @override
+  String get contactProfileNoLinks => 'No links yet';
 
   @override
   String get presenceHidden => 'status hidden';

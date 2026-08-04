@@ -47,10 +47,17 @@ class PeerAvatar extends ConsumerWidget {
       online: online,
       heroTag: heroTag,
       imageBytes: bytes,
-      // Saved notes are the one chat in the list that is not somebody, so it
-      // gets a bookmark instead of a letter — the mark every messenger uses for
-      // the same thing, and the only tile you can find by shape alone.
-      mark: isSavedChat(peerId) ? Icons.bookmark_rounded : null,
+      // Two chats in the list are not somebody. Saved notes get a bookmark —
+      // the mark every messenger uses for the same thing — and a channel gets
+      // the loudspeaker it already wears in Contacts. Both used to fall back
+      // to initials, which for a channel meant a circle containing "#": the
+      // punctuation its own id starts with, and the least informative
+      // character in the name.
+      mark: isSavedChat(peerId)
+          ? Icons.bookmark_rounded
+          : peerId.startsWith('#')
+              ? Icons.campaign_rounded
+              : null,
     );
   }
 }

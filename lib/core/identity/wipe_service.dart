@@ -7,6 +7,7 @@ import '../../features/chat/data/drafts_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
+import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
@@ -50,6 +51,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(favoritesControllerProvider.notifier).clear();
   // Who you went looking for is its own trace, and it lives in its own list.
   await ref.read(recentSearchesControllerProvider.notifier).clear();
+  // Which cuts of the chat list you keep above it says something about who you
+  // talk to, and a fresh install has no folders at all.
+  await ref.read(chatFoldersControllerProvider.notifier).clear();
   await ref.read(readMarkersControllerProvider.notifier).clear();
   await ref.read(pinnedControllerProvider.notifier).clear();
   await ref.read(draftsControllerProvider.notifier).clearAll();

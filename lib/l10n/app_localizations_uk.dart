@@ -93,6 +93,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsFilterFavorites => 'Обрані';
 
   @override
+  String get chatsFolderDirect => 'Особисті';
+
+  @override
+  String get chatsFolderChannels => 'Канали';
+
+  @override
+  String get chatsFolderOnline => 'На зв\'язку';
+
+  @override
+  String get chatsFoldersTitle => 'Папки';
+
+  @override
+  String get chatsFoldersHint =>
+      'Папки — це зрізи цього ж списку, а не місця, куди переносять чати. Увімкніть ті, що потрібні над чатами.';
+
+  @override
   String get chatsSearchHint => 'Пошук чатів…';
 
   @override
@@ -907,6 +923,12 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get contactProfileNoFiles => 'Файлів ще немає';
+
+  @override
+  String get contactProfileLinks => 'Посилання';
+
+  @override
+  String get contactProfileNoLinks => 'Посилань ще немає';
 
   @override
   String get presenceHidden => 'статус приховано';

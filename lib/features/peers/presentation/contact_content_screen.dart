@@ -95,10 +95,19 @@ class ContactContentScreen extends ConsumerWidget {
             message.kind == MessageKind.file && message.filePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+    // Links are not a message kind — they are text that happens to contain a
+    // URL, which is why they are found rather than filtered. Every messenger
+    // keeps this tab for the same reason: a link is the one thing you go back
+    // through a conversation looking for, and it is invisible in a media grid.
+    final links = [
+      for (final message in messages)
+        if (message.kind == MessageKind.text)
+          for (final url in linksIn(message.text)) (message, url),
+    ]..sort((a, b) => b.$1.sentAt.compareTo(a.$1.sentAt));
 
     return DefaultTabController(
-      length: 3,
-      initialIndex: initialTab.clamp(0, 2),
+      length: 4,
+      initialIndex: initialTab.clamp(0, 3),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -121,6 +130,7 @@ class ContactContentScreen extends ConsumerWidget {
               Tab(text: t.contactProfileMedia),
               Tab(text: t.contactProfileVoiceMessages),
               Tab(text: t.contactProfileFiles),
+              Tab(text: t.contactProfileLinks),
             ],
           ),
         ),
@@ -141,6 +151,11 @@ class ContactContentScreen extends ConsumerWidget {
               files: files,
               onLongPress: (message) => _showMessageActions(context, message),
               emptyLabel: t.contactProfileNoFiles,
+            ),
+            _LinkList(
+              links: links,
+              onTap: (message) => _showMessageActions(context, message),
+              emptyLabel: t.contactProfileNoLinks,
             ),
           ],
         ),
@@ -271,6 +286,72 @@ class _FileList extends StatelessWidget {
         message: files[index],
         onLongPress: () => onLongPress(files[index]),
       ),
+    );
+  }
+}
+
+/// Every URL in a line of text, in the order they appear.
+///
+/// Deliberately narrow: an explicit scheme only, no bare `example.com`. What
+/// this feeds is a list you scan for something you remember sending, and a
+/// heuristic that promotes "3.5mb" or the end of a sentence to a link fills
+/// that list with things nobody sent.
+@visibleForTesting
+List<String> linksIn(String text) => _linkPattern
+    .allMatches(text)
+    // Trailing punctuation is almost always the sentence's, not the URL's.
+    .map((m) => m.group(0)!.replaceAll(RegExp(r'''[.,;:!?)\]}'"]+$'''), ''))
+    .where((url) => url.length > 10)
+    .toList();
+
+final RegExp _linkPattern = RegExp(r'\b(?:https?://|www\.)\S+', caseSensitive: false);
+
+/// The Links tab: one row per URL, newest first, tapping through to the message
+/// it came from.
+class _LinkList extends StatelessWidget {
+  const _LinkList({
+    required this.links,
+    required this.onTap,
+    required this.emptyLabel,
+  });
+
+  final List<(Message, String)> links;
+  final ValueChanged<Message> onTap;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (links.isEmpty) {
+      return _EmptyContent(icon: Icons.link_rounded, label: emptyLabel);
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      itemCount: links.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, index) {
+        final (message, url) = links[index];
+        return GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          onTap: () => onTap(message),
+          child: Row(
+            children: [
+              Icon(Icons.link_rounded, size: 18, color: AppColors.brandPrimary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  url,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 13.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

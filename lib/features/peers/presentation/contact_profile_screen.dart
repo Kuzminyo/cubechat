@@ -143,7 +143,7 @@ class ContactProfileScreen extends ConsumerWidget {
                           children: [
                             Icon(
                               chat.isChannel
-                                  ? Icons.tag_rounded
+                                  ? Icons.campaign_rounded
                                   : Icons.person_outline_rounded,
                               color: AppColors.textOnGlassDim,
                             ),

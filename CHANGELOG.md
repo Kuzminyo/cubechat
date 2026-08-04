@@ -4,7 +4,40 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.12.0+56**.
+Current build: **0.13.0+57**.
+
+---
+
+## Folders you asked for, a swipe between tabs, and a notebook with contents (2026‑08‑04)
+
+- **The four filter pills are gone from the default list.** They shipped on
+  whether or not anyone wanted them — a permanent strip of chrome between the
+  search field and the first conversation, on the screen that opens the app.
+  Folders are opt-in now: Unread, Direct, Channels, Favorites, Reachable,
+  switched on from ⋮ → Folders (or the `+` at the end of the row once there is
+  one). They are cuts of the same list rather than places chats are moved to,
+  so nothing has to be filed and a chat leaves Unread by being read. Switching
+  off the folder you were viewing releases the list rather than leaving it
+  filtered by a pill that is no longer there.
+- **A flick sideways changes tab**, the way it does in Telegram. Deliberately a
+  fling rather than a drag the content follows: the four branches are an
+  IndexedStack with their own live scroll positions, and dragging them across
+  each other would mean giving that up. It listens for pointer events instead
+  of competing for them, so swipe-to-reply and any other in-screen gesture win
+  as before.
+- **The favourite star moved** out of the name row and into the bottom-right
+  corner of the tile, small, beside the unread badge. Next to the name it was
+  one more thing pushing the name around in a row that already carries a
+  verified tick and a transport pill.
+- **Channels wear a loudspeaker instead of a hash** — in the tile, the avatar,
+  the forward sheet, the contact card and the channel info header. The avatar
+  in particular was a circle containing "#": the punctuation its own id starts
+  with, and the least informative character in the name.
+- **Saved has a profile.** Tapping its header opens the shared-content screen a
+  contact has — Media, Voice, Files and now **Links**, a new tab everywhere it
+  appears. Links are not a message kind, so they are found rather than
+  filtered, and the matcher is deliberately narrow: a Links tab full of "3.5mb"
+  is worse than an empty one.
 
 ---
 

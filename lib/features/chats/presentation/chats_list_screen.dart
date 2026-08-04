@@ -25,12 +25,15 @@ import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../data/chat_folders_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 import '../../../core/widgets/glass_toast.dart';
 
+/// Kept for the tests and callers that still name it; the list itself now
+/// filters through [ChatFolder], which the user chooses rather than inherits.
 enum ChatsFilter { all, unread, mesh, favorites }
 
 /// Location for a chat list entry. Channels route by bare name — their id's
@@ -159,21 +162,16 @@ class ChatsListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final filter = ref.watch(chatsFilterProvider);
     final query = ref.watch(chatsQueryProvider).toLowerCase();
     final all = ref.watch(chatsProvider);
+    final folders = ref.watch(chatFoldersControllerProvider);
+    final selected = ref.watch(selectedFolderProvider);
+    // A folder that was switched off while it was the one being shown would
+    // otherwise leave the list filtered by something with no pill on screen.
+    final folder = selected != null && folders.contains(selected) ? selected : null;
 
     final filtered = all.where((c) {
-      switch (filter) {
-        case ChatsFilter.all:
-          break;
-        case ChatsFilter.unread:
-          if (c.unreadCount == 0) return false;
-        case ChatsFilter.mesh:
-          if (!c.isMesh) return false;
-        case ChatsFilter.favorites:
-          if (!c.isFavorite) return false;
-      }
+      if (folder != null && !folder.matches(c)) return false;
       if (query.isEmpty) return true;
       return c.peerName.toLowerCase().contains(query) ||
           c.lastMessage.toLowerCase().contains(query);
@@ -232,40 +230,44 @@ class ChatsListScreen extends ConsumerWidget {
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 56,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                children: [
-                  _FilterPill(
+          // Only once there is something in it. An empty folder row would be a
+          // permanent strip of chrome between the search field and the first
+          // conversation, on the screen that opens the app.
+          if (folders.isNotEmpty)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 56,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                  children: [
+                    PillButton(
                       label: t.chatsFilterAll,
-                      value: ChatsFilter.all,
-                      current: filter,
-                      ref: ref),
-                  const SizedBox(width: 8),
-                  _FilterPill(
-                      label: t.chatsFilterUnread,
-                      value: ChatsFilter.unread,
-                      current: filter,
-                      ref: ref),
-                  const SizedBox(width: 8),
-                  _FilterPill(
-                      label: t.chatsFilterMesh,
-                      value: ChatsFilter.mesh,
-                      current: filter,
-                      ref: ref),
-                  const SizedBox(width: 8),
-                  _FilterPill(
-                      label: t.chatsFilterFavorites,
-                      value: ChatsFilter.favorites,
-                      current: filter,
-                      ref: ref),
-                ],
+                      active: folder == null,
+                      onTap: () =>
+                          ref.read(selectedFolderProvider.notifier).state = null,
+                    ),
+                    for (final f in folders) ...[
+                      const SizedBox(width: 8),
+                      PillButton(
+                        label: folderLabel(t, f),
+                        active: folder == f,
+                        onTap: () =>
+                            ref.read(selectedFolderProvider.notifier).state = f,
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    // The way back to the folder screen from the row itself —
+                    // the menu is the other way in, and neither is discoverable
+                    // from the other.
+                    PillButton(
+                      label: '+',
+                      onTap: () => context.push('/folders'),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           if (filtered.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -346,28 +348,23 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    required this.label,
-    required this.value,
-    required this.current,
-    required this.ref,
-  });
+/// One name per folder, so the pill in the row and the row on the folder screen
+/// cannot drift apart.
+String folderLabel(AppLocalizations t, ChatFolder folder) => switch (folder) {
+      ChatFolder.unread => t.chatsFilterUnread,
+      ChatFolder.direct => t.chatsFolderDirect,
+      ChatFolder.channels => t.chatsFolderChannels,
+      ChatFolder.favorites => t.chatsFilterFavorites,
+      ChatFolder.online => t.chatsFolderOnline,
+    };
 
-  final String label;
-  final ChatsFilter value;
-  final ChatsFilter current;
-  final WidgetRef ref;
-
-  @override
-  Widget build(BuildContext context) {
-    return PillButton(
-      label: label,
-      active: value == current,
-      onTap: () => ref.read(chatsFilterProvider.notifier).state = value,
-    );
-  }
-}
+IconData folderIcon(ChatFolder folder) => switch (folder) {
+      ChatFolder.unread => Icons.mark_chat_unread_outlined,
+      ChatFolder.direct => Icons.person_outline,
+      ChatFolder.channels => Icons.campaign_rounded,
+      ChatFolder.favorites => Icons.star_rounded,
+      ChatFolder.online => Icons.podcasts,
+    };
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.title, required this.hint});
@@ -658,6 +655,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
       position: PopupMenuPosition.under,
       onSelected: (action) => switch (action) {
         _ChatsMenuAction.saved => context.push('/saved'),
+        _ChatsMenuAction.folders => context.push('/folders'),
         _ChatsMenuAction.addContact => onAddContact(),
         _ChatsMenuAction.newChannel => onNewChannel(),
       },
@@ -667,6 +665,13 @@ class _ChatsOverflowMenu extends StatelessWidget {
           child: _MenuRow(
             icon: Icons.bookmark_border_rounded,
             label: t.savedTitle,
+          ),
+        ),
+        PopupMenuItem(
+          value: _ChatsMenuAction.folders,
+          child: _MenuRow(
+            icon: Icons.folder_outlined,
+            label: t.chatsFoldersTitle,
           ),
         ),
         PopupMenuItem(
@@ -688,7 +693,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
   }
 }
 
-enum _ChatsMenuAction { saved, addContact, newChannel }
+enum _ChatsMenuAction { saved, folders, addContact, newChannel }
 
 class _MenuRow extends StatelessWidget {
   const _MenuRow({required this.icon, required this.label});

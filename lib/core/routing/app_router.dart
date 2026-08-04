@@ -5,6 +5,7 @@ import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/backup/presentation/backup_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
 import '../../features/channels/presentation/channel_info_screen.dart';
+import '../../features/chats/presentation/chat_folders_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
 import '../../features/chats/data/saved_messages.dart';
 import '../../l10n/app_localizations.dart';
@@ -195,6 +196,30 @@ GoRouter buildRouter() {
               peerLabel: AppLocalizations.of(context).savedTitle,
             ),
           ),
+          state: state,
+        ),
+      ),
+      // What the Saved header opens: the same shared-content screen a contact
+      // has, over the notebook. Its own route for the same reason /saved is —
+      // the content route's path parameter is a peer pubkey.
+      GoRoute(
+        path: '/saved/content',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: AuroraBackground(
+            child: ContactContentScreen(
+              chatId: savedChatId,
+              contactName: AppLocalizations.of(context).savedTitle,
+            ),
+          ),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/folders',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const ChatFoldersScreen(),
           state: state,
         ),
       ),

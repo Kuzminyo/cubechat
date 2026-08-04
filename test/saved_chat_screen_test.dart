@@ -83,16 +83,22 @@ void main() {
     );
   });
 
-  testWidgets('tapping the name opens nothing, and invents no channel',
+  testWidgets('tapping the name opens what is in the notebook, not a room',
       (tester) async {
     final container = await openSaved(tester);
 
     await tester.tap(find.text('Saved').first);
     await beat(tester);
 
+    // Everything a notebook has, sorted — the same shared-content screen a
+    // contact has.
+    expect(find.text('Media'), findsOneWidget);
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.text('Links'), findsOneWidget);
+
     expect(find.text('Channel info'), findsNothing);
-    // ensureSelf() writes a roster entry for whatever name it is handed, so a
-    // stray navigation here left a persisted member list for a room nobody
+    // ensureSelf() writes a roster entry for whatever name it is handed, so the
+    // navigation this replaced left a persisted member list for a room nobody
     // ever created.
     expect(
       container.read(channelRosterControllerProvider).keys,

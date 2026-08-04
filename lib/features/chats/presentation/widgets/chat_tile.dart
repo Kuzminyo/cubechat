@@ -53,14 +53,6 @@ class ChatTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (chat.isFavorite) ...[
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.star,
-                        color: AppColors.warning,
-                        size: 13,
-                      ),
-                    ],
                     if (chat.isVerified) ...[
                       const SizedBox(width: 4),
                       Icon(
@@ -72,7 +64,7 @@ class ChatTile extends StatelessWidget {
                     if (chat.isChannel) ...[
                       const SizedBox(width: 6),
                       _StatusPill(
-                        icon: Icons.tag,
+                        icon: Icons.campaign_rounded,
                         label: t.chatsStatusChannel,
                       ),
                     ] else if (chat.signKeyRotated) ...[
@@ -132,9 +124,28 @@ class ChatTile extends StatelessWidget {
                   fontSize: 11,
                 ),
               ),
-              if (chat.unreadCount > 0) ...[
+              // The star sits here, under the timestamp, rather than beside the
+              // name. Next to the name it was one more thing pushing the name
+              // around in a row that already carries a verified tick and a
+              // transport pill — and a favourite is a property of the row, not
+              // of the name. Small, and in the corner: it marks, it does not
+              // announce. Sharing a line with the badge keeps every row the
+              // same height whether or not either is there.
+              if (chat.unreadCount > 0 || chat.isFavorite) ...[
                 const SizedBox(height: 6),
-                UnreadBadge(count: chat.unreadCount),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (chat.isFavorite)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Icon(Icons.star_rounded,
+                            color: AppColors.warning, size: 13),
+                      ),
+                    if (chat.unreadCount > 0)
+                      UnreadBadge(count: chat.unreadCount),
+                  ],
+                ),
               ],
             ],
           ),
