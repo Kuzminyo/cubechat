@@ -44,9 +44,20 @@ GoRouter buildRouter() {
             BranchContainer(
           currentIndex: navigationShell.currentIndex,
           branches: children,
+          onSwitch: navigationShell.goBranch,
         ),
+        // Preloaded, all but one. The tabs are a strip you drag between, so the
+        // neighbour has to exist before the finger asks for it — a branch
+        // go_router has not built yet is a blank screen sliding in, once, on
+        // the first swipe of its life.
+        //
+        // Nearby is the exception: mounting it starts the BLE scanner, and
+        // paying for the radio at launch for a tab nobody has opened is a worse
+        // trade than one blank first swipe. It stays lazy, and the scan-gating
+        // tests still hold it to the idle cadence once it is mounted.
         branches: [
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/chats',
@@ -58,6 +69,7 @@ GoRouter buildRouter() {
           // index, so this list and the one in AppShell have to move together
           // or a tap lands on someone else's screen.
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/contacts',
@@ -74,6 +86,7 @@ GoRouter buildRouter() {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: '/profile',

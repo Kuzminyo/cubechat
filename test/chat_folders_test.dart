@@ -126,27 +126,64 @@ void main() {
     expect(find.text('All'), findsNothing);
   });
 
-  testWidgets('a flick sideways moves to the next tab', (tester) async {
+  testWidgets('the next tab follows the finger and settles under it',
+      (tester) async {
     await openChats(tester);
     expect(find.byType(ChatsListScreen), findsOneWidget);
+    expect(find.byType(ContactsScreen), findsNothing,
+        reason: 'a tab nobody is looking at is parked, not drawn');
 
-    // Right-to-left: forward, the way the bar is laid out.
+    // Dragging, not flicking: the point of the strip is that the neighbour is
+    // on screen *while the finger is down*, at the distance the finger put it.
+    // Several small moves, the way a finger reports: the first one only
+    // crosses the slop and starts the drag, so a single big jump would be a
+    // gesture that never updates.
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump();
+    }
+
+    expect(find.byType(ChatsListScreen), findsOneWidget);
+    expect(
+      find.byType(ContactsScreen),
+      findsOneWidget,
+      reason: 'both are on screen mid-drag, which is what makes it a strip '
+          'rather than a transition between two states',
+    );
+
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(-40, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ContactsScreen), findsOneWidget);
+    expect(find.byType(ChatsListScreen), findsNothing,
+        reason: 'and the one left behind parks again');
+  });
+
+  testWidgets('a flick sideways decides on its own, and comes back',
+      (tester) async {
+    await openChats(tester);
+
+    // Short and fast: not far enough to cross the halfway line, fast enough
+    // that the finger has already said where it is going.
     await tester.timedDrag(
       find.byType(ChatsListScreen),
-      const Offset(-160, 0),
-      const Duration(milliseconds: 120),
+      const Offset(-60, 0),
+      const Duration(milliseconds: 40),
     );
-    await beat(tester);
-
+    await tester.pumpAndSettle();
     expect(find.byType(ContactsScreen), findsOneWidget);
 
     await tester.timedDrag(
       find.byType(ContactsScreen),
-      const Offset(160, 0),
-      const Duration(milliseconds: 120),
+      const Offset(60, 0),
+      const Duration(milliseconds: 40),
     );
-    await beat(tester);
-
+    await tester.pumpAndSettle();
     expect(find.byType(ChatsListScreen), findsOneWidget);
   });
 }

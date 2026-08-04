@@ -4,7 +4,30 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.14.1+60**.
+Current build: **0.15.0+61**.
+
+---
+
+## The tabs are a strip you drag, not a slide show (2026‑08‑04)
+
+- **The tab transition was two animations fighting each other.** The branch
+  container cross-faded the outgoing screen into the incoming one; on top of
+  that the shell slid and faded the whole stack. Two opacity layers over four
+  full screens of glass, animating together — a compositing bill paid by the
+  phones least able to afford it, and it looked like it.
+- **Now the four branches are one horizontal strip** that follows the finger:
+  drag and the neighbour comes with you at the distance you put it, release and
+  it settles (or a flick past ~600 px/s decides on its own). Sliding is far
+  cheaper than fading — a translation moves an already-rasterised layer where
+  opacity forces an offscreen buffer every frame — and it is the truer gesture,
+  since the tabs are a row and the bar says so.
+- **Three branches are preloaded** so the neighbour exists before the finger
+  asks for it; without that the first swipe of a branch's life slid a blank
+  screen in. Nearby stays lazy on purpose: mounting it starts the BLE scanner,
+  and paying for the radio at launch for a tab nobody opened is the worse trade.
+- The container no longer takes a go_router type, just an index and a callback
+  — which is also what makes it testable, and the drag is now pinned by tests
+  at both ends: the neighbour on screen mid-drag, and parked again after.
 
 ---
 

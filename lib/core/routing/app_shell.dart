@@ -78,14 +78,11 @@ class AppShell extends StatelessWidget {
         // is nothing at all: no wrapper, no fill, no gradient, no blur pane.
         body: Stack(
           children: [
-            Positioned.fill(
-              child: _SwipeBetweenTabs(
-                index: shell.currentIndex,
-                count: tabs.length,
-                onGoTo: (i) => shell.goBranch(i),
-                child: _TabArrival(index: shell.currentIndex, child: shell),
-              ),
-            ),
+            // The strip of branches, and the drag between them, both live in
+            // BranchContainer — it is the widget that holds the four screens,
+            // so it is the only one that can move them as a strip rather than
+            // animate over the top of them.
+            Positioned.fill(child: shell),
             Positioned(
               // Absolute inset from the screen edges — the only thing this
               // wrapper contributes is position. It paints nothing.
@@ -140,163 +137,6 @@ class _TabSpec {
 
 /// Floating glass island, Telegram-style: it levitates over the content rather
 /// than sitting on a coloured plate welded to the bottom edge.
-/// The new tab arrives rather than replacing the old one in a single frame.
-///
-/// Deliberately not an [AnimatedSwitcher] and not a [PageView]: the branches
-/// are an IndexedStack, all four alive at once with their own scroll positions
-/// and open keyboards, and anything that keys on the index would remount them
-/// and throw that away. This wraps the stack — which has already switched — in
-/// a transform and a fade that run once per change, so nothing is rebuilt and
-/// the tab still looks like it moved into place.
-///
-/// The travel is 16 points, in the direction the bar implies: forward tabs
-/// enter from the right. Short on purpose — a tab switch is a jump between
-/// places, not a scroll along a strip, and a long slide starts to claim
-/// otherwise.
-class _TabArrival extends StatefulWidget {
-  const _TabArrival({required this.index, required this.child});
-
-  final int index;
-  final Widget child;
-
-  @override
-  State<_TabArrival> createState() => _TabArrivalState();
-}
-
-class _TabArrivalState extends State<_TabArrival>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 240),
-    value: 1, // the first tab is already where it belongs
-  );
-
-  double _from = 0;
-
-  @override
-  void didUpdateWidget(covariant _TabArrival old) {
-    super.didUpdateWidget(old);
-    if (old.index == widget.index) return;
-    _from = widget.index > old.index ? 16 : -16;
-    _c.forward(from: 0);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      // Passed as `child` so the whole branch subtree is not rebuilt on each
-      // frame of the animation — only the transform above it changes.
-      child: widget.child,
-      builder: (context, child) {
-        if (_c.isCompleted) return child!;
-        final t = Curves.easeOutCubic.transform(_c.value);
-        return Opacity(
-          opacity: 0.4 + 0.6 * t,
-          child: Transform.translate(
-            offset: Offset(_from * (1 - t), 0),
-            child: child,
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Flick left or right anywhere on a tab to land on the next one.
-///
-/// The bar is four taps at the bottom of a tall phone, and the tabs are in a
-/// fixed order — which is exactly the shape a swipe fits. Telegram, WhatsApp
-/// and Signal all do it, so a thumb arrives here already expecting it to work.
-///
-/// Deliberately a fling, not a drag the content follows: the branches are an
-/// IndexedStack, all four alive at once with their own scroll positions, and
-/// dragging them across each other would mean rebuilding that as a PageView —
-/// a much larger change, and one that gives up the "nothing is torn down"
-/// property the shell is built on.
-///
-/// It listens rather than competes. A [GestureDetector] here would join the
-/// arena against every horizontal gesture inside a tab — swipe-to-reply on a
-/// message, a carousel, a slider — and the outer detector losing that contest
-/// is not something to rely on. [Listener] never claims the pointer at all: it
-/// watches the raw events, and if a child recognizer takes over, this simply
-/// sees the pointer leave without a decision of its own.
-class _SwipeBetweenTabs extends StatefulWidget {
-  const _SwipeBetweenTabs({
-    required this.index,
-    required this.count,
-    required this.onGoTo,
-    required this.child,
-  });
-
-  final int index;
-  final int count;
-  final void Function(int index) onGoTo;
-  final Widget child;
-
-  @override
-  State<_SwipeBetweenTabs> createState() => _SwipeBetweenTabsState();
-}
-
-class _SwipeBetweenTabsState extends State<_SwipeBetweenTabs> {
-  /// How far the finger must travel sideways, and how much *less* than that it
-  /// may travel vertically, for the movement to be a tab change rather than a
-  /// scroll. A list is dragged vertically far more often than anything here is
-  /// dragged sideways, so the bar for the horizontal reading is set high.
-  static const double _minTravel = 64;
-  static const double _maxDrift = 0.6;
-
-  Offset? _start;
-  int? _pointer;
-
-  void _down(PointerDownEvent e) {
-    // One finger only: a second one is a pinch, and a pinch that ends slightly
-    // sideways is not a request for another tab.
-    if (_pointer != null) {
-      _pointer = null;
-      _start = null;
-      return;
-    }
-    _pointer = e.pointer;
-    _start = e.position;
-  }
-
-  void _up(PointerEvent e) {
-    final start = _start;
-    final pointer = _pointer;
-    _start = null;
-    _pointer = null;
-    if (start == null || pointer != e.pointer) return;
-
-    final delta = e.position - start;
-    if (delta.dx.abs() < _minTravel) return;
-    if (delta.dy.abs() > delta.dx.abs() * _maxDrift) return;
-
-    // Right-to-left goes forward, the way the tabs are laid out. Stops at both
-    // ends rather than wrapping: wrapping would put Profile one flick from
-    // Chats in a direction the bar never suggests.
-    final next = widget.index + (delta.dx < 0 ? 1 : -1);
-    if (next < 0 || next >= widget.count || next == widget.index) return;
-    widget.onGoTo(next);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: _down,
-      onPointerUp: _up,
-      onPointerCancel: _up,
-      child: widget.child,
-    );
-  }
-}
-
 class _GlassPill extends StatefulWidget {
   const _GlassPill({
     required this.tabs,

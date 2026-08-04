@@ -32,6 +32,7 @@ void main() {
         home: BranchContainer(
           currentIndex: 0,
           branches: [probe(active), probe(inactive)],
+          onSwitch: (_) {},
         ),
       ),
     );
@@ -51,6 +52,7 @@ void main() {
           home: BranchContainer(
             currentIndex: index,
             branches: [probe(first), probe(second)],
+            onSwitch: (_) {},
           ),
         );
 
