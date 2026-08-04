@@ -4,7 +4,31 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.13.0+57**.
+Current build: **0.14.0+59**.
+
+---
+
+## A back button while something is playing, and files that can be asked for again (2026‑08‑04)
+
+- **The playing-voice bar had eaten the header.** The two took turns in one
+  capsule, swapped by a downward swipe — so while anything was playing there
+  was no back button on screen and nothing saying it was a gesture away. The
+  bar has its own island now, under the header and under the pinned bar when
+  there is one, and the conversation pads itself to whatever that column
+  measures.
+- **Tapping the app-wide voice bar threw every time.** It lives in the app's
+  `builder`, which sits above the router that provides `InheritedGoRouter`, so
+  `context.push` found no GoRouter — an exception into the zone and a bar that
+  appeared to do nothing. It is handed the one push it needs now.
+- **A file cleared from disk can be asked for again.** A received file lives on
+  the receiver's phone and nowhere else, so clearing the transfer centre left
+  bubbles pointing at paths that no longer existed, unopenable for good.
+  Tapping one now asks the sender — a new `mediaRequest` payload carrying the
+  16-byte media id — and they answer from their own outbox copy under the same
+  id, so the original bubble adopts the file instead of a duplicate appearing
+  beneath it. 1:1 only: a room has no single person to ask.
+- Both ends need this build for the re-request to work, and neither is worse
+  off without it: an older peer ignores a payload type it does not know.
 
 ---
 

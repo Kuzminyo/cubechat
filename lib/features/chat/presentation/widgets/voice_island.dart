@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
+import 'chat_input.dart' show MessageIslandGlass;
 import '../../data/voice_playback_controller.dart';
 
 /// The chat that is currently drawing its own voice island.
@@ -14,37 +15,28 @@ import '../../data/voice_playback_controller.dart';
 /// worth having.
 final voiceIslandOwnerProvider = StateProvider<String?>((_) => null);
 
-/// Two panels in one capsule: the chat header, and the voice note playing.
+/// The voice note that is playing, as its own island in a chat.
 ///
-/// A playing voice note has to be reachable from the chat it is in, but the
-/// header is what tells you whose chat you are looking at — and there is only
-/// one capsule's worth of room at the top. Rather than stack them and push the
-/// conversation down the screen, they take turns: a downward swipe on the
-/// capsule shows the other one.
+/// It used to *be* the header: the two panels took turns in one capsule,
+/// swapped by a downward swipe. That saved a strip of screen and cost the back
+/// button — while anything was playing there was none on screen, and nothing
+/// saying it was one swipe away. So the bar sits under the header now, under
+/// the pinned island too when there is one, in the order things are read.
 ///
-/// Same height, radius and insets as the header alone, because it *is* the
-/// header slot — a control that changed size when audio started would move the
-/// back button out from under a thumb already reaching for it.
-class VoiceIsland extends ConsumerStatefulWidget {
-  const VoiceIsland({
-    super.key,
-    required this.chatId,
-    required this.header,
-    required this.height,
-  });
+/// Renders nothing when nothing is playing, and claims
+/// [voiceIslandOwnerProvider] while it is mounted so the app-wide bar — the
+/// same information, in the same place — stands down.
+class ChatVoiceBar extends ConsumerStatefulWidget {
+  const ChatVoiceBar({super.key, required this.chatId});
 
   final String chatId;
-  final Widget header;
-  final double height;
 
   @override
-  ConsumerState<VoiceIsland> createState() => _VoiceIslandState();
+  ConsumerState<ChatVoiceBar> createState() => _ChatVoiceBarState();
 }
 
-class _VoiceIslandState extends ConsumerState<VoiceIsland> {
-  /// Which panel is face up. Starts on the voice note, because it only appears
-  /// at all when one has just started.
-  bool _showVoice = true;
+class _ChatVoiceBarState extends ConsumerState<ChatVoiceBar> {
+  static const double _height = 56;
 
   @override
   void initState() {
@@ -95,54 +87,16 @@ class _VoiceIslandState extends ConsumerState<VoiceIsland> {
   @override
   Widget build(BuildContext context) {
     final playback = ref.watch(voicePlaybackControllerProvider);
-
-    // Nothing playing: the header is the whole story, and the swipe has nothing
-    // to swap to.
-    if (!playback.isActive) {
-      _showVoice = true; // ready for the next one
-      return widget.header;
-    }
-
-    return GestureDetector(
-      // Vertical only, so it never fights the conversation's own scroll.
-      onVerticalDragEnd: (details) {
-        final v = details.primaryVelocity ?? 0;
-        if (v.abs() < 80) return;
-        // Down reveals the header, up puts the voice note back — the direction
-        // the panel itself appears to travel.
-        setState(() => _showVoice = v < 0);
-      },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 260),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        layoutBuilder: (current, previous) => Stack(
-          alignment: Alignment.center,
-          children: [...previous, if (current != null) current],
+    if (!playback.isActive) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      child: SizedBox(
+        height: _height,
+        child: MessageIslandGlass(
+          borderRadius: _height / 2,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: _VoicePanel(playback: playback, height: _height),
         ),
-        transitionBuilder: (child, animation) {
-          // Slides in from above and out downwards, so the two panels read as
-          // one object rolling over rather than two fading into each other.
-          final incoming = child.key == ValueKey(_showVoice);
-          return ClipRect(
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: Offset(0, incoming ? -1 : 1),
-                end: Offset.zero,
-              ).animate(animation),
-              child: FadeTransition(opacity: animation, child: child),
-            ),
-          );
-        },
-        child: _showVoice
-            ? KeyedSubtree(
-                key: const ValueKey(true),
-                child: _VoicePanel(
-                  playback: playback,
-                  height: widget.height,
-                ),
-              )
-            : KeyedSubtree(key: const ValueKey(false), child: widget.header),
       ),
     );
   }

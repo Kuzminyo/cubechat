@@ -90,6 +90,23 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     return true;
   }
 
+  /// Point an existing attachment bubble at a file that has just landed again.
+  ///
+  /// [append] is idempotent on wireId, which is what stops a relay backlog from
+  /// re-inserting the whole history — and also what would stop a re-sent file
+  /// from being adopted by the bubble that asked for it. Same id, same message,
+  /// new path: this is the update half of that rule.
+  bool restoreFilePath(String peerId, String wireId, String path) {
+    final current = state[peerId];
+    if (current == null) return false;
+    final idx = current.indexWhere((m) => m.wireId == wireId);
+    if (idx == -1) return false;
+    final list = [...current]..[idx] = current[idx].copyWith(filePath: path);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return true;
+  }
+
   void updateStatus(String peerId, String msgId, MessageStatus status) {
     final current = state[peerId];
     if (current == null) return;

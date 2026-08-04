@@ -251,7 +251,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         onPointerDown: (_) => UiActivity.instance.poke(),
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
-        child: VoiceMiniPlayer(child: child ?? const SizedBox.shrink()),
+        child: VoiceMiniPlayer(
+          // The router lives below this builder, so the bar is handed the
+          // one push it needs rather than looking one up it cannot see.
+          onOpenChat: (chatId, _) => _openChat(chatId),
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       ),
       ),

@@ -742,6 +742,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Nothing installed handles this file type. You can send it to another app instead.';
 
   @override
+  String get fileRequestedAgain => 'Asked the sender for it again';
+
+  @override
   String get fileOpenFailed => 'Could not open this file';
 
   @override

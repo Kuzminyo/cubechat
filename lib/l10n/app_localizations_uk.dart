@@ -742,6 +742,9 @@ class AppLocalizationsUk extends AppLocalizations {
       'Жоден встановлений застосунок не відкриває цей тип. Можна надіслати його в інший застосунок.';
 
   @override
+  String get fileRequestedAgain => 'Попросили надіслати ще раз';
+
+  @override
   String get fileOpenFailed => 'Не вдалося відкрити цей файл';
 
   @override

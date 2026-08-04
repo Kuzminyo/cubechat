@@ -82,6 +82,17 @@ enum InnerPayloadType {
   /// [AvatarPayload].
   avatar(0xE1),
 
+  /// "Send me that file again" — the 16-byte media id and nothing else.
+  ///
+  /// A received file lives on the receiver's disk and nowhere else: there is no
+  /// server holding a copy, so clearing it in the transfer centre used to leave
+  /// a bubble pointing at a path that no longer exists, unopenable forever. The
+  /// only party who still has the bytes is the person who sent them, and they
+  /// kept their own copy in the outbox — so ask. The answer re-uses the same
+  /// media id, which is what lets the old bubble adopt the new file instead of
+  /// a duplicate appearing beneath it.
+  mediaRequest(0xE2),
+
   /// Signed channel poll creation or vote. See `channel_poll.dart`.
   channelPoll(0xF0),
 

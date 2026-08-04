@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/widgets/floating_glass.dart';
@@ -22,9 +21,19 @@ import 'voice_island.dart';
 /// It is also where the eye goes for "what is this screen", which is the
 /// question this bar answers about itself.
 class VoiceMiniPlayer extends ConsumerWidget {
-  const VoiceMiniPlayer({super.key, required this.child});
+  const VoiceMiniPlayer({
+    super.key,
+    required this.child,
+    required this.onOpenChat,
+  });
 
   final Widget child;
+
+  /// Handed in rather than looked up. This bar lives in the app's `builder`,
+  /// which sits *above* the router that provides `InheritedGoRouter` — so
+  /// `context.push` here found no GoRouter and threw, every time, which is why
+  /// tapping the bar appeared to do nothing at all.
+  final void Function(String chatId, String title) onOpenChat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,7 +53,7 @@ class VoiceMiniPlayer extends ConsumerWidget {
             top: MediaQuery.paddingOf(context).top + 6,
             left: 10,
             right: 10,
-            child: _Bar(playback: playback),
+            child: _Bar(playback: playback, onOpenChat: onOpenChat),
           ),
       ],
     );
@@ -52,9 +61,10 @@ class VoiceMiniPlayer extends ConsumerWidget {
 }
 
 class _Bar extends ConsumerWidget {
-  const _Bar({required this.playback});
+  const _Bar({required this.playback, required this.onOpenChat});
 
   final VoicePlayback playback;
+  final void Function(String chatId, String title) onOpenChat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -72,10 +82,7 @@ class _Bar extends ConsumerWidget {
           // the only navigation anyone wants from here.
           onTap: playback.chatId == null
               ? null
-              : () => context.push(
-                    '/chat/${Uri.encodeComponent(playback.chatId!)}'
-                    '?name=${Uri.encodeQueryComponent(playback.chatTitle ?? '')}',
-                  ),
+              : () => onOpenChat(playback.chatId!, playback.chatTitle ?? ''),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/util/debug_log.dart';
 import '../../../../core/utils/file_mime.dart';
 import '../../../../core/widgets/glass_toast.dart';
@@ -20,7 +22,7 @@ import '../../models/message.dart';
 /// opening is left to the system — which resolves the handler, and asks when
 /// more than one app claims the type, so the choice of app and the permission
 /// that comes with it stay the user's.
-class FileBubble extends StatelessWidget {
+class FileBubble extends ConsumerWidget {
   const FileBubble({
     super.key,
     required this.message,
@@ -37,14 +39,14 @@ class FileBubble extends StatelessWidget {
   final bool sharingRestricted;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final name = message.fileName ?? 'file';
     final size = message.fileBytes;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _open(context),
+      onTap: () => _open(context, ref),
       onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -100,12 +102,17 @@ class FileBubble extends StatelessWidget {
     );
   }
 
-  Future<void> _open(BuildContext context) async {
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
     final t = AppLocalizations.of(context);
     final path = message.filePath;
     if (path == null || !await File(path).exists()) {
       DebugLog.instance.log('FILE', 'open: nothing at ${path ?? "(no path)"}');
-      if (context.mounted) showGlassToast(context, t.fileMissing);
+      // Gone from disk — cleared in the transfer centre, most likely. Nobody
+      // else has a copy except the person who sent it, so ask them; the answer
+      // lands under the same id and this bubble picks it up.
+      final asked = await _requestAgain(ref);
+      if (!context.mounted) return;
+      showGlassToast(context, asked ? t.fileRequestedAgain : t.fileMissing);
       return;
     }
 
@@ -185,6 +192,19 @@ class FileBubble extends StatelessWidget {
     );
     if (share != true) return;
     await Share.shareXFiles([XFile(path)], subject: message.fileName);
+  }
+
+  /// Ask the sender for the bytes again.
+  ///
+  /// Only for a file somebody sent *us*: our own outgoing copy vanishing means
+  /// we deleted it, and there is nobody to ask. Returns whether the request
+  /// actually went out, so the toast can say what happened rather than guess.
+  Future<bool> _requestAgain(WidgetRef ref) async {
+    final wireId = message.wireId;
+    if (message.isMine || wireId == null) return false;
+    return ref
+        .read(messagingServiceProvider)
+        .requestMediaAgain(message.chatId, wireId);
   }
 
   /// A hint at the kind of thing, from the extension. Only a hint — the

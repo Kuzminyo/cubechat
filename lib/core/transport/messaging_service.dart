@@ -1153,11 +1153,17 @@ class MessagingService {
   /// computed by streaming the file, and each chunk is read from disk as it
   /// goes out. A twenty-five megabyte attachment would otherwise be held twice
   /// over — once as the source buffer and once inside the frames.
+  /// [reuseMediaId] and [appendLocally] are how a re-send differs from a send:
+  /// the peer asked for a file they already have a bubble for, so it goes back
+  /// under the id that bubble is keyed on, and nothing new is added to the
+  /// conversation at this end. See [handleMediaRequest].
   Future<Message> sendFile(
     String chatId, {
     required File file,
     required String fileName,
     String mime = 'application/octet-stream',
+    Uint8List? reuseMediaId,
+    bool appendLocally = true,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -1193,17 +1199,23 @@ class MessagingService {
     if (size == 0) throw StateError('cannot send an empty file');
 
     final safe = safeFileName(fileName);
-    final fileId = ImageChunk.newImageId();
+    final fileId = reuseMediaId ?? ImageChunk.newImageId();
 
     // Kept in the app's own storage so the bubble still resolves after the
-    // picker's temporary copy is collected.
-    final dir = await getApplicationDocumentsDirectory();
-    final outbox =
-        Directory('${dir.path}${Platform.pathSeparator}cubechat-outbox');
-    if (!await outbox.exists()) await outbox.create(recursive: true);
-    final stored = File('${outbox.path}${Platform.pathSeparator}'
-        '${_hexOf(fileId).substring(0, 8)}-$safe');
-    await file.copy(stored.path);
+    // picker's temporary copy is collected. A re-send is already reading that
+    // copy, so it stays where it is rather than being duplicated beside itself.
+    final File stored;
+    if (reuseMediaId != null) {
+      stored = file;
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      final outbox =
+          Directory('${dir.path}${Platform.pathSeparator}cubechat-outbox');
+      if (!await outbox.exists()) await outbox.create(recursive: true);
+      stored = File('${outbox.path}${Platform.pathSeparator}'
+          '${_hexOf(fileId).substring(0, 8)}-$safe');
+      await file.copy(stored.path);
+    }
 
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
@@ -1219,8 +1231,10 @@ class MessagingService {
       wireId: TransportEnvelope.hashHex(fileId),
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
-    messages.append(canonicalId, msg);
-    if (chatId != canonicalId) messages.append(chatId, msg);
+    if (appendLocally) {
+      messages.append(canonicalId, msg);
+      if (chatId != canonicalId) messages.append(chatId, msg);
+    }
 
     final transferId = _hexOf(fileId);
     final transfers = _ref.read(fileTransferControllerProvider.notifier);
@@ -1852,6 +1866,84 @@ class MessagingService {
       }
     } catch (e) {
       DebugLog.instance.log('REACT', 'reaction send failed: $e');
+    }
+  }
+
+  /// Ask the peer to send a file again, by the media id its bubble is keyed on.
+  ///
+  /// A received file lives on this phone and nowhere else — no server holds a
+  /// copy — so clearing it in the transfer centre left the bubble pointing at
+  /// a path that no longer existed, unopenable for good. The one party who
+  /// still has the bytes is whoever sent them, and their own copy is sitting in
+  /// their outbox. 1:1 only: a room has no single person to ask.
+  Future<bool> requestMediaAgain(String chatId, String wireIdHex) async {
+    if (chatId.startsWith('#')) return false;
+    final Uint8List mediaId;
+    try {
+      mediaId = _hexDecodeBytes(wireIdHex);
+    } catch (_) {
+      return false;
+    }
+    if (mediaId.length != ImageChunk.idLen) return false;
+    final peerPub = _resolvePeerPub(chatId);
+    if (peerPub == null) return false;
+    try {
+      await _sendControlToPeer(
+        canonicalId: chatId,
+        peerPub: peerPub,
+        type: InnerPayloadType.mediaRequest,
+        innerBody: mediaId,
+      );
+      DebugLog.instance.log('FILE', 'asked $chatId for media $wireIdHex again');
+      return true;
+    } catch (e) {
+      DebugLog.instance.log('FILE', 'media re-request failed: $e');
+      return false;
+    }
+  }
+
+  /// Answer a [InnerPayloadType.mediaRequest]: find our own copy and send it
+  /// back under the same media id.
+  ///
+  /// Only ever our own outgoing file, and only one we still hold — this is a
+  /// peer naming an id and asking for bytes, so it must not be able to name
+  /// anything else. The id is one we minted and they already received, and the
+  /// answer is the same file it always was, hashed and signed again on the way
+  /// out.
+  Future<void> _handleMediaRequest({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) async {
+    if (body.length != ImageChunk.idLen) return;
+    final wireId = TransportEnvelope.hashHex(body);
+    final chatId = senderPub != null ? _hexOf(senderPub) : peerId;
+    final messages = _ref.read(messagesControllerProvider)[chatId] ?? const [];
+    Message? mine;
+    for (final m in messages) {
+      if (m.wireId == wireId && m.isMine && m.kind == MessageKind.file) {
+        mine = m;
+        break;
+      }
+    }
+    final path = mine?.filePath;
+    if (mine == null || path == null || !await File(path).exists()) {
+      DebugLog.instance
+          .log('FILE', 'cannot answer media request $wireId: not held here');
+      return;
+    }
+    try {
+      await sendFile(
+        chatId,
+        file: File(path),
+        fileName: mine.fileName ?? 'file',
+        mime: mine.text,
+        reuseMediaId: body,
+        appendLocally: false,
+      );
+      DebugLog.instance.log('FILE', 're-sent $wireId to $chatId on request');
+    } catch (e) {
+      DebugLog.instance.log('FILE', 're-send of $wireId failed: $e');
     }
   }
 
@@ -2812,10 +2904,12 @@ class MessagingService {
         case InnerPayloadType.presence:
         case InnerPayloadType.avatarRequest:
         case InnerPayloadType.avatar:
+        case InnerPayloadType.mediaRequest:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
-          // is per-peer, and an avatar answers a request from one peer — a
-          // channel-wide broadcast of a picture is a fan-out nobody asked for.)
+          // is per-peer, an avatar answers a request from one peer — a
+          // channel-wide broadcast of a picture is a fan-out nobody asked for —
+          // and a request for a file again has no single member to answer it.)
           break;
       }
     } catch (e) {
@@ -3495,6 +3589,13 @@ class MessagingService {
           if (senderPub != null) {
             await _ingestAvatar(_hexOf(senderPub), unpacked.body);
           }
+
+        case InnerPayloadType.mediaRequest:
+          await _handleMediaRequest(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
 
         case InnerPayloadType.fileChunk:
           await _ingestFileChunk(
@@ -5153,6 +5254,17 @@ class MessagingService {
     // second delivery path — so there is nothing to fan out and nothing to
     // notify about either.
     if (!messages.append(pubkeyHex, message)) {
+      // Unless it is the file we asked to have again: same id, same bubble, and
+      // the whole point is the new path underneath it.
+      final path = message.filePath;
+      final wireId = message.wireId;
+      if (path != null && wireId != null) {
+        if (messages.restoreFilePath(pubkeyHex, wireId, path)) {
+          DebugLog.instance
+              .log('FILE', 're-sent file $wireId adopted by its bubble');
+          return;
+        }
+      }
       DebugLog.instance.log(
         'NOISE',
         'skip already-stored message ${message.wireId} in $pubkeyHex',

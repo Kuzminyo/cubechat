@@ -307,6 +307,7 @@
   "fileMissing": "That file is no longer available",
   "fileNoHandlerTitle": "No app can open this",
   "fileNoHandlerHint": "Nothing installed handles this file type. You can send it to another app instead.",
+  "fileRequestedAgain": "Asked the sender for it again",
   "fileOpenFailed": "Could not open this file",
   "fileShareAction": "Send to app",
   "fileTooLargeMesh": "File is too large — {limit} MB is the limit over the mesh",

@@ -766,13 +766,12 @@ class _ChatHeader extends StatelessWidget {
       // deliberately runs all the way to the top of the screen.
       padding:
           EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
-      // The capsule can be showing either this header or the voice note that
-      // is playing — same height, same radius, swapped by a swipe. See
-      // [VoiceIsland].
-      child: VoiceIsland(
-        chatId: chatId,
-        height: _headerPillHeight,
-        header: _HeaderPill(
+      // Always the header. A playing voice note used to take this capsule over
+      // and put the header on the back of it, reachable by a downward swipe —
+      // which meant that while anything was playing there was no back button on
+      // screen and no sign that there had ever been one. It has its own island
+      // under this one now; see [ChatVoiceBar].
+      child: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Row(
           children: [
@@ -903,7 +902,6 @@ class _ChatHeader extends StatelessWidget {
               ],
             ],
           ],
-        ),
         ),
       ),
     );
@@ -1321,6 +1319,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     );
               },
             ),
+          // Last in the stack, and only while something is playing: whose chat
+          // this is comes first, then what is pinned in it, then what is coming
+          // out of the speaker. The list pads itself to whatever this column
+          // measures, so appearing and vanishing costs the conversation nothing
+          // but a reflow.
+          ChatVoiceBar(chatId: widget.chatId),
         ],
       ),
     );

@@ -1436,6 +1436,12 @@ abstract class AppLocalizations {
   /// **'Nothing installed handles this file type. You can send it to another app instead.'**
   String get fileNoHandlerHint;
 
+  /// No description provided for @fileRequestedAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked the sender for it again'**
+  String get fileRequestedAgain;
+
   /// No description provided for @fileOpenFailed.
   ///
   /// In en, this message translates to:
