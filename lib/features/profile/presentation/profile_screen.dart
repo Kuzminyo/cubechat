@@ -1556,14 +1556,14 @@ class _ProfileCover extends ConsumerWidget {
 
   /// How tall the cover goes when it is pulled open.
   ///
-  /// Most of the screen, rather than a fixed 420 points that was under half of
-  /// it on a modern phone — the gesture is "show me the picture", and a picture
-  /// shown at half size is answering a different question. The remainder is
-  /// deliberate: a strip of the settings stays visible under it, which is what
-  /// says the screen scrolls and the photo is part of it rather than a viewer
-  /// that has taken over.
+  /// Back to roughly the old height. Taller sounded like more of the picture
+  /// and was the opposite: what is stored is a square, so stretching it down
+  /// the screen only scales the same crop up — the photo did not get bigger,
+  /// it got closer. Half the screen shows the square nearly whole, and what
+  /// decides which part of the photo that square holds is now the crop step
+  /// when you choose it.
   static double expandedHeightFor(BuildContext context) =>
-      MediaQuery.sizeOf(context).height * 0.82;
+      (MediaQuery.sizeOf(context).height * 0.52).clamp(400.0, 470.0);
 
   static double compactHeightFor(double topInset) =>
       topInset + 12 + avatarSize + 14 + actionsHeight + 12;

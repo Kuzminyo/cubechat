@@ -679,16 +679,20 @@ class _ProfileHero extends ConsumerWidget {
                 ),
               ),
             ),
-          Align(
-            alignment: const Alignment(0, -0.34),
-            child: PeerAvatar(
-              peerId: peerId,
-              label: label,
-              size: avatarSize,
-              online: online,
-              heroTag: 'contact-avatar-' + peerId,
+          // Only when there is no photograph. With one, the header *is* their
+          // picture — a circle holding the same image on top of it is the same
+          // face twice, at two sizes, which is what it looked like.
+          if (photo == null)
+            Align(
+              alignment: const Alignment(0, -0.34),
+              child: PeerAvatar(
+                peerId: peerId,
+                label: label,
+                size: avatarSize,
+                online: online,
+                heroTag: 'contact-avatar-' + peerId,
+              ),
             ),
-          ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(

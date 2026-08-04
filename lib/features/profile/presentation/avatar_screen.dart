@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chat/presentation/widgets/image_editor.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
 
 Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
@@ -36,7 +37,20 @@ Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
     if (context.mounted) showGlassToast(context, t.avatarFailed);
     return;
   }
-  final ok = await ref.read(avatarProvider.notifier).setFromBytes(preview);
+  if (!context.mounted) return;
+
+  // Choose the part of the picture that becomes the avatar, on the picture
+  // itself. What is stored is a square — the circle in a list, the cover across
+  // the top of the profile — and until now the square was taken from the middle
+  // of whatever was picked, which on a portrait photo is a crop nobody asked
+  // for and reads as the app having zoomed in on you.
+  final cropped = await openImageEditor(context, preview);
+  // Backing out of the crop backs out of the change: the picture was never
+  // what you wanted, and setting the automatic centre crop anyway is the thing
+  // this step exists to stop.
+  if (cropped == null || !context.mounted) return;
+
+  final ok = await ref.read(avatarProvider.notifier).setFromBytes(cropped);
   if (!ok && context.mounted) showGlassToast(context, t.avatarFailed);
 }
 

@@ -4,7 +4,25 @@ Every entry below is drawn from the git history — 198 commits, 2026‑05‑11 
 2026‑08‑01. Grouped by the milestones the project used internally (`M1`
 through `M6`) and, once those tapered off, by theme. Newest first.
 
-Current build: **0.17.0+63**.
+Current build: **0.17.1+64**.
+
+---
+
+## You choose the crop, and the cover stops leaning in (2026‑08‑04)
+
+- **Setting a photo now asks which part of it you mean.** What gets stored is a
+  square — the circle in a list, the band across the top of a profile — and
+  until now that square was cut from the middle of whatever was picked, which
+  on a portrait photo is a crop nobody asked for and reads as the app having
+  zoomed in on you. The picker hands the picture to the editor first; backing
+  out of the crop backs out of the change.
+- **The cover is back to about half the screen.** Taller sounded like more of
+  the picture and was the opposite: the stored square only scaled up, so the
+  photo did not get bigger, it got closer.
+- **A contact's header is just their photograph.** The round portrait stays for
+  contacts with no picture, where it carries the initials and the online dot,
+  and goes when there is one — the same face twice at two sizes was the circle
+  sitting on the middle of the very photo it was cut from.
 
 ---
 
