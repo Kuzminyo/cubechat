@@ -1436,6 +1436,12 @@ abstract class AppLocalizations {
   /// **'Nothing installed handles this file type. You can send it to another app instead.'**
   String get fileNoHandlerHint;
 
+  /// No description provided for @fileOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open this file'**
+  String get fileOpenFailed;
+
   /// No description provided for @fileShareAction.
   ///
   /// In en, this message translates to:

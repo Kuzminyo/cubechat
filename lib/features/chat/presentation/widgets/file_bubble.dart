@@ -5,6 +5,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/util/debug_log.dart';
 import '../../../../core/utils/file_mime.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
@@ -103,6 +104,7 @@ class FileBubble extends StatelessWidget {
     final t = AppLocalizations.of(context);
     final path = message.filePath;
     if (path == null || !await File(path).exists()) {
+      DebugLog.instance.log('FILE', 'open: nothing at ${path ?? "(no path)"}');
       if (context.mounted) showGlassToast(context, t.fileMissing);
       return;
     }
@@ -116,8 +118,26 @@ class FileBubble extends StatelessWidget {
       message.fileName ?? path,
       declaredMime: message.text,
     );
-    final result = await OpenFilex.open(path, type: mime);
+    final OpenResult result;
+    try {
+      // A type we cannot name is passed as *no* type rather than as
+      // octet-stream: asked to open "some bytes", Android looks for an app
+      // that claims to handle anything, finds none, and says the file cannot
+      // be opened. Given nothing, it resolves the extension itself.
+      result = await OpenFilex.open(
+        path,
+        type: isUnknownMime(mime) ? null : mime,
+      );
+    } catch (e) {
+      // Without this the tap did nothing at all: a throw inside an async
+      // handler goes to the zone, and the finger gets no answer either way.
+      DebugLog.instance.log('FILE', 'open failed for $path: $e');
+      if (context.mounted) showGlassToast(context, t.fileOpenFailed);
+      return;
+    }
     if (result.type == ResultType.done || !context.mounted) return;
+    DebugLog.instance
+        .log('FILE', 'open $path ($mime): ${result.type} ${result.message}');
 
     if (sharingRestricted) {
       // No offer to share instead: that is the one route this setting exists

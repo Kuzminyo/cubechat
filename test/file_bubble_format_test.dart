@@ -51,5 +51,38 @@ void main() {
         'application/pdf',
       );
     });
+
+    test('names the document formats people actually send', () {
+      // This is where the table's gaps were felt. A .docx announced as
+      // octet-stream matches no handler at all, so the phone reported that
+      // nothing could open a file every phone can open.
+      expect(
+        fileMimeType('резюме.docx'),
+        'application/vnd.openxmlformats-officedocument.wordprocessingml'
+        '.document',
+      );
+      expect(fileMimeType('конспект.doc'), 'application/msword');
+      expect(
+        fileMimeType('budget.xlsx'),
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(fileMimeType('notes.md'), 'text/markdown');
+      expect(fileMimeType('archive.rar'), 'application/vnd.rar');
+      expect(
+        fileMimeType('cubechat.apk'),
+        'application/vnd.android.package-archive',
+      );
+      expect(fileMimeType('clip.mkv'), 'video/x-matroska');
+    });
+
+    test('an extension we do not know still resolves to nothing', () {
+      // Nothing is the honest answer, and the caller turns it into "let the
+      // platform work it out" rather than into a type nothing can open.
+      expect(fileMimeType('weird.qqq'), 'application/octet-stream');
+      expect(isUnknownMime(fileMimeType('weird.qqq')), isTrue);
+      expect(isUnknownMime(fileMimeType('резюме.docx')), isFalse);
+      expect(isUnknownMime(null), isTrue);
+      expect(isUnknownMime(''), isTrue);
+    });
   });
 }
