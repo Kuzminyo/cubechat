@@ -106,29 +106,41 @@ class AvatarController extends Notifier<Uint8List?> {
 
   /// Side of the copy that goes to other people.
   ///
-  /// Sized from the largest place it is drawn, which is the contact profile's
-  /// hero circle: `width * 0.48` is ~173 pt on a 360 pt phone, and at 3x that
-  /// is 518 physical pixels. 128 was picked for a 44 px row and 320 still left
-  /// the big circle upscaling; 512 covers it.
-  static const int shareSize = 512;
+  /// Was 512, sized to exactly fill the contact profile's hero circle (~173 pt
+  /// at 3x = 518 physical pixels) and no more. That is the right size only if
+  /// the picture arrives intact, and it did not: 512 px had to be squeezed into
+  /// a 36 KB single frame, so a busy photo came out the far end of the quality
+  /// ladder at 50 and looked chewed. Oversampling at 1024 means the hero circle
+  /// is drawn from twice the pixels it needs and the quality ladder never has
+  /// to get desperate — which is the actual difference between a face and a
+  /// smear.
+  static const int shareSize = 1024;
 
   /// Sizes to fall back through when the picture will not fit [shareByteBudget]
   /// even at the lowest quality. A smaller sharp image beats a larger smeared
   /// one, and beats not arriving at all.
-  static const List<int> shareSizeLadder = [512, 384, 256];
+  static const List<int> shareSizeLadder = [1024, 768, 512];
 
-  /// Qualities to try at each size, best first.
-  static const List<int> shareQualityLadder = [82, 74, 66, 58, 50];
+  /// Qualities to try at each size, best first. Starts higher and stops well
+  /// short of the old floor of 50 — with [shareByteBudget] no longer a single
+  /// frame, there is no reason to trade this far down.
+  static const List<int> shareQualityLadder = [88, 82, 74, 66];
 
   /// Hard ceiling on the bytes we will *send*.
   ///
-  /// Not a matter of taste — it is what the BLE link-layer fragmenter can
-  /// carry. On a conservative 185-byte ATT MTU a frame splits into at most
-  /// 255 slices of 167 bytes = 42,585 bytes, and the envelope, SealedBox and
-  /// signature take ~192 of that. A frame above the limit cannot be split, so
-  /// it is not "slow", it is undeliverable. 36 KB leaves real margin under the
-  /// ~42.4 KB that arithmetic allows.
-  static const int shareByteBudget = 36864;
+  /// This used to be 36 KB, and the reason was the BLE link-layer fragmenter:
+  /// on a conservative 185-byte ATT MTU one frame splits into at most 255
+  /// slices of 167 bytes = 42,585 bytes, minus ~192 for envelope, SealedBox and
+  /// signature. A frame over that is not slow, it is unsplittable and therefore
+  /// undeliverable — so the avatar had to fit in one, and the picture was
+  /// whatever survived being squeezed into it.
+  ///
+  /// It no longer has to fit in one. Anything past [AvatarPayload.maxBytes]
+  /// goes out as a manifest plus chunks, exactly like a photo, which is a
+  /// transfer of any length and not a frame at all. This is now simply what is
+  /// reasonable to push across Bluetooth once per change of picture — the same
+  /// number a sent photo is held to.
+  static const int shareByteBudget = 192 * 1024;
 
   ({Uint8List jpeg, Uint8List hash})? _shareable;
 

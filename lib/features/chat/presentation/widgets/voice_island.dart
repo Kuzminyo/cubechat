@@ -150,8 +150,12 @@ class _VoicePanel extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The name on its own. "Voice message from Roma" spent most of
+                // a narrow capsule restating what the play button, the
+                // waveform and the timer already say, and then ellipsised the
+                // one word that was actually news.
                 Text(
-                  t.voicePlayingFrom(playback.chatTitle ?? ''),
+                  playback.chatTitle ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

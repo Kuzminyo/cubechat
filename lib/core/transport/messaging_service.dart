@@ -11,6 +11,7 @@ import 'package:hive/hive.dart';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/channels/models/channel.dart';
@@ -462,6 +463,13 @@ class MessagingService {
   Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
     final transport = _nostr;
     if (transport == null) return false;
+    // With every socket down there is nothing to try: publish would throw "no
+    // relay connected" for each peer in turn, and the caller falls through to
+    // store-and-forward either way. Asking first is not an optimisation — a
+    // phone with no internet ran the 45 s presence heartbeat against its whole
+    // roster and wrote two failure lines per peer per beacon, which is what
+    // buried the log.
+    if (_relayClient?.isConnected != true) return false;
     final npub =
         _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
     if (npub == null || npub.length != 32) {
@@ -588,6 +596,10 @@ class MessagingService {
   Future<void> _announceOverNostrTo(String npubHex, Uint8List peerPub) async {
     final transport = _nostr;
     if (transport == null) return;
+    // Same reason as [_sendOverNostr]: with no socket up this can only fail,
+    // and it is reached once per peer per beacon. Checked before the
+    // already-introduced set so an offline attempt doesn't mark the peer done.
+    if (_relayClient?.isConnected != true) return;
     if (!_announcedOverNostr.add(npubHex)) return;
     try {
       final sealed = await SealedBox.seal(
@@ -1368,7 +1380,11 @@ class MessagingService {
       }
       transfers.setStatus(transferId, FileTransferStatus.completed);
     } catch (e, st) {
-      DebugLog.instance.log('FILE', 'sendFile failed: $e');
+      // Named and measured, because "sendFile failed" on its own never
+      // identified *which* file — and the reports that matter are always "this
+      // one goes, those don't".
+      DebugLog.instance
+          .log('FILE', 'sendFile failed for "$safe" ($size B, $mime): $e');
       debugPrint('$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
       if (chatId != canonicalId) {
@@ -2335,6 +2351,151 @@ class MessagingService {
     return msg;
   }
 
+  /// Post a photo to a joined channel.
+  ///
+  /// Same two-part shape as the 1:1 photo — a manifest committing to the size,
+  /// mime and SHA-256, then the chunks — but sealed under the channel key and
+  /// broadcast instead of sealed to one recipient. There is no addressee to
+  /// derive a forward-secret media key with, and no route to fall back to per
+  /// peer: everyone in the room decrypts the same bytes off the same broadcast.
+  ///
+  /// Chunks are sized for the conservative MTU rather than a link's negotiated
+  /// one, because a broadcast has no single link to size against — the same
+  /// frame has to survive the narrowest hop in the room.
+  Future<Message> sendChannelImage(
+    String channelName, {
+    required Uint8List bytes,
+    required String mime,
+    String? cachedPath,
+    String? caption,
+  }) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    await _ref
+        .read(channelRosterControllerProvider.notifier)
+        .ensureSelf(channel.name, adminWhenFirst: true);
+
+    final imageId = ImageChunk.newImageId();
+    final caption0 = (caption?.trim().isEmpty ?? true) ? null : caption!.trim();
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: channel.name,
+      text: caption0 ?? mime,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.image,
+      imagePath: cachedPath,
+      imageMime: mime,
+      wireId: TransportEnvelope.hashHex(imageId),
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(channel.name, msg);
+
+    try {
+      final relayOnly = !_hasAnyLink;
+      final chunkData = _mediaChunkData(null,
+          relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
+      final total = (bytes.length + chunkData - 1) ~/ chunkData;
+      if (total < 1 || total > ImageChunk.maxChunks) {
+        throw StateError(
+          'image too large: $total chunks > ${ImageChunk.maxChunks} cap',
+        );
+      }
+      final sha = Uint8List.fromList((await Sha256().hash(bytes)).bytes);
+      final manifest = MediaManifest(
+        mediaId: imageId,
+        kind: MediaKind.image,
+        total: total,
+        mime: mime,
+        durationMs: 0,
+        caption: caption0,
+        sha256: sha,
+      );
+      var fanout = await _broadcastChannelFrame(
+        await _buildChannelFrame(
+          channel,
+          InnerPayloadType.mediaManifest,
+          manifest.encode(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+        ),
+      );
+      for (var i = 0; i < total; i++) {
+        final start = i * chunkData;
+        final end = (start + chunkData).clamp(0, bytes.length);
+        final chunk = ImageChunk(
+          imageId: imageId,
+          seq: i,
+          total: total,
+          mime: mime,
+          data: Uint8List.fromList(bytes.sublist(start, end)),
+        );
+        fanout = await _broadcastChannelFrame(
+          await _buildChannelFrame(
+            channel,
+            InnerPayloadType.imageChunk,
+            chunk.encode(),
+            TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+          ),
+        );
+        // Same pacing as the 1:1 photo path — see [sendImage].
+        if (i + 1 < total && !relayOnly) {
+          await Future<void>.delayed(const Duration(milliseconds: 15));
+        }
+      }
+      DebugLog.instance.log('CHAN',
+          'channel photo to ${channel.name}: $total chunks, fanout=$fanout');
+      messages.updateStatus(
+        channel.name,
+        msg.id,
+        fanout > 0 ? MessageStatus.delivered : MessageStatus.sending,
+      );
+      messages.updateRoute(
+        channel.name,
+        msg.id,
+        fanout > 0 ? MessageRoute.mesh : MessageRoute.queued,
+      );
+    } catch (e, st) {
+      debugPrint('sendChannelImage failed: $e\n$st');
+      messages.updateStatus(channel.name, msg.id, MessageStatus.failed);
+      rethrow;
+    }
+    return msg;
+  }
+
+  /// Set (or, with a null [jpeg], clear) the room's picture for everyone.
+  ///
+  /// Refused locally when we are not an admin. That check is a courtesy to the
+  /// person tapping — the one that matters runs on every receiver, against
+  /// their own roster, because our own copy of it is not evidence of anything.
+  Future<void> sendChannelAvatar(String channelName, Uint8List? jpeg) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only an admin can set the picture for $channelName');
+    }
+    final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
+    await avatars.loaded;
+    if (jpeg == null) {
+      await avatars.forget(channel.name);
+    } else if (!await avatars.store(channel.name, jpeg)) {
+      throw StateError('picture is too large for one frame');
+    }
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelAvatar,
+      jpeg == null ? Uint8List(0) : AvatarPayload(jpeg: jpeg).encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log('CHAN',
+        'channel picture for ${channel.name}: ${jpeg?.length ?? 0}B, fanout=$fanout');
+  }
+
   /// Publishes a signed poll to a joined channel.
   Future<Message> sendChannelPoll(
     String channelName,
@@ -2896,11 +3057,51 @@ class MessagingService {
               change.isAdmin,
             );
           }
-        case InnerPayloadType.channelInvite:
+
+        case InnerPayloadType.channelAvatar:
+          // The authorisation, and the only one that counts: the frame's
+          // signature says who sent it, and our own roster says whether they
+          // are allowed to change what the room looks like.
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
+            DebugLog.instance.log('CHAN',
+                'drop ${channel.name} picture: $reactorId is not an admin');
+            break;
+          }
+          final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
+          await avatars.loaded;
+          if (unpacked.body.isEmpty) {
+            await avatars.forget(channel.name);
+          } else {
+            await avatars.store(
+              channel.name,
+              AvatarPayload.decode(unpacked.body).jpeg,
+            );
+          }
+        // Photos in a room. The manifest commits to the byte count and the
+        // SHA-256, and it arrived inside a frame the channel signature already
+        // authenticated — so unlike the 1:1 path there is no second signature
+        // to check here, and unlike it there is no addressee: everyone holding
+        // the key reassembles the same picture.
+        case InnerPayloadType.mediaManifest:
+          await _ingestChannelManifest(
+            channel: channel,
+            authorName: authorName,
+            authorId: reactorId,
+            manifestBytes: unpacked.body,
+          );
+
         case InnerPayloadType.imageChunk:
+          await _ingestImageChunk(
+            peerId: channel.name,
+            senderPub: null,
+            chunkBytes: unpacked.body,
+          );
+
+        case InnerPayloadType.channelInvite:
         case InnerPayloadType.audioChunk:
         case InnerPayloadType.fileChunk:
-        case InnerPayloadType.mediaManifest:
         case InnerPayloadType.presence:
         case InnerPayloadType.avatarRequest:
         case InnerPayloadType.avatar:
@@ -3625,6 +3826,12 @@ class MessagingService {
             wasSigned: verifiedSenderEdPub != null,
             manifestBytes: unpacked.body,
           );
+
+        case InnerPayloadType.channelAvatar:
+          // A room's picture is a broadcast to its members, and only the
+          // channel path knows which room a frame belongs to. Arriving on a 1:1
+          // link it names no channel at all, so there is nothing to apply it to.
+          break;
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
@@ -3676,6 +3883,50 @@ class MessagingService {
     );
   }
 
+  /// File a channel photo's manifest so the chunks behind it have something to
+  /// be checked against.
+  ///
+  /// Shares [_pendingManifests] and the image reassembler with the 1:1 path —
+  /// both are keyed by the sender's media id, which is unique per transfer
+  /// whichever way it travelled. What differs is the destination recorded on
+  /// the entry: a room rather than a peer, plus the author, since a broadcast
+  /// carries no addressee to look one up by.
+  ///
+  /// Only images. Voice notes and files in a room are a bigger question — every
+  /// member relays every chunk, so a 25 MB attachment is 25 MB across each link
+  /// in the mesh — and a manifest claiming another kind is dropped rather than
+  /// half-handled.
+  Future<void> _ingestChannelManifest({
+    required Channel channel,
+    required String authorName,
+    required String authorId,
+    required Uint8List manifestBytes,
+  }) async {
+    final MediaManifest manifest;
+    try {
+      manifest = MediaManifest.decode(manifestBytes);
+    } catch (e) {
+      DebugLog.instance
+          .log('CHAN', 'drop ${channel.name} manifest: malformed ($e)');
+      return;
+    }
+    if (manifest.kind != MediaKind.image) {
+      DebugLog.instance.log('CHAN',
+          'drop ${channel.name} manifest: ${manifest.kind.name} not carried in channels');
+      return;
+    }
+    _gcMediaBuffers();
+    _pendingManifests[_hexOf(manifest.mediaId)] = _ManifestEntry(
+      manifest: manifest,
+      arrivedAt: DateTime.now(),
+      peerId: channel.name,
+      senderPub: null,
+      channel: channel,
+      authorName: authorName,
+      authorId: authorId,
+    );
+  }
+
   /// Drop one image chunk into the reassembly buffer. Once the last chunk
   /// for an imageId lands, the bytes are written to the cache directory
   /// and we append a kind=image Message to the chat.
@@ -3699,7 +3950,10 @@ class MessagingService {
           'IMG', 'drop image chunk from $peerId: no signed manifest for $key');
       return;
     }
-    if (pending.manifest.kind != MediaKind.image ||
+    // An avatar rides in [ImageChunk] bodies too — the manifest is the only
+    // thing that says which of the two this is.
+    final kind = pending.manifest.kind;
+    if ((kind != MediaKind.image && kind != MediaKind.avatar) ||
         pending.manifest.total != chunk.total ||
         pending.manifest.mime != chunk.mime) {
       DebugLog.instance.log('IMG',
@@ -3711,7 +3965,7 @@ class MessagingService {
     await _finalizeMedia(
       peerId: peerId,
       senderPub: senderPub,
-      kind: MediaKind.image,
+      kind: kind,
       mediaId: done.imageId,
       bytes: done.bytes,
       mime: done.mime,
@@ -4019,6 +4273,9 @@ class MessagingService {
       senderPub: pending.senderPub,
       manifest: pending.manifest,
       bytes: bytes,
+      channel: pending.channel,
+      authorName: pending.authorName,
+      authorId: pending.authorId,
     );
   }
 
@@ -4027,6 +4284,9 @@ class MessagingService {
     required Uint8List? senderPub,
     required MediaManifest manifest,
     required Uint8List bytes,
+    Channel? channel,
+    String? authorName,
+    String? authorId,
   }) async {
     final digest = await Sha256().hash(bytes);
     final actual = Uint8List.fromList(digest.bytes);
@@ -4045,6 +4305,17 @@ class MessagingService {
     try {
       final Message message;
       switch (manifest.kind) {
+        case MediaKind.avatar:
+          // Not a message: it is the sender's face, and it still has to match
+          // what their signed announcement committed to before it becomes that.
+          if (senderPub == null) {
+            DebugLog.instance
+                .log('AVATAR', 'drop chunked avatar: sender key unknown');
+            return;
+          }
+          await _ingestAvatarBytes(_hexOf(senderPub), bytes);
+          return;
+
         case MediaKind.file:
           // Files never reach here: they complete inside the disk reassembler
           // and go out through [_emitFile], which hashes by streaming instead
@@ -4074,6 +4345,8 @@ class MessagingService {
             // can deliver this photo — the handle that keeps a re-delivered
             // manifest from adding a second copy to the chat.
             wireId: TransportEnvelope.hashHex(manifest.mediaId),
+            authorName: authorName,
+            authorId: authorId,
           );
 
         case MediaKind.audio:
@@ -4094,6 +4367,21 @@ class MessagingService {
             audioDurationMs: manifest.durationMs,
             wireId: TransportEnvelope.hashHex(manifest.mediaId),
           );
+      }
+      // A channel photo has no 1:1 session to fan out to and no peer key to
+      // canonicalise under — the room name *is* the bucket. It does still want
+      // the same banner a channel text message raises.
+      if (channel != null) {
+        if (_ref
+            .read(messagesControllerProvider.notifier)
+            .append(channel.name, message)) {
+          _notifyChannel(
+            channel: channel,
+            authorName: authorName ?? '',
+            message: message,
+          );
+        }
+        return;
       }
       _appendToAllSessionsForSamePeer(senderPub,
           fallbackPeerId: peerId, message: message);
@@ -4310,14 +4598,22 @@ class MessagingService {
     DebugLog.instance.log('AVATAR', 'asked ${pubkeyHex.substring(0, 8)}');
   }
 
-  /// Answer someone's [InnerPayloadType.avatarRequest] with our thumbnail.
+  /// Answer someone's [InnerPayloadType.avatarRequest] with our picture.
   /// Silent when we have no picture — the announcement already said so, and a
   /// reply saying it again would only cost airtime.
+  ///
+  /// A thumbnail small enough to survive fragmentation still goes as one
+  /// [AvatarPayload] frame, which is one write and understood by every build.
+  /// Anything larger is chunked like a photo — see [MediaKind.avatar].
   Future<void> _sendAvatarTo(String pubkeyHex) async {
     final share = await _ref.read(avatarProvider.notifier).shareable();
     if (share == null) return;
     final peerPub = _resolvePeerPub(pubkeyHex);
     if (peerPub == null) return;
+    if (share.jpeg.length > AvatarPayload.maxBytes) {
+      await _sendAvatarChunked(pubkeyHex, peerPub, share.jpeg);
+      return;
+    }
     await _sendControlToPeer(
       canonicalId: pubkeyHex,
       peerPub: peerPub,
@@ -4327,6 +4623,70 @@ class MessagingService {
     DebugLog.instance.log(
       'AVATAR',
       'sent ${share.jpeg.length}B to ${pubkeyHex.substring(0, 8)}',
+    );
+  }
+
+  /// Ship a full-size avatar as a signed manifest followed by image chunks.
+  ///
+  /// Deliberately the *same* machinery a photo uses — [ImageChunk] bodies, the
+  /// same reassembler, the same SHA-256 commitment — with only the manifest's
+  /// kind saying where the finished bytes belong. Nothing here needed inventing
+  /// except somewhere to put the result.
+  Future<void> _sendAvatarChunked(
+    String pubkeyHex,
+    Uint8List peerPub,
+    Uint8List jpeg,
+  ) async {
+    const mime = 'image/jpeg';
+    final avatarId = ImageChunk.newImageId();
+    final session = _findSessionByPubkeyHex(pubkeyHex);
+    final direct = session?.peerId == null ? null : _clients[session!.peerId];
+    final relayOnly = !_hasAnyLink;
+    final chunkData = _mediaChunkData(direct,
+        relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
+    final total = (jpeg.length + chunkData - 1) ~/ chunkData;
+    if (total < 1 || total > ImageChunk.maxChunks) {
+      DebugLog.instance
+          .log('AVATAR', 'not sending to $pubkeyHex: $total chunks is too many');
+      return;
+    }
+    final manifest = MediaManifest(
+      mediaId: avatarId,
+      kind: MediaKind.avatar,
+      total: total,
+      mime: mime,
+      durationMs: 0,
+      sha256: Uint8List.fromList((await Sha256().hash(jpeg)).bytes),
+    );
+    await _sendControlToPeer(
+      canonicalId: pubkeyHex,
+      peerPub: peerPub,
+      type: InnerPayloadType.mediaManifest,
+      innerBody: manifest.encode(),
+    );
+    for (var i = 0; i < total; i++) {
+      final start = i * chunkData;
+      final end = (start + chunkData).clamp(0, jpeg.length);
+      await _sendControlToPeer(
+        canonicalId: pubkeyHex,
+        peerPub: peerPub,
+        type: InnerPayloadType.imageChunk,
+        innerBody: ImageChunk(
+          imageId: avatarId,
+          seq: i,
+          total: total,
+          mime: mime,
+          data: Uint8List.fromList(jpeg.sublist(start, end)),
+        ).encode(),
+      );
+      // Same pacing as every other chunked media path — see [sendImage].
+      if (i + 1 < total && !relayOnly) {
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+      }
+    }
+    DebugLog.instance.log(
+      'AVATAR',
+      'sent ${jpeg.length}B in $total chunks to ${pubkeyHex.substring(0, 8)}',
     );
   }
 
@@ -4344,6 +4704,11 @@ class MessagingService {
       DebugLog.instance.log('AVATAR', 'drop from $pubkeyHex: $e');
       return;
     }
+    await _ingestAvatarBytes(pubkeyHex, payload.jpeg);
+  }
+
+  /// The check itself, shared by the one-frame and the chunked arrival.
+  Future<void> _ingestAvatarBytes(String pubkeyHex, Uint8List jpeg) async {
     final expected =
         _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
     if (expected == null) {
@@ -4353,11 +4718,11 @@ class MessagingService {
     }
     final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
     await avatars.loaded;
-    final ok = await avatars.store(pubkeyHex, payload.jpeg, expected);
+    final ok = await avatars.store(pubkeyHex, jpeg, expected);
     DebugLog.instance.log(
       'AVATAR',
       ok
-          ? 'stored ${payload.jpeg.length}B from ${pubkeyHex.substring(0, 8)}'
+          ? 'stored ${jpeg.length}B from ${pubkeyHex.substring(0, 8)}'
           : 'drop from $pubkeyHex: does not match the announced digest',
     );
   }
@@ -4879,6 +5244,10 @@ class MessagingService {
     required bool online,
     required DateTime now,
   }) async {
+    // The beacon is relay-only, so with no socket up the whole fan-out is ten
+    // peers of guaranteed failure spaced by [relayFanoutPacing] — a second of
+    // wakeful work every 45 s on exactly the phone that has no internet.
+    if (_relayClient?.isConnected != true) return;
     final peers = _ref
         .read(knownPeersControllerProvider)
         .values
@@ -5518,6 +5887,11 @@ class MessagingService {
 
   // -------------------- peripheral event hookup --------------------
 
+  /// One line per second of inbound fragments instead of one per fragment. A
+  /// single photo is hundreds of writes, and at 200 lines of ring buffer that
+  /// was the whole log.
+  final _peripheralWriteMeter = TrafficMeter('BLE-PERIPH', 'write from');
+
   void _wirePeripheralEvents() {
     final peripheral = _ref.read(blePeripheralProvider);
     // SOLE subscriber to peripheral.events() — see comment on PeripheralController
@@ -5534,8 +5908,7 @@ class MessagingService {
             .read(peripheralControllerProvider.notifier)
             .onCentralConnected(event.centralId);
       } else if (event is PeripheralWrite) {
-        DebugLog.instance.log('BLE-PERIPH',
-            'write from ${event.centralId} (${event.data.length}B)');
+        _peripheralWriteMeter.add(event.centralId, event.data.length);
         // A central has written to our outbound characteristic — treat it as
         // an inbound frame for the responder side. Goes through
         // _handleInboundBytes (not _handleFrame) so a frame the peer had to
@@ -5657,11 +6030,25 @@ class _ManifestEntry {
     required this.arrivedAt,
     required this.peerId,
     required this.senderPub,
+    this.channel,
+    this.authorName,
+    this.authorId,
   });
   final MediaManifest manifest;
   final DateTime arrivedAt;
+
+  /// The chat the finished media belongs in: a peer's pubkey hex, or a
+  /// `#channel` name when [channel] is set.
   final String peerId;
   final Uint8List? senderPub;
+
+  /// Set when the photo arrived over a channel broadcast rather than a 1:1
+  /// link. There is no single sender to attribute it to by key, so the author
+  /// travels alongside instead — the same pair every other channel message
+  /// carries.
+  final Channel? channel;
+  final String? authorName;
+  final String? authorId;
 }
 
 /// Assembled bytes whose manifest hasn't landed yet. We stash the file

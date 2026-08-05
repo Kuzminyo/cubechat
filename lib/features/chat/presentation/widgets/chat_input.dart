@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
@@ -399,6 +400,18 @@ class _AttachButton extends StatelessWidget {
 const double _voiceLockTravel = 56;
 const double _voiceCancelTravel = 88;
 
+/// How long the mic has to be held before recording arms.
+///
+/// Flutter's stock long press is 500 ms, and a press-to-talk button that
+/// ignores the first half-second does not feel like it is listening — you hold,
+/// nothing happens, you hold harder. Telegram arms as good as immediately.
+///
+/// Not zero, because the mic still has to be a *held* gesture: at 0 a stray tap
+/// while scrolling the composer would start recording, and the button has to
+/// lose the arena to the scroll gesture it sits inside. 90 ms is under the
+/// threshold where a delay is felt at all and still long enough to be a hold.
+const Duration _voiceArmDelay = Duration(milliseconds: 90);
+
 /// Press-and-hold voice record button, with the two escapes a held button
 /// needs: slide up to keep recording without holding, slide left to bin it.
 ///
@@ -437,21 +450,34 @@ class _VoiceButton extends StatelessWidget {
         child: _circle(context, icon: Icons.send_rounded, filled: true),
       );
     }
-    return GestureDetector(
-      onLongPressStart: (_) => onStart(),
-      onLongPressEnd: (_) => onStop(),
-      onLongPressCancel: onCancel,
-      onLongPressMoveUpdate: (d) {
-        if (!active) return;
-        final offset = d.localOffsetFromOrigin;
-        // Cancel wins a diagonal: a drag that reaches both thresholds was more
-        // likely aimed at the bin than at the lock, and the safe reading of an
-        // ambiguous gesture is the one that doesn't send.
-        if (offset.dx <= -_voiceCancelTravel) {
-          onCancel();
-        } else if (offset.dy <= -_voiceLockTravel) {
-          onLock();
-        }
+    // Raw recogniser rather than [GestureDetector] purely so the hold can be
+    // armed at [_voiceArmDelay] instead of the stock half second — everything
+    // else is the same long-press gesture.
+    return RawGestureDetector(
+      gestures: {
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(duration: _voiceArmDelay),
+          (recognizer) {
+            recognizer
+              ..onLongPressStart = ((_) => onStart())
+              ..onLongPressEnd = ((_) => onStop())
+              ..onLongPressCancel = onCancel
+              ..onLongPressMoveUpdate = (LongPressMoveUpdateDetails d) {
+                if (!active) return;
+                final offset = d.localOffsetFromOrigin;
+                // Cancel wins a diagonal: a drag that reaches both thresholds
+                // was more likely aimed at the bin than at the lock, and the
+                // safe reading of an ambiguous gesture is the one that doesn't
+                // send.
+                if (offset.dx <= -_voiceCancelTravel) {
+                  onCancel();
+                } else if (offset.dy <= -_voiceLockTravel) {
+                  onLock();
+                }
+              };
+          },
+        ),
       },
       child: _circle(context, icon: Icons.mic, filled: active),
     );

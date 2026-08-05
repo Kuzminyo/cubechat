@@ -672,6 +672,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.';
 
   @override
+  String get voiceHoldHint => 'Hold to record a voice message';
+
+  @override
   String get voiceTrimPlay => 'Play';
 
   @override
@@ -933,6 +936,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileNoLinks => 'No links yet';
 
   @override
+  String get contactProfilePolls => 'Polls';
+
+  @override
+  String get contactProfileNoPolls => 'No polls yet';
+
+  @override
   String get presenceHidden => 'status hidden';
 
   @override
@@ -1173,6 +1182,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Participants will appear after signed activity';
 
   @override
+  String get channelSharedContent => 'Media, files and polls';
+
+  @override
+  String get channelAvatarAdminOnly =>
+      'Only an administrator can change the channel photo';
+
+  @override
+  String get channelAvatarTooLarge => 'That photo is too large to broadcast';
+
+  @override
+  String get channelMemberUnknown => 'Not in your contacts yet';
+
+  @override
   String get channelPollTitle => 'Poll';
 
   @override
@@ -1289,11 +1311,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatPause => 'Pause';
-
-  @override
-  String voicePlayingFrom(String name) {
-    return 'Voice from $name';
-  }
 
   @override
   String get profileTheme => 'Colour';

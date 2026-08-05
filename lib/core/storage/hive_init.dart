@@ -27,6 +27,12 @@ abstract final class HiveBoxes {
   /// JPEG per contact would ride along with each of those.
   static const peerAvatars = 'cubechat.peer_avatars';
 
+  /// Channel pictures, keyed by channel name. Separate from [channels] for the
+  /// same reason [peerAvatars] is separate from [knownPeers]: that box holds
+  /// the room key and is read and rewritten far more often than a picture
+  /// changes.
+  static const channelAvatars = 'cubechat.channel_avatars';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -35,6 +41,7 @@ abstract final class HiveBoxes {
     channels,
     prekeys,
     peerAvatars,
+    channelAvatars,
   ];
 }
 

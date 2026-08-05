@@ -47,12 +47,21 @@ class PeerAvatarsController extends Notifier<Map<String, Uint8List>> {
   /// handed over by a relay, but the hash they must match cannot be forged
   /// without the peer's Ed25519 key. Returns false when they don't match, so
   /// the caller can log a substitution attempt rather than cache it.
+  /// Ceiling on a cached picture.
+  ///
+  /// Not [AvatarPayload.maxBytes] — that is the limit on what fits a *single*
+  /// frame, and a full-size avatar arrives chunked precisely because it does
+  /// not. This is the limit on what we are willing to keep, and it matches what
+  /// the sender is willing to send ([AvatarController.shareByteBudget]) with
+  /// room for a peer whose encoder settled a little higher than ours.
+  static const int maxStoredBytes = 256 * 1024;
+
   Future<bool> store(
     String pubkeyHex,
     Uint8List jpeg,
     Uint8List expectedHash,
   ) async {
-    if (jpeg.isEmpty || jpeg.length > AvatarPayload.maxBytes) return false;
+    if (jpeg.isEmpty || jpeg.length > maxStoredBytes) return false;
     if (!_sameBytes(await _digest(jpeg), expectedHash)) return false;
     state = {...state, pubkeyHex: jpeg};
     await _persist(pubkeyHex, jpeg);

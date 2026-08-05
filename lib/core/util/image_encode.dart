@@ -51,3 +51,49 @@ Uint8List? _encodeBytesForMesh(Uint8List src) {
   }
   return smallest;
 }
+
+/// Square-crop and re-encode a picture small enough to be broadcast in one
+/// frame, for a channel's photo.
+///
+/// A room's picture cannot be requested the way a person's can — there is no
+/// single member to ask — so it is broadcast, and a broadcast has to fit one
+/// unfragmentable frame. That caps it near 40 KB, which is why this ladder
+/// bottoms out far below [encodeBytesForMesh]'s. Returns null when even the
+/// smallest rung overshoots [maxBytes], so the caller can say so rather than
+/// send something that will never arrive.
+Future<Uint8List?> encodeChannelAvatar(Uint8List src, {required int maxBytes}) =>
+    compute(
+      (({Uint8List src, int maxBytes}) args) =>
+          _encodeChannelAvatar(args.src, args.maxBytes),
+      (src: src, maxBytes: maxBytes),
+    );
+
+Uint8List? _encodeChannelAvatar(Uint8List src, int maxBytes) {
+  final decoded = img.decodeImage(src);
+  if (decoded == null) return src.length <= maxBytes ? src : null;
+
+  final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+  final square = img.copyCrop(
+    decoded,
+    x: (decoded.width - side) ~/ 2,
+    y: (decoded.height - side) ~/ 2,
+    width: side,
+    height: side,
+  );
+
+  const rungs = <({int size, int quality})>[
+    (size: 512, quality: 82),
+    (size: 512, quality: 70),
+    (size: 384, quality: 70),
+    (size: 256, quality: 65),
+  ];
+  for (final rung in rungs) {
+    final resized = square.width > rung.size
+        ? img.copyResize(square, width: rung.size, height: rung.size)
+        : square;
+    final bytes =
+        Uint8List.fromList(img.encodeJpg(resized, quality: rung.quality));
+    if (bytes.length <= maxBytes) return bytes;
+  }
+  return null;
+}

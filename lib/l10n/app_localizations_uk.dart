@@ -674,6 +674,9 @@ class AppLocalizationsUk extends AppLocalizations {
       'Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім\'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв\'язними. Новим людям тоді потрібна картка контакту.';
 
   @override
+  String get voiceHoldHint => 'Утримуйте, щоб записати голосове';
+
+  @override
   String get voiceTrimPlay => 'Відтворити';
 
   @override
@@ -937,6 +940,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileNoLinks => 'Посилань ще немає';
 
   @override
+  String get contactProfilePolls => 'Опитування';
+
+  @override
+  String get contactProfileNoPolls => 'Опитувань ще немає';
+
+  @override
   String get presenceHidden => 'статус приховано';
 
   @override
@@ -1179,6 +1188,19 @@ class AppLocalizationsUk extends AppLocalizations {
       'Учасники з’являться після підписаної активності';
 
   @override
+  String get channelSharedContent => 'Медіа, файли та опитування';
+
+  @override
+  String get channelAvatarAdminOnly =>
+      'Змінювати фото каналу може лише адміністратор';
+
+  @override
+  String get channelAvatarTooLarge => 'Це фото завелике для розсилки';
+
+  @override
+  String get channelMemberUnknown => 'Ще не у ваших контактах';
+
+  @override
   String get channelPollTitle => 'Опитування';
 
   @override
@@ -1298,11 +1320,6 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatPause => 'Пауза';
-
-  @override
-  String voicePlayingFrom(String name) {
-    return 'Голосове від $name';
-  }
 
   @override
   String get profileTheme => 'Колір';

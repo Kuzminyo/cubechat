@@ -43,10 +43,19 @@ class MediaPreviewResult {
 /// photo, as the old single-pick path did, made sending one picture a
 /// three-screen errand.
 class MediaPreviewScreen extends StatefulWidget {
-  const MediaPreviewScreen({super.key, required this.items});
+  const MediaPreviewScreen({
+    super.key,
+    required this.items,
+    this.allowOriginal = true,
+  });
 
   /// Full-size bytes for each picked photo, in the order they were chosen.
   final List<Uint8List> items;
+
+  /// False in a channel: "send original" goes out through the file transport,
+  /// which a room does not carry. The toggle is hidden rather than shown and
+  /// refused.
+  final bool allowOriginal;
 
   @override
   State<MediaPreviewScreen> createState() => _MediaPreviewScreenState();
@@ -148,11 +157,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (!_asFile)
                   _RoundAction(icon: Icons.brush_outlined, onTap: _edit),
                 if (!_asFile) const SizedBox(width: 8),
-                _OriginalToggle(
-                  label: t.mediaSendOriginal,
-                  active: _asFile,
-                  onTap: () => setState(() => _asFile = !_asFile),
-                ),
+                if (widget.allowOriginal)
+                  _OriginalToggle(
+                    label: t.mediaSendOriginal,
+                    active: _asFile,
+                    onTap: () => setState(() => _asFile = !_asFile),
+                  ),
               ],
             ),
           ),

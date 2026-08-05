@@ -39,7 +39,10 @@ class MediaPickerAssets extends MediaPickerResult {
 /// cell. Returns a [MediaPickerResult] — either the camera request or the
 /// chosen [AssetEntity]s (which the caller downscales + sends).
 class MediaPickerSheet extends StatefulWidget {
-  const MediaPickerSheet({super.key});
+  const MediaPickerSheet({super.key, this.allowFiles = true});
+
+  /// See [AttachIsland.allowFiles] — a channel takes photos but not documents.
+  final bool allowFiles;
 
   @override
   State<MediaPickerSheet> createState() => _MediaPickerSheetState();
@@ -217,6 +220,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
           _sendBar(),
           AttachIsland(
             bare: true,
+            allowFiles: widget.allowFiles,
             selected: AttachChoice.gallery,
             onPick: (choice) => switch (choice) {
               AttachChoice.gallery => null,

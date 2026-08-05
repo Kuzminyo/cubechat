@@ -31,6 +31,9 @@ class BleGattClient {
   final _frames = StreamController<Uint8List>.broadcast();
   final _connection = StreamController<BluetoothConnectionState>.broadcast();
 
+  /// Per-link, so two peers pushing media at once are still counted apart.
+  final _notifyMeter = TrafficMeter('BLE-CENTRAL', 'inbound notify');
+
   bool _running = false;
   int _negotiatedMtu = 23;
 
@@ -186,7 +189,7 @@ class BleGattClient {
         'setNotifyValue returned $subscribed (true means CCCD write acked)');
     _inboundSub = _inbound!.onValueReceived.listen((bytes) {
       if (bytes.isEmpty) return;
-      DebugLog.instance.log('BLE-CENTRAL', 'inbound notify (${bytes.length}B)');
+      _notifyMeter.add('', bytes.length);
       _frames.add(Uint8List.fromList(bytes));
     });
     DebugLog.instance.log('BLE-CENTRAL', 'ready');
@@ -235,20 +238,44 @@ class BleGattClient {
     return next;
   }
 
+  /// Writes a single fragment, unacknowledged when the peer allows it.
+  ///
+  /// This is the whole reason sending *from* the central was five times slower
+  /// than sending from the peripheral. An acknowledged ATT write is a request
+  /// and a response: one fragment per connection event at best, and in the
+  /// field about one per 90 ms — roughly 2.6 KB/s, which is where "a photo
+  /// takes over a minute from Android but three seconds from iPhone" came from.
+  /// iOS was never faster; it just happened to be the peripheral, and a notify
+  /// is unacknowledged, so several fit in one connection event.
+  ///
+  /// Write-without-response is what the outbound characteristic was declared
+  /// for on both platforms (`PROPERTY_WRITE_NO_RESPONSE` /
+  /// `.writeWithoutResponse`) — the client simply never asked for it. Nothing
+  /// is lost by dropping the ATT ack: the link layer still retransmits until
+  /// the peer's controller acknowledges at its own level, and flutter_blue_plus
+  /// keeps the flow control (Android waits on `onCharacteristicWrite`, iOS on
+  /// `peripheralIsReadyToSendWriteWithoutResponse`), so this does not outrun
+  /// the radio. Frames are already sized to one MTU by the fragmenter, which is
+  /// the one hard requirement — an unacknowledged write cannot be a long write.
+  ///
+  /// Falls back to the acknowledged form for a peer that doesn't offer it (an
+  /// older build), and retries there once on failure.
+  ///
+  /// Verbose per-write logging gets buried under chunked media (an image is
+  /// hundreds of writes) and washes more useful debug logs out of the in-memory
+  /// ring buffer. Log only on failure — success is implied by absence of a
+  /// FAILED line.
   static Future<void> _writeWithRetry(
     BluetoothCharacteristic ch,
     Uint8List bytes,
   ) async {
-    // Verbose per-write logging gets buried under chunked media (an image
-    // is hundreds of writes, a video circle thousands) and washes more
-    // useful debug logs out of the in-memory ring buffer. Log only on
-    // failure — success is implied by absence of a FAILED line.
+    final unacked = ch.properties.writeWithoutResponse;
     try {
-      await ch.write(bytes, withoutResponse: false);
+      await ch.write(bytes, withoutResponse: unacked);
       return;
     } catch (e) {
       DebugLog.instance.log('BLE-CENTRAL',
-          'write ${bytes.length}B FAILED ($e) — retrying once');
+          'write ${bytes.length}B FAILED ($e) — retrying acknowledged');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       try {
         await ch.write(bytes, withoutResponse: false);

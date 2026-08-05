@@ -97,7 +97,17 @@ enum InnerPayloadType {
   channelPoll(0xF0),
 
   /// Signed administrator role change inside a channel.
-  channelAdmin(0xF1);
+  channelAdmin(0xF1),
+
+  /// The room's picture, set by an admin and broadcast to every member. Body is
+  /// an [AvatarPayload], or empty to clear it.
+  ///
+  /// Broadcast rather than requested, unlike a peer avatar: there is nobody in
+  /// particular to ask, and a room has no signed announcement to commit a
+  /// digest in. What authorises it is the channel frame's own signature —
+  /// the receiver only accepts one from a member its roster already lists as an
+  /// admin, so this cannot be a way to become one.
+  channelAvatar(0xF2);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -666,7 +676,22 @@ enum MediaKind {
   /// predates file transfer throws on the unknown byte in [MediaKind.fromByte]
   /// and drops the manifest, which is exactly the wanted failure — a clean
   /// rejection rather than an attempt to render a PDF as a photo.
-  file(0x50);
+  file(0x50),
+
+  /// The sender's profile picture, carried by [ImageChunk] like a photo but
+  /// filed as their avatar instead of appearing in the conversation.
+  ///
+  /// [AvatarPayload] carries one in a single frame and always will, but a
+  /// single frame is capped at what the BLE fragmenter can split — about 40 KB
+  /// — and 40 KB is a 512 px thumbnail that visibly falls apart the moment it
+  /// is drawn any larger than a row. Chunking is the only way past that
+  /// ceiling, and the manifest is what lets the receiver check the assembled
+  /// bytes before they become somebody's face.
+  ///
+  /// Same forward-compatibility story as [file]: an older build throws on the
+  /// tag, drops the manifest, then drops the chunks for want of one, and falls
+  /// back to the identity gradient rather than showing something wrong.
+  avatar(0x60);
 
   const MediaKind(this.tag);
   final int tag;

@@ -15,7 +15,7 @@ import 'core/util/debug_log.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-04-avatar-crop';
+const String _buildStamp = '2026-08-05-voice-sender-name';
 
 /// Ask Android for the panel's real refresh rate.
 ///

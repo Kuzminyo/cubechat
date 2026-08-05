@@ -279,6 +279,7 @@
   "profileDiscoverableOnHint": "Anyone in range can find you",
   "profileDiscoverableOffHint": "Only your contacts can reach you",
   "profileDiscoverableExplainer": "On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.",
+  "voiceHoldHint": "Hold to record a voice message",
   "voiceTrimPlay": "Play",
   "voiceTrimPause": "Pause",
   "voiceTrimDiscard": "Discard recording",
@@ -411,6 +412,8 @@
   "contactProfileNoFiles": "No files yet",
   "contactProfileLinks": "Links",
   "contactProfileNoLinks": "No links yet",
+  "contactProfilePolls": "Polls",
+  "contactProfileNoPolls": "No polls yet",
   "presenceHidden": "status hidden",
   "chatReadByCount": "{count, plural, one{Read by {count}} other{Read by {count}}}",
   "@chatReadByCount": {
@@ -511,6 +514,10 @@
   "channelMakeAdmin": "Make administrator",
   "channelRemoveAdmin": "Remove administrator",
   "channelNoParticipants": "Participants will appear after signed activity",
+  "channelSharedContent": "Media, files and polls",
+  "channelAvatarAdminOnly": "Only an administrator can change the channel photo",
+  "channelAvatarTooLarge": "That photo is too large to broadcast",
+  "channelMemberUnknown": "Not in your contacts yet",
   "channelPollTitle": "Poll",
   "channelCreatePoll": "Create poll",
   "channelPollQuestion": "Question",
@@ -566,14 +573,6 @@
   "profileSummaryCardBackup": "Contact card, files, backup",
   "chatPlay": "Play",
   "chatPause": "Pause",
-  "voicePlayingFrom": "Voice from {name}",
-  "@voicePlayingFrom": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
   "profileTheme": "Colour",
   "profileThemeEmerald": "Emerald",
   "profileThemeIndigo": "Indigo",

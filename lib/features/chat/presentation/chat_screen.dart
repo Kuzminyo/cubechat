@@ -19,17 +19,16 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/floating_glass.dart';
-import '../../../core/widgets/identity_avatar.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../channels/presentation/channel_invite_sheet.dart';
 import '../../channels/presentation/channel_poll_composer.dart';
-import '../../qr/data/channel_qr_payload.dart';
-import '../../qr/presentation/qr_display.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -429,7 +428,10 @@ class ChatScreen extends ConsumerWidget {
                 // in a notebook, so it stays.
                 if (joined && !saved)
                   _PillIconButton(
-                    icon: Icons.poll_outlined,
+                    // A ballot box, not a bar chart. The old icon read as
+                    // "statistics" — something to look at — where this is the
+                    // button that starts a vote.
+                    icon: Icons.how_to_vote_outlined,
                     color: AppColors.brandSecondary,
                     tooltip: t.channelCreatePoll,
                     onPressed: () =>
@@ -440,187 +442,12 @@ class ChatScreen extends ConsumerWidget {
                     icon: Icons.person_add_alt_1_outlined,
                     color: AppColors.brandPrimary,
                     tooltip: t.channelInviteTitle,
-                    onPressed: () => showGlassSheet<void>(
-                      context: context,
-                      builder: (_) =>
-                          _ChannelInviteSheet(channelName: peerId),
-                    ),
+                    onPressed: () => showChannelInviteSheet(context, peerId),
                   ),
               ],
             ),
           ),
         ));
-  }
-}
-
-/// Peer picker for channel invitations. Each selected peer is handed the
-/// channel key over their own 1:1 encrypted link, so there is no group
-/// membership list to maintain — holding the key *is* membership.
-class _ChannelInviteSheet extends ConsumerStatefulWidget {
-  const _ChannelInviteSheet({required this.channelName});
-
-  final String channelName;
-
-  @override
-  ConsumerState<_ChannelInviteSheet> createState() =>
-      _ChannelInviteSheetState();
-}
-
-class _ChannelInviteSheetState extends ConsumerState<_ChannelInviteSheet> {
-  final _selected = <String>{};
-  bool _sending = false;
-
-  Future<void> _invite() async {
-    if (_selected.isEmpty || _sending) return;
-    setState(() => _sending = true);
-
-    // Grab everything context-bound before the first await — the sheet is
-    // popped below, which invalidates its own context.
-    final t = AppLocalizations.of(context);
-    final navigator = Navigator.of(context);
-    final messaging = ref.read(messagingServiceProvider);
-
-    var delivered = 0;
-    for (final pubkeyHex in _selected) {
-      try {
-        final fanout = await messaging.sendChannelInvite(
-          channelName: widget.channelName,
-          peerCanonicalId: pubkeyHex,
-        );
-        if (fanout > 0) delivered++;
-      } catch (_) {
-        // Per-peer failure is already logged; the summary below is what the
-        // user acts on.
-      }
-    }
-
-    if (!mounted) return;
-    // Shown before the pop, but into the root overlay, so it outlives this
-    // sheet rather than being disposed along with it.
-    showGlassToast(
-      context,
-      delivered > 0 ? t.channelInviteSent : t.channelInviteNoneSent,
-      icon: delivered > 0 ? Icons.send_rounded : null,
-      tone: delivered > 0 ? ToastTone.success : ToastTone.danger,
-    );
-    navigator.pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    final peers = ref.watch(knownPeersControllerProvider).values.toList()
-      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
-    final channel = ref.watch(channelControllerProvider)[widget.channelName];
-    final qrData = channel == null ? null : ChannelQrPayload.encode(channel);
-
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 16),
-          Text(
-            t.channelInviteTitle,
-            style:
-                AppTypography.heading(size: 16, color: AppColors.textOnGlass),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            widget.channelName,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-          ),
-          if (qrData != null)
-            TextButton.icon(
-              onPressed: () => showQrDialog(
-                context,
-                title: t.qrChannelTitle(widget.channelName),
-                data: qrData,
-              ),
-              icon: const Icon(Icons.qr_code_2_rounded),
-              label: Text(t.qrShow),
-            ),
-          const SizedBox(height: 12),
-          if (peers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(28),
-              child: Text(
-                t.channelInviteEmpty,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-              ),
-            )
-          else
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: peers.length,
-                itemBuilder: (_, i) {
-                  final p = peers[i];
-                  final name = p.displayName.isNotEmpty
-                      ? p.displayName
-                      : 'Peer ${p.pubkeyHex.substring(0, 6)}';
-                  return CheckboxListTile(
-                    value: _selected.contains(p.pubkeyHex),
-                    activeColor: AppColors.brandPrimary,
-                    controlAffinity: ListTileControlAffinity.trailing,
-                    onChanged: _sending
-                        ? null
-                        : (v) => setState(() {
-                              if (v ?? false) {
-                                _selected.add(p.pubkeyHex);
-                              } else {
-                                _selected.remove(p.pubkeyHex);
-                              }
-                            }),
-                    secondary: IdentityAvatar(
-                      seed: p.pubkeyHex,
-                      label: name,
-                      size: 36,
-                    ),
-                    title: Text(
-                      name,
-                      style:
-                          TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-                    ),
-                    subtitle: p.isVerified
-                        ? Text(
-                            t.bleVerified,
-                            style: TextStyle(
-                              color: AppColors.brandPrimary,
-                              fontSize: 11,
-                            ),
-                          )
-                        : null,
-                  );
-                },
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brandPrimary,
-                  foregroundColor: Colors.black,
-                ),
-                onPressed: _selected.isEmpty || _sending ? null : _invite,
-                child: _sending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.black,
-                        ),
-                      )
-                    : Text(t.channelInviteAction),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -969,16 +796,6 @@ class _ChatRouteIndicator extends StatelessWidget {
   }
 }
 
-/// The message in [messages] carrying [wireId], or null when it isn't there (or
-/// nothing is pinned).
-Message? _messageByWireId(List<Message> messages, String? wireId) {
-  if (wireId == null) return null;
-  for (final m in messages) {
-    if (m.wireId == wireId) return m;
-  }
-  return null;
-}
-
 /// The conversation itself: an optional pinned-message bar, the message list,
 /// and the floating composer.
 ///
@@ -1026,7 +843,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   final _jumpTargetKey = GlobalKey();
   String _searchQuery = '';
   int _searchIndex = 0;
-  int _pinIndex = 0;
+
+  /// How many times the pinned bar has been tapped. The bar itself shows where
+  /// the *next* tap goes, counting up from the newest pin, so this is a step
+  /// count rather than an index into anything.
+  int _pinStep = 0;
   bool _initialMessageRevealed = false;
 
   @override
@@ -1068,38 +889,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (next != _canScrollDown) setState(() => _canScrollDown = next);
   }
 
-  /// Scroll the conversation to the message the pinned bar names.
+  /// Scroll the conversation to the message the chat was opened at.
   ///
   /// Bubble heights vary (one-liners, photos, quoted replies), so there is no
-  /// offset to compute directly. Jump to the proportional estimate first, which
-  /// lands within a screen or two, then let `ensureVisible` finish the job once
-  /// the target has been built. If it never builds — the estimate was too far
-  /// off — the user is at least in the right region of the history.
+  /// offset to compute directly — [_jumpToMessageId] converges on it instead.
+  /// Only marked done once it actually landed, so a jump that ran out of
+  /// history is retried when more of it arrives.
   Future<void> _revealInitialMessage() async {
     final messageId = widget.initialMessageId;
     if (messageId == null || _initialMessageRevealed || !mounted) return;
-    final messages = widget.messages;
-    final index = messages.indexWhere((message) => message.id == messageId);
-    if (index < 0) return;
-
-    if (_scroll.hasClients && messages.length > 1) {
-      final fromNewest = messages.length - 1 - index;
-      final max = _scroll.position.maxScrollExtent;
-      final estimate = max * (fromNewest / (messages.length - 1));
-      _scroll.jumpTo(estimate.clamp(0.0, max));
-    }
-    for (var attempt = 0; attempt < 5; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 32));
-      if (!mounted) return;
-      final targetContext = _initialMessageKey.currentContext;
-      if (targetContext == null || !targetContext.mounted) continue;
-      await Scrollable.ensureVisible(
-        targetContext,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 240),
-      );
+    if (await _jumpToMessageId(messageId, _initialMessageKey)) {
       _initialMessageRevealed = true;
-      return;
     }
   }
 
@@ -1170,44 +970,87 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     await _jumpToMessageId(matches[index].id, _searchResultKey);
   }
 
-  Future<void> _jumpToMessageId(String messageId, GlobalKey targetKey) async {
+  /// Scroll until [messageId]'s bubble exists, then land on it precisely.
+  ///
+  /// A `ListView.builder` only builds what is near the viewport, so the target
+  /// usually has no context to `ensureVisible` against yet — and its own
+  /// `maxScrollExtent` is a *guess* extrapolated from the items laid out so
+  /// far. One jump against that guess and a handful of polls was enough on a
+  /// short history and hopeless on a long one: the estimate landed nowhere near
+  /// the message, the target never built, and the jump simply gave up wherever
+  /// it had dropped you.
+  ///
+  /// So re-estimate every frame instead. Each jump lays out a new stretch of
+  /// the list, which sharpens the extent, which sharpens the next estimate —
+  /// it converges in a few frames however far back the message is.
+  /// True once the message was actually brought on screen, so callers that only
+  /// get one chance — the open-at-message jump — can tell a landing from a
+  /// give-up and retry when more history arrives.
+  Future<bool> _jumpToMessageId(String messageId, GlobalKey targetKey) async {
     final messages = widget.messages;
     final index = messages.indexWhere((message) => message.id == messageId);
-    if (index < 0) return;
-    if (_scroll.hasClients && messages.length > 1) {
-      final fromNewest = messages.length - 1 - index;
-      final max = _scroll.position.maxScrollExtent;
-      final estimate = max * (fromNewest / (messages.length - 1));
-      _scroll.jumpTo(estimate.clamp(0.0, max));
-    }
-    for (var attempt = 0; attempt < 5; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 32));
-      if (!mounted) return;
+    if (index < 0 || messages.isEmpty) return false;
+    // reverse: true, so distance from the newest message is the scroll axis.
+    final fromNewest = messages.length - 1 - index;
+
+    for (var attempt = 0; attempt < 16; attempt++) {
+      if (!mounted) return false;
       final targetContext = targetKey.currentContext;
-      if (targetContext == null || !targetContext.mounted) continue;
-      await Scrollable.ensureVisible(
-        targetContext,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 220),
-      );
-      return;
+      if (targetContext != null && targetContext.mounted) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.35,
+          duration: const Duration(milliseconds: 220),
+        );
+        return true;
+      }
+      if (_scroll.hasClients && messages.length > 1) {
+        final position = _scroll.position;
+        final estimate =
+            position.maxScrollExtent * (fromNewest / (messages.length - 1));
+        final next = estimate.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        );
+        // Already sitting where the estimate says and still nothing built: the
+        // extent has stopped improving, so more jumps will not help.
+        if (attempt > 0 && (next - position.pixels).abs() < 1) return false;
+        _scroll.jumpTo(next);
+      }
+      await WidgetsBinding.instance.endOfFrame;
     }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
     ref.watch(pinnedControllerProvider);
+    // Pinning or unpinning anything puts the bar back on the newest pin.
+    // Leaving the cursor where it was after the set changed under it meant the
+    // bar could come back pointing at an arbitrary one.
+    ref.listen<Map<String, PinnedMessage>>(pinnedControllerProvider, (_, __) {
+      if (_pinStep != 0) setState(() => _pinStep = 0);
+    });
     final pins =
         ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
+    // Ordered by where each pin sits in the conversation, not by when it was
+    // pinned: the bar walks *upward* through the history, so "the next one" has
+    // to mean the one above it, whatever order they were pinned in.
+    //
     // A pin whose message isn't in this chat any more (deleted, or history
-    // cleared) has nothing to show or scroll to — hide the bar rather than
-    // render an empty one.
-    final visiblePins = pins
-        .map((pin) => _messageByWireId(messages, pin.wireId))
-        .whereType<Message>()
-        .toList();
-    final pinIndex = visiblePins.isEmpty ? 0 : _pinIndex % visiblePins.length;
+    // cleared) has nothing to show or scroll to, so it drops out here rather
+    // than rendering an empty row.
+    final pinnedIds = {for (final pin in pins) pin.wireId};
+    final visiblePins = [
+      for (final m in messages)
+        if (m.wireId != null && pinnedIds.contains(m.wireId)) m,
+    ];
+    // Start at the newest pin — the one nearest what you are reading — and
+    // climb one pin per tap.
+    final pinIndex = visiblePins.isEmpty
+        ? 0
+        : visiblePins.length - 1 - (_pinStep % visiblePins.length);
     final pinnedMessage = visiblePins.isEmpty ? null : visiblePins[pinIndex];
     // Anything in the tree can ask to be taken to a message — a tapped quote,
     // most of all. Answered here because this is where the scroll controller
@@ -1296,10 +1139,19 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     message: pinnedMessage,
                     index: pinIndex,
                     count: visiblePins.length,
-                    onNext: visiblePins.length < 2
-                        ? null
-                        : () => setState(() => _pinIndex = pinIndex + 1),
-                    onTap: () => _jumpTo(pinnedMessage.wireId!),
+                    // One tap does both jobs, the way Telegram's bar does:
+                    // take me to this pin, and leave the bar pointing at the
+                    // one above it. A separate "next" chevron meant reading
+                    // four pins took eight taps, alternating between two
+                    // buttons a few pixels apart.
+                    onTap: () {
+                      if (visiblePins.length > 1) {
+                        setState(
+                          () => _pinStep = (_pinStep + 1) % visiblePins.length,
+                        );
+                      }
+                      unawaited(_jumpTo(pinnedMessage.wireId!));
+                    },
                     // Unpinning clears the banner for everyone in the chat, not
                     // just here, and the button sits next to one you tap to
                     // jump — easy to hit by accident, impossible to undo
@@ -1537,7 +1389,8 @@ class _SearchIconButton extends StatelessWidget {
 }
 
 /// The pinned-message island under the header. Tapping it jumps to that
-/// message; the button on the right clears the pin for both sides.
+/// message *and* moves the bar up to the next pin; the button on the right
+/// clears the pin for both sides.
 ///
 /// Built as its own floating pane rather than a strip welded under the app bar,
 /// so it belongs to the same family as the header pills, the bubbles and the
@@ -1548,7 +1401,6 @@ class _PinnedBar extends StatelessWidget {
     required this.message,
     required this.index,
     required this.count,
-    this.onNext,
     required this.onTap,
     required this.onUnpin,
   });
@@ -1556,9 +1408,10 @@ class _PinnedBar extends StatelessWidget {
   final Message message;
   final VoidCallback onTap;
   final VoidCallback onUnpin;
+
+  /// Position of the shown pin in the conversation, oldest first.
   final int index;
   final int count;
-  final VoidCallback? onNext;
 
   /// Side of the square media thumbnail.
   static const double _thumb = 34;
@@ -1613,16 +1466,7 @@ class _PinnedBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
           child: Row(
             children: [
-              // Telegram's pin rail: one segment per pinned message. We keep a
-              // single pin per chat, so it reads as one solid marker.
-              Container(
-                width: 2.5,
-                height: _thumb,
-                decoration: BoxDecoration(
-                  color: AppColors.brandPrimary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+              _PinRail(index: index, count: count),
               const SizedBox(width: 10),
               if (thumb != null) ...[thumb, const SizedBox(width: 10)],
               Expanded(
@@ -1654,13 +1498,6 @@ class _PinnedBar extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onNext != null)
-                _PillIconButton(
-                  icon: Icons.keyboard_arrow_down_rounded,
-                  color: AppColors.brandPrimary,
-                  tooltip: '${index + 1}/$count',
-                  onPressed: onNext!,
-                ),
               _PillIconButton(
                 icon: Icons.push_pin_outlined,
                 color: AppColors.textOnGlassDim,
@@ -1678,6 +1515,61 @@ class _PinnedBar extends StatelessWidget {
   /// caption, and "image/jpeg" is not a preview worth showing.
   static bool _looksLikeMime(String s) =>
       s.isEmpty || s.startsWith('image/') || s.startsWith('audio/');
+}
+
+/// Telegram's pin rail: one segment per pinned message, the shown one lit.
+///
+/// It is the only thing that says how far up the stack a tap has taken you
+/// without reading the counter, which matters because tapping the bar is now
+/// how you walk through the pins — the rail is the progress bar for that walk.
+class _PinRail extends StatelessWidget {
+  const _PinRail({required this.index, required this.count});
+
+  final int index;
+  final int count;
+
+  /// Above this the segments are thinner than the gaps between them and the
+  /// rail stops reading as anything. Twenty pins is the storage ceiling, so
+  /// past the cap it degrades to a plain marker rather than a smear.
+  static const int _maxSegments = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    const height = _PinnedBar._thumb;
+    final dim = AppColors.brandPrimary.withValues(alpha: .28);
+    if (count < 2 || count > _maxSegments) {
+      return Container(
+        width: 2.5,
+        height: height,
+        decoration: BoxDecoration(
+          color: AppColors.brandPrimary,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      );
+    }
+    const gap = 2.0;
+    final segment = (height - gap * (count - 1)) / count;
+    return SizedBox(
+      width: 2.5,
+      height: height,
+      child: Column(
+        children: [
+          // Oldest pin at the top, matching the conversation it indexes.
+          for (var i = 0; i < count; i++) ...[
+            if (i > 0) const SizedBox(height: gap),
+            Container(
+              width: 2.5,
+              height: segment,
+              decoration: BoxDecoration(
+                color: i == index ? AppColors.brandPrimary : dim,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Message list with the composer floating clear of the bottom edge, the
@@ -1855,6 +1747,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
   void _showAttachmentFailure(Object error) {
     final t = AppLocalizations.of(context);
+    // Also into the log, not just the toast. A toast is gone in three seconds
+    // and takes the only description of the failure with it, which is why
+    // "sending files doesn't work" keeps arriving without the error attached.
+    DebugLog.instance.log('ATTACH', 'send failed: $error');
     showGlassToast(
       context,
       error is MediaRouteUnavailable ? t.chatAttachmentUnavailable : '$error',
@@ -1965,12 +1861,27 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     _startTicker();
   }
 
+  /// Under this, a press was a mis-tap rather than a message.
+  ///
+  /// The mic arms almost on touch-down now, which is what makes it feel like
+  /// Telegram's — and also means a stray tap on the composer would otherwise
+  /// fire off a quarter-second of room noise. Locked recordings are exempt:
+  /// the finger is long gone and the length is deliberate.
+  static const _minVoiceMs = 500;
+
   Future<void> _onRecordStop() async {
     final wasLocked = _recordLocked;
     final result = await ref.read(voiceRecorderProvider.notifier).stop();
     _stopTicker();
     if (mounted) setState(() => _recordLocked = false);
     if (result == null) return;
+    if (!wasLocked && result.durationMs < _minVoiceMs) {
+      unawaited(_discardRecording(result.path));
+      if (mounted) {
+        showGlassToast(context, AppLocalizations.of(context).voiceHoldHint);
+      }
+      return;
+    }
     if (!widget.canSend) return;
 
     // A locked recording gets a review step: the finger is already off the
@@ -1993,6 +1904,16 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       path: result.path,
       durationMs: result.durationMs,
     );
+  }
+
+  /// Bin a recording that is never going to be sent. Cache files are small and
+  /// the directory is disposable, but a mic that starts on every stray tap
+  /// would otherwise leave one behind each time.
+  Future<void> _discardRecording(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   /// Read the file and put it on the wire. [path] is whatever survived
@@ -2067,7 +1988,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // Custom in-app picker: a photo grid (multi-select) with a camera tile.
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
-      builder: (_) => const MediaPickerSheet(),
+      builder: (_) => MediaPickerSheet(allowFiles: !widget.isChannel),
     );
     if (result == null || !mounted) return;
 
@@ -2152,7 +2073,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
     final result = await Navigator.of(context).push<MediaPreviewResult>(
       mediaRoute<MediaPreviewResult>(
-        (_) => MediaPreviewScreen(items: loaded),
+        (_) => MediaPreviewScreen(
+          items: loaded,
+          allowOriginal: !widget.isChannel,
+        ),
       ),
     );
     if (result == null || !mounted) return;
@@ -2294,6 +2218,16 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
     final messaging = ref.read(messagingServiceProvider);
     final cachedPath = await _cacheOutgoingImage(bytes, idHint);
+    if (widget.isChannel) {
+      await messaging.sendChannelImage(
+        widget.peerId,
+        bytes: bytes,
+        mime: 'image/jpeg',
+        cachedPath: cachedPath,
+        caption: caption,
+      );
+      return;
+    }
     await messaging.sendImage(
       widget.peerId,
       bytes: bytes,
@@ -2332,8 +2266,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       _markChatRead();
       _maybeSendReadReceipts();
     });
-    // Media (images / voice) is 1:1 only for now — channels broadcast text.
+    // Voice notes are still 1:1: a room relays every chunk through every
+    // member, so the cost of an attachment there is paid by everyone. Photos
+    // are worth that and are capped by the picker; see
+    // [MessagingService.sendChannelImage].
     final mediaEnabled = widget.canSend && !widget.isChannel;
+    final photosEnabled = widget.canSend;
 
     // Inline edit: only when the target belongs to THIS chat.
     final editTarget = ref.watch(messageEditTargetProvider);
@@ -2370,7 +2308,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             .sendEdit(target.chatId, target.wireId, newText);
       },
       onAttach:
-          mediaEnabled && !voiceState.isRecording ? _pickAndSendImage : null,
+          photosEnabled && !voiceState.isRecording ? _pickAndSendImage : null,
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,

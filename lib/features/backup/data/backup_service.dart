@@ -23,6 +23,7 @@ import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/recent_searches_controller.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../channels/data/channel_avatars_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../profile/data/discovery_settings_controller.dart';
@@ -211,6 +212,7 @@ class BackupService {
     _ref.invalidate(messagesControllerProvider);
     _ref.invalidate(knownPeersControllerProvider);
     _ref.invalidate(peerAvatarsControllerProvider);
+    _ref.invalidate(channelAvatarsControllerProvider);
     _ref.invalidate(channelControllerProvider);
     _ref.invalidate(favoritesControllerProvider);
     _ref.invalidate(channelRosterControllerProvider);

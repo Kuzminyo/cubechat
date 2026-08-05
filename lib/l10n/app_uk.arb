@@ -251,6 +251,7 @@
   "profileDiscoverableOnHint": "Вас знайде будь-хто в радіусі",
   "profileDiscoverableOffHint": "Вас досягнуть лише ваші контакти",
   "profileDiscoverableExplainer": "Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв'язними. Новим людям тоді потрібна картка контакту.",
+  "voiceHoldHint": "Утримуйте, щоб записати голосове",
   "voiceTrimPlay": "Відтворити",
   "voiceTrimPause": "Пауза",
   "voiceTrimDiscard": "Видалити запис",
@@ -377,6 +378,8 @@
   "contactProfileNoFiles": "Файлів ще немає",
   "contactProfileLinks": "Посилання",
   "contactProfileNoLinks": "Посилань ще немає",
+  "contactProfilePolls": "Опитування",
+  "contactProfileNoPolls": "Опитувань ще немає",
   "presenceHidden": "статус приховано",
   "chatReadByCount": "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
   "@chatReadByCount": {
@@ -477,6 +480,10 @@
   "channelMakeAdmin": "Зробити адміністратором",
   "channelRemoveAdmin": "Забрати права адміністратора",
   "channelNoParticipants": "Учасники з’являться після підписаної активності",
+  "channelSharedContent": "Медіа, файли та опитування",
+  "channelAvatarAdminOnly": "Змінювати фото каналу може лише адміністратор",
+  "channelAvatarTooLarge": "Це фото завелике для розсилки",
+  "channelMemberUnknown": "Ще не у ваших контактах",
   "channelPollTitle": "Опитування",
   "channelCreatePoll": "Створити опитування",
   "channelPollQuestion": "Запитання",
@@ -532,14 +539,6 @@
   "profileSummaryCardBackup": "Картка, файли, бекап",
   "chatPlay": "Відтворити",
   "chatPause": "Пауза",
-  "voicePlayingFrom": "Голосове від {name}",
-  "@voicePlayingFrom": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
   "profileTheme": "Колір",
   "profileThemeEmerald": "Смарагд",
   "profileThemeIndigo": "Індиго",

@@ -6,6 +6,7 @@ import 'package:cubechat/core/transport/announcement.dart';
 import 'package:cubechat/core/transport/frame_fragment.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/core/transport/mtu_budget.dart';
+import 'package:cubechat/features/peers/data/peer_avatars_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<({SimpleKeyPairData kp, Uint8List pub})> _newEd() async {
@@ -139,7 +140,7 @@ void main() {
   });
 
   group('an avatar has to fit the link that carries it', () {
-    test('the send budget and the accept ceiling both fit the fragmenter', () {
+    test('the one-frame path stays inside what the fragmenter can split', () {
       // A frame larger than the fragmenter can split is not slow, it is
       // undeliverable — fragmentFrame throws rather than truncating. On a
       // conservative 185-byte ATT MTU:
@@ -150,22 +151,32 @@ void main() {
       const frameOverhead = 200;
       const maxJpeg = maxFrame - frameOverhead;
 
-      expect(AvatarController.shareByteBudget, lessThan(maxJpeg),
-          reason: 'what we send must be splittable');
+      // [AvatarPayload] is the single-frame carrier, so this ceiling is still
+      // the hard one: a body above it cannot be split and never arrives.
       expect(AvatarPayload.maxBytes, lessThan(maxJpeg),
-          reason: 'what we accept must be forwardable over BLE too');
+          reason: 'what one frame carries must be splittable');
+    });
+
+    test('the send budget is a chunked transfer, not a frame', () {
+      // Deliberately *above* the single-frame ceiling. A picture that big is
+      // sent as a manifest plus ImageChunks (MediaKind.avatar), which is how
+      // the 512 px thumbnail stopped being the best we could do — see
+      // [AvatarController.shareByteBudget].
       expect(AvatarController.shareByteBudget,
-          lessThanOrEqualTo(AvatarPayload.maxBytes),
+          greaterThan(AvatarPayload.maxBytes));
+      // And still inside what a receiver agrees to keep.
+      expect(AvatarController.shareByteBudget,
+          lessThanOrEqualTo(PeerAvatarsController.maxStoredBytes),
           reason: 'be strict in what you send, lenient in what you accept');
     });
 
-    test('the size ladder starts at the largest circle we draw', () {
+    test('the size ladder oversamples the largest circle we draw', () {
       // The contact profile hero is width * 0.48, ~173 pt on a 360 pt phone,
-      // which is 518 physical pixels at 3x. Anything smaller upscales, which
-      // is what made the big circle look chewed.
+      // which is 518 physical pixels at 3x. The ladder starts at twice that, so
+      // the circle is never drawn from fewer pixels than it needs.
       expect(AvatarController.shareSizeLadder.first,
           AvatarController.shareSize);
-      expect(AvatarController.shareSize, greaterThanOrEqualTo(512));
+      expect(AvatarController.shareSize, greaterThanOrEqualTo(1024));
       // Descending, so the first entry that fits is also the best available.
       final ladder = AvatarController.shareSizeLadder;
       for (var i = 1; i < ladder.length; i++) {

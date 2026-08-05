@@ -103,8 +103,11 @@ class _Bar extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Just the sender, same as the in-chat island — the
+                          // play button and the timer already say what kind of
+                          // thing this is.
                           Text(
-                            t.voicePlayingFrom(playback.chatTitle ?? ''),
+                            playback.chatTitle ?? '',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

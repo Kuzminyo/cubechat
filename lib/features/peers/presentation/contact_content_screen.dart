@@ -95,6 +95,14 @@ class ContactContentScreen extends ConsumerWidget {
             message.kind == MessageKind.file && message.filePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+    // Polls get their own tab rather than sitting in with the photos and
+    // documents. They are the one thing here you come back to while it is still
+    // running — to see where the vote got to — and scrolling a media grid to
+    // find one is the opposite of that.
+    final polls = messages
+        .where((message) => message.kind == MessageKind.poll)
+        .toList()
+      ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     // Links are not a message kind — they are text that happens to contain a
     // URL, which is why they are found rather than filtered. Every messenger
     // keeps this tab for the same reason: a link is the one thing you go back
@@ -106,8 +114,8 @@ class ContactContentScreen extends ConsumerWidget {
     ]..sort((a, b) => b.$1.sentAt.compareTo(a.$1.sentAt));
 
     return DefaultTabController(
-      length: 4,
-      initialIndex: initialTab.clamp(0, 3),
+      length: 5,
+      initialIndex: initialTab.clamp(0, 4),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -131,6 +139,7 @@ class ContactContentScreen extends ConsumerWidget {
               Tab(text: t.contactProfileVoiceMessages),
               Tab(text: t.contactProfileFiles),
               Tab(text: t.contactProfileLinks),
+              Tab(text: t.contactProfilePolls),
             ],
           ),
         ),
@@ -156,6 +165,11 @@ class ContactContentScreen extends ConsumerWidget {
               links: links,
               onTap: (message) => _showMessageActions(context, message),
               emptyLabel: t.contactProfileNoLinks,
+            ),
+            _PollList(
+              polls: polls,
+              onTap: (message) => _showMessageActions(context, message),
+              emptyLabel: t.contactProfileNoPolls,
             ),
           ],
         ),
@@ -346,6 +360,91 @@ class _LinkList extends StatelessWidget {
                     color: AppColors.textOnGlass,
                     fontSize: 13.5,
                   ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The Polls tab: the question, how many have answered, and the option that is
+/// currently ahead — enough to read the state of a vote without opening it, and
+/// a tap through to the poll itself to actually cast one.
+class _PollList extends StatelessWidget {
+  const _PollList({
+    required this.polls,
+    required this.onTap,
+    required this.emptyLabel,
+  });
+
+  final List<Message> polls;
+  final ValueChanged<Message> onTap;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    if (polls.isEmpty) {
+      return _EmptyContent(icon: Icons.how_to_vote_outlined, label: emptyLabel);
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      itemCount: polls.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, index) {
+        final poll = polls[index];
+        final counts = List<int>.filled(poll.pollOptions.length, 0);
+        for (final option in poll.pollVotes.values) {
+          if (option >= 0 && option < counts.length) counts[option]++;
+        }
+        var leader = -1;
+        for (var i = 0; i < counts.length; i++) {
+          if (leader < 0 || counts[i] > counts[leader]) leader = i;
+        }
+        // No votes yet means no leader to name — "Option 1 is winning 0 to 0"
+        // is worse than saying nothing.
+        final leading = poll.pollVotes.isEmpty || leader < 0
+            ? null
+            : poll.pollOptions[leader];
+        return GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          onTap: () => onTap(poll),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.how_to_vote_outlined,
+                  size: 18, color: AppColors.brandPrimary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      poll.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      leading == null
+                          ? t.channelPollVotes(poll.pollVotes.length)
+                          : '${t.channelPollVotes(poll.pollVotes.length)} · $leading',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

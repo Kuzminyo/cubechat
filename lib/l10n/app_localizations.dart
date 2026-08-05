@@ -1310,6 +1310,12 @@ abstract class AppLocalizations {
   /// **'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.'**
   String get profileDiscoverableExplainer;
 
+  /// No description provided for @voiceHoldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to record a voice message'**
+  String get voiceHoldHint;
+
   /// No description provided for @voiceTrimPlay.
   ///
   /// In en, this message translates to:
@@ -1729,6 +1735,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No links yet'**
   String get contactProfileNoLinks;
+
+  /// No description provided for @contactProfilePolls.
+  ///
+  /// In en, this message translates to:
+  /// **'Polls'**
+  String get contactProfilePolls;
+
+  /// No description provided for @contactProfileNoPolls.
+  ///
+  /// In en, this message translates to:
+  /// **'No polls yet'**
+  String get contactProfileNoPolls;
 
   /// No description provided for @presenceHidden.
   ///
@@ -2162,6 +2180,30 @@ abstract class AppLocalizations {
   /// **'Participants will appear after signed activity'**
   String get channelNoParticipants;
 
+  /// No description provided for @channelSharedContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Media, files and polls'**
+  String get channelSharedContent;
+
+  /// No description provided for @channelAvatarAdminOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only an administrator can change the channel photo'**
+  String get channelAvatarAdminOnly;
+
+  /// No description provided for @channelAvatarTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'That photo is too large to broadcast'**
+  String get channelAvatarTooLarge;
+
+  /// No description provided for @channelMemberUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in your contacts yet'**
+  String get channelMemberUnknown;
+
   /// No description provided for @channelPollTitle.
   ///
   /// In en, this message translates to:
@@ -2365,12 +2407,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pause'**
   String get chatPause;
-
-  /// No description provided for @voicePlayingFrom.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice from {name}'**
-  String voicePlayingFrom(String name);
 
   /// No description provided for @profileTheme.
   ///

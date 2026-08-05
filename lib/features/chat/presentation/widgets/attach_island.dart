@@ -20,6 +20,7 @@ class AttachIsland extends StatelessWidget {
     required this.selected,
     required this.onPick,
     this.bare = false,
+    this.allowFiles = true,
   });
 
   final AttachChoice selected;
@@ -29,6 +30,12 @@ class AttachIsland extends StatelessWidget {
   /// sheet, which is one island itself. A second glass surface inside the
   /// first is the "card on a plate" look this app does not have anywhere else.
   final bool bare;
+
+  /// False in a channel, where photos travel but arbitrary files do not — every
+  /// member relays every chunk, so an attachment costs the whole room. Same
+  /// principle as the rest of this row: a category that opens nothing is worse
+  /// than an absent one.
+  final bool allowFiles;
 
   @override
   Widget build(BuildContext context) {
@@ -48,12 +55,13 @@ class AttachIsland extends StatelessWidget {
           active: selected == AttachChoice.camera,
           onTap: () => onPick(AttachChoice.camera),
         ),
-        _AttachTab(
-          icon: Icons.insert_drive_file_outlined,
-          label: t.attachFile,
-          active: selected == AttachChoice.file,
-          onTap: () => onPick(AttachChoice.file),
-        ),
+        if (allowFiles)
+          _AttachTab(
+            icon: Icons.insert_drive_file_outlined,
+            label: t.attachFile,
+            active: selected == AttachChoice.file,
+            onTap: () => onPick(AttachChoice.file),
+          ),
       ],
     );
     if (bare) {

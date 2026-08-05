@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
+import '../../../../l10n/app_localizations.dart';
+import '../../../peers/data/known_peers_controller.dart';
 import '../../data/voice_playback_controller.dart';
 import '../../models/message.dart';
 
@@ -23,8 +26,9 @@ class VoiceBubble extends ConsumerStatefulWidget {
 
   final Message message;
 
-  /// Whose voice this is, for the mini player's caption. Falls back to the
-  /// chat id when a caller has nothing better.
+  /// Whose voice this is, for the mini player's caption. A last resort — the
+  /// bubble works the name out itself (see [_authorName]) and only falls back
+  /// to this when nothing else identifies the sender.
   final String? chatTitle;
 
   @override
@@ -42,6 +46,34 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
     final m = d.inMinutes.remainder(60).toString();
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  /// Who this voice note is from, as a name a person would recognise.
+  ///
+  /// The playing bar showed the *chat id* before — a 64-character pubkey hex,
+  /// or a `#channel` — because nothing ever passed `chatTitle` and the fallback
+  /// was the raw bucket key. The sender is knowable from the message itself in
+  /// every case, so work it out here rather than making three call sites
+  /// remember to hand it in:
+  ///
+  ///  * mine — my own nickname;
+  ///  * a channel — the author name the signature resolved to;
+  ///  * a 1:1 — the contact filed under this chat's pubkey.
+  String _authorName(BuildContext context) {
+    final message = widget.message;
+    if (message.isMine) {
+      final mine = ref.read(nicknameControllerProvider).trim();
+      if (mine.isNotEmpty) return mine;
+      return AppLocalizations.of(context).chatReplyYou;
+    }
+    final author = message.authorName?.trim();
+    if (author != null && author.isNotEmpty) return author;
+    final peer = ref.read(knownPeersControllerProvider)[message.chatId];
+    final known = peer?.displayName.trim();
+    if (known != null && known.isNotEmpty) return known;
+    final given = widget.chatTitle?.trim();
+    if (given != null && given.isNotEmpty) return given;
+    return AppLocalizations.of(context).bleUnknownPeer;
   }
 
   @override
@@ -70,7 +102,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
           messageId: widget.message.id,
           path: widget.message.audioPath!,
           chatId: widget.message.chatId,
-          chatTitle: widget.chatTitle ?? widget.message.chatId,
+          chatTitle: _authorName(context),
           knownDuration: declared > Duration.zero ? declared : null,
         );
 

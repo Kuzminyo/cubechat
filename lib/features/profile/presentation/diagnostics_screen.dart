@@ -38,7 +38,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   String _asText(List<DebugLogEntry> entries) => entries
-      .map((e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.line}')
+      .map((e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.text}')
       .join('\n');
 
   /// Send the log out as a file rather than through the clipboard.
@@ -111,7 +111,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Text(
-                      '${e.at.toIso8601String().substring(11, 23)}  ${e.line}',
+                      '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
                       style: AppTypography.mono(
                           size: 11.5, color: AppColors.textOnGlass),
                     ),
