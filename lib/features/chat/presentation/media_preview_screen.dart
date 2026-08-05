@@ -13,6 +13,7 @@ class MediaPreviewResult {
     required this.bytes,
     required this.caption,
     this.asFile = false,
+    this.viewOnce = false,
   });
 
   final List<Uint8List> bytes;
@@ -29,6 +30,9 @@ class MediaPreviewResult {
   /// as it left. Telegram calls this sending without compression; here it also
   /// means [bytes] is ignored and the caller reaches for the asset's own file.
   final bool asFile;
+
+  /// Send it as a photo that disappears from both sides once opened.
+  final bool viewOnce;
 }
 
 /// Last stop before a photo goes out: see it full-size, write a line under it,
@@ -47,6 +51,7 @@ class MediaPreviewScreen extends StatefulWidget {
     super.key,
     required this.items,
     this.allowOriginal = true,
+    this.allowViewOnce = false,
   });
 
   /// Full-size bytes for each picked photo, in the order they were chosen.
@@ -56,6 +61,11 @@ class MediaPreviewScreen extends StatefulWidget {
   /// which a room does not carry. The toggle is hidden rather than shown and
   /// refused.
   final bool allowOriginal;
+
+  /// False in a channel and in saved notes. A room has no single recipient
+  /// whose looking could mean "everyone has seen it", and a note to yourself
+  /// has nobody to hide it from.
+  final bool allowViewOnce;
 
   @override
   State<MediaPreviewScreen> createState() => _MediaPreviewScreenState();
@@ -69,6 +79,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 
   /// Send the file as it sits on disk rather than a re-encoded copy.
   bool _asFile = false;
+
+  /// Send it as a photo that burns after one look.
+  bool _viewOnce = false;
 
   @override
   void dispose() {
@@ -90,6 +103,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
         bytes: _bytes,
         caption: text.isEmpty ? null : text,
         asFile: _asFile,
+        viewOnce: _viewOnce,
       ),
     );
   }
@@ -157,7 +171,18 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (!_asFile)
                   _RoundAction(icon: Icons.brush_outlined, onTap: _edit),
                 if (!_asFile) const SizedBox(width: 8),
-                if (widget.allowOriginal)
+                // Sending the original goes down the file path, which has no
+                // view-once flag and no viewer to burn it in — so the two are
+                // mutually exclusive rather than quietly contradictory.
+                if (widget.allowViewOnce && !_asFile) ...[
+                  _OriginalToggle(
+                    label: t.viewOnceSendLabel,
+                    active: _viewOnce,
+                    onTap: () => setState(() => _viewOnce = !_viewOnce),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (widget.allowOriginal && !_viewOnce)
                   _OriginalToggle(
                     label: t.mediaSendOriginal,
                     active: _asFile,

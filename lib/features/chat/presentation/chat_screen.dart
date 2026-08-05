@@ -2068,6 +2068,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         (_) => MediaPreviewScreen(
           items: loaded,
           allowOriginal: !widget.isChannel,
+          allowViewOnce:
+              !widget.isChannel && !isSavedChat(widget.canonicalId),
         ),
       ),
     );
@@ -2085,6 +2087,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         result.bytes[i],
         '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
         caption: i == 0 ? result.caption : null,
+        viewOnce: result.viewOnce,
       );
       if (!mounted) return;
     }
@@ -2179,6 +2182,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     Uint8List bytes,
     String idHint, {
     String? caption,
+    bool viewOnce = false,
   }) async {
     try {
       final wire = await encodeBytesForMesh(bytes);
@@ -2188,7 +2192,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             tone: ToastTone.danger);
         return;
       }
-      await _sendImageBytes(wire, idHint, caption: caption);
+      await _sendImageBytes(
+        wire,
+        idHint,
+        caption: caption,
+        viewOnce: viewOnce,
+      );
     } catch (e) {
       if (!mounted) return;
       _showAttachmentFailure(e);
@@ -2201,6 +2210,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     Uint8List bytes,
     String idHint, {
     String? caption,
+    bool viewOnce = false,
   }) async {
     if (isSavedChat(widget.canonicalId)) {
       await ref
@@ -2226,6 +2236,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       mime: 'image/jpeg',
       cachedPath: cachedPath,
       caption: caption,
+      viewOnce: viewOnce,
     );
   }
 

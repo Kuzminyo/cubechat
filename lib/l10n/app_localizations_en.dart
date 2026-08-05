@@ -1201,6 +1201,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelDescriptionSave => 'Save';
 
   @override
+  String get viewOnceSendLabel => 'View once';
+
+  @override
+  String get viewOnceTitle => 'View once';
+
+  @override
+  String get viewOnceTapToView => 'Photo · tap to view once';
+
+  @override
+  String get viewOnceOpened => 'Photo opened';
+
+  @override
+  String get viewOnceUnavailable => 'This photo is no longer available';
+
+  @override
+  String get viewOnceWarning =>
+      'Closing this deletes the photo for both of you.';
+
+  @override
   String get channelAvatarAdminOnly =>
       'Only an administrator can change the channel photo';
 

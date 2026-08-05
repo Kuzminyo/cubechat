@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -105,6 +106,47 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     state = {...state, peerId: list};
     _persist(peerId, list);
     return true;
+  }
+
+  /// Burn a view-once photo: delete the file, blank the path, and stamp the
+  /// row as opened — but keep the row.
+  ///
+  /// Keeping it is the point. [append] is idempotent on [Message.wireId], and
+  /// a view-once photo's wireId is the hash of its media id, so as long as the
+  /// tombstone still occupies that id, a re-delivered manifest (a relay
+  /// replaying the transfer, a mesh re-flood) is absorbed into the opened
+  /// bubble instead of arriving as a fresh, viewable one. Deleting the row
+  /// outright would hand that loophole back.
+  ///
+  /// Matched by wireId rather than local id: the sender learns a photo was
+  /// opened by its media id, which is the only handle both devices share.
+  /// Returns the message it burned, so the caller can tell the other side.
+  Future<Message?> consumeViewOnce(String peerId, String wireId) async {
+    final current = state[peerId];
+    if (current == null) return null;
+    final idx = current.indexWhere((m) => m.wireId == wireId && m.viewOnce);
+    if (idx == -1) return null;
+    final target = current[idx];
+    if (target.viewOnceConsumed) return null; // already burned; stay idempotent
+
+    final path = target.imagePath;
+    if (path != null) {
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } catch (e) {
+        // The row is still marked opened even if the unlink failed — a file we
+        // could not remove is a worse outcome than a bubble that lies about it.
+        debugPrint('view-once delete failed: $e');
+      }
+    }
+    final list = [...current]..[idx] = target.copyWith(
+        clearImagePath: true,
+        viewOnceConsumedAt: DateTime.now(),
+      );
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return target;
   }
 
   void updateStatus(String peerId, String msgId, MessageStatus status) {
@@ -526,6 +568,11 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.routeHops != null) 'routeHops': m.routeHops,
         if (m.pollOptions.isNotEmpty) 'pollOptions': m.pollOptions,
         if (m.pollVotes.isNotEmpty) 'pollVotes': m.pollVotes,
+        if (m.viewOnce) 'viewOnce': true,
+        // The record that survives a restart: without it, reopening the app
+        // would show an opened photo as unopened again, minus its file.
+        if (m.viewOnceConsumedAt != null)
+          'viewOnceAtIso': m.viewOnceConsumedAt!.toIso8601String(),
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -605,6 +652,10 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
             (key, value) => MapEntry(key as String, value as int),
           ) ??
           const <String, int>{},
+      viewOnce: m['viewOnce'] as bool? ?? false,
+      viewOnceConsumedAt: (m['viewOnceAtIso'] as String?) == null
+          ? null
+          : DateTime.tryParse(m['viewOnceAtIso'] as String),
     );
   }
 }

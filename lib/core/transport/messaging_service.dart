@@ -1464,6 +1464,7 @@ class MessagingService {
     required String mime,
     String? cachedPath,
     String? caption,
+    bool viewOnce = false,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -1510,6 +1511,7 @@ class MessagingService {
       imagePath: cachedPath,
       imageMime: mime,
       wireId: TransportEnvelope.hashHex(imageId),
+      viewOnce: viewOnce,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -1546,6 +1548,7 @@ class MessagingService {
         total: total,
         mime: mime,
         caption: caption0,
+        viewOnce: viewOnce,
         bytes: bytes,
         myHash: myHash,
         peerHash: peerHash,
@@ -1917,6 +1920,69 @@ class MessagingService {
     } catch (e) {
       DebugLog.instance.log('REACT', 'reaction send failed: $e');
     }
+  }
+
+  /// Burn a view-once photo here, and tell the other side to burn theirs.
+  ///
+  /// Called from both directions and idempotent in both: the recipient calls
+  /// it when they close the viewer, the sender when the recipient's ack lands.
+  /// [notifyPeer] is what separates the two — the ack must not bounce back and
+  /// forth forever.
+  ///
+  /// The local burn happens whether or not the message reaches the peer. A
+  /// photo that stays on this phone because the link was down is the one
+  /// failure this feature cannot afford; the peer's own copy is theirs to
+  /// remove when they hear, and their app will do it on the next delivery of
+  /// this frame or not at all.
+  Future<void> consumeViewOnce(
+    String chatId,
+    String wireIdHex, {
+    bool notifyPeer = true,
+  }) async {
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final burned = await messages.consumeViewOnce(chatId, wireIdHex);
+    // Mirror into any transport-id bucket the same conversation is open under.
+    for (final id in _ref.read(messagesControllerProvider).keys) {
+      if (id != chatId) await messages.consumeViewOnce(id, wireIdHex);
+    }
+    if (burned == null || !notifyPeer) return;
+
+    final Uint8List mediaId;
+    try {
+      mediaId = _hexDecodeBytes(wireIdHex);
+    } catch (_) {
+      return;
+    }
+    if (mediaId.length != ImageChunk.idLen) return;
+    final peerPub = _resolvePeerPub(chatId);
+    if (peerPub == null) return;
+    try {
+      await _sendControlToPeer(
+        canonicalId: chatId,
+        peerPub: peerPub,
+        type: InnerPayloadType.viewOnceConsumed,
+        innerBody: mediaId,
+      );
+      DebugLog.instance
+          .log('VIEWONCE', 'told $chatId their copy of $wireIdHex is spent');
+    } catch (e) {
+      DebugLog.instance.log('VIEWONCE', 'consume ack to $chatId failed: $e');
+    }
+  }
+
+  /// The other side opened the view-once photo we sent — drop our copy too.
+  Future<void> _ingestViewOnceConsumed({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) async {
+    if (body.length != ImageChunk.idLen) return;
+    final wireId = TransportEnvelope.hashHex(body);
+    // Keyed on the canonical id when we can name the sender: that is the
+    // bucket our own outgoing copy was filed under.
+    final chatId = senderPub != null ? _hexOf(senderPub) : peerId;
+    await consumeViewOnce(chatId, wireId, notifyPeer: false);
+    DebugLog.instance.log('VIEWONCE', 'our copy of $wireId burned by $chatId');
   }
 
   /// Ask the peer to send a file again, by the media id its bubble is keyed on.
@@ -3191,6 +3257,7 @@ class MessagingService {
         case InnerPayloadType.avatarRequest:
         case InnerPayloadType.avatar:
         case InnerPayloadType.mediaRequest:
+        case InnerPayloadType.viewOnceConsumed:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -3912,6 +3979,13 @@ class MessagingService {
             manifestBytes: unpacked.body,
           );
 
+        case InnerPayloadType.viewOnceConsumed:
+          await _ingestViewOnceConsumed(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
         case InnerPayloadType.channelAvatar:
         case InnerPayloadType.channelDescription:
           // A room's picture and its topic are broadcasts to its members, and
@@ -4469,6 +4543,7 @@ class MessagingService {
             wireId: TransportEnvelope.hashHex(manifest.mediaId),
             authorName: authorName,
             authorId: authorId,
+            viewOnce: manifest.viewOnce,
           );
 
         case MediaKind.audio:
@@ -4555,6 +4630,7 @@ class MessagingService {
     int durationMs = 0,
     String? name,
     String? caption,
+    bool viewOnce = false,
 
     /// The payload, when it is small enough to have in hand. A file transfer
     /// passes [sha256Digest] instead: the whole point of streaming it off disk
@@ -4581,6 +4657,7 @@ class MessagingService {
       durationMs: durationMs,
       name: name,
       caption: caption,
+      viewOnce: viewOnce,
       sha256: sha,
       senderIdentityPub: senderIdentityPub,
       senderEphemeralPub: senderEphemeralPub,

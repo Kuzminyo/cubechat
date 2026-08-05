@@ -82,7 +82,11 @@ class ContactContentScreen extends ConsumerWidget {
         ref.watch(messagesControllerProvider)[chatId] ?? const <Message>[];
     final images = messages
         .where((message) =>
-            message.kind == MessageKind.image && message.imagePath != null)
+            message.kind == MessageKind.image &&
+            // A photo meant to be seen once does not belong in a grid of
+            // everything ever shared.
+            !message.viewOnce &&
+            message.imagePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     final voices = messages

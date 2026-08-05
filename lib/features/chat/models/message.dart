@@ -71,6 +71,8 @@ class Message {
     this.routeHops,
     this.pollOptions = const <String>[],
     this.pollVotes = const <String, int>{},
+    this.viewOnce = false,
+    this.viewOnceConsumedAt,
   });
 
   final String id;
@@ -160,6 +162,21 @@ class Message {
   final String? fileName;
   final int? fileBytes;
 
+  /// A photo meant to be opened once. See [MediaManifest.viewOnce].
+  final bool viewOnce;
+
+  /// When the photo was actually opened — on the recipient's side by looking
+  /// at it, on the sender's by being told they did. Non-null means the bytes
+  /// are gone and the bubble is a tombstone.
+  ///
+  /// The row itself deliberately outlives the picture. Its [wireId] is what
+  /// makes [MessagesController.append] absorb a re-delivered manifest — a
+  /// relay replaying the transfer, say — into the already-opened bubble
+  /// instead of quietly reviving a viewable one.
+  final DateTime? viewOnceConsumedAt;
+
+  bool get viewOnceConsumed => viewOnceConsumedAt != null;
+
   Message copyWith({
     MessageStatus? status,
     String? text,
@@ -176,6 +193,10 @@ class Message {
     int? routeHops,
     List<String>? pollOptions,
     Map<String, int>? pollVotes,
+    DateTime? viewOnceConsumedAt,
+    /// Every other nullable here is "leave it alone when null", which gives no
+    /// way to *un*set a path. Consuming a view-once photo needs exactly that.
+    bool clearImagePath = false,
   }) {
     return Message(
       id: id,
@@ -185,7 +206,7 @@ class Message {
       isMine: isMine,
       status: status ?? this.status,
       kind: kind,
-      imagePath: imagePath ?? this.imagePath,
+      imagePath: clearImagePath ? null : (imagePath ?? this.imagePath),
       imageMime: imageMime,
       audioPath: audioPath ?? this.audioPath,
       filePath: filePath ?? this.filePath,
@@ -206,6 +227,8 @@ class Message {
       routeHops: routeHops ?? this.routeHops,
       pollOptions: pollOptions ?? this.pollOptions,
       pollVotes: pollVotes ?? this.pollVotes,
+      viewOnce: viewOnce,
+      viewOnceConsumedAt: viewOnceConsumedAt ?? this.viewOnceConsumedAt,
     );
   }
 }

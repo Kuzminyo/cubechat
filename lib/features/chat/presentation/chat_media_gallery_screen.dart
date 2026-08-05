@@ -47,6 +47,10 @@ class _ChatMediaGalleryScreenState
         .where(
           (m) =>
               m.kind == MessageKind.image &&
+              // Never reachable from the browser, even indirectly by paging
+              // into it from a neighbouring photo. This screen can share and
+              // save what it shows.
+              !m.viewOnce &&
               m.imagePath != null &&
               File(m.imagePath!).existsSync(),
         )

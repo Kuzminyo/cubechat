@@ -1207,6 +1207,24 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelDescriptionSave => 'Зберегти';
 
   @override
+  String get viewOnceSendLabel => 'Один перегляд';
+
+  @override
+  String get viewOnceTitle => 'Один перегляд';
+
+  @override
+  String get viewOnceTapToView => 'Фото · торкніться, щоб переглянути раз';
+
+  @override
+  String get viewOnceOpened => 'Фото переглянуто';
+
+  @override
+  String get viewOnceUnavailable => 'Це фото більше недоступне';
+
+  @override
+  String get viewOnceWarning => 'Після виходу фото буде видалено в обох.';
+
+  @override
   String get channelAvatarAdminOnly =>
       'Змінювати фото каналу може лише адміністратор';
 

@@ -29,6 +29,7 @@ import '../../data/reaction_emoji_controller.dart';
 import 'emoji_picker_sheet.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
+import '../view_once_media_screen.dart';
 import 'file_bubble.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
@@ -44,7 +45,11 @@ bool messageCanBeCopied(
   Message message, {
   required bool copyingRestricted,
 }) =>
-    !copyingRestricted && message.text.trim().isNotEmpty;
+    // A view-once photo is excluded even though its *caption* is text and
+    // these two are gated on text. The bytes never leave either way, but
+    // offering Copy and Forward on something the app has just promised to
+    // destroy reads as the promise not being meant.
+    !copyingRestricted && !message.viewOnce && message.text.trim().isNotEmpty;
 
 bool messageCanBeForwarded(
   Message message, {
@@ -1176,6 +1181,20 @@ class _ImagePayload extends StatelessWidget {
     final path = message.imagePath;
     final fileExists = path != null && File(path).existsSync();
 
+    // A view-once photo never renders as a thumbnail. The whole point is that
+    // it is looked at deliberately, once — a picture you can scroll past twice
+    // in the transcript has already been seen more than once.
+    if (message.viewOnce) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
+        child: _ViewOncePayload(
+          message: message,
+          chatId: chatId,
+          available: fileExists,
+        ),
+      );
+    }
+
     final heroTag = 'image-${message.id}';
     final body = fileExists
         ? GestureDetector(
@@ -1214,6 +1233,87 @@ class _ImagePayload extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
       child: body,
+    );
+  }
+}
+
+/// The three states a view-once photo can be in: waiting to be opened, spent,
+/// or still arriving.
+///
+/// Deliberately never the picture itself. Tapping opens
+/// [ViewOnceMediaScreen] — not the swipeable gallery, which has Share and
+/// Save buttons and would happily page from this photo to every other one in
+/// the chat.
+class _ViewOncePayload extends ConsumerWidget {
+  const _ViewOncePayload({
+    required this.message,
+    required this.chatId,
+    required this.available,
+  });
+
+  final Message message;
+  final String chatId;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final spent = message.viewOnceConsumed;
+    // The sender's own copy stays openable until the recipient says they have
+    // looked — at which point the ack burns it here too.
+    final openable = available && !spent;
+
+    return GestureDetector(
+      onTap: openable
+          ? () => Navigator.of(context).push(
+                mediaRoute<void>(
+                  (_) => ViewOnceMediaScreen(
+                    chatId: chatId,
+                    message: message,
+                  ),
+                ),
+              )
+          : null,
+      child: Container(
+        width: 200,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: AppColors.glass(spent ? 0.05 : 0.12),
+          border: Border.all(
+            color: spent
+                ? AppColors.glass(0.10)
+                : AppColors.brandPrimary.withValues(alpha: 0.35),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              spent
+                  ? Icons.visibility_off_outlined
+                  : Icons.local_fire_department_outlined,
+              size: 20,
+              color: spent ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                spent
+                    ? t.viewOnceOpened
+                    : openable
+                        ? t.viewOnceTapToView
+                        : t.viewOnceUnavailable,
+                style: TextStyle(
+                  color:
+                      spent ? AppColors.textOnGlassFaint : AppColors.textOnGlass,
+                  fontSize: 13,
+                  fontWeight: spent ? FontWeight.w400 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

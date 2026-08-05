@@ -116,7 +116,22 @@ enum InnerPayloadType {
   /// says who sent it, and the receiver's own roster decides whether they were
   /// allowed to. Our copy of that roster is what counts — a sender claiming to
   /// be an admin proves nothing.
-  channelDescription(0xF3);
+  channelDescription(0xF3),
+
+  /// "I have seen the view-once photo you sent." Body is the 16-byte media id
+  /// and nothing else.
+  ///
+  /// This is what makes the promise symmetric: without it, the photo vanishes
+  /// from the recipient's phone and sits in the sender's history forever,
+  /// which is not what either of them thought the button meant. The sender
+  /// deletes their own copy on receipt.
+  ///
+  /// Nothing enforces it — a modified client could view and never send this,
+  /// or send it without viewing. It is a courtesy between two apps that agree
+  /// on what view-once means, not a control over someone else's device, and
+  /// the sender's copy going early costs them nothing they did not already
+  /// choose to give up.
+  viewOnceConsumed(0xF4);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -746,6 +761,7 @@ class MediaManifest {
     this.durationMs = 0,
     this.name,
     this.caption,
+    this.viewOnce = false,
     this.senderIdentityPub,
     this.senderEphemeralPub,
   }) {
@@ -775,6 +791,18 @@ class MediaManifest {
   /// one bubble — and so it is covered by the same signature.
   final String? caption;
 
+  /// Opened once, then gone — for both of us.
+  ///
+  /// The flag is only a *statement of intent*: it cannot make a recipient
+  /// forget what they have already seen, and nothing here defends against a
+  /// screenshot. What it does buy is that neither side's app keeps the bytes
+  /// around afterwards, and that the picture never renders as a thumbnail
+  /// somebody can scroll past twice.
+  ///
+  /// Photos only ([MediaKind.image]), and 1:1 only — a room has no single
+  /// recipient whose viewing could mean "everyone has seen it".
+  final bool viewOnce;
+
   /// Forward-secrecy setup (v0x02). When present, the media chunks are sealed
   /// with a per-transfer X3DH key ([MediaFsCipher]) rather than SealedBox: the
   /// sender's identity + ephemeral X25519 publics let the receiver run the
@@ -795,6 +823,21 @@ class MediaManifest {
   /// recipient to have this one.
   static const int versionV3Caption = 0x03;
   static const int versionV4CaptionFs = 0x04;
+
+  /// The four versions above, again, with [viewOnce] set. Added as a fixed
+  /// offset rather than a flags byte so the existing "an unknown version
+  /// throws" check keeps doing the work: a build that predates view-once sees
+  /// 0x05–0x08, refuses the manifest, and drops the chunks behind it for want
+  /// of one. The photo simply never arrives there — which is the right way for
+  /// this particular feature to fail, since the alternative is an old build
+  /// happily keeping a copy of something that was meant to disappear.
+  ///
+  /// A manifest *without* the flag still encodes as 0x01–0x04, byte for byte,
+  /// so every ordinary photo stays readable by any build.
+  static const int viewOnceVersionOffset = 0x04;
+  static const int versionV5ViewOnce = versionV1 + viewOnceVersionOffset;
+  static const int versionV8ViewOnceCaptionFs =
+      versionV4CaptionFs + viewOnceVersionOffset;
 
   /// Longest caption we carry, in UTF-8 bytes. One length byte caps it at 255
   /// anyway, and a caption is a line under a photo, not a message.
@@ -861,6 +904,13 @@ class MediaManifest {
       // encodings for one state.
       throw const FormatException('caption must be null rather than empty');
     }
+    // A file that vanishes after one look would leave a bubble pointing at a
+    // path the receiver deleted, and a voice note has no "viewed" moment to
+    // hang the deletion on. Photos are the only kind where this means
+    // anything, so the flag is refused rather than ignored on the others.
+    if (viewOnce && kind != MediaKind.image) {
+      throw const FormatException('only a photo can be view-once');
+    }
   }
 
   Uint8List encode() {
@@ -891,9 +941,10 @@ class MediaManifest {
           (fs ? pubLen * 2 : 0),
     );
     var c = 0;
-    out[c++] = hasCaption
+    final base = hasCaption
         ? (fs ? versionV4CaptionFs : versionV3Caption)
         : (fs ? versionV2Fs : versionV1);
+    out[c++] = viewOnce ? base + viewOnceVersionOffset : base;
     out.setRange(c, c += idLen, mediaId);
     out[c++] = kind.tag;
     out[c++] = (total >> 8) & 0xff;
@@ -925,15 +976,20 @@ class MediaManifest {
       throw const FormatException('media manifest truncated');
     }
     final ver = bytes[0];
-    if (ver != versionV1 &&
-        ver != versionV2Fs &&
-        ver != versionV3Caption &&
-        ver != versionV4CaptionFs) {
+    // 0x05–0x08 are 0x01–0x04 with view-once set; anything else is a version
+    // this build does not speak and the manifest is refused outright.
+    final viewOnce =
+        ver >= versionV5ViewOnce && ver <= versionV8ViewOnceCaptionFs;
+    final base = viewOnce ? ver - viewOnceVersionOffset : ver;
+    if (base != versionV1 &&
+        base != versionV2Fs &&
+        base != versionV3Caption &&
+        base != versionV4CaptionFs) {
       throw FormatException(
           'unknown media manifest version 0x${ver.toRadixString(16)}');
     }
-    final fs = ver == versionV2Fs || ver == versionV4CaptionFs;
-    final hasCaption = ver == versionV3Caption || ver == versionV4CaptionFs;
+    final fs = base == versionV2Fs || base == versionV4CaptionFs;
+    final hasCaption = base == versionV3Caption || base == versionV4CaptionFs;
     var c = 1;
     final id = Uint8List.fromList(bytes.sublist(c, c += idLen));
     final kind = MediaKind.fromByte(bytes[c++]);
@@ -996,6 +1052,7 @@ class MediaManifest {
       mime: mime,
       name: name,
       caption: caption,
+      viewOnce: viewOnce,
       sha256: sha,
       senderIdentityPub: idPub,
       senderEphemeralPub: ephPub,

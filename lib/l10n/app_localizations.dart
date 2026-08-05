@@ -2216,6 +2216,42 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get channelDescriptionSave;
 
+  /// No description provided for @viewOnceSendLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'View once'**
+  String get viewOnceSendLabel;
+
+  /// No description provided for @viewOnceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'View once'**
+  String get viewOnceTitle;
+
+  /// No description provided for @viewOnceTapToView.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo · tap to view once'**
+  String get viewOnceTapToView;
+
+  /// No description provided for @viewOnceOpened.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo opened'**
+  String get viewOnceOpened;
+
+  /// No description provided for @viewOnceUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This photo is no longer available'**
+  String get viewOnceUnavailable;
+
+  /// No description provided for @viewOnceWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Closing this deletes the photo for both of you.'**
+  String get viewOnceWarning;
+
   /// No description provided for @channelAvatarAdminOnly.
   ///
   /// In en, this message translates to:
