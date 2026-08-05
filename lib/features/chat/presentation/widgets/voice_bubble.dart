@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/identity/anon_name.dart';
 import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../peers/data/contact_aliases_controller.dart';
 import '../../../peers/data/known_peers_controller.dart';
 import '../../data/voice_playback_controller.dart';
 import '../../models/message.dart';
@@ -21,10 +23,21 @@ class VoiceBubble extends ConsumerStatefulWidget {
   const VoiceBubble({
     super.key,
     required this.message,
+    this.chatId,
     this.chatTitle,
   });
 
   final Message message;
+
+  /// The bucket this bubble is rendered in — a peer's pubkey hex or a
+  /// `#channel`.
+  ///
+  /// Needed because [Message.chatId] is not reliably that: a note that arrived
+  /// over Bluetooth carries the *transport* id of the device it came in on, so
+  /// looking a contact up by it missed and the player fell all the way through
+  /// to "unknown device" for somebody whose name is in the header two
+  /// centimetres above.
+  final String? chatId;
 
   /// Whose voice this is, for the mini player's caption. A last resort — the
   /// bubble works the name out itself (see [_authorName]) and only falls back
@@ -68,9 +81,18 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
     }
     final author = message.authorName?.trim();
     if (author != null && author.isNotEmpty) return author;
-    final peer = ref.read(knownPeersControllerProvider)[message.chatId];
-    final known = peer?.displayName.trim();
-    if (known != null && known.isNotEmpty) return known;
+    final peers = ref.read(knownPeersControllerProvider);
+    // The rendered bucket first, the message's own id second: the former is
+    // the canonical pubkey wherever the caller knows it, the latter is only
+    // right for a message that came in over the relay.
+    final peer = peers[widget.chatId ?? ''] ?? peers[message.chatId];
+    if (peer != null) {
+      return contactDisplayName(
+        alias: ref.read(contactAliasesControllerProvider)[peer.pubkeyHex],
+        rawBroadcastName: peer.displayName,
+        pubkeyHex: peer.pubkeyHex,
+      );
+    }
     final given = widget.chatTitle?.trim();
     if (given != null && given.isNotEmpty) return given;
     return AppLocalizations.of(context).bleUnknownPeer;
@@ -101,8 +123,11 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
         .toggle(
           messageId: widget.message.id,
           path: widget.message.audioPath!,
-          chatId: widget.message.chatId,
+          // The rendered bucket, so tapping the bar returns to the right chat
+          // even for a note that arrived over a Bluetooth transport id.
+          chatId: widget.chatId ?? widget.message.chatId,
           chatTitle: _authorName(context),
+          sentAt: widget.message.sentAt,
           knownDuration: declared > Duration.zero ? declared : null,
         );
 

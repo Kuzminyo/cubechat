@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../data/voice_playback_controller.dart';
@@ -107,7 +108,10 @@ class _Bar extends ConsumerWidget {
                           // play button and the timer already say what kind of
                           // thing this is.
                           Text(
-                            playback.chatTitle ?? '',
+                            playback.sentAt == null
+                                ? (playback.chatTitle ?? '')
+                                : '${playback.chatTitle ?? ''}  ·  '
+                                    '${formatMessageDetailsTime(context, playback.sentAt!)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

@@ -807,7 +807,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     onDoubleTap: _canReact ? _quickReact : null,
                   )
                 else if (message.kind == MessageKind.audio)
-                  VoiceBubble(message: message)
+                  VoiceBubble(message: message, chatId: widget.chatId)
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a

@@ -156,6 +156,7 @@ class ContactContentScreen extends ConsumerWidget {
               emptyLabel: t.contactProfileNoMedia,
             ),
             _VoiceList(
+              chatId: chatId,
               voices: voices,
               onLongPress: (message) => _showMessageActions(context, message),
               emptyLabel: t.contactProfileNoVoiceMessages,
@@ -244,11 +245,14 @@ class _MediaGrid extends StatelessWidget {
 
 class _VoiceList extends StatelessWidget {
   const _VoiceList({
+    required this.chatId,
     required this.voices,
     required this.onLongPress,
     required this.emptyLabel,
   });
 
+  /// The bucket these came from, so the player can name the sender.
+  final String chatId;
   final List<Message> voices;
   final ValueChanged<Message> onLongPress;
   final String emptyLabel;
@@ -267,7 +271,7 @@ class _VoiceList extends StatelessWidget {
         onLongPress: () => onLongPress(voices[index]),
         child: GlassCard(
           strong: true,
-          child: VoiceBubble(message: voices[index]),
+          child: VoiceBubble(message: voices[index], chatId: chatId),
         ),
       ),
     );

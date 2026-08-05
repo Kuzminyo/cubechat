@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import 'chat_input.dart' show MessageIslandGlass;
 import '../../data/voice_playback_controller.dart';
@@ -155,7 +156,10 @@ class _VoicePanel extends ConsumerWidget {
                 // waveform and the timer already say, and then ellipsised the
                 // one word that was actually news.
                 Text(
-                  playback.chatTitle ?? '',
+                  playback.sentAt == null
+                      ? (playback.chatTitle ?? '')
+                      : '${playback.chatTitle ?? ''}  ·  '
+                          '${formatMessageDetailsTime(context, playback.sentAt!)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -264,8 +268,9 @@ class _SpeedPill extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color:
-                speed == 1.0 ? AppColors.textOnGlassDim : AppColors.brandPrimary,
+            color: speed == 1.0
+                ? AppColors.textOnGlassDim
+                : AppColors.brandPrimary,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),

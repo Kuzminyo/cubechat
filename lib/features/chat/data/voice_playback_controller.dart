@@ -12,6 +12,7 @@ class VoicePlayback {
     this.messageId,
     this.chatId,
     this.chatTitle,
+    this.sentAt,
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.playing = false,
@@ -26,6 +27,10 @@ class VoicePlayback {
   /// Where to go back to when the mini player is tapped.
   final String? chatId;
   final String? chatTitle;
+
+  /// When the note was sent. Shown beside the name, because "who" without
+  /// "when" is half an answer for something that arrived while you were away.
+  final DateTime? sentAt;
 
   final Duration position;
   final Duration duration;
@@ -44,6 +49,7 @@ class VoicePlayback {
     String? messageId,
     String? chatId,
     String? chatTitle,
+    DateTime? sentAt,
     Duration? position,
     Duration? duration,
     bool? playing,
@@ -53,6 +59,7 @@ class VoicePlayback {
         messageId: messageId ?? this.messageId,
         chatId: chatId ?? this.chatId,
         chatTitle: chatTitle ?? this.chatTitle,
+        sentAt: sentAt ?? this.sentAt,
         position: position ?? this.position,
         duration: duration ?? this.duration,
         playing: playing ?? this.playing,
@@ -124,6 +131,7 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     required String path,
     required String chatId,
     required String chatTitle,
+    DateTime? sentAt,
     Duration? knownDuration,
   }) async {
     if (!File(path).existsSync()) return;
@@ -146,6 +154,7 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
       messageId: messageId,
       chatId: chatId,
       chatTitle: chatTitle,
+      sentAt: sentAt,
       duration: knownDuration ?? Duration.zero,
       playing: true,
       speed: state.speed,
