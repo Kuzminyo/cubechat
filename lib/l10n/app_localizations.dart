@@ -2276,6 +2276,24 @@ abstract class AppLocalizations {
   /// **'Get started'**
   String get onboardingStart;
 
+  /// No description provided for @chatMediaShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get chatMediaShare;
+
+  /// No description provided for @chatMediaSaveToGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to gallery'**
+  String get chatMediaSaveToGallery;
+
+  /// No description provided for @chatMediaShowInChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Show in chat'**
+  String get chatMediaShowInChat;
+
   /// No description provided for @chatWallpaperTitle.
   ///
   /// In en, this message translates to:

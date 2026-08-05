@@ -1234,6 +1234,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onboardingStart => 'Get started';
 
   @override
+  String get chatMediaShare => 'Share';
+
+  @override
+  String get chatMediaSaveToGallery => 'Save to gallery';
+
+  @override
+  String get chatMediaShowInChat => 'Show in chat';
+
+  @override
   String get chatWallpaperTitle => 'Wallpaper';
 
   @override

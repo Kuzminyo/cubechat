@@ -72,9 +72,21 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   /// defaults to an empty list, which leaves the platform's own order in
   /// place, and on Android that is oldest-first. The gallery therefore opened
   /// on photos from years ago.
-  static final FilterOptionGroup _newestFirst = FilterOptionGroup(
-    orders: const [OrderOption(type: OrderOptionType.createDate, asc: false)],
-  );
+  /// Built per open, and with the creation-time condition explicitly ignored.
+  ///
+  /// Both halves matter, and together they are why a screenshot taken while
+  /// the app was running only showed up after a full restart.
+  /// [FilterOptionGroup] defaults `createTimeCond` to `DateTimeCond.def()`,
+  /// whose `max` is `DateTime.now()` **evaluated when the group is
+  /// constructed** — and this used to be a `static final`, so that ceiling was
+  /// frozen at the first open of the session. Every photo taken afterwards was
+  /// newer than the filter's idea of "now" and was quietly excluded.
+  static FilterOptionGroup _newestFirst() => FilterOptionGroup(
+        orders: const [
+          OrderOption(type: OrderOptionType.createDate, asc: false),
+        ],
+        createTimeCond: DateTimeCond.def().copyWith(ignore: true),
+      );
 
   /// One screen's worth and change. The album is paged in as the grid scrolls
   /// rather than fetched whole: a single 300-asset read (what this used to do)
@@ -142,7 +154,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       final paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
         onlyAll: true,
-        filterOption: _newestFirst,
+        filterOption: _newestFirst(),
       );
       if (paths.isNotEmpty) {
         final album = paths.first;

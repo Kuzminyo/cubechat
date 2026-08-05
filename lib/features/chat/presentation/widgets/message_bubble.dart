@@ -1347,7 +1347,12 @@ class _ViewOncePayload extends ConsumerWidget {
                 : AppColors.brandPrimary.withValues(alpha: 0.35),
           ),
         ),
+        // Centred as a group rather than left-aligned with the text filling
+        // whatever is left: on two lines the old layout put the icon against
+        // one edge and a ragged block of text against the other, which read as
+        // a mistake rather than a label.
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               spent
@@ -1357,13 +1362,14 @@ class _ViewOncePayload extends ConsumerWidget {
               color: spent ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
             ),
             const SizedBox(width: 10),
-            Expanded(
+            Flexible(
               child: Text(
                 spent
                     ? t.viewOnceOpened
                     : openable
                         ? t.viewOnceTapToView
                         : t.viewOnceUnavailable,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color:
                       spent ? AppColors.textOnGlassFaint : AppColors.textOnGlass,

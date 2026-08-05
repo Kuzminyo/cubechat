@@ -43,21 +43,37 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen> {
   /// only thing left pointing at the file.
   late final String? _path = widget.message.imagePath;
 
+  /// Captured while the widget is alive, because [dispose] is too late to ask
+  /// for it.
+  ///
+  /// This screen used to call `ref.read(messagingServiceProvider)` from inside
+  /// dispose. Riverpod refuses a read from a disposed element and throws
+  /// *synchronously* — before the future the `unawaited` was wrapping ever
+  /// existed — so the exception went out through dispose, the framework
+  /// swallowed it, and the photo was never burned at all. It reopened as good
+  /// as new every time, which is the one thing this feature must not do.
+  late final MessagingService _messaging = ref.read(messagingServiceProvider);
+
+  /// Burning is idempotent downstream, but the screen can be torn down more
+  /// than one way (pop, back gesture, route replacement) and there is no need
+  /// to ask twice.
+  bool _burned = false;
+
+  void _burn() {
+    if (_burned) return;
+    _burned = true;
+    final wireId = widget.message.wireId;
+    if (wireId == null) return;
+    // Fire-and-forget through the service, not the controller: burning the
+    // photo here is only half of it — the other half is telling the sender so
+    // their copy goes too. Not awaited because dispose cannot be async, and
+    // the burn must not depend on this screen still being alive.
+    unawaited(_messaging.consumeViewOnce(widget.chatId, wireId));
+  }
+
   @override
   void dispose() {
-    final wireId = widget.message.wireId;
-    if (wireId != null) {
-      // Fire-and-forget through the service, not the controller: burning the
-      // photo here is only half of it — the other half is telling the sender
-      // so their copy goes too. Not awaited because dispose cannot be async,
-      // and the burn must not depend on this screen still being alive.
-      unawaited(
-        ref.read(messagingServiceProvider).consumeViewOnce(
-              widget.chatId,
-              wireId,
-            ),
-      );
-    }
+    _burn();
     super.dispose();
   }
 

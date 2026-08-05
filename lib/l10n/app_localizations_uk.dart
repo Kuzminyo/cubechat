@@ -1240,6 +1240,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get onboardingStart => 'Почати';
 
   @override
+  String get chatMediaShare => 'Поділитися';
+
+  @override
+  String get chatMediaSaveToGallery => 'Зберегти в галерею';
+
+  @override
+  String get chatMediaShowInChat => 'Показати в чаті';
+
+  @override
   String get chatWallpaperTitle => 'Шпалери';
 
   @override

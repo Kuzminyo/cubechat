@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/routing/page_transitions.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
@@ -24,20 +25,35 @@ Future<Uint8List?> openImageEditor(
   Uint8List source,
 ) async {
   Uint8List? edited;
-  await Navigator.of(context).push<void>(
-    mediaRoute<void>(
-      (routeContext) => ProImageEditor.memory(
-        source,
-        callbacks: ProImageEditorCallbacks(
-          onImageEditingComplete: (bytes) async {
-            edited = bytes;
-          },
-          // Only ever called with EditorMode.main (sub-editors have their own
-          // callbacks), so an unconditional pop is correct here.
-          onCloseEditor: (_) => Navigator.of(routeContext).pop(),
+  // The app runs edge-to-edge with transparent system bars, which is right for
+  // every other screen and wrong for this one: pro_image_editor lays its own
+  // chrome against the physical edges, so the status bar sat on its top row and
+  // the gesture bar sat on the tool strip along the bottom — the tools were
+  // there and simply could not be tapped. Taking the system bars away for the
+  // duration makes the overlap impossible rather than negotiating insets with a
+  // package that owns its whole layout, and a full-screen photo editor without
+  // a status bar is what every other one looks like anyway.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  try {
+    await Navigator.of(context).push<void>(
+      mediaRoute<void>(
+        (routeContext) => ProImageEditor.memory(
+          source,
+          callbacks: ProImageEditorCallbacks(
+            onImageEditingComplete: (bytes) async {
+              edited = bytes;
+            },
+            // Only ever called with EditorMode.main (sub-editors have their own
+            // callbacks), so an unconditional pop is correct here.
+            onCloseEditor: (_) => Navigator.of(routeContext).pop(),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  } finally {
+    // Restored whatever happened on the way out — backing out of the editor
+    // must not leave the rest of the app without its system bars.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   return edited;
 }

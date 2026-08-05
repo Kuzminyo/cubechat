@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,8 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/identity/anon_name.dart';
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/share_anchor.dart';
+import '../../../core/utils/time_format.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../peers/data/contact_aliases_controller.dart';
+import '../../peers/data/known_peers_controller.dart';
+import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
@@ -35,6 +43,10 @@ class _ChatMediaGalleryScreenState
   late final PageController _controller;
   int _index = 0;
   bool _saving = false;
+
+  /// Header on or off. Starts on so the actions are discoverable, and a tap
+  /// on the photo takes it away.
+  bool _chromeVisible = true;
 
   /// Snapshot the image list once so paging isn't disturbed if a new message
   /// arrives mid-view; still enough for the common "look through photos" flow.
@@ -131,72 +143,162 @@ class _ChatMediaGalleryScreenState
             .watch(conversationSettingsControllerProvider)[widget.chatId]
             ?.restrictCopying ??
         false;
+    final t = AppLocalizations.of(context);
     final count = _images.length;
+    final current = _current;
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.35),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: count <= 1
-            ? null
-            : Text(
-                '${_index + 1} / $count',
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+      // Hidden while the photo is being looked at rather than operated on. The
+      // chrome is worth a tap to bring back and worth nothing while it sits on
+      // top of the picture.
+      appBar: !_chromeVisible
+          ? null
+          : AppBar(
+              backgroundColor: Colors.black.withValues(alpha: 0.45),
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
-        actions: [
-          if (!sharingRestricted)
-            IconButton(
-              key: _shareButtonKey,
-              icon: const Icon(Icons.ios_share, color: Colors.white),
-              tooltip: 'Share',
-              onPressed: _current == null ? null : _share,
-            ),
-          IconButton(
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+              titleSpacing: 0,
+              // Who sent it and when, which is what you actually want to know
+              // looking at a photo three hundred messages back — the old header
+              // said "4 / 17", a number that answers a question nobody asks.
+              title: current == null
+                  ? null
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _senderName(current),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          count > 1
+                              ? '${formatMessageDetailsTime(context, current.sentAt)}'
+                                  '  ·  ${_index + 1}/$count'
+                              : formatMessageDetailsTime(context, current.sentAt),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.65),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
-                  )
-                : const Icon(Icons.download, color: Colors.white),
-            tooltip: 'Save',
-            onPressed: _current == null ? null : _save,
-          ),
-        ],
-      ),
+              actions: [
+                if (!sharingRestricted)
+                  IconButton(
+                    key: _shareButtonKey,
+                    icon: const Icon(Icons.ios_share, color: Colors.white),
+                    tooltip: t.chatMediaShare,
+                    onPressed: current == null ? null : _share,
+                  ),
+                PopupMenuButton<String>(
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.more_vert, color: Colors.white),
+                  color: AppColors.bgTop,
+                  onSelected: (value) {
+                    if (value == 'save') {
+                      unawaited(_save());
+                    } else if (value == 'chat') {
+                      _showInChat();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'save',
+                      child: _menuRow(
+                          Icons.download_rounded, t.chatMediaSaveToGallery),
+                    ),
+                    PopupMenuItem(
+                      value: 'chat',
+                      child: _menuRow(
+                          Icons.chat_bubble_outline_rounded, t.chatMediaShowInChat),
+                    ),
+                  ],
+                ),
+              ],
+            ),
       body: count == 0
           ? _missing()
-          : PageView.builder(
-              controller: _controller,
-              itemCount: count,
-              onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (_, i) {
-                final m = _images[i];
-                return InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 8,
-                  child: Center(
-                    child: Hero(
-                      tag: 'image-${m.id}',
-                      child: Image.file(
-                        File(m.imagePath!),
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => _missing(),
+          : GestureDetector(
+              // Tap anywhere to get the chrome out of the way, the way every
+              // photo viewer works.
+              onTap: () => setState(() => _chromeVisible = !_chromeVisible),
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: count,
+                onPageChanged: (i) => setState(() => _index = i),
+                itemBuilder: (_, i) {
+                  final m = _images[i];
+                  return InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 8,
+                    child: Center(
+                      child: Hero(
+                        tag: 'image-${m.id}',
+                        child: Image.file(
+                          File(m.imagePath!),
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => _missing(),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
     );
+  }
+
+  Widget _menuRow(IconData icon, String label) => Row(
+        children: [
+          Icon(icon, size: 19, color: AppColors.textOnGlass),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: AppColors.textOnGlass)),
+        ],
+      );
+
+  /// Whoever sent this photo, resolved the way the rest of the app resolves a
+  /// name: your alias for them first, then what they broadcast.
+  String _senderName(Message message) {
+    if (message.isMine) {
+      final mine = ref.read(nicknameControllerProvider).trim();
+      return mine.isEmpty ? AppLocalizations.of(context).chatReplyYou : mine;
+    }
+    final author = message.authorName?.trim();
+    if (author != null && author.isNotEmpty) return author;
+    final peer = ref.read(knownPeersControllerProvider)[widget.chatId];
+    if (peer == null) return AppLocalizations.of(context).bleUnknownPeer;
+    return contactDisplayName(
+      alias: ref.read(contactAliasesControllerProvider)[peer.pubkeyHex],
+      rawBroadcastName: peer.displayName,
+      pubkeyHex: peer.pubkeyHex,
+    );
+  }
+
+  /// Close the viewer and land on this photo's bubble in the conversation.
+  void _showInChat() {
+    final wireId = _current?.wireId;
+    Navigator.of(context).maybePop();
+    if (wireId == null) return;
+    ref.read(chatJumpRequestProvider(widget.chatId).notifier).state = wireId;
   }
 
   Widget _missing() => Center(
