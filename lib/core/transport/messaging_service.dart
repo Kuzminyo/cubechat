@@ -1141,23 +1141,36 @@ class MessagingService {
   /// from re-ordering them on lossy stacks. The caller gets back the
   /// pending Message immediately; status flips to delivered once the last
   /// chunk's BLE write resolves, or failed on the first error.
-  /// Largest file we will put on the mesh. Not a protocol limit — the chunk
-  /// count allows more — but a limit on what is reasonable to push through
-  /// Bluetooth at roughly a quarter of a megabyte a second, and what the
-  /// receiver has agreed to accept ([FileReassembler.maxBytesPerTransfer]).
-  static const int maxFileBytesMesh = 25 * 1024 * 1024;
+  /// Largest file we will put on the mesh.
+  ///
+  /// This one *is* the protocol limit, exactly. A BLE media chunk is
+  /// [kBleMediaChunkData] = 4096 bytes on any link we can negotiate (the
+  /// fragmenter, not the MTU, decides it — see [bleMediaChunkData]), and
+  /// [FileChunk.maxChunks] is 8192. 8192 × 4096 is 32 MiB and not a byte more:
+  /// past it `sendFile` throws "too many chunks" rather than sending anything.
+  ///
+  /// Worth knowing before reaching for a bigger number: at the ~14 KB/s a real
+  /// Bluetooth link sustains, 32 MiB is already about forty minutes on the
+  /// radio. Raising the chunk cap would buy hours, not megabytes.
+  static const int maxFileBytesMesh = 32 * 1024 * 1024;
 
   /// And over the internet fallback, where every chunk is one relay event.
   ///
   /// The number that matters here is the publish count, not the byte count:
   /// public relays rate-limit, and that limit lands on ordinary messages too.
-  /// Three megabytes was ~190 publishes at the old 16 KiB chunk — and three
-  /// megabytes is less than one photo off a modern phone camera, which is
-  /// exactly what people were trying to send. At 32 KiB a chunk (see
-  /// [FileChunk.maxDataBytes] for why that is the ceiling) the same 190
-  /// publishes now carry six, and twelve megabytes costs ~380 — slow, visibly
-  /// so, but it is a progress bar you can watch and pause rather than a refusal.
-  static const int maxFileBytesRelay = 12 * 1024 * 1024;
+  /// At 32 KiB a chunk (see [FileChunk.maxDataBytes] for why that is the
+  /// ceiling) 64 MiB is 2048 publishes per relay — minutes of transfer you can
+  /// watch and pause, and comfortably inside [FileChunk.maxChunks].
+  ///
+  /// This is where the ceiling stops being arithmetic and starts being other
+  /// people's servers. A relay is not a file host: it prunes, it caps event
+  /// size, and it answers a burst by throttling you. 2048 events is a lot to
+  /// ask of one and roughly the most that is polite; a gigabyte would be
+  /// ~33,000, which no public relay will carry however patient the sender is.
+  /// Delivery rides out a refusal now ([_deliverMediaFrameRetrying]) instead of
+  /// failing the whole file on the first one, which is what makes a transfer
+  /// this size land at all.
+  static const int maxFileBytesRelay = 64 * 1024 * 1024;
 
   /// Send [file] as-is, keeping its name.
   ///
@@ -1313,6 +1326,9 @@ class MessagingService {
       );
 
       final handle = await stored.open();
+      // Grows the moment the far end pushes back, and never shrinks again for
+      // this file. See [_deliverMediaFrameRetrying].
+      var gap = Duration.zero;
       try {
         for (var i = 0; i < total; i++) {
           if (!await transfers.waitUntilRunnable(transferId)) {
@@ -1351,23 +1367,27 @@ class MessagingService {
             body: body,
           );
           _dedup.acceptEnvelope(env);
-          final sent = await _deliverMediaFrame(
+          final delivery = await _deliverMediaFrameRetrying(
             frameBytes: Frame(type: FrameType.transport, payload: env.encode())
                 .encode(),
             session: session,
             canonicalId: canonicalId,
             relayOnly: relayOnly,
+            gap: gap,
           );
-          if (!sent) {
+          gap = delivery.gap;
+          if (!delivery.sent) {
             throw const MediaRouteUnavailable();
           }
           transfers.setProgress(transferId, i + 1, total);
-          // Same pacing as the photo path: some Android stacks drop notifies
-          // when the sender outruns the receiver's read loop. Skipped when the
-          // relay is carrying this — the gap exists for a BLE notify pipe, and
-          // a relay transfer already pays a round trip per chunk.
-          if (i + 1 < total && !relayOnly) {
-            await Future<void>.delayed(const Duration(milliseconds: 15));
+          if (i + 1 < total) {
+            // Over BLE, a fixed gap: some Android stacks drop notifies when the
+            // sender outruns the receiver's read loop. Over the relay there is
+            // already a round trip per chunk, so the only gap is whatever the
+            // relay has asked for by refusing something.
+            final pause =
+                relayOnly ? gap : const Duration(milliseconds: 15) + gap;
+            if (pause > Duration.zero) await Future<void>.delayed(pause);
           }
         }
       } finally {
@@ -1539,6 +1559,7 @@ class MessagingService {
         DebugLog.instance.log(
             'CRYPTO', 'sendImage: forward-secret (X3DH) media to $canonicalId');
       }
+      var imgGap = Duration.zero;
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
         final end = (start + chunkData).clamp(0, bytes.length);
@@ -1570,22 +1591,26 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        final sent = await _deliverMediaFrame(
+        final delivery = await _deliverMediaFrameRetrying(
           frameBytes: frameBytes,
           session: session,
           canonicalId: canonicalId,
           relayOnly: relayOnly,
+          gap: imgGap,
         );
-        if (!sent) {
+        imgGap = delivery.gap;
+        if (!delivery.sent) {
           throw const MediaRouteUnavailable();
         }
         // Tiny pacing gap. Some Android BLE stacks lose notify packets when
         // a fast sender outpaces the receiver's read loop. 15ms is below
         // human perception in aggregate (~5s for a 300-chunk image) and
         // well above the worst-case per-chunk turn-around on tested
-        // hardware. Pointless over the relay, which is not a notify pipe.
-        if (i + 1 < total && !relayOnly) {
-          await Future<void>.delayed(const Duration(milliseconds: 15));
+        // hardware. Over the relay the only gap is one the relay asked for.
+        if (i + 1 < total) {
+          final pause =
+              relayOnly ? imgGap : const Duration(milliseconds: 15) + imgGap;
+          if (pause > Duration.zero) await Future<void>.delayed(pause);
         }
       }
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
@@ -4536,13 +4561,16 @@ class MessagingService {
       type: FrameType.transport,
       payload: env.encode(),
     ).encode();
-    final delivered = await _deliverMediaFrame(
+    // Retried like the chunks behind it. A manifest refused once used to fail
+    // the transfer before a single byte of the file had been offered.
+    final delivered = await _deliverMediaFrameRetrying(
       frameBytes: frameBytes,
       session: session,
       canonicalId: canonicalId,
       relayOnly: relayOnly,
+      gap: Duration.zero,
     );
-    if (!delivered) {
+    if (!delivered.sent) {
       throw const MediaRouteUnavailable();
     }
   }
@@ -4998,6 +5026,53 @@ class MessagingService {
   /// [relayOnly] short-circuits straight to the relay when the transfer was
   /// chunked for it (see [_mediaChunkData]) — a 16 KB chunk sized for one Nostr
   /// event would otherwise be fragmented into ~70 unpaced BLE notifies.
+  /// Attempts per chunk before a transfer gives up on it.
+  ///
+  /// Backed off linearly, so a chunk is worried at for about four seconds
+  /// before it counts as lost. That is nothing against a transfer measured in
+  /// minutes, and it is the difference between a 2000-chunk file arriving and
+  /// one refused event throwing away everything sent so far.
+  static const int _mediaChunkAttempts = 5;
+  static const Duration _mediaRetryBackoff = Duration(milliseconds: 400);
+
+  /// Deliver one media chunk, riding out a refusal instead of failing the file.
+  ///
+  /// A public relay answers a burst with `rate-limited: you are noting too
+  /// much` and drops the event; a BLE link can be a second into a reconnect.
+  /// In both cases the *transfer* is fine and one frame was not — but the first
+  /// `false` used to throw [MediaRouteUnavailable], mark the file failed, and
+  /// leave the retry to start again from chunk zero, which on a large file
+  /// meant it could never finish at all.
+  ///
+  /// Returns the gap to leave before the next chunk. Zero while the far end is
+  /// keeping up; once something has pushed back, it stays non-zero for the rest
+  /// of the transfer — a relay that throttled you once will throttle you again,
+  /// and pacing into it beats being refused and retrying into it.
+  Future<({bool sent, Duration gap})> _deliverMediaFrameRetrying({
+    required Uint8List frameBytes,
+    required ChatSession? session,
+    required String canonicalId,
+    required bool relayOnly,
+    required Duration gap,
+  }) async {
+    var next = gap;
+    for (var attempt = 1; attempt <= _mediaChunkAttempts; attempt++) {
+      if (await _deliverMediaFrame(
+        frameBytes: frameBytes,
+        session: session,
+        canonicalId: canonicalId,
+        relayOnly: relayOnly,
+      )) {
+        return (sent: true, gap: next);
+      }
+      if (attempt == _mediaChunkAttempts) break;
+      // Pushed back on. Slow down for good, and wait longer each time.
+      next = next + relayFanoutPacing;
+      await Future<void>.delayed(_mediaRetryBackoff * attempt);
+    }
+    return (sent: false, gap: next);
+  }
+
   Future<bool> _deliverMediaFrame({
     required Uint8List frameBytes,
     required ChatSession? session,
