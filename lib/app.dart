@@ -58,7 +58,30 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final payload = await NotificationService.instance.initialChatPayload();
       if (payload != null && payload.isNotEmpty) _openChat(payload);
+      _startDiscovery();
     });
+  }
+
+  /// Bring Bluetooth up when the app does, not when somebody opens Nearby.
+  ///
+  /// This used to be called from exactly one place — `PeersScreen.initState` —
+  /// and the Nearby branch is deliberately the one tab the router does not
+  /// preload. Between them, a phone that launched into Chats and stayed there
+  /// never advertised, never scanned, and held no links: the mesh was off for
+  /// the entire session and every send fell through to the relay. A field log
+  /// caught it as two minutes with not one BLE line in it, on an app whose
+  /// whole premise is working without a relay to fall through to.
+  ///
+  /// It does not undo the heat work. What that changed was the *cadence*, and
+  /// the cadence is picked per scan window by `shouldScanActively` — active
+  /// only while somebody is watching the Nearby list or we owe a delivery, idle
+  /// everywhere else. Starting the scanner at launch runs it at the idle
+  /// cadence, which is the state that fix was aiming for; what it was not
+  /// aiming for was no radio at all.
+  void _startDiscovery() {
+    if (!PlatformInfo.isMobile) return;
+    // Idempotent, so the Peers screen calling it again on mount is harmless.
+    unawaited(ref.read(peerDiscoveryControllerProvider.notifier).start());
   }
 
   /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`

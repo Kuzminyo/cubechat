@@ -1530,7 +1530,17 @@ class MessagingService {
       final imgDirect = imgTid != null ? _clients[imgTid] : null;
       // One decision for the whole transfer: with no BLE link at all it goes
       // over the relay, which also sets the chunk size.
-      final relayOnly = !_hasAnyLink;
+      //
+      // The relay has to actually be up for that to mean anything — the same
+      // condition [sendFile] uses. Without the second half, a phone with no
+      // link *and* no internet still committed the transfer to relay-only,
+      // which makes [_deliverMediaFrame] skip every Bluetooth path outright:
+      // a link coming back mid-send could not be used, and the failure
+      // surfaced from inside the manifest send rather than from the route
+      // check at the top. A field log caught exactly that — the check passed
+      // while a central was connected, the link dropped during the async
+      // setup below, and the send went relay-only into a dead relay.
+      final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
       final chunkData = _mediaChunkData(imgDirect,
           relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
