@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/notifications/notification_service.dart';
@@ -20,6 +19,7 @@ import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/media_storage.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
@@ -2467,10 +2467,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// bytes, not a stable file path).
   Future<String?> _cacheOutgoingImage(Uint8List bytes, String assetId) async {
     try {
-      final dir = Directory(
-        '${(await getApplicationCacheDirectory()).path}/cubechat/sent',
-      );
-      if (!await dir.exists()) await dir.create(recursive: true);
+      // Persistent, not cache — see [mediaDirectory]. This copy is the only
+      // one an outgoing bubble has to render from.
+      final dir = await sentImagesDirectory();
       final safeId = assetId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
       final file = File('${dir.path}/$safeId.jpg');
       await file.writeAsBytes(bytes, flush: true);

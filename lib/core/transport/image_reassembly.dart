@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
+import '../util/media_storage.dart';
 
 import '../util/debug_log.dart';
 import 'inner_payload.dart';
@@ -99,17 +99,12 @@ class ImageReassembler {
     return null;
   }
 
-  static Future<String> persistToCache({
+  static Future<String> persistToDisk({
     required Uint8List imageId,
     required Uint8List bytes,
     required String mime,
   }) async {
-    final dir = Directory(
-      '${(await getApplicationCacheDirectory()).path}/cubechat/images',
-    );
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
+    final dir = await receivedImagesDirectory();
     final ext = _extensionFor(mime);
     final hex = imageId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final file = File('${dir.path}/$hex$ext');
@@ -276,17 +271,12 @@ class AudioReassembler {
     return null;
   }
 
-  static Future<String> persistToCache({
+  static Future<String> persistToDisk({
     required Uint8List audioId,
     required Uint8List bytes,
     required String mime,
   }) async {
-    final dir = Directory(
-      '${(await getApplicationCacheDirectory()).path}/cubechat/audio',
-    );
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
+    final dir = await voiceDirectory();
     final ext = _audioExtensionFor(mime);
     final hex = audioId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final file = File('${dir.path}/$hex$ext');

@@ -4614,7 +4614,7 @@ class MessagingService {
           return;
 
         case MediaKind.image:
-          final path = await ImageReassembler.persistToCache(
+          final path = await ImageReassembler.persistToDisk(
             imageId: manifest.mediaId,
             bytes: bytes,
             mime: manifest.mime,
@@ -4638,7 +4638,7 @@ class MessagingService {
           );
 
         case MediaKind.audio:
-          final path = await AudioReassembler.persistToCache(
+          final path = await AudioReassembler.persistToDisk(
             audioId: manifest.mediaId,
             bytes: bytes,
             mime: manifest.mime,

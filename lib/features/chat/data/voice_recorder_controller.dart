@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
+import '../../../core/util/media_storage.dart';
 import 'package:record/record.dart';
 
 /// In-flight voice-message recording state. The UI watches this to show the
@@ -111,12 +111,10 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       if (await _recorder.isRecording()) {
         await _recorder.stop();
       }
-      final dir = Directory(
-        '${(await getApplicationCacheDirectory()).path}/cubechat/audio',
-      );
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+      // Not the cache directory: a voice note you sent is the conversation,
+      // and the OS empties the cache whenever it wants space — which is why
+      // your own recordings stopped playing after a day or so.
+      final dir = await voiceDirectory();
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final path = '${dir.path}/rec-$stamp.m4a';
       _currentPath = path;

@@ -125,7 +125,7 @@ class FileBubble extends ConsumerWidget {
       message.fileName ?? path,
       declaredMime: message.text,
     );
-    final OpenResult result;
+    OpenResult? result;
     try {
       // A type we cannot name is passed as *no* type rather than as
       // octet-stream: asked to open "some bytes", Android looks for an app
@@ -136,15 +136,21 @@ class FileBubble extends ConsumerWidget {
         type: isUnknownMime(mime) ? null : mime,
       );
     } catch (e) {
-      // Without this the tap did nothing at all: a throw inside an async
-      // handler goes to the zone, and the finger gets no answer either way.
+      // Falls through to the share offer below rather than stopping here.
+      //
+      // It used to toast and return, which made a plugin that failed to
+      // register — `MissingPluginException on channel open_file`, seen in the
+      // field and intermittent — into a file that simply could not be opened
+      // by any route. The sheet is a different plugin and works regardless, so
+      // the way out that already exists for "nothing handles this type" is the
+      // right answer for "the opener itself is missing" too.
       DebugLog.instance.log('FILE', 'open failed for $path: $e');
-      if (context.mounted) showGlassToast(context, t.fileOpenFailed);
-      return;
     }
-    if (result.type == ResultType.done || !context.mounted) return;
-    DebugLog.instance
-        .log('FILE', 'open $path ($mime): ${result.type} ${result.message}');
+    if (result?.type == ResultType.done || !context.mounted) return;
+    if (result != null) {
+      DebugLog.instance
+          .log('FILE', 'open $path ($mime): ${result.type} ${result.message}');
+    }
 
     if (sharingRestricted) {
       // No offer to share instead: that is the one route this setting exists
