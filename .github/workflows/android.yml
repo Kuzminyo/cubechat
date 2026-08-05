@@ -1,4 +1,4 @@
-name: Android build (signed release APK for sideloading)
+name: Android build (debug APK for sideloading)
 
 # Triggers:
 # - every push to main (so each commit produces a fresh installable APK)
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    name: Build APK
+    name: Build debug APK
     # Ubuntu runner ships the Android SDK and can reach dl.google.com, which the
     # sandboxed dev environment cannot — this is why the APK is built in CI.
     runs-on: ubuntu-latest
@@ -52,46 +52,12 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
-      # Restore the release keystore from a secret, when there is one.
-      #
-      # The .jks is gitignored — a signing key in the repository is a signing
-      # key for anyone who can read the repository — so CI gets it as a
-      # base64 secret and writes it out for the length of the job. See the
-      # fallback below for what happens when the secrets are not set.
-      - name: Restore release keystore
-        id: signing
-        env:
-          KEYSTORE_B64: ${{ secrets.CUBECHAT_RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          set -e
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "No keystore secret — falling back to a debug build."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "$KEYSTORE_B64" | base64 -d > android/app/cubechat-release.jks
-          echo "available=true" >> "$GITHUB_OUTPUT"
-
-      # Signed with the same key as the developer's local release builds, so
-      # this APK installs *over* one of those rather than being refused for a
-      # signature mismatch — which is the whole point of building release here
-      # instead of debug. build.gradle.kts already reads these four from the
-      # environment (see `secret()`), so nothing needs threading through Gradle
-      # by hand.
-      - name: Build release APK
-        if: steps.signing.outputs.available == 'true'
-        env:
-          CUBECHAT_RELEASE_STORE_FILE: cubechat-release.jks
-          CUBECHAT_RELEASE_STORE_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_STORE_PASSWORD }}
-          CUBECHAT_RELEASE_KEY_ALIAS: ${{ secrets.CUBECHAT_RELEASE_KEY_ALIAS }}
-          CUBECHAT_RELEASE_KEY_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_KEY_PASSWORD }}
-        run: flutter build apk --release
-
-      # Without the secrets a --release build would come out unsigned and refuse
-      # to install, so the job still produces something usable rather than
-      # failing: a debug APK, self-signed with the Android debug keystore.
-      - name: Build debug APK (no signing secrets)
-        if: steps.signing.outputs.available != 'true'
+      # A debug APK is self-signed with the Android debug keystore, so it
+      # installs on any device without release signing secrets. (A --release
+      # build here would be unsigned — this project only wires a release
+      # signingConfig when key.properties / CUBECHAT_RELEASE_* secrets exist —
+      # and an unsigned release APK won't install.)
+      - name: Build debug APK
         run: flutter build apk --debug
 
       - name: Show build output
@@ -103,13 +69,8 @@ jobs:
       - name: Rename APK
         run: |
           set -e
-          if [ "${{ steps.signing.outputs.available }}" = "true" ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk cubechat.apk
-            ls -lh cubechat.apk
-          else
-            cp build/app/outputs/flutter-apk/app-debug.apk cubechat-debug.apk
-            ls -lh cubechat-debug.apk
-          fi
+          cp build/app/outputs/flutter-apk/app-debug.apk cubechat-debug.apk
+          ls -lh cubechat-debug.apk
 
       # Deliberately NOT uploaded as a workflow artifact.
       #
@@ -130,23 +91,19 @@ jobs:
       - name: Publish to rolling prerelease
         uses: softprops/action-gh-release@v3
         with:
-          # Only one of the two names below exists on any given run.
-          fail_on_unmatched_files: false
           tag_name: apk-latest
-          name: Latest APK (${{ github.ref_name }})
+          name: Latest debug APK (${{ github.ref_name }})
           prerelease: true
           body: |
-            Auto-built APK for sideloading on Android
-            (${{ steps.signing.outputs.available == 'true' && 'release, signed' || 'debug — no signing secrets set' }}).
+            Auto-built **debug** APK for sideloading on Android.
 
             - Commit: `${{ github.sha }}`
             - Branch: `${{ github.ref_name }}`
 
-            Download the `.apk` below, open it on your Android phone, and allow
-            "Install unknown apps" for your browser/file manager when prompted.
-          files: |
-            cubechat.apk
-            cubechat-debug.apk
+            Download `cubechat-debug.apk` below, open it on your Android phone,
+            and allow "Install unknown apps" for your browser/file manager when
+            prompted.
+          files: cubechat-debug.apk
 
       - name: Summary
         if: success()
@@ -165,7 +122,7 @@ jobs:
             echo ""
             echo "### Install on Android"
             echo "1. Open the download link on your phone"
-            echo "2. Tap the \`.apk\`"
+            echo "2. Tap \`cubechat-debug.apk\`"
             echo "3. Allow \"Install unknown apps\" for your browser if prompted"
             echo "4. Install and open"
           } >> "$GITHUB_STEP_SUMMARY"
