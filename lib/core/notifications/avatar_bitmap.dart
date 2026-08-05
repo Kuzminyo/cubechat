@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../theme/colors.dart';
+
 /// Renders a circular monogram avatar (deterministic gradient + initials) to
 /// PNG bytes, so a system notification can show the same identity avatar the
 /// chat UI does (`IdentityAvatar`). Runs headless via the dart:ui recorder —
@@ -10,13 +12,6 @@ import 'package:flutter/material.dart';
 ///
 /// Returns null on any failure; the caller then just omits the icon.
 
-const List<List<Color>> _palettes = [
-  [Color(0xFF2EDB8F), Color(0xFF7FD9A6)],
-  [Color(0xFF34D399), Color(0xFFA3E635)],
-  [Color(0xFF7FD9A6), Color(0xFF2EDB8F)],
-  [Color(0xFFA3E635), Color(0xFF34D399)],
-  [Color(0xFF2EDB8F), Color(0xFFA3E635)],
-];
 
 Future<Uint8List?> renderAvatarPng({
   required String seed,
@@ -29,7 +24,9 @@ Future<Uint8List?> renderAvatarPng({
     final canvas = Canvas(recorder);
     final rect = Rect.fromLTWH(0, 0, s, s);
 
-    final palette = _palettes[seed.hashCode.abs() % _palettes.length];
+    // Same source as the in-app avatar, so the face in a notification banner
+    // is the face in the conversation — including after a theme change.
+    final palette = AppColors.identityGradient(seed);
     final fill = Paint()
       ..isAntiAlias = true
       ..shader = ui.Gradient.linear(rect.topLeft, rect.bottomRight, palette);

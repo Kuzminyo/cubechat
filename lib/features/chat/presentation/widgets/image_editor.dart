@@ -25,17 +25,22 @@ Future<Uint8List?> openImageEditor(
   Uint8List source,
 ) async {
   Uint8List? edited;
-  // The app runs edge-to-edge with transparent system bars, which is right for
-  // every other screen and wrong for this one: pro_image_editor lays its own
-  // chrome against the physical edges, so the status bar sat on its top row and
-  // the gesture bar sat on the tool strip along the bottom — the tools were
-  // there and simply could not be tapped. Taking the system bars away for the
-  // duration makes the overlap impossible rather than negotiating insets with a
-  // package that owns its whole layout, and a full-screen photo editor without
-  // a status bar is what every other one looks like anyway.
+  // System bars away for the duration: the app runs edge-to-edge, and
+  // pro_image_editor lays its own chrome against the physical edges rather
+  // than inside the insets. A full-screen photo editor without a status bar is
+  // what every other one looks like anyway.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   try {
-    await Navigator.of(context).push<void>(
+    // Root navigator, not the one in scope.
+    //
+    // This is what was actually putting a bar across the tools. Opened from
+    // the Profile tab — which is where you land with no avatar yet, by tapping
+    // the empty circle — `Navigator.of(context)` resolves to that *branch's*
+    // navigator, so the editor was pushed inside the shell and the app's own
+    // floating nav bar stayed on top of it. Going through AvatarScreen instead
+    // (the path you get once a picture exists) pushes from a root route, which
+    // is why it only ever reproduced from a clean start with no avatar at all.
+    await Navigator.of(context, rootNavigator: true).push<void>(
       mediaRoute<void>(
         (routeContext) => ProImageEditor.memory(
           source,

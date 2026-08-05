@@ -63,4 +63,26 @@ abstract final class AppColors {
   static const Color danger = Color(0xFFFF5A6B);
   static const Color warning = Color(0xFFF5C26B);
   static Color online = Color(0xFF2EDB8F);
+
+  /// The two-colour gradient a stable seed maps to, for an identity with no
+  /// photo of its own.
+  ///
+  /// Derived from the live palette rather than hand-picked. The five variants
+  /// used to be a `const` list of emerald greens copied into three files, so
+  /// somebody on the indigo theme had a blue app full of green faces, and
+  /// switching themes changed everything except the one thing standing in for
+  /// a person. Same seed still lands on the same variant, so an identity's
+  /// colour is as stable as it ever was — it just belongs to the theme now.
+  static List<Color> identityGradient(String seed) {
+    final a = brandPrimary;
+    final b = brandSecondary;
+    final variants = <List<Color>>[
+      [a, b],
+      [b, a],
+      [a, Color.lerp(a, b, 0.55)!],
+      [Color.lerp(b, a, 0.55)!, b],
+      [Color.lerp(a, b, 0.25)!, Color.lerp(a, b, 0.9)!],
+    ];
+    return variants[seed.hashCode.abs() % variants.length];
+  }
 }

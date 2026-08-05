@@ -216,25 +216,54 @@ class _AuroraPainter extends CustomPainter {
   final double focusFrom;
   final double focusTo;
 
-  // `final`, not `const`: the backdrop colours are themeable now, so this
-  // gradient is built once at first use rather than baked in at compile time.
-  static final _base = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [AppColors.bgTop, AppColors.bgBottom],
+  /// The palette this painter was built under.
+  ///
+  /// Captured at construction, because comparing `AppColors` against itself in
+  /// [shouldRepaint] would compare a global to the same global and always find
+  /// them equal. Without it a palette change repainted nothing at all while the
+  /// aurora was idle — and it idles deliberately, to keep the radio and the GPU
+  /// quiet — so the old backdrop simply stayed on screen until something else
+  /// forced a frame. That is the other half of "you have to restart the app".
+  final int paletteStamp = Object.hash(
+    AppColors.bgTop,
+    AppColors.bgBottom,
+    AppColors.aurora1,
+    AppColors.aurora2,
+    AppColors.aurora3,
+    AppColors.aurora4,
   );
 
-  // The base gradient depends only on size, so build its shader once per size
-  // and reuse it across frames instead of rebuilding it on every paint.
+  // Read at paint time, not held in a `static final`.
+  //
+  // It used to be static, built once at first use — which meant the whole
+  // backdrop kept the palette that happened to be active when the first
+  // aurora was painted. Switching from emerald to indigo recoloured the blobs
+  // (they read AppColors at paint) and left the gradient underneath them
+  // green until the app was restarted, which is exactly the half-changed
+  // theme people reported.
+  static LinearGradient get _base => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.bgTop, AppColors.bgBottom],
+      );
+
+  // The base gradient depends on size *and* on the palette, so the cached
+  // shader is keyed on both — otherwise the cache would reintroduce the very
+  // staleness the getter above removes.
   Shader? _baseShader;
   Size? _baseShaderSize;
+  int? _baseShaderPalette;
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    if (_baseShader == null || _baseShaderSize != size) {
+    final paletteStamp = Object.hash(AppColors.bgTop, AppColors.bgBottom);
+    if (_baseShader == null ||
+        _baseShaderSize != size ||
+        _baseShaderPalette != paletteStamp) {
       _baseShader = _base.createShader(rect);
       _baseShaderSize = size;
+      _baseShaderPalette = paletteStamp;
     }
     canvas.drawRect(rect, Paint()..shader = _baseShader!);
 
@@ -305,5 +334,7 @@ class _AuroraPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AuroraPainter old) =>
-      old.focusFrom != focusFrom || old.focusTo != focusTo;
+      old.focusFrom != focusFrom ||
+      old.focusTo != focusTo ||
+      old.paletteStamp != paletteStamp;
 }

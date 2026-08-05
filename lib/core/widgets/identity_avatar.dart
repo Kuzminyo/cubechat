@@ -41,16 +41,11 @@ class IdentityAvatar extends StatelessWidget {
   /// The gradient a seed maps to. Exposed because the profile cover paints the
   /// same colours across the whole header when there is no photo — two
   /// hand-picked palettes would drift apart.
+  /// Read at build time from the live palette — see
+  /// [AppColors.identityGradient], which is also what the notification
+  /// renderer uses so the face in a banner matches the one in the app.
   static List<Color> paletteFor(String seed) =>
-      _palettes[seed.hashCode.abs() % _palettes.length];
-
-  static const List<List<Color>> _palettes = [
-    [Color(0xFF2EDB8F), Color(0xFF7FD9A6)],
-    [Color(0xFF34D399), Color(0xFFA3E635)],
-    [Color(0xFF7FD9A6), Color(0xFF2EDB8F)],
-    [Color(0xFFA3E635), Color(0xFF34D399)],
-    [Color(0xFF2EDB8F), Color(0xFFA3E635)],
-  ];
+      AppColors.identityGradient(seed);
 
   @override
   Widget build(BuildContext context) {
