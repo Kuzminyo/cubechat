@@ -267,6 +267,18 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _ChannelAction(
+                    icon: Icons.wallpaper_outlined,
+                    label: t.chatWallpaperTitle,
+                    // Each member picks their own — nothing about a wallpaper
+                    // travels, so there is no admin gate here.
+                    onTap: () => context.push(
+                      '/wallpaper/${Uri.encodeComponent(widget.channelName)}',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _ChannelAction(
                     icon: Icons.perm_media_outlined,
                     label: t.channelSharedContent,
                     // The channel's own bucket keys the shared-content screen

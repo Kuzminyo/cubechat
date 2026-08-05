@@ -486,6 +486,39 @@
   "channelDescriptionHint": "Для чого цей канал",
   "channelDescriptionAdminOnly": "Змінювати опис може лише адміністратор",
   "channelDescriptionSave": "Зберегти",
+  "chatTyping": "пише…",
+  "onboardingMeshTitle": "Працює без інтернету",
+  "onboardingMeshBody": "Повідомлення йдуть через Bluetooth, від телефона до телефона. Без зв’язку, без Wi-Fi, без акаунтів — лише люди поруч.",
+  "onboardingRelayTitle": "І з ним, коли він є",
+  "onboardingRelayBody": "Поза зоною Bluetooth повідомлення йдуть інтернетом і доходять так само. Вам не треба обирати.",
+  "onboardingPrivacyTitle": "Ніхто посередині не прочитає",
+  "onboardingPrivacyBody": "Усе зашифровано наскрізно, а ваша особистість — це ключ на цьому телефоні: не номер, не пошта, не акаунт, який хтось може відібрати.",
+  "onboardingSkip": "Пропустити",
+  "onboardingNext": "Далі",
+  "onboardingStart": "Почати",
+  "chatWallpaperTitle": "Шпалери",
+  "chatWallpaperClear": "Скинути",
+  "chatWallpaperDim": "Затемнення під повідомленнями",
+  "chatSelectAction": "Вибрати",
+  "chatForwardNothing": "Тут немає чого переслати",
+  "chatSelectedCount": "{count, plural, =1{Вибрано 1} few{Вибрано {count}} many{Вибрано {count}} other{Вибрано {count}}}",
+  "@chatSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatDeleteSelectedTitle": "{count, plural, =1{Видалити це повідомлення?} few{Видалити {count} повідомлення?} many{Видалити {count} повідомлень?} other{Видалити {count} повідомлення?}}",
+  "@chatDeleteSelectedTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contactAliasAction": "Перейменувати контакт",
+  "contactAliasHint": "Це ім’я бачите лише ви. Порожньо — буде їхнє.",
   "viewOnceSendLabel": "Один перегляд",
   "viewOnceTitle": "Один перегляд",
   "viewOnceTapToView": "Фото · торкніться, щоб переглянути раз",

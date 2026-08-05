@@ -25,6 +25,7 @@ import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
+import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
@@ -1922,6 +1923,74 @@ class MessagingService {
     }
   }
 
+  /// Shortest gap between two "still typing" frames.
+  ///
+  /// The composer calls [announceTyping] on every keystroke, so without this a
+  /// sentence would be forty frames. Comfortably inside [TypingController.ttl]
+  /// so the indicator never lapses mid-word.
+  static const Duration typingMinInterval = Duration(seconds: 3);
+
+  final Map<String, DateTime> _lastTypingSentAt = {};
+
+  /// Tell one peer we are writing to them, or have stopped.
+  ///
+  /// Best-effort and deliberately quiet about failure: a typing notice that
+  /// does not arrive is not worth a log line, let alone a retry — by the time
+  /// anything could be retried the fact has changed.
+  ///
+  /// Gated on [PrivacySettings.shareLastSeen], the same switch presence uses,
+  /// rather than a second one. It is the same question — how much of my
+  /// liveness do I leak — and the same symmetric bargain: turn it off and you
+  /// stop seeing other people's typing too (see [_ingestTyping]).
+  Future<void> announceTyping(String canonicalId, {bool typing = true}) async {
+    if (_disposed) return;
+    if (!_ref.read(privacySettingsProvider).shareLastSeen) return;
+    if (!AppLifecycle.instance.isForeground) return;
+    if (canonicalId.startsWith('#')) return; // 1:1 only
+
+    if (typing) {
+      final last = _lastTypingSentAt[canonicalId];
+      if (last != null &&
+          DateTime.now().difference(last) < typingMinInterval) {
+        return;
+      }
+      _lastTypingSentAt[canonicalId] = DateTime.now();
+    } else {
+      // A stop is never throttled — it is the frame that ends the indicator
+      // early, and it only happens once per burst of typing anyway.
+      _lastTypingSentAt.remove(canonicalId);
+    }
+
+    final peerPub = _resolvePeerPub(canonicalId);
+    if (peerPub == null) return;
+    try {
+      await _sendControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.typing,
+        innerBody: Uint8List.fromList([typing ? 0x01 : 0x00]),
+      );
+    } catch (_) {
+      // See above: a lost typing notice is not an error worth reporting.
+    }
+  }
+
+  /// A peer is writing to us — or has stopped.
+  void _ingestTyping({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    if (body.isEmpty) return;
+    final canonicalId = senderPub != null ? _hexOf(senderPub) : peerId;
+    final controller = _ref.read(typingControllerProvider.notifier);
+    if (body[0] == 0x01) {
+      controller.record(canonicalId);
+    } else {
+      controller.clear(canonicalId);
+    }
+  }
+
   /// Burn a view-once photo here, and tell the other side to burn theirs.
   ///
   /// Called from both directions and idempotent in both: the recipient calls
@@ -3258,6 +3327,7 @@ class MessagingService {
         case InnerPayloadType.avatar:
         case InnerPayloadType.mediaRequest:
         case InnerPayloadType.viewOnceConsumed:
+        case InnerPayloadType.typing:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -3985,6 +4055,17 @@ class MessagingService {
             senderPub: senderPub,
             body: unpacked.body,
           );
+
+        case InnerPayloadType.typing:
+          // Symmetric with presence, and with the same switch: withholding
+          // your own liveness gives up watching everybody else's.
+          if (_ref.read(privacySettingsProvider).shareLastSeen) {
+            _ingestTyping(
+              peerId: peerId,
+              senderPub: senderPub,
+              body: unpacked.body,
+            );
+          }
 
         case InnerPayloadType.channelAvatar:
         case InnerPayloadType.channelDescription:

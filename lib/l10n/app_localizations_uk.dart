@@ -1207,6 +1207,87 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelDescriptionSave => 'Зберегти';
 
   @override
+  String get chatTyping => 'пише…';
+
+  @override
+  String get onboardingMeshTitle => 'Працює без інтернету';
+
+  @override
+  String get onboardingMeshBody =>
+      'Повідомлення йдуть через Bluetooth, від телефона до телефона. Без зв’язку, без Wi-Fi, без акаунтів — лише люди поруч.';
+
+  @override
+  String get onboardingRelayTitle => 'І з ним, коли він є';
+
+  @override
+  String get onboardingRelayBody =>
+      'Поза зоною Bluetooth повідомлення йдуть інтернетом і доходять так само. Вам не треба обирати.';
+
+  @override
+  String get onboardingPrivacyTitle => 'Ніхто посередині не прочитає';
+
+  @override
+  String get onboardingPrivacyBody =>
+      'Усе зашифровано наскрізно, а ваша особистість — це ключ на цьому телефоні: не номер, не пошта, не акаунт, який хтось може відібрати.';
+
+  @override
+  String get onboardingSkip => 'Пропустити';
+
+  @override
+  String get onboardingNext => 'Далі';
+
+  @override
+  String get onboardingStart => 'Почати';
+
+  @override
+  String get chatWallpaperTitle => 'Шпалери';
+
+  @override
+  String get chatWallpaperClear => 'Скинути';
+
+  @override
+  String get chatWallpaperDim => 'Затемнення під повідомленнями';
+
+  @override
+  String get chatSelectAction => 'Вибрати';
+
+  @override
+  String get chatForwardNothing => 'Тут немає чого переслати';
+
+  @override
+  String chatSelectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Вибрано $count',
+      many: 'Вибрано $count',
+      few: 'Вибрано $count',
+      one: 'Вибрано 1',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatDeleteSelectedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Видалити $count повідомлення?',
+      many: 'Видалити $count повідомлень?',
+      few: 'Видалити $count повідомлення?',
+      one: 'Видалити це повідомлення?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get contactAliasAction => 'Перейменувати контакт';
+
+  @override
+  String get contactAliasHint =>
+      'Це ім’я бачите лише ви. Порожньо — буде їхнє.';
+
+  @override
   String get viewOnceSendLabel => 'Один перегляд';
 
   @override

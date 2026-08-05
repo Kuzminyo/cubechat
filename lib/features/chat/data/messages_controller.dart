@@ -214,6 +214,21 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, next);
   }
 
+  /// The same, for a whole selection.
+  ///
+  /// One state write and one persist for the batch rather than N of each —
+  /// deleting thirty messages one at a time rewrites the chat's Hive entry
+  /// thirty times, and the list rebuilds on every one of them.
+  void deleteManyLocal(String peerId, Set<String> messageIds) {
+    if (messageIds.isEmpty) return;
+    final current = state[peerId];
+    if (current == null) return;
+    final next = current.where((m) => !messageIds.contains(m.id)).toList();
+    if (next.length == current.length) return;
+    state = {...state, peerId: next};
+    _persist(peerId, next);
+  }
+
   /// Remove one of *our own* messages by its transport [wireId] — the local
   /// half of "delete for everyone". Returns whether anything was removed.
   bool deleteMineByWireId(String peerId, String wireId) =>

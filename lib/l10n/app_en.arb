@@ -520,6 +520,39 @@
   "channelDescriptionHint": "What this channel is for",
   "channelDescriptionAdminOnly": "Only an administrator can change the description",
   "channelDescriptionSave": "Save",
+  "chatTyping": "typing…",
+  "onboardingMeshTitle": "Works without internet",
+  "onboardingMeshBody": "Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.",
+  "onboardingRelayTitle": "And with it, when there is some",
+  "onboardingRelayBody": "Out of Bluetooth range, messages take the internet instead and arrive the same way. You never pick which.",
+  "onboardingPrivacyTitle": "Nobody in the middle can read it",
+  "onboardingPrivacyBody": "Everything is end-to-end encrypted, and your identity is a key on this phone — not a phone number, not an email, not an account anyone can take away.",
+  "onboardingSkip": "Skip",
+  "onboardingNext": "Next",
+  "onboardingStart": "Get started",
+  "chatWallpaperTitle": "Wallpaper",
+  "chatWallpaperClear": "Reset",
+  "chatWallpaperDim": "Darken behind the messages",
+  "chatSelectAction": "Select",
+  "chatForwardNothing": "Nothing here can be forwarded",
+  "chatSelectedCount": "{count, plural, =1{1 selected} other{{count} selected}}",
+  "@chatSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatDeleteSelectedTitle": "{count, plural, =1{Delete this message?} other{Delete {count} messages?}}",
+  "@chatDeleteSelectedTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "contactAliasAction": "Rename contact",
+  "contactAliasHint": "Only you see this name. Leave empty to use theirs.",
   "viewOnceSendLabel": "View once",
   "viewOnceTitle": "View once",
   "viewOnceTapToView": "Photo · tap to view once",

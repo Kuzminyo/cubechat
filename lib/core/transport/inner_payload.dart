@@ -131,7 +131,18 @@ enum InnerPayloadType {
   /// on what view-once means, not a control over someone else's device, and
   /// the sender's copy going early costs them nothing they did not already
   /// choose to give up.
-  viewOnceConsumed(0xF4);
+  viewOnceConsumed(0xF4),
+
+  /// "I am writing to you." Body is one byte: 0x01 started, 0x00 stopped.
+  ///
+  /// Unlike [presence], which is relay-only because a peer in Bluetooth range
+  /// is already covered by mesh announcements, this goes over whatever route
+  /// is available — typing has no proximity equivalent to lean on, so it takes
+  /// the ordinary control-frame path.
+  ///
+  /// 1:1 only. A room would need "Alice and Bob are typing…" aggregation, and
+  /// half of that is worse than none.
+  typing(0xF5);
 
   const InnerPayloadType(this.tag);
   final int tag;

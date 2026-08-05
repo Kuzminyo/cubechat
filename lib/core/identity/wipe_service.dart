@@ -14,7 +14,10 @@ import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
+import '../../features/peers/data/contact_aliases_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
+import '../../features/onboarding/data/onboarding_controller.dart';
+import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
@@ -48,6 +51,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Other people's pictures are other people's data, and they live in their own
   // box — clearing the roster does not reach them.
   await ref.read(peerAvatarsControllerProvider.notifier).clear();
+  // What you called people is as much your data as who they are.
+  await ref.read(contactAliasesControllerProvider.notifier).clear();
   await ref.read(channelAvatarsControllerProvider.notifier).clear();
   await ref.read(channelDescriptionsControllerProvider.notifier).clear();
   await ref.read(channelRosterControllerProvider.notifier).clear();
@@ -63,6 +68,10 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(draftsControllerProvider.notifier).clearAll();
   await ref.read(fileTransferControllerProvider.notifier).clearAll();
   ref.read(presenceControllerProvider.notifier).clear();
+  ref.read(typingControllerProvider.notifier).clearAll();
+  // A wiped install has to be indistinguishable from a fresh one, and a fresh
+  // one has not seen the intro.
+  await ref.read(onboardingControllerProvider.notifier).reset();
   await ref.read(nicknameControllerProvider.notifier).reset();
   // Switches the internet fallback off and forgets any custom relay list, so
   // the next launch talks to nobody until the user opts in again.

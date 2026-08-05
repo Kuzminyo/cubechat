@@ -38,6 +38,12 @@ abstract final class HiveBoxes {
   /// whole on every load.
   static const channelDescriptions = 'cubechat.channel_descriptions';
 
+  /// What you call a contact, keyed by pubkey hex. Its own box for the reason
+  /// [ContactAliasesController] documents: [knownPeers] is rewritten on every
+  /// announcement, and an alias must not ride along with something that
+  /// churns.
+  static const contactAliases = 'cubechat.contact_aliases';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -48,6 +54,7 @@ abstract final class HiveBoxes {
     peerAvatars,
     channelAvatars,
     channelDescriptions,
+    contactAliases,
   ];
 }
 

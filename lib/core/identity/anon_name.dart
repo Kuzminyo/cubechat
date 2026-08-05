@@ -21,3 +21,20 @@ String displayNameForPeer(String rawName, String pubkeyHex) {
   }
   return name;
 }
+
+/// The name to show for a contact, preferring what *you* called them.
+///
+/// A local alias wins over the broadcast name outright — that is the whole
+/// point of setting one, and a peer renaming themselves must not undo your
+/// choice. With no alias this is exactly [displayNameForPeer], so every call
+/// site can move to this one without changing behaviour for anyone who has
+/// never renamed anybody.
+String contactDisplayName({
+  required String? alias,
+  required String rawBroadcastName,
+  required String pubkeyHex,
+}) {
+  final a = alias?.trim();
+  if (a != null && a.isNotEmpty) return a;
+  return displayNameForPeer(rawBroadcastName, pubkeyHex);
+}

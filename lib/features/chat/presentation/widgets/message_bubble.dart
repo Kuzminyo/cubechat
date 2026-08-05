@@ -20,6 +20,7 @@ import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
 import '../../data/chat_navigation.dart';
+import '../../data/message_selection.dart';
 import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
@@ -62,6 +63,105 @@ bool messageCanBeForwarded(
 
 const double _swipeTrigger = 56;
 const double _swipeMax = 76;
+
+/// Ask which chat to forward into. Null when the dialog was dismissed.
+///
+/// Shared by the single-message menu and the multi-select bar so the two
+/// cannot drift into offering different target lists.
+Future<Chat?> pickForwardTarget(
+  BuildContext context,
+  WidgetRef ref,
+  String fromChatId,
+) {
+  final t = AppLocalizations.of(context);
+  // Every chat except the one we're standing in.
+  final targets =
+      ref.read(chatsProvider).where((c) => c.id != fromChatId).toList();
+
+  return showDialog<Chat>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
+      ),
+      title: Text(
+        t.chatForwardTitle,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      children: [
+        if (targets.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+            child: Text(
+              t.chatForwardEmpty,
+              style: TextStyle(color: AppColors.textOnGlassDim),
+            ),
+          )
+        else
+          // Bounded so a long chat list scrolls inside the dialog instead of
+          // overflowing it.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final c in targets)
+                    SimpleDialogOption(
+                      onPressed: () => Navigator.of(ctx).pop(c),
+                      child: Row(
+                        children: [
+                          Icon(
+                            c.isChannel
+                                ? Icons.campaign_rounded
+                                : Icons.person_outline,
+                            size: 18,
+                            color: AppColors.textOnGlassDim,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              c.peerName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: AppColors.textOnGlass),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        SimpleDialogOption(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Re-send [text] into [target] under our own identity.
+///
+/// Forwarding is a fresh send, not a relay of the original frame: the original
+/// is encrypted to a session the new chat has no key for, so it could not be
+/// passed along even if we wanted to.
+Future<void> forwardTextTo(WidgetRef ref, Chat target, String text) {
+  final messaging = ref.read(messagingServiceProvider);
+  return target.isChannel
+      ? messaging.sendChannelText(target.id, text)
+      : messaging.sendText(target.id, text);
+}
 
 class MessageBubble extends ConsumerStatefulWidget {
   const MessageBubble({super.key, required this.message, required this.chatId});
@@ -319,6 +419,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         if (_canEdit)
           _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
               AppColors.textOnGlass),
+        _menuRow('select', Icons.checklist_rounded, t.chatSelectAction,
+            AppColors.textOnGlass),
         _menuRow('delete', Icons.delete_outline, t.chatDeleteAction,
             AppColors.danger),
       ],
@@ -351,6 +453,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         wireId: widget.message.wireId!,
         originalText: widget.message.text,
       );
+    } else if (picked == 'select') {
+      ref
+          .read(messageSelectionProvider(widget.chatId).notifier)
+          .start(widget.message.id);
     } else if (picked == 'delete') {
       await _promptDelete();
     }
@@ -525,90 +631,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// session the new chat has no key for, so it could not be passed along even
   /// if we wanted to.
   Future<void> _promptForward() async {
-    final t = AppLocalizations.of(context);
-    // Every chat except the one we're standing in.
-    final targets =
-        ref.read(chatsProvider).where((c) => c.id != widget.chatId).toList();
-
-    final chosen = await showDialog<Chat>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: AppColors.glass(0.15)),
-        ),
-        title: Text(
-          t.chatForwardTitle,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        children: [
-          if (targets.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
-              child: Text(
-                t.chatForwardEmpty,
-                style: TextStyle(color: AppColors.textOnGlassDim),
-              ),
-            )
-          else
-            // Bounded so a long chat list scrolls inside the dialog instead of
-            // overflowing it.
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(ctx).size.height * 0.4,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final c in targets)
-                      SimpleDialogOption(
-                        onPressed: () => Navigator.of(ctx).pop(c),
-                        child: Row(
-                          children: [
-                            Icon(
-                              c.isChannel ? Icons.campaign_rounded : Icons.person_outline,
-                              size: 18,
-                              color: AppColors.textOnGlassDim,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                c.peerName,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: AppColors.textOnGlass),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel,
-                style: TextStyle(color: AppColors.textOnGlassDim)),
-          ),
-        ],
-      ),
-    );
-
+    final chosen = await pickForwardTarget(context, ref, widget.chatId);
     if (chosen == null || !mounted) return;
-
-    final messaging = ref.read(messagingServiceProvider);
-    final text = widget.message.text;
-    if (chosen.isChannel) {
-      await messaging.sendChannelText(chosen.id, text);
-    } else {
-      await messaging.sendText(chosen.id, text);
-    }
+    final t = AppLocalizations.of(context);
+    await forwardTextTo(ref, chosen, widget.message.text);
     if (!mounted) return;
     showGlassToast(
       context,
@@ -696,6 +722,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // moves and nothing says which line you were sent to.
     final highlighted =
         ref.watch(chatHighlightProvider(widget.chatId)) == message.id;
+
+    // While a selection is running the whole row becomes a checkbox: a tap
+    // ticks instead of doing whatever that bubble's tap normally does (open a
+    // photo, play a voice note), because a mode where some taps select and
+    // others open is a mode nobody can predict.
+    final selection = ref.watch(messageSelectionProvider(widget.chatId));
+    final selecting = selection.isNotEmpty;
+    final selected = selection.contains(message.id);
 
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
@@ -829,17 +863,26 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
-            color: highlighted
-                ? AppColors.brandPrimary.withValues(alpha: 0.16)
-                : Colors.transparent,
+            color: selected
+                ? AppColors.brandPrimary.withValues(alpha: 0.22)
+                : highlighted
+                    ? AppColors.brandPrimary.withValues(alpha: 0.16)
+                    : Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
             child: GestureDetector(
               // Horizontal only: a vertical drag stays with the list, so the
               // conversation scrolls exactly as before and the gesture arena
               // decides between them on direction rather than on timing.
-              onHorizontalDragUpdate: _onSwipeUpdate,
-              onHorizontalDragEnd: (_) => _onSwipeEnd(),
-              onHorizontalDragCancel: _onSwipeEnd,
+              // Swiping to reply is off while selecting — the row means one
+              // thing at a time.
+              onHorizontalDragUpdate: selecting ? null : _onSwipeUpdate,
+              onHorizontalDragEnd: selecting ? null : (_) => _onSwipeEnd(),
+              onHorizontalDragCancel: selecting ? null : _onSwipeEnd,
+              onTap: selecting
+                  ? () => ref
+                      .read(messageSelectionProvider(widget.chatId).notifier)
+                      .toggle(message.id)
+                  : null,
               child: Stack(
                 children: [
                   Transform.translate(
@@ -849,6 +892,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           ? MainAxisAlignment.end
                           : MainAxisAlignment.start,
                       children: [
+                        if (selecting) ...[
+                          Icon(
+                            selected
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            size: 20,
+                            color: selected
+                                ? AppColors.brandPrimary
+                                : AppColors.textOnGlassFaint,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         ConstrainedBox(
                           constraints: BoxConstraints(
                               maxWidth:
@@ -858,11 +913,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                 ? CrossAxisAlignment.end
                                 : CrossAxisAlignment.start,
                             children: [
-                              GestureDetector(
-                                onLongPressStart: (d) =>
-                                    _showActions(d.globalPosition),
-                                onDoubleTap: _canReact ? _quickReact : null,
-                                child: bubble,
+                              // Inert while selecting, so a photo's own tap
+                              // cannot win the arena and open the viewer when
+                              // the row was meant to tick.
+                              IgnorePointer(
+                                ignoring: selecting,
+                                child: GestureDetector(
+                                  onLongPressStart: (d) =>
+                                      _showActions(d.globalPosition),
+                                  onDoubleTap: _canReact ? _quickReact : null,
+                                  child: bubble,
+                                ),
                               ),
                               if (message.reactions.isNotEmpty)
                                 Padding(

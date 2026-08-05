@@ -12,10 +12,11 @@ import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/debug_log.dart';
+import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-05-view-once-photos';
+const String _buildStamp = '2026-08-05-aliases-typing-select-wallpaper';
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -119,12 +120,22 @@ Future<void> main() async {
   // When iOS launches us straight into the background for a BGAppRefreshTask,
   // no frame is rendered and the widget tree may never build — a handler
   // registered from inside the tree would simply never exist.
+  // One more read before the first frame, and a cheap one — the box is
+  // already open by now. It decides which screen the router opens on, which
+  // cannot be decided after the fact without showing the wrong one first.
+  var seenOnboarding = true;
+  await _bootStep(
+    'onboarding-flag',
+    () async => seenOnboarding = await readSeenOnboardingFlag(),
+    limit: const Duration(seconds: 2),
+  );
+
   final container = ProviderContainer();
   IosBackgroundRefresh.instance.install(container);
   runApp(
     UncontrolledProviderScope(
       container: container,
-      child: const CubechatApp(),
+      child: CubechatApp(seenOnboarding: seenOnboarding),
     ),
   );
 

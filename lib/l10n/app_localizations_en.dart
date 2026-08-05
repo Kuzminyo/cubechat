@@ -1201,6 +1201,83 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelDescriptionSave => 'Save';
 
   @override
+  String get chatTyping => 'typing…';
+
+  @override
+  String get onboardingMeshTitle => 'Works without internet';
+
+  @override
+  String get onboardingMeshBody =>
+      'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.';
+
+  @override
+  String get onboardingRelayTitle => 'And with it, when there is some';
+
+  @override
+  String get onboardingRelayBody =>
+      'Out of Bluetooth range, messages take the internet instead and arrive the same way. You never pick which.';
+
+  @override
+  String get onboardingPrivacyTitle => 'Nobody in the middle can read it';
+
+  @override
+  String get onboardingPrivacyBody =>
+      'Everything is end-to-end encrypted, and your identity is a key on this phone — not a phone number, not an email, not an account anyone can take away.';
+
+  @override
+  String get onboardingSkip => 'Skip';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingStart => 'Get started';
+
+  @override
+  String get chatWallpaperTitle => 'Wallpaper';
+
+  @override
+  String get chatWallpaperClear => 'Reset';
+
+  @override
+  String get chatWallpaperDim => 'Darken behind the messages';
+
+  @override
+  String get chatSelectAction => 'Select';
+
+  @override
+  String get chatForwardNothing => 'Nothing here can be forwarded';
+
+  @override
+  String chatSelectedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count selected',
+      one: '1 selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String chatDeleteSelectedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Delete $count messages?',
+      one: 'Delete this message?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get contactAliasAction => 'Rename contact';
+
+  @override
+  String get contactAliasHint =>
+      'Only you see this name. Leave empty to use theirs.';
+
+  @override
   String get viewOnceSendLabel => 'View once';
 
   @override

@@ -30,13 +30,17 @@ import '../../channels/data/channel_controller.dart';
 import '../../channels/presentation/channel_poll_composer.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
+import '../../../core/identity/anon_name.dart';
+import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../data/message_edit_target.dart';
+import '../data/message_selection.dart';
 import '../data/message_reply_target.dart';
 import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
@@ -56,6 +60,8 @@ import 'widgets/media_picker_sheet.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/voice_island.dart';
 import 'widgets/voice_trim_bar.dart';
+import 'widgets/chat_wallpaper_layer.dart';
+import 'widgets/direct_mention_hint.dart';
 import 'widgets/mention_suggestions.dart';
 import '../../../core/routing/page_transitions.dart';
 import '../../../core/widgets/glass_sheet.dart';
@@ -217,6 +223,20 @@ class ChatScreen extends ConsumerWidget {
     // clock until a transport (mesh / Nostr / store-and-forward) takes it.
     final canSend = (session?.isEstablished ?? false) || known != null;
 
+    // The header name is resolved here rather than taken from [peerLabel],
+    // which is a route query parameter and therefore frozen at the moment the
+    // chat was opened. Renaming somebody from their profile and coming back to
+    // a header still showing the old name is the obvious way for this to feel
+    // broken, and watching the alias store is what stops it.
+    final aliases = ref.watch(contactAliasesControllerProvider);
+    final headerLabel = known == null
+        ? peerLabel
+        : contactDisplayName(
+            alias: aliases[known.pubkeyHex],
+            rawBroadcastName: known.displayName,
+            pubkeyHex: known.pubkeyHex,
+          );
+
     // Offer a reconnect whenever there's no live session to speak over — the
     // old condition only covered a session that reached `failed`, but a GATT
     // connect that times out never creates one, leaving the screen stuck on
@@ -241,6 +261,12 @@ class ChatScreen extends ConsumerWidget {
       lastSeen: lastSeen,
       presenceShared: presenceShared,
     );
+    // Watched, not read, so the line updates when a notice lands. The TTL is
+    // what makes it go away again — see [TypingController].
+    ref.watch(typingControllerProvider);
+    final isTyping =
+        ref.read(typingControllerProvider.notifier).isTyping(canonicalId);
+
     final String statusText;
     if (session != null &&
         (session.status == ChatSessionStatus.handshakingInitiator ||
@@ -249,6 +275,10 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.chatSessionHandshaking;
     } else if (session != null && session.status == ChatSessionStatus.failed) {
       statusText = t.chatSessionFailed;
+    } else if (isTyping) {
+      // Ahead of "online": somebody typing is online by definition, and the
+      // more specific fact is the one worth the one line there is.
+      statusText = t.chatTyping;
     } else if (isOnline) {
       statusText = t.presenceOnline;
     } else if (!presenceShared) {
@@ -286,7 +316,7 @@ class ChatScreen extends ConsumerWidget {
               onBack: () => _goBack(context),
               chatId: canonicalId,
               avatarSeed: peerId,
-              label: peerLabel,
+              label: headerLabel,
               autoDeleteLabel:
                   autoDelete.isOn ? formatAutoDelete(t, autoDelete) : null,
               statusText: statusText,
@@ -302,7 +332,7 @@ class ChatScreen extends ConsumerWidget {
                   ? null
                   : () => context.push(
                         '/person/${Uri.encodeComponent(pubkeyHex)}'
-                        '?name=${Uri.encodeQueryComponent(peerLabel)}',
+                        '?name=${Uri.encodeQueryComponent(headerLabel)}',
                       ),
               actions: [
                 _PillIconButton(
@@ -1009,6 +1039,114 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return false;
   }
 
+  /// Forward everything ticked into one other chat.
+  ///
+  /// Chronological rather than tap order: a forwarded conversation that
+  /// arrives shuffled reads as a different conversation.
+  Future<void> _forwardSelection(Set<String> ids) async {
+    final t = AppLocalizations.of(context);
+    final restricted = ref
+            .read(conversationSettingsControllerProvider)[widget.chatId]
+            ?.restrictCopying ??
+        false;
+    final picked = [
+      for (final m in widget.messages)
+        if (ids.contains(m.id) &&
+            messageCanBeForwarded(m, copyingRestricted: restricted))
+          m,
+    ];
+    if (picked.isEmpty) {
+      // Everything ticked was a photo, a voice note, or a view-once — say so
+      // rather than opening a picker that could only disappoint.
+      showGlassToast(context, t.chatForwardNothing, tone: ToastTone.danger);
+      return;
+    }
+    final target = await pickForwardTarget(context, ref, widget.chatId);
+    if (target == null || !mounted) return;
+    for (final m in picked) {
+      await forwardTextTo(ref, target, m.text);
+    }
+    if (!mounted) return;
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+    showGlassToast(
+      context,
+      t.chatForwardSent(target.peerName),
+      icon: Icons.shortcut_outlined,
+      tone: ToastTone.success,
+    );
+  }
+
+  /// Delete everything ticked.
+  ///
+  /// "For everyone" is offered only when *every* ticked message qualifies —
+  /// a mixed selection where the button silently applies to some of them is
+  /// worse than not offering it.
+  Future<void> _deleteSelection(Set<String> ids) async {
+    final t = AppLocalizations.of(context);
+    final picked = [
+      for (final m in widget.messages)
+        if (ids.contains(m.id)) m,
+    ];
+    if (picked.isEmpty) return;
+    final canForEveryone =
+        picked.every((m) => m.isMine && m.wireId != null);
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.glass(0.15)),
+        ),
+        title: Text(
+          t.chatDeleteSelectedTitle(picked.length),
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        children: [
+          if (canForEveryone)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop('everyone'),
+              child: Text(
+                t.chatDeleteForEveryone,
+                style: TextStyle(color: AppColors.danger),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('me'),
+            child: Text(
+              t.chatDeleteForMe,
+              style: TextStyle(color: AppColors.textOnGlass),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child:
+                Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    if (choice == 'everyone') {
+      final messaging = ref.read(messagingServiceProvider);
+      for (final m in picked) {
+        await messaging.sendDeleteForEveryone(widget.chatId, m.wireId!);
+      }
+    } else {
+      ref
+          .read(messagesControllerProvider.notifier)
+          .deleteManyLocal(widget.chatId, ids);
+    }
+    if (!mounted) return;
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
@@ -1050,13 +1188,20 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
     final flashing = ref.watch(chatHighlightProvider(widget.chatId));
     final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
+    final selection = ref.watch(messageSelectionProvider(widget.chatId));
+    final selecting = selection.isNotEmpty;
     final matches = messagesMatchingQuery(messages, _searchQuery);
     final selectedIndex = matches.isEmpty
         ? 0
         : (_searchIndex >= matches.length ? matches.length - 1 : _searchIndex);
     final selectedMessage = matches.isEmpty ? null : matches[selectedIndex];
 
-    return _FloatingComposerBody(
+    // Behind the conversation and in front of the route's aurora. Draws
+    // nothing at all unless this chat has been given a wallpaper, so every
+    // other chat is untouched.
+    return ChatWallpaperLayer(
+      chatId: widget.chatId,
+      child: _FloatingComposerBody(
       scrollToBottom: _canScrollDown
           ? () => _scroll.animateTo(
                 0,
@@ -1099,13 +1244,25 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Selecting replaces the header for the same reason searching does:
+          // one row at the top, and while you are ticking messages the count
+          // and the two actions are the only things that matter.
+          if (selecting)
+            _ChatSelectionBar(
+              count: selection.length,
+              onCancel: () => ref
+                  .read(messageSelectionProvider(widget.chatId).notifier)
+                  .clear(),
+              onForward: () => unawaited(_forwardSelection(selection)),
+              onDelete: () => unawaited(_deleteSelection(selection)),
+            ),
           // Searching *replaces* the identity row rather than stacking under
           // it. Two pills deep, the conversation started below the middle of
           // the screen and the thing you were reading was the thing pushed off
           // it — and while you are typing a query, whose chat it is is the one
           // thing you already know.
-          if (!searchOpen) widget.header,
-          if (searchOpen)
+          if (!searchOpen && !selecting) widget.header,
+          if (searchOpen && !selecting)
             _ChatSearchBar(
               totalMessages: messages.length,
               resultIndex: matches.isEmpty ? null : selectedIndex + 1,
@@ -1169,6 +1326,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           // but a reflow.
           ChatVoiceBar(chatId: widget.chatId),
         ],
+      ),
       ),
     );
   }
@@ -1341,6 +1499,70 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
               icon: Icons.close_rounded,
               tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
               onPressed: widget.onClose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The header while messages are ticked: how many, and the two things you can
+/// do with them.
+///
+/// Sits where the identity pill and the search bar sit, for the same reason —
+/// stacking it under them would push the conversation you are selecting from
+/// off the screen.
+class _ChatSelectionBar extends StatelessWidget {
+  const _ChatSelectionBar({
+    required this.count,
+    required this.onCancel,
+    required this.onForward,
+    required this.onDelete,
+  });
+
+  final int count;
+  final VoidCallback onCancel;
+  final VoidCallback onForward;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return Padding(
+      padding:
+          EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
+      child: _HeaderPill(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            _SearchIconButton(
+              icon: Icons.close_rounded,
+              tooltip: MaterialLocalizations.of(context).cancelButtonLabel,
+              onPressed: onCancel,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                t.chatSelectedCount(count),
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            _PillIconButton(
+              icon: Icons.shortcut_outlined,
+              color: AppColors.textOnGlass,
+              tooltip: t.chatForwardAction,
+              onPressed: onForward,
+            ),
+            _PillIconButton(
+              icon: Icons.delete_outline,
+              color: AppColors.danger,
+              tooltip: t.chatDeleteAction,
+              onPressed: onDelete,
             ),
           ],
         ),
@@ -2297,9 +2519,20 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       sendTooltip: t.chatSend,
       editingText: editingText,
       initialText: draft?.text,
-      onChanged: (text) => ref
-          .read(draftsControllerProvider.notifier)
-          .update(widget.canonicalId, text),
+      onChanged: (text) {
+        ref
+            .read(draftsControllerProvider.notifier)
+            .update(widget.canonicalId, text);
+        // Throttled inside the service, so this can fire on every keystroke.
+        // An emptied composer says so at once — that is the frame that ends
+        // the indicator early instead of waiting out its TTL.
+        if (!widget.isChannel && !isSavedChat(widget.canonicalId)) {
+          unawaited(ref.read(messagingServiceProvider).announceTyping(
+                widget.canonicalId,
+                typing: text.trim().isNotEmpty,
+              ));
+        }
+      },
       onEditCancel: () =>
           ref.read(messageEditTargetProvider.notifier).state = null,
       onEditCommit: (newText) async {
@@ -2366,16 +2599,39 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // A recording waiting to be reviewed takes the composer's place entirely.
     // Leaving the input underneath would invite starting a second recording,
     // or typing, on top of one that has not been dealt with.
-    final composerWithMentions = widget.isChannel
-        ? MentionSuggestions(
-            channelName: widget.canonicalId,
-            text: draft?.text ?? '',
-            onTextChanged: (text) => ref
-                .read(draftsControllerProvider.notifier)
-                .update(widget.canonicalId, text),
-            child: composer,
-          )
-        : composer;
+    // Three ways this goes: a room offers its roster, a 1:1 offers the one
+    // person it has, and a notebook offers nobody — there is no one there to
+    // mention.
+    final Widget composerWithMentions;
+    if (widget.isChannel) {
+      composerWithMentions = MentionSuggestions(
+        channelName: widget.canonicalId,
+        text: draft?.text ?? '',
+        onTextChanged: (text) => ref
+            .read(draftsControllerProvider.notifier)
+            .update(widget.canonicalId, text),
+        child: composer,
+      );
+    } else if (isSavedChat(widget.canonicalId)) {
+      composerWithMentions = composer;
+    } else {
+      final peer = ref.watch(knownPeersControllerProvider)[widget.canonicalId];
+      final aliases = ref.watch(contactAliasesControllerProvider);
+      composerWithMentions = DirectMentionHint(
+        peerName: peer == null
+            ? ''
+            : contactDisplayName(
+                alias: aliases[peer.pubkeyHex],
+                rawBroadcastName: peer.displayName,
+                pubkeyHex: peer.pubkeyHex,
+              ),
+        text: draft?.text ?? '',
+        onTextChanged: (text) => ref
+            .read(draftsControllerProvider.notifier)
+            .update(widget.canonicalId, text),
+        child: composer,
+      );
+    }
 
     final pending = _pendingVoice;
     if (pending != null) {

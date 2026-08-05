@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/identity/anon_name.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/shared_contact.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
@@ -23,6 +25,7 @@ import '../../chats/data/favorites_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../../profile/data/privacy_settings_controller.dart';
+import '../data/contact_aliases_controller.dart';
 import '../data/known_peers_controller.dart';
 import '../data/peer_avatars_controller.dart';
 import '../models/known_peer.dart';
@@ -74,6 +77,78 @@ class ContactProfileScreen extends ConsumerWidget {
       icon: Icons.content_copy_rounded,
       tone: ToastTone.success,
     );
+  }
+
+  /// Rename a contact locally.
+  ///
+  /// Purely on this device: nothing goes on the wire, and a shared contact
+  /// card still carries the name they chose for themselves. Clearing the box
+  /// goes back to whatever they broadcast.
+  Future<void> _renameContact(BuildContext context, WidgetRef ref) async {
+    final t = AppLocalizations.of(context);
+    final aliases = ref.read(contactAliasesControllerProvider.notifier);
+    await aliases.loaded;
+    if (!context.mounted) return;
+    final controller = TextEditingController(text: aliases.forPeer(peerPubkeyHex) ?? '');
+    final chosen = await showGlassSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t.contactAliasAction,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                t.contactAliasHint,
+                textAlign: TextAlign.center,
+                style:
+                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: kContactAliasMaxLength,
+                style: TextStyle(color: AppColors.textOnGlass),
+                decoration: InputDecoration(
+                  hintText: displayNameForPeer('', peerPubkeyHex),
+                  hintStyle: TextStyle(color: AppColors.textOnGlassDim),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: () =>
+                    Navigator.of(sheetContext).pop(controller.text),
+                child: Text(t.profileNicknameSave),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (chosen == null) return; // backed out, leave the name alone
+    await aliases.setAlias(peerPubkeyHex, chosen);
   }
 
   // contact profile actions
@@ -296,6 +371,20 @@ class ContactProfileScreen extends ConsumerWidget {
                         ),
                       ),
                       _ActionTile(
+                        icon: Icons.drive_file_rename_outline,
+                        label: t.contactAliasAction,
+                        // The name they broadcast, shown underneath, so it is
+                        // clear the rename is yours and theirs is untouched.
+                        subtitle: displayNameForPeer(
+                          peer?.displayName ?? '',
+                          peerPubkeyHex,
+                        ),
+                        onTap: () {
+                          close();
+                          _renameContact(context, ref);
+                        },
+                      ),
+                      _ActionTile(
                         icon: Icons.auto_delete_outlined,
                         label: t.contactProfileAutoDelete,
                         subtitle: _autoDeleteLabel(
@@ -308,6 +397,16 @@ class ContactProfileScreen extends ConsumerWidget {
                             context,
                             ref,
                             conversationSettings.autoDelete,
+                          );
+                        },
+                      ),
+                      _ActionTile(
+                        icon: Icons.wallpaper_outlined,
+                        label: t.chatWallpaperTitle,
+                        onTap: () {
+                          close();
+                          context.push(
+                            '/wallpaper/${Uri.encodeComponent(peerPubkeyHex)}',
                           );
                         },
                       ),

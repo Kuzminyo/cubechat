@@ -22,6 +22,7 @@ import '../../chat/data/drafts_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
+import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../peers/data/presence_controller.dart';
@@ -82,6 +83,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final readMarkers = ref.watch(readMarkersControllerProvider);
   final presence = ref.watch(presenceControllerProvider);
   final drafts = ref.watch(draftsControllerProvider);
+  final aliases = ref.watch(contactAliasesControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -105,7 +107,11 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     return Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
-      peerName: displayNameForPeer(peer.displayName, peer.pubkeyHex),
+      peerName: contactDisplayName(
+        alias: aliases[peer.pubkeyHex],
+        rawBroadcastName: peer.displayName,
+        pubkeyHex: peer.pubkeyHex,
+      ),
       lastMessage: draft?.text ?? last?.text ?? 'Secured · Noise XX',
       lastTime: draft?.updatedAt ?? last?.sentAt ?? peer.lastSeen,
       unreadCount: unread,

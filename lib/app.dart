@@ -23,7 +23,11 @@ import 'features/profile/data/ui_scale_controller.dart';
 import 'l10n/app_localizations.dart';
 
 class CubechatApp extends ConsumerStatefulWidget {
-  const CubechatApp({super.key});
+  const CubechatApp({super.key, this.seenOnboarding = true});
+
+  /// Read off disk before the first frame, so a first run opens on the intro
+  /// instead of flashing the chats list and redirecting away from it.
+  final bool seenOnboarding;
 
   @override
   ConsumerState<CubechatApp> createState() => _CubechatAppState();
@@ -31,7 +35,7 @@ class CubechatApp extends ConsumerStatefulWidget {
 
 class _CubechatAppState extends ConsumerState<CubechatApp>
     with WidgetsBindingObserver {
-  late final _router = buildRouter();
+  late final _router = buildRouter(seenOnboarding: widget.seenOnboarding);
 
   @override
   void initState() {

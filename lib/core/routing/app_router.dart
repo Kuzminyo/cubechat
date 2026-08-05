@@ -5,6 +5,8 @@ import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/backup/presentation/backup_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
 import '../../features/channels/presentation/channel_info_screen.dart';
+import '../../features/chat/presentation/chat_wallpaper_screen.dart';
+import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/chats/presentation/chat_folders_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
 import '../../features/chats/data/saved_messages.dart';
@@ -28,11 +30,30 @@ import 'page_transitions.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 
-GoRouter buildRouter() {
+/// [seenOnboarding] is read from disk before the first frame (see
+/// `readSeenOnboardingFlag`) so a first run opens straight onto the intro
+/// rather than rendering the chats list and redirecting away from it.
+GoRouter buildRouter({bool seenOnboarding = true}) {
   return GoRouter(
     navigatorKey: _rootNavKey,
-    initialLocation: '/chats',
+    initialLocation: seenOnboarding ? '/chats' : '/onboarding',
+    // Two directions, both narrow. A deep link cannot land somebody inside the
+    // app before they have seen the intro, and revisiting /onboarding after
+    // the fact bounces back out rather than showing it again.
+    redirect: (context, state) {
+      final atIntro = state.matchedLocation == '/onboarding';
+      if (seenOnboarding && atIntro) return '/chats';
+      return null;
+    },
     routes: [
+      GoRoute(
+        path: '/onboarding',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const OnboardingScreen(),
+          state: state,
+        ),
+      ),
       // A stateful shell keeps one Navigator per tab alive for the whole
       // session. Tapping a tab swaps which branch is visible — it does not
       // rebuild the screen — so switching is instant and scroll positions and
@@ -241,6 +262,16 @@ GoRouter buildRouter() {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: ChatSearchScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/wallpaper/:chatId',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: ChatWallpaperScreen(
+            chatId: state.pathParameters['chatId']!,
+          ),
           state: state,
         ),
       ),

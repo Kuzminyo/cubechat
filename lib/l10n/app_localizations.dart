@@ -2216,6 +2216,120 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get channelDescriptionSave;
 
+  /// No description provided for @chatTyping.
+  ///
+  /// In en, this message translates to:
+  /// **'typing…'**
+  String get chatTyping;
+
+  /// No description provided for @onboardingMeshTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Works without internet'**
+  String get onboardingMeshTitle;
+
+  /// No description provided for @onboardingMeshBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.'**
+  String get onboardingMeshBody;
+
+  /// No description provided for @onboardingRelayTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'And with it, when there is some'**
+  String get onboardingRelayTitle;
+
+  /// No description provided for @onboardingRelayBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of Bluetooth range, messages take the internet instead and arrive the same way. You never pick which.'**
+  String get onboardingRelayBody;
+
+  /// No description provided for @onboardingPrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody in the middle can read it'**
+  String get onboardingPrivacyTitle;
+
+  /// No description provided for @onboardingPrivacyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything is end-to-end encrypted, and your identity is a key on this phone — not a phone number, not an email, not an account anyone can take away.'**
+  String get onboardingPrivacyBody;
+
+  /// No description provided for @onboardingSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get onboardingSkip;
+
+  /// No description provided for @onboardingNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get onboardingNext;
+
+  /// No description provided for @onboardingStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Get started'**
+  String get onboardingStart;
+
+  /// No description provided for @chatWallpaperTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallpaper'**
+  String get chatWallpaperTitle;
+
+  /// No description provided for @chatWallpaperClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get chatWallpaperClear;
+
+  /// No description provided for @chatWallpaperDim.
+  ///
+  /// In en, this message translates to:
+  /// **'Darken behind the messages'**
+  String get chatWallpaperDim;
+
+  /// No description provided for @chatSelectAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Select'**
+  String get chatSelectAction;
+
+  /// No description provided for @chatForwardNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing here can be forwarded'**
+  String get chatForwardNothing;
+
+  /// No description provided for @chatSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 selected} other{{count} selected}}'**
+  String chatSelectedCount(int count);
+
+  /// No description provided for @chatDeleteSelectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Delete this message?} other{Delete {count} messages?}}'**
+  String chatDeleteSelectedTitle(int count);
+
+  /// No description provided for @contactAliasAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename contact'**
+  String get contactAliasAction;
+
+  /// No description provided for @contactAliasHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only you see this name. Leave empty to use theirs.'**
+  String get contactAliasHint;
+
   /// No description provided for @viewOnceSendLabel.
   ///
   /// In en, this message translates to:

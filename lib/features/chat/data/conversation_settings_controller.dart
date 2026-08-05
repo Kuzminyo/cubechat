@@ -59,38 +59,107 @@ class ChatAutoDelete {
   int get hashCode => seconds.hashCode;
 }
 
+/// What one conversation is drawn on.
+///
+/// Purely local and purely cosmetic: nothing goes on the wire, so two people
+/// in the same chat can each pick their own, exactly as they already can with
+/// auto-delete.
+@immutable
+class ChatWallpaper {
+  const ChatWallpaper({
+    this.presetIndex,
+    this.imagePath,
+    this.dim = 0.35,
+  });
+
+  static const none = ChatWallpaper();
+
+  /// Index into [presets]. Null when this is an image, or nothing at all.
+  final int? presetIndex;
+
+  /// A picture the user chose, already copied into app storage — the picker's
+  /// own temporary file is collected out from under us otherwise.
+  final String? imagePath;
+
+  /// How much dark scrim goes over the top, 0..1. A photograph makes an
+  /// unreadable backdrop for text at almost any brightness, so a wallpaper
+  /// without a legibility layer is one people turn back off.
+  final double dim;
+
+  bool get isSet => presetIndex != null || imagePath != null;
+
+  /// Bundled gradients, as pairs of colour values. Deliberately a handful:
+  /// the point is a conversation that looks distinct at a glance, not a
+  /// theming engine.
+  static const presets = <List<int>>[
+    [0xFF1B3A2F, 0xFF0B1A16],
+    [0xFF2A1F3D, 0xFF120B1C],
+    [0xFF1F2E4A, 0xFF0B1220],
+    [0xFF3D2320, 0xFF1A0E0C],
+    [0xFF23343A, 0xFF0C1518],
+  ];
+
+  ChatWallpaper copyWith({
+    int? presetIndex,
+    String? imagePath,
+    double? dim,
+    bool clearPreset = false,
+    bool clearImage = false,
+  }) =>
+      ChatWallpaper(
+        presetIndex: clearPreset ? null : (presetIndex ?? this.presetIndex),
+        imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+        dim: dim ?? this.dim,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChatWallpaper &&
+      other.presetIndex == presetIndex &&
+      other.imagePath == imagePath &&
+      other.dim == dim;
+
+  @override
+  int get hashCode => Object.hash(presetIndex, imagePath, dim);
+}
+
 @immutable
 class ConversationSettings {
   const ConversationSettings({
     this.autoDelete = ChatAutoDelete.off,
     this.restrictCopying = false,
+    this.wallpaper = ChatWallpaper.none,
   });
 
   static const initial = ConversationSettings();
 
   final ChatAutoDelete autoDelete;
   final bool restrictCopying;
+  final ChatWallpaper wallpaper;
 
   ConversationSettings copyWith({
     ChatAutoDelete? autoDelete,
     bool? restrictCopying,
+    ChatWallpaper? wallpaper,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
         restrictCopying: restrictCopying ?? this.restrictCopying,
+        wallpaper: wallpaper ?? this.wallpaper,
       );
 
   bool get isDefault =>
-      !autoDelete.isOn && !restrictCopying;
+      !autoDelete.isOn && !restrictCopying && !wallpaper.isSet;
 
   @override
   bool operator ==(Object other) =>
       other is ConversationSettings &&
       other.autoDelete == autoDelete &&
-      other.restrictCopying == restrictCopying;
+      other.restrictCopying == restrictCopying &&
+      other.wallpaper == wallpaper;
 
   @override
-  int get hashCode => Object.hash(autoDelete, restrictCopying);
+  int get hashCode => Object.hash(autoDelete, restrictCopying, wallpaper);
 }
 
 /// Local per-conversation privacy preferences.
@@ -132,6 +201,9 @@ class ConversationSettingsController
 
   Future<void> setRestrictCopying(String chatId, bool restricted) =>
       _put(chatId, forChat(chatId).copyWith(restrictCopying: restricted));
+
+  Future<void> setWallpaper(String chatId, ChatWallpaper wallpaper) =>
+      _put(chatId, forChat(chatId).copyWith(wallpaper: wallpaper));
 
   Future<void> forget(String chatId) async {
     if (!state.containsKey(chatId)) return;
@@ -198,6 +270,14 @@ class ConversationSettingsController
           final settings = ConversationSettings(
             autoDelete: period,
             restrictCopying: value['restrictCopying'] == true,
+            wallpaper: ChatWallpaper(
+              presetIndex: value['wallpaperPreset'] as int?,
+              // Only the path — the bytes live in app storage, and putting a
+              // picture inside the settings map would load every chat's
+              // wallpaper on every read of this box.
+              imagePath: value['wallpaperImage'] as String?,
+              dim: (value['wallpaperDim'] as num?)?.toDouble() ?? 0.35,
+            ),
           );
           if (!settings.isDefault) loaded[entry.key as String] = settings;
         }
@@ -218,6 +298,12 @@ class ConversationSettingsController
           entry.key: {
             'autoDeleteSeconds': entry.value.autoDelete.seconds,
             'restrictCopying': entry.value.restrictCopying,
+            if (entry.value.wallpaper.presetIndex != null)
+              'wallpaperPreset': entry.value.wallpaper.presetIndex,
+            if (entry.value.wallpaper.imagePath != null)
+              'wallpaperImage': entry.value.wallpaper.imagePath,
+            if (entry.value.wallpaper.isSet)
+              'wallpaperDim': entry.value.wallpaper.dim,
           },
       });
     } catch (e) {
