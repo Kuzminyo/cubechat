@@ -2016,6 +2016,47 @@ class MessagingService {
     }
   }
 
+  /// Ask the peer to delete this conversation on their side too.
+  ///
+  /// 1:1 only, and best-effort by nature: it is a request their app honours,
+  /// not something this one can enforce. Returns whether it reached anything,
+  /// so the caller can say if it went nowhere.
+  Future<bool> sendConversationClear(String canonicalId) async {
+    if (canonicalId.startsWith('#')) return false;
+    final peerPub = _resolvePeerPub(canonicalId);
+    if (peerPub == null) return false;
+    try {
+      final fanout = await _sendControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.conversationClear,
+        innerBody: Uint8List(0),
+      );
+      DebugLog.instance
+          .log('CHAT', 'asked $canonicalId to clear the conversation ($fanout)');
+      return fanout > 0;
+    } catch (e) {
+      DebugLog.instance.log('CHAT', 'conversation clear failed: $e');
+      return false;
+    }
+  }
+
+  /// The peer deleted this conversation and asked us to do the same.
+  ///
+  /// Only ever clears the one chat it arrived on, and only from a sender the
+  /// signature already identified — there is no id in the body to point
+  /// somewhere else with.
+  Future<void> _ingestConversationClear({
+    required String peerId,
+    required Uint8List? senderPub,
+  }) async {
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    await messages.clearForChat(canonical);
+    if (canonical != peerId) await messages.clearForChat(peerId);
+    DebugLog.instance.log('CHAT', '$canonical cleared the conversation here');
+  }
+
   /// Burn a view-once photo here, and tell the other side to burn theirs.
   ///
   /// Called from both directions and idempotent in both: the recipient calls
@@ -3353,6 +3394,7 @@ class MessagingService {
         case InnerPayloadType.mediaRequest:
         case InnerPayloadType.viewOnceConsumed:
         case InnerPayloadType.typing:
+        case InnerPayloadType.conversationClear:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -4079,6 +4121,12 @@ class MessagingService {
             peerId: peerId,
             senderPub: senderPub,
             body: unpacked.body,
+          );
+
+        case InnerPayloadType.conversationClear:
+          await _ingestConversationClear(
+            peerId: peerId,
+            senderPub: senderPub,
           );
 
         case InnerPayloadType.typing:

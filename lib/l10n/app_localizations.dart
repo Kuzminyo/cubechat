@@ -851,7 +851,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatsDeletePeerHint.
   ///
   /// In en, this message translates to:
-  /// **'Removes the conversation and forgets this peer. They can find you again over the mesh.'**
+  /// **'Clears the conversation. The contact stays, so you can write to them again without swapping codes.'**
   String get chatsDeletePeerHint;
 
   /// No description provided for @chatsDeleteChannelHint.
@@ -869,7 +869,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatsDeleteForThemHint.
   ///
   /// In en, this message translates to:
-  /// **'Withdraws the messages you sent from their device too. Their own messages stay.'**
+  /// **'Asks their app to clear the whole conversation too, including what they wrote. In a channel, only your own messages are withdrawn.'**
   String get chatsDeleteForThemHint;
 
   /// No description provided for @chatEditAction.

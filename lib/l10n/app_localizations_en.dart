@@ -421,7 +421,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatsDeletePeerHint =>
-      'Removes the conversation and forgets this peer. They can find you again over the mesh.';
+      'Clears the conversation. The contact stays, so you can write to them again without swapping codes.';
 
   @override
   String get chatsDeleteChannelHint =>
@@ -432,7 +432,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatsDeleteForThemHint =>
-      'Withdraws the messages you sent from their device too. Their own messages stay.';
+      'Asks their app to clear the whole conversation too, including what they wrote. In a channel, only your own messages are withdrawn.';
 
   @override
   String get chatEditAction => 'Edit';

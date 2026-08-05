@@ -423,7 +423,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatsDeletePeerHint =>
-      'Розмову буде видалено, а піра забуто. Він зможе знайти вас знову через меш.';
+      'Розмову буде очищено. Контакт залишиться — писати йому знову можна без обміну кодами.';
 
   @override
   String get chatsDeleteChannelHint =>
@@ -434,7 +434,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatsDeleteForThemHint =>
-      'Ваші повідомлення зникнуть і з його пристрою. Його власні залишаться.';
+      'Попросить його застосунок стерти всю розмову, разом з його власними повідомленнями. У каналі відкликаються лише ваші.';
 
   @override
   String get chatEditAction => 'Редагувати';

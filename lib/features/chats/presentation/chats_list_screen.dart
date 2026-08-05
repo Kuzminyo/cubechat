@@ -24,10 +24,10 @@ import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
-import '../../peers/data/peer_avatars_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/favorites_controller.dart';
+import '../data/hidden_chats_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
@@ -84,6 +84,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final presence = ref.watch(presenceControllerProvider);
   final drafts = ref.watch(draftsControllerProvider);
   final aliases = ref.watch(contactAliasesControllerProvider);
+  final hidden = ref.watch(hiddenChatsControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -96,7 +97,14 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   };
 
   final now = DateTime.now();
-  final entries = known.values.map((peer) {
+  final entries = known.values
+      // A deleted conversation keeps its contact but loses its tile — until
+      // there is something in it again, which is the moment it stops being a
+      // deleted conversation. Nothing has to remember to un-hide it.
+      .where((peer) =>
+          !hidden.contains(peer.pubkeyHex) ||
+          (messagesByChat[peer.pubkeyHex]?.isNotEmpty ?? false))
+      .map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     final last = msgs.isNotEmpty ? msgs.last : null;
     final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
@@ -610,8 +618,18 @@ Future<void> _showChatActions(
   // against the stored message, so clearing first would leave nothing to send.
   if (alsoForThem) {
     final messaging = ref.read(messagingServiceProvider);
-    for (final m in retractable) {
-      await messaging.sendDeleteForEveryone(chat.id, m.wireId!);
+    if (chat.isChannel) {
+      // A room has many people in it and no member gets to erase it for the
+      // rest, so this stays what it always was: retract what we wrote.
+      for (final m in retractable) {
+        await messaging.sendDeleteForEveryone(chat.id, m.wireId!);
+      }
+    } else {
+      // One ask instead of one per message, and it takes the whole
+      // conversation rather than only our half of it — which is what people
+      // mean by deleting a chat for both, and what the per-message retraction
+      // could never do.
+      await messaging.sendConversationClear(chat.id);
     }
   }
 
@@ -626,9 +644,13 @@ Future<void> _showChatActions(
     await ref.read(channelControllerProvider.notifier).leave(chat.id);
     await ref.read(channelRosterControllerProvider.notifier).forget(chat.id);
   } else {
-    // Forget the roster entry too, otherwise the tile reappears empty.
-    await ref.read(knownPeersControllerProvider.notifier).forget(chat.id);
-    await ref.read(peerAvatarsControllerProvider.notifier).forget(chat.id);
+    // The contact stays. Forgetting the roster entry is what used to make the
+    // person disappear from Contacts along with their keys, their prekey and
+    // their npub — so writing to them again meant swapping codes a second
+    // time, for the crime of clearing a conversation. Hiding suppresses the
+    // tile for exactly as long as the chat is empty; the next message either
+    // way brings it back on its own.
+    await ref.read(hiddenChatsControllerProvider.notifier).hide(chat.id);
   }
 }
 

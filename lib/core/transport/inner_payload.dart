@@ -142,7 +142,21 @@ enum InnerPayloadType {
   ///
   /// 1:1 only. A room would need "Alice and Bob are typing…" aggregation, and
   /// half of that is worse than none.
-  typing(0xF5);
+  typing(0xF5),
+
+  /// "Delete this whole conversation, on your side too." Empty body — the
+  /// envelope already says which conversation, and there is nothing else to
+  /// agree on.
+  ///
+  /// Stronger than [delete], deliberately: that one retracts a message its
+  /// *author* sent, and the receiver enforces exactly that. This clears the
+  /// other person's copy of messages they wrote themselves, which is a real
+  /// thing to hand somebody. It is scoped as tightly as it can be — it only
+  /// ever affects the one conversation between the two of them, it is
+  /// authenticated by the same signature every 1:1 frame carries, so nobody
+  /// but the peer can send it, and it is 1:1 only. A room has many people and
+  /// no member gets to erase it for the rest.
+  conversationClear(0xF6);
 
   const InnerPayloadType(this.tag);
   final int tag;
