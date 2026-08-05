@@ -2490,6 +2490,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       _markChatRead();
       _maybeSendReadReceipts();
     });
+    // And again when a link comes back. A receipt composed while the peer was
+    // unreachable is no longer recorded as sent (see [sendReadReceipts]), so it
+    // is waiting to be retried — but nothing would retry it while the chat sits
+    // open and no new message arrives, which is exactly the case where somebody
+    // is watching the other person's tick fail to turn over.
+    ref.listen(chatSessionManagerProvider, (_, __) => _maybeSendReadReceipts());
+    ref.listen(relayStatusProvider, (_, __) => _maybeSendReadReceipts());
     // Voice notes are still 1:1: a room relays every chunk through every
     // member, so the cost of an attachment there is paid by everyone. Photos
     // are worth that and are capped by the picker; see

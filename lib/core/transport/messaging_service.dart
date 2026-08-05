@@ -1839,7 +1839,6 @@ class MessagingService {
       if (w == null || _sentReadAcks.contains(w)) continue;
       try {
         fresh.add(_hexDecodeBytes(w));
-        _sentReadAcks.add(w);
       } catch (_) {/* skip malformed wireId */}
     }
     if (fresh.isEmpty) return;
@@ -1852,6 +1851,17 @@ class MessagingService {
       final slice = fresh.sublist(i, end);
       final receipt = ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
       try {
+        // Remembered as acknowledged only once it actually went somewhere.
+        //
+        // These used to be marked in the loop that collected them, before any
+        // of them had been sent, and undone only if the send *threw*. But
+        // neither path throws when there is simply no route: _sendControlToPeer
+        // and _broadcastChannelFrame both return a fan-out count, and zero is
+        // an ordinary return. So a receipt composed with Bluetooth down and the
+        // relay unreachable — which is most of the time on a phone with no
+        // internet — was recorded as delivered, never retried for the life of
+        // the process, and the sender's tick stayed on one forever.
+        final int fanout;
         if (channel != null) {
           final frame = await _buildChannelFrame(
             channel,
@@ -1859,19 +1869,24 @@ class MessagingService {
             receipt.encode(),
             TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           );
-          await _broadcastChannelFrame(frame);
+          fanout = await _broadcastChannelFrame(frame);
         } else {
-          await _sendControlToPeer(
+          fanout = await _sendControlToPeer(
             canonicalId: canonicalId,
             peerPub: peerPub!,
             type: InnerPayloadType.receipt,
             innerBody: receipt.encode(),
           );
         }
-      } catch (e) {
-        for (final id in slice) {
-          _sentReadAcks.remove(TransportEnvelope.hashHex(id));
+        if (fanout > 0) {
+          for (final id in slice) {
+            _sentReadAcks.add(TransportEnvelope.hashHex(id));
+          }
+        } else {
+          DebugLog.instance.log(
+              'RECEIPT', 'no route for ${slice.length} read ack(s) — will retry');
         }
+      } catch (e) {
         DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
       }
     }
