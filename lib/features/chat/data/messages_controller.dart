@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/util/media_storage.dart';
 import '../models/message.dart';
 
 /// Per-peer message store, keyed by the canonical chat id (the peer's
@@ -631,12 +632,15 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       isMine: (m['isMine'] as bool?) ?? false,
       status: status,
       kind: kind,
-      imagePath: m['imagePath'] as String?,
+      // Repaired on the way out of storage, so every read site — bubbles,
+      // viewers, playback, the share sheet — gets a path that resolves
+      // against the container the app is in now. See [MediaPaths.repair].
+      imagePath: MediaPaths.repairOrNull(m['imagePath'] as String?),
       imageMime: m['imageMime'] as String?,
-      audioPath: m['audioPath'] as String?,
+      audioPath: MediaPaths.repairOrNull(m['audioPath'] as String?),
       audioMime: m['audioMime'] as String?,
       audioDurationMs: m['audioDurationMs'] as int?,
-      filePath: m['filePath'] as String?,
+      filePath: MediaPaths.repairOrNull(m['filePath'] as String?),
       fileName: m['fileName'] as String?,
       fileBytes: m['fileBytes'] as int?,
       forwardSecret: (m['fs'] as bool?) ?? false,

@@ -12,11 +12,12 @@ import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/debug_log.dart';
+import 'core/util/media_storage.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-05-read-acks-retry';
+const String _buildStamp = '2026-08-05-media-paths-self-heal';
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -94,6 +95,10 @@ Future<void> main() async {
   // Storage genuinely gates the first frame — the tree reads it immediately —
   // so it gets the longest leash. It also goes through the platform keystore,
   // which is the slowest thing here on a cold Android start.
+  // Ahead of Hive, because the message decoder repairs media paths as it reads
+  // and needs to know where the app lives before the first row is decoded.
+  await _bootStep('media-paths', MediaPaths.init,
+      limit: const Duration(seconds: 3));
   await _bootStep('hive', HiveInit.ensureInitialized,
       limit: const Duration(seconds: 10));
   // Kept ahead of runApp for iOS, where this call is what raises the very first
