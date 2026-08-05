@@ -27,7 +27,6 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
-import '../../channels/presentation/channel_invite_sheet.dart';
 import '../../channels/presentation/channel_poll_composer.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
@@ -413,6 +412,15 @@ class ChatScreen extends ConsumerWidget {
                   : () => context.push(
                         '/channel-info/${Uri.encodeComponent(peerId.substring(1))}',
                       ),
+              // Search, and nothing else.
+              //
+              // The header used to carry three: search, start a poll, add
+              // people. Two of them have somewhere better to be now — a poll is
+              // one of the things you attach, so it sits in the attach sheet
+              // beside the gallery and the camera, and adding people is what
+              // the channel profile is for, which is one tap away on the title.
+              // Three icons deep, the room's own name had nowhere to go but
+              // ellipsis.
               actions: [
                 if (joined)
                   _PillIconButton(
@@ -422,27 +430,6 @@ class ChatScreen extends ConsumerWidget {
                     onPressed: () => ref
                         .read(_chatSearchOpenProvider(peerId).notifier)
                         .state = true,
-                  ),
-                // A poll needs voters and an invitation needs someone to
-                // invite. Search is the one action that still means something
-                // in a notebook, so it stays.
-                if (joined && !saved)
-                  _PillIconButton(
-                    // A ballot box, not a bar chart. The old icon read as
-                    // "statistics" — something to look at — where this is the
-                    // button that starts a vote.
-                    icon: Icons.how_to_vote_outlined,
-                    color: AppColors.brandSecondary,
-                    tooltip: t.channelCreatePoll,
-                    onPressed: () =>
-                        showChannelPollComposer(context, ref, peerId),
-                  ),
-                if (!saved)
-                  _PillIconButton(
-                    icon: Icons.person_add_alt_1_outlined,
-                    color: AppColors.brandPrimary,
-                    tooltip: t.channelInviteTitle,
-                    onPressed: () => showChannelInviteSheet(context, peerId),
                   ),
               ],
             ),
@@ -1988,7 +1975,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // Custom in-app picker: a photo grid (multi-select) with a camera tile.
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
-      builder: (_) => MediaPickerSheet(allowFiles: !widget.isChannel),
+      builder: (_) => MediaPickerSheet(
+        allowFiles: !widget.isChannel,
+        allowPoll: widget.isChannel && !isSavedChat(widget.canonicalId),
+      ),
     );
     if (result == null || !mounted) return;
 
@@ -1997,6 +1987,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _pickAndSendFile();
       case MediaPickerCamera():
         await _captureEditAndSend();
+      case MediaPickerPoll():
+        await showChannelPollComposer(context, ref, widget.peerId);
       case MediaPickerAssets(:final assets):
         if (assets.isEmpty) return;
         await _previewAndSend(assets);

@@ -1403,7 +1403,15 @@ class MessagingService {
   Future<void> retryFileTransfer(String transferId) async {
     final transfers = _ref.read(fileTransferControllerProvider.notifier);
     final task = _ref.read(fileTransferControllerProvider)[transferId];
-    if (task == null || task.direction != FileTransferDirection.outgoing) {
+    if (task == null) return;
+    // Retrying a transfer *into* this phone is asking for it again: the bytes
+    // are the sender's, and their outbox is the only place a second copy
+    // exists. The transfer centre has always offered the button here; it used
+    // to return at this line and do nothing at all.
+    if (task.direction == FileTransferDirection.incoming) {
+      if (await requestMediaAgain(task.chatId, transferId)) {
+        transfers.setStatus(transferId, FileTransferStatus.queued);
+      }
       return;
     }
     if (!_hasMediaRoute(task.chatId)) return;
@@ -4101,6 +4109,41 @@ class MessagingService {
     }
   }
 
+  /// Whether a manifest for [mediaIdHex] is news, or a second copy of one whose
+  /// file is already on this phone.
+  ///
+  /// A manifest is not delivered once. A relay backlog replays it, the mesh
+  /// re-floods it, a store-and-forward buffer hands it over again — and each
+  /// arrival used to `register` the incoming task afresh, overwriting the
+  /// *completed* one back to `transferring`. The chunks behind it are then
+  /// dropped as duplicates by the dedup cache, quite correctly, so nothing ever
+  /// completed it a second time: the file was downloaded, opened, perfectly
+  /// fine, and its transfer sat in the Active list claiming to be waiting for a
+  /// connection forever.
+  ///
+  /// The file still being on disk is what separates that from the one case
+  /// where a repeat manifest is genuinely wanted: a re-request
+  /// ([requestMediaAgain]), which is only sent *because* the file is gone.
+  Future<bool> _wantsFile(String mediaIdHex) async {
+    final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    await transfers.loaded;
+    final existing = _ref.read(fileTransferControllerProvider)[mediaIdHex];
+    if (existing == null ||
+        existing.direction != FileTransferDirection.incoming ||
+        existing.status != FileTransferStatus.completed) {
+      return true;
+    }
+    if (existing.filePath.isEmpty) return true;
+    try {
+      if (!await File(existing.filePath).exists()) return true;
+    } catch (_) {
+      return true;
+    }
+    DebugLog.instance.log(
+        'FILE', 'manifest $mediaIdHex is a repeat — the file is already here');
+    return false;
+  }
+
   /// Decode + retain a signed media manifest. Chunks are only accepted after
   /// this signed metadata has arrived, so unsigned orphan chunks cannot fill
   /// reassembly buffers.
@@ -4157,7 +4200,7 @@ class MessagingService {
       senderPub: senderPub,
     );
 
-    if (manifest.kind == MediaKind.file) {
+    if (manifest.kind == MediaKind.file && await _wantsFile(key)) {
       final now = DateTime.now();
       _ref.read(fileTransferControllerProvider.notifier).register(
             FileTransferTask(

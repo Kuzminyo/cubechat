@@ -52,16 +52,20 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
   /// reveals. Matching it back against the contacts we already hold is what
   /// makes a row something you can tap through; somebody we have never met 1:1
   /// resolves to nothing, and stays a plain row rather than a dead link.
-  KnownPeer? _contactFor(String memberId) {
-    for (final peer in ref.read(knownPeersControllerProvider).values) {
+  ///
+  /// Built once per rebuild rather than searched per row, and off a watched
+  /// roster, so a member who becomes a contact while this screen is open turns
+  /// into a link without having to leave and come back.
+  static Map<String, KnownPeer> _byFingerprint(Map<String, KnownPeer> peers) {
+    final out = <String, KnownPeer>{};
+    for (final peer in peers.values) {
       final signPub = peer.signPublicKey;
       if (signPub == null) continue;
-      final hex = [
-        for (final b in signPub) b.toRadixString(16).padLeft(2, '0'),
-      ].join();
-      if (hex.startsWith(memberId)) return peer;
+      out[[
+        for (final b in signPub.take(8)) b.toRadixString(16).padLeft(2, '0'),
+      ].join()] = peer;
     }
-    return null;
+    return out;
   }
 
   Future<void> _pickChannelAvatar() async {
@@ -138,6 +142,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
         _myId != null && roster.isAdmin(widget.channelName, _myId!);
     final picture =
         ref.watch(channelAvatarsControllerProvider)[widget.channelName];
+    final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
 
     return AuroraBackground(
       child: Scaffold(
@@ -213,7 +218,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               for (final member in members)
                 _MemberRow(
                   member: member,
-                  contact: _contactFor(member.id),
+                  contact: contacts[member.id],
                   isMe: member.id == _myId,
                   canManage: canManage,
                   onToggleAdmin: () => ref

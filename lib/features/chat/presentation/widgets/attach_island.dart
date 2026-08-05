@@ -5,7 +5,7 @@ import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
 
 /// What the attach island resolved to.
-enum AttachChoice { gallery, camera, file }
+enum AttachChoice { gallery, camera, file, poll }
 
 /// The row of attachment categories, floating over the picker as its own
 /// island rather than sitting in a plate along the bottom edge.
@@ -21,6 +21,7 @@ class AttachIsland extends StatelessWidget {
     required this.onPick,
     this.bare = false,
     this.allowFiles = true,
+    this.allowPoll = false,
   });
 
   final AttachChoice selected;
@@ -36,6 +37,11 @@ class AttachIsland extends StatelessWidget {
   /// principle as the rest of this row: a category that opens nothing is worse
   /// than an absent one.
   final bool allowFiles;
+
+  /// True in a channel. A poll needs voters, so it means nothing in a 1:1 — but
+  /// in a room it is one of the things you attach, and it belongs beside the
+  /// gallery and the camera rather than as a third icon in the header.
+  final bool allowPoll;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +67,13 @@ class AttachIsland extends StatelessWidget {
             label: t.attachFile,
             active: selected == AttachChoice.file,
             onTap: () => onPick(AttachChoice.file),
+          ),
+        if (allowPoll)
+          _AttachTab(
+            icon: Icons.how_to_vote_outlined,
+            label: t.channelPollTitle,
+            active: selected == AttachChoice.poll,
+            onTap: () => onPick(AttachChoice.poll),
           ),
       ],
     );

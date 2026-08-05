@@ -122,13 +122,28 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
         if (value is! Map) continue;
         final task = _decode(value);
         if (task == null) continue;
-        final status = task.active ? FileTransferStatus.queued : task.status;
-        restored[task.id] = task.copyWith(status: status);
+        restored[task.id] = task.copyWith(status: _statusAfterRestart(task));
       }
       state = {...restored, ...state};
     } catch (e) {
       debugPrint('FileTransferController load failed: $e');
     }
+  }
+
+  /// What an in-flight transfer becomes when the app is started again.
+  ///
+  /// Outgoing work survives a restart: we still hold the file, and the queue
+  /// drain picks it back up as soon as there is a route. Incoming work does
+  /// not — the bytes were coming from somebody else, who has long since
+  /// finished sending and will not start again unless asked. Leaving those as
+  /// `queued` is what filled the Active list with rows that said "waiting for a
+  /// connection" and meant it forever. Failed is the honest state, and it is
+  /// the one the transfer centre offers a retry on.
+  static FileTransferStatus _statusAfterRestart(FileTransferTask task) {
+    if (!task.active) return task.status;
+    return task.direction == FileTransferDirection.outgoing
+        ? FileTransferStatus.queued
+        : FileTransferStatus.failed;
   }
 
   void register(FileTransferTask task) {

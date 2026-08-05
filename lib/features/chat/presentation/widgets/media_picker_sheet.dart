@@ -28,6 +28,12 @@ class MediaPickerFile extends MediaPickerResult {
   const MediaPickerFile();
 }
 
+/// The user chose the Опитування category; the caller opens the poll composer.
+/// Channels only — see [AttachIsland.allowPoll].
+class MediaPickerPoll extends MediaPickerResult {
+  const MediaPickerPoll();
+}
+
 /// The user confirmed a gallery selection.
 class MediaPickerAssets extends MediaPickerResult {
   const MediaPickerAssets(this.assets);
@@ -39,10 +45,17 @@ class MediaPickerAssets extends MediaPickerResult {
 /// cell. Returns a [MediaPickerResult] — either the camera request or the
 /// chosen [AssetEntity]s (which the caller downscales + sends).
 class MediaPickerSheet extends StatefulWidget {
-  const MediaPickerSheet({super.key, this.allowFiles = true});
+  const MediaPickerSheet({
+    super.key,
+    this.allowFiles = true,
+    this.allowPoll = false,
+  });
 
   /// See [AttachIsland.allowFiles] — a channel takes photos but not documents.
   final bool allowFiles;
+
+  /// See [AttachIsland.allowPoll] — a channel starts votes, a 1:1 does not.
+  final bool allowPoll;
 
   @override
   State<MediaPickerSheet> createState() => _MediaPickerSheetState();
@@ -221,6 +234,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
           AttachIsland(
             bare: true,
             allowFiles: widget.allowFiles,
+            allowPoll: widget.allowPoll,
             selected: AttachChoice.gallery,
             onPick: (choice) => switch (choice) {
               AttachChoice.gallery => null,
@@ -228,6 +242,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 Navigator.of(context).pop(const MediaPickerCamera()),
               AttachChoice.file =>
                 Navigator.of(context).pop(const MediaPickerFile()),
+              AttachChoice.poll =>
+                Navigator.of(context).pop(const MediaPickerPoll()),
             },
           ),
         ],
