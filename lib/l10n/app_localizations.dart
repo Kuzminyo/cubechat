@@ -2186,6 +2186,36 @@ abstract class AppLocalizations {
   /// **'Media, files and polls'**
   String get channelSharedContent;
 
+  /// No description provided for @channelDescriptionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get channelDescriptionTitle;
+
+  /// No description provided for @channelDescriptionEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No description yet'**
+  String get channelDescriptionEmpty;
+
+  /// No description provided for @channelDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What this channel is for'**
+  String get channelDescriptionHint;
+
+  /// No description provided for @channelDescriptionAdminOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only an administrator can change the description'**
+  String get channelDescriptionAdminOnly;
+
+  /// No description provided for @channelDescriptionSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get channelDescriptionSave;
+
   /// No description provided for @channelAvatarAdminOnly.
   ///
   /// In en, this message translates to:

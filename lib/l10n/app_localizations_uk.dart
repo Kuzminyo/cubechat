@@ -1191,6 +1191,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelSharedContent => 'Медіа, файли та опитування';
 
   @override
+  String get channelDescriptionTitle => 'Опис';
+
+  @override
+  String get channelDescriptionEmpty => 'Опису ще немає';
+
+  @override
+  String get channelDescriptionHint => 'Для чого цей канал';
+
+  @override
+  String get channelDescriptionAdminOnly =>
+      'Змінювати опис може лише адміністратор';
+
+  @override
+  String get channelDescriptionSave => 'Зберегти';
+
+  @override
   String get channelAvatarAdminOnly =>
       'Змінювати фото каналу може лише адміністратор';
 

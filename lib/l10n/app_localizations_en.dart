@@ -1185,6 +1185,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelSharedContent => 'Media, files and polls';
 
   @override
+  String get channelDescriptionTitle => 'Description';
+
+  @override
+  String get channelDescriptionEmpty => 'No description yet';
+
+  @override
+  String get channelDescriptionHint => 'What this channel is for';
+
+  @override
+  String get channelDescriptionAdminOnly =>
+      'Only an administrator can change the description';
+
+  @override
+  String get channelDescriptionSave => 'Save';
+
+  @override
   String get channelAvatarAdminOnly =>
       'Only an administrator can change the channel photo';
 

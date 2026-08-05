@@ -21,6 +21,7 @@ import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../data/channel_avatars_controller.dart';
+import '../data/channel_descriptions_controller.dart';
 import '../data/channel_roster_controller.dart';
 import 'channel_invite_sheet.dart';
 
@@ -117,6 +118,73 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     await _publishAvatar(null);
   }
 
+  Future<void> _editDescription(String current) async {
+    final t = AppLocalizations.of(context);
+    final controller = TextEditingController(text: current);
+    final text = await showGlassSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t.channelDescriptionTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 4,
+                minLines: 2,
+                maxLength: kChannelDescriptionMaxLength,
+                style: TextStyle(color: AppColors.textOnGlass),
+                decoration: InputDecoration(
+                  hintText: t.channelDescriptionHint,
+                  hintStyle: TextStyle(color: AppColors.textOnGlassDim),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: () =>
+                    Navigator.of(sheetContext).pop(controller.text),
+                child: Text(t.channelDescriptionSave),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    // Backing out leaves the topic alone; an empty box is a deliberate clear.
+    if (text == null || !mounted) return;
+    try {
+      await ref
+          .read(messagingServiceProvider)
+          .sendChannelDescription(widget.channelName, text);
+    } catch (e) {
+      if (mounted) showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
   Future<void> _publishAvatar(Uint8List? jpeg) async {
     final t = AppLocalizations.of(context);
     try {
@@ -143,6 +211,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     final picture =
         ref.watch(channelAvatarsControllerProvider)[widget.channelName];
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
+    final description =
+        ref.watch(channelDescriptionsControllerProvider)[widget.channelName];
 
     return AuroraBackground(
       child: Scaffold(
@@ -168,6 +238,20 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                   : () => showGlassToast(context, t.channelAvatarAdminOnly),
               onRemoveAvatar:
                   canManage && picture != null ? _removeChannelAvatar : null,
+            ),
+            const SizedBox(height: 12),
+            _ChannelDescription(
+              text: description,
+              canManage: canManage,
+              // A member gets the same treatment as the picture: the row is
+              // still there, and tapping says why it will not open rather
+              // than doing nothing.
+              onTap: canManage
+                  ? () => _editDescription(description ?? '')
+                  : () => showGlassToast(
+                        context,
+                        t.channelDescriptionAdminOnly,
+                      ),
             ),
             const SizedBox(height: 12),
             Row(
@@ -315,6 +399,70 @@ class _ChannelHero extends StatelessWidget {
                 style: TextStyle(color: AppColors.warning),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the room is for, in the room's own words.
+///
+/// Always present rather than hidden when empty: a channel with no topic and
+/// an admin looking for where to write one are the same screen, and a row that
+/// only exists once it has content is a row nobody finds the first time.
+class _ChannelDescription extends StatelessWidget {
+  const _ChannelDescription({
+    required this.text,
+    required this.canManage,
+    required this.onTap,
+  });
+
+  final String? text;
+  final bool canManage;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final body = text?.trim() ?? '';
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.channelDescriptionTitle.toUpperCase(),
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  body.isEmpty ? t.channelDescriptionEmpty : body,
+                  style: TextStyle(
+                    color: body.isEmpty
+                        ? AppColors.textOnGlassFaint
+                        : AppColors.textOnGlass,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (canManage) ...[
+            const SizedBox(width: 8),
+            Icon(Icons.edit_outlined,
+                size: 18, color: AppColors.brandPrimary),
+          ],
         ],
       ),
     );

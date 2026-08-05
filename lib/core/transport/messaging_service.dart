@@ -13,6 +13,7 @@ import 'package:cryptography/cryptography.dart';
 
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_controller.dart';
+import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/messages_controller.dart';
@@ -2529,6 +2530,39 @@ class MessagingService {
         'channel picture for ${channel.name}: ${jpeg?.length ?? 0}B, fanout=$fanout');
   }
 
+  /// Set (or, with an empty [text], clear) the room's topic for everyone.
+  ///
+  /// Same shape and the same trust model as [sendChannelAvatar]: refused
+  /// locally when we are not an admin, which is a courtesy to the person
+  /// tapping — the check that matters runs on every receiver against their own
+  /// roster.
+  Future<void> sendChannelDescription(String channelName, String text) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only an admin can set the topic for $channelName');
+    }
+    final trimmed = text.trim();
+    final descriptions =
+        _ref.read(channelDescriptionsControllerProvider.notifier);
+    await descriptions.loaded;
+    if (!await descriptions.store(channel.name, trimmed)) {
+      throw StateError('topic is too long');
+    }
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelDescription,
+      Uint8List.fromList(utf8.encode(trimmed)),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log('CHAN',
+        'channel topic for ${channel.name}: ${trimmed.length} chars, fanout=$fanout');
+  }
+
   /// Publishes a signed poll to a joined channel.
   Future<Message> sendChannelPoll(
     String channelName,
@@ -3112,6 +3146,24 @@ class MessagingService {
               AvatarPayload.decode(unpacked.body).jpeg,
             );
           }
+
+        case InnerPayloadType.channelDescription:
+          // Same authorisation as the picture, and for the same reason: the
+          // signature says who sent it, our roster says whether they may.
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
+            DebugLog.instance.log('CHAN',
+                'drop ${channel.name} topic: $reactorId is not an admin');
+            break;
+          }
+          final descriptions =
+              _ref.read(channelDescriptionsControllerProvider.notifier);
+          await descriptions.loaded;
+          await descriptions.store(
+            channel.name,
+            utf8.decode(unpacked.body, allowMalformed: true),
+          );
         // Photos in a room. The manifest commits to the byte count and the
         // SHA-256, and it arrived inside a frame the channel signature already
         // authenticated — so unlike the 1:1 path there is no second signature
@@ -3861,9 +3913,11 @@ class MessagingService {
           );
 
         case InnerPayloadType.channelAvatar:
-          // A room's picture is a broadcast to its members, and only the
-          // channel path knows which room a frame belongs to. Arriving on a 1:1
-          // link it names no channel at all, so there is nothing to apply it to.
+        case InnerPayloadType.channelDescription:
+          // A room's picture and its topic are broadcasts to its members, and
+          // only the channel path knows which room a frame belongs to.
+          // Arriving on a 1:1 link they name no channel at all, so there is
+          // nothing to apply them to.
           break;
       }
     } catch (e, st) {

@@ -33,6 +33,11 @@ abstract final class HiveBoxes {
   /// changes.
   static const channelAvatars = 'cubechat.channel_avatars';
 
+  /// Channel topics, keyed by channel name. Same reasoning as
+  /// [channelAvatars] — small, changes rarely, and the [channels] box is read
+  /// whole on every load.
+  static const channelDescriptions = 'cubechat.channel_descriptions';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -42,6 +47,7 @@ abstract final class HiveBoxes {
     prekeys,
     peerAvatars,
     channelAvatars,
+    channelDescriptions,
   ];
 }
 

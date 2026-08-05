@@ -107,7 +107,16 @@ enum InnerPayloadType {
   /// digest in. What authorises it is the channel frame's own signature —
   /// the receiver only accepts one from a member its roster already lists as an
   /// admin, so this cannot be a way to become one.
-  channelAvatar(0xF2);
+  channelAvatar(0xF2),
+
+  /// The room's topic, set by an admin and broadcast to every member. Body is
+  /// UTF-8 text, or empty to clear it.
+  ///
+  /// Authorised exactly like [channelAvatar]: the channel frame's signature
+  /// says who sent it, and the receiver's own roster decides whether they were
+  /// allowed to. Our copy of that roster is what counts — a sender claiming to
+  /// be an admin proves nothing.
+  channelDescription(0xF3);
 
   const InnerPayloadType(this.tag);
   final int tag;
