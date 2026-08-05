@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Pin Xcode explicitly so a runner-image default bump can't silently drop
       # us back onto an SDK too old for the camera plugin. latest-stable = the
@@ -113,7 +113,7 @@ jobs:
       # around it, nothing to expire. The artifact upload is kept as a
       # convenience but must never fail the build again.
       - name: Publish IPA to the rolling prerelease
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ipa-latest
           name: Latest unsigned IPA (${{ github.ref_name }})
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload IPA as workflow artifact
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
           path: build/ios/iphoneos/cubechat-unsigned.ipa
