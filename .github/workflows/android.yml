@@ -9,7 +9,7 @@ name: Android build (debug APK for sideloading)
 # the apk-latest release with a build that isn't main's.
 on:
   push:
-    branches: [main, fix/view-once-and-copy-restriction]
+    branches: [main]
   workflow_dispatch:
 
 # Needed so the job can upsert the rolling "apk-latest" prerelease that holds

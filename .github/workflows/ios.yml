@@ -11,7 +11,7 @@ name: iOS build (unsigned IPA for sideloading)
 # until the artifact storage allowance ran out.)
 on:
   push:
-    branches: [main, fix/view-once-and-copy-restriction]
+    branches: [main]
   workflow_dispatch:
 
 # Needed to upsert the rolling "ipa-latest" prerelease the IPA is delivered
