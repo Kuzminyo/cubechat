@@ -1598,6 +1598,12 @@ abstract class AppLocalizations {
   /// **'Copying and forwarding are disabled'**
   String get contactProfileCopyingRestricted;
 
+  /// No description provided for @contactProfileCopyingRestrictedByPeer.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabled at the other end'**
+  String get contactProfileCopyingRestrictedByPeer;
+
   /// No description provided for @contactProfileCopyingAllowed.
   ///
   /// In en, this message translates to:

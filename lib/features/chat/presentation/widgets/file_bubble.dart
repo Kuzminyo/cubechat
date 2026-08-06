@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/util/debug_log.dart';
+import '../../../../core/util/open_in.dart';
+import '../../../../core/util/share_anchor.dart';
 import '../../../../core/utils/file_mime.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
@@ -125,6 +127,22 @@ class FileBubble extends ConsumerWidget {
       message.fileName ?? path,
       declaredMime: message.text,
     );
+
+    // On iOS "open it" is two different things, and the plugin below picks the
+    // one nobody wants: it previews the file inside cubechat, in a QuickLook
+    // window that looks like a page of this app. A document you were sent to
+    // read belongs in the app that reads documents, so it goes there — the
+    // "Open in…" menu launches the app rather than borrowing its extension.
+    //
+    // Except when the conversation is restricted, where the in-app preview is
+    // exactly right and the hand-off is the thing being withheld: reading it
+    // here is the point of having received it, and copying it into another
+    // app's storage is not.
+    if (!sharingRestricted && OpenIn.isSupported) {
+      if (await OpenIn.handOff(path, anchor: shareAnchorFor(context))) return;
+      if (!context.mounted) return;
+    }
+
     OpenResult? result;
     try {
       // A type we cannot name is passed as *no* type rather than as
@@ -196,8 +214,14 @@ class FileBubble extends ConsumerWidget {
         ],
       ),
     );
-    if (share != true) return;
-    await Share.shareXFiles([XFile(path)], subject: message.fileName);
+    if (share != true || !context.mounted) return;
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: message.fileName,
+      // Not optional: without a non-empty anchor iOS raises rather than
+      // opening the sheet, on iPhone as much as on iPad. See [shareAnchorFor].
+      sharePositionOrigin: shareAnchorFor(context),
+    );
   }
 
   /// Ask the sender for the bytes again.

@@ -320,6 +320,7 @@
   "contactProfileRestrictCopying": "Заборонити копіювання",
   "contactProfileAllowCopying": "Дозволити копіювання",
   "contactProfileCopyingRestricted": "Копіювання і пересилання вимкнено",
+  "contactProfileCopyingRestrictedByPeer": "Вимкнено співрозмовником",
   "contactProfileCopyingAllowed": "Копіювання і пересилання дозволено",
   "contactProfileDelete": "Видалити з контактів",
   "contactProfileDeleteTitle": "Видалити контакт?",

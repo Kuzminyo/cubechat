@@ -16,6 +16,7 @@ import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/channels/models/channel.dart';
+import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
@@ -2016,6 +2017,107 @@ class MessagingService {
     }
   }
 
+  /// Peers we have already told about our copy restriction this run.
+  ///
+  /// There is no acknowledgement to wait on, so what stands in for one is
+  /// repetition: the switch itself, a session coming up, and the first time the
+  /// chat is opened. This keeps those from piling onto each other — but an
+  /// entry only survives a send that reached *something*, or the first attempt
+  /// (typically the chat opening with the peer nowhere in range) would spend
+  /// the only chance the other two were there to provide.
+  final Set<String> _copyRestrictionAnnounced = <String>{};
+
+  /// Tell one peer whether copying and forwarding are off in this conversation.
+  ///
+  /// The setting used to be enforced only on the phone that set it, which is
+  /// the one side that already knows. The other side kept Copy and Forward and
+  /// could pass the conversation on — the exact thing the switch is for — so
+  /// the request has to travel.
+  ///
+  /// [force] is the switch being thrown: it always sends, including the "back
+  /// on" that lifts a restriction. Without it this is the opportunistic resend
+  /// — at most once per peer per app run, and nothing at all when the answer is
+  /// "not restricted", since a fresh contact does not need telling that a
+  /// default is still the default.
+  ///
+  /// [restricted] is only passed by the switch, which knows the new value
+  /// before the store has finished writing it. Everyone else leaves it null and
+  /// gets the stored answer, waited for rather than read early — a handshake
+  /// can land before the settings box has finished opening, and reading through
+  /// it would announce "not restricted" for a conversation that is.
+  Future<void> announceCopyRestriction(
+    String canonicalId, {
+    bool? restricted,
+    bool force = false,
+  }) async {
+    if (_disposed || canonicalId.startsWith('#')) return;
+    if (!force && !_copyRestrictionAnnounced.add(canonicalId)) return;
+    bool on;
+    if (restricted != null) {
+      on = restricted;
+    } else {
+      final settings =
+          _ref.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      on = settings.forChat(canonicalId).restrictCopying;
+    }
+    if (!force && !on) {
+      _copyRestrictionAnnounced.remove(canonicalId);
+      return;
+    }
+    _copyRestrictionAnnounced.add(canonicalId);
+    final peerPub = _disposed ? null : _resolvePeerPub(canonicalId);
+    if (peerPub == null) {
+      _copyRestrictionAnnounced.remove(canonicalId);
+      return;
+    }
+    try {
+      final fanout = await _sendControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.copyRestriction,
+        innerBody: Uint8List.fromList([on ? 0x01 : 0x00]),
+      );
+      // Zero is an ordinary return from the fan-out, not an error: no link, no
+      // relay, nobody told. Forgetting it here is what lets the next session or
+      // the next opening of the chat try again.
+      if (fanout == 0) _copyRestrictionAnnounced.remove(canonicalId);
+      DebugLog.instance.log(
+          'CHAT',
+          'told $canonicalId copying is '
+              '${on ? "off" : "back on"} ($fanout)');
+    } catch (e) {
+      _copyRestrictionAnnounced.remove(canonicalId);
+      DebugLog.instance.log('CHAT', 'copy-restriction notice failed: $e');
+    }
+  }
+
+  /// The peer asked that this conversation not be copied or forwarded.
+  ///
+  /// Stored beside our own setting rather than into it, so neither side can
+  /// switch off what the other asked for. Only ever applies to the chat it
+  /// arrived on: like the conversation clear, there is no id in the body that
+  /// could point somewhere else.
+  Future<void> _ingestCopyRestriction({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) async {
+    if (body.isEmpty) return;
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    final restricted = body[0] == 0x01;
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    await settings.loaded;
+    await settings.setPeerRestrictsCopying(canonical, restricted);
+    if (canonical != peerId) {
+      await settings.setPeerRestrictsCopying(peerId, restricted);
+    }
+    DebugLog.instance.log(
+        'CHAT',
+        '$canonical asks that this chat is '
+            '${restricted ? "not copied or forwarded" : "copyable again"}');
+  }
+
   /// Ask the peer to delete this conversation on their side too.
   ///
   /// 1:1 only, and best-effort by nature: it is a request their app honours,
@@ -3395,11 +3497,13 @@ class MessagingService {
         case InnerPayloadType.viewOnceConsumed:
         case InnerPayloadType.typing:
         case InnerPayloadType.conversationClear:
+        case InnerPayloadType.copyRestriction:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
-          // channel-wide broadcast of a picture is a fan-out nobody asked for —
-          // and a request for a file again has no single member to answer it.)
+          // channel-wide broadcast of a picture is a fan-out nobody asked for,
+          // a request for a file again has no single member to answer it, and
+          // one member cannot decide for a room what everyone else may keep.)
           break;
       }
     } catch (e) {
@@ -4135,6 +4239,13 @@ class MessagingService {
           await _ingestConversationClear(
             peerId: peerId,
             senderPub: senderPub,
+          );
+
+        case InnerPayloadType.copyRestriction:
+          await _ingestCopyRestriction(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
           );
 
         case InnerPayloadType.typing:
@@ -6131,6 +6242,12 @@ class MessagingService {
     // …and hand over anything we've been holding for this peer while they
     // were unreachable (store-and-forward delivery).
     unawaited(_flushStoreForwardFor(session));
+    // A copy restriction set while they were away never reached them, and
+    // there is no acknowledgement that would have told us. A session coming up
+    // is the cheapest moment to say it — one frame, only when the answer is
+    // "off" (the default needs no announcing), and only once per run however
+    // many times the link drops and comes back.
+    unawaited(announceCopyRestriction(pubkeyHex));
   }
 
   /// Delivers every frame we've been holding for [session]'s peer now that

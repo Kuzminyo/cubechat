@@ -141,7 +141,7 @@ class _ChatMediaGalleryScreenState
   Widget build(BuildContext context) {
     final sharingRestricted = ref
             .watch(conversationSettingsControllerProvider)[widget.chatId]
-            ?.restrictCopying ??
+            ?.copyingRestricted ??
         false;
     final t = AppLocalizations.of(context);
     final count = _images.length;
@@ -221,11 +221,17 @@ class _ChatMediaGalleryScreenState
                     }
                   },
                   itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'save',
-                      child: _menuRow(
-                          Icons.download_rounded, t.chatMediaSaveToGallery),
-                    ),
+                    // Saving to the camera roll leaves the conversation as
+                    // surely as the share sheet does — more so, since what it
+                    // leaves behind is a copy in an album that syncs. Hiding
+                    // one and offering the other would have made the setting
+                    // decorative.
+                    if (!sharingRestricted)
+                      PopupMenuItem(
+                        value: 'save',
+                        child: _menuRow(
+                            Icons.download_rounded, t.chatMediaSaveToGallery),
+                      ),
                     PopupMenuItem(
                       value: 'chat',
                       child: _menuRow(

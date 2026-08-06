@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/open_in.dart';
+import '../../../core/util/share_anchor.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/glass_toast.dart';
 
@@ -41,21 +43,50 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       .map((e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.text}')
       .join('\n');
 
+  /// The share control lives in the AppBar, so the handler has no context of
+  /// its own to measure — hence the key.
+  final _shareButtonKey = GlobalKey();
+
   /// Send the log out as a file rather than through the clipboard.
   ///
   /// Copy-all was the only way out of here, and a connection log is thousands
   /// of lines — too much to paste into a chat, and the part that matters is
   /// never the part that survives the paste. A file goes to the developer
   /// intact, which is the difference between "connection is flaky" and a fix.
+  ///
+  /// The anchor is what makes the button work at all on iOS. Without a
+  /// non-empty `sharePositionOrigin` UIKit refuses to place the popover and
+  /// raises — on iPhone, not only iPad — so the tap did nothing whatsoever and
+  /// the one screen that exists to get a log off the phone could not. See
+  /// [shareAnchorFor]; the failure is now also reported rather than swallowed.
+  ///
+  /// [OpenIn.handOff] is tried first, and only on iOS, because the point of
+  /// this button is to get the file *to somebody*. The share sheet hands it to
+  /// the chosen app's extension, which draws over cubechat and never leaves it;
+  /// "Open in…" launches the app itself. When nothing installed claims a text
+  /// file the menu would be empty, so that answers false and the sheet — now
+  /// working — takes over.
   Future<void> _shareLog(List<DebugLogEntry> entries) async {
-    final dir = await getTemporaryDirectory();
-    final stamp = DateTime.now()
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .substring(0, 19);
-    final file = File('${dir.path}/cubechat-log-$stamp.txt');
-    await file.writeAsString(_asText(entries));
-    await Share.shareXFiles([XFile(file.path)], subject: 'cubechat log');
+    final anchor = shareAnchorFor(context, key: _shareButtonKey);
+    try {
+      final dir = await getTemporaryDirectory();
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .substring(0, 19);
+      final file = File('${dir.path}/cubechat-log-$stamp.txt');
+      await file.writeAsString(_asText(entries));
+      if (await OpenIn.handOff(file.path, anchor: anchor)) return;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'cubechat log',
+        sharePositionOrigin: anchor,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(context, 'Could not share the log: $e',
+          tone: ToastTone.danger);
+    }
   }
 
   @override
@@ -72,6 +103,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 AppTypography.heading(size: 18, color: AppColors.textOnGlass)),
         actions: [
           IconButton(
+            key: _shareButtonKey,
             tooltip: 'Share log file',
             icon: Icon(Icons.ios_share_rounded, color: AppColors.textOnGlass),
             onPressed: entries.isEmpty ? null : () => _shareLog(entries),

@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
+import 'package:cubechat/features/chat/presentation/view_once_media_screen.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
+import 'package:cubechat/l10n/app_localizations.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -218,6 +222,29 @@ void main() {
       expect(await messages.consumeViewOnce('peer', 'aa11'), isNull);
     });
 
+    test('a photo with no transport id is left alone', () async {
+      // Nothing to tell the sender about, and nothing for a re-delivery to
+      // match — burning it would only lose the local file.
+      final messages = container.read(messagesControllerProvider.notifier);
+      await messages.loaded;
+      final photo = await _photoOnDisk();
+      messages.append(
+        'peer',
+        Message(
+          id: 'm1',
+          chatId: 'peer',
+          text: 'image/jpeg',
+          sentAt: DateTime(2026, 8, 5),
+          isMine: false,
+          kind: MessageKind.image,
+          imagePath: photo.path,
+          viewOnce: true,
+        ),
+      );
+      expect(await messages.consumeViewOnce('peer', 'aa11'), isNull);
+      expect(await photo.exists(), isTrue);
+    });
+
     test('an ordinary photo is never burned by mistake', () async {
       final messages = container.read(messagesControllerProvider.notifier);
       await messages.loaded;
@@ -237,6 +264,96 @@ void main() {
       );
       expect(await messages.consumeViewOnce('peer', 'aa11'), isNull);
       expect(await photo.exists(), isTrue);
+    });
+  });
+
+  /// The half that kept escaping: the store above always burned correctly, and
+  /// the viewer never reached it.
+  ///
+  /// It asked for the transport from inside `dispose`, where Flutter has
+  /// already cleared the element and Riverpod throws rather than answering.
+  /// The exception left through `dispose`, the framework swallowed it, and the
+  /// photo survived every viewing. Capturing the service in a `late final`
+  /// field looked like the fix and was not one — a late initialiser runs at its
+  /// first *read*, which was still inside dispose. So what is pinned here is
+  /// not "the burn happens" but "the burn happens when the screen goes away",
+  /// driven through the same route pop a person performs.
+  group('leaving the viewer', () {
+    final message = Message(
+      id: 'm1',
+      chatId: 'peer',
+      text: 'image/jpeg',
+      sentAt: DateTime(2026, 8, 5),
+      isMine: false,
+      kind: MessageKind.image,
+      // No file on disk on purpose: the screen shows its unavailable state,
+      // which keeps the test off the image decoder without changing the path
+      // being exercised.
+      imagePath: null,
+      wireId: 'aa11',
+      viewOnce: true,
+    );
+
+    Future<GlobalKey<NavigatorState>> pumpViewer(
+      WidgetTester tester,
+      List<String> burned,
+    ) async {
+      final nav = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            viewOnceBurnProvider.overrideWithValue(
+              (chatId, wireId) async => burned.add('$chatId/$wireId'),
+            ),
+          ],
+          child: MaterialApp(
+            navigatorKey: nav,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: SizedBox()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      unawaited(nav.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              ViewOnceMediaScreen(chatId: 'peer', message: message),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return nav;
+    }
+
+    testWidgets('burns the photo on the way out, not on the way in',
+        (tester) async {
+      final burned = <String>[];
+      final nav = await pumpViewer(tester, burned);
+      expect(burned, isEmpty, reason: 'opening it is not having seen it');
+
+      nav.currentState!.pop();
+      await tester.pumpAndSettle();
+
+      expect(burned, ['peer/aa11']);
+    });
+
+    testWidgets('burns it when the app is put away with it still open',
+        (tester) async {
+      // A process killed from the switcher never runs dispose, and the photo
+      // used to be there again on the next launch.
+      final burned = <String>[];
+      await pumpViewer(tester, burned);
+      addTearDown(
+        () => tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+      );
+
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      expect(burned, isEmpty, reason: 'a half-pulled shade is not leaving');
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      expect(burned, ['peer/aa11']);
     });
   });
 }

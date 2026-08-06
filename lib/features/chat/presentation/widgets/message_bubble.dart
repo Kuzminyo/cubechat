@@ -282,7 +282,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   bool get _copyingRestricted =>
       ref
           .read(conversationSettingsControllerProvider)[widget.chatId]
-          ?.restrictCopying ??
+          ?.copyingRestricted ??
       false;
 
   SharedContact? get _sharedContact => widget.message.kind == MessageKind.text
@@ -705,7 +705,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final mine = message.isMine;
     final copyingRestricted = ref
             .watch(conversationSettingsControllerProvider)[widget.chatId]
-            ?.restrictCopying ??
+            ?.copyingRestricted ??
         false;
     final sharedContact = _sharedContact;
 

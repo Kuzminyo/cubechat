@@ -7,6 +7,7 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var blePeripheralPlugin: CubechatBlePeripheralPlugin?
   private var audioTrimPlugin: CubechatAudioTrimPlugin?
+  private var openInPlugin: CubechatOpenInPlugin?
 
   /// Channel the background window is driven over. Must match
   /// `IosBackgroundRefresh` on the Dart side.
@@ -59,6 +60,7 @@ import UserNotifications
     {
       blePeripheralPlugin = CubechatBlePeripheralPlugin(messenger: messenger)
       audioTrimPlugin = CubechatAudioTrimPlugin(messenger: messenger)
+      openInPlugin = CubechatOpenInPlugin(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
         binaryMessenger: messenger

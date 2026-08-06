@@ -832,6 +832,10 @@ class AppLocalizationsUk extends AppLocalizations {
       'Копіювання і пересилання вимкнено';
 
   @override
+  String get contactProfileCopyingRestrictedByPeer =>
+      'Вимкнено співрозмовником';
+
+  @override
   String get contactProfileCopyingAllowed =>
       'Копіювання і пересилання дозволено';
 

@@ -156,7 +156,29 @@ enum InnerPayloadType {
   /// authenticated by the same signature every 1:1 frame carries, so nobody
   /// but the peer can send it, and it is 1:1 only. A room has many people and
   /// no member gets to erase it for the rest.
-  conversationClear(0xF6);
+  conversationClear(0xF6),
+
+  /// "Do not copy or forward what I send you." Body is one byte: 0x01 on,
+  /// 0x00 off.
+  ///
+  /// Without this the setting was a switch that only rearranged its owner's
+  /// own menus: the person who turned it on lost Copy and Forward, and the
+  /// person it was aimed at — the one who might pass the conversation on —
+  /// never heard about it and kept both. Whoever asked is the one side that
+  /// did not need telling.
+  ///
+  /// Sticky on arrival, and kept apart from the receiver's own setting, so
+  /// neither side can turn the other's off. Sent when the switch is thrown,
+  /// again when a session with that peer comes up, and once more the first
+  /// time the chat is opened in a session — there is no acknowledgement, so
+  /// what covers a peer who was offline is repetition, and the receiver
+  /// storing it forever.
+  ///
+  /// Enforced by an app that agrees, exactly like [viewOnceConsumed]: it takes
+  /// away the buttons, not the pixels. A screenshot, a camera pointed at the
+  /// screen, or a modified client all still exist, and no message app has ever
+  /// been able to say otherwise.
+  copyRestriction(0xF7);
 
   const InnerPayloadType(this.tag);
   final int tag;

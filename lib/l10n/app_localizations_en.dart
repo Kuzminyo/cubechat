@@ -832,6 +832,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Copying and forwarding are disabled';
 
   @override
+  String get contactProfileCopyingRestrictedByPeer =>
+      'Disabled at the other end';
+
+  @override
   String get contactProfileCopyingAllowed =>
       'Copying and forwarding are allowed';
 

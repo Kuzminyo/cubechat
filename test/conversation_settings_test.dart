@@ -89,6 +89,78 @@ void main() {
     expect(settings.forChat('bob').restrictCopying, isFalse);
   });
 
+  group("the other side's restriction", () {
+    test('binds this device, and neither side can undo the other', () async {
+      // The whole bug: the switch used to be enforced only on the phone that
+      // threw it — the one side already convinced. The phone that could
+      // actually forward the conversation never heard about it.
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+
+      await settings.setPeerRestrictsCopying('alice', true);
+      expect(settings.forChat('alice').restrictCopying, isFalse,
+          reason: 'our own switch was never thrown');
+      expect(settings.forChat('alice').copyingRestricted, isTrue);
+      expect(settings.forChat('bob').copyingRestricted, isFalse);
+
+      // Ours on and off again: theirs is not ours to clear.
+      await settings.setRestrictCopying('alice', true);
+      await settings.setRestrictCopying('alice', false);
+      expect(settings.forChat('alice').copyingRestricted, isTrue);
+
+      // And theirs going away does not take ours with it.
+      await settings.setRestrictCopying('alice', true);
+      await settings.setPeerRestrictsCopying('alice', false);
+      expect(settings.forChat('alice').copyingRestricted, isTrue);
+    });
+
+    test('survives a restart, because the notice is not sent again', () async {
+      // There is no acknowledgement on the wire and no guarantee of a repeat,
+      // so a request that arrived once has to be kept. Forgetting it on
+      // relaunch would quietly hand back Copy and Forward.
+      final first = ProviderContainer();
+      final settings =
+          first.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      await settings.setPeerRestrictsCopying('alice', true);
+      first.dispose();
+
+      final second = ProviderContainer();
+      addTearDown(second.dispose);
+      final reloaded =
+          second.read(conversationSettingsControllerProvider.notifier);
+      await reloaded.loaded;
+
+      expect(reloaded.forChat('alice').peerRestrictsCopying, isTrue);
+      expect(reloaded.forChat('alice').copyingRestricted, isTrue);
+    });
+
+    test('takes the same message actions away as our own does', () {
+      final message = Message(
+        id: 'm1',
+        chatId: 'alice',
+        text: 'private text',
+        sentAt: DateTime(2026),
+        isMine: false,
+      );
+      const peerAsked = ConversationSettings(peerRestrictsCopying: true);
+
+      expect(
+        messageCanBeCopied(message,
+            copyingRestricted: peerAsked.copyingRestricted),
+        isFalse,
+      );
+      expect(
+        messageCanBeForwarded(message,
+            copyingRestricted: peerAsked.copyingRestricted),
+        isFalse,
+      );
+    });
+  });
+
   test('shared contact payload round-trips and rejects malformed input', () {
     const contact = SharedContact(
       pubkeyHex:

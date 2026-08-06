@@ -128,45 +128,75 @@ class ConversationSettings {
   const ConversationSettings({
     this.autoDelete = ChatAutoDelete.off,
     this.restrictCopying = false,
+    this.peerRestrictsCopying = false,
     this.wallpaper = ChatWallpaper.none,
   });
 
   static const initial = ConversationSettings();
 
   final ChatAutoDelete autoDelete;
+
+  /// What *we* asked for in this conversation.
   final bool restrictCopying;
+
+  /// What the person on the other end asked for.
+  ///
+  /// Held apart from [restrictCopying] rather than folded into it so the two
+  /// cannot cancel each other: turning our own switch off must not lift their
+  /// request, and their turning theirs off must not lift ours. Only the side
+  /// that set a flag can clear it.
+  final bool peerRestrictsCopying;
+
   final ChatWallpaper wallpaper;
+
+  /// Whether copying, forwarding and sharing are off in this conversation —
+  /// the question every message surface actually asks. Either side saying so
+  /// is enough; it is a request about the conversation, not about one device.
+  bool get copyingRestricted => restrictCopying || peerRestrictsCopying;
 
   ConversationSettings copyWith({
     ChatAutoDelete? autoDelete,
     bool? restrictCopying,
+    bool? peerRestrictsCopying,
     ChatWallpaper? wallpaper,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
         restrictCopying: restrictCopying ?? this.restrictCopying,
+        peerRestrictsCopying: peerRestrictsCopying ?? this.peerRestrictsCopying,
         wallpaper: wallpaper ?? this.wallpaper,
       );
 
   bool get isDefault =>
-      !autoDelete.isOn && !restrictCopying && !wallpaper.isSet;
+      !autoDelete.isOn && !copyingRestricted && !wallpaper.isSet;
 
   @override
   bool operator ==(Object other) =>
       other is ConversationSettings &&
       other.autoDelete == autoDelete &&
       other.restrictCopying == restrictCopying &&
+      other.peerRestrictsCopying == peerRestrictsCopying &&
       other.wallpaper == wallpaper;
 
   @override
-  int get hashCode => Object.hash(autoDelete, restrictCopying, wallpaper);
+  int get hashCode => Object.hash(
+        autoDelete,
+        restrictCopying,
+        peerRestrictsCopying,
+        wallpaper,
+      );
 }
 
-/// Local per-conversation privacy preferences.
+/// Per-conversation privacy preferences.
 ///
-/// Auto-delete is enforced on load, whenever the preference changes, and once
-/// a minute while the app is alive. Copy restriction is consumed by message
-/// surfaces so copy, forward and system-share controls disappear together.
+/// Auto-delete and the wallpaper are local: two people in the same chat can
+/// each pick their own, and nothing about either goes on the wire. The copy
+/// restriction is the exception — it is a request *about the conversation*,
+/// so it travels (as an `InnerPayloadType.copyRestriction` frame) and arrives
+/// here as [ConversationSettings.peerRestrictsCopying]. Message surfaces read
+/// [ConversationSettings.copyingRestricted], which is both sides at once, so
+/// copy, forward and system-share controls disappear together whichever end
+/// asked for it.
 class ConversationSettingsController
     extends Notifier<Map<String, ConversationSettings>> {
   static const _key = 'conversation_settings';
@@ -201,6 +231,12 @@ class ConversationSettingsController
 
   Future<void> setRestrictCopying(String chatId, bool restricted) =>
       _put(chatId, forChat(chatId).copyWith(restrictCopying: restricted));
+
+  /// Record what the peer asked for. Called from the transport when their
+  /// [InnerPayloadType.copyRestriction] lands — never from the UI, because
+  /// this half of the setting is not ours to change.
+  Future<void> setPeerRestrictsCopying(String chatId, bool restricted) =>
+      _put(chatId, forChat(chatId).copyWith(peerRestrictsCopying: restricted));
 
   Future<void> setWallpaper(String chatId, ChatWallpaper wallpaper) =>
       _put(chatId, forChat(chatId).copyWith(wallpaper: wallpaper));
@@ -270,6 +306,7 @@ class ConversationSettingsController
           final settings = ConversationSettings(
             autoDelete: period,
             restrictCopying: value['restrictCopying'] == true,
+            peerRestrictsCopying: value['peerRestrictsCopying'] == true,
             wallpaper: ChatWallpaper(
               presetIndex: value['wallpaperPreset'] as int?,
               // Only the path — the bytes live in app storage, and putting a
@@ -298,6 +335,7 @@ class ConversationSettingsController
           entry.key: {
             'autoDeleteSeconds': entry.value.autoDelete.seconds,
             'restrictCopying': entry.value.restrictCopying,
+            'peerRestrictsCopying': entry.value.peerRestrictsCopying,
             if (entry.value.wallpaper.presetIndex != null)
               'wallpaperPreset': entry.value.wallpaper.presetIndex,
             if (entry.value.wallpaper.imagePath != null)

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -425,8 +427,15 @@ class ContactProfileScreen extends ConsumerWidget {
                         label: conversationSettings.restrictCopying
                             ? t.contactProfileAllowCopying
                             : t.contactProfileRestrictCopying,
-                        subtitle: conversationSettings.restrictCopying
-                            ? t.contactProfileCopyingRestricted
+                        // Says what the conversation is actually doing, which
+                        // is not always what this switch says: the peer may
+                        // have asked for the same thing, and then turning ours
+                        // off changes nothing here. Better to read that from
+                        // the row than to discover it at an absent Forward.
+                        subtitle: conversationSettings.copyingRestricted
+                            ? (conversationSettings.restrictCopying
+                                ? t.contactProfileCopyingRestricted
+                                : t.contactProfileCopyingRestrictedByPeer)
                             : null,
                         onTap: () async {
                           close();
@@ -439,6 +448,18 @@ class ContactProfileScreen extends ConsumerWidget {
                                 peerPubkeyHex,
                                 restricted,
                               );
+                          // The half that matters: the other phone is the one
+                          // that could forward this conversation on, and it
+                          // cannot honour a switch it never heard about.
+                          unawaited(
+                            ref
+                                .read(messagingServiceProvider)
+                                .announceCopyRestriction(
+                                  peerPubkeyHex,
+                                  restricted: restricted,
+                                  force: true,
+                                ),
+                          );
                           if (!context.mounted) return;
                           showGlassToast(
                             context,

@@ -1047,7 +1047,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final t = AppLocalizations.of(context);
     final restricted = ref
             .read(conversationSettingsControllerProvider)[widget.chatId]
-            ?.restrictCopying ??
+            ?.copyingRestricted ??
         false;
     final picked = [
       for (final m in widget.messages)
@@ -1977,6 +1977,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markChatRead();
       _maybeSendReadReceipts();
+      _maybeAnnounceCopyRestriction();
     });
     // Drop any inline-edit draft left over from a different chat. Deferred so
     // we don't mutate a provider during this widget's mount.
@@ -1997,6 +1998,23 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   void _maybeSendReadReceipts() {
     if (!mounted) return;
     ref.read(messagingServiceProvider).sendReadReceipts(widget.canonicalId);
+  }
+
+  /// Say again, at most once per peer per app run, that this conversation is
+  /// not to be copied or forwarded.
+  ///
+  /// The notice has no acknowledgement, so a peer who was offline when the
+  /// switch was thrown would never have heard. Opening the chat is a moment
+  /// they are plausibly reachable, and the service drops the repeat itself
+  /// (see [MessagingService.announceCopyRestriction]) — nothing goes out for a
+  /// conversation that never restricted anything.
+  void _maybeAnnounceCopyRestriction() {
+    if (!mounted || widget.isChannel) return;
+    unawaited(
+      ref
+          .read(messagingServiceProvider)
+          .announceCopyRestriction(widget.canonicalId),
+    );
   }
 
   /// Advance this chat's local read marker so its unread badge clears on the

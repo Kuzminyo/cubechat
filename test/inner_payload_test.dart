@@ -34,6 +34,33 @@ void main() {
         throwsA(isA<FormatException>()),
       );
     });
+
+    test('every type has its own tag', () {
+      // Two payloads sharing a byte would silently deliver one as the other.
+      final tags = InnerPayloadType.values.map((t) => t.tag).toList();
+      expect(tags.toSet(), hasLength(tags.length));
+      for (final type in InnerPayloadType.values) {
+        expect(InnerPayloadType.fromByte(type.tag), type);
+      }
+    });
+
+    test('the copy restriction is one byte, on or off', () {
+      // Pinned because the tag is what an older build will refuse: it does not
+      // know 0xF7 and drops the frame, which leaves that peer un-restricted
+      // rather than confused — the same failure mode as every other type added
+      // since 0xF0.
+      expect(InnerPayloadType.copyRestriction.tag, 0xF7);
+      for (final on in [true, false]) {
+        final wire = packInnerPayload(
+          InnerPayloadType.copyRestriction,
+          Uint8List.fromList([on ? 0x01 : 0x00]),
+        );
+        final unpacked = unpackInnerPayload(wire);
+        expect(unpacked.type, InnerPayloadType.copyRestriction);
+        expect(unpacked.body, hasLength(1));
+        expect(unpacked.body[0] == 0x01, on);
+      }
+    });
   });
 
   group('ImageChunk', () {

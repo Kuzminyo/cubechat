@@ -6,8 +6,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../l10n/app_localizations.dart';
 import '../models/message.dart';
+
+/// Burn one view-once photo: delete it here, and tell the sender so their copy
+/// goes too.
+///
+/// A provider rather than a direct call on [MessagingService] because of where
+/// it is invoked from. The viewer burns on the way out, and by then its own
+/// `ref` is dead — so the screen captures this function while it is alive and
+/// calls it later. The closure reads the service through the *provider's* ref,
+/// which outlives any one screen, so the deferred call lands somewhere that is
+/// still there. It is also the seam the widget test drives, which is how the
+/// burn is pinned without standing up the whole transport.
+final viewOnceBurnProvider =
+    Provider<Future<void> Function(String chatId, String wireId)>(
+  (ref) => (chatId, wireId) =>
+      ref.read(messagingServiceProvider).consumeViewOnce(chatId, wireId),
+);
 
 /// One view-once photo, full screen, and then gone.
 ///
@@ -18,10 +35,12 @@ import '../models/message.dart';
 /// hiding three buttons and disabling paging on a screen built to offer them,
 /// this is a separate, much smaller thing that never had them.
 ///
-/// The photo is burned in [dispose] rather than on open: leaving is the moment
-/// the viewing is unambiguously over, and it still counts if someone takes a
-/// screenshot and immediately backs out — which is the case where firing on
-/// open would have let them keep both the screenshot and the photo.
+/// The photo is burned when the viewer is left rather than when it opens:
+/// leaving is the moment the viewing is unambiguously over, and it still
+/// counts if someone takes a screenshot and immediately backs out — which is
+/// the case where firing on open would have let them keep both the screenshot
+/// and the photo. Leaving the *app* counts as leaving too, or a photo held
+/// open while the process is killed would survive.
 class ViewOnceMediaScreen extends ConsumerStatefulWidget {
   const ViewOnceMediaScreen({
     super.key,
@@ -37,42 +56,81 @@ class ViewOnceMediaScreen extends ConsumerStatefulWidget {
       _ViewOnceMediaScreenState();
 }
 
-class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen> {
-  /// Read once, in initState: by the time this screen closes the message row
+class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
+    with WidgetsBindingObserver {
+  /// Read once, in [initState]: by the time this screen closes the message row
   /// has been rewritten and its path blanked, so the widget's own copy is the
   /// only thing left pointing at the file.
-  late final String? _path = widget.message.imagePath;
+  String? _path;
 
-  /// Captured while the widget is alive, because [dispose] is too late to ask
-  /// for it.
+  /// The burn, captured while the widget is alive — assigned in [initState],
+  /// never as `late final … = ref.read(…)`.
   ///
-  /// This screen used to call `ref.read(messagingServiceProvider)` from inside
-  /// dispose. Riverpod refuses a read from a disposed element and throws
-  /// *synchronously* — before the future the `unawaited` was wrapping ever
-  /// existed — so the exception went out through dispose, the framework
-  /// swallowed it, and the photo was never burned at all. It reopened as good
-  /// as new every time, which is the one thing this feature must not do.
-  late final MessagingService _messaging = ref.read(messagingServiceProvider);
+  /// That distinction is the whole bug this screen has had twice. A `late`
+  /// field with an initialiser is evaluated at its *first read*, and the only
+  /// read is inside [_burn], which runs from [dispose]. Flutter clears an
+  /// element before calling `dispose` on its state, so `ref` considers itself
+  /// disposed by then and throws `Cannot use "ref" after the widget was
+  /// disposed` — synchronously, before the future the `unawaited` was wrapping
+  /// ever existed. The exception went out through dispose, the framework
+  /// swallowed it, and nothing was burned: the photo reopened as good as new
+  /// every time, which is the one thing this feature must not do. Capturing it
+  /// eagerly is what actually moves the read to a point where `ref` is alive.
+  late final Future<void> Function(String, String) _burnPhoto;
 
   /// Burning is idempotent downstream, but the screen can be torn down more
-  /// than one way (pop, back gesture, route replacement) and there is no need
-  /// to ask twice.
+  /// than one way (pop, back gesture, route replacement, the app being sent to
+  /// the background) and there is no need to ask twice.
   bool _burned = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _path = widget.message.imagePath;
+    _burnPhoto = ref.read(viewOnceBurnProvider);
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   void _burn() {
     if (_burned) return;
     _burned = true;
     final wireId = widget.message.wireId;
     if (wireId == null) return;
-    // Fire-and-forget through the service, not the controller: burning the
-    // photo here is only half of it — the other half is telling the sender so
-    // their copy goes too. Not awaited because dispose cannot be async, and
-    // the burn must not depend on this screen still being alive.
-    unawaited(_messaging.consumeViewOnce(widget.chatId, wireId));
+    // Fire-and-forget: dispose cannot be async, and the burn must not depend
+    // on this screen still being alive. Deleting the file here is only half of
+    // it — the other half is telling the sender so their copy goes too, which
+    // is why this goes through the transport rather than the message store.
+    try {
+      unawaited(_burnPhoto(widget.chatId, wireId));
+    } catch (e) {
+      // Nothing to show — the screen is on its way out — but a burn that threw
+      // is exactly the failure that hid here for two releases, so it is not
+      // going to be silent again.
+      DebugLog.instance.log('VIEWONCE', 'burn of $wireId failed: $e');
+    }
+  }
+
+  /// Leaving the app is leaving the photo.
+  ///
+  /// Without this, opening a view-once picture and then swiping the app away
+  /// kept it: a killed process never runs [dispose], so the file stayed on
+  /// disk and the row stayed unspent, and it opened again on next launch.
+  /// Only on a real backgrounding — `inactive` also fires for a notification
+  /// shade pulled halfway down, which is not somebody leaving.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _burn();
+      // The picture is gone from disk now; say so rather than keep showing a
+      // frame whose bytes no longer exist when they come back.
+      if (mounted) setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _burn();
     super.dispose();
   }

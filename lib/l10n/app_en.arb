@@ -354,6 +354,7 @@
   "contactProfileRestrictCopying": "Disable copying",
   "contactProfileAllowCopying": "Allow copying",
   "contactProfileCopyingRestricted": "Copying and forwarding are disabled",
+  "contactProfileCopyingRestrictedByPeer": "Disabled at the other end",
   "contactProfileCopyingAllowed": "Copying and forwarding are allowed",
   "contactProfileDelete": "Delete from contacts",
   "contactProfileDeleteTitle": "Remove contact?",
