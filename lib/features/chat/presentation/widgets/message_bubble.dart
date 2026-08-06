@@ -1298,8 +1298,23 @@ class _ImagePayload extends StatelessWidget {
   }
 }
 
-/// The three states a view-once photo can be in: waiting to be opened, spent,
-/// or still arriving.
+/// Whether tapping a view-once bubble may open the photo.
+///
+/// Never for our own: a photo you sent is gone from here the moment it leaves,
+/// the way Telegram treats one. It used to stay openable until the recipient's
+/// ack came back, which read as "still mine for now" and was worse than it
+/// sounds — the viewer fired the same "I have seen it" notice for it, so
+/// glancing at what you sent destroyed the copy the other person had not
+/// opened. There is nothing to look at anyway now: an outgoing view-once photo
+/// is never written to this phone's disk.
+///
+/// [fileExists] is the received half — the bytes may still be arriving, or have
+/// already been burned.
+bool viewOnceCanBeOpened(Message message, {required bool fileExists}) =>
+    !message.isMine && !message.viewOnceConsumed && fileExists;
+
+/// The states a view-once photo can be in: waiting to be opened, spent, still
+/// arriving, or one of ours that was sent.
 ///
 /// Deliberately never the picture itself. Tapping opens
 /// [ViewOnceMediaScreen] — not the swipeable gallery, which has Share and
@@ -1320,9 +1335,8 @@ class _ViewOncePayload extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final spent = message.viewOnceConsumed;
-    // The sender's own copy stays openable until the recipient says they have
-    // looked — at which point the ack burns it here too.
-    final openable = available && !spent;
+    final mine = message.isMine;
+    final openable = viewOnceCanBeOpened(message, fileExists: available);
 
     return GestureDetector(
       onTap: openable
@@ -1357,18 +1371,25 @@ class _ViewOncePayload extends ConsumerWidget {
             Icon(
               spent
                   ? Icons.visibility_off_outlined
-                  : Icons.local_fire_department_outlined,
+                  : mine
+                      ? Icons.done_rounded
+                      : Icons.local_fire_department_outlined,
               size: 20,
               color: spent ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
             ),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
+                // Four states, and the one that is ours says only that it went.
+                // "Opened" still lands on it afterwards, which is the one piece
+                // of news the sender does want: they looked.
                 spent
                     ? t.viewOnceOpened
-                    : openable
-                        ? t.viewOnceTapToView
-                        : t.viewOnceUnavailable,
+                    : mine
+                        ? t.viewOnceSent
+                        : openable
+                            ? t.viewOnceTapToView
+                            : t.viewOnceUnavailable,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color:

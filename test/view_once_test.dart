@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/view_once_media_screen.dart';
+import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -267,6 +268,49 @@ void main() {
     });
   });
 
+  group('who may open a view-once photo', () {
+    Message photoFrom({required bool mine, DateTime? consumedAt}) => Message(
+          id: 'm1',
+          chatId: 'peer',
+          text: 'image/jpeg',
+          sentAt: DateTime(2026, 8, 6),
+          isMine: mine,
+          kind: MessageKind.image,
+          wireId: 'aa11',
+          viewOnce: true,
+          viewOnceConsumedAt: consumedAt,
+        );
+
+    test('the person it was sent to, once, while the bytes are here', () {
+      expect(
+        viewOnceCanBeOpened(photoFrom(mine: false), fileExists: true),
+        isTrue,
+      );
+      // Still arriving, or already burned: nothing to show either way.
+      expect(
+        viewOnceCanBeOpened(photoFrom(mine: false), fileExists: false),
+        isFalse,
+      );
+      expect(
+        viewOnceCanBeOpened(
+          photoFrom(mine: false, consumedAt: DateTime(2026, 8, 6)),
+          fileExists: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('never the sender, however available the file looks', () {
+      // The sender's own copy used to stay openable until the recipient's ack
+      // came back — and opening it fired the "I have seen it" notice, which
+      // burned the photo on a phone whose owner had not looked at it yet.
+      expect(
+        viewOnceCanBeOpened(photoFrom(mine: true), fileExists: true),
+        isFalse,
+      );
+    });
+  });
+
   /// The half that kept escaping: the store above always burned correctly, and
   /// the viewer never reached it.
   ///
@@ -279,31 +323,34 @@ void main() {
   /// not "the burn happens" but "the burn happens when the screen goes away",
   /// driven through the same route pop a person performs.
   group('leaving the viewer', () {
-    final message = Message(
-      id: 'm1',
-      chatId: 'peer',
-      text: 'image/jpeg',
-      sentAt: DateTime(2026, 8, 5),
-      isMine: false,
-      kind: MessageKind.image,
-      // No file on disk on purpose: the screen shows its unavailable state,
-      // which keeps the test off the image decoder without changing the path
-      // being exercised.
-      imagePath: null,
-      wireId: 'aa11',
-      viewOnce: true,
-    );
+    Message photo({bool mine = false}) => Message(
+          id: 'm1',
+          chatId: 'peer',
+          text: 'image/jpeg',
+          sentAt: DateTime(2026, 8, 5),
+          isMine: mine,
+          kind: MessageKind.image,
+          // No file on disk on purpose: the screen shows its unavailable
+          // state, which keeps the test off the image decoder without changing
+          // the path being exercised.
+          imagePath: null,
+          wireId: 'aa11',
+          viewOnce: true,
+        );
 
     Future<GlobalKey<NavigatorState>> pumpViewer(
       WidgetTester tester,
-      List<String> burned,
-    ) async {
+      List<String> burned, {
+      bool mine = false,
+    }) async {
+      final shown = photo(mine: mine);
       final nav = GlobalKey<NavigatorState>();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             viewOnceBurnProvider.overrideWithValue(
-              (chatId, wireId) async => burned.add('$chatId/$wireId'),
+              (chatId, wireId, {bool notifyPeer = true}) async =>
+                  burned.add('$chatId/$wireId${notifyPeer ? '/told' : ''}'),
             ),
           ],
           child: MaterialApp(
@@ -317,8 +364,7 @@ void main() {
       await tester.pumpAndSettle();
       unawaited(nav.currentState!.push(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              ViewOnceMediaScreen(chatId: 'peer', message: message),
+          builder: (_) => ViewOnceMediaScreen(chatId: 'peer', message: shown),
         ),
       ));
       await tester.pumpAndSettle();
@@ -334,7 +380,22 @@ void main() {
       nav.currentState!.pop();
       await tester.pumpAndSettle();
 
-      expect(burned, ['peer/aa11']);
+      expect(burned, ['peer/aa11/told']);
+    });
+
+    testWidgets('looking at our own photo does not spend the recipient\'s',
+        (tester) async {
+      // "I have seen it" is a thing only the receiver can say. Sent for our own
+      // outgoing copy, it reached the other phone as permission to destroy a
+      // picture nobody there had opened yet — so checking what you just sent
+      // took their one viewing away.
+      final burned = <String>[];
+      final nav = await pumpViewer(tester, burned, mine: true);
+
+      nav.currentState!.pop();
+      await tester.pumpAndSettle();
+
+      expect(burned, ['peer/aa11'], reason: 'ours goes, theirs is not touched');
     });
 
     testWidgets('burns it when the app is put away with it still open',
@@ -353,7 +414,7 @@ void main() {
       expect(burned, isEmpty, reason: 'a half-pulled shade is not leaving');
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      expect(burned, ['peer/aa11']);
+      expect(burned, ['peer/aa11/told']);
     });
   });
 }

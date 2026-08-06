@@ -18,9 +18,12 @@ import '../theme/colors.dart';
 ///    gradients, which blur to themselves) what is behind this is a list, a
 ///    conversation, a photo grid — detail worth softening, and the thing that
 ///    makes it read as glass rather than as tint.
-///  * **A neutral dark gradient**: a whisper of the palette's white at the top
-///    falling to near-black. The pane contributes no colour of its own, so the
-///    blurred aurora shows through it instead of being covered by it.
+///  * **A dark gradient in the palette's own colours**: a whisper of the
+///    palette's white at the top falling to the palette's near-black. It used
+///    to fall to literal black on the theory that the pane should contribute no
+///    colour of its own — which works on the green theme, where black over a
+///    green aurora goes green, and nowhere else. On rose the bar was a black
+///    slab across the bottom of a pink screen. See [AppColors.pane].
 ///  * **A hairline border**, which is what separates "a pane of glass" from "a
 ///    darker area of the background".
 class BarGlass extends StatelessWidget {
@@ -66,8 +69,8 @@ class BarGlass extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   AppColors.glass(0.07),
-                  Colors.black.withValues(alpha: 0.52),
-                  Colors.black.withValues(alpha: 0.66),
+                  AppColors.pane(0.52),
+                  AppColors.pane(0.66),
                 ],
                 stops: const [0, 0.35, 1],
               ),

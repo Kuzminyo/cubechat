@@ -1300,6 +1300,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewOnceTapToView => 'Photo · tap to view once';
 
   @override
+  String get viewOnceSent => 'Photo · sent';
+
+  @override
   String get viewOnceOpened => 'Photo opened';
 
   @override

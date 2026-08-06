@@ -1741,12 +1741,18 @@ class _CoverBody extends ConsumerWidget {
               child: IgnorePointer(
                 child: Opacity(
                   opacity: t,
-                  child: const DecoratedBox(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Color(0xE606140D)],
+                        // The palette's own deep background, not the emerald
+                        // one this was written with. It was a `const` literal
+                        // of `bgDeep` — right on the green theme and a band of
+                        // dark green across the bottom of every other, which is
+                        // the strip under the buttons people kept pointing at.
+                        colors: [Colors.transparent, AppColors.bgDeep
+                            .withValues(alpha: 0.90)],
                       ),
                     ),
                   ),

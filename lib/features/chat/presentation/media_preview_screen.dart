@@ -276,13 +276,13 @@ class _OriginalToggle extends StatelessWidget {
                     ? Icons.insert_drive_file_rounded
                     : Icons.insert_drive_file_outlined,
                 size: 17,
-                color: active ? const Color(0xFF06140D) : Colors.white,
+                color: active ? AppColors.bgDeep : Colors.white,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: active ? const Color(0xFF06140D) : Colors.white,
+                  color: active ? AppColors.bgDeep : Colors.white,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                 ),
@@ -337,10 +337,13 @@ class _SendButton extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
-            child: const Padding(
-              padding: EdgeInsets.all(11),
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              // Ink *on* the brand colour, so it has to be the palette's own
+              // dark — a green arrow on a pink send button was the frozen
+              // emerald showing through again.
               child: Icon(Icons.arrow_upward_rounded,
-                  color: Color(0xFF06140D), size: 22),
+                  color: AppColors.bgDeep, size: 22),
             ),
           ),
         ),

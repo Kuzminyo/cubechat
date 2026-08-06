@@ -813,17 +813,20 @@ class _ProfileHero extends ConsumerWidget {
                 heroTag: 'contact-avatar-' + peerId,
               ),
             ),
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Color(0x00000000),
-                  Color(0x33000000),
-                  Color(0xE606140D),
+                  const Color(0x00000000),
+                  const Color(0x33000000),
+                  // The same frozen emerald the profile header carried: this
+                  // one darkened a contact's photo to a green that belonged to
+                  // no palette in use.
+                  AppColors.bgDeep.withValues(alpha: 0.90),
                 ],
-                stops: [0.30, 0.62, 1],
+                stops: const [0.30, 0.62, 1],
               ),
             ),
           ),

@@ -2372,6 +2372,12 @@ abstract class AppLocalizations {
   /// **'Photo · tap to view once'**
   String get viewOnceTapToView;
 
+  /// No description provided for @viewOnceSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo · sent'**
+  String get viewOnceSent;
+
   /// No description provided for @viewOnceOpened.
   ///
   /// In en, this message translates to:

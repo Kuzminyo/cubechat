@@ -218,6 +218,12 @@ class ThemeController extends Notifier<AppPalette> {
         Color.lerp(Colors.white, p.glassHue, p.glassStrength) ?? Colors.white;
     AppColors.inkBase =
         Color.lerp(Colors.white, p.glassHue, p.inkStrength) ?? Colors.white;
+    // The other half of the same idea, and the half that was missing: a pane of
+    // glass is white at the top falling to near-black at the bottom, and only
+    // the white end was ever tinted. Pulled a little past the palette's own
+    // deepest background so the pane still reads as darker than the screen
+    // behind it — enough to keep the contrast the black gave, without the black.
+    AppColors.paneBase = Color.lerp(p.bgDeep, p.glassHue, 0.16) ?? p.bgDeep;
     AppColors.glassFill = AppColors.glass(0.08);
     AppColors.glassFillStrong = AppColors.glass(0.12);
     AppColors.glassBorder = AppColors.glass(0.18);

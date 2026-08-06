@@ -20,10 +20,22 @@ import '../models/message.dart';
 /// which outlives any one screen, so the deferred call lands somewhere that is
 /// still there. It is also the seam the widget test drives, which is how the
 /// burn is pinned without standing up the whole transport.
-final viewOnceBurnProvider =
-    Provider<Future<void> Function(String chatId, String wireId)>(
-  (ref) => (chatId, wireId) =>
-      ref.read(messagingServiceProvider).consumeViewOnce(chatId, wireId),
+///
+/// [notifyPeer] is what keeps the promise pointed the right way. "I have seen
+/// it" is only true of a photo somebody sent *us*; sending it for our own
+/// outgoing copy told the other person their picture had been viewed when they
+/// had not opened it yet, and their app dutifully destroyed it. Glancing at
+/// what you just sent should cost you your copy, not theirs.
+typedef ViewOnceBurn = Future<void> Function(
+  String chatId,
+  String wireId, {
+  bool notifyPeer,
+});
+
+final viewOnceBurnProvider = Provider<ViewOnceBurn>(
+  (ref) => (chatId, wireId, {bool notifyPeer = true}) => ref
+      .read(messagingServiceProvider)
+      .consumeViewOnce(chatId, wireId, notifyPeer: notifyPeer),
 );
 
 /// One view-once photo, full screen, and then gone.
@@ -76,7 +88,7 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
   /// swallowed it, and nothing was burned: the photo reopened as good as new
   /// every time, which is the one thing this feature must not do. Capturing it
   /// eagerly is what actually moves the read to a point where `ref` is alive.
-  late final Future<void> Function(String, String) _burnPhoto;
+  late final ViewOnceBurn _burnPhoto;
 
   /// Burning is idempotent downstream, but the screen can be torn down more
   /// than one way (pop, back gesture, route replacement, the app being sent to
@@ -100,8 +112,15 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
     // on this screen still being alive. Deleting the file here is only half of
     // it — the other half is telling the sender so their copy goes too, which
     // is why this goes through the transport rather than the message store.
+    //
+    // Our own photo tells nobody. The notice means "I have seen what you sent
+    // me", and sending it for a picture we sent ourselves destroyed it on the
+    // recipient's phone before they had opened it — checking what you sent
+    // took the one viewing they were owed.
     try {
-      unawaited(_burnPhoto(widget.chatId, wireId));
+      unawaited(
+        _burnPhoto(widget.chatId, wireId, notifyPeer: !widget.message.isMine),
+      );
     } catch (e) {
       // Nothing to show — the screen is on its way out — but a burn that threw
       // is exactly the failure that hid here for two releases, so it is not

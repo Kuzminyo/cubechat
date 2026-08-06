@@ -46,6 +46,24 @@ abstract final class AppColors {
   /// Text or an icon at [alpha], over glass.
   static Color ink(double alpha) => inkBase.withValues(alpha: alpha);
 
+  /// The *dark* end of a pane of glass, and of any scrim laid over a photo.
+  ///
+  /// [glassBase] is the light end — the whisper of white at the top of a pane —
+  /// and it has followed the palette for a while. The dark end had not: it was
+  /// literally `Colors.black`, chosen so a pane would "contribute no colour of
+  /// its own". Under the emerald palette that reads as intended, because a
+  /// black pane over a green aurora goes green. Under rose or fuchsia the same
+  /// pane is a black bar sitting on a pink screen — the nav bar, the composer,
+  /// the strip of actions on a profile, each one a slab of a different app.
+  ///
+  /// So the dark end is the palette's own near-black, tinted a little further
+  /// toward its hue. Same depth, same contrast, and the blur behind it comes
+  /// out the colour of the theme rather than of nothing.
+  static Color paneBase = Color(0xFF06140D);
+
+  /// The pane's dark at [alpha] — see [paneBase].
+  static Color pane(double alpha) => paneBase.withValues(alpha: alpha);
+
   // Glass surface tints (the palette's white at varying opacity)
   static Color glassFill = Colors.white.withValues(alpha: 0.08);
   static Color glassFillStrong = Colors.white.withValues(alpha: 0.12);

@@ -1310,6 +1310,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get viewOnceTapToView => 'Фото · торкніться, щоб переглянути раз';
 
   @override
+  String get viewOnceSent => 'Фото · надіслано';
+
+  @override
   String get viewOnceOpened => 'Фото переглянуто';
 
   @override

@@ -54,8 +54,8 @@ class MessageIslandGlass extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     AppColors.glass(0.07),
-                    Colors.black.withValues(alpha: 0.48),
-                    Colors.black.withValues(alpha: 0.60),
+                    AppColors.pane(0.48),
+                    AppColors.pane(0.60),
                   ],
                   stops: const [0, 0.35, 1],
                 ),

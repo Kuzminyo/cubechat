@@ -10,9 +10,10 @@ import '../theme/colors.dart';
 ///
 /// The recipe is deliberately the nav bar's, not [GlassCard]'s bright frost:
 ///
-///  * a **neutral dark** gradient (a whisper of white at the top, deep black
-///    below) so the blurred aurora shows through but the pane contributes no
-///    colour of its own — it reads as smoked glass, not a green tile;
+///  * a **dark gradient in the palette's colours** (a whisper of its white at
+///    the top, its near-black below) so the pane reads as smoked glass rather
+///    than a tile. Deep black was the old recipe and it only ever worked on the
+///    green theme — see [AppColors.pane];
 ///  * a **crisp hairline** border, which is what separates "a pane of glass"
 ///    from "a darker patch of the background";
 ///  * **two tight black shadows** — a close contact shadow and a slightly
@@ -92,8 +93,8 @@ class FloatingGlass extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             AppColors.glass(0.07),
-            Colors.black.withValues(alpha: 0.52),
-            Colors.black.withValues(alpha: 0.66),
+            AppColors.pane(0.52),
+            AppColors.pane(0.66),
           ],
           stops: const [0, 0.35, 1],
         ),

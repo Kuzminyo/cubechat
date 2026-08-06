@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'back_gesture.dart';
+
 /// How a pushed screen arrives, leaves, and is dragged back.
 ///
 /// This is Cupertino's page transition, on both platforms and deliberately.
@@ -12,10 +14,11 @@ import 'package:go_router/go_router.dart';
 ///  * **A back gesture.** Pull from the left edge and the screen follows the
 ///    finger, at the distance the finger put it, and the one underneath comes
 ///    forward with it. Let go past halfway and it leaves; let go short and it
-///    springs back. That is the whole request, and it is not something to
-///    reimplement: the route has to hand its own animation over to a drag,
+///    springs back. The transition machinery for that is worth not
+///    reimplementing: the route has to hand its own animation over to a drag,
 ///    reclaim it on release, and stay correct if a second push arrives
-///    mid-gesture.
+///    mid-gesture. The *detector* is replaced — see [EdgeBackGesture] for why
+///    Flutter's 20-pixel strip is unreachable on an Android phone.
 ///  * **Interruptibility.** A tween driven by a fixed-duration controller
 ///    cannot be caught halfway; every "jumpy" transition in this app was one of
 ///    those being restarted from wherever it happened to be.
@@ -61,6 +64,39 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
 
   @override
   bool get maintainState => true;
+
+  /// The mixin's own transition, with a reachable drag strip in place of its
+  /// 20-pixel one.
+  ///
+  /// [CupertinoPageTransition] is kept exactly as it is — the parallax, the
+  /// shadow on the leading edge, and `linearTransition`, which is what makes
+  /// the page track the finger instead of easing while it is being dragged.
+  /// Only the detector changes, because that is where the problem was: a strip
+  /// too narrow to hit, in the one place Android's own gesture navigation
+  /// already takes the touch. See [EdgeBackGesture].
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return CupertinoPageTransition(
+      primaryRouteAnimation: animation,
+      secondaryRouteAnimation: secondaryAnimation,
+      linearTransition: popGestureInProgress,
+      child: EdgeBackGesture(
+        enabledCallback: () => popGestureEnabled,
+        onStartGesture: () => EdgeBackGestureController(
+          navigator: navigator!,
+          controller: controller!,
+          isCurrent: () => isCurrent,
+          isActive: () => isActive,
+        ),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// How a full-screen picture opens: a fade with a whisper of scale.

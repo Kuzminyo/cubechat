@@ -202,7 +202,7 @@ class _GlassToastState extends State<_GlassToast>
                             end: Alignment.bottomCenter,
                             colors: [
                               AppColors.glass(0.07),
-                              Colors.black.withValues(alpha: 0.62),
+                              AppColors.pane(0.62),
                             ],
                           ),
                           borderRadius: radius,

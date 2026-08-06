@@ -1016,8 +1016,18 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       if (targetContext != null && targetContext.mounted) {
         await Scrollable.ensureVisible(
           targetContext,
-          alignment: 0.35,
-          duration: const Duration(milliseconds: 220),
+          // Centred. At 0.35 the message landed high on the screen, close
+          // enough to the top edge to read as "the chat scrolled somewhere"
+          // rather than "here is the message" — and with the pinned bar and
+          // header sitting above it, sometimes half under them. The middle is
+          // where the eye already is. A message near either end of the history
+          // cannot be centred and simply lands at the end, which is the right
+          // answer there: nothing above it to show.
+          alignment: 0.5,
+          // Long enough to be a movement rather than a cut, and eased out so it
+          // arrives rather than stops.
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
         );
         return true;
       }
@@ -1244,34 +1254,48 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // One row at the top, three things it can be, and a cross-fade
+          // between them.
+          //
           // Selecting replaces the header for the same reason searching does:
-          // one row at the top, and while you are ticking messages the count
-          // and the two actions are the only things that matter.
-          if (selecting)
-            _ChatSelectionBar(
-              count: selection.length,
-              onCancel: () => ref
-                  .read(messageSelectionProvider(widget.chatId).notifier)
-                  .clear(),
-              onForward: () => unawaited(_forwardSelection(selection)),
-              onDelete: () => unawaited(_deleteSelection(selection)),
-            ),
-          // Searching *replaces* the identity row rather than stacking under
-          // it. Two pills deep, the conversation started below the middle of
-          // the screen and the thing you were reading was the thing pushed off
-          // it — and while you are typing a query, whose chat it is is the one
-          // thing you already know.
-          if (!searchOpen && !selecting) widget.header,
-          if (searchOpen && !selecting)
-            _ChatSearchBar(
-              totalMessages: messages.length,
-              resultIndex: matches.isEmpty ? null : selectedIndex + 1,
-              resultCount: matches.length,
-              onChanged: _updateSearch,
-              onPrevious: () => _moveSearch(-1),
-              onNext: () => _moveSearch(1),
-              onClose: _closeSearch,
-            ),
+          // while you are ticking messages the count and the two actions are
+          // the only things that matter, and while you are typing a query,
+          // whose chat it is is the one thing you already know. Two pills deep,
+          // the conversation started below the middle of the screen and the
+          // thing you were reading was the thing pushed off it.
+          //
+          // Swapped through [_HeaderSwap] rather than by three `if`s in a
+          // column: those cut from one bar to the next in a single frame, and
+          // because the list measures its top padding off this column, the
+          // whole conversation jumped with them.
+          _HeaderSwap(
+            child: selecting
+                ? _ChatSelectionBar(
+                    key: const ValueKey('selection'),
+                    count: selection.length,
+                    onCancel: () => ref
+                        .read(messageSelectionProvider(widget.chatId).notifier)
+                        .clear(),
+                    onForward: () => unawaited(_forwardSelection(selection)),
+                    onDelete: () => unawaited(_deleteSelection(selection)),
+                  )
+                : searchOpen
+                    ? _ChatSearchBar(
+                        key: const ValueKey('search'),
+                        totalMessages: messages.length,
+                        resultIndex:
+                            matches.isEmpty ? null : selectedIndex + 1,
+                        resultCount: matches.length,
+                        onChanged: _updateSearch,
+                        onPrevious: () => _moveSearch(-1),
+                        onNext: () => _moveSearch(1),
+                        onClose: _closeSearch,
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey('header'),
+                        child: widget.header,
+                      ),
+          ),
           // Grown and shrunk, not swapped. Pinning a message moved the whole
           // conversation down a notch in a single frame, and unpinning yanked
           // it back — the list's top padding is measured off this column, so
@@ -1361,6 +1385,47 @@ class _SearchResultHighlight extends StatelessWidget {
 /// removing it snapped them back. Growing the box eases the list with it, and
 /// the fade keeps content from arriving at full strength before there is room
 /// for it.
+/// The top row, cross-fading between the identity header, the search bar and
+/// the selection bar.
+///
+/// Both halves matter and they do different jobs. [AnimatedSwitcher] fades the
+/// old bar out as the new one comes in — without it the row simply became
+/// something else between two frames. [AnimatedSize] handles the fact that the
+/// three are not the same height: the conversation's top padding is measured
+/// off this column, so a step change here moves every message on screen.
+///
+/// Stacked to the top rather than the centre, because during the swap the box
+/// holds both bars and a centred stack would slide the outgoing one as it goes.
+class _HeaderSwap extends StatelessWidget {
+  const _HeaderSwap({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              ...previous,
+              if (current != null) current,
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class _HeaderSlot extends StatelessWidget {
   const _HeaderSlot({required this.child});
 
@@ -1386,6 +1451,7 @@ class _HeaderSlot extends StatelessWidget {
 
 class _ChatSearchBar extends StatefulWidget {
   const _ChatSearchBar({
+    super.key,
     required this.totalMessages,
     required this.resultIndex,
     required this.resultCount,
@@ -1515,6 +1581,7 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
 /// off the screen.
 class _ChatSelectionBar extends StatelessWidget {
   const _ChatSelectionBar({
+    super.key,
     required this.count,
     required this.onCancel,
     required this.onForward,
@@ -2459,7 +2526,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       return;
     }
     final messaging = ref.read(messagingServiceProvider);
-    final cachedPath = await _cacheOutgoingImage(bytes, idHint);
+    // A view-once photo is never written to this phone. The cache exists so an
+    // outgoing bubble has something to render, and this bubble renders a line
+    // of text — so the file would be bytes kept on disk for a picture its own
+    // sender is no longer allowed to look at, sitting there until the
+    // recipient's ack happened to arrive.
+    final cachedPath =
+        viewOnce ? null : await _cacheOutgoingImage(bytes, idHint);
     if (widget.isChannel) {
       await messaging.sendChannelImage(
         widget.peerId,
