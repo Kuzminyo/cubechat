@@ -52,6 +52,16 @@ class FloatingGlass extends StatelessWidget {
   /// over the aurora, which is four wide radial gradients — blurring a soft
   /// gradient returns the same soft gradient. Rows sitting on it pass false and
   /// keep the identical fill, border and shadows.
+  ///
+  /// **Not `BackdropFilter.grouped`, tried and reverted (2026-08-06).** Sharing
+  /// one snapshot between the panes on a screen is the documented way to make
+  /// several backdrop filters cheap, and it read as the obvious win here —
+  /// nav bar, composer, chat header, pinned bar, voice island, all blurring the
+  /// same backdrop. On a real phone the app got *less* smooth everywhere, which
+  /// is the only measurement that counts and the opposite of the intent. Most
+  /// screens carry one or two of these, not five, and a group appears to cost
+  /// more than it saves at that count. If this is revisited, measure on a
+  /// device first — the reasoning alone has now been wrong once.
   final bool blur;
 
   /// Long-press reporting the global press point, so a caller can anchor a
@@ -122,7 +132,7 @@ class FloatingGlass extends StatelessWidget {
       child: ClipRRect(
         borderRadius: radius,
         child: blur
-            ? BackdropFilter.grouped(
+            ? BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                 child: pane,
               )

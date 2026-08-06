@@ -93,6 +93,16 @@ class _EdgeBackGestureState extends State<EdgeBackGesture> {
   void initState() {
     super.initState();
     _recognizer = _RightwardDragRecognizer(debugOwner: this)
+      // From where the finger went *down*, not from where the gesture was won.
+      //
+      // This is what made the drag feel like it refused to finish. Away from
+      // the edge the gesture is only claimed after 44 pixels, and with the
+      // default behaviour those 44 are thrown away — so the page trailed the
+      // finger by that much for the whole drag, and to push it past the
+      // half-screen mark that decides a pop you had to drag most of the way
+      // across. Counting from the touch means the page catches up on the frame
+      // it starts moving and tracks the finger one-to-one after that.
+      ..dragStartBehavior = DragStartBehavior.down
       ..onStart = _handleDragStart
       ..onUpdate = _handleDragUpdate
       ..onEnd = _handleDragEnd
@@ -253,6 +263,16 @@ class EdgeBackGestureController {
   /// decide the pop regardless of how far the drag actually got.
   static const double _minFlingVelocity = 1.0;
 
+  /// How much of the page has to be pushed aside for letting go to mean "go
+  /// back".
+  ///
+  /// iOS wants half the screen; this asks for a third, which is the distance a
+  /// thumb covers without the hand moving and what the gesture feels like it
+  /// should take. Below this it springs back — and it can afford to be
+  /// generous, because away from the leading edge the drag is not claimed at
+  /// all until the finger has already travelled far enough to mean it.
+  static const double _commitAt = 0.65;
+
   static const Duration _settle = Duration(milliseconds: 350);
 
   void dragUpdate(double delta) => controller.value -= delta;
@@ -268,7 +288,7 @@ class EdgeBackGestureController {
     } else if (velocity.abs() >= _minFlingVelocity) {
       complete = velocity <= 0;
     } else {
-      complete = controller.value > 0.5;
+      complete = controller.value > _commitAt;
     }
 
     if (complete) {

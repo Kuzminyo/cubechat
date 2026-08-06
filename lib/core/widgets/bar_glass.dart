@@ -60,7 +60,7 @@ class BarGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter.grouped(
+        child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: DecoratedBox(
             decoration: BoxDecoration(

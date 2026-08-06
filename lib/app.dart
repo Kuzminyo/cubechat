@@ -273,19 +273,6 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // push into a profile, a search, or another chat — which is the whole
       // point of playback outliving the bubble that started it.
       builder: (context, child) => _ClampedTextScale(
-        // One blur pass for the whole screen instead of one per pane.
-        //
-        // Every glass surface here runs a gaussian over what is behind it, and
-        // a screen usually has several at once — the nav bar, the composer, the
-        // chat header, a pinned bar, a playing voice note. Each one used to
-        // snapshot the backdrop and blur it independently, which on a 120 Hz
-        // panel is five full-screen blurs a hundred and twenty times a second.
-        // Grouped, the engine takes the snapshot once and every pane reads from
-        // it; the pixels are identical (the panes never overlap each other,
-        // which is the one case where sharing shows). See
-        // [BackdropFilter.grouped] — the surfaces themselves are the `.grouped`
-        // variant, and this is the group they look up.
-        child: BackdropGroup(
         child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) => UiActivity.instance.poke(),
@@ -297,7 +284,6 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           onOpenChat: (chatId, _) => _openChat(chatId),
           child: child ?? const SizedBox.shrink(),
         ),
-      ),
       ),
       ),
       ),
