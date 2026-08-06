@@ -33,7 +33,11 @@ void main() {
       final active = dutyCycle(BleConstants.scanWindow, BleConstants.scanGap);
       final idle =
           dutyCycle(BleConstants.scanWindowIdle, BleConstants.scanGapIdle);
-      expect(idle, closeTo(0.20, 0.01));
+      // 10%, halved from the 20% this cadence launched at: a backgrounded
+      // phone was still running warm, and the gap is the one knob here that
+      // buys temperature without costing a delivery — the window is untouched,
+      // so a scan still hears everything in range when it runs.
+      expect(idle, closeTo(0.10, 0.01));
       // The whole point of the idle cadence — if it ever creeps up to within
       // reach of the active one it has stopped earning its complexity.
       expect(idle, lessThan(active / 3));
@@ -166,7 +170,11 @@ void main() {
       final iosCycle = window(active: false) + gap(active: false);
       final androidCycle =
           androidWindow(active: false) + androidGap(active: false);
-      expect(iosCycle, greaterThan(androidCycle));
+      // They meet at 60 s now. iOS got here first for its own reason (session
+      // churn), and Android has since been stretched to the same cycle for
+      // heat — so this is no longer a strict inequality, and what still
+      // separates the two is the window, checked immediately below.
+      expect(iosCycle, greaterThanOrEqualTo(androidCycle));
       // Still cheaper on radio time than Android, despite the longer cycle.
       expect(
         dutyCycle(window(active: false), gap(active: false)),

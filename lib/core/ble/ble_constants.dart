@@ -47,20 +47,33 @@ abstract final class BleConstants {
   // right trade while someone is looking at the Nearby list, and the wrong one
   // for an app sitting backgrounded in a pocket for an hour — it was the
   // second-biggest battery drain after the animated backdrop. Idle drops the
-  // duty cycle to 20%: a peer takes longer to notice, which nobody is awake to
+  // duty cycle to 10%: a peer takes longer to notice, which nobody is awake to
   // see. Anything that needs prompt discovery (foreground, or a pending
   // store-and-forward delivery) pins the scanner back to the active cadence.
+  //
+  // The gap was 24 s — a 30 s cycle at 20% duty — and a backgrounded phone
+  // still ran warm on it, which is the one complaint left after the graphics
+  // work. Halving the radio's share is the only knob here that does not cost
+  // deliveries: the window is untouched, so a scan still hears everything in
+  // range when it runs, and everything the mesh delivers is still delivered —
+  // a neighbour is simply noticed within about a minute instead of thirty
+  // seconds. That is the shape iOS has been on since its own heat fix, and it
+  // was chosen deliberately over the alternative of not scanning at all with
+  // the screen off, which does cost deliveries.
 
   /// Scan window while idle (backgrounded, nothing waiting to deliver).
   static const Duration scanWindowIdle = Duration(seconds: 6);
 
   /// Quiet period between idle scan windows.
-  static const Duration scanGapIdle = Duration(seconds: 24);
+  static const Duration scanGapIdle = Duration(seconds: 54);
 
-  /// Stale threshold at the idle cadence. The idle cycle is 30 s end to end,
-  /// so the active 30 s threshold would expire peers that are still right
-  /// there; this is ~2.5 cycles, the same margin the active pair uses.
-  static const Duration peerStaleAfterIdle = Duration(seconds: 75);
+  /// Stale threshold at the idle cadence.
+  ///
+  /// The idle cycle is 60 s end to end now, so the old 75 s threshold would be
+  /// barely over *one* cycle and a peer sitting still would blink out of the
+  /// list and back in every cycle. ~2.5 cycles, the same margin every other
+  /// pair here uses — and the same number iOS arrived at for the same reason.
+  static const Duration peerStaleAfterIdle = Duration(seconds: 150);
 
   // ---- iOS cadence ----
   //
