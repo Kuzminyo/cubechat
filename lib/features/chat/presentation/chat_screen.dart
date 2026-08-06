@@ -156,10 +156,26 @@ class ChatScreen extends ConsumerWidget {
     }
   }
 
+  /// Opened from search, this chat has to land on the chats list rather than
+  /// back in the search results — but only when there is nothing to go back to.
+  ///
+  /// `canPop: false` unconditionally was the old answer, and it took the drag
+  /// gesture with it: Flutter switches the back drag off entirely for a route
+  /// that says it may not pop, so on a chat opened this way the page would not
+  /// move at all. Asking the router whether it *can* pop keeps the redirect for
+  /// the case it exists for — a chat opened straight from a notification, with
+  /// an empty stack underneath — and leaves an ordinary push popping the
+  /// ordinary way, by button or by thumb.
   Widget _withBackHandling(BuildContext context, Widget child) {
     if (!returnToChats) return child;
+    // The navigator that owns this route, not the router: that is the one being
+    // asked to pop, and it answers from the stack it actually has. go_router's
+    // `context.canPop()` reads the navigator's state too, but from a context
+    // above it during the first build of a page it has nothing to read yet and
+    // says no — which is how this became a permanent "may not pop".
+    final canPop = Navigator.of(context).canPop();
     return PopScope<void>(
-      canPop: false,
+      canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) context.go('/chats');
       },

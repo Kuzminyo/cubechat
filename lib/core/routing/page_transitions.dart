@@ -117,7 +117,17 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
 /// layer for everything inside it, on every frame, on the most-scrolled screens
 /// in the app. So the radius is a function of how far the page is from settled
 /// — [primary] below 1 while it arrives or leaves, [secondary] above 0 while
-/// something covers it — and at zero radius the clip is not built at all.
+/// something covers it — and at zero radius `clipBehavior: Clip.none` paints
+/// the child straight through with no layer at all.
+///
+/// The clip is always *built*, though, which is the whole point of the
+/// `Clip.none` rather than returning the child bare. Swapping between "child"
+/// and "clip wrapping child" changes the shape of the tree, and Flutter answers
+/// that by tearing down everything below it and inflating it again — including
+/// the back-gesture detector and the entire page. That is what made the drag
+/// unusable: it started, moved one frame, and then the recognizer driving it
+/// was disposed mid-gesture, so the page stopped following the finger and
+/// sprang back. A structural change is not a cheap way to save a save layer.
 class _RoundedWhileMoving extends StatelessWidget {
   const _RoundedWhileMoving({
     required this.primary,
@@ -142,9 +152,9 @@ class _RoundedWhileMoving extends StatelessWidget {
           secondary.value.clamp(0.0, 1.0),
         );
         final radius = _radius * travelling;
-        if (radius < 0.5) return inner!;
         return ClipRRect(
           borderRadius: BorderRadius.circular(radius),
+          clipBehavior: radius < 0.5 ? Clip.none : Clip.antiAlias,
           child: inner,
         );
       },
