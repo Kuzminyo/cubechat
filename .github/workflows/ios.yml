@@ -11,7 +11,7 @@ name: iOS build (unsigned IPA for sideloading)
 # until the artifact storage allowance ran out.)
 on:
   push:
-    branches: [main]
+    branches: [main, fix/view-once-and-copy-restriction]
   workflow_dispatch:
 
 # Needed to upsert the rolling "ipa-latest" prerelease the IPA is delivered
@@ -69,6 +69,28 @@ jobs:
 
       - name: Pre-cache iOS artifacts
         run: flutter precache --ios
+
+      # Every Swift file in ios/Runner has to be in the Runner target's Sources
+      # phase, and nothing checks that on its own. This project has hand-written
+      # plugins whose entries in project.pbxproj were added by hand (there is no
+      # Mac in the loop for most of the work), and getting one wrong does not
+      # fail the build — the class is simply never compiled in. The app installs,
+      # the channel answers MissingPluginException, and the feature quietly does
+      # the fallback thing forever. That is a lot of a sideload cycle to spend on
+      # a missing line, so it is caught here in a second.
+      - name: Check every Runner source is actually built
+        run: |
+          set -e
+          missing=0
+          for f in ios/Runner/*.swift; do
+            name=$(basename "$f")
+            if ! grep -q "$name in Sources" ios/Runner.xcodeproj/project.pbxproj
+            then
+              echo "::error file=$f::$name is missing from the Runner target's Sources build phase"
+              missing=1
+            fi
+          done
+          exit $missing
 
       # Build the unsigned .app bundle. `flutter build ipa --no-codesign`
       # only produces an .xcarchive (not an .ipa) because IPA packaging
