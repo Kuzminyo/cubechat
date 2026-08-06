@@ -54,7 +54,17 @@ class ChatWallpaperPaint extends StatelessWidget {
 
     Widget base;
     if (path != null && File(path).existsSync()) {
-      base = Image.file(File(path), fit: BoxFit.cover);
+      base = Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        // Capped to the screen: a wallpaper is chosen from the camera roll, so
+        // it can be a twelve-megapixel photograph decoded to fill a phone
+        // screen — and it sits behind every conversation, in memory, for as
+        // long as the chat is open.
+        cacheWidth: (MediaQuery.sizeOf(context).width *
+                MediaQuery.devicePixelRatioOf(context))
+            .round(),
+      );
     } else if (preset != null &&
         preset >= 0 &&
         preset < ChatWallpaper.presets.length) {

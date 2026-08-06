@@ -867,6 +867,20 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   int _pinStep = 0;
   bool _initialMessageRevealed = false;
 
+  /// The span of list positions the builder has laid out since the last jump.
+  ///
+  /// This is how a jump knows which way to go. A `ListView.builder` will not
+  /// tell you what is on screen, and the message being looked for is usually
+  /// not built at all — so the only fact available is which items *were* built,
+  /// and the target is above them or below them.
+  int? _builtFrom;
+  int? _builtTo;
+
+  void _noteBuilt(int i) {
+    if (_builtFrom == null || i < _builtFrom!) _builtFrom = i;
+    if (_builtTo == null || i > _builtTo!) _builtTo = i;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -997,20 +1011,36 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// the message, the target never built, and the jump simply gave up wherever
   /// it had dropped you.
   ///
-  /// So re-estimate every frame instead. Each jump lays out a new stretch of
-  /// the list, which sharpens the extent, which sharpens the next estimate —
-  /// it converges in a few frames however far back the message is.
-  /// True once the message was actually brought on screen, so callers that only
-  /// get one chance — the open-at-message jump — can tell a landing from a
-  /// give-up and retry when more history arrives.
+  /// So the estimate is only the *first* move, and everything after it is a
+  /// walk in a known direction.
+  ///
+  /// The estimate assumes every message is the same height, which is wrong the
+  /// moment a conversation contains a photo or a file — those are several times
+  /// a line of text, so on a chat with pictures in it the guess lands hundreds
+  /// of pixels away, and re-guessing from a sharper extent lands hundreds of
+  /// pixels away again. It would run out of attempts without the target ever
+  /// building, which is a pinned message that simply does not open: exactly
+  /// what the second and third pins in a chat with photos were doing.
+  ///
+  /// A walk cannot miss. [_noteBuilt] says which positions the list has laid
+  /// out; the target is either above them or below them, and a step of most of
+  /// a viewport in the right direction brings it closer with certainty, however
+  /// tall the things in between are. The estimate stays because it covers the
+  /// distance in one move; the walk is what actually arrives.
+  ///
+  /// True once the message was brought on screen, so callers that only get one
+  /// chance — the open-at-message jump — can tell a landing from a give-up and
+  /// retry when more history arrives.
   Future<bool> _jumpToMessageId(String messageId, GlobalKey targetKey) async {
     final messages = widget.messages;
     final index = messages.indexWhere((message) => message.id == messageId);
     if (index < 0 || messages.isEmpty) return false;
-    // reverse: true, so distance from the newest message is the scroll axis.
+    // reverse: true, so distance from the newest message is the scroll axis,
+    // and it is also this item's position in the list the builder indexes.
     final fromNewest = messages.length - 1 - index;
+    var estimated = false;
 
-    for (var attempt = 0; attempt < 16; attempt++) {
+    for (var attempt = 0; attempt < 48; attempt++) {
       if (!mounted) return false;
       final targetContext = targetKey.currentContext;
       if (targetContext != null && targetContext.mounted) {
@@ -1033,16 +1063,38 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       }
       if (_scroll.hasClients && messages.length > 1) {
         final position = _scroll.position;
-        final estimate =
-            position.maxScrollExtent * (fromNewest / (messages.length - 1));
-        final next = estimate.clamp(
-          position.minScrollExtent,
-          position.maxScrollExtent,
-        );
-        // Already sitting where the estimate says and still nothing built: the
-        // extent has stopped improving, so more jumps will not help.
-        if (attempt > 0 && (next - position.pixels).abs() < 1) return false;
-        _scroll.jumpTo(next);
+        final from = _builtFrom;
+        final to = _builtTo;
+        double next;
+        if (!estimated || from == null || to == null) {
+          // One long move to get in the neighbourhood.
+          estimated = true;
+          next = position.maxScrollExtent * (fromNewest / (messages.length - 1));
+        } else if (fromNewest > to) {
+          // Further back in the history than anything laid out — in a reversed
+          // list that is a larger offset.
+          next = position.pixels + position.viewportDimension * 0.8;
+        } else if (fromNewest < from) {
+          next = position.pixels - position.viewportDimension * 0.8;
+        } else {
+          // Inside the built span and still no context: it is being laid out
+          // this very frame. Wait for it rather than moving away from it.
+          next = position.pixels;
+        }
+        next = next.clamp(position.minScrollExtent, position.maxScrollExtent);
+        if ((next - position.pixels).abs() >= 1) {
+          // The window is about to change; what was built describes where we
+          // were, not where we are going.
+          _builtFrom = null;
+          _builtTo = null;
+          _scroll.jumpTo(next);
+        } else if (attempt > 0 &&
+            from != null &&
+            (fromNewest > to! || fromNewest < from)) {
+          // Pinned against an end of the list with the target still beyond it:
+          // the message is not in this list any more.
+          return false;
+        }
       }
       await WidgetsBinding.instance.endOfFrame;
     }
@@ -1227,6 +1279,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               padding: padding,
               itemCount: messages.length,
               itemBuilder: (_, i) {
+                // Where the list currently is, in the only terms it will give
+                // up. See [_noteBuilt] — a jump reads this to pick a direction.
+                _noteBuilt(i);
                 final m = messages[messages.length - 1 - i];
                 Widget bubble =
                     MessageBubble(message: m, chatId: widget.chatId);

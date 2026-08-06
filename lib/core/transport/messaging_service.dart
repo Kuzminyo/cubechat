@@ -5658,9 +5658,19 @@ class MessagingService {
   // ------------------------- presence over the internet ---------------------
 
   /// How often we tell internet-reachable peers we still have the app open.
-  /// Two of these fit inside [PeerPresence.ttl], so one dropped beacon doesn't
-  /// flicker the dot.
-  static const Duration presenceHeartbeat = Duration(seconds: 45);
+  /// Two of these fit inside [PeerPresence.ttl] (150 s), so one dropped beacon
+  /// doesn't flicker the dot.
+  ///
+  /// Raised from 45 s, which was buying a third more of the same work for
+  /// nothing. This is the app's most expensive idle loop by a distance: a
+  /// beacon is *per peer*, and each one is an Ed25519 signature over the inner
+  /// payload, an X25519 seal to that peer, and a secp256k1 Schnorr signature
+  /// over the Nostr event — the last of those implemented in Dart in this repo.
+  /// Ten contacts is thirty signatures every heartbeat, on a phone that is
+  /// sitting still with the app open, which is exactly what "it gets warm doing
+  /// nothing" is made of. At 70 s two beacons still fit inside the TTL with
+  /// ten seconds to spare, and the dot behaves identically.
+  static const Duration presenceHeartbeat = Duration(seconds: 70);
 
   /// Most peers one heartbeat will reach. Each beacon is a signed frame
   /// published to every configured relay, so this bounds a pathological roster

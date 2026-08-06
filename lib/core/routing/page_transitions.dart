@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -85,16 +87,67 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
       primaryRouteAnimation: animation,
       secondaryRouteAnimation: secondaryAnimation,
       linearTransition: popGestureInProgress,
-      child: EdgeBackGesture(
-        enabledCallback: () => popGestureEnabled,
-        onStartGesture: () => EdgeBackGestureController(
-          navigator: navigator!,
-          controller: controller!,
-          isCurrent: () => isCurrent,
-          isActive: () => isActive,
+      child: _RoundedWhileMoving(
+        primary: animation,
+        secondary: secondaryAnimation,
+        child: EdgeBackGesture(
+          enabledCallback: () => popGestureEnabled,
+          onStartGesture: () => EdgeBackGestureController(
+            navigator: navigator!,
+            controller: controller!,
+            isCurrent: () => isCurrent,
+            isActive: () => isActive,
+          ),
+          child: child,
         ),
-        child: child,
       ),
+    );
+  }
+}
+
+/// Rounds a page's corners for exactly as long as it is moving.
+///
+/// A screen sliding over another with square corners reads as one flat thing
+/// being replaced by another flat thing. Rounded while it travels — and rounded
+/// on the page underneath as it recedes — the two read as sheets, one lifted
+/// over the other, which is the whole feeling of dragging one back with a
+/// thumb.
+///
+/// Costs nothing at rest, deliberately. A clip is not free: it forces a save
+/// layer for everything inside it, on every frame, on the most-scrolled screens
+/// in the app. So the radius is a function of how far the page is from settled
+/// — [primary] below 1 while it arrives or leaves, [secondary] above 0 while
+/// something covers it — and at zero radius the clip is not built at all.
+class _RoundedWhileMoving extends StatelessWidget {
+  const _RoundedWhileMoving({
+    required this.primary,
+    required this.secondary,
+    required this.child,
+  });
+
+  final Animation<double> primary;
+  final Animation<double> secondary;
+  final Widget child;
+
+  static const double _radius = 22;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([primary, secondary]),
+      child: child,
+      builder: (context, inner) {
+        final travelling = math.max(
+          1 - primary.value.clamp(0.0, 1.0),
+          secondary.value.clamp(0.0, 1.0),
+        );
+        final radius = _radius * travelling;
+        if (radius < 0.5) return inner!;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: inner,
+        );
+      },
     );
   }
 }

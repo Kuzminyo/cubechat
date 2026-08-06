@@ -13,9 +13,10 @@ class PeerPresence {
   final DateTime at;
 
   /// A beacon is only worth believing for a while: the app can be killed
-  /// outright, and the goodbye beacon is best-effort. Two missed heartbeats
-  /// ([MessagingService.presenceHeartbeat] is 45 s) is the window, matching how
-  /// the mesh treats a missed announcement.
+  /// outright, and the goodbye beacon is best-effort. Two heartbeats
+  /// ([MessagingService.presenceHeartbeat] is 70 s) fit inside this window with
+  /// room to spare, so one dropped beacon does not dim a peer who is still
+  /// there — the same margin the mesh gives a missed announcement.
   static const Duration ttl = Duration(seconds: 150);
 
   bool get isFresh => DateTime.now().difference(at) < ttl;

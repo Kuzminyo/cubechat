@@ -3,34 +3,41 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-/// A drag-back-from-the-edge gesture wide enough to actually use on Android.
+/// Drag right, anywhere on the page, to go back.
 ///
-/// Flutter already ships this: [CupertinoRouteTransitionMixin] wraps every page
-/// in one, and this app's routes use that mixin. It has never worked on the
-/// phones people hold, and the reason is a single number — the strip that
-/// listens for the drag is 20 logical pixels at the very leading edge, and on a
-/// phone using gesture navigation those same 20 pixels are the system's own
-/// back gesture. Android takes the touch and the app never sees it. On a phone
-/// with three buttons the strip does get the touch, and 20 pixels is about a
-/// third of a fingertip.
+/// Flutter ships a version of this: [CupertinoRouteTransitionMixin] wraps every
+/// page in one, and this app's routes use that mixin. It has never worked on
+/// the phones people hold, and the reason is a single number — the strip that
+/// listens for the drag is 20 logical pixels at the very leading edge, which on
+/// a phone using gesture navigation is precisely the strip Android keeps for
+/// its own back gesture. The touch never arrives. On a phone with buttons it
+/// does arrive, and 20 pixels is about a third of a fingertip.
 ///
-/// So the strip starts *after* whatever the system has reserved
-/// (`systemGestureInsets`, which is the back-sensitivity slider in Android's
-/// settings) and runs [_reach] further in. What the system wants, the system
-/// keeps; what is left is a band wide enough to hit without aiming.
+/// So the whole page listens, the way Telegram's does. What stops that from
+/// swallowing every other horizontal gesture in the app is *when* it accepts
+/// rather than *where*:
 ///
-/// The drag itself is Flutter's, reproduced rather than reused because the
-/// pieces are private (`_CupertinoBackGestureDetector` and its controller). The
-/// mechanics are subtle enough to be worth copying exactly: the route's own
-/// animation controller is handed to the finger, the navigator is told a user
-/// gesture is in progress so the transition goes linear and follows it, and on
-/// release the controller either finishes the pop or springs back — with the
-/// gesture flag held until that settles, so the curve does not change mid-air.
+///  * **Leftward is not ours.** The moment the finger commits left the gesture
+///    is handed back to the arena, because that is the swipe-to-reply on a
+///    bubble.
+///  * **Away from the edge it accepts late.** A slider, a seek bar or a
+///    carousel claims a drag at the usual touch slop; this waits for
+///    [_pageThreshold], by which time anything under the finger that wanted the
+///    drag has already won it. Nothing competing means nothing to lose to, and
+///    the page starts moving.
+///  * **At the edge it accepts immediately**, because there the intent is not
+///    ambiguous and waiting would only feel slow. The edge band starts after
+///    whatever the system reserved (`systemGestureInsets` — Android's
+///    back-sensitivity slider) so it does not fight the platform for the same
+///    pixels.
 ///
-/// One thing here is deliberately *not* Flutter's: the gesture is refused as
-/// soon as the finger has committed leftward. A wide strip overlaps the
-/// conversation, where a leftward drag on a bubble means reply — and a back
-/// gesture that ate that would be a worse trade than the one it fixed.
+/// The drag mechanics are Flutter's, reproduced rather than reused because the
+/// pieces are private (`_CupertinoBackGestureDetector` and its controller), and
+/// subtle enough to be worth copying exactly: the route's own animation
+/// controller is handed to the finger, the navigator is told a user gesture is
+/// in progress so the transition goes linear and follows it, and on release the
+/// controller either finishes the pop or springs back — with the gesture flag
+/// held until that settles, so the curve does not change mid-air.
 class EdgeBackGesture extends StatefulWidget {
   const EdgeBackGesture({
     super.key,
@@ -48,20 +55,30 @@ class EdgeBackGesture extends StatefulWidget {
 
   final ValueGetter<EdgeBackGestureController> onStartGesture;
 
-  /// How far past the system's own gesture strip this one reaches.
+  /// How far past the system's own gesture strip the *immediate* band reaches.
   ///
   /// A little under half a fingertip. Wider starts to feel like the left edge
   /// of the screen has become a button; much narrower and it is Flutter's 20
   /// pixels again.
-  static const double _reach = 44;
+  static const double _edgeReach = 44;
 
-  static double widthFor(BuildContext context) {
+  /// How far the finger travels before a drag that started away from the edge
+  /// is taken as "go back".
+  ///
+  /// Comfortably past the touch slop everything else accepts at, so a seek bar
+  /// or a slider has already claimed the gesture by the time this would — and
+  /// short enough that a deliberate swipe never feels like it is being ignored.
+  static const double _pageThreshold = 44;
+
+  /// Where the immediate band ends: after whatever the platform reserved for
+  /// its own gesture, plus [_edgeReach].
+  static double edgeBandFor(BuildContext context) {
     final media = MediaQuery.of(context);
     final reserved = math.max(
       media.systemGestureInsets.left,
       media.padding.left,
     );
-    return reserved + _reach;
+    return reserved + _edgeReach;
   }
 
   @override
@@ -118,7 +135,11 @@ class _EdgeBackGestureState extends State<EdgeBackGesture> {
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (widget.enabledCallback()) _recognizer.addPointer(event);
+    if (!widget.enabledCallback()) return;
+    final box = context.findRenderObject() as RenderBox?;
+    final localX = box == null ? 0.0 : box.globalToLocal(event.position).dx;
+    _recognizer.acceptEarly = localX <= EdgeBackGesture.edgeBandFor(context);
+    _recognizer.addPointer(event);
   }
 
   @override
@@ -127,13 +148,11 @@ class _EdgeBackGestureState extends State<EdgeBackGesture> {
       fit: StackFit.passthrough,
       children: [
         widget.child,
-        PositionedDirectional(
-          start: 0,
-          top: 0,
-          bottom: 0,
-          width: EdgeBackGesture.widthFor(context),
-          // Translucent: the strip listens for a drag and lets everything else
-          // — taps most of all — go through to the screen underneath.
+        // The whole page, not a strip. Translucent, so it only ever listens:
+        // taps, scrolls and everything else reach the screen underneath, and
+        // the recognizer decides in the arena whether a horizontal drag was
+        // meant for it.
+        Positioned.fill(
           child: Listener(
             onPointerDown: _handlePointerDown,
             behavior: HitTestBehavior.translucent,
@@ -144,34 +163,66 @@ class _EdgeBackGestureState extends State<EdgeBackGesture> {
   }
 }
 
-/// A horizontal drag that gives up the moment the finger commits leftward.
+/// A horizontal drag that loses on purpose, twice over.
 ///
-/// The strip is wide enough to sit over chat bubbles, and a leftward drag there
-/// is the swipe-to-reply. Both are horizontal drags, so both accept in the
-/// gesture arena — and this one, being in front, would win every time. Losing
-/// on purpose is what lets the two coexist: rightward is a back gesture,
-/// leftward was never meant for us.
+/// It covers the whole page, so it sits on top of every other horizontal
+/// gesture in the app: swipe-to-reply on a bubble, the seek bar of a voice
+/// note, a slider in settings. All of them are horizontal drags, all of them
+/// accept in the gesture arena, and this one — being in front — would win every
+/// single time. Two rules give them back:
+///
+///  * a drag that commits **leftward** is rejected outright (that is the reply
+///    swipe, and nothing here ever wants it);
+///  * away from the edge, acceptance waits for a distance well past the touch
+///    slop, so anything under the finger that wanted the drag has claimed it
+///    first and this one is already out of the arena.
 class _RightwardDragRecognizer extends HorizontalDragGestureRecognizer {
   _RightwardDragRecognizer({super.debugOwner});
 
+  /// Set from the pointer-down position: at the leading edge the intent is not
+  /// ambiguous, so the drag is taken at the ordinary slop and the page starts
+  /// moving with the finger straight away.
+  bool acceptEarly = false;
+
   Offset? _origin;
   bool _decided = false;
+  bool _gaveUp = false;
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
     _origin = event.position;
     _decided = false;
+    _gaveUp = false;
     super.addAllowedPointer(event);
   }
 
   @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) {
+    final slop = computeHitSlop(pointerDeviceKind, gestureSettings);
+    return globalDistanceMoved.abs() >
+        (acceptEarly ? slop : math.max(slop, EdgeBackGesture._pageThreshold));
+  }
+
+  @override
   void handleEvent(PointerEvent event) {
+    if (_gaveUp) return;
     final origin = _origin;
     if (!_decided && origin != null && event is PointerMoveEvent) {
       final dx = event.position.dx - origin.dx;
       if (dx.abs() >= computeHitSlop(event.kind, gestureSettings)) {
         _decided = true;
-        if (dx < 0) resolve(GestureDisposition.rejected);
+        if (dx < 0) {
+          _gaveUp = true;
+          resolve(GestureDisposition.rejected);
+          // Nothing after this: rejection stops the recognizer tracking the
+          // pointer and resets it to `ready`, and the base class asserts on
+          // being handed an event in that state. Handing it one is how the
+          // swipe-to-reply tests found this the first time.
+          return;
+        }
       }
     }
     super.handleEvent(event);

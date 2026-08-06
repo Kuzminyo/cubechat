@@ -39,7 +39,7 @@ class GlassCard extends StatelessWidget {
   final bool blur;
 
   Widget _maybeBlur(Widget child) => blur
-      ? BackdropFilter(
+      ? BackdropFilter.grouped(
           filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
           child: child,
         )

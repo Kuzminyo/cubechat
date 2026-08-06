@@ -122,7 +122,7 @@ class FloatingGlass extends StatelessWidget {
       child: ClipRRect(
         borderRadius: radius,
         child: blur
-            ? BackdropFilter(
+            ? BackdropFilter.grouped(
                 filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                 child: pane,
               )

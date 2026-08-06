@@ -1275,6 +1275,18 @@ class _ImagePayload extends StatelessWidget {
                 child: Image.file(
                   File(path),
                   fit: BoxFit.cover,
+                  // Decoded at the size it is drawn, not the size it was sent.
+                  //
+                  // Without this the bubble decodes the whole photo — the mesh
+                  // encoder tops out around 1600 px, so that is a 1600×1600
+                  // bitmap, ten megabytes of it, to fill a box 220 points
+                  // wide. Every photo in the conversation, held in the image
+                  // cache. Scrolling a chat with pictures in it then costs a
+                  // full-resolution decode per photo and a texture upload to
+                  // match, which is most of why such a chat warms the phone.
+                  // At the drawn size it is a twenty-fifth of the pixels.
+                  cacheWidth: (220 * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
                   errorBuilder: (_, __, ___) => _ImagePlaceholder(
                     icon: Icons.broken_image_outlined,
                     label: message.imageMime ?? 'image',

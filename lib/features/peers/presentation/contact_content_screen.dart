@@ -231,6 +231,15 @@ class _MediaGrid extends StatelessWidget {
               child: Image.file(
                 File(message.imagePath!),
                 fit: BoxFit.cover,
+                // A third of the screen wide, so decode a third of the screen
+                // wide. A grid is the worst place to decode photographs whole:
+                // nine of them are on screen at once, each one otherwise a
+                // full-size bitmap held in the cache for a tile the size of a
+                // thumbnail.
+                cacheWidth: (MediaQuery.sizeOf(context).width /
+                        3 *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round(),
                 errorBuilder: (_, __, ___) => const Center(
                   child: Icon(Icons.broken_image_outlined),
                 ),

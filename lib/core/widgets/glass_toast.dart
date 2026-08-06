@@ -187,7 +187,7 @@ class _GlassToastState extends State<_GlassToast>
                   ),
                   child: ClipRRect(
                     borderRadius: radius,
-                    child: BackdropFilter(
+                    child: BackdropFilter.grouped(
                       filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                       child: Container(
                         padding: EdgeInsets.fromLTRB(
