@@ -9,6 +9,53 @@ Uint8List _frame(int marker) => Uint8List.fromList([marker, 1, 2, 3]);
 
 void main() {
   group('StoreForwardCache', () {
+    test('refuses a frame too large to be a message', () {
+      // A media chunk is not mail: the receiver can do nothing with a partial
+      // transfer and the sender re-sends the whole thing anyway. One photo
+      // passing through used to fill the buffer and evict every text message
+      // that actually needed carrying.
+      final c = StoreForwardCache(maxFrameBytes: 64);
+      c.store(
+        destHash: _b(1),
+        frameBytes: Uint8List(65),
+        origin: _b(9),
+        msgId: _b(1, 16),
+      );
+      expect(c.size, 0);
+    });
+
+    test('a frame at the limit is still held', () {
+      final c = StoreForwardCache(maxFrameBytes: 64);
+      c.store(
+        destHash: _b(1),
+        frameBytes: Uint8List(64),
+        origin: _b(9),
+        msgId: _b(1, 16),
+      );
+      expect(c.size, 1);
+    });
+
+    test('big frames cannot crowd out the small ones', () {
+      final c = StoreForwardCache(maxFrameBytes: 64, capacity: 4);
+      c.store(
+        destHash: _b(1),
+        frameBytes: _frame(7),
+        origin: _b(9),
+        msgId: _b(1, 16),
+      );
+      for (var i = 0; i < 20; i++) {
+        c.store(
+          destHash: _b(2),
+          frameBytes: Uint8List(4096),
+          origin: _b(9),
+          msgId: _b(i + 2, 16),
+        );
+      }
+      // The one real message is still there, and nothing else got in.
+      expect(c.size, 1);
+      expect(c.drainFor(_b(1)).single[0], 7);
+    });
+
     test('stores and drains frames for a destination in order', () {
       final c = StoreForwardCache();
       final dest = _b(1);

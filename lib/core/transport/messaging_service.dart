@@ -3744,10 +3744,18 @@ class MessagingService {
           msgId: env.msgId,
         );
         _scheduleRelayPersist();
-        DebugLog.instance.log(
-            'MESH',
-            'transport not for me — forwarded + held for dest '
-                '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
+        // One line a second, not one a frame. Relaying for a busy neighbour is
+        // a hundred frames a second, and at 200 lines of ring buffer that was
+        // the whole log — the same failure the BLE fragment meter exists for.
+        final now = DateTime.now();
+        if (_lastHoldLogAt == null ||
+            now.difference(_lastHoldLogAt!) >= const Duration(seconds: 1)) {
+          _lastHoldLogAt = now;
+          DebugLog.instance.log(
+              'MESH',
+              'holding for peers out of range '
+                  '(${_store.size} frame(s) across ${_store.destinationCount} dest)');
+        }
       } else {
         DebugLog.instance
             .log('MESH', 'broadcast not for me, forwarded only (no hold)');
@@ -5169,6 +5177,9 @@ class MessagingService {
   /// across every active link except [excludePeerId] (the link we received
   /// it on, to avoid an immediate echo). Per-receiver dedup catches any
   /// loops that escape this filter.
+  /// Rate gate for the store-and-forward line — see where it is used.
+  DateTime? _lastHoldLogAt;
+
   Future<void> _forwardEnvelope({
     required FrameType outerType,
     required TransportEnvelope env,
@@ -5194,8 +5205,9 @@ class MessagingService {
     }
     final bytes = Frame(type: outerType, payload: relayed.encode()).encode();
     final fanout = await _fanoutAllLinks(bytes, excludePeerId: excludePeerId);
-    DebugLog.instance.log(
-        'MESH', 'relayed ${outerType.name} ttl=${relayed.ttl} fanout=$fanout');
+    // Metered for the same reason: forwarding is per-frame and a relay under
+    // load emits this faster than anything else in the app.
+    _relayMeter.add('ttl=${relayed.ttl} fanout=$fanout', bytes.length);
   }
 
   /// Writes [bytes] (a fully-encoded frame) onto every active link except
@@ -6294,6 +6306,9 @@ class MessagingService {
   /// single photo is hundreds of writes, and at 200 lines of ring buffer that
   /// was the whole log.
   final _peripheralWriteMeter = TrafficMeter('BLE-PERIPH', 'write from');
+
+  /// Mesh forwarding, one line per second per outcome rather than per frame.
+  final _relayMeter = TrafficMeter('MESH', 'relayed');
 
   void _wirePeripheralEvents() {
     final peripheral = _ref.read(blePeripheralProvider);

@@ -43,11 +43,30 @@ class StoreForwardCache {
   StoreForwardCache({
     this.capacity = 200,
     this.perDestCap = 50,
+    this.maxFrameBytes = 2048,
     this.ttl = const Duration(hours: 1),
   });
 
   final int capacity;
   final int perDestCap;
+
+  /// Largest frame worth holding for somebody who is not here.
+  ///
+  /// This buffer exists to carry *messages* to a peer who was out of range
+  /// when they were sent. A media chunk is not a message: a photo is hundreds
+  /// of them, the receiver can do nothing with a partial set, and the sender
+  /// re-sends the whole transfer anyway. Holding them was worse than useless —
+  /// one photo passing through filled the buffer to its 200-frame ceiling and
+  /// evicted every text message that actually needed carrying, which a field
+  /// log caught happening in about two seconds.
+  ///
+  /// The body is encrypted, so a relay cannot ask what kind of frame it is.
+  /// Size answers it well enough: text pads to a 48-byte bucket and control
+  /// frames are smaller still, while a BLE media chunk is [kBleMediaChunkData]
+  /// — 4 KB — before overhead. Two kilobytes sits in the gap with room on both
+  /// sides.
+  final int maxFrameBytes;
+
   final Duration ttl;
 
   final Map<String, List<StoredFrame>> _byDest = {};
@@ -63,6 +82,7 @@ class StoreForwardCache {
     required Uint8List origin,
     required Uint8List msgId,
   }) {
+    if (frameBytes.length > maxFrameBytes) return;
     _gc();
     final destKey = _hex(destHash);
     final dedupKey = '${_hex(origin)}/${_hex(msgId)}';
