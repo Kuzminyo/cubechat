@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
+import '../../../../core/widgets/pop_on_change.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
@@ -216,10 +218,59 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
+  /// One-shot shower of emoji thrown over the bubble when a reaction is *added*.
+  /// Idle for the entire life of the bubble apart from the ~600 ms it plays.
+  late final AnimationController _burst = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  )..addStatusListener((s) {
+      // Drops the painter out of the tree the moment it has nothing left to
+      // draw, so a screen full of bubbles that have each been reacted to once
+      // is not a screen full of dormant CustomPaints.
+      if (s == AnimationStatus.completed && mounted) {
+        setState(() => _burstEmoji = null);
+      }
+    });
+
+  String? _burstEmoji;
+
+  /// Bumped for an emoji whose tally moved while this bubble stayed on screen.
+  ///
+  /// A count is not enough on its own: a chip built with `count: 3` cannot tell
+  /// whether it just went 2 → 3 or whether it has been 3 all along and the row
+  /// was merely scrolled back into view. A revision only ever changes for the
+  /// former, which is exactly what [PopOnChange] wants to watch.
+  final Map<String, int> _reactionRev = {};
+
+  /// Emoji whose chip appeared while the bubble was already on screen — the
+  /// ones that get to pop themselves into existence. See [PopOnChange].
+  final Set<String> _freshReactions = {};
+
+  @override
+  void didUpdateWidget(MessageBubble old) {
+    super.didUpdateWidget(old);
+    final before = old.message.reactions;
+    for (final entry in widget.message.reactions.entries) {
+      final was = before[entry.key]?.length ?? 0;
+      if (was == entry.value.length) continue;
+      if (was == 0) {
+        // Brand new chip: it will be built for the first time in a moment, and
+        // the flag is what tells it this build is an arrival rather than a
+        // scroll. Never cleared — an element runs `initState` once, so a stale
+        // entry cannot fire twice, and a reaction removed and re-added gets a
+        // new element and should pop again anyway.
+        _freshReactions.add(entry.key);
+      } else {
+        _reactionRev[entry.key] = (_reactionRev[entry.key] ?? 0) + 1;
+      }
+    }
+  }
+
   @override
   void dispose() {
     _c.dispose();
     _swipe.dispose();
+    _burst.dispose();
     super.dispose();
   }
 
@@ -313,6 +364,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       unawaited(
         ref.read(reactionEmojiControllerProvider.notifier).remember(emoji),
       );
+      // Only on the way in. A burst celebrating a reaction being *withdrawn*
+      // would be the animation saying the opposite of the action.
+      setState(() => _burstEmoji = emoji);
+      _burst.forward(from: 0);
     }
     ref.read(messagingServiceProvider).sendReaction(
           widget.chatId,
@@ -930,6 +985,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                   padding: const EdgeInsets.only(top: 4),
                                   child: _ReactionsRow(
                                     reactions: message.reactions,
+                                    revisions: _reactionRev,
+                                    fresh: _freshReactions,
                                     onTap: _canReact ? _toggleReaction : null,
                                   ),
                                 ),
@@ -957,6 +1014,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         alignment: Alignment.centerRight,
                         child: _SwipeReplyHint(
                           progress: (_dragX.abs() / _swipeTrigger).clamp(0, 1),
+                        ),
+                      ),
+                    ),
+                  if (_burstEmoji != null)
+                    // Fills the row rather than sizing to the emoji, so the
+                    // painter has the bubble's own geometry to throw from — and
+                    // `IgnorePointer` because a shower of confetti that eats
+                    // the next tap would be worse than no shower at all.
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: _ReactionBurst(
+                          emoji: _burstEmoji!,
+                          progress: _burst,
+                          fromRight: mine,
                         ),
                       ),
                     ),
@@ -1087,9 +1158,23 @@ class _SwipeReplyHint extends StatelessWidget {
 /// Row of reaction chips shown under a bubble. Each chip is `emoji ×count`
 /// (count hidden when 1); a chip the local user contributed to is tinted.
 class _ReactionsRow extends StatelessWidget {
-  const _ReactionsRow({required this.reactions, required this.onTap});
+  const _ReactionsRow({
+    required this.reactions,
+    required this.revisions,
+    required this.fresh,
+    required this.onTap,
+  });
 
   final Map<String, Set<String>> reactions;
+
+  /// Bumped by the bubble for an emoji whose tally moved while it was on
+  /// screen. The chip pops on the change, not on the value.
+  final Map<String, int> revisions;
+
+  /// Emoji that arrived on a bubble that was already on screen — the ones that
+  /// should pop themselves into existence rather than simply being there.
+  final Set<String> fresh;
+
   final void Function(String emoji)? onTap;
 
   @override
@@ -1101,9 +1186,16 @@ class _ReactionsRow extends StatelessWidget {
         for (final entry in reactions.entries)
           if (entry.value.isNotEmpty)
             _ReactionChip(
+              // Keyed on the emoji so element identity follows the *reaction*.
+              // Unkeyed children of a Wrap are matched by position, so a chip
+              // dropping out of the middle would hand its state — including a
+              // half-played pop — to whichever emoji shifted into its slot.
+              key: ValueKey(entry.key),
               emoji: entry.key,
               count: entry.value.length,
               mine: entry.value.contains('me'),
+              revision: revisions[entry.key] ?? 0,
+              fresh: fresh.contains(entry.key),
               onTap: onTap == null ? null : () => onTap!(entry.key),
             ),
       ],
@@ -1163,54 +1255,241 @@ class _ReadByChip extends StatelessWidget {
 
 class _ReactionChip extends StatelessWidget {
   const _ReactionChip({
+    super.key,
     required this.emoji,
     required this.count,
     required this.mine,
+    required this.revision,
+    required this.fresh,
     required this.onTap,
   });
 
   final String emoji;
   final int count;
   final bool mine;
+
+  /// Changes when the tally behind this chip moved. See [_ReactionsRow].
+  final int revision;
+
+  /// True when the chip is being built for the first time *because the reaction
+  /// just landed*, as opposed to because the row scrolled back into view.
+  final bool fresh;
+
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: mine
-              ? AppColors.brandPrimary.withValues(alpha: 0.22)
-              : AppColors.glass(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
+    return PopOnChange(
+      value: revision,
+      initialPop: fresh,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          // The tint is the whole feedback for "this one is mine", and it used
+          // to arrive between two frames. 180 ms is enough to see the fill
+          // travel without the chip feeling slow to answer a tap.
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
             color: mine
-                ? AppColors.brandPrimary.withValues(alpha: 0.6)
-                : AppColors.glass(0.14),
+                ? AppColors.brandPrimary.withValues(alpha: 0.22)
+                : AppColors.glass(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: mine
+                  ? AppColors.brandPrimary.withValues(alpha: 0.6)
+                  : AppColors.glass(0.14),
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 13)),
-            if (count > 1) ...[
-              const SizedBox(width: 4),
-              Text(
-                '$count',
-                style: TextStyle(
-                  color: AppColors.textOnGlass,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 13)),
+              if (count > 1) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// One spark of a [_ReactionBurst]: where it is thrown and how it tumbles.
+class _Spark {
+  const _Spark({
+    required this.angle,
+    required this.distance,
+    required this.spin,
+    required this.scale,
+    required this.lead,
+  });
+
+  /// Radians, canvas convention — `-pi/2` is straight up.
+  final double angle;
+  final double distance;
+  final double spin;
+  final double scale;
+
+  /// Fraction of the run this spark waits before it leaves. A handful of copies
+  /// departing on the same frame reads as one object splitting; staggering them
+  /// by a few hundredths reads as a handful being thrown.
+  final double lead;
+}
+
+/// The shower of copies that follows a reaction being added.
+///
+/// Telegram's version is a Lottie sticker over a particle field. This is the
+/// part of it that carries the feeling and none of the part that needs an
+/// animation runtime: a few copies of the same emoji thrown up and outward,
+/// tumbling, shrinking, pulled back down, gone in about six tenths of a second.
+///
+/// It is a [CustomPaint] driven straight off the controller rather than a widget
+/// per particle, so a burst costs one repaint per frame and rebuilds nothing —
+/// and it leaves the tree the moment it finishes, because the standing rule in
+/// this app is that nothing animates while it has nothing to say.
+class _ReactionBurst extends StatefulWidget {
+  const _ReactionBurst({
+    required this.emoji,
+    required this.progress,
+    required this.fromRight,
+  });
+
+  final String emoji;
+  final Animation<double> progress;
+
+  /// Our own bubble sits on the right, so that is where its reaction is thrown
+  /// from. Aiming every burst at the centre would have half of them start
+  /// nowhere near the message they belong to.
+  final bool fromRight;
+
+  @override
+  State<_ReactionBurst> createState() => _ReactionBurstState();
+}
+
+class _ReactionBurstState extends State<_ReactionBurst> {
+  /// Rolled once, here, and not inside `paint`.
+  ///
+  /// The bubble rebuilds for reasons that have nothing to do with this — a swipe
+  /// in progress, a status tick landing — and a painter that draws dice would
+  /// hand every spark a new trajectory mid-flight. State outlives those
+  /// rebuilds; a new burst is a new element and gets a fresh throw.
+  late final List<_Spark> _sparks = _throw();
+
+  static List<_Spark> _throw() {
+    final rand = math.Random();
+    return [
+      for (var i = 0; i < 7; i++)
+        _Spark(
+          // A wedge aimed up and outward. Straight up is a fountain and flat
+          // out is an explosion; the ground between them is what reads as
+          // thrown by hand.
+          angle: -math.pi * (0.15 + 0.7 * rand.nextDouble()),
+          distance: 40 + 32 * rand.nextDouble(),
+          spin: (rand.nextDouble() - 0.5) * 1.7,
+          scale: 0.62 + 0.5 * rand.nextDouble(),
+          lead: 0.12 * rand.nextDouble(),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _ReactionBurstPainter(
+          emoji: widget.emoji,
+          progress: widget.progress,
+          fromRight: widget.fromRight,
+          sparks: _sparks,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReactionBurstPainter extends CustomPainter {
+  _ReactionBurstPainter({
+    required this.emoji,
+    required this.progress,
+    required this.fromRight,
+    required this.sparks,
+  }) : super(repaint: progress);
+
+  final String emoji;
+  final Animation<double> progress;
+  final bool fromRight;
+  final List<_Spark> sparks;
+
+  /// Laid out once per painter and reused for every spark on every frame. The
+  /// glyph never changes during a burst; measuring it seven times a frame would
+  /// be the most expensive thing here by a wide margin.
+  late final TextPainter _glyph = TextPainter(
+    text: TextSpan(text: emoji, style: const TextStyle(fontSize: 20)),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = progress.value;
+    if (t <= 0 || t >= 1) return;
+
+    final origin = Offset(
+      size.width * (fromRight ? 0.80 : 0.20),
+      size.height * 0.5,
+    );
+
+    // One layer for the whole shower, not one per spark: they all fade
+    // together, and seven saveLayers a frame is exactly the sort of cost that
+    // turns into a dropped frame on a mid-range phone.
+    final fade = t < 0.55 ? 1.0 : (1 - (t - 0.55) / 0.45).clamp(0.0, 1.0);
+    canvas.saveLayer(
+      Offset.zero & size,
+      Paint()..color = Color.fromRGBO(0, 0, 0, fade),
+    );
+
+    for (final spark in sparks) {
+      final local = ((t - spark.lead) / (1 - spark.lead)).clamp(0.0, 1.0);
+      if (local == 0) continue;
+
+      // Distance eases out — thrown hard, slowing — while the downward pull
+      // grows with the square of the time, which is the only part of this that
+      // has to look like physics for the rest to read as physics.
+      final travelled = spark.distance * Curves.easeOutCubic.transform(local);
+      final dx = math.cos(spark.angle) * travelled;
+      final dy = math.sin(spark.angle) * travelled + 30 * local * local;
+
+      final grow = local < 0.22 ? local / 0.22 : 1.0;
+      final shrink = 1 - 0.5 * math.max(0.0, (local - 0.35) / 0.65);
+      final scale = spark.scale * grow * shrink;
+      if (scale <= 0) continue;
+
+      canvas.save();
+      canvas.translate(origin.dx + dx, origin.dy + dy);
+      canvas.rotate(spark.spin * local);
+      canvas.scale(scale);
+      _glyph.paint(canvas, Offset(-_glyph.width / 2, -_glyph.height / 2));
+      canvas.restore();
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ReactionBurstPainter old) =>
+      old.emoji != emoji ||
+      old.fromRight != fromRight ||
+      !identical(old.sparks, sparks);
 }
 
 /// In-bubble image rendering. While the bytes are still in flight (sender
@@ -1523,28 +1802,81 @@ class _BubbleMeta extends StatelessWidget {
         ),
         if (message.isMine) ...[
           const SizedBox(width: 4),
-          Icon(
-            switch (message.status) {
-              MessageStatus.sending => Icons.schedule,
-              MessageStatus.delivered => Icons.done,
-              MessageStatus.read => Icons.done_all,
-              MessageStatus.failed => Icons.error_outline,
-            },
-            size: 12,
-            color: switch (message.status) {
-              MessageStatus.failed => AppColors.danger,
-              MessageStatus.read => _readColor,
-              _ => AppColors.ink(0.85),
-            },
-            semanticLabel: switch (message.status) {
-              MessageStatus.sending => t.chatSending,
-              MessageStatus.delivered => t.chatDelivered,
-              MessageStatus.read => t.chatRead,
-              MessageStatus.failed => '!',
-            },
-          ),
+          _StatusTick(status: message.status),
         ],
       ],
+    );
+  }
+}
+
+/// The delivery tick — clock, then one check, then two in blue.
+///
+/// It is the one state change in a conversation that everybody watches, and it
+/// used to happen between two frames: the glyph was simply a different glyph on
+/// the next build. That is invisible. The eye is told nothing happened, and
+/// "read" — the moment the whole indicator exists for — lands without a sound.
+///
+/// [AnimatedSwitcher] rather than a controller of our own, for one specific
+/// property: **it does not animate the child it is first built with.** A bubble
+/// scrolled back into view shows its tick already settled instead of popping it
+/// again, which is the same rule [PopOnChange] is built around and the reason
+/// neither of them animates from `initState`. It also cross-fades the colour for
+/// free, so the blue arrives with the second check rather than snapping ahead of
+/// it.
+class _StatusTick extends StatelessWidget {
+  const _StatusTick({required this.status});
+
+  final MessageStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      // One slot, right-aligned, rather than the default Stack that sizes
+      // itself to hold every child at once. The ticks are not the same width —
+      // one check against two — and the default would shove the timestamp
+      // sideways and back for the length of the transition.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.centerRight,
+        children: [...previous, if (current != null) current],
+      ),
+      transitionBuilder: (child, animation) => FadeTransition(
+        // Plain `animation` here and a curve only on the scale: `easeOutBack`
+        // overshoots above 1 by design, which is what gives the tick its snap —
+        // and what would trip Opacity's assert if it drove the fade too.
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.55, end: 1).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          ),
+          child: child,
+        ),
+      ),
+      child: Icon(
+        switch (status) {
+          MessageStatus.sending => Icons.schedule,
+          MessageStatus.delivered => Icons.done,
+          MessageStatus.read => Icons.done_all,
+          MessageStatus.failed => Icons.error_outline,
+        },
+        // The key is what makes this a transition at all: without it the
+        // switcher sees one Icon being reconfigured and swaps the glyph
+        // silently, exactly as before.
+        key: ValueKey(status),
+        size: 12,
+        color: switch (status) {
+          MessageStatus.failed => AppColors.danger,
+          MessageStatus.read => _BubbleMeta._readColor,
+          _ => AppColors.ink(0.85),
+        },
+        semanticLabel: switch (status) {
+          MessageStatus.sending => t.chatSending,
+          MessageStatus.delivered => t.chatDelivered,
+          MessageStatus.read => t.chatRead,
+          MessageStatus.failed => '!',
+        },
+      ),
     );
   }
 }
