@@ -1,3 +1,14 @@
+@Tags(['golden'])
+// Golden comparisons, so they are pinned to the machine that recorded them.
+// Font rasterisation differs between platforms — these goldens were captured on
+// Windows and a Linux runner reproduces them within about 3% of pixels, which
+// is a real difference and not a real regression. Re-recording on CI would only
+// move the failure to the developer's machine.
+//
+// Excluded from CI with `--exclude-tags golden`; run them locally, where the
+// comparison means something, with `flutter test --tags golden`.
+library;
+
 import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';

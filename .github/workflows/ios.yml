@@ -57,8 +57,9 @@ jobs:
             exit 1
           fi
 
+      # Goldens excluded — see android.yml.
       - name: Test
-        run: flutter test
+        run: flutter test --exclude-tags golden
 
   build:
     name: Build unsigned IPA

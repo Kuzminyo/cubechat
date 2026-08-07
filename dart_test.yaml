@@ -1,0 +1,8 @@
+# Declared so `--tags` / `--exclude-tags` do not warn about an unknown tag.
+tags:
+  golden:
+    description: >-
+      Pixel comparisons against checked-in PNGs. Host-specific: the goldens are
+      recorded on the developer's machine and font rasterisation differs across
+      platforms, so CI excludes them rather than chasing a diff that says
+      nothing about the code.
