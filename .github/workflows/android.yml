@@ -50,8 +50,22 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
+      # `--no-fatal-infos` alone does NOT stop analyze exiting 1 — it still
+      # fails on the several hundred style infos this tree carries. Only
+      # `--no-fatal-warnings` silences the exit code, and that would throw away
+      # real warnings along with the trailing commas. So both flags go in to get
+      # a zero exit, and the severities we actually care about are read back out
+      # of the output. (The separator differs by platform: "error -" locally on
+      # Windows, "error •" on the Linux runner.)
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings | tee analyze.log
+          if grep -qE '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log; then
+            echo "::error::flutter analyze reported errors or warnings"
+            grep -E '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log
+            exit 1
+          fi
 
       - name: Test
         run: flutter test

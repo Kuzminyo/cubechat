@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/identity/avatar_controller.dart';
-import '../../../core/theme/colors.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_toast.dart';

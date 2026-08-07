@@ -45,8 +45,17 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
+      # Both flags, then read the severities back out of the output — see
+      # android.yml for why `--no-fatal-infos` on its own is not enough.
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings | tee analyze.log
+          if grep -qE '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log; then
+            echo "::error::flutter analyze reported errors or warnings"
+            grep -E '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log
+            exit 1
+          fi
 
       - name: Test
         run: flutter test
