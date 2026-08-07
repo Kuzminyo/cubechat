@@ -18,8 +18,49 @@ permissions:
   contents: write
 
 jobs:
+  # Nothing was checked before a build was published. Both workflows compiled
+  # whatever was on main and pushed it straight to a release, so a commit that
+  # broke a test or stopped analysing cleanly shipped to testers exactly like a
+  # good one — and the first anyone knew of it was the app misbehaving on a
+  # phone.
+  #
+  # Gated on errors and warnings, not on lints. `flutter analyze` fails on any
+  # issue at all by default, and the tree carries a few hundred style infos
+  # (mostly missing trailing commas); making those block a build would mean the
+  # gate is switched off within a day. --no-fatal-infos keeps it meaningful:
+  # something has to actually be wrong for this to go red.
+  verify:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
   build:
     name: Build debug APK
+    # No point spending a build, or publishing one, on a tree that fails its
+    # own tests.
+    needs: verify
     # Ubuntu runner ships the Android SDK and can reach dl.google.com, which the
     # sandboxed dev environment cannot — this is why the APK is built in CI.
     runs-on: ubuntu-latest

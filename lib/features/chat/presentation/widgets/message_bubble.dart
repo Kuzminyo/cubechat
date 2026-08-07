@@ -31,6 +31,7 @@ import 'emoji_picker_sheet.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import '../view_once_media_screen.dart';
+import '../../../../core/util/media_storage.dart';
 import 'file_bubble.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
@@ -190,14 +191,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     duration: const Duration(milliseconds: 220),
   )..addListener(() {
       if (_swipeFrom == 0) return;
-      setState(() {
-        _dragX = _swipeFrom * (1 - Curves.easeOutCubic.transform(_swipe.value));
-      });
+      _dragX.value =
+          _swipeFrom * (1 - Curves.easeOutCubic.transform(_swipe.value));
     });
 
   /// Current horizontal offset of the bubble; never positive (this gesture only
   /// goes left) and never past [_swipeMax].
-  double _dragX = 0;
+  ///
+  /// A notifier rather than a field, and moved with `.value` rather than
+  /// `setState`, because of what sits underneath it. Rebuilding this widget
+  /// rebuilds the whole bubble — the photo, the caption, the reaction row, the
+  /// read-by chip, every `MediaQuery` and localization lookup in the subtree —
+  /// and the offset was being changed twice per gesture at frame rate: once per
+  /// pointer move while the finger drags, then again on every tick of the
+  /// spring coming home. On a 120 Hz screen that was the entire bubble rebuilt
+  /// a hundred times a second to move it sideways by a few pixels, which is
+  /// what made the swipe tear.
+  ///
+  /// The subtree is now built once and handed to [ValueListenableBuilder] as
+  /// `child`, so a frame of this gesture costs one `Transform.translate` and
+  /// nothing else. The animation is unchanged — same curve, same duration, same
+  /// distance; only the per-frame bill for it is gone.
+  final ValueNotifier<double> _dragX = ValueNotifier<double>(0);
 
   /// Where the spring started, so the animation can interpolate home.
   double _swipeFrom = 0;
@@ -220,6 +235,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   void dispose() {
     _c.dispose();
     _swipe.dispose();
+    _dragX.dispose();
     super.dispose();
   }
 
@@ -255,15 +271,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   void _onSwipeUpdate(DragUpdateDetails d) {
     if (!_canReply) return;
     _swipe.stop();
-    final next = (_dragX + d.delta.dx).clamp(-_swipeMax, 0.0);
+    final next = (_dragX.value + d.delta.dx).clamp(-_swipeMax, 0.0);
     final armed = next <= -_swipeTrigger;
     // Fires as the threshold is crossed in either direction, so the finger is
     // told what a release would do while it can still change its mind.
     if (armed != _armed) HapticFeedback.selectionClick();
-    setState(() {
-      _dragX = next;
-      _armed = armed;
-    });
+    // No setState: _armed is haptics-only and never read in build, and the
+    // offset drives the transform through its own notifier.
+    _dragX.value = next;
+    _armed = armed;
   }
 
   void _onSwipeEnd() {
@@ -273,7 +289,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       _startReply();
     }
     _armed = false;
-    _swipeFrom = _dragX;
+    _swipeFrom = _dragX.value;
     if (_swipeFrom != 0) _swipe.forward(from: 0);
   }
 
@@ -883,11 +899,30 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       .read(messageSelectionProvider(widget.chatId).notifier)
                       .toggle(message.id)
                   : null,
-              child: Stack(
-                children: [
-                  Transform.translate(
-                    offset: Offset(_dragX, 0),
-                    child: Row(
+              child: ValueListenableBuilder<double>(
+                valueListenable: _dragX,
+                // Rebuilt every frame of the gesture: a translate and, past a
+                // pixel of travel, the hint. The bubble itself arrives as
+                // `child` — built once, moved cheaply.
+                builder: (_, dragX, child) => Stack(
+                  children: [
+                    Transform.translate(
+                      offset: Offset(dragX, 0),
+                      child: child,
+                    ),
+                    if (dragX < -1)
+                      Positioned.fill(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _SwipeReplyHint(
+                            progress:
+                                (dragX.abs() / _swipeTrigger).clamp(0, 1),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                child: Row(
                       mainAxisAlignment: mine
                           ? MainAxisAlignment.end
                           : MainAxisAlignment.start,
@@ -950,17 +985,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         ),
                       ],
                     ),
-                  ),
-                  if (_dragX < -1)
-                    Positioned.fill(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: _SwipeReplyHint(
-                          progress: (_dragX.abs() / _swipeTrigger).clamp(0, 1),
-                        ),
-                      ),
-                    ),
-                ],
               ),
             ),
           ),
@@ -1240,7 +1264,7 @@ class _ImagePayload extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = message.imagePath;
-    final fileExists = path != null && File(path).existsSync();
+    final fileExists = path != null && MediaPaths.exists(path);
 
     // A view-once photo never renders as a thumbnail. The whole point is that
     // it is looked at deliberately, once — a picture you can scroll past twice

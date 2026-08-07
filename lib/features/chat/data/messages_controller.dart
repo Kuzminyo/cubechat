@@ -26,6 +26,13 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 
   @override
   Map<String, List<Message>> build() {
+    // A debounced write must not outlive the notifier that queued it: the box
+    // is closed with the container, so a timer firing afterwards has nowhere to
+    // put anything and only logs a failure for a write nobody is waiting on.
+    ref.onDispose(() {
+      _persistTimer?.cancel();
+      _persistTimer = null;
+    });
     unawaited(_loading = _loadFromDisk());
     return <String, List<Message>>{};
   }
@@ -139,6 +146,12 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         // The row is still marked opened even if the unlink failed — a file we
         // could not remove is a worse outcome than a bubble that lies about it.
         debugPrint('view-once delete failed: $e');
+      } finally {
+        // Existence answers are memoized for a couple of seconds so the bubbles
+        // are not stat()-ing on every animation frame. A burn is exactly the
+        // case that must not wait out that window: the promise is that the
+        // photo is gone the moment the viewer closes.
+        MediaPaths.forget(path);
       }
     }
     final list = [...current]..[idx] = target.copyWith(
@@ -463,6 +476,13 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 
   /// Erase every conversation — used by Emergency Wipe.
   Future<void> clearAll() async {
+    // Before the box is touched, and without flushing: a debounced write still
+    // holding a snapshot of a conversation would otherwise land *after* the
+    // clear and put it straight back. A wipe that leaves messages behind is the
+    // worst bug this file could have.
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    _dirty.clear();
     state = <String, List<Message>>{};
     try {
       await _box?.clear();
@@ -485,6 +505,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (removed == 0) return 0;
     if (next.isEmpty) {
       state = {...state}..remove(chatId);
+      // Same reasoning as clearAll: drop the pending snapshot rather than let
+      // it be written over the delete.
+      _dirty.remove(chatId);
       try {
         await _box?.delete(chatId);
       } catch (e) {
@@ -492,7 +515,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       }
     } else {
       state = {...state, chatId: next};
-      await _persist(chatId, next);
+      _persist(chatId, next);
     }
     return removed;
   }
@@ -501,6 +524,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   Future<void> clearForChat(String chatId) async {
     if (!state.containsKey(chatId)) return;
     state = {...state}..remove(chatId);
+    // A pending snapshot of this chat would land after the delete and undo it.
+    _dirty.remove(chatId);
     try {
       await _box?.delete(chatId);
     } catch (e) {
@@ -524,13 +549,57 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     return out;
   }
 
-  Future<void> _persist(String peerId, List<Message> msgs) async {
+  /// Conversations with an unwritten change, and the snapshot to write.
+  ///
+  /// One Hive key holds a whole conversation, so persisting anything means
+  /// re-encoding and re-encrypting all of it. That was being done on every
+  /// mutation from eighteen call sites — and most of them are not "a message
+  /// arrived", they are a tick turning grey to blue, a reaction, a read
+  /// receipt. On a chat with two thousand messages a single delivery receipt
+  /// re-encoded two thousand messages and pushed the lot through AES, on the UI
+  /// isolate. The longer a conversation got, the more a phone stuttered doing
+  /// nothing in particular — the cost grew with history rather than with the
+  /// change.
+  ///
+  /// Coalescing fixes the shape of that: a burst of receipts arriving together
+  /// now writes once instead of once each, and the snapshot written is the last
+  /// one, which is the only one that was ever going to survive anyway. The
+  /// window is short enough to be invisible and the write still happens without
+  /// anyone asking, so nothing downstream changes.
+  final Map<String, List<Message>> _dirty = <String, List<Message>>{};
+  Timer? _persistTimer;
+
+  /// Long enough to swallow a burst, short enough that a kill in the gap costs
+  /// nothing anyone would notice.
+  static const Duration _persistDebounce = Duration(milliseconds: 400);
+
+  void _persist(String peerId, List<Message> msgs) {
+    if (_box == null) return;
+    _dirty[peerId] = msgs;
+    _persistTimer ??= Timer(_persistDebounce, () {
+      _persistTimer = null;
+      unawaited(flushPending());
+    });
+  }
+
+  /// Write every pending conversation now.
+  ///
+  /// Public because a debounced write is a promise, and the two moments that
+  /// can break it — the app going to the background, and the process being
+  /// disposed — are both outside this class.
+  Future<void> flushPending() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
     final box = _box;
-    if (box == null) return;
-    try {
-      await box.put(peerId, msgs.map(_encode).toList());
-    } catch (e) {
-      debugPrint('Messages persist($peerId) failed: $e');
+    if (box == null || _dirty.isEmpty) return;
+    final batch = Map<String, List<Message>>.from(_dirty);
+    _dirty.clear();
+    for (final entry in batch.entries) {
+      try {
+        await box.put(entry.key, entry.value.map(_encode).toList());
+      } catch (e) {
+        debugPrint('Messages persist(${entry.key}) failed: $e');
+      }
     }
   }
 

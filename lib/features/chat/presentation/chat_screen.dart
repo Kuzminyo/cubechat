@@ -1786,7 +1786,7 @@ class _PinnedBar extends StatelessWidget {
     final path = message.imagePath;
     final thumb = (message.kind == MessageKind.image &&
             path != null &&
-            File(path).existsSync())
+            MediaPaths.exists(path))
         ? ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.file(

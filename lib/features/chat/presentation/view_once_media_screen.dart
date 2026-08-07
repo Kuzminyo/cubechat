@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/media_storage.dart';
 import '../../../l10n/app_localizations.dart';
 import '../models/message.dart';
 
@@ -173,7 +174,7 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
         children: [
           Expanded(
             child: Center(
-              child: path == null || !File(path).existsSync()
+              child: path == null || !MediaPaths.exists(path)
                   ? Text(
                       t.viewOnceUnavailable,
                       style: TextStyle(color: AppColors.textOnGlassDim),

@@ -15,6 +15,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/chat_navigation.dart';
+import '../../../core/util/media_storage.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
@@ -63,8 +64,7 @@ class _ChatMediaGalleryScreenState
               // into it from a neighbouring photo. This screen can share and
               // save what it shows.
               !m.viewOnce &&
-              m.imagePath != null &&
-              File(m.imagePath!).existsSync(),
+              MediaPaths.existsOrNull(m.imagePath),
         )
         .toList();
   }

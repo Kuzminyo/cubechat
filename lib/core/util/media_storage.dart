@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'debug_log.dart';
@@ -71,12 +72,79 @@ class MediaPaths {
     final sep = Platform.pathSeparator;
     final rebased =
         '$root$sep${parts[parts.length - 2]}$sep${parts[parts.length - 1]}';
-    return File(rebased).existsSync() ? rebased : stored;
+    return exists(rebased) ? rebased : stored;
   }
 
   /// Null-tolerant, for the three optional path fields on a message.
   static String? repairOrNull(String? stored) =>
       stored == null ? null : repair(stored);
+
+  // ---- memoized existence ----
+  //
+  // `existsSync()` is a blocking syscall, and every one of its callers asks
+  // from inside a widget build: the image bubble opens with it, and so do the
+  // voice bubble, the pinned bar, the wallpaper layer and [repair] itself.
+  //
+  // A build is not a rare event. While a chat is scrolled, or a page slides
+  // under the back gesture, every visible bubble rebuilds on every frame — so a
+  // screen holding eight photos asked the filesystem eight questions per frame,
+  // ~960 of them a second at 120 Hz, and the answer had not changed since the
+  // app launched. That is the tearing under the swipe, the stutter when a chat
+  // opens, and on Android it is heat: the syscall blocks the UI isolate, so the
+  // frame budget is spent waiting on storage instead of drawing.
+  //
+  // So the answer is remembered. [_ttl] is long enough that no animation ever
+  // pays for the same question twice, and short enough that a file appearing or
+  // vanishing behind the app's back corrects itself while the user is still
+  // looking at the screen. Anything this app deletes itself calls [forget], so
+  // a burned view-once photo reads as gone immediately rather than at the end
+  // of the window.
+
+  static final Map<String, _Existence> _existsCache = <String, _Existence>{};
+
+  /// Monotonic, unlike `DateTime.now()` — a clock change must not extend or
+  /// expire a cached answer.
+  static final Stopwatch _clock = Stopwatch()..start();
+
+  static const int _ttlMs = 2000;
+
+  /// Only ever a few dozen paths are on screen at once; the ceiling exists so a
+  /// long scroll through a media-heavy history cannot grow this without bound.
+  static const int _maxEntries = 512;
+
+  /// `File(path).existsSync()`, answered from memory when it was asked
+  /// recently. Safe to call from `build`.
+  static bool exists(String path) {
+    if (path.isEmpty) return false;
+    final now = _clock.elapsedMilliseconds;
+    final hit = _existsCache[path];
+    if (hit != null && now - hit.askedAt < _ttlMs) return hit.value;
+    final value = File(path).existsSync();
+    if (_existsCache.length >= _maxEntries) _existsCache.clear();
+    _existsCache[path] = _Existence(value, now);
+    return value;
+  }
+
+  /// Null-tolerant, matching [repairOrNull].
+  static bool existsOrNull(String? path) => path != null && exists(path);
+
+  /// Drop a remembered answer, for the moment the app itself creates or
+  /// destroys the file and cannot wait out [_ttlMs] to say so.
+  static void forget(String? path) {
+    if (path != null) _existsCache.remove(path);
+  }
+
+  /// After an Emergency Wipe, or anything else that clears media wholesale.
+  static void forgetAll() => _existsCache.clear();
+
+  @visibleForTesting
+  static void resetCacheForTest() => _existsCache.clear();
+}
+
+class _Existence {
+  const _Existence(this.value, this.askedAt);
+  final bool value;
+  final int askedAt;
 }
 
 /// Received photos.

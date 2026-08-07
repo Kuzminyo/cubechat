@@ -15,10 +15,12 @@ import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/chat/data/messages_controller.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
 import 'features/peers/data/known_peers_controller.dart';
 import 'features/peers/data/peer_discovery_controller.dart';
+import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
 import 'l10n/app_localizations.dart';
 
@@ -175,7 +177,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
-    _applyIosBackgroundPolicy(resumed: state == AppLifecycleState.resumed);
+    _applyBackgroundRadioPolicy(resumed: state == AppLifecycleState.resumed);
     // Tell internet-reachable peers we've arrived / are leaving, so their "in
     // the app" dot flips now instead of waiting out the heartbeat. The goodbye
     // is best-effort by nature — the OS can kill us without another callback —
@@ -194,6 +196,13 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       _announcePresenceDebounced(
         online: state == AppLifecycleState.resumed,
       );
+    }
+    // Message writes are coalesced behind a short debounce, so leaving is the
+    // moment to make good on them: from `paused` onward the OS may kill the
+    // process without another callback, and an unwritten conversation would go
+    // with it.
+    if (state != AppLifecycleState.resumed) {
+      unawaited(ref.read(messagesControllerProvider.notifier).flushPending());
     }
     // The engine is pre-warmed in MainApplication, so main() (and this
     // widget) can build while the app is still headless — and Android 12+
@@ -217,26 +226,49 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     }
   }
 
-  /// Honour the "keep running in the background" preference on iOS.
+  /// Honour the "keep running in the background" preference, on both platforms.
   ///
-  /// On Android that preference is a foreground service: turning it off lets
-  /// the OS suspend us and the radio stops by itself. iOS has no equivalent.
-  /// Info.plist declares the bluetooth-central/peripheral background modes, so
-  /// the process is never suspended — scanning kept cycling the radio, the
-  /// peripheral kept advertising, and the timers kept firing, forever, no
-  /// matter what the toggle said. The toggle was inert on iOS (the
-  /// `cubechat/background` channel only exists in MainApplication.kt), which is
-  /// why an iPhone ran hot and flattened its battery where an Android didn't.
+  /// iOS has no equivalent of Android's foreground service. Info.plist declares
+  /// the bluetooth-central/peripheral background modes, so the process is never
+  /// suspended — scanning kept cycling the radio, the peripheral kept
+  /// advertising, and the timers kept firing, forever, no matter what the
+  /// toggle said. The toggle was inert on iOS (the `cubechat/background`
+  /// channel only exists in MainApplication.kt), which is why an iPhone ran hot
+  /// and flattened its battery where an Android didn't.
   ///
-  /// So on iOS we enforce it ourselves: take the radio down on the way out,
-  /// bring it back on the way in. With the preference ON nothing changes — the
-  /// app stays reachable in the background exactly as before.
-  void _applyIosBackgroundPolicy({required bool resumed}) {
-    if (!PlatformInfo.isIOS) return;
+  /// Android was assumed to need none of this, on the reasoning that turning
+  /// the preference off lets the OS suspend us and the radio stops by itself.
+  /// That is true eventually and not soon: a paused Android process keeps its
+  /// Dart timers running and its advertisement live until Doze takes over,
+  /// which needs the device to be still, and which the foreground service opts
+  /// out of entirely. So the phone that was promised the cheapest behaviour —
+  /// preference off, screen off, in a pocket — was the one still advertising
+  /// four times a second. Both platforms now take the radio down when the
+  /// preference is off.
+  ///
+  /// With the preference ON the app must stay reachable, so nothing is torn
+  /// down. What happens instead is [_applyAdvertisePower]: the same
+  /// availability at a quarter of the radio events.
+  void _applyBackgroundRadioPolicy({required bool resumed}) {
+    _applyAdvertisePower(resumed: resumed);
     if (ref.read(backgroundModeProvider)) return; // user wants to stay live
+    if (!PlatformInfo.isIOS && !PlatformInfo.isAndroid) return;
     final discovery = ref.read(peerDiscoveryControllerProvider.notifier);
     // start() is idempotent and restores scanning and advertising together.
     unawaited(resumed ? discovery.start() : discovery.suspend());
+  }
+
+  /// Cheap advertising while the app is out of sight, normal while it is not.
+  ///
+  /// Only meaningful when the radio stays up at all — which is the
+  /// stay-reachable case, where suspending is exactly what the user asked us
+  /// not to do. Scanning already backs off on its own; this is the other half,
+  /// and the one that runs continuously rather than in windows.
+  void _applyAdvertisePower({required bool resumed}) {
+    if (!PlatformInfo.isAndroid) return;
+    unawaited(
+      ref.read(blePeripheralProvider).setAdvertisePower(low: !resumed),
+    );
   }
 
   @override

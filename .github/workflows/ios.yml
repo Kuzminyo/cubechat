@@ -20,8 +20,40 @@ permissions:
   contents: write
 
 jobs:
+  # Deliberately on Ubuntu, not on the macOS runner below. The tests are
+  # platform-agnostic, and macOS minutes bill at 10× — so gating here costs a
+  # couple of ordinary minutes and saves an expensive build on a tree that was
+  # never going to be worth shipping. See android.yml for why --no-fatal-infos.
+  verify:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
   build:
     name: Build unsigned IPA
+    needs: verify
     # GitHub-hosted macOS runner — 10× minute multiplier but public repos
     # get unlimited minutes, private repos get 200 free macOS minutes/month.
     # macos-15 ships Xcode 16 (iOS 18 SDK); the macos-14 default Xcode 15 lacks

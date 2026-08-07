@@ -7,6 +7,7 @@ import '../../../../core/identity/anon_name.dart';
 import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../../core/util/media_storage.dart';
 import '../../../peers/data/contact_aliases_controller.dart';
 import '../../../peers/data/known_peers_controller.dart';
 import '../../data/voice_playback_controller.dart';
@@ -102,8 +103,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
   Widget build(BuildContext context) {
     final playback = ref.watch(voicePlaybackControllerProvider);
     final isCurrent = playback.isCurrent(widget.message.id);
-    final hasFile = widget.message.audioPath != null &&
-        File(widget.message.audioPath!).existsSync();
+    final hasFile = MediaPaths.existsOrNull(widget.message.audioPath);
 
     final declared =
         Duration(milliseconds: widget.message.audioDurationMs ?? 0);

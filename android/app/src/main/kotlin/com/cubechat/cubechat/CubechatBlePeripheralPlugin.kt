@@ -59,6 +59,23 @@ class CubechatBlePeripheralPlugin(
     private var pubkeyFingerprint: String? = null
     private var protocolVersion: Int = 1
 
+    /// Whether advertising should run at its cheap cadence.
+    ///
+    /// Scanning already backs right off when the app is not in front of the
+    /// user — up to a four-minute gap between windows. Advertising has no such
+    /// thing: it is continuous by nature, and at ADVERTISE_MODE_BALANCED that
+    /// is a packet on all three channels roughly every 250 ms, all night, for a
+    /// phone in a pocket that nobody is looking for. It is the largest constant
+    /// radio cost the app has while idle.
+    ///
+    /// LOW_POWER moves that to ~1 s and drops the transmit level a notch: a
+    /// quarter of the radio events, and a peer who *is* looking still finds us
+    /// within their scan window, because their window is seconds wide and they
+    /// are the one in the foreground doing the looking. Discoverability is
+    /// unchanged in the case that matters; what goes away is shouting at an
+    /// empty room four times a second.
+    private var lowPower = false
+
     private var advertiser: BluetoothLeAdvertiser? = null
     private var gattServer: BluetoothGattServer? = null
     private var inboundChar: BluetoothGattCharacteristic? = null
@@ -113,6 +130,14 @@ class CubechatBlePeripheralPlugin(
             "stop" -> {
                 stopPeripheral()
                 result.success(null)
+            }
+            // Advertising only. The GATT server and any live connection are
+            // deliberately left alone — this is a cadence change, not a
+            // teardown, and restarting the server would drop whoever is
+            // mid-conversation with us just because the screen went off.
+            "setAdvertisePower" -> {
+                val low = call.argument<Boolean>("low") ?: false
+                result.success(setAdvertisePower(low))
             }
             "notifyInbound" -> {
                 val data = call.argument<ByteArray>("data")
@@ -255,12 +280,7 @@ class CubechatBlePeripheralPlugin(
         inboundChar = inbound
 
         // 2. Advertise.
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-            .setConnectable(true)
-            .setTimeout(0)
-            .build()
+        val settings = buildAdvertiseSettings()
 
         val advertiseData = AdvertiseData.Builder()
             .setIncludeTxPowerLevel(false)
@@ -298,6 +318,60 @@ class CubechatBlePeripheralPlugin(
         } catch (e: SecurityException) {
             emitLog("advertise denied (SecurityException): ${e.message}")
             stopPeripheral()
+            false
+        }
+    }
+
+    private fun buildAdvertiseSettings(): AdvertiseSettings =
+        AdvertiseSettings.Builder()
+            .setAdvertiseMode(
+                if (lowPower) AdvertiseSettings.ADVERTISE_MODE_LOW_POWER
+                else AdvertiseSettings.ADVERTISE_MODE_BALANCED
+            )
+            .setTxPowerLevel(
+                if (lowPower) AdvertiseSettings.ADVERTISE_TX_POWER_LOW
+                else AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+            )
+            .setConnectable(true)
+            .setTimeout(0)
+            .build()
+
+    /// Re-advertise at the other cadence, leaving the GATT server up.
+    ///
+    /// Returns false when there was nothing to re-advertise, which is not an
+    /// error: the peripheral may simply not be running.
+    private fun setAdvertisePower(low: Boolean): Boolean {
+        if (lowPower == low) return running
+        lowPower = low
+        if (!running) return false
+        val adv = advertiser ?: return false
+        val svc = serviceUuid ?: return false
+        return try {
+            // Android has no "change the settings of a live advertisement", so
+            // it is a stop and a start. Connections live on the GATT server,
+            // which is untouched, so nothing in flight notices.
+            adv.stopAdvertising(advertiseCallback)
+            val advertiseData = AdvertiseData.Builder()
+                .setIncludeTxPowerLevel(false)
+                .setIncludeDeviceName(false)
+                .addServiceUuid(ParcelUuid(svc))
+                .build()
+            val scanResponseBuilder = AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+            val idBytes = advertisedId
+            if (idBytes != null && idBytes.isNotEmpty()) {
+                scanResponseBuilder.addServiceData(ParcelUuid(svc), idBytes)
+            }
+            adv.startAdvertising(
+                buildAdvertiseSettings(),
+                advertiseData,
+                scanResponseBuilder.build(),
+                advertiseCallback,
+            )
+            emitLog("re-advertising at ${if (low) "LOW_POWER" else "BALANCED"}")
+            true
+        } catch (e: SecurityException) {
+            emitLog("re-advertise denied (SecurityException): ${e.message}")
             false
         }
     }

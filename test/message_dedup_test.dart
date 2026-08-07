@@ -138,8 +138,10 @@ void main() {
       n.append('peer', mine('привет', wireId: 'aa' * 16));
       n.markRead('peer', {'aa' * 16});
       final stamped = n.forPeer('peer').single.readAt;
-      // markRead persists in the background; give the box write a moment.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // Writes are coalesced behind a short debounce, so ask for them rather
+      // than sleeping past it — the claim is that the value reaches disk, not
+      // that it does so within some number of milliseconds.
+      await n.flushPending();
 
       final fresh = ProviderContainer();
       addTearDown(fresh.dispose);
@@ -185,6 +187,7 @@ void main() {
       ['Оно', 'Дублируется'],
     );
     // …and the repair is written back, so it doesn't have to run again.
+    await n.flushPending();
     expect(box.get('peer'), hasLength(2));
   });
 }

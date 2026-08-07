@@ -372,6 +372,10 @@ class MessagingService {
   StreamSubscription<Uint8List>? _nostrSub;
   StreamSubscription<Map<String, RelayState>>? _relayStateSub;
 
+  /// Last seen relay connectivity, so [nudgeFileQueue] fires on the edge rather
+  /// than on every state message a flapping relay emits.
+  bool _relayWasConnected = false;
+
   /// Where the relay subscription resumes from across restarts.
   final RelayWatermarkStore _relayWatermark = RelayWatermarkStore();
 
@@ -422,9 +426,17 @@ class MessagingService {
             onError: (Object e) =>
                 DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
           );
-      _relayStateSub = client.stateChanges.listen(
-        (states) => _ref.read(relayStatusProvider.notifier).publish(states),
-      );
+      _relayStateSub = client.stateChanges.listen((states) {
+        _ref.read(relayStatusProvider.notifier).publish(states);
+        // A relay coming up is a media route appearing, exactly like a BLE
+        // session doing so — and for a peer we only ever reach over the
+        // internet it is the *only* one. Nudge on the transition rather than on
+        // every state message, or a flapping relay would re-arm the drain
+        // continuously and undo the back-off it exists to allow.
+        final connected = client.isConnected;
+        if (connected && !_relayWasConnected) nudgeFileQueue();
+        _relayWasConnected = connected;
+      });
       client.start();
       _ref.read(relayStatusProvider.notifier).publish(client.states);
       DebugLog.instance.log(
@@ -731,7 +743,16 @@ class MessagingService {
     client.connectionState.listen((s) {
       if (s == BluetoothConnectionState.disconnected) {
         _ref.read(chatSessionManagerProvider.notifier).drop(peerId);
-        _clients.remove(peerId);
+        // Dispose, don't merely drop the reference — the same reasoning as the
+        // failed-connect path above, for the case that happens far more often.
+        // A peer walking out of range is the ordinary end of a BLE link, and
+        // this arm ran on every one of them: the client keeps three live
+        // subscriptions to the platform's device streams plus two stream
+        // controllers, and a bare remove() leaves all five behind. A day of
+        // walking past people therefore accumulated one leak per encounter,
+        // silently, on the path least likely to be noticed because nothing
+        // about it looks like an error.
+        unawaited(_clients.remove(peerId)?.dispose() ?? Future<void>.value());
       }
     });
 
@@ -5336,12 +5357,47 @@ class MessagingService {
 
   bool hasMediaRouteFor(String chatId) => _hasMediaRoute(chatId);
 
+  /// How often the queued-file drain runs when it keeps finding work.
+  static const Duration _fileQueueBase = Duration(seconds: 5);
+
+  /// Ceiling on the gap once the queue has been empty for a while.
+  static const Duration _fileQueueIdleMax = Duration(minutes: 5);
+
+  /// Current gap, doubling while there is nothing to send.
+  ///
+  /// This was a flat five seconds, forever: ~17,000 wakeups a day, each one
+  /// resolving a provider and filtering the transfer map, on a phone that
+  /// spends most of its life asleep in a pocket with an empty queue. The cost
+  /// was never the work — there usually is none — it is that a periodic timer
+  /// is a wakeup the OS cannot coalesce away, so the processor is denied its
+  /// deep idle state all night. That is the background half of the heat.
+  ///
+  /// So the gap grows while the answer keeps being "nothing", and collapses the
+  /// moment that could have changed — see [nudgeFileQueue]. A queued file still
+  /// leaves as promptly as before; what got cheap is asking about one that
+  /// isn't there.
+  Duration _fileQueueGap = _fileQueueBase;
+
   void _startFileQueueTimer() {
     _fileQueueTimer?.cancel();
-    _fileQueueTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => unawaited(_drainFileQueue()),
-    );
+    // One-shot and re-armed, rather than periodic, so the gap can change
+    // between runs.
+    _fileQueueTimer = Timer(_fileQueueGap, () async {
+      await _drainFileQueue();
+      if (!_disposed) _startFileQueueTimer();
+    });
+  }
+
+  /// Put the drain back on its fast cadence and run it now.
+  ///
+  /// Called whenever something changes that could make a stalled transfer
+  /// sendable: a file being queued, a session coming up, the relay connecting.
+  /// Without this the back-off would be paid for by the user — a file queued
+  /// while backed off would sit for minutes with a live link right there.
+  void nudgeFileQueue() {
+    _fileQueueGap = _fileQueueBase;
+    unawaited(_drainFileQueue());
+    _startFileQueueTimer();
   }
 
   Future<void> _drainFileQueue() async {
@@ -5359,6 +5415,15 @@ class MessagingService {
                 _hasMediaRoute(task.chatId),
           )
           .toList();
+      // Anything sendable means the next answer is worth asking for soon;
+      // an empty pass is evidence the one after it will be empty too.
+      if (queued.isEmpty) {
+        final next = _fileQueueGap * 2;
+        _fileQueueGap =
+            next >= _fileQueueIdleMax ? _fileQueueIdleMax : next;
+      } else {
+        _fileQueueGap = _fileQueueBase;
+      }
       for (final task in queued) {
         if (_disposed) break;
         try {
@@ -6252,6 +6317,11 @@ class MessagingService {
     // …and hand over anything we've been holding for this peer while they
     // were unreachable (store-and-forward delivery).
     unawaited(_flushStoreForwardFor(session));
+    // A link coming up is the event the queued-file drain has been backing off
+    // waiting for. Without this the back-off would be charged to the user: a
+    // file queued for someone who just walked into range would sit for minutes
+    // with a live link right there.
+    nudgeFileQueue();
     // A copy restriction set while they were away never reached them, and
     // there is no acknowledgement that would have told us. A session coming up
     // is the cheapest moment to say it — one frame, only when the answer is

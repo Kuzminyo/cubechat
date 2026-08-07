@@ -30,6 +30,7 @@ import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
+import '../util/media_storage.dart';
 import '../transport/chat_session_manager.dart';
 import '../transport/messaging_service.dart';
 import 'nickname_controller.dart';
@@ -46,6 +47,10 @@ import 'nickname_controller.dart';
 /// install — a brand new identity gets minted on first read of
 /// identityProvider, and chats list is empty.
 Future<void> emergencyWipe(WidgetRef ref) async {
+  // Remembered "does this file exist" answers, which outlive the rows that
+  // asked. Cheap to drop and wrong to keep: a wipe must not leave anything
+  // still saying yes about a photo it just deleted.
+  MediaPaths.forgetAll();
   // 1. In-memory state first so nothing tries to re-persist mid-wipe.
   await ref.read(messagesControllerProvider.notifier).clearAll();
   await ref.read(knownPeersControllerProvider.notifier).clear();

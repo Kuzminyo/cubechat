@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/util/media_storage.dart';
 import '../../data/conversation_settings_controller.dart';
 
 /// Paints one conversation's own background behind it, when it has one.
@@ -53,7 +54,7 @@ class ChatWallpaperPaint extends StatelessWidget {
     final path = wallpaper.imagePath;
 
     Widget base;
-    if (path != null && File(path).existsSync()) {
+    if (path != null && MediaPaths.exists(path)) {
       base = Image.file(
         File(path),
         fit: BoxFit.cover,

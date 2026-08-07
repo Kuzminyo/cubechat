@@ -23,6 +23,17 @@ abstract class BlePeripheral {
   Future<void> stop();
   Stream<PeripheralEvent> events();
 
+  /// Switch advertising between its normal and its cheap cadence.
+  ///
+  /// Android only; a no-op elsewhere. Scanning already backs off hard when the
+  /// app is out of sight, but advertising is continuous by nature — at the
+  /// normal cadence that is a packet roughly every 250 ms, forever, including
+  /// all night in a pocket. Low power moves it to about a second.
+  ///
+  /// Returns true when the cadence actually changed. Not an error when it does
+  /// not: the peripheral may not be running.
+  Future<bool> setAdvertisePower({required bool low});
+
   /// Push a single frame to every subscribed central via the inbound (notify)
   /// characteristic. Returns true if at least one central received it.
   /// Returns false if there are no subscribers, the radio is off, or the
@@ -92,6 +103,22 @@ class MethodChannelBlePeripheral implements BlePeripheral {
       // No-op until M1.5.
     } catch (e, st) {
       debugPrint('BlePeripheral.stop failed: $e\n$st');
+    }
+  }
+
+  @override
+  Future<bool> setAdvertisePower({required bool low}) async {
+    try {
+      final ok = await _channel
+          .invokeMethod<bool>('setAdvertisePower', {'low': low});
+      return ok ?? false;
+    } on MissingPluginException {
+      // iOS and desktop: CoreBluetooth gives no equivalent knob, and the app
+      // handles its background radio there by suspending outright.
+      return false;
+    } catch (e, st) {
+      debugPrint('BlePeripheral.setAdvertisePower failed: $e\n$st');
+      return false;
     }
   }
 
