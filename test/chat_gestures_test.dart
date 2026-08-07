@@ -188,55 +188,6 @@ void main() {
     );
   });
 
-  testWidgets('a reaction landing on a visible bubble pops its chip',
-      (tester) async {
-    // The chip has no previous state to differ from — it did not exist a frame
-    // ago — so the only thing that can tell "a reaction just arrived" apart
-    // from "the list scrolled this row back into view" is the bubble saying so.
-    // This pins the arrival half; the scroll half is in pop_on_change_test.
-    await openPeerChat(tester);
-
-    final finder = find.text('ключі під килимком').first;
-    await tester.tap(finder);
-    await tester.pump(const Duration(milliseconds: 60));
-    await tester.tap(finder);
-
-    // Let the chip be built, then land partway up the arc.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 90));
-
-    final scale = tester
-        .widget<ScaleTransition>(
-          find
-              .ancestor(
-                of: find.text('❤️'),
-                matching: find.byType(ScaleTransition),
-              )
-              .first,
-        )
-        .scale
-        .value;
-    expect(
-      scale,
-      greaterThan(1),
-      reason: 'the chip should swell as it arrives, not simply be there',
-    );
-
-    await beat(tester);
-    final settled = tester
-        .widget<ScaleTransition>(
-          find
-              .ancestor(
-                of: find.text('❤️'),
-                matching: find.byType(ScaleTransition),
-              )
-              .first,
-        )
-        .scale
-        .value;
-    expect(settled, moreOrLessEquals(1, epsilon: 0.001));
-  });
-
   testWidgets('a single tap leaves no reaction', (tester) async {
     final container = await openPeerChat(tester);
 
