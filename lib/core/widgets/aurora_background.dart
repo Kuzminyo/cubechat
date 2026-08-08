@@ -316,6 +316,26 @@ class _AuroraPainter extends CustomPainter {
     canvas.drawRect(rect, Paint()..color = Colors.black.withValues(alpha: 0.28));
   }
 
+  /// One drifting blob, shaded only where it can actually be seen.
+  ///
+  /// The gradient runs from the colour at the centre to fully transparent at
+  /// [radius], and `TileMode.clamp` holds it transparent past that — so every
+  /// pixel outside the blob's own circle is a guaranteed no-op. It was being
+  /// covered anyway: each of the four blobs did `drawRect(rect, …)` across the
+  /// whole screen, so a repaint shaded every pixel of the display four times
+  /// over, three of those four almost entirely for nothing.
+  ///
+  /// That is what the frame meter was pointing at. Halving the pane blur took
+  /// the *average* raster time down (6.3 → 4.8 ms) and left p90 where it was
+  /// (11.7 → 11.4), which is the signature of a cost that is not paid on every
+  /// frame: the blur is, and the aurora is not — it repaints on its own ~30 Hz
+  /// tick, so its cost lands on a minority of frames and shows up in the tail
+  /// rather than the mean.
+  ///
+  /// The shader still maps against the full [rect], so the gradient's geometry
+  /// is untouched; only the area handed to the rasteriser shrinks. The result
+  /// is pixel-identical, and the animation — period, path, colours — is
+  /// completely unchanged.
   void _blob(
     Canvas canvas,
     Rect rect,
@@ -329,7 +349,16 @@ class _AuroraPainter extends CustomPainter {
       radius: radius,
       colors: [color.withValues(alpha: alpha), Colors.transparent],
     ).createShader(rect);
-    canvas.drawRect(rect, Paint()..shader = shader);
+    // `radius` is a fraction of the shortest side, which is how RadialGradient
+    // reads it when it builds the shader above — so the same arithmetic here
+    // gives exactly the circle the gradient dies at.
+    final bounds = Rect.fromCircle(
+      center: center.withinRect(rect),
+      radius: radius * rect.shortestSide,
+    ).intersect(rect);
+    // A blob can drift far enough for its circle to miss the screen entirely.
+    if (bounds.isEmpty) return;
+    canvas.drawRect(bounds, Paint()..shader = shader);
   }
 
   @override
