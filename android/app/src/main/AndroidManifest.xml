@@ -18,9 +18,18 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
-    <!-- Location is required for BLE scanning on Android 6..11 -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- Location, for two unrelated reasons.
+
+         Historically only the first: Android 6..11 would not let an app scan
+         for BLE without it, which is why it was capped at API 30 — the mesh
+         never wanted anyone's position, and the BLUETOOTH_SCAN permission on
+         12+ is declared neverForLocation precisely to say so.
+
+         Sharing a location in a chat is the second, and it is a real request
+         for a real position, on every version. Coarse is enough: a pin is read
+         at street level and the app asks the platform for medium accuracy. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- Declare hardware requirement (but don't fail on absence — phones may emulate) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />

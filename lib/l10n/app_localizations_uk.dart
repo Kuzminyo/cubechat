@@ -1526,4 +1526,39 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get channelAdminOnlyHint => 'Канал оголошень. Читати можуть усі.';
+
+  @override
+  String get attachLocation => 'Геолокація';
+
+  @override
+  String get locationBubbleTitle => 'Геолокація';
+
+  @override
+  String get locationOpenInMaps => 'Відкрити в картах';
+
+  @override
+  String locationAccuracy(int metres) {
+    return 'з точністю до $metres м';
+  }
+
+  @override
+  String get locationExpired => 'Ця геолокація вже не актуальна';
+
+  @override
+  String get locationDenied => 'Доступ до геолокації вимкнено';
+
+  @override
+  String get locationUnavailable => 'Не вдалося визначити місце';
+
+  @override
+  String get locationShareFor => 'Поділитися на';
+
+  @override
+  String get locationShareOnce => 'Разово';
+
+  @override
+  String get locationShare15m => '15 хвилин';
+
+  @override
+  String get locationShare1h => '1 година';
 }

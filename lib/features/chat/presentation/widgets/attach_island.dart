@@ -5,7 +5,7 @@ import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
 
 /// What the attach island resolved to.
-enum AttachChoice { gallery, camera, file, poll }
+enum AttachChoice { gallery, camera, file, poll, location }
 
 /// The row of attachment categories, floating over the picker as its own
 /// island rather than sitting in a plate along the bottom edge.
@@ -75,6 +75,12 @@ class AttachIsland extends StatelessWidget {
             active: selected == AttachChoice.poll,
             onTap: () => onPick(AttachChoice.poll),
           ),
+        _AttachTab(
+          icon: Icons.place_outlined,
+          label: t.attachLocation,
+          active: selected == AttachChoice.location,
+          onTap: () => onPick(AttachChoice.location),
+        ),
       ],
     );
     if (bare) {

@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 0.30.0+95
+version: 0.31.0+96
 
 environment:
   sdk: ^3.6.0
@@ -49,6 +49,15 @@ dependencies:
   photo_manager: ^3.6.0
   share_plus: ^10.1.4
   saver_gallery: ^4.0.1
+
+  # Location sharing: the fix itself, and the way out to a map.
+  #
+  # No map SDK, deliberately. Drawing tiles means asking a tile server for the
+  # square the user is standing in — handing their position to a third party is
+  # precisely what this app exists not to do — so a shared location opens in the
+  # phone's own maps app instead, where the user already made that choice.
+  geolocator: ^13.0.2
+  url_launcher: ^6.3.1
 
   # Voice messages (audio capture + playback)
   record: ^6.0.0

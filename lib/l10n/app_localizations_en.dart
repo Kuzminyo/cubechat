@@ -1514,4 +1514,39 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get channelAdminOnlyHint =>
       'An announcement channel. Everyone still reads it.';
+
+  @override
+  String get attachLocation => 'Location';
+
+  @override
+  String get locationBubbleTitle => 'Location';
+
+  @override
+  String get locationOpenInMaps => 'Open in maps';
+
+  @override
+  String locationAccuracy(int metres) {
+    return 'within $metres m';
+  }
+
+  @override
+  String get locationExpired => 'This location is no longer current';
+
+  @override
+  String get locationDenied => 'Location permission is off';
+
+  @override
+  String get locationUnavailable => 'Could not get a position';
+
+  @override
+  String get locationShareFor => 'Share for';
+
+  @override
+  String get locationShareOnce => 'Just once';
+
+  @override
+  String get locationShare15m => '15 minutes';
+
+  @override
+  String get locationShare1h => '1 hour';
 }

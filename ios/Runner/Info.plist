@@ -79,6 +79,8 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<!-- BLE mesh transport (M1) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Only when you choose to share your location in a chat. Cubechat never tracks you in the background and never sends your position anywhere except to the people you send it to.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Cubechat uses Bluetooth to discover nearby peers and send messages over a local mesh network — no internet needed.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

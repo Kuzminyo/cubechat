@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
@@ -11,7 +12,9 @@ import '../../../../core/routing/back_gesture.dart';
 import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
+import '../../../../core/theme/typography.dart';
 import '../../../../core/transport/shared_contact.dart';
+import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
@@ -304,6 +307,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   SharedContact? get _sharedContact => widget.message.kind == MessageKind.text
       ? SharedContact.tryParse(widget.message.text)
+      : null;
+
+  /// A position rides inside a text message — see [SharedLocation] for why —
+  /// so it is recognised the same way a shared contact is.
+  SharedLocation? get _sharedLocation => widget.message.kind == MessageKind.text
+      ? SharedLocation.tryParse(widget.message.text)
       : null;
 
   bool get _canCopy => widget.message.text.trim().isNotEmpty;
@@ -730,6 +739,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             ?.copyingRestricted ??
         false;
     final sharedContact = _sharedContact;
+    final sharedLocation = _sharedLocation;
 
     // Marked in the bubble too, not only in the banner up top: scrolling back
     // through history, you want to see which line the banner is pointing at.
@@ -858,6 +868,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     message: message,
                     chatId: widget.chatId,
                   )
+                else if (sharedLocation != null)
+                  _SharedLocationBubble(location: sharedLocation)
                 else if (sharedContact != null)
                   _SharedContactBubble(
                     contact: sharedContact,
@@ -1047,6 +1059,107 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 /// Fills in as the drag approaches the threshold and reaches full strength
 /// exactly when the release would take, so "will this work?" is answered by
 /// looking rather than by trying.
+/// A shared position: what it is, how precise, and a way out to a real map.
+///
+/// No tiles. Rendering a map means fetching the square somebody is standing in
+/// from a tile server, which tells that server where they are — see
+/// [SharedLocation.geoUri]. The phone's own maps app is where the user already
+/// decided how they feel about that.
+class _SharedLocationBubble extends StatelessWidget {
+  const _SharedLocationBubble({required this.location});
+
+  final SharedLocation location;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final expired = location.expired;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 200, maxWidth: 250),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                expired ? Icons.location_off_outlined : Icons.place_rounded,
+                size: 20,
+                color: expired
+                    ? AppColors.textOnGlassDim
+                    : AppColors.brandPrimary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  t.locationBubbleTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${location.latitude.toStringAsFixed(5)}, '
+            '${location.longitude.toStringAsFixed(5)}',
+            style: AppTypography.mono(
+                size: 11.5, color: AppColors.textOnGlassDim),
+          ),
+          if (location.accuracyMetres > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              t.locationAccuracy(location.accuracyMetres),
+              style:
+                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            ),
+          ],
+          const SizedBox(height: 8),
+          if (expired)
+            // The row stays and says so. Hiding it would leave a gap where the
+            // sender plainly remembers sending something.
+            Text(
+              t.locationExpired,
+              style:
+                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            )
+          else
+            GestureDetector(
+              onTap: () async {
+                final uri = location.geoUri;
+                if (!await launchUrl(uri,
+                    mode: LaunchMode.externalApplication)) {
+                  if (!context.mounted) return;
+                  showGlassToast(context, t.locationUnavailable);
+                }
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.map_outlined,
+                      size: 15, color: AppColors.brandPrimary),
+                  const SizedBox(width: 6),
+                  Text(
+                    t.locationOpenInMaps,
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SharedContactBubble extends StatelessWidget {
   const _SharedContactBubble({
     required this.contact,

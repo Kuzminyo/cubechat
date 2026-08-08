@@ -611,5 +611,23 @@
   "meshOffHint": "Ніхто поруч вас не знайде, і ви їх теж. Повідомлення й далі йдуть через інтернет-реле.",
   "profileMeshSwitch": "Bluetooth-мережа",
   "profileMeshSwitchHint": "Знаходить людей поруч і передає повідомлення без інтернету. Вимкнено — економить батарею.",
-  "channelAdminOnlyHint": "Канал оголошень. Читати можуть усі."
+  "channelAdminOnlyHint": "Канал оголошень. Читати можуть усі.",
+  "attachLocation": "Геолокація",
+  "locationBubbleTitle": "Геолокація",
+  "locationOpenInMaps": "Відкрити в картах",
+  "locationAccuracy": "з точністю до {metres} м",
+  "@locationAccuracy": {
+    "placeholders": {
+      "metres": {
+        "type": "int"
+      }
+    }
+  },
+  "locationExpired": "Ця геолокація вже не актуальна",
+  "locationDenied": "Доступ до геолокації вимкнено",
+  "locationUnavailable": "Не вдалося визначити місце",
+  "locationShareFor": "Поділитися на",
+  "locationShareOnce": "Разово",
+  "locationShare15m": "15 хвилин",
+  "locationShare1h": "1 година"
 }

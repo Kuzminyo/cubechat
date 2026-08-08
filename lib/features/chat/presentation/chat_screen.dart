@@ -19,7 +19,9 @@ import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/location_service.dart';
 import '../../../core/util/media_storage.dart';
+import '../../../core/transport/shared_location.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
@@ -2406,7 +2408,97 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       case MediaPickerAssets(:final assets):
         if (assets.isEmpty) return;
         await _previewAndSend(assets);
+      case MediaPickerLocation():
+        await _shareLocation();
     }
+  }
+
+  /// Ask the phone where it is, ask how long that should stand for, send it.
+  ///
+  /// It goes out as an ordinary message — see [SharedLocation] — so it is
+  /// encrypted, signed and routed exactly like a line of text, over the mesh or
+  /// the relay, in a chat or a channel, with nothing new taught to any of them.
+  Future<void> _shareLocation() async {
+    final t = AppLocalizations.of(context);
+    final ttl = await _askLocationWindow();
+    if (ttl == null || !mounted) return;
+
+    final (fix, failure) = await const LocationService().current();
+    if (!mounted) return;
+    if (fix == null) {
+      showGlassToast(
+        context,
+        failure == LocationFailure.denied
+            ? t.locationDenied
+            : t.locationUnavailable,
+        tone: ToastTone.danger,
+      );
+      return;
+    }
+
+    final share = SharedLocation(
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      accuracyMetres: fix.accuracyMetres,
+      expiresAt: ttl == Duration.zero ? null : DateTime.now().add(ttl),
+    );
+    try {
+      if (widget.isChannel) {
+        await ref
+            .read(messagingServiceProvider)
+            .sendChannelText(widget.canonicalId, share.encode());
+      } else {
+        await ref
+            .read(messagingServiceProvider)
+            .sendText(widget.peerId, share.encode());
+      }
+    } catch (e) {
+      if (mounted) _showAttachmentFailure(e);
+    }
+  }
+
+  /// How long the sender means this position to stand for.
+  ///
+  /// Asked *before* the fix rather than after, so somebody who changes their
+  /// mind never had their location read at all. Null when they backed out.
+  Future<Duration?> _askLocationWindow() async {
+    final t = AppLocalizations.of(context);
+    return showGlassSheet<Duration>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t.locationShareFor,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              for (final option in <(String, Duration)>[
+                (t.locationShareOnce, Duration.zero),
+                (t.locationShare15m, const Duration(minutes: 15)),
+                (t.locationShare1h, const Duration(hours: 1)),
+              ])
+                ListTile(
+                  title: Text(
+                    option.$1,
+                    style: TextStyle(color: AppColors.textOnGlass),
+                  ),
+                  onTap: () => Navigator.of(sheetContext).pop(option.$2),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Файл category → the platform document picker → send as-is.

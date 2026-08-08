@@ -2761,6 +2761,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'An announcement channel. Everyone still reads it.'**
   String get channelAdminOnlyHint;
+
+  /// No description provided for @attachLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get attachLocation;
+
+  /// No description provided for @locationBubbleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get locationBubbleTitle;
+
+  /// No description provided for @locationOpenInMaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in maps'**
+  String get locationOpenInMaps;
+
+  /// No description provided for @locationAccuracy.
+  ///
+  /// In en, this message translates to:
+  /// **'within {metres} m'**
+  String locationAccuracy(int metres);
+
+  /// No description provided for @locationExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This location is no longer current'**
+  String get locationExpired;
+
+  /// No description provided for @locationDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Location permission is off'**
+  String get locationDenied;
+
+  /// No description provided for @locationUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not get a position'**
+  String get locationUnavailable;
+
+  /// No description provided for @locationShareFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Share for'**
+  String get locationShareFor;
+
+  /// No description provided for @locationShareOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'Just once'**
+  String get locationShareOnce;
+
+  /// No description provided for @locationShare15m.
+  ///
+  /// In en, this message translates to:
+  /// **'15 minutes'**
+  String get locationShare15m;
+
+  /// No description provided for @locationShare1h.
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour'**
+  String get locationShare1h;
 }
 
 class _AppLocalizationsDelegate

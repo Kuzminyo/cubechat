@@ -653,5 +653,23 @@
   "meshOffHint": "Nobody nearby can find you and you cannot find them. Messages still travel over the internet relay.",
   "profileMeshSwitch": "Bluetooth mesh",
   "profileMeshSwitchHint": "Find people nearby and carry messages without the internet. Off saves battery.",
-  "channelAdminOnlyHint": "An announcement channel. Everyone still reads it."
+  "channelAdminOnlyHint": "An announcement channel. Everyone still reads it.",
+  "attachLocation": "Location",
+  "locationBubbleTitle": "Location",
+  "locationOpenInMaps": "Open in maps",
+  "locationAccuracy": "within {metres} m",
+  "@locationAccuracy": {
+    "placeholders": {
+      "metres": {
+        "type": "int"
+      }
+    }
+  },
+  "locationExpired": "This location is no longer current",
+  "locationDenied": "Location permission is off",
+  "locationUnavailable": "Could not get a position",
+  "locationShareFor": "Share for",
+  "locationShareOnce": "Just once",
+  "locationShare15m": "15 minutes",
+  "locationShare1h": "1 hour"
 }

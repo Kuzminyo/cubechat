@@ -1495,6 +1495,78 @@ class PresenceBeacon {
   }
 }
 
+/// A position somebody chose to share, and how long they meant it for.
+///
+/// Wire layout (20 bytes, fixed):
+///
+///   lat        float64  degrees
+///   lon        float64  degrees
+///   accuracy   uint16   metres, clamped — 0 means "not reported"
+///   ttlMinutes uint16   0 means "no expiry stated"
+///
+/// Fixed width on purpose: every field is a number, there is nothing to pad,
+/// and a constant-size frame tells a passive observer nothing about the
+/// contents that its type has not already told them.
+///
+/// [ttlMinutes] is the "temporary" half. It is a statement of intent, not an
+/// enforcement — the receiver has the bytes and could keep them regardless, the
+/// same way a photo could be screenshotted. What it buys is that the *app*
+/// stops showing a position after the sender said it was stale, which is the
+/// difference between sharing where you are now and publishing where you live.
+class LocationPayload {
+  const LocationPayload({
+    required this.latitude,
+    required this.longitude,
+    this.accuracyMetres = 0,
+    this.ttlMinutes = 0,
+  });
+
+  final double latitude;
+  final double longitude;
+  final int accuracyMetres;
+  final int ttlMinutes;
+
+  static const int wireBytes = 20;
+
+  /// Above this the reading says so little that showing a pin would be a lie.
+  static const int maxAccuracyMetres = 65535;
+
+  Uint8List encode() {
+    if (latitude < -90 || latitude > 90) {
+      throw const FormatException('latitude out of range');
+    }
+    if (longitude < -180 || longitude > 180) {
+      throw const FormatException('longitude out of range');
+    }
+    final out = ByteData(wireBytes);
+    out.setFloat64(0, latitude);
+    out.setFloat64(8, longitude);
+    out.setUint16(16, accuracyMetres.clamp(0, maxAccuracyMetres));
+    out.setUint16(18, ttlMinutes.clamp(0, 65535));
+    return out.buffer.asUint8List();
+  }
+
+  static LocationPayload decode(Uint8List bytes) {
+    if (bytes.length != wireBytes) {
+      throw const FormatException('location must be exactly 20 bytes');
+    }
+    final data = ByteData.sublistView(bytes);
+    final lat = data.getFloat64(0);
+    final lon = data.getFloat64(8);
+    // A frame from a broken or hostile sender must not put a pin somewhere
+    // impossible, or open a maps URL with nonsense in it.
+    if (lat.isNaN || lon.isNaN || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      throw const FormatException('location out of range');
+    }
+    return LocationPayload(
+      latitude: lat,
+      longitude: lon,
+      accuracyMetres: data.getUint16(16),
+      ttlMinutes: data.getUint16(18),
+    );
+  }
+}
+
 /// A peer's avatar thumbnail, sent in answer to an
 /// [InnerPayloadType.avatarRequest].
 ///

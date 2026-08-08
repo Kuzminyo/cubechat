@@ -30,6 +30,10 @@ class MediaPickerFile extends MediaPickerResult {
 
 /// The user chose the Опитування category; the caller opens the poll composer.
 /// Channels only — see [AttachIsland.allowPoll].
+class MediaPickerLocation extends MediaPickerResult {
+  const MediaPickerLocation();
+}
+
 class MediaPickerPoll extends MediaPickerResult {
   const MediaPickerPoll();
 }
@@ -256,6 +260,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 Navigator.of(context).pop(const MediaPickerFile()),
               AttachChoice.poll =>
                 Navigator.of(context).pop(const MediaPickerPoll()),
+              AttachChoice.location =>
+                Navigator.of(context).pop(const MediaPickerLocation()),
             },
           ),
         ],
