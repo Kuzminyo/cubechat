@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../../core/theme/glass.dart';
 
 /// The canonical smoked-glass texture for the message composer island.
 /// Other chat chrome that must look identical should reuse this widget rather
@@ -46,7 +47,7 @@ class MessageIslandGlass extends StatelessWidget {
         child: ClipRRect(
           borderRadius: radius,
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            filter: AppBlur.pane,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

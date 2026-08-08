@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/glass.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
 /// nav bar uses, offered as a reusable surface so a list of them reads as a
@@ -133,7 +134,7 @@ class FloatingGlass extends StatelessWidget {
         borderRadius: radius,
         child: blur
             ? BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                filter: AppBlur.pane,
                 child: pane,
               )
             : pane,

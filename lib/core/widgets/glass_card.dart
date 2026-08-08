@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/glass.dart';
 
 /// Frosted glass surface — soft white border over an optional backdrop blur.
 /// Matches `.glass` / `.glass-strong` from the mockup.
@@ -40,7 +41,7 @@ class GlassCard extends StatelessWidget {
 
   Widget _maybeBlur(Widget child) => blur
       ? BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+          filter: AppBlur.pane,
           child: child,
         )
       : child;

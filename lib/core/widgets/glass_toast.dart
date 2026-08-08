@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/colors.dart';
 import '../util/platform_info.dart';
+import '../theme/glass.dart';
 
 /// What a toast is telling you, which decides its accent — not its surface.
 ///
@@ -188,7 +189,7 @@ class _GlassToastState extends State<_GlassToast>
                   child: ClipRRect(
                     borderRadius: radius,
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                      filter: AppBlur.pane,
                       child: Container(
                         padding: EdgeInsets.fromLTRB(
                           icon == null ? 20 : 16,

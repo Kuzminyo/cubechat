@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/glass.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
 /// like the bar can *be* the bar rather than an approximation of it.
@@ -61,7 +62,7 @@ class BarGlass extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: AppBlur.pane,
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
