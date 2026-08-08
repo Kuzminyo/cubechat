@@ -1,0 +1,117 @@
+import 'dart:ui' show FrameTiming;
+
+import 'package:flutter/scheduler.dart';
+
+/// Where a frame's time actually goes, measured rather than guessed.
+///
+/// Two rounds of tuning this app for heat were argued from reading the code,
+/// and both times the thing that looked expensive was not the thing that was.
+/// The reason is that "slow" has two completely different causes and they are
+/// indistinguishable from the source:
+///
+///   * **build** is the UI thread — Dart. Widget rebuilds, layout, provider
+///     churn, image decodes, anything synchronous in `build()`.
+///   * **raster** is the GPU thread. Blurs, gradients, overdraw, saveLayer,
+///     shader compilation. Almost none of it is visible in Dart at all.
+///
+/// A phone that is hot with raster at 14 ms and build at 2 ms will not get one
+/// degree cooler from removing work in `build()`, however real that work was —
+/// and that is precisely the mistake this class exists to stop repeating. The
+/// numbers below are read off [SchedulerBinding.addTimingsCallback], which is
+/// the framework's own instrumentation and costs nothing to leave running: the
+/// engine reports each frame once it is already done.
+///
+/// Budget for reference: 16.7 ms per frame at 60 Hz, 8.3 ms at 120 Hz. Either
+/// number exceeding the budget drops frames; whichever is *larger* is the one
+/// worth working on.
+class FrameStats {
+  FrameStats._();
+
+  static final FrameStats instance = FrameStats._();
+
+  /// Rolling window. Big enough to survive a scroll's worth of variation,
+  /// small enough that it reflects what is on screen now rather than what was
+  /// a minute ago.
+  static const int _window = 180;
+
+  final List<int> _buildUs = <int>[];
+  final List<int> _rasterUs = <int>[];
+
+  bool _listening = false;
+  int _total = 0;
+
+  /// Frames whose raster or build overran a 60 Hz budget.
+  int _janky = 0;
+
+  void start() {
+    if (_listening) return;
+    _listening = true;
+    SchedulerBinding.instance.addTimingsCallback(_onTimings);
+  }
+
+  void stop() {
+    if (!_listening) return;
+    _listening = false;
+    SchedulerBinding.instance.removeTimingsCallback(_onTimings);
+  }
+
+  void reset() {
+    _buildUs.clear();
+    _rasterUs.clear();
+    _total = 0;
+    _janky = 0;
+  }
+
+  void _onTimings(List<FrameTiming> timings) {
+    for (final t in timings) {
+      final build = t.buildDuration.inMicroseconds;
+      final raster = t.rasterDuration.inMicroseconds;
+      _buildUs.add(build);
+      _rasterUs.add(raster);
+      _total++;
+      if (build > 16700 || raster > 16700) _janky++;
+      if (_buildUs.length > _window) _buildUs.removeAt(0);
+      if (_rasterUs.length > _window) _rasterUs.removeAt(0);
+    }
+  }
+
+  bool get hasSamples => _buildUs.isNotEmpty;
+  int get sampleCount => _buildUs.length;
+  int get totalFrames => _total;
+  int get jankyFrames => _janky;
+
+  double get avgBuildMs => _avg(_buildUs);
+  double get avgRasterMs => _avg(_rasterUs);
+  double get p90BuildMs => _p90(_buildUs);
+  double get p90RasterMs => _p90(_rasterUs);
+
+  /// Which thread to go and work on, in one word — the whole point of the
+  /// screen this feeds.
+  String get verdict {
+    if (!hasSamples) return 'no frames measured yet';
+    final b = p90BuildMs;
+    final r = p90RasterMs;
+    if (b < 8 && r < 8) return 'both threads inside a 120 Hz budget';
+    if (r > b * 1.5) return 'GPU-bound — blur / gradients / overdraw';
+    if (b > r * 1.5) return 'CPU-bound — rebuilds, layout, decoding';
+    return 'both threads loaded about equally';
+  }
+
+  static double _avg(List<int> xs) {
+    if (xs.isEmpty) return 0;
+    var sum = 0;
+    for (final x in xs) {
+      sum += x;
+    }
+    return sum / xs.length / 1000;
+  }
+
+  static double _p90(List<int> xs) {
+    if (xs.isEmpty) return 0;
+    final sorted = [...xs]..sort();
+    // p90 rather than max: one 40 ms frame while a route builds says nothing
+    // about what the phone does for the other 200 frames of a scroll.
+    final i = ((sorted.length - 1) * 0.9).round();
+    return sorted[i] / 1000;
+  }
+}

@@ -1,4 +1,5 @@
-﻿import 'dart:io';
+﻿import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../../core/util/open_in.dart';
 import '../../../core/util/share_anchor.dart';
 import '../../../l10n/app_localizations.dart';
@@ -126,7 +128,24 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: entries.isEmpty
+        child: Column(
+          children: [
+            const _FramePanel(),
+            Expanded(
+              child: _buildLog(context, t, entries),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLog(
+    BuildContext context,
+    AppLocalizations t,
+    List<DebugLogEntry> entries,
+  ) {
+    return entries.isEmpty
             ? Center(
                 child: Text(
                   'No log entries yet.\nTrigger a connection and come back.',
@@ -149,8 +168,113 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                     ),
                   );
                 },
+              );
+  }
+}
+
+/// Live frame cost, split by the thread that paid it.
+///
+/// Put in front of the log rather than behind a switch because it is only
+/// useful while something is being scrolled, and a screen you have to go and
+/// enable first is a screen nobody reads at the moment it matters.
+class _FramePanel extends StatefulWidget {
+  const _FramePanel();
+
+  @override
+  State<_FramePanel> createState() => _FramePanelState();
+}
+
+class _FramePanelState extends State<_FramePanel> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    FrameStats.instance.start();
+    // The stats update per frame; redrawing them per frame would make this
+    // panel part of what it is measuring.
+    _tick = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => setState(() {}),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = FrameStats.instance;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.glass(0.06),
+        border: Border.all(color: AppColors.glass(0.12)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Frame cost',
+                  style: AppTypography.heading(
+                      size: 13, color: AppColors.textOnGlass)),
+              GestureDetector(
+                onTap: () => setState(FrameStats.instance.reset),
+                child: Text('reset',
+                    style: TextStyle(
+                        color: AppColors.brandPrimary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600)),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _line('build (CPU / Dart)', s.avgBuildMs, s.p90BuildMs),
+          const SizedBox(height: 3),
+          _line('raster (GPU)', s.avgRasterMs, s.p90RasterMs),
+          const SizedBox(height: 8),
+          Text(
+            s.verdict,
+            style: TextStyle(
+                color: AppColors.brandPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${s.sampleCount} frames sampled · ${s.jankyFrames} over 16.7 ms '
+            'of ${s.totalFrames}',
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _line(String label, double avg, double p90) => Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: AppTypography.mono(
+                    size: 11.5, color: AppColors.textOnGlass)),
+          ),
+          Text(
+            'avg ${avg.toStringAsFixed(1)}  p90 ${p90.toStringAsFixed(1)} ms',
+            style: AppTypography.mono(
+              size: 11.5,
+              color: p90 > 16.7
+                  ? const Color(0xFFFF6B6B)
+                  : AppColors.textOnGlass,
+            ),
+          ),
+        ],
+      );
 }
