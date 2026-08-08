@@ -2138,14 +2138,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     ref.read(messagingServiceProvider).sendReadReceipts(widget.canonicalId);
   }
 
-  /// Say again, at most once per peer per app run, that this conversation is
-  /// not to be copied or forwarded.
+  /// Say again, at most once per peer per app run, whether this conversation
+  /// may be copied or forwarded.
   ///
   /// The notice has no acknowledgement, so a peer who was offline when the
   /// switch was thrown would never have heard. Opening the chat is a moment
   /// they are plausibly reachable, and the service drops the repeat itself
-  /// (see [MessagingService.announceCopyRestriction]) — nothing goes out for a
-  /// conversation that never restricted anything.
+  /// (see [MessagingService.announceCopyRestriction]) once that peer has been
+  /// told the current answer.
+  ///
+  /// Both answers travel, not just "restricted". Only re-stating the ban meant
+  /// that lifting it relied on a single unacknowledged frame, and a peer who
+  /// missed that one went on refusing to forward for good.
   void _maybeAnnounceCopyRestriction() {
     if (!mounted || widget.isChannel) return;
     unawaited(
@@ -2299,6 +2303,19 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         return;
       }
       final bytes = await File(path).readAsBytes();
+      // A room has no recipient pubkey, so it needs the broadcast path the
+      // photo already used. Without this branch the recorder came up in a
+      // channel, recorded, and then threw for want of somebody to address.
+      if (widget.isChannel) {
+        await ref.read(messagingServiceProvider).sendChannelAudio(
+              widget.canonicalId,
+              bytes: bytes,
+              mime: 'audio/aac',
+              durationMs: durationMs,
+              cachedPath: path,
+            );
+        return;
+      }
       await ref.read(messagingServiceProvider).sendAudio(
             widget.peerId,
             bytes: bytes,

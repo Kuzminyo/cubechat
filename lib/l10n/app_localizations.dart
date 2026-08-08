@@ -2402,6 +2402,12 @@ abstract class AppLocalizations {
   /// **'Only an administrator can change the channel photo'**
   String get channelAvatarAdminOnly;
 
+  /// No description provided for @channelAdminOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only an administrator can change this'**
+  String get channelAdminOnly;
+
   /// No description provided for @channelAvatarTooLarge.
   ///
   /// In en, this message translates to:

@@ -64,6 +64,27 @@ class ChannelRosterController
   bool isAdmin(String channel, String memberId) =>
       state[channel]?[memberId]?.isAdmin ?? false;
 
+  /// Whether anybody at all is recorded as running this channel.
+  ///
+  /// A channel has no creation event to attach ownership to. There is no
+  /// server, and [ChannelController] only knows how to *join* a name — the
+  /// first person to type it is indistinguishable from the tenth, so "who made
+  /// this" is not a question the protocol can answer.
+  ///
+  /// Admin was therefore being handed out by [ensureSelf] to whoever opened the
+  /// info screen while the roster still happened to be empty. The roster fills
+  /// up from other people's messages, so in a channel where two people talk
+  /// before either opens the screen, the answer is nobody — and nobody was then
+  /// able to set the picture or the topic, on either phone, with no way to
+  /// appoint anyone because appointing is itself an admin action. A tester hit
+  /// exactly that with a two-person channel.
+  ///
+  /// So a channel with no admin is treated as unowned rather than as locked:
+  /// see the caller. That is also the honest description of it — an empty admin
+  /// list is not a permission being enforced, it is the absence of one.
+  bool hasAdmin(String channel) =>
+      state[channel]?.values.any((m) => m.isAdmin) ?? false;
+
   Future<ChannelMember> ensureSelf(
     String channel, {
     bool adminWhenFirst = false,

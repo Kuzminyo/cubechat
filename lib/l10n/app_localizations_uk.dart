@@ -1326,6 +1326,9 @@ class AppLocalizationsUk extends AppLocalizations {
       'Змінювати фото каналу може лише адміністратор';
 
   @override
+  String get channelAdminOnly => 'Змінювати це може лише адміністратор';
+
+  @override
   String get channelAvatarTooLarge => 'Це фото завелике для розсилки';
 
   @override

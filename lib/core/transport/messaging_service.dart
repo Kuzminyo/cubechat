@@ -2046,7 +2046,24 @@ class MessagingService {
   /// entry only survives a send that reached *something*, or the first attempt
   /// (typically the chat opening with the peer nowhere in range) would spend
   /// the only chance the other two were there to provide.
-  final Set<String> _copyRestrictionAnnounced = <String>{};
+  /// What each peer was last *told*, not merely which peers were told
+  /// something.
+  ///
+  /// A set could only remember "this peer has heard from us", which made
+  /// switching the restriction back off unrepeatable. Turning it on is
+  /// re-stated on every session and every opening of the chat, because a peer
+  /// who was away for the announcement must still end up honouring it. Turning
+  /// it off was announced exactly once, fire-and-forget, and this notice has no
+  /// acknowledgement — so a single lost frame left the other phone refusing to
+  /// forward a conversation whose owner had allowed it again, permanently, with
+  /// no way back short of reinstalling. A tester hit precisely that: allowed
+  /// forwarding on the iPhone, and the Android went on saying copying was
+  /// forbidden.
+  ///
+  /// Holding the value makes both directions repeatable and still costs one
+  /// small control frame per peer per run: a repeat is dropped when it would
+  /// say what this peer was already told, and sent when it would not.
+  final Map<String, bool> _copyRestrictionAnnounced = <String, bool>{};
 
   /// Tell one peer whether copying and forwarding are off in this conversation.
   ///
@@ -2072,7 +2089,6 @@ class MessagingService {
     bool force = false,
   }) async {
     if (_disposed || canonicalId.startsWith('#')) return;
-    if (!force && !_copyRestrictionAnnounced.add(canonicalId)) return;
     bool on;
     if (restricted != null) {
       on = restricted;
@@ -2082,11 +2098,11 @@ class MessagingService {
       await settings.loaded;
       on = settings.forChat(canonicalId).restrictCopying;
     }
-    if (!force && !on) {
-      _copyRestrictionAnnounced.remove(canonicalId);
-      return;
-    }
-    _copyRestrictionAnnounced.add(canonicalId);
+    // Dropped only when this peer has already been told this exact answer in
+    // this run — including "off", which is the case the old set could not
+    // express.
+    if (!force && _copyRestrictionAnnounced[canonicalId] == on) return;
+    _copyRestrictionAnnounced[canonicalId] = on;
     final peerPub = _disposed ? null : _resolvePeerPub(canonicalId);
     if (peerPub == null) {
       _copyRestrictionAnnounced.remove(canonicalId);
@@ -2111,6 +2127,46 @@ class MessagingService {
       _copyRestrictionAnnounced.remove(canonicalId);
       DebugLog.instance.log('CHAT', 'copy-restriction notice failed: $e');
     }
+  }
+
+  /// Turn copying and forwarding off (or back on) for a whole room.
+  ///
+  /// The 1:1 notice cannot carry this: [announceCopyRestriction] addresses one
+  /// peer and returns early for a channel id, because there is nobody in
+  /// particular to address. A room's answer is a broadcast like its picture and
+  /// its topic, signed by the sender, and authorised the same way — by an admin,
+  /// or by anyone when the room has none.
+  ///
+  /// Members store it in the same field a peer's request lands in, so the
+  /// person who was told not to forward cannot quietly switch it off for
+  /// themselves.
+  Future<void> sendChannelCopyRestriction(
+    String channelName,
+    bool restricted,
+  ) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    // Unowned means editable, exactly as for the picture and the topic.
+    if (!roster.isAdmin(channel.name, me.id) && roster.hasAdmin(channel.name)) {
+      throw StateError('only an admin can restrict copying in $channelName');
+    }
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    await settings.loaded;
+    await settings.setRestrictCopying(channel.name, restricted);
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.copyRestriction,
+      Uint8List.fromList([restricted ? 0x01 : 0x00]),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log(
+        'CHAN',
+        'copying in ${channel.name} is now '
+            '${restricted ? "restricted" : "allowed"} (fanout=$fanout)');
   }
 
   /// The peer asked that this conversation not be copied or forwarded.
@@ -2822,6 +2878,116 @@ class MessagingService {
     return msg;
   }
 
+  /// A voice note to a room.
+  ///
+  /// The same shape as [sendChannelImage] — manifest, then chunks, over the
+  /// signed channel frame — because a room's media has no addressee and so none
+  /// of the 1:1 path's per-recipient machinery applies: no peer pubkey, no
+  /// X3DH, no store-and-forward for one person. Rooms could already carry
+  /// photos and polls; audio was simply never wired, so the recorder came up in
+  /// a channel and had nowhere to send what it recorded.
+  Future<Message> sendChannelAudio(
+    String channelName, {
+    required Uint8List bytes,
+    required String mime,
+    required int durationMs,
+    String? cachedPath,
+  }) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    await _ref
+        .read(channelRosterControllerProvider.notifier)
+        .ensureSelf(channel.name, adminWhenFirst: true);
+
+    final audioId = AudioChunk.newAudioId();
+    final msg = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: channel.name,
+      text: mime,
+      sentAt: DateTime.now(),
+      isMine: true,
+      status: MessageStatus.sending,
+      kind: MessageKind.audio,
+      audioPath: cachedPath,
+      audioMime: mime,
+      audioDurationMs: durationMs,
+      wireId: TransportEnvelope.hashHex(audioId),
+    );
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.append(channel.name, msg);
+
+    try {
+      final relayOnly = !_hasAnyLink;
+      final chunkData = _mediaChunkData(null,
+          relayOnly: relayOnly, ceiling: AudioChunk.maxDataBytes);
+      final total = (bytes.length + chunkData - 1) ~/ chunkData;
+      if (total < 1 || total > AudioChunk.maxChunks) {
+        throw StateError(
+          'audio too large: $total chunks > ${AudioChunk.maxChunks} cap',
+        );
+      }
+      final sha = Uint8List.fromList((await Sha256().hash(bytes)).bytes);
+      final manifest = MediaManifest(
+        mediaId: audioId,
+        kind: MediaKind.audio,
+        total: total,
+        mime: mime,
+        durationMs: durationMs,
+        sha256: sha,
+      );
+      var fanout = await _broadcastChannelFrame(
+        await _buildChannelFrame(
+          channel,
+          InnerPayloadType.mediaManifest,
+          manifest.encode(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+        ),
+      );
+      for (var i = 0; i < total; i++) {
+        final start = i * chunkData;
+        final end = (start + chunkData).clamp(0, bytes.length);
+        final chunk = AudioChunk(
+          audioId: audioId,
+          seq: i,
+          total: total,
+          durationMs: durationMs,
+          mime: mime,
+          data: Uint8List.fromList(bytes.sublist(start, end)),
+        );
+        fanout = await _broadcastChannelFrame(
+          await _buildChannelFrame(
+            channel,
+            InnerPayloadType.audioChunk,
+            chunk.encode(),
+            TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+          ),
+        );
+        // Same pacing as the channel photo path.
+        if (i + 1 < total && !relayOnly) {
+          await Future<void>.delayed(const Duration(milliseconds: 15));
+        }
+      }
+      DebugLog.instance.log('CHAN',
+          'channel voice to ${channel.name}: $total chunks, fanout=$fanout');
+      messages.updateStatus(
+        channel.name,
+        msg.id,
+        fanout > 0 ? MessageStatus.delivered : MessageStatus.sending,
+      );
+      messages.updateRoute(
+        channel.name,
+        msg.id,
+        fanout > 0 ? MessageRoute.mesh : MessageRoute.queued,
+      );
+    } catch (e, st) {
+      debugPrint('sendChannelAudio failed: $e\n$st');
+      messages.updateStatus(channel.name, msg.id, MessageStatus.failed);
+      rethrow;
+    }
+    return msg;
+  }
+
   /// Set (or, with a null [jpeg], clear) the room's picture for everyone.
   ///
   /// Refused locally when we are not an admin. That check is a courtesy to the
@@ -2833,7 +2999,13 @@ class MessagingService {
     if (channel == null) throw StateError('not a member of $channelName');
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
-    if (!roster.isAdmin(channel.name, me.id)) {
+    // An unowned room is everyone's. A channel has no creation event to hang
+    // ownership on — see [ChannelRosterController.hasAdmin] — so a room where
+    // nobody was ever recorded as admin had its picture and topic locked away
+    // from every member at once, with no way to appoint anybody, because
+    // appointing is itself an admin action.
+    if (!roster.isAdmin(channel.name, me.id) &&
+        roster.hasAdmin(channel.name)) {
       throw StateError('only an admin can set the picture for $channelName');
     }
     final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
@@ -2866,7 +3038,9 @@ class MessagingService {
     if (channel == null) throw StateError('not a member of $channelName');
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
-    if (!roster.isAdmin(channel.name, me.id)) {
+    // Unowned means editable, exactly as for the picture above.
+    if (!roster.isAdmin(channel.name, me.id) &&
+        roster.hasAdmin(channel.name)) {
       throw StateError('only an admin can set the topic for $channelName');
     }
     final trimmed = text.trim();
@@ -3453,9 +3627,16 @@ class MessagingService {
           // The authorisation, and the only one that counts: the frame's
           // signature says who sent it, and our own roster says whether they
           // are allowed to change what the room looks like.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
+          //
+          // Unless our roster names no admin at all, in which case the room is
+          // unowned here and there is no permission to enforce — refusing would
+          // only mean the picture never converges, since the sender's own copy
+          // has already changed. See [ChannelRosterController.hasAdmin].
+          if (_ref.read(channelRosterControllerProvider.notifier)
+                  .hasAdmin(channel.name) &&
+              !_ref
+                  .read(channelRosterControllerProvider.notifier)
+                  .isAdmin(channel.name, reactorId)) {
             DebugLog.instance.log('CHAN',
                 'drop ${channel.name} picture: $reactorId is not an admin');
             break;
@@ -3471,12 +3652,38 @@ class MessagingService {
             );
           }
 
+        case InnerPayloadType.copyRestriction:
+          // Same authorisation as the picture and the topic. Stored into the
+          // "somebody else asked for this" field rather than our own setting,
+          // so a member cannot lift a room's restriction for themselves — the
+          // 1:1 path draws the same distinction for the same reason.
+          if (_ref.read(channelRosterControllerProvider.notifier)
+                  .hasAdmin(channel.name) &&
+              !_ref
+                  .read(channelRosterControllerProvider.notifier)
+                  .isAdmin(channel.name, reactorId)) {
+            DebugLog.instance.log('CHAN',
+                'drop ${channel.name} copy rule: $reactorId is not an admin');
+            break;
+          }
+          if (unpacked.body.isEmpty) break;
+          final settings =
+              _ref.read(conversationSettingsControllerProvider.notifier);
+          await settings.loaded;
+          await settings.setPeerRestrictsCopying(
+            channel.name,
+            unpacked.body[0] == 0x01,
+          );
+
         case InnerPayloadType.channelDescription:
           // Same authorisation as the picture, and for the same reason: the
-          // signature says who sent it, our roster says whether they may.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
+          // signature says who sent it, our roster says whether they may — and
+          // an unowned room has nobody to say no on behalf of.
+          if (_ref.read(channelRosterControllerProvider.notifier)
+                  .hasAdmin(channel.name) &&
+              !_ref
+                  .read(channelRosterControllerProvider.notifier)
+                  .isAdmin(channel.name, reactorId)) {
             DebugLog.instance.log('CHAN',
                 'drop ${channel.name} topic: $reactorId is not an admin');
             break;
@@ -3508,8 +3715,17 @@ class MessagingService {
             chunkBytes: unpacked.body,
           );
 
-        case InnerPayloadType.channelInvite:
         case InnerPayloadType.audioChunk:
+          // Reassembled under the room's name, exactly as a channel photo is:
+          // the frame carried no addressee and its signature was already
+          // checked, so there is no per-sender key to thread through here.
+          await _ingestAudioChunk(
+            peerId: channel.name,
+            senderPub: null,
+            chunkBytes: unpacked.body,
+          );
+
+        case InnerPayloadType.channelInvite:
         case InnerPayloadType.fileChunk:
         case InnerPayloadType.presence:
         case InnerPayloadType.avatarRequest:
@@ -3518,13 +3734,16 @@ class MessagingService {
         case InnerPayloadType.viewOnceConsumed:
         case InnerPayloadType.typing:
         case InnerPayloadType.conversationClear:
-        case InnerPayloadType.copyRestriction:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
           // channel-wide broadcast of a picture is a fan-out nobody asked for,
-          // a request for a file again has no single member to answer it, and
-          // one member cannot decide for a room what everyone else may keep.)
+          // and a request for a file again has no single member to answer it.)
+          //
+          // copyRestriction used to sit in this list, on the reasoning that one
+          // member cannot decide for a room what everyone else may keep. That
+          // is true of a member and false of the room's admin, who decides its
+          // picture and its topic already — so it is handled above instead.
           break;
       }
     } catch (e) {
@@ -4347,10 +4566,16 @@ class MessagingService {
   /// the entry: a room rather than a peer, plus the author, since a broadcast
   /// carries no addressee to look one up by.
   ///
-  /// Only images. Voice notes and files in a room are a bigger question — every
-  /// member relays every chunk, so a 25 MB attachment is 25 MB across each link
-  /// in the mesh — and a manifest claiming another kind is dropped rather than
+  /// Images and voice notes. Files are still refused: every member relays every
+  /// chunk, so a 25 MB attachment is 25 MB across each link in the mesh, and a
+  /// manifest claiming a kind this path cannot finish is dropped rather than
   /// half-handled.
+  ///
+  /// A voice note is a different proposition to a file. It is bounded by how
+  /// long anybody is willing to talk, it arrives as AAC at a few kilobytes a
+  /// second, and it is the one thing a room was missing that people actually
+  /// asked for — so it is carried, on the same manifest-then-chunks path the
+  /// photo uses.
   Future<void> _ingestChannelManifest({
     required Channel channel,
     required String authorName,
@@ -4365,7 +4590,7 @@ class MessagingService {
           .log('CHAN', 'drop ${channel.name} manifest: malformed ($e)');
       return;
     }
-    if (manifest.kind != MediaKind.image) {
+    if (manifest.kind != MediaKind.image && manifest.kind != MediaKind.audio) {
       DebugLog.instance.log('CHAN',
           'drop ${channel.name} manifest: ${manifest.kind.name} not carried in channels');
       return;

@@ -1317,6 +1317,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only an administrator can change the channel photo';
 
   @override
+  String get channelAdminOnly => 'Only an administrator can change this';
+
+  @override
   String get channelAvatarTooLarge => 'That photo is too large to broadcast';
 
   @override

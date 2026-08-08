@@ -21,6 +21,7 @@ import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../data/channel_avatars_controller.dart';
+import '../../chat/data/conversation_settings_controller.dart';
 import '../data/channel_descriptions_controller.dart';
 import '../data/channel_roster_controller.dart';
 import 'channel_invite_sheet.dart';
@@ -206,8 +207,14 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     ref.watch(channelRosterControllerProvider);
     final roster = ref.read(channelRosterControllerProvider.notifier);
     final members = roster.membersFor(widget.channelName);
-    final canManage =
-        _myId != null && roster.isAdmin(widget.channelName, _myId!);
+    // An unowned channel is editable by anyone in it. Ownership can only be
+    // claimed by being first, and "first" is not observable here — see
+    // [ChannelRosterController.hasAdmin] — so requiring an admin that may never
+    // exist locked the picture and the topic away from everybody at once.
+    // Where there *is* an admin the gate is unchanged.
+    final canManage = _myId != null &&
+        (roster.isAdmin(widget.channelName, _myId!) ||
+            !roster.hasAdmin(widget.channelName));
     final picture =
         ref.watch(channelAvatarsControllerProvider)[widget.channelName];
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
@@ -291,6 +298,15 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            // A room-wide version of the 1:1 switch. Members receive it into
+            // the same field a peer's request lands in, so it is not something
+            // a reader can turn off for themselves — see
+            // [MessagingService.sendChannelCopyRestriction].
+            _ChannelCopyRestriction(
+              channelName: widget.channelName,
+              canManage: canManage,
             ),
             const SizedBox(height: 20),
             Text(
@@ -422,6 +438,72 @@ class _ChannelHero extends StatelessWidget {
 /// Always present rather than hidden when empty: a channel with no topic and
 /// an admin looking for where to write one are the same screen, and a row that
 /// only exists once it has content is a row nobody finds the first time.
+/// Room-wide "do not copy or forward this".
+///
+/// Reads the same [ConversationSettings.copyingRestricted] the bubbles already
+/// consult, keyed by the channel name — so once it is on, every Copy and
+/// Forward in the room is gone without anything else having to know this
+/// screen exists.
+class _ChannelCopyRestriction extends ConsumerWidget {
+  const _ChannelCopyRestriction({
+    required this.channelName,
+    required this.canManage,
+  });
+
+  final String channelName;
+  final bool canManage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final settings =
+        ref.watch(conversationSettingsControllerProvider)[channelName];
+    final on = settings?.copyingRestricted ?? false;
+
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Row(
+          children: [
+            Icon(
+              on ? Icons.layers_clear_rounded : Icons.copy_all_rounded,
+              size: 19,
+              color: AppColors.textOnGlassDim,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                t.contactProfileRestrictCopying,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              ),
+            ),
+            Switch(
+              value: on,
+              // Same treatment as the picture and the topic: a member sees the
+              // state rather than a hidden control, and is told why it will not
+              // move rather than watching a tap do nothing.
+              onChanged: (next) async {
+                if (!canManage) {
+                  showGlassToast(context, t.channelAdminOnly);
+                  return;
+                }
+                try {
+                  await ref
+                      .read(messagingServiceProvider)
+                      .sendChannelCopyRestriction(channelName, next);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  showGlassToast(context, t.channelAdminOnly);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ChannelDescription extends StatelessWidget {
   const _ChannelDescription({
     required this.text,

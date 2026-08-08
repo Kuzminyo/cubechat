@@ -313,11 +313,19 @@
   "fileShareAction": "Send to app",
   "fileTooLargeMesh": "File is too large — {limit} MB is the limit over the mesh",
   "@fileTooLargeMesh": {
-    "placeholders": { "limit": { "type": "int" } }
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
   },
   "fileTooLargeRelay": "Over the internet the limit is {limit} MB. Get closer to the recipient to send a bigger file.",
   "@fileTooLargeRelay": {
-    "placeholders": { "limit": { "type": "int" } }
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
   },
   "mediaSendOriginal": "Original",
   "attachFile": "File",
@@ -565,6 +573,7 @@
   "viewOnceUnavailable": "This photo is no longer available",
   "viewOnceWarning": "Closing this deletes the photo for both of you.",
   "channelAvatarAdminOnly": "Only an administrator can change the channel photo",
+  "channelAdminOnly": "Only an administrator can change this",
   "channelAvatarTooLarge": "That photo is too large to broadcast",
   "channelMemberUnknown": "Not in your contacts yet",
   "channelPollTitle": "Poll",

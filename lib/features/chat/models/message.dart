@@ -177,6 +177,26 @@ class Message {
 
   bool get viewOnceConsumed => viewOnceConsumedAt != null;
 
+  /// What was typed under a photo, or null when nothing was.
+  ///
+  /// A photo's caption travels in [text], because the media manifest has
+  /// nowhere else to carry one — but that field doubles as the place a mime
+  /// type lands when there is no caption, and history written by older builds
+  /// is full of `image/jpeg` sitting exactly where a caption would. So anything
+  /// shaped like a mime type is not a caption, and neither is whitespace.
+  ///
+  /// This exists because the caption was being *sent* correctly and never
+  /// drawn: the bubble picks its body with an if/else chain on the message
+  /// kind, an image took the image branch, and the branch that renders text sat
+  /// after it in the same chain. The caption made the trip and then had nowhere
+  /// on screen to land.
+  String? get imageCaption {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    if (t.startsWith('image/') || t.startsWith('audio/')) return null;
+    return t;
+  }
+
   Message copyWith({
     MessageStatus? status,
     String? text,

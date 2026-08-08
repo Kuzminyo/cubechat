@@ -8,6 +8,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/media_storage.dart';
+import '../../../core/util/secure_window.dart';
 import '../../../l10n/app_localizations.dart';
 import '../models/message.dart';
 
@@ -102,6 +103,10 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
     _path = widget.message.imagePath;
     _burnPhoto = ref.read(viewOnceBurnProvider);
     WidgetsBinding.instance.addObserver(this);
+    // Scoped to this screen, not the app: the flag also blanks the recents
+    // thumbnail, which is not a price worth paying on every other screen.
+    // Android only — see [SecureWindow] for why iOS cannot make this promise.
+    unawaited(SecureWindow.enable());
   }
 
   void _burn() {
@@ -151,6 +156,10 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Before the burn, and unconditionally: leaving the flag set would follow
+    // the user out of this screen and blank the app in the task switcher for
+    // the rest of the run.
+    unawaited(SecureWindow.disable());
     _burn();
     super.dispose();
   }

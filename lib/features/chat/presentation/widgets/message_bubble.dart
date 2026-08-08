@@ -816,13 +816,25 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 ],
                 if (message.replyToWireId != null)
                   _quotedBox(message.replyToWireId!),
-                if (message.kind == MessageKind.image)
+                if (message.kind == MessageKind.image) ...[
                   _ImagePayload(
                     message: message,
                     chatId: widget.chatId,
                     onDoubleTap: _canReact ? _quickReact : null,
-                  )
-                else if (message.kind == MessageKind.audio)
+                  ),
+                  // The caption, which used to go missing entirely. It rides in
+                  // `text`, and the chain below renders `text` only for a
+                  // message that matched none of these branches — so a photo
+                  // took the image branch and its caption was never drawn,
+                  // however carefully it had been typed and delivered.
+                  if (message.imageCaption case final caption?) ...[
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      child: MentionText(caption),
+                    ),
+                  ],
+                ] else if (message.kind == MessageKind.audio)
                   VoiceBubble(message: message, chatId: widget.chatId)
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not

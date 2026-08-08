@@ -128,21 +128,21 @@ class FileBubble extends ConsumerWidget {
       declaredMime: message.text,
     );
 
-    // On iOS "open it" is two different things, and the plugin below picks the
-    // one nobody wants: it previews the file inside cubechat, in a QuickLook
-    // window that looks like a page of this app. A document you were sent to
-    // read belongs in the app that reads documents, so it goes there — the
-    // "Open in…" menu launches the app rather than borrowing its extension.
+    // Preview first, on both platforms.
     //
-    // Except when the conversation is restricted, where the in-app preview is
-    // exactly right and the hand-off is the thing being withheld: reading it
-    // here is the point of having received it, and copying it into another
-    // app's storage is not.
-    if (!sharingRestricted && OpenIn.isSupported) {
-      if (await OpenIn.handOff(path, anchor: shareAnchorFor(context))) return;
-      if (!context.mounted) return;
-    }
-
+    // iOS used to go straight to the "Open in…" menu on a tap, on the reasoning
+    // that a document belongs in the app that reads documents. What that menu
+    // actually is, though, is a list of apps to copy the file *into* — so a tap
+    // meaning "what is this?" answered with "who should get this?", and a
+    // tester reported it, accurately, as the app wanting to forward his file
+    // instead of opening it. He was right: nothing about that screen opens
+    // anything.
+    //
+    // So the tap previews (QuickLook on iOS, the registered handler on
+    // Android), which is what every messenger does and what the gesture is
+    // asking for. Handing the file to another app is still available — it moved
+    // one level down, to the offer below, where it is a deliberate choice
+    // rather than the answer to a tap.
     OpenResult? result;
     try {
       // A type we cannot name is passed as *no* type rather than as
@@ -176,6 +176,14 @@ class FileBubble extends ConsumerWidget {
       // nothing.
       showGlassToast(context, t.contactProfileCopyingRestricted);
       return;
+    }
+
+    // Nothing here could preview it. On iOS the "Open in…" menu is the other
+    // route to an app that can — it copies the file across and launches it —
+    // so it is offered now, having lost its claim on the plain tap.
+    if (OpenIn.isSupported) {
+      if (await OpenIn.handOff(path, anchor: shareAnchorFor(context))) return;
+      if (!context.mounted) return;
     }
 
     // No installed app claims this type — offer the sheet as the way out
