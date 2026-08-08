@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
+import '../../../../core/routing/back_gesture.dart';
 import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
@@ -404,6 +405,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               ],
             ),
           ),
+        // First, under the reactions. Selecting is how you act on more than
+        // one message, so it is the entry to every bulk action in the chat —
+        // and buried between Edit and Delete it read as a rarely-wanted
+        // setting. A tester asked for a way to start selecting by holding a
+        // message, not knowing this was already it.
+        _menuRow('select', Icons.checklist_rounded, t.chatSelectAction,
+            AppColors.textOnGlass),
         if (widget.message.wireId != null)
           _menuRow(
               'reply', Icons.reply, t.chatReplyAction, AppColors.textOnGlass),
@@ -435,8 +443,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         if (_canEdit)
           _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
               AppColors.textOnGlass),
-        _menuRow('select', Icons.checklist_rounded, t.chatSelectAction,
-            AppColors.textOnGlass),
         _menuRow('delete', Icons.delete_outline, t.chatDeleteAction,
             AppColors.danger),
       ],
@@ -903,16 +909,44 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               // decides between them on direction rather than on timing.
               // Swiping to reply is off while selecting — the row means one
               // thing at a time.
-              onHorizontalDragUpdate: selecting ? null : _onSwipeUpdate,
-              onHorizontalDragEnd: selecting ? null : (_) => _onSwipeEnd(),
-              onHorizontalDragCancel: selecting ? null : _onSwipeEnd,
+              // Holding a row once selection has started ticks it, rather than
+              // doing nothing at all. The bubble's own long-press — the one
+              // that opens the action menu — is suppressed while selecting, so
+              // without this a hold in that mode was simply dead, and holding
+              // is what people do when they have just been told holding is how
+              // you select.
+              onLongPress: selecting
+                  ? () => ref
+                      .read(messageSelectionProvider(widget.chatId).notifier)
+                      .toggle(message.id)
+                  : null,
               onTap: selecting
                   ? () => ref
                       .read(messageSelectionProvider(widget.chatId).notifier)
                       .toggle(message.id)
                   : null,
-              child: ValueListenableBuilder<double>(
-                valueListenable: _dragX,
+              child: RawGestureDetector(
+                // Leftward only, so a drag the other way reaches the page's
+                // back gesture instead of being swallowed here. A plain
+                // horizontal drag detector accepts at the touch slop whichever
+                // way the finger went and then clamps the offset to zero on the
+                // right — winning the arena to do nothing, which is why
+                // swiping back did not work over the conversation.
+                gestures: selecting
+                    ? const <Type, GestureRecognizerFactory>{}
+                    : <Type, GestureRecognizerFactory>{
+                        LeftwardDragRecognizer:
+                            GestureRecognizerFactoryWithHandlers<
+                                LeftwardDragRecognizer>(
+                          LeftwardDragRecognizer.new,
+                          (r) => r
+                            ..onUpdate = _onSwipeUpdate
+                            ..onEnd = ((_) => _onSwipeEnd())
+                            ..onCancel = _onSwipeEnd,
+                        ),
+                      },
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _dragX,
                 // Rebuilt every frame of the gesture: a translate and, past a
                 // pixel of travel, the hint. The bubble itself arrives as
                 // `child` — built once, moved cheaply.
@@ -997,6 +1031,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         ),
                       ],
                     ),
+                ),
               ),
             ),
           ),

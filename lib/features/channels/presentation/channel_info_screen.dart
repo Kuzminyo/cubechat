@@ -207,14 +207,12 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     ref.watch(channelRosterControllerProvider);
     final roster = ref.read(channelRosterControllerProvider.notifier);
     final members = roster.membersFor(widget.channelName);
-    // An unowned channel is editable by anyone in it. Ownership can only be
-    // claimed by being first, and "first" is not observable here — see
-    // [ChannelRosterController.hasAdmin] — so requiring an admin that may never
-    // exist locked the picture and the topic away from everybody at once.
-    // Where there *is* an admin the gate is unchanged.
-    final canManage = _myId != null &&
-        (roster.isAdmin(widget.channelName, _myId!) ||
-            !roster.hasAdmin(widget.channelName));
+    // A real check: [ensureSelf] in initState has already claimed the admin
+    // seat if it was unclaimed and we did not arrive by invitation, so a room
+    // reaching this line has an owner and "am I it" is a question with a
+    // meaning again.
+    final canManage =
+        _myId != null && roster.isAdmin(widget.channelName, _myId!);
     final picture =
         ref.watch(channelAvatarsControllerProvider)[widget.channelName];
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));

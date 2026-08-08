@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/widgets/identity_avatar.dart';
+import '../../../channels/data/channel_avatars_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../data/peer_avatars_controller.dart';
 
@@ -16,8 +17,17 @@ import '../../data/peer_avatars_controller.dart';
 /// scroll simply appears.
 ///
 /// [peerId] is the peer's pubkey hex — the same key the cache and the roster
-/// use. A channel id (`#name`) or a raw BLE device id just misses, which is the
-/// wanted answer: neither has a face.
+/// use. A raw BLE device id just misses, which is the wanted answer: it has no
+/// face.
+///
+/// A channel id (`#name`) is looked up in the *channel* picture box instead.
+/// Rooms keep their pictures apart from people's, for good reason — a room has
+/// no key to sign its own avatar with, so the two are authenticated completely
+/// differently — but this widget is the one place both are drawn, and it only
+/// knew about one of them. The visible result was a channel picture set on one
+/// phone showing up on the other only inside channel settings, with the chat
+/// list still on the loudspeaker: the list was asking the wrong box, and always
+/// missing.
 class PeerAvatar extends ConsumerWidget {
   const PeerAvatar({
     super.key,
@@ -39,7 +49,10 @@ class PeerAvatar extends ConsumerWidget {
     // Watches the whole map: it holds a few KB per contact and changes only
     // when a picture arrives or is dropped, so selecting per-peer would buy
     // nothing but indirection.
-    final bytes = ref.watch(peerAvatarsControllerProvider)[peerId];
+    final isChannel = peerId.startsWith('#');
+    final bytes = isChannel
+        ? ref.watch(channelAvatarsControllerProvider)[peerId]
+        : ref.watch(peerAvatarsControllerProvider)[peerId];
     return IdentityAvatar(
       seed: peerId,
       label: label,
@@ -55,7 +68,7 @@ class PeerAvatar extends ConsumerWidget {
       // character in the name.
       mark: isSavedChat(peerId)
           ? Icons.bookmark_rounded
-          : peerId.startsWith('#')
+          : isChannel
               ? Icons.campaign_rounded
               : null,
     );

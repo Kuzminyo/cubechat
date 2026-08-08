@@ -65,10 +65,12 @@ class EdgeBackGesture extends StatefulWidget {
   /// How far the finger travels before a drag that started away from the edge
   /// is taken as "go back".
   ///
-  /// Comfortably past the touch slop everything else accepts at, so a seek bar
-  /// or a slider has already claimed the gesture by the time this would — and
-  /// short enough that a deliberate swipe never feels like it is being ignored.
-  static const double _pageThreshold = 44;
+  /// Past the touch slop everything else accepts at (18), so a seek bar or a
+  /// slider has already claimed the gesture by the time this would — and short
+  /// enough that a deliberate swipe never feels like it is being ignored. It
+  /// was 44, which is most of a fingertip and read as the gesture not working
+  /// away from the edge at all.
+  static const double _pageThreshold = 26;
 
   /// Where the immediate band ends: after whatever the platform reserved for
   /// its own gesture, plus [_edgeReach].
@@ -312,5 +314,55 @@ class EdgeBackGestureController {
     } else {
       navigator.didStopUserGesture();
     }
+  }
+}
+
+/// A horizontal drag that only ever means "leftward", for the swipe-to-reply on
+/// a message bubble.
+///
+/// The mirror of [_RightwardDragRecognizer], and it exists for the same reason
+/// in the opposite direction. A plain `onHorizontalDragUpdate` accepts at the
+/// ordinary touch slop whichever way the finger went, so a bubble claimed every
+/// rightward drag too — and then did nothing with it, because the reply offset
+/// is clamped to zero on that side. The visible result was the back gesture
+/// working everywhere except over the conversation, which is most of the screen
+/// and the place people most want to swipe out of.
+///
+/// Rejecting the direction it cannot use hands those drags back to the arena,
+/// where the page's own recognizer is waiting.
+class LeftwardDragRecognizer extends HorizontalDragGestureRecognizer {
+  LeftwardDragRecognizer({super.debugOwner});
+
+  Offset? _origin;
+  bool _decided = false;
+  bool _gaveUp = false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _origin = event.position;
+    _decided = false;
+    _gaveUp = false;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (_gaveUp) return;
+    final origin = _origin;
+    if (!_decided && origin != null && event is PointerMoveEvent) {
+      final dx = event.position.dx - origin.dx;
+      if (dx.abs() >= computeHitSlop(event.kind, gestureSettings)) {
+        _decided = true;
+        if (dx > 0) {
+          _gaveUp = true;
+          resolve(GestureDisposition.rejected);
+          // Nothing after this — see the note in [_RightwardDragRecognizer],
+          // which learned it the hard way: a rejected recognizer is reset to
+          // `ready` and the base class asserts on being handed another event.
+          return;
+        }
+      }
+    }
+    super.handleEvent(event);
   }
 }

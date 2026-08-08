@@ -8,6 +8,7 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import 'channel_controller.dart';
 
 @immutable
 class ChannelMember {
@@ -85,6 +86,25 @@ class ChannelRosterController
   bool hasAdmin(String channel) =>
       state[channel]?.values.any((m) => m.isAdmin) ?? false;
 
+  /// Record ourselves in [channel]'s roster, claiming the admin seat if it is
+  /// going spare.
+  ///
+  /// [adminWhenFirst] used to mean "when the roster is empty", which made
+  /// ownership an accident of timing: the roster fills from other people's
+  /// messages, so whether you became admin depended on opening the info screen
+  /// before anyone spoke. In a room where two people talked first, nobody ever
+  /// did, and nobody could be appointed either — appointing is an admin action.
+  ///
+  /// It now means "when nobody is admin". A room with an unclaimed seat gives
+  /// it to the first member who reaches for it, which is deterministic enough
+  /// to be explicable and leaves the room with a real owner rather than a rule
+  /// that never applies to anyone.
+  ///
+  /// An invitee never claims: [Channel.viaInvite] is the one fact this protocol
+  /// can establish about seniority, and someone who was invited demonstrably
+  /// arrived after whoever invited them. Without that check the seat would go
+  /// to whichever member happened to open a screen first, which is how this got
+  /// into trouble the last time.
   Future<ChannelMember> ensureSelf(
     String channel, {
     bool adminWhenFirst = false,
@@ -92,11 +112,14 @@ class ChannelRosterController
     final identity = await ref.read(identityProvider.future);
     final id = _fingerprint(identity.signPublicKey);
     final existing = state[channel]?[id];
+    final invited =
+        ref.read(channelControllerProvider.notifier).byName(channel)?.viaInvite ??
+            false;
     final member = ChannelMember(
       id: id,
       name: ref.read(nicknameControllerProvider),
-      isAdmin: existing?.isAdmin ??
-          (adminWhenFirst && (state[channel]?.isEmpty ?? true)),
+      isAdmin:
+          existing?.isAdmin ?? (adminWhenFirst && !invited && !hasAdmin(channel)),
       lastSeen: DateTime.now(),
     );
     await record(channel, member);

@@ -149,10 +149,26 @@ class FileBubble extends ConsumerWidget {
       // octet-stream: asked to open "some bytes", Android looks for an app
       // that claims to handle anything, finds none, and says the file cannot
       // be opened. Given nothing, it resolves the extension itself.
-      result = await OpenFilex.open(
-        path,
-        type: isUnknownMime(mime) ? null : mime,
-      );
+      final declared = isUnknownMime(mime) ? null : mime;
+      result = await OpenFilex.open(path, type: declared);
+
+      // Ask again without the type before giving up.
+      //
+      // The type we hand over is the sender's, and it only has to be slightly
+      // wrong to match nothing: a screenshot announced as `image/png` by a
+      // phone that files screenshots under a vendor type, an office document
+      // whose long OOXML string one ROM spells differently, a PDF from an app
+      // that said `application/x-pdf`. Android then reports, accurately and
+      // uselessly, that no installed app opens *that* type — while the very
+      // same file opens fine if it is left to read the extension itself.
+      //
+      // Testers hit this on a PNG and a PDF, which are the two types every
+      // phone can open, which is what makes the answer so obviously wrong.
+      if (declared != null && result.type != ResultType.done) {
+        DebugLog.instance.log(
+            'FILE', 'open as $declared gave ${result.type} — retrying untyped');
+        result = await OpenFilex.open(path);
+      }
     } catch (e) {
       // Falls through to the share offer below rather than stopping here.
       //

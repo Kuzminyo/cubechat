@@ -1051,6 +1051,23 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final messages = widget.messages;
     final index = messages.indexWhere((message) => message.id == messageId);
     if (index < 0 || messages.isEmpty) return false;
+    // Forget what was built before this jump.
+    //
+    // [_noteBuilt] only ever widens the span, and the only place it was cleared
+    // was inside the walk, after a move. So the span survived a completed jump
+    // and kept growing across the whole session — and a later jump compared its
+    // target against a range covering most of the conversation, concluded the
+    // message was "inside the built span, being laid out this very frame", and
+    // waited for a widget that was never going to appear because nothing ever
+    // scrolled. Forty-eight frames later it gave up exactly where it started.
+    //
+    // Found while chasing a report that walking the pinned bar leaves you on
+    // the first pin: the bar's counter advances correctly (there is a test for
+    // that), so whatever is wrong is on the scroll side, and this is a real
+    // defect there. It is *not* a reproduction — the symptom has not been
+    // reduced to a failing test, so it may not be the whole story.
+    _builtFrom = null;
+    _builtTo = null;
     // reverse: true, so distance from the newest message is the scroll axis,
     // and it is also this item's position in the list the builder indexes.
     final fromNewest = messages.length - 1 - index;

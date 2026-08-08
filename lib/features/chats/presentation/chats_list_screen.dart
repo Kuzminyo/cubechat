@@ -162,9 +162,24 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     ));
   }
 
-  // Favourites float to the top; within each group, most recent first.
+  // Favourites float to the top, in the order the user dragged them into;
+  // everything else is most recent first.
+  //
+  // Favourites used to be sorted by recency too, which quietly defeated the
+  // point of starring: the chat you pinned to the top because it matters moved
+  // down the moment anybody else wrote. An order somebody chose should not be
+  // rearranged by other people's activity.
+  final ranks = ref.watch(favoritesControllerProvider);
   entries.sort((a, b) {
     if (a.isFavorite != b.isFavorite) return a.isFavorite ? -1 : 1;
+    if (a.isFavorite) {
+      final ra = ranks.indexOf(a.id);
+      final rb = ranks.indexOf(b.id);
+      // A starred chat missing from the order (mid-load, say) falls to the end
+      // of the group rather than jumping to the front of it.
+      if (ra != rb) return (ra < 0 ? ranks.length : ra)
+          .compareTo(rb < 0 ? ranks.length : rb);
+    }
     return b.lastTime.compareTo(a.lastTime);
   });
   return entries;
@@ -291,34 +306,67 @@ class ChatsListScreen extends ConsumerWidget {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-              sliver: AppearOnce(
-                builder: (context, animate) => SliverList.separated(
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final chat = filtered[i];
-                    return AppearAnimation(
-                      enabled: animate,
-                      delay: AppearAnimation.stagger(i),
-                      // Each row is its own levitating pane of smoked glass —
-                      // the nav bar's treatment — so the list reads as separate
-                      // floating islands over the aurora, not cards on a plate.
-                      //
-                      // Unblurred: the aurora behind is already a soft gradient,
-                      // and a backdrop filter per row is a full blur pass per row
-                      // per frame. See [FloatingGlass.blur].
-                      child: FloatingGlass(
-                        blur: false,
-                        borderRadius: 18,
-                        onTap: () => context.push(routeForChat(chat)),
-                        onLongPressAt: (pos) =>
-                            _showChatActions(context, ref, chat, t, pos),
-                        child: ChatTile(chat: chat),
+              // Dragging to reorder, but only in the Favourites folder.
+              //
+              // That is the one view where every row is a favourite, so a drag
+              // has an unambiguous meaning and a destination that is always
+              // valid. In the full list a favourite dragged past the last
+              // starred row would be asking to be ordered against chats that
+              // have no order — they are sorted by when somebody last wrote —
+              // and there is no answer to give.
+              sliver: selected == ChatFolder.favorites
+                  ? SliverReorderableList(
+                      itemCount: filtered.length,
+                      onReorder: (from, to) => ref
+                          .read(favoritesControllerProvider.notifier)
+                          .reorder(from, to),
+                      itemBuilder: (_, i) {
+                        final chat = filtered[i];
+                        return ReorderableDelayedDragStartListener(
+                          key: ValueKey(chat.id),
+                          index: i,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: FloatingGlass(
+                              blur: false,
+                              borderRadius: 18,
+                              onTap: () => context.push(routeForChat(chat)),
+                              child: ChatTile(chat: chat),
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : AppearOnce(
+                      builder: (context, animate) => SliverList.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final chat = filtered[i];
+                          return AppearAnimation(
+                            enabled: animate,
+                            delay: AppearAnimation.stagger(i),
+                            // Each row is its own levitating pane of smoked
+                            // glass — the nav bar's treatment — so the list
+                            // reads as separate floating islands over the
+                            // aurora, not cards on a plate.
+                            //
+                            // Unblurred: the aurora behind is already a soft
+                            // gradient, and a backdrop filter per row is a full
+                            // blur pass per row per frame. See
+                            // [FloatingGlass.blur].
+                            child: FloatingGlass(
+                              blur: false,
+                              borderRadius: 18,
+                              onTap: () => context.push(routeForChat(chat)),
+                              onLongPressAt: (pos) =>
+                                  _showChatActions(context, ref, chat, t, pos),
+                              child: ChatTile(chat: chat),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-              ),
+                    ),
             ),
         ],
       ),

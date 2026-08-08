@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cubechat/features/channels/data/channel_roster_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
+import 'package:cubechat/features/chats/data/favorites_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -111,6 +112,78 @@ void main() {
       await roster.record('#room', member('aaa', admin: false));
       expect(roster.isAdmin('#room', 'aaa'), isTrue);
       expect(roster.hasAdmin('#room'), isTrue);
+    });
+  });
+
+  group('favourite order', () {
+    late Directory tempDir;
+    late ProviderContainer container;
+    late FavoritesController favorites;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('cubechat_fav_test_');
+      Hive.init(tempDir.path);
+      container = ProviderContainer();
+      favorites = container.read(favoritesControllerProvider.notifier);
+    });
+
+    tearDown(() async {
+      await settleBackgroundStorage();
+      container.dispose();
+      await Hive.close();
+      try {
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Windows holds the Hive files briefly after close.
+      }
+    });
+
+    Future<void> star(List<String> ids) async {
+      // toggle() puts each new favourite first, so starring a, b, c leaves
+      // c, b, a — star them backwards to end up with a, b, c.
+      for (final id in ids.reversed) {
+        await favorites.toggle(id);
+      }
+    }
+
+    test('starring puts the newest first', () async {
+      await favorites.toggle('a');
+      await favorites.toggle('b');
+      expect(container.read(favoritesControllerProvider), ['b', 'a']);
+    });
+
+    // ReorderableListView reports the destination as an index into the list
+    // *before* the dragged row was taken out, so moving downward is off by one
+    // unless it is corrected. Both directions are checked because getting one
+    // right and the other wrong is the usual outcome.
+    test('dragging downward lands where it was dropped', () async {
+      await star(['a', 'b', 'c']);
+      await favorites.reorder(0, 2);
+      expect(container.read(favoritesControllerProvider), ['b', 'a', 'c']);
+    });
+
+    test('dragging to the end lands at the end', () async {
+      await star(['a', 'b', 'c']);
+      await favorites.reorder(0, 3);
+      expect(container.read(favoritesControllerProvider), ['b', 'c', 'a']);
+    });
+
+    test('dragging upward lands where it was dropped', () async {
+      await star(['a', 'b', 'c']);
+      await favorites.reorder(2, 0);
+      expect(container.read(favoritesControllerProvider), ['c', 'a', 'b']);
+    });
+
+    test('an out-of-range drag changes nothing', () async {
+      await star(['a', 'b']);
+      await favorites.reorder(5, 0);
+      expect(container.read(favoritesControllerProvider), ['a', 'b']);
+    });
+
+    test('unstarring takes it out of the order', () async {
+      await star(['a', 'b', 'c']);
+      await favorites.toggle('b');
+      expect(container.read(favoritesControllerProvider), ['a', 'c']);
     });
   });
 }

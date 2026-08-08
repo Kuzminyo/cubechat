@@ -15,6 +15,7 @@ class Channel {
     required this.key,
     required this.tag,
     required this.joinedAt,
+    this.viaInvite = false,
   });
 
   /// Human channel id, including the leading `#` (e.g. `#general`). Also used
@@ -34,6 +35,20 @@ class Channel {
   final Uint8List tag;
 
   final DateTime joinedAt;
+
+  /// Whether we got here from somebody else's invitation.
+  ///
+  /// The one thing this protocol can actually establish about seniority. There
+  /// is no server and no creation event: joining is deriving a key from a name
+  /// and a password, so the person who invents a room and the person who types
+  /// the same name an hour later run identical code and are indistinguishable.
+  /// An invitation is different — it can only have come from somebody who was
+  /// already there, so an invitee is definitively *not* the room's first
+  /// member, and that is enough to keep them from claiming it.
+  ///
+  /// Used by [ChannelRosterController.ensureSelf] to decide whether joining may
+  /// claim the admin seat when the room has nobody in it yet.
+  final bool viaInvite;
 }
 
 /// Canonical form of a channel name: lower-case, a single leading `#`, and no

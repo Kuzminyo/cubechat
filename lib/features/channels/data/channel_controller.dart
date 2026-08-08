@@ -81,7 +81,8 @@ class ChannelController extends Notifier<Map<String, Channel>> {
       throw ArgumentError('channel key must be ${ChannelCrypto.keyLen} bytes');
     }
     final tag = await ChannelCrypto.deriveTag(key);
-    return _store(name, key, tag, hasPassword: false);
+    // Invited, so somebody was here first — see [Channel.viaInvite].
+    return _store(name, key, tag, hasPassword: false, viaInvite: true);
   }
 
   Future<Channel> _store(
@@ -89,12 +90,16 @@ class ChannelController extends Notifier<Map<String, Channel>> {
     Uint8List key,
     Uint8List tag, {
     required bool hasPassword,
+    bool viaInvite = false,
   }) async {
     final channel = Channel(
       name: name,
       hasPassword: hasPassword,
       key: key,
       tag: tag,
+      // Sticky: re-deriving a room you were invited to, by typing its name,
+      // does not promote you to having founded it.
+      viaInvite: state[name]?.viaInvite ?? viaInvite,
       // Re-joining an existing channel keeps its original position in the
       // chat list rather than jumping it to the top.
       joinedAt: state[name]?.joinedAt ?? DateTime.now(),
@@ -154,6 +159,7 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         'keyHex': _hexOf(c.key),
         'tagHex': _hexOf(c.tag),
         'joinedAtIso': c.joinedAt.toIso8601String(),
+        'viaInvite': c.viaInvite,
       };
 
   static Channel _decode(Map<dynamic, dynamic> m) => Channel(
@@ -163,6 +169,11 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         tag: _hexDecode(m['tagHex'] as String),
         joinedAt: DateTime.tryParse((m['joinedAtIso'] as String?) ?? '') ??
             DateTime.now(),
+        // Absent in history written before the field existed. False is the
+        // right reading of "we do not know": it lets a room joined by name
+        // before this build still claim an unclaimed admin seat, which is the
+        // migration those rooms need.
+        viaInvite: (m['viaInvite'] as bool?) ?? false,
       );
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {

@@ -2149,8 +2149,8 @@ class MessagingService {
     if (channel == null) throw StateError('not a member of $channelName');
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
-    // Unowned means editable, exactly as for the picture and the topic.
-    if (!roster.isAdmin(channel.name, me.id) && roster.hasAdmin(channel.name)) {
+    // A real check again, exactly as for the picture and the topic.
+    if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can restrict copying in $channelName');
     }
     final settings = _ref.read(conversationSettingsControllerProvider.notifier);
@@ -2999,13 +2999,12 @@ class MessagingService {
     if (channel == null) throw StateError('not a member of $channelName');
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
-    // An unowned room is everyone's. A channel has no creation event to hang
-    // ownership on — see [ChannelRosterController.hasAdmin] — so a room where
-    // nobody was ever recorded as admin had its picture and topic locked away
-    // from every member at once, with no way to appoint anybody, because
-    // appointing is itself an admin action.
-    if (!roster.isAdmin(channel.name, me.id) &&
-        roster.hasAdmin(channel.name)) {
+    // [ensureSelf] above has just claimed the seat if it was going spare, so
+    // by here a room genuinely has an owner and this is a real check again.
+    // (It was briefly relaxed to "unowned means everyone", which read to
+    // testers as the admin rule doing nothing at all — because for them it
+    // didn't.)
+    if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can set the picture for $channelName');
     }
     final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
@@ -3038,9 +3037,8 @@ class MessagingService {
     if (channel == null) throw StateError('not a member of $channelName');
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
-    // Unowned means editable, exactly as for the picture above.
-    if (!roster.isAdmin(channel.name, me.id) &&
-        roster.hasAdmin(channel.name)) {
+    // A real check again, exactly as for the picture above.
+    if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can set the topic for $channelName');
     }
     final trimmed = text.trim();
@@ -3627,16 +3625,9 @@ class MessagingService {
           // The authorisation, and the only one that counts: the frame's
           // signature says who sent it, and our own roster says whether they
           // are allowed to change what the room looks like.
-          //
-          // Unless our roster names no admin at all, in which case the room is
-          // unowned here and there is no permission to enforce — refusing would
-          // only mean the picture never converges, since the sender's own copy
-          // has already changed. See [ChannelRosterController.hasAdmin].
-          if (_ref.read(channelRosterControllerProvider.notifier)
-                  .hasAdmin(channel.name) &&
-              !_ref
-                  .read(channelRosterControllerProvider.notifier)
-                  .isAdmin(channel.name, reactorId)) {
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
             DebugLog.instance.log('CHAN',
                 'drop ${channel.name} picture: $reactorId is not an admin');
             break;
@@ -3657,11 +3648,9 @@ class MessagingService {
           // "somebody else asked for this" field rather than our own setting,
           // so a member cannot lift a room's restriction for themselves — the
           // 1:1 path draws the same distinction for the same reason.
-          if (_ref.read(channelRosterControllerProvider.notifier)
-                  .hasAdmin(channel.name) &&
-              !_ref
-                  .read(channelRosterControllerProvider.notifier)
-                  .isAdmin(channel.name, reactorId)) {
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
             DebugLog.instance.log('CHAN',
                 'drop ${channel.name} copy rule: $reactorId is not an admin');
             break;
@@ -3677,13 +3666,10 @@ class MessagingService {
 
         case InnerPayloadType.channelDescription:
           // Same authorisation as the picture, and for the same reason: the
-          // signature says who sent it, our roster says whether they may — and
-          // an unowned room has nobody to say no on behalf of.
-          if (_ref.read(channelRosterControllerProvider.notifier)
-                  .hasAdmin(channel.name) &&
-              !_ref
-                  .read(channelRosterControllerProvider.notifier)
-                  .isAdmin(channel.name, reactorId)) {
+          // signature says who sent it, our roster says whether they may.
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
             DebugLog.instance.log('CHAN',
                 'drop ${channel.name} topic: $reactorId is not an admin');
             break;
