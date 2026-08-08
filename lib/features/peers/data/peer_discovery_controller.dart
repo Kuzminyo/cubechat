@@ -19,6 +19,7 @@ import '../../../core/transport/peer_id.dart';
 import '../models/discovered_peer.dart';
 import 'known_peers_controller.dart';
 import 'peripheral_controller.dart';
+import '../../profile/data/discovery_settings_controller.dart';
 
 /// All the things that can be wrong with BLE on the current device.
 enum PeerDiscoveryStatus {
@@ -39,6 +40,11 @@ enum PeerDiscoveryStatus {
 
   /// Bluetooth radio is off / unauthorized / unavailable.
   adapterOff,
+
+  /// The user switched the mesh off. Distinct from [adapterOff], which is the
+  /// phone's own Bluetooth being unavailable — this one is a deliberate choice
+  /// and the screen says so differently.
+  meshOff,
 
   /// Actively scanning.
   scanning,
@@ -104,6 +110,16 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // Eagerly construct the messaging service so its peripheral-event
     // subscription is up before we start advertising.
     ref.read(messagingServiceProvider);
+
+    // The radio switch, checked here because this is the one door every path
+    // into scanning and advertising goes through — the Nearby screen, the
+    // lifecycle policy, a retune after coming back to the foreground. Anything
+    // that turned the mesh on somewhere else would quietly undo the setting.
+    if (!ref.read(discoverySettingsProvider).meshEnabled) {
+      state =
+          state.copyWith(status: PeerDiscoveryStatus.meshOff, peers: const []);
+      return;
+    }
 
     final scanner = ref.read(bleScannerProvider);
     // Scan hard only when it buys something: while someone is actually watching

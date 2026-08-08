@@ -21,6 +21,7 @@ import '../../chat/presentation/widgets/media_picker_sheet.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../data/channel_avatars_controller.dart';
+import '../data/channel_controller.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../data/channel_descriptions_controller.dart';
 import '../data/channel_roster_controller.dart';
@@ -306,6 +307,11 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               channelName: widget.channelName,
               canManage: canManage,
             ),
+            const SizedBox(height: 12),
+            _ChannelAdminOnly(
+              channelName: widget.channelName,
+              canManage: canManage,
+            ),
             const SizedBox(height: 20),
             Text(
               t.channelParticipantsTitle.toUpperCase(),
@@ -442,6 +448,85 @@ class _ChannelHero extends StatelessWidget {
 /// consult, keyed by the channel name — so once it is on, every Copy and
 /// Forward in the room is gone without anything else having to know this
 /// screen exists.
+/// Announcement mode: only admins may post.
+///
+/// The switch is a request; the enforcement lives on every member's device,
+/// which drops posts signed by anyone their roster does not hold as an admin.
+/// See [Channel.adminOnly] — with a shared key there is no way to stop a frame
+/// being sent, only to decline to accept it.
+class _ChannelAdminOnly extends ConsumerWidget {
+  const _ChannelAdminOnly({
+    required this.channelName,
+    required this.canManage,
+  });
+
+  final String channelName;
+  final bool canManage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref
+            .watch(channelControllerProvider.notifier)
+            .byName(channelName)
+            ?.adminOnly ??
+        false;
+    ref.watch(channelControllerProvider);
+
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Row(
+          children: [
+            Icon(
+              on ? Icons.campaign_rounded : Icons.forum_outlined,
+              size: 19,
+              color: AppColors.textOnGlassDim,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    t.channelAdminOnly,
+                    style:
+                        TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    t.channelAdminOnlyHint,
+                    style: TextStyle(
+                        color: AppColors.textOnGlassDim, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: on,
+              onChanged: (next) async {
+                if (!canManage) {
+                  showGlassToast(context, t.channelAdminOnly);
+                  return;
+                }
+                try {
+                  await ref
+                      .read(messagingServiceProvider)
+                      .sendChannelAdminOnly(channelName, next);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  showGlassToast(context, t.channelAdminOnly);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ChannelCopyRestriction extends ConsumerWidget {
   const _ChannelCopyRestriction({
     required this.channelName,

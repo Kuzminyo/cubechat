@@ -648,5 +648,10 @@
   "profileScaleSample": "Text and rows are drawn at this size.",
   "savedTitle": "Saved",
   "savedSubtitle": "Notes to yourself, on this device",
-  "savedEmpty": "Anything you write here stays on this phone."
+  "savedEmpty": "Anything you write here stays on this phone.",
+  "meshOffTitle": "Bluetooth mesh is off",
+  "meshOffHint": "Nobody nearby can find you and you cannot find them. Messages still travel over the internet relay.",
+  "profileMeshSwitch": "Bluetooth mesh",
+  "profileMeshSwitchHint": "Find people nearby and carry messages without the internet. Off saves battery.",
+  "channelAdminOnlyHint": "An announcement channel. Everyone still reads it."
 }

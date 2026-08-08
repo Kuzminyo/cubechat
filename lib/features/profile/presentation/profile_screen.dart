@@ -29,6 +29,8 @@ import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/widgets/glass_toast.dart';
+import 'dart:async';
+import '../../peers/data/peer_discovery_controller.dart';
 
 const _appVersion = '0.1.0';
 
@@ -140,6 +142,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupPrivacy,
           summary: _privacySummary(ref, t),
           children: const [
+            _MeshSwitchCard(framed: false),
             _DiscoverableCard(framed: false),
             _PrivacyCard(framed: false),
           ],
@@ -484,6 +487,39 @@ class _BackupCard extends StatelessWidget {
 
 /// Whether the mesh announcement goes out in the clear to everyone in range,
 /// or sealed to contacts we already have.
+/// The Bluetooth radio itself, on or off.
+///
+/// Above discoverability on purpose, because it is the larger switch: with the
+/// mesh off there is nothing to be discoverable *on*. The pair reads as "may
+/// the app use Bluetooth" and then "and if so, may strangers see me".
+class _MeshSwitchCard extends ConsumerWidget {
+  const _MeshSwitchCard({this.framed = true});
+
+  final bool framed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref.watch(discoverySettingsProvider).meshEnabled;
+    return _frame(framed,
+      child: _SettingSwitch(
+        icon: on ? Icons.bluetooth_rounded : Icons.bluetooth_disabled_rounded,
+        title: t.profileMeshSwitch,
+        hint: t.profileMeshSwitchHint,
+        value: on,
+        onChanged: (v) async {
+          await ref.read(discoverySettingsProvider.notifier).setMeshEnabled(v);
+          // Act on it now rather than at the next lifecycle change: a switch
+          // whose effect arrives whenever the app next happens to be resumed
+          // is a switch nobody trusts.
+          final discovery = ref.read(peerDiscoveryControllerProvider.notifier);
+          unawaited(v ? discovery.start() : discovery.suspend());
+        },
+      ),
+    );
+  }
+}
+
 class _DiscoverableCard extends ConsumerWidget {
   const _DiscoverableCard({this.framed = true});
 

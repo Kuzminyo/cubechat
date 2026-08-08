@@ -2169,6 +2169,52 @@ class MessagingService {
             '${restricted ? "restricted" : "allowed"} (fanout=$fanout)');
   }
 
+  /// Whether a payload is somebody *posting* into a room, as opposed to
+  /// administering it or reacting to it.
+  ///
+  /// Named rather than inlined because the admin-only rule has to agree with
+  /// itself in two places — the send-side courtesy check and the receive-side
+  /// enforcement — and a list that drifts between them is a room where posts
+  /// vanish for reasons nobody can reproduce.
+  static bool _isChannelPost(InnerPayloadType type) => switch (type) {
+        InnerPayloadType.text ||
+        InnerPayloadType.textReply ||
+        InnerPayloadType.mediaManifest ||
+        InnerPayloadType.imageChunk ||
+        InnerPayloadType.audioChunk ||
+        InnerPayloadType.channelPoll =>
+          true,
+        _ => false,
+      };
+
+  /// Turn a room into an announcement channel, or back into a group.
+  ///
+  /// Broadcast and authorised exactly like the picture and the topic. Members
+  /// store it and then enforce it themselves on every frame that arrives — see
+  /// [Channel.adminOnly] for why the receiving side is the only side that can.
+  Future<void> sendChannelAdminOnly(String channelName, bool adminOnly) async {
+    final channels = _ref.read(channelControllerProvider.notifier);
+    final channel = channels.byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only an admin can set the posting rule for $channelName');
+    }
+    await channels.setAdminOnly(channel.name, adminOnly);
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelAdminOnly,
+      Uint8List.fromList([adminOnly ? 0x01 : 0x00]),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log(
+        'CHAN',
+        '${channel.name} is now '
+            '${adminOnly ? "admin-only" : "open to everyone"} (fanout=$fanout)');
+  }
+
   /// The peer asked that this conversation not be copied or forwarded.
   ///
   /// Stored beside our own setting rather than into it, so neither side can
@@ -3465,6 +3511,29 @@ class MessagingService {
             ),
           );
       final incomingHops = peerId == _nostrPeerId ? null : env.traversedHops;
+
+      // An announcement room: content from a non-admin is dropped.
+      //
+      // This is the enforcement that counts, and the only one available. The
+      // channel key is shared, so every member can always encrypt a frame —
+      // refusing to send is politeness, not a control. What makes the rule real
+      // is here: the frame is signed, the signature has already been verified
+      // above, and a reader simply does not accept a post from somebody their
+      // own roster does not have as an admin.
+      //
+      // Control frames are exempt and handled below on their own admin checks:
+      // an admin change, the picture, the topic and the copy rule each decide
+      // for themselves, and a reaction or a read receipt is not a post.
+      if (channel.adminOnly &&
+          _isChannelPost(unpacked.type) &&
+          !_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
+        DebugLog.instance.log('CHAN',
+            'drop ${channel.name} post: $reactorId is not an admin');
+        return;
+      }
+
       switch (unpacked.type) {
         case InnerPayloadType.text:
           final plaintext = utf8.decode(
@@ -3642,6 +3711,20 @@ class MessagingService {
               AvatarPayload.decode(unpacked.body).jpeg,
             );
           }
+
+        case InnerPayloadType.channelAdminOnly:
+          // Same authorisation as the picture and the topic.
+          if (!_ref
+              .read(channelRosterControllerProvider.notifier)
+              .isAdmin(channel.name, reactorId)) {
+            DebugLog.instance.log('CHAN',
+                'drop ${channel.name} posting rule: $reactorId is not an admin');
+            break;
+          }
+          if (unpacked.body.isEmpty) break;
+          await _ref
+              .read(channelControllerProvider.notifier)
+              .setAdminOnly(channel.name, unpacked.body[0] == 0x01);
 
         case InnerPayloadType.copyRestriction:
           // Same authorisation as the picture and the topic. Stored into the
@@ -4487,10 +4570,11 @@ class MessagingService {
 
         case InnerPayloadType.channelAvatar:
         case InnerPayloadType.channelDescription:
-          // A room's picture and its topic are broadcasts to its members, and
-          // only the channel path knows which room a frame belongs to.
-          // Arriving on a 1:1 link they name no channel at all, so there is
-          // nothing to apply them to.
+        case InnerPayloadType.channelAdminOnly:
+          // A room's picture, its topic and its posting rule are broadcasts to
+          // its members, and only the channel path knows which room a frame
+          // belongs to. Arriving on a 1:1 link they name no channel at all, so
+          // there is nothing to apply them to.
           break;
       }
     } catch (e, st) {

@@ -26,12 +26,23 @@ class ChatTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
+          // No hero tag, so opening a chat is just the page sliding in.
+          //
+          // The avatar used to fly from this row up into the chat header, which
+          // is the "jumping" a tester asked to be rid of: the page arrives from
+          // the right while one element takes a different path across the
+          // screen, and the two motions argue with each other.
+          //
+          // A hero also has to hide its source for the length of the flight and
+          // put it back afterwards, and a flight cut short — by the back
+          // gesture, most of all — can leave the source hidden. That is a row
+          // whose picture is simply missing until something rebuilds it, which
+          // is the other half of what was reported.
           PeerAvatar(
             peerId: chat.peerId,
             label: chat.peerName,
             size: 48,
             online: chat.isOnline,
-            heroTag: 'avatar-${chat.peerId}',
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -649,12 +649,14 @@ class _ChatHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   child: Row(
                     children: [
+                      // The other end of the flight the chat list no longer
+                      // starts. Dropped here too so the Nearby list does not
+                      // keep one alive through the same tag.
                       PeerAvatar(
                         peerId: avatarSeed,
                         label: label,
                         size: 36,
                         online: online,
-                        heroTag: 'avatar-$avatarSeed',
                       ),
                       const SizedBox(width: 10),
                       Expanded(

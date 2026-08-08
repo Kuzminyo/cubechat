@@ -30,27 +30,51 @@ import '../../../core/storage/hive_init.dart';
 /// everyone in exchange for a privacy property most users did not ask for.
 @immutable
 class DiscoverySettings {
-  const DiscoverySettings({required this.discoverable});
+  const DiscoverySettings({
+    required this.discoverable,
+    this.meshEnabled = true,
+  });
 
   /// True: broadcast the announcement in the clear, as the mesh always has.
   /// False: introduce ourselves only to peers already in the roster, sealed.
   final bool discoverable;
 
-  static const initial = DiscoverySettings(discoverable: true);
+  /// Whether the Bluetooth radio is used at all.
+  ///
+  /// Distinct from [discoverable], which is about what we *say* — with it off
+  /// the radio still scans and still advertises, just without announcing us to
+  /// strangers. This is the switch for the radio itself: off means no scanning
+  /// and no advertising, so the phone stops spending power on the mesh
+  /// entirely and the app is reachable only over the internet relay.
+  ///
+  /// Kept separate rather than folded into the background-mode toggle, because
+  /// that one answers "may the app run when I am not looking at it" and this
+  /// one answers "may it use Bluetooth at all" — a phone on wifi all day wants
+  /// the second off and the first on.
+  final bool meshEnabled;
 
-  DiscoverySettings copyWith({bool? discoverable}) =>
-      DiscoverySettings(discoverable: discoverable ?? this.discoverable);
+  static const initial =
+      DiscoverySettings(discoverable: true, meshEnabled: true);
+
+  DiscoverySettings copyWith({bool? discoverable, bool? meshEnabled}) =>
+      DiscoverySettings(
+        discoverable: discoverable ?? this.discoverable,
+        meshEnabled: meshEnabled ?? this.meshEnabled,
+      );
 
   @override
   bool operator ==(Object other) =>
-      other is DiscoverySettings && other.discoverable == discoverable;
+      other is DiscoverySettings &&
+      other.discoverable == discoverable &&
+      other.meshEnabled == meshEnabled;
 
   @override
-  int get hashCode => discoverable.hashCode;
+  int get hashCode => Object.hash(discoverable, meshEnabled);
 }
 
 class DiscoverySettingsController extends Notifier<DiscoverySettings> {
   static const _key = 'discovery.discoverable';
+  static const _meshKey = 'discovery.mesh_enabled';
 
   Box<dynamic>? _box;
 
@@ -67,9 +91,21 @@ class DiscoverySettingsController extends Notifier<DiscoverySettings> {
       _box = box;
       state = DiscoverySettings(
         discoverable: box.get(_key) as bool? ?? true,
+        // Absent in history written before the switch existed, and the mesh is
+        // the app — so "we do not know" reads as on.
+        meshEnabled: box.get(_meshKey) as bool? ?? true,
       );
     } catch (e) {
       debugPrint('DiscoverySettings load failed: $e');
+    }
+  }
+
+  Future<void> setMeshEnabled(bool value) async {
+    state = state.copyWith(meshEnabled: value);
+    try {
+      await _box?.put(_meshKey, value);
+    } catch (e) {
+      debugPrint('DiscoverySettings persist failed: $e');
     }
   }
 

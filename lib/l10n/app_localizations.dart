@@ -2731,6 +2731,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Anything you write here stays on this phone.'**
   String get savedEmpty;
+
+  /// No description provided for @meshOffTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth mesh is off'**
+  String get meshOffTitle;
+
+  /// No description provided for @meshOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody nearby can find you and you cannot find them. Messages still travel over the internet relay.'**
+  String get meshOffHint;
+
+  /// No description provided for @profileMeshSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth mesh'**
+  String get profileMeshSwitch;
+
+  /// No description provided for @profileMeshSwitchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Find people nearby and carry messages without the internet. Off saves battery.'**
+  String get profileMeshSwitchHint;
+
+  /// No description provided for @channelAdminOnlyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'An announcement channel. Everyone still reads it.'**
+  String get channelAdminOnlyHint;
 }
 
 class _AppLocalizationsDelegate

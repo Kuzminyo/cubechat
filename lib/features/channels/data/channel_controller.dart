@@ -100,6 +100,9 @@ class ChannelController extends Notifier<Map<String, Channel>> {
       // Sticky: re-deriving a room you were invited to, by typing its name,
       // does not promote you to having founded it.
       viaInvite: state[name]?.viaInvite ?? viaInvite,
+      // Survives a re-join: the rule belongs to the room, not to this act of
+      // joining it.
+      adminOnly: state[name]?.adminOnly ?? false,
       // Re-joining an existing channel keeps its original position in the
       // chat list rather than jumping it to the top.
       joinedAt: state[name]?.joinedAt ?? DateTime.now(),
@@ -107,6 +110,24 @@ class ChannelController extends Notifier<Map<String, Channel>> {
     state = {...state, name: channel};
     await _persist(channel);
     return channel;
+  }
+
+  /// Record the room's posting rule, as an admin sets it or as it arrives from
+  /// one.
+  Future<void> setAdminOnly(String name, bool value) async {
+    final current = state[normalizeChannelName(name)];
+    if (current == null || current.adminOnly == value) return;
+    final next = Channel(
+      name: current.name,
+      hasPassword: current.hasPassword,
+      key: current.key,
+      tag: current.tag,
+      joinedAt: current.joinedAt,
+      viaInvite: current.viaInvite,
+      adminOnly: value,
+    );
+    state = {...state, next.name: next};
+    await _persist(next);
   }
 
   /// Leave a channel — forget its key. Existing message history for the
@@ -160,6 +181,7 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         'tagHex': _hexOf(c.tag),
         'joinedAtIso': c.joinedAt.toIso8601String(),
         'viaInvite': c.viaInvite,
+        'adminOnly': c.adminOnly,
       };
 
   static Channel _decode(Map<dynamic, dynamic> m) => Channel(
@@ -174,6 +196,7 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         // before this build still claim an unclaimed admin seat, which is the
         // migration those rooms need.
         viaInvite: (m['viaInvite'] as bool?) ?? false,
+        adminOnly: (m['adminOnly'] as bool?) ?? false,
       );
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {

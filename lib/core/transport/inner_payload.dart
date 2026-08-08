@@ -96,6 +96,12 @@ enum InnerPayloadType {
   /// Signed channel poll creation or vote. See `channel_poll.dart`.
   channelPoll(0xF0),
 
+  /// A room's posting rule: one byte, 1 = only admins may post.
+  ///
+  /// Its own type rather than a flag on the invite, because it changes during a
+  /// room's life and has to reach members who joined long before.
+  channelAdminOnly(0xF8),
+
   /// Signed administrator role change inside a channel.
   channelAdmin(0xF1),
 

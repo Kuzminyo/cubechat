@@ -1509,4 +1509,21 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get savedEmpty =>
       'Усе, що ви тут напишете, залишиться на цьому телефоні.';
+
+  @override
+  String get meshOffTitle => 'Bluetooth-мережу вимкнено';
+
+  @override
+  String get meshOffHint =>
+      'Ніхто поруч вас не знайде, і ви їх теж. Повідомлення й далі йдуть через інтернет-реле.';
+
+  @override
+  String get profileMeshSwitch => 'Bluetooth-мережа';
+
+  @override
+  String get profileMeshSwitchHint =>
+      'Знаходить людей поруч і передає повідомлення без інтернету. Вимкнено — економить батарею.';
+
+  @override
+  String get channelAdminOnlyHint => 'Канал оголошень. Читати можуть усі.';
 }

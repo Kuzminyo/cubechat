@@ -104,6 +104,19 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
           ),
         ];
 
+      // A deliberate choice, so it reads as a setting rather than a fault —
+      // no "grant permission" button, nothing to fix, just what is switched
+      // off and what still works without it.
+      case PeerDiscoveryStatus.meshOff:
+        return [
+          _StatusCard(
+            icon: Icons.bluetooth_disabled,
+            tone: _StatusTone.warning,
+            title: t.meshOffTitle,
+            hint: t.meshOffHint,
+          ),
+        ];
+
       case PeerDiscoveryStatus.permissionsUnknown:
       case PeerDiscoveryStatus.permissionsDenied:
         return [
@@ -664,7 +677,9 @@ class _PeerCard extends StatelessWidget {
             label: displayName,
             size: 44,
             online: true,
-            heroTag: 'avatar-${peer.id}',
+            // No flight into the chat header — see the note in ChatTile. The
+            // tag namespace was shared with the chat list, so leaving it here
+            // would have kept the same jump alive from Nearby.
           ),
           const SizedBox(width: 12),
           Expanded(

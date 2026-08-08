@@ -1496,4 +1496,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get savedEmpty => 'Anything you write here stays on this phone.';
+
+  @override
+  String get meshOffTitle => 'Bluetooth mesh is off';
+
+  @override
+  String get meshOffHint =>
+      'Nobody nearby can find you and you cannot find them. Messages still travel over the internet relay.';
+
+  @override
+  String get profileMeshSwitch => 'Bluetooth mesh';
+
+  @override
+  String get profileMeshSwitchHint =>
+      'Find people nearby and carry messages without the internet. Off saves battery.';
+
+  @override
+  String get channelAdminOnlyHint =>
+      'An announcement channel. Everyone still reads it.';
 }

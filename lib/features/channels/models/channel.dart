@@ -16,6 +16,7 @@ class Channel {
     required this.tag,
     required this.joinedAt,
     this.viaInvite = false,
+    this.adminOnly = false,
   });
 
   /// Human channel id, including the leading `#` (e.g. `#general`). Also used
@@ -49,6 +50,16 @@ class Channel {
   /// Used by [ChannelRosterController.ensureSelf] to decide whether joining may
   /// claim the admin seat when the room has nobody in it yet.
   final bool viaInvite;
+
+  /// Only admins may post — an announcement channel rather than a group.
+  ///
+  /// This is enforced on the *receiving* side, against each member's own
+  /// roster, and that is the only enforcement that means anything: the key is
+  /// shared, so anybody holding it can always encrypt a frame, and a sender
+  /// that refuses to is being polite rather than being stopped. What makes the
+  /// rule real is that every channel frame is signed and readers drop content
+  /// signed by somebody they do not have as an admin.
+  final bool adminOnly;
 }
 
 /// Canonical form of a channel name: lower-case, a single leading `#`, and no
