@@ -2436,7 +2436,27 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _previewAndSend(assets);
       case MediaPickerLocation():
         await _shareLocation();
+      case MediaPickerEdit(:final asset):
+        await _editGalleryPhoto(asset);
     }
+  }
+
+  /// One photo from the roll, opened in the editor and then sent.
+  ///
+  /// Goes down exactly the path the camera does — [_editAndSendBytes] — so the
+  /// editor, the mesh downscale and the send are the same code for a photo you
+  /// just took and a photo you already had.
+  Future<void> _editGalleryPhoto(AssetEntity asset) async {
+    final t = AppLocalizations.of(context);
+    // The original, not a thumbnail: this is the copy that gets edited and
+    // sent, and the editor should not be handed something already reduced.
+    final bytes = await asset.originBytes;
+    if (!mounted) return;
+    if (bytes == null) {
+      showGlassToast(context, t.avatarFailed, tone: ToastTone.danger);
+      return;
+    }
+    await _editAndSendBytes(bytes, idHint: 'gal-${asset.id}');
   }
 
   /// Ask the phone where it is, ask how long that should stand for, send it.

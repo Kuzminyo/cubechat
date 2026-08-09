@@ -6,6 +6,7 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../../../core/theme/colors.dart';
 import 'attach_island.dart';
+import 'gallery_viewer.dart';
 
 /// What the picker sheet resolves to when it closes.
 ///
@@ -32,6 +33,17 @@ class MediaPickerFile extends MediaPickerResult {
 /// Channels only — see [AttachIsland.allowPoll].
 class MediaPickerLocation extends MediaPickerResult {
   const MediaPickerLocation();
+}
+
+/// One photo, to be opened in the editor and then sent.
+///
+/// Carries the asset rather than its bytes: loading and editing already have a
+/// path in the chat screen (the camera goes down it), and handing over an
+/// [AssetEntity] keeps the picker out of the business of decoding.
+class MediaPickerEdit extends MediaPickerResult {
+  const MediaPickerEdit(this.asset);
+
+  final AssetEntity asset;
 }
 
 class MediaPickerPoll extends MediaPickerResult {
@@ -217,6 +229,36 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     });
   }
 
+  /// Full screen, from the photo that was tapped, with the rest of the roll a
+  /// swipe away.
+  ///
+  /// Selection is passed in by callback rather than returned, so ticking in
+  /// there and ticking in the grid are one act on one list — the grid is
+  /// already up to date when the viewer closes. Only leaving the picker
+  /// entirely comes back as a result.
+  Future<void> _openViewer(int index) async {
+    final result = await Navigator.of(context).push<GalleryViewerResult>(
+      MaterialPageRoute<GalleryViewerResult>(
+        fullscreenDialog: true,
+        builder: (_) => GalleryViewer(
+          assets: _assets,
+          initialIndex: index,
+          isSelected: _selected.contains,
+          orderOf: (a) => _selected.indexOf(a) + 1,
+          onToggle: _toggle,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    switch (result.exit) {
+      case GalleryViewerExit.send:
+        Navigator.of(context)
+            .pop(MediaPickerAssets(List<AssetEntity>.from(_selected)));
+      case GalleryViewerExit.edit:
+        Navigator.of(context).pop(MediaPickerEdit(result.asset));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -311,7 +353,12 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
           key: ValueKey<String>(asset.id),
           asset: asset,
           order: _selected.indexOf(asset),
-          onTap: () => _toggle(asset),
+          // Tap looks, hold ticks. The other way round for two years, which
+          // meant the only way to see a photo properly was to send it: three
+          // columns of thumbnails tell you a sunset from a screenshot and
+          // nothing finer.
+          onTap: () => _openViewer(i - 1),
+          onLongPress: () => _toggle(asset),
         );
       },
     );
@@ -441,6 +488,7 @@ class _Thumb extends StatefulWidget {
     required this.asset,
     required this.order,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final AssetEntity asset;
@@ -448,6 +496,7 @@ class _Thumb extends StatefulWidget {
   /// Index in the selection list, or -1 when unselected.
   final int order;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   State<_Thumb> createState() => _ThumbState();
@@ -474,6 +523,7 @@ class _ThumbState extends State<_Thumb> {
     final selected = widget.order >= 0;
     return GestureDetector(
       onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
       child: Stack(
         fit: StackFit.expand,
         children: [
