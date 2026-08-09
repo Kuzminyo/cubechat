@@ -8,6 +8,7 @@ void main() {
       // makes a conversation feel alive. Hiding it unasked reads as a bug.
       expect(PrivacySettings.initial.shareLastSeen, isTrue);
       expect(PrivacySettings.initial.shareReadReceipts, isTrue);
+      expect(PrivacySettings.initial.shareMapLocation, isFalse);
     });
 
     test('copyWith leaves the other switch alone', () {
@@ -18,20 +19,33 @@ void main() {
       expect(onlyReceiptsOff.shareReadReceipts, isFalse);
       expect(onlyReceiptsOff.shareLastSeen, isTrue);
 
-      final onlySeenOff = PrivacySettings.initial.copyWith(shareLastSeen: false);
+      final onlySeenOff =
+          PrivacySettings.initial.copyWith(shareLastSeen: false);
       expect(onlySeenOff.shareLastSeen, isFalse);
       expect(onlySeenOff.shareReadReceipts, isTrue);
     });
 
     test('compares by value, so a rebuild with equal state is a no-op', () {
       expect(
-        const PrivacySettings(shareLastSeen: false, shareReadReceipts: true),
+        const PrivacySettings(
+          shareLastSeen: false,
+          shareReadReceipts: true,
+          shareMapLocation: false,
+        ),
         equals(
-          const PrivacySettings(shareLastSeen: false, shareReadReceipts: true),
+          const PrivacySettings(
+            shareLastSeen: false,
+            shareReadReceipts: true,
+            shareMapLocation: false,
+          ),
         ),
       );
       expect(
-        const PrivacySettings(shareLastSeen: false, shareReadReceipts: true),
+        const PrivacySettings(
+          shareLastSeen: false,
+          shareReadReceipts: true,
+          shareMapLocation: false,
+        ),
         isNot(equals(PrivacySettings.initial)),
       );
     });
@@ -42,10 +56,12 @@ void main() {
       final a = const PrivacySettings(
         shareLastSeen: true,
         shareReadReceipts: false,
+        shareMapLocation: false,
       );
       final b = const PrivacySettings(
         shareLastSeen: false,
         shareReadReceipts: true,
+        shareMapLocation: false,
       );
       expect(a.hashCode, isNot(equals(b.hashCode)));
     });

@@ -52,6 +52,7 @@ class MediaPreviewScreen extends StatefulWidget {
     required this.items,
     this.allowOriginal = true,
     this.allowViewOnce = false,
+    this.initialCaption,
   });
 
   /// Full-size bytes for each picked photo, in the order they were chosen.
@@ -67,12 +68,15 @@ class MediaPreviewScreen extends StatefulWidget {
   /// has nobody to hide it from.
   final bool allowViewOnce;
 
+  /// Text composed in the gallery sheet before this full-size preview.
+  final String? initialCaption;
+
   @override
   State<MediaPreviewScreen> createState() => _MediaPreviewScreenState();
 }
 
 class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
-  final _caption = TextEditingController();
+  late final TextEditingController _caption;
   final _page = PageController();
   late final List<Uint8List> _bytes = [...widget.items];
   int _index = 0;
@@ -82,6 +86,12 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 
   /// Send it as a photo that burns after one look.
   bool _viewOnce = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _caption = TextEditingController(text: widget.initialCaption);
+  }
 
   @override
   void dispose() {

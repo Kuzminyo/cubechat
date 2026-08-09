@@ -29,6 +29,7 @@ void main() {
   Future<MediaPreviewResult?> open(
     WidgetTester tester, {
     required Future<void> Function(WidgetTester tester) act,
+    String? initialCaption,
   }) async {
     MediaPreviewResult? result;
     await tester.pumpWidget(
@@ -40,7 +41,10 @@ void main() {
             onPressed: () async {
               result = await Navigator.of(context).push<MediaPreviewResult>(
                 MaterialPageRoute<MediaPreviewResult>(
-                  builder: (_) => MediaPreviewScreen(items: [_png]),
+                  builder: (_) => MediaPreviewScreen(
+                    items: [_png],
+                    initialCaption: initialCaption,
+                  ),
                 ),
               );
             },
@@ -83,5 +87,16 @@ void main() {
     });
 
     expect(result!.asFile, isTrue);
+  });
+  testWidgets('keeps the caption composed in the picker', (tester) async {
+    final result = await open(
+      tester,
+      initialCaption: 'Ready to send',
+      act: (tester) async {
+        await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      },
+    );
+
+    expect(result!.caption, 'Ready to send');
   });
 }

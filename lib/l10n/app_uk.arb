@@ -1,633 +1,714 @@
 {
-  "@@locale": "uk",
-  "appName": "Cubechat",
-  "navChats": "Чати",
-  "navPeers": "Поблизу",
-  "navProfile": "Профіль",
-  "navContacts": "Контакти",
-  "contactsTitle": "Контакти",
-  "contactsSubtitle": "Усі, з ким ви вже листувалися",
-  "contactsSearchHint": "Пошук контактів…",
-  "contactsEmptyTitle": "Поки що немає контактів",
-  "contactsEmptyHint": "Почніть розмову — і співрозмовник з’явиться тут.",
-  "contactsSearchEmpty": "Контактів не знайдено",
-  "contactProfileChat": "Чат",
-  "contactProfileSecurity": "Безпека",
-  "contactProfileActions": "Дії контакту",
-  "contactProfileVerify": "Підтвердити",
-  "contactProfileCopyId": "Копіювати ID контакту",
-  "contactProfileIdCopied": "ID контакту скопійовано",
-  "contactProfileId": "ID контакту",
-  "contactProfileVerifyHint": "Порівняйте відбитки шифрування, щоб підтвердити цю особу.",
-  "chatsTitle": "Чати",
-  "chatsSubtitle": "Mesh · наскрізне шифрування",
-  "chatsEmptyTitle": "Поки що немає розмов",
-  "chatsEmptyHint": "Відкрийте співрозмовника на вкладці «Поблизу», щоб почати спілкування.",
-  "chatsFilterAll": "Усі",
-  "chatsFilterUnread": "Непрочитані",
-  "chatsFilterMesh": "Mesh",
-  "chatsFilterFavorites": "Обрані",
-  "chatsFolderDirect": "Особисті",
-  "chatsFolderChannels": "Канали",
-  "chatsFolderOnline": "На зв'язку",
-  "chatsFoldersTitle": "Папки",
-  "chatsFoldersHint": "Папки — це зрізи цього ж списку, а не місця, куди переносять чати. Увімкніть ті, що потрібні над чатами.",
-  "chatsSearchHint": "Пошук чатів…",
-  "chatsStatusViaMesh": "через mesh",
-  "chatsStatusOffline": "офлайн",
-  "peerKeyRotated": "ключ змінено — підтвердьте знову",
-  "peersTitle": "Поблизу",
-  "peersSubtitle": "Пристрої у радіусі Bluetooth",
-  "peersEmpty": "Шукаємо співрозмовників…",
-  "peersHopsOne": "{n} пересилання",
-  "peersHopsOther": "{n} пересилань",
-  "@peersHopsOne": {
-    "placeholders": {
-      "n": {
-        "type": "int"
+    "@@locale":  "uk",
+    "appName":  "Cubechat",
+    "navChats":  "Чати",
+    "navPeers":  "Поблизу",
+    "navProfile":  "Профіль",
+    "navContacts":  "Контакти",
+    "navMap":  "Мапа",
+    "mapTitle":  "Карта",
+    "mapInviteTitle": "\u0417\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u0438 \u043d\u0430 \u043c\u0430\u043f\u0443",
+    "mapInviteHint": "\u041e\u0431\u0435\u0440\u0456\u0442\u044c \u043e\u0434\u0438\u043d \u0430\u0431\u043e \u043a\u0456\u043b\u044c\u043a\u0430 \u0447\u0430\u0442\u0456\u0432",
+    "mapInviteEmpty": "\u041f\u043e\u043a\u0438 \u043d\u0435\u043c\u0430\u0454 \u0447\u0430\u0442\u0456\u0432 \u0434\u043b\u044f \u0437\u0430\u043f\u0440\u043e\u0448\u0435\u043d\u043d\u044f.",
+    "mapInviteAction": "\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u0442\u0438 ({count})",
+    "@mapInviteAction": {
+      "placeholders": {
+        "count": { "type": "int" }
       }
-    }
-  },
-  "@peersHopsOther": {
-    "placeholders": {
-      "n": {
-        "type": "int"
+    },
+    "mapInviteMessage": "\u0417\u0430\u043f\u0440\u043e\u0448\u0435\u043d\u043d\u044f \u043d\u0430 \u043c\u0430\u043f\u0443 Cubechat. \u041d\u0430\u0434\u0456\u0448\u043b\u0456\u0442\u044c \u0441\u0432\u043e\u044e \u0433\u0435\u043e\u043b\u043e\u043a\u0430\u0446\u0456\u044e \u0432 \u0446\u0435\u0439 \u0447\u0430\u0442, \u0449\u043e\u0431 \u0437\u2019\u044f\u0432\u0438\u0442\u0438\u0441\u044f \u043d\u0430 \u043c\u0430\u043f\u0456.",
+    "mapInviteSent": "\u041d\u0430\u0434\u0456\u0441\u043b\u0430\u043d\u043e \u0437\u0430\u043f\u0440\u043e\u0448\u0435\u043d\u044c: {count}",
+    "@mapInviteSent": {
+      "placeholders": {
+        "count": { "type": "int" }
       }
-    }
-  },
-  "blePermissionTitle": "Потрібен дозвіл на Bluetooth",
-  "blePermissionHint": "Cubechat використовує Bluetooth для пошуку співрозмовників і надсилання повідомлень — без інтернету.",
-  "blePermissionGrant": "Надати дозвіл",
-  "blePermissionOpenSettings": "Відкрити налаштування",
-  "blePermissionDeniedHint": "У дозволі відмовлено. Відкрийте налаштування, щоб дозволити доступ до Bluetooth.",
-  "bleAdapterOffTitle": "Bluetooth вимкнено",
-  "bleAdapterOffHint": "Увімкніть Bluetooth, щоб побачити пристрої поблизу.",
-  "bleUnsupportedTitle": "Bluetooth LE недоступний",
-  "bleUnsupportedHint": "Цей пристрій або платформа не підтримує Bluetooth Low Energy. Спробуйте на смартфоні.",
-  "bleScanning": "Сканування…",
-  "bleRetry": "Повторити",
-  "bleConnectFailed": "Не вдалося підключитися. Пір поза зоною дії або його Bluetooth-адресу змінено.",
-  "bleSignal": "Сигнал",
-  "bleConnect": "З'єднатися",
-  "bleConnected": "З'єднано",
-  "bleVerified": "Перевірено",
-  "bleUnknownPeer": "Невідомий пристрій",
-  "bleBroadcasting": "В ефірі",
-  "bleConnectedCount": "{n, plural, =0{Немає з'єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",
-  "@bleConnectedCount": {
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
-  "verifyTitle": "Підтвердження",
-  "verifyIntro": "Порівняйте ці два відбитки зі своїм співрозмовником особисто або по голосовому виклику. Якщо вони збігаються з обох сторін — рукостискання Noise не було підмінене.",
-  "verifyMine": "ВАШ ВІДБИТОК",
-  "verifyTheirs": "ВІДБИТОК {name}",
-  "@verifyTheirs": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "verifyMarkAsVerified": "Підтвердити особу",
-  "verifyAlreadyDone": "Особу цього співрозмовника підтверджено.",
-  "verifyRevoke": "Скасувати",
-  "verifyDoneSnack": "{name}: особу підтверджено",
-  "@verifyDoneSnack": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "chatInputHint": "Повідомлення",
-  "chatSend": "Надіслати",
-  "chatToday": "Сьогодні",
-  "chatYesterday": "Учора",
-  "chatDelivered": "Доставлено",
-  "chatRead": "Прочитано",
-  "chatSending": "Надсилається",
-  "chatEncryptedNotice": "Повідомлення зашифровано наскрізно за протоколом Noise.",
-  "chatSessionHandshaking": "Встановлюється захищений канал…",
-  "chatSessionEstablished": "Захищено · Noise XX",
-  "chatSessionFailed": "З'єднання не вдалося",
-  "presenceOnline": "у мережі",
-  "presenceOffline": "не в мережі",
-  "chatSessionFingerprintPending": "Відбиток з'явиться після завершення рукостискання.",
-  "chatEmptyEstablished": "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
-  "chatEmptyHandshaking": "Очікуємо, поки інший бік завершить рукостискання…",
-  "profileTitle": "Профіль",
-  "profileNickname": "Нікнейм",
-  "profileNicknameEditTitle": "Встановіть нікнейм",
-  "profileNicknameHint": "Як вас побачать інші у mesh-мережі",
-  "profileNicknameSave": "Зберегти",
-  "profileFingerprint": "Відбиток публічного ключа",
-  "profileLanguage": "Мова",
-  "profileLanguageEn": "Англійська",
-  "profileLanguageUk": "Українська",
-  "profileTransport": "Транспорт",
-  "profileTransportMesh": "Bluetooth mesh",
-  "profileBackground": "Працювати у фоні",
-  "profileBackgroundSubtitle": "Отримувати повідомлення, коли застосунок закрито",
-  "profileBatteryExempt": "Вимкнути оптимізацію батареї",
-  "profileAbout": "Про застосунок",
-  "profileVersion": "Версія {v}",
-  "@profileVersion": {
-    "placeholders": {
-      "v": {
-        "type": "String"
-      }
-    }
-  },
-  "profileEmergencyWipe": "Аварійне очищення",
-  "profileEmergencyWipeHint": "Потрійний тап стирає всі ключі, контакти й повідомлення.",
-  "profileEmergencyWipeConfirm": "Стерти все?",
-  "profileEmergencyWipeConfirmHint": "Буде видалено вашу ідентичність, список контактів та історію розмов. Дію не можна скасувати.",
-  "profileEmergencyWipeAction": "Стерти",
-  "cancel": "Скасувати",
-  "copy": "Копіювати",
-  "copied": "Скопійовано",
-  "channelsNewTitle": "Новий канал",
-  "channelsNewTooltip": "Новий канал",
-  "channelNameLabel": "Назва каналу",
-  "channelPasswordLabel": "Пароль (необов’язково)",
-  "channelJoinAction": "Приєднатися",
-  "channelSubtitle": "Груповий канал · спільний ключ",
-  "chatsStatusChannel": "канал",
-  "channelInviteTitle": "Додати учасників",
-  "channelInviteAction": "Запросити",
-  "channelInviteEmpty": "Поки немає відомих пірів. Спершу знайдіть когось на вкладці «Поруч».",
-  "channelInviteSent": "Запрошення надіслано",
-  "channelInviteNoneSent": "Зараз нікого не вдалося досягнути",
-  "channelNameTooLong": "Назва каналу задовга",
-  "chatsActionFavorite": "Додати в обрані",
-  "chatsActionUnfavorite": "Прибрати з обраних",
-  "chatsActionDelete": "Видалити чат",
-  "chatsDeleteTitle": "Видалити цей чат?",
-  "chatsDeletePeerHint": "Розмову буде очищено. Контакт залишиться — писати йому знову можна без обміну кодами.",
-  "chatsDeleteChannelHint": "Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.",
-  "chatsDeleteForThemToo": "Видалити і в співрозмовника",
-  "chatsDeleteForThemHint": "Попросить його застосунок стерти всю розмову, разом з його власними повідомленнями. У каналі відкликаються лише ваші.",
-  "chatEditAction": "Редагувати",
-  "chatEditTitle": "Редагувати повідомлення",
-  "chatEditSave": "Зберегти",
-  "chatEdited": "змінено",
-  "chatDeleteAction": "Видалити",
-  "chatDeleteTitle": "Видалити повідомлення?",
-  "chatDeleteForMe": "Видалити в мене",
-  "chatDeleteForEveryone": "Видалити в усіх",
-  "chatReplyAction": "Відповісти",
-  "chatReplyingTo": "Відповідь для {name}",
-  "chatReplyYou": "себе",
-  "chatCopyAction": "Копіювати",
-  "chatCopied": "Скопійовано",
-  "chatForwardAction": "Переслати",
-  "chatForwardTitle": "Переслати в",
-  "chatForwardEmpty": "Інших чатів поки немає",
-  "chatForwardSent": "Переслано в {name}",
-  "chatSentAt": "Надіслано {time}",
-  "chatReadAt": "Прочитано {time}",
-  "chatPinAction": "Закріпити",
-  "chatUnpinAction": "Відкріпити",
-  "chatUnpinConfirm": "Відкріпити це повідомлення?",
-  "chatUnpinConfirmHint": "Воно перестане бути закріпленим для всіх у цьому чаті.",
-  "chatPinnedTitle": "Закріплене повідомлення",
-  "chatPinnedGone": "Цього повідомлення вже немає в чаті",
-  "peerBlock": "Заблокувати",
-  "peerUnblock": "Розблокувати",
-  "peerMute": "Без звуку",
-  "peerUnmute": "Увімкнути звук",
-  "peerBlockedNote": "Заблоковано — повідомлення відхиляються.",
-  "relaysTitle": "Запасний канал через інтернет",
-  "relaysCardTitle": "Досягати співрозмовників через інтернет",
-  "relaysCardSubtitle": "Коли Bluetooth не доставляє — надсилати через релеї Nostr",
-  "relaysExplainer": "Повідомлення лишаються наскрізно зашифрованими — релей несе той самий запечатаний кадр, що й Bluetooth. Але він бачить, які два ключі спілкуються і коли. Типово вимкнено.",
-  "relaysMyAddress": "Ваша адреса на релеях",
-  "relaysCopied": "Скопійовано",
-  "relaysListLabel": "Релеї",
-  "relaysAdd": "Додати релей",
-  "relaysAddHint": "wss://relay.example.com",
-  "relaysInvalidUrl": "Введіть адресу wss:// або ws://",
-  "relaysRemove": "Видалити",
-  "relaysStateConnected": "З'єднано",
-  "relaysStateConnecting": "З'єднання…",
-  "relaysStateFailed": "Недоступний",
-  "relaysStateIdle": "Вимкнено",
-  "relaysEmpty": "Релеї не налаштовані — запасний канал вимкнено.",
-  "contactTitle": "Картка контакту",
-  "contactMineLabel": "Ваша картка",
-  "contactMineExplainer": "Надішліть її тому, хто поза зоною Bluetooth. Вона містить ваші ключі та адресу на релеях — цього досить, щоб почати з вами зашифрований чат через інтернет.",
-  "contactCopy": "Копіювати",
-  "contactShare": "Поділитися",
-  "contactCopied": "Картку скопійовано",
-  "contactShareSubject": "Моя картка контакту cubechat",
-  "contactAddLabel": "Додати людину",
-  "contactAddHint": "Вставте картку контакту",
-  "contactAddAction": "Додати",
-  "contactPaste": "Вставити",
-  "contactAdded": "Додано {name}",
-  "@contactAdded": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contactInvalid": "Це не картка контакту",
-  "contactOwnCard": "Це ваша власна картка",
-  "contactUnverified": "Доданий так контакт спершу неперевірений. Будь-хто може створити картку й написати на ній будь-яке ім'я, тож звірте відбитки особисто або по дзвінку, перш ніж довіряти особі.",
-  "contactRelayOff": "Запасний канал через інтернет вимкнено, тож картка поки нікого не досягне.",
-  "contactRelayEnable": "Увімкнути",
-  "profileContactCard": "Картка контакту",
-  "profileContactCardSubtitle": "Спілкування з тим, хто поза зоною Bluetooth",
-  "chatsAddContactTooltip": "Додати контакт за карткою",
-  "chatsMenuTooltip": "Ще",
-  "chatsMenuAddContact": "Додати контакт",
-  "chatsMenuNewChannel": "Новий канал",
-  "profileDiscoverable": "Помітність поруч",
-  "profileDiscoverableOnHint": "Вас знайде будь-хто в радіусі",
-  "profileDiscoverableOffHint": "Вас досягнуть лише ваші контакти",
-  "profileDiscoverableExplainer": "Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім'я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв'язними. Новим людям тоді потрібна картка контакту.",
-  "voiceHoldHint": "Утримуйте, щоб записати голосове",
-  "voiceTrimPlay": "Відтворити",
-  "voiceTrimPause": "Пауза",
-  "voiceTrimDiscard": "Видалити запис",
-  "voiceTrimSelection": "Надсилаємо {duration}",
-  "@voiceTrimSelection": {
-    "placeholders": {
-      "duration": {
-        "type": "String"
-      }
-    }
-  },
-  "profilePrivacy": "Приватність",
-  "profileLastSeen": "Показувати час у мережі",
-  "profileLastSeenOnHint": "Контакти бачать, коли ви в застосунку",
-  "profileLastSeenOffHint": "Ніхто не бачить — і ви теж не бачите",
-  "profileReadReceipts": "Показувати час прочитання",
-  "profileReadReceiptsOnHint": "Відправник бачить, що ви прочитали",
-  "profileReadReceiptsOffHint": "Не бачить — і ви не бачите його",
-  "profilePrivacyExplainer": "Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само.",
-  "avatarSet": "Обрати фото",
-  "avatarChange": "Змінити фото",
-  "avatarRemove": "Прибрати фото",
-  "avatarRemoveConfirm": "Аватарку буде видалено з цього пристрою. Замість неї повернеться згенерований градієнт.",
-  "avatarFailed": "Не вдалося прочитати зображення",
-  "fileOpenHint": "Торкніться, щоб відкрити",
-  "fileMissing": "Файл більше недоступний",
-  "fileNoHandlerTitle": "Немає застосунку для цього файлу",
-  "fileNoHandlerHint": "Жоден встановлений застосунок не відкриває цей тип. Можна надіслати його в інший застосунок.",
-  "fileRequestedAgain": "Попросили надіслати ще раз",
-  "fileOpenFailed": "Не вдалося відкрити цей файл",
-  "fileShareAction": "Надіслати в застосунок",
-  "fileTooLargeMesh": "Файл завеликий — максимум {limit} МБ через мережу пристроїв",
-  "fileTooLargeRelay": "Через інтернет можна надіслати до {limit} МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.",
-  "mediaSendOriginal": "Оригінал",
-  "attachFile": "Файл",
-  "attachGallery": "Галерея",
-  "attachCamera": "Камера",
-  "profileEditName": "Ім'я",
-  "profileMyCard": "Картка",
-  "mediaCaptionHint": "Додати підпис…",
-  "contactProfileAutoDelete": "Автоочищення чату",
-  "contactProfileAutoDeleteTitle": "Автовидалення повідомлень",
-  "contactProfileAutoDeleteOff": "Вимкнено",
-  "contactProfileAutoDeleteOneDay": "Через 1 день",
-  "contactProfileAutoDeleteSevenDays": "Через 7 днів",
-  "contactProfileAutoDeleteThirtyDays": "Через 30 днів",
-  "contactProfileAutoDeleteUpdated": "Автоочищення: {period}",
-  "@contactProfileAutoDeleteUpdated": {
-    "placeholders": {
-      "period": {
-        "type": "String"
-      }
-    }
-  },
-  "contactProfileShare": "Поділитися контактом",
-  "contactProfileShareTitle": "Надіслати контакт до",
-  "contactProfileShareEmpty": "Інших чатів ще немає",
-  "contactProfileShareSent": "Надіслано до {name}",
-  "@contactProfileShareSent": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contactProfileRestrictCopying": "Заборонити копіювання",
-  "contactProfileAllowCopying": "Дозволити копіювання",
-  "contactProfileCopyingRestricted": "Копіювання і пересилання вимкнено",
-  "contactProfileCopyingRestrictedByPeer": "Вимкнено співрозмовником",
-  "contactProfileCopyingAllowed": "Копіювання і пересилання дозволено",
-  "contactProfileDelete": "Видалити з контактів",
-  "contactProfileDeleteTitle": "Видалити контакт?",
-  "contactProfileDeleteMessage": "{name} зникне з розділу «Контакти». Історія чату залишиться на цьому пристрої.",
-  "@contactProfileDeleteMessage": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "contactProfileMedia": "Медіа",
-  "contactProfileVoiceMessages": "Голосові повідомлення",
-  "contactProfileNoMedia": "Медіа ще немає",
-  "contactProfileNoVoiceMessages": "Голосових повідомлень ще немає",
-  "contactProfileOpen": "Відкрити профіль",
-  "autoDeleteDays": "{count, plural, one{{count} день} few{{count} дні} other{{count} днів}}",
-  "@autoDeleteDays": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "autoDeleteHours": "{count, plural, one{{count} година} few{{count} години} other{{count} годин}}",
-  "@autoDeleteHours": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "autoDeleteMinutes": "{count, plural, one{{count} хвилина} few{{count} хвилини} other{{count} хвилин}}",
-  "@autoDeleteMinutes": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "autoDeleteSeconds": "{count, plural, one{{count} секунда} few{{count} секунди} other{{count} секунд}}",
-  "@autoDeleteSeconds": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "autoDeleteCustom": "Свій варіант…",
-  "autoDeleteCustomHint": "Кількість",
-  "autoDeleteUnitMinutes": "хв",
-  "autoDeleteUnitHours": "год",
-  "autoDeleteUnitDays": "дні",
-  "contactProfileAutoDeleteSet": "Встановити",
-  "contactProfileFiles": "Файли",
-  "contactProfileNoFiles": "Файлів ще немає",
-  "contactProfileLinks": "Посилання",
-  "contactProfileNoLinks": "Посилань ще немає",
-  "contactProfilePolls": "Опитування",
-  "contactProfileNoPolls": "Опитувань ще немає",
-  "presenceHidden": "статус приховано",
-  "chatReadByCount": "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
-  "@chatReadByCount": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "chatsSearchFrequent": "З ким ви спілкуєтесь",
-  "chatsSearchRecent": "Недавні",
-  "chatsSearchClear": "Очистити",
-  "chatsSearchStartHint": "Шукайте чати та канали за назвою.",
-  "chatsSearchEmpty": "Нічого не знайдено",
-  "contactProfileViewInChat": "Переглянути в чаті",
-  "chatDraft": "Чернетка",
-  "chatSearchTitle": "Пошук",
-  "chatSearchHint": "Пошук у повідомленнях",
-  "chatSearchNoResults": "Нічого не знайдено",
-  "chatSearchPrevious": "Попередній результат",
-  "chatSearchNext": "Наступний результат",
-  "chatMessageCount": "{count} повідомлень",
-  "@chatMessageCount": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "chatRouteBluetooth": "Bluetooth",
-  "chatRouteMesh": "Меш",
-  "chatRouteInternet": "Інтернет",
-  "chatRouteQueued": "У черзі",
-  "chatAttachmentUnavailable": "Немає доступного з'єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.",
-  "fileTransfersTitle": "Центр передачі файлів",
-  "fileTransfersClear": "Очистити історію",
-  "fileTransfersEmpty": "Передач файлів ще немає",
-  "fileTransfersActive": "Активні",
-  "fileTransfersHistory": "Історія",
-  "fileTransferPause": "Призупинити",
-  "fileTransferResume": "Продовжити",
-  "fileTransferRetry": "Повторити",
-  "fileTransferQueued": "Очікує з’єднання",
-  "fileTransferRunning": "Передавання",
-  "fileTransferPaused": "Призупинено",
-  "fileTransferCompleted": "Завершено",
-  "fileTransferFailed": "Помилка",
-  "fileTransferCanceled": "Скасовано",
-  "profileFileTransfers": "Передача файлів",
-  "profileFileTransfersSubtitle": "Прогрес, черга та історія передач",
-  "qrScanAction": "Сканувати QR-код",
-  "qrScanTitle": "Сканування QR-коду",
-  "qrScanHint": "Наведіть камеру на QR-код контакту або каналу Cubechat.",
-  "qrFlash": "Ліхтарик",
-  "qrCameraError": "Камера недоступна. Перевірте дозвіл на камеру та спробуйте ще раз.",
-  "qrInvalid": "Це недійсний QR-код Cubechat.",
-  "qrChannelAdded": "{name} додано",
-  "@qrChannelAdded": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "qrShow": "Показати QR-код",
-  "qrChannelTitle": "Приєднатися до {name}",
-  "@qrChannelTitle": {
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "profileBackup": "Зашифрована резервна копія",
-  "profileBackupSubtitle": "Безпечне перенесення ключів, контактів та історії",
-  "backupTitle": "Зашифрована резервна копія",
-  "backupExplainer": "Резервна копія містить приватні ключі профілю, контакти, канали, налаштування та історію повідомлень. Вона шифрується на цьому телефоні вибраним паролем; Cubechat не зможе відновити забутий пароль.",
-  "backupCreate": "Створити копію",
-  "backupCreateSubtitle": "Зашифрувати все та зберегти файл .cchatbackup",
-  "backupRestore": "Відновити копію",
-  "backupRestoreSubtitle": "Замінити профіль Cubechat на цьому телефоні даними з копії",
-  "backupPasswordTitle": "Пароль резервної копії",
-  "backupPasswordHint": "Щонайменше 8 символів",
-  "backupConfirmPassword": "Повторіть пароль",
-  "backupPasswordMismatch": "Паролі не збігаються",
-  "backupPasswordShort": "Використайте щонайменше 8 символів",
-  "backupSaveTitle": "Зберегти резервну копію Cubechat",
-  "backupSaved": "Зашифровану копію збережено",
-  "backupFailed": "Не вдалося завершити операцію з резервною копією",
-  "backupRestoreConfirmTitle": "Замінити цей профіль?",
-  "backupRestoreConfirmMessage": "Поточні ключі, контакти, канали, налаштування та історію на цьому телефоні буде замінено вибраною резервною копією.",
-  "backupRestoreConfirmAction": "Відновити",
-  "backupRestored": "Резервну копію відновлено",
-  "backupInvalid": "Неправильний пароль, пошкоджений файл або непідтримувана копія",
-  "channelInfoTitle": "Про канал",
-  "channelParticipantsTitle": "Учасники",
-  "channelAdministratorsTitle": "Адміністратори",
-  "channelMakeAdmin": "Зробити адміністратором",
-  "channelRemoveAdmin": "Забрати права адміністратора",
-  "channelNoParticipants": "Учасники з’являться після підписаної активності",
-  "channelSharedContent": "Медіа, файли та опитування",
-  "channelDescriptionTitle": "Опис",
-  "channelDescriptionEmpty": "Опису ще немає",
-  "channelDescriptionHint": "Для чого цей канал",
-  "channelDescriptionAdminOnly": "Змінювати опис може лише адміністратор",
-  "channelDescriptionSave": "Зберегти",
-  "chatTyping": "пише…",
-  "onboardingMeshTitle": "Працює без інтернету",
-  "onboardingMeshBody": "Повідомлення йдуть через Bluetooth, від телефона до телефона. Без зв’язку, без Wi-Fi, без акаунтів — лише люди поруч.",
-  "onboardingRelayTitle": "І з ним, коли він є",
-  "onboardingRelayBody": "Поза зоною Bluetooth повідомлення йдуть інтернетом і доходять так само. Вам не треба обирати.",
-  "onboardingPrivacyTitle": "Ніхто посередині не прочитає",
-  "onboardingPrivacyBody": "Усе зашифровано наскрізно, а ваша особистість — це ключ на цьому телефоні: не номер, не пошта, не акаунт, який хтось може відібрати.",
-  "onboardingSkip": "Пропустити",
-  "onboardingNext": "Далі",
-  "onboardingStart": "Почати",
-  "chatMediaShare": "Поділитися",
-  "chatMediaSaveToGallery": "Зберегти в галерею",
-  "chatMediaShowInChat": "Показати в чаті",
-  "chatWallpaperTitle": "Шпалери",
-  "chatWallpaperClear": "Скинути",
-  "chatWallpaperDim": "Затемнення під повідомленнями",
-  "chatSelectAction": "Вибрати",
-  "chatForwardNothing": "Тут немає чого переслати",
-  "chatSelectedCount": "{count, plural, =1{Вибрано 1} few{Вибрано {count}} many{Вибрано {count}} other{Вибрано {count}}}",
-  "@chatSelectedCount": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "chatDeleteSelectedTitle": "{count, plural, =1{Видалити це повідомлення?} few{Видалити {count} повідомлення?} many{Видалити {count} повідомлень?} other{Видалити {count} повідомлення?}}",
-  "@chatDeleteSelectedTitle": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "contactAliasAction": "Перейменувати контакт",
-  "contactAliasHint": "Це ім’я бачите лише ви. Порожньо — буде їхнє.",
-  "viewOnceSendLabel": "Один перегляд",
-  "viewOnceTitle": "Один перегляд",
-  "viewOnceTapToView": "Фото · торкніться, щоб переглянути раз",
-  "viewOnceSent": "Фото · надіслано",
-  "viewOnceOpened": "Фото переглянуто",
-  "viewOnceUnavailable": "Це фото більше недоступне",
-  "viewOnceWarning": "Після виходу фото буде видалено в обох.",
-  "channelAvatarAdminOnly": "Змінювати фото каналу може лише адміністратор",
-  "channelAdminOnly": "Змінювати це може лише адміністратор",
-  "channelAvatarTooLarge": "Це фото завелике для розсилки",
-  "channelMemberUnknown": "Ще не у ваших контактах",
-  "channelPollTitle": "Опитування",
-  "channelCreatePoll": "Створити опитування",
-  "channelPollQuestion": "Запитання",
-  "channelPollOption": "Варіант {number}",
-  "@channelPollOption": {
-    "placeholders": {
-      "number": {
-        "type": "int"
-      }
-    }
-  },
-  "channelPollAddOption": "Додати варіант",
-  "channelPollCreate": "Опублікувати",
-  "channelPollVotes": "{count, plural, =0{Немає голосів} =1{1 голос} few{{count} голоси} many{{count} голосів} other{{count} голосу}}",
-  "@channelPollVotes": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "phoneTransferTitle": "Перенесення на новий телефон",
-  "phoneTransferIntro": "Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.",
-  "phoneTransferSend": "Це старий телефон",
-  "phoneTransferReceive": "Це новий телефон",
-  "phoneTransferSameWifi": "Під’єднайте обидва телефони до однієї Wi-Fi мережі й не закривайте цей екран до завершення.",
-  "phoneTransferPreparing": "Готуємо зашифроване перенесення…",
-  "phoneTransferReady": "Відскануйте цей одноразовий QR-код на новому телефоні",
-  "phoneTransferScan": "Сканувати старий телефон",
-  "phoneTransferConfirmTitle": "Замінити профіль на цьому телефоні?",
-  "phoneTransferConfirmMessage": "Поточний профіль на цьому телефоні буде замінено даними із зашифрованого локального перенесення.",
-  "phoneTransferConfirmAction": "Перенести профіль",
-  "phoneTransferSuccess": "Профіль успішно перенесено",
-  "phoneTransferFailed": "Не вдалося завершити перенесення телефону",
-  "profileGroupConnection": "З'єднання",
-  "profileGroupPrivacy": "Приватність",
-  "profileGroupData": "Обмін і дані",
-  "profileGroupApp": "Застосунок",
-  "profileSummaryMeshOnly": "Тільки mesh",
-  "profileSummaryMeshInternet": "Mesh · інтернет",
-  "profileSummaryBackgroundOn": "працює у фоні",
-  "profileSummaryDiscoverable": "Вас видно",
-  "profileSummaryHidden": "Приховано",
-  "profileSummaryLastSeenHidden": "час у мережі приховано",
-  "profileSummaryTransfersActive": "{count} у процесі",
-  "@profileSummaryTransfersActive": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "profileSummaryCardBackup": "Картка, файли, бекап",
-  "chatPlay": "Відтворити",
-  "chatPause": "Пауза",
-  "profileTheme": "Колір",
-  "profileThemeEmerald": "Смарагд",
-  "profileThemeIndigo": "Індиго",
-  "profileThemeAmber": "Бурштин",
-  "profileThemeRose": "Троянда",
-  "profileThemeFuchsia": "Фуксія",
-  "profileThemeViolet": "Фіалка",
-  "profileThemeOcean": "Океан",
-  "profileThemeSlate": "Графіт",
-  "profileScale": "Розмір інтерфейсу",
-  "profileScaleSystem": "Системний",
-  "profileScaleSmall": "Менший",
-  "profileScaleNormal": "Звичайний",
-  "profileScaleLarge": "Більший",
-  "profileScaleSample": "Текст і рядки малюються цього розміру.",
-  "savedTitle": "Збережені",
-  "savedSubtitle": "Нотатки для себе, на цьому пристрої",
-  "savedEmpty": "Усе, що ви тут напишете, залишиться на цьому телефоні.",
-  "meshOffTitle": "Bluetooth-мережу вимкнено",
-  "meshOffHint": "Ніхто поруч вас не знайде, і ви їх теж. Повідомлення й далі йдуть через інтернет-реле.",
-  "profileMeshSwitch": "Bluetooth-мережа",
-  "profileMeshSwitchHint": "Знаходить людей поруч і передає повідомлення без інтернету. Вимкнено — економить батарею.",
-  "channelAdminOnlyHint": "Канал оголошень. Читати можуть усі.",
-  "attachLocation": "Геолокація",
-  "locationBubbleTitle": "Геолокація",
-  "locationOpenInMaps": "Відкрити в картах",
-  "locationAccuracy": "з точністю до {metres} м",
-  "@locationAccuracy": {
-    "placeholders": {
-      "metres": {
-        "type": "int"
-      }
-    }
-  },
-  "locationExpired": "Ця геолокація вже не актуальна",
-  "locationDenied": "Доступ до геолокації вимкнено",
-  "locationUnavailable": "Не вдалося визначити місце",
-  "locationShareFor": "Поділитися на",
-  "locationShareOnce": "Разово",
-  "locationShare15m": "15 хвилин",
-  "locationShare1h": "1 година"
+    },
+    "mapInviteFailed": "\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u043d\u0430\u0434\u0456\u0441\u043b\u0430\u0442\u0438 \u0437\u0430\u043f\u0440\u043e\u0448\u0435\u043d\u043d\u044f",    "mapPeopleVisible":  "Спільних геолокацій: {count}",
+    "@mapPeopleVisible":  {
+                              "placeholders":  {
+                                                   "count":  {
+                                                                 "type":  "int"
+                                                             }
+                                               }
+                          },
+    "mapCenterMe":  "Центрувати на мені",
+    "mapNoSharedLocations":  "Поки немає геолокацій",
+    "mapNoSharedLocationsHint":  "Контакт з’явиться тут після того, як надішле геолокацію в чаті.",
+    "mapWebHintTitle":  "Зв’язки поблизу",
+    "mapWebHint":  "Лінії показують близькість, а не маршрут повідомлення.",
+    "mapOpenProfile":  "Профіль",
+    "mapLocationPrivacyOff":  "Геолокацію приховано",
+    "mapLocationPrivacyOffHint":  "Увімкніть «Показувати мене на мапі» у розділі «Приватність», щоб побачити свою точку.",
+    "mapYouOnMap":  "Вашу позицію видно на цьому пристрої",
+    "locationSharingDisabled":  "Спочатку увімкніть «Показувати мене на мапі» у розділі «Приватність».",
+    "mapLocationDenied":  "Доступ до геолокації вимкнено",
+    "mapLocationServiceOff":  "Увімкніть геолокацію, щоб показати себе",
+    "mapLocationUnavailable":  "Не вдалося визначити вашу позицію",
+    "mapDistanceUnknown":  "Відстань невідома",
+    "mapDistanceMetres":  "{metres} м від вас",
+    "@mapDistanceMetres":  {
+                               "placeholders":  {
+                                                    "metres":  {
+                                                                   "type":  "int"
+                                                               }
+                                                }
+                           },
+    "mapDistanceKilometres":  "{kilometres} км від вас",
+    "@mapDistanceKilometres":  {
+                                   "placeholders":  {
+                                                        "kilometres":  {
+                                                                           "type":  "String"
+                                                                       }
+                                                    }
+                               },
+    "mapUpdatedNow":  "щойно надіслано",
+    "mapUpdatedMinutes":  "надіслано {minutes} хв тому",
+    "@mapUpdatedMinutes":  {
+                               "placeholders":  {
+                                                    "minutes":  {
+                                                                    "type":  "int"
+                                                                }
+                                                }
+                           },
+    "mapUpdatedHours":  "надіслано {hours} год тому",
+    "@mapUpdatedHours":  {
+                             "placeholders":  {
+                                                  "hours":  {
+                                                                "type":  "int"
+                                                            }
+                                              }
+                         },
+    "contactsTitle":  "Контакти",
+    "contactsSubtitle":  "Усі, з ким ви вже листувалися",
+    "contactsSearchHint":  "Пошук контактів…",
+    "contactsEmptyTitle":  "Поки що немає контактів",
+    "contactsEmptyHint":  "Почніть розмову — і співрозмовник з’явиться тут.",
+    "contactsSearchEmpty":  "Контактів не знайдено",
+    "contactProfileChat":  "Чат",
+    "contactProfileSecurity":  "Безпека",
+    "contactProfileActions":  "Дії контакту",
+    "contactProfileVerify":  "Підтвердити",
+    "contactProfileCopyId":  "Копіювати ID контакту",
+    "contactProfileIdCopied":  "ID контакту скопійовано",
+    "contactProfileId":  "ID контакту",
+    "contactProfileVerifyHint":  "Порівняйте відбитки шифрування, щоб підтвердити цю особу.",
+    "chatsTitle":  "Чати",
+    "chatsSubtitle":  "Mesh · наскрізне шифрування",
+    "chatsEmptyTitle":  "Поки що немає розмов",
+    "chatsEmptyHint":  "Відкрийте співрозмовника на вкладці «Поблизу», щоб почати спілкування.",
+    "chatsFilterAll":  "Усі",
+    "chatsFilterUnread":  "Непрочитані",
+    "chatsFilterMesh":  "Mesh",
+    "chatsFilterFavorites":  "Обрані",
+    "chatsFolderDirect":  "Особисті",
+    "chatsFolderChannels":  "Канали",
+    "chatsFolderOnline":  "На зв\u0027язку",
+    "chatsFoldersTitle":  "Папки",
+    "chatsFoldersHint":  "Папки — це зрізи цього ж списку, а не місця, куди переносять чати. Увімкніть ті, що потрібні над чатами.",
+    "chatsSearchHint":  "Пошук чатів…",
+    "chatsStatusViaMesh":  "через mesh",
+    "chatsStatusOffline":  "офлайн",
+    "peerKeyRotated":  "ключ змінено — підтвердьте знову",
+    "peersTitle":  "Поблизу",
+    "peersSubtitle":  "Пристрої у радіусі Bluetooth",
+    "peersEmpty":  "Шукаємо співрозмовників…",
+    "peersHopsOne":  "{n} пересилання",
+    "peersHopsOther":  "{n} пересилань",
+    "@peersHopsOne":  {
+                          "placeholders":  {
+                                               "n":  {
+                                                         "type":  "int"
+                                                     }
+                                           }
+                      },
+    "@peersHopsOther":  {
+                            "placeholders":  {
+                                                 "n":  {
+                                                           "type":  "int"
+                                                       }
+                                             }
+                        },
+    "blePermissionTitle":  "Потрібен дозвіл на Bluetooth",
+    "blePermissionHint":  "Cubechat використовує Bluetooth для пошуку співрозмовників і надсилання повідомлень — без інтернету.",
+    "blePermissionGrant":  "Надати дозвіл",
+    "blePermissionOpenSettings":  "Відкрити налаштування",
+    "blePermissionDeniedHint":  "У дозволі відмовлено. Відкрийте налаштування, щоб дозволити доступ до Bluetooth.",
+    "bleAdapterOffTitle":  "Bluetooth вимкнено",
+    "bleAdapterOffHint":  "Увімкніть Bluetooth, щоб побачити пристрої поблизу.",
+    "bleUnsupportedTitle":  "Bluetooth LE недоступний",
+    "bleUnsupportedHint":  "Цей пристрій або платформа не підтримує Bluetooth Low Energy. Спробуйте на смартфоні.",
+    "bleScanning":  "Сканування…",
+    "bleRetry":  "Повторити",
+    "bleEnable":  "Увімкнути",
+    "bleConnectFailed":  "Не вдалося підключитися. Пір поза зоною дії або його Bluetooth-адресу змінено.",
+    "bleSignal":  "Сигнал",
+    "bleConnect":  "З\u0027єднатися",
+    "bleConnected":  "З\u0027єднано",
+    "bleVerified":  "Перевірено",
+    "bleUnknownPeer":  "Невідомий пристрій",
+    "bleBroadcasting":  "В ефірі",
+    "bleConnectedCount":  "{n, plural, =0{Немає з\u0027єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",
+    "@bleConnectedCount":  {
+                               "placeholders":  {
+                                                    "n":  {
+                                                              "type":  "int"
+                                                          }
+                                                }
+                           },
+    "verifyTitle":  "Підтвердження",
+    "verifyIntro":  "Порівняйте ці два відбитки зі своїм співрозмовником особисто або по голосовому виклику. Якщо вони збігаються з обох сторін — рукостискання Noise не було підмінене.",
+    "verifyMine":  "ВАШ ВІДБИТОК",
+    "verifyTheirs":  "ВІДБИТОК {name}",
+    "@verifyTheirs":  {
+                          "placeholders":  {
+                                               "name":  {
+                                                            "type":  "String"
+                                                        }
+                                           }
+                      },
+    "verifyMarkAsVerified":  "Підтвердити особу",
+    "verifyAlreadyDone":  "Особу цього співрозмовника підтверджено.",
+    "verifyRevoke":  "Скасувати",
+    "verifyDoneSnack":  "{name}: особу підтверджено",
+    "@verifyDoneSnack":  {
+                             "placeholders":  {
+                                                  "name":  {
+                                                               "type":  "String"
+                                                           }
+                                              }
+                         },
+    "chatInputHint":  "Повідомлення",
+    "chatSend":  "Надіслати",
+    "chatToday":  "Сьогодні",
+    "chatYesterday":  "Учора",
+    "chatDelivered":  "Доставлено",
+    "chatRead":  "Прочитано",
+    "chatSending":  "Надсилається",
+    "chatEncryptedNotice":  "Повідомлення зашифровано наскрізно за протоколом Noise.",
+    "chatSessionHandshaking":  "Встановлюється захищений канал…",
+    "chatSessionEstablished":  "Захищено · Noise XX",
+    "chatSessionFailed":  "З\u0027єднання не вдалося",
+    "presenceOnline":  "у мережі",
+    "presenceOffline":  "не в мережі",
+    "chatSessionFingerprintPending":  "Відбиток з\u0027явиться після завершення рукостискання.",
+    "chatEmptyEstablished":  "Захищений канал готовий. Надішліть повідомлення, щоб почати розмову.",
+    "chatEmptyHandshaking":  "Очікуємо, поки інший бік завершить рукостискання…",
+    "profileTitle":  "Профіль",
+    "profileNickname":  "Нікнейм",
+    "profileNicknameEditTitle":  "Встановіть нікнейм",
+    "profileNicknameHint":  "Як вас побачать інші у mesh-мережі",
+    "profileNicknameSave":  "Зберегти",
+    "profileFingerprint":  "Відбиток публічного ключа",
+    "profileLanguage":  "Мова",
+    "profileLanguageEn":  "Англійська",
+    "profileLanguageUk":  "Українська",
+    "profileTransport":  "Транспорт",
+    "profileTransportMesh":  "Bluetooth mesh",
+    "profileBackground":  "Працювати у фоні",
+    "profileBackgroundSubtitle":  "Отримувати повідомлення, коли застосунок закрито",
+    "profileBatteryExempt":  "Вимкнути оптимізацію батареї",
+    "profileAbout":  "Про застосунок",
+    "profileVersion":  "Версія {v}",
+    "@profileVersion":  {
+                            "placeholders":  {
+                                                 "v":  {
+                                                           "type":  "String"
+                                                       }
+                                             }
+                        },
+    "profileEmergencyWipe":  "Аварійне очищення",
+    "profileEmergencyWipeHint":  "Потрійний тап стирає всі ключі, контакти й повідомлення.",
+    "profileEmergencyWipeConfirm":  "Стерти все?",
+    "profileEmergencyWipeConfirmHint":  "Буде видалено вашу ідентичність, список контактів та історію розмов. Дію не можна скасувати.",
+    "profileEmergencyWipeAction":  "Стерти",
+    "cancel":  "Скасувати",
+    "copy":  "Копіювати",
+    "copied":  "Скопійовано",
+    "channelsNewTitle":  "Новий канал",
+    "channelsNewTooltip":  "Новий канал",
+    "channelNameLabel":  "Назва каналу",
+    "channelPasswordLabel":  "Пароль (необов’язково)",
+    "channelJoinAction":  "Приєднатися",
+    "channelSubtitle":  "Груповий канал · спільний ключ",
+    "chatsStatusChannel":  "канал",
+    "channelInviteTitle":  "Додати учасників",
+    "channelInviteAction":  "Запросити",
+    "channelInviteEmpty":  "Поки немає відомих пірів. Спершу знайдіть когось на вкладці «Поруч».",
+    "channelInviteSent":  "Запрошення надіслано",
+    "channelInviteNoneSent":  "Зараз нікого не вдалося досягнути",
+    "channelNameTooLong":  "Назва каналу задовга",
+    "chatsActionFavorite":  "Додати в обрані",
+    "chatsActionUnfavorite":  "Прибрати з обраних",
+    "chatsActionDelete":  "Видалити чат",
+    "chatsDeleteTitle":  "Видалити цей чат?",
+    "chatsDeletePeerHint":  "Розмову буде очищено. Контакт залишиться — писати йому знову можна без обміну кодами.",
+    "chatsDeleteChannelHint":  "Ви вийдете з каналу та видалите його історію. Щоб повернутися, знадобиться ключ.",
+    "chatsDeleteForThemToo":  "Видалити і в співрозмовника",
+    "chatsDeleteForThemHint":  "Попросить його застосунок стерти всю розмову, разом з його власними повідомленнями. У каналі відкликаються лише ваші.",
+    "chatEditAction":  "Редагувати",
+    "chatEditTitle":  "Редагувати повідомлення",
+    "chatEditSave":  "Зберегти",
+    "chatEdited":  "змінено",
+    "chatDeleteAction":  "Видалити",
+    "chatDeleteTitle":  "Видалити повідомлення?",
+    "chatDeleteForMe":  "Видалити в мене",
+    "chatDeleteForEveryone":  "Видалити в усіх",
+    "chatReplyAction":  "Відповісти",
+    "chatReplyingTo":  "Відповідь для {name}",
+    "chatReplyYou":  "себе",
+    "chatCopyAction":  "Копіювати",
+    "chatCopied":  "Скопійовано",
+    "chatForwardAction":  "Переслати",
+    "chatForwardTitle":  "Переслати в",
+    "chatForwardEmpty":  "Інших чатів поки немає",
+    "chatForwardSent":  "Переслано в {name}",
+    "chatSentAt":  "Надіслано {time}",
+    "chatReadAt":  "Прочитано {time}",
+    "chatPinAction":  "Закріпити",
+    "chatUnpinAction":  "Відкріпити",
+    "chatUnpinConfirm":  "Відкріпити це повідомлення?",
+    "chatUnpinConfirmHint":  "Воно перестане бути закріпленим для всіх у цьому чаті.",
+    "chatPinnedTitle":  "Закріплене повідомлення",
+    "chatPinnedGone":  "Цього повідомлення вже немає в чаті",
+    "peerBlock":  "Заблокувати",
+    "peerUnblock":  "Розблокувати",
+    "peerMute":  "Без звуку",
+    "peerUnmute":  "Увімкнути звук",
+    "peerBlockedNote":  "Заблоковано — повідомлення відхиляються.",
+    "relaysTitle":  "Запасний канал через інтернет",
+    "relaysCardTitle":  "Досягати співрозмовників через інтернет",
+    "relaysCardSubtitle":  "Коли Bluetooth не доставляє — надсилати через релеї Nostr",
+    "relaysExplainer":  "Повідомлення лишаються наскрізно зашифрованими — релей несе той самий запечатаний кадр, що й Bluetooth. Але він бачить, які два ключі спілкуються і коли. Типово вимкнено.",
+    "relaysMyAddress":  "Ваша адреса на релеях",
+    "relaysCopied":  "Скопійовано",
+    "relaysListLabel":  "Релеї",
+    "relaysAdd":  "Додати релей",
+    "relaysAddHint":  "wss://relay.example.com",
+    "relaysInvalidUrl":  "Введіть адресу wss:// або ws://",
+    "relaysRemove":  "Видалити",
+    "relaysStateConnected":  "З\u0027єднано",
+    "relaysStateConnecting":  "З\u0027єднання…",
+    "relaysStateFailed":  "Недоступний",
+    "relaysStateIdle":  "Вимкнено",
+    "relaysEmpty":  "Релеї не налаштовані — запасний канал вимкнено.",
+    "contactTitle":  "Картка контакту",
+    "contactMineLabel":  "Ваша картка",
+    "contactMineExplainer":  "Надішліть її тому, хто поза зоною Bluetooth. Вона містить ваші ключі та адресу на релеях — цього досить, щоб почати з вами зашифрований чат через інтернет.",
+    "contactCopy":  "Копіювати",
+    "contactShare":  "Поділитися",
+    "contactCopied":  "Картку скопійовано",
+    "contactShareSubject":  "Моя картка контакту cubechat",
+    "contactAddLabel":  "Додати людину",
+    "contactAddHint":  "Вставте картку контакту",
+    "contactAddAction":  "Додати",
+    "contactPaste":  "Вставити",
+    "contactAdded":  "Додано {name}",
+    "@contactAdded":  {
+                          "placeholders":  {
+                                               "name":  {
+                                                            "type":  "String"
+                                                        }
+                                           }
+                      },
+    "contactInvalid":  "Це не картка контакту",
+    "contactOwnCard":  "Це ваша власна картка",
+    "contactUnverified":  "Доданий так контакт спершу неперевірений. Будь-хто може створити картку й написати на ній будь-яке ім\u0027я, тож звірте відбитки особисто або по дзвінку, перш ніж довіряти особі.",
+    "contactRelayOff":  "Запасний канал через інтернет вимкнено, тож картка поки нікого не досягне.",
+    "contactRelayEnable":  "Увімкнути",
+    "profileContactCard":  "Картка контакту",
+    "profileContactCardSubtitle":  "Спілкування з тим, хто поза зоною Bluetooth",
+    "chatsAddContactTooltip":  "Додати контакт за карткою",
+    "chatsMenuTooltip":  "Ще",
+    "chatsMenuAddContact":  "Додати контакт",
+    "chatsMenuNewChannel":  "Новий канал",
+    "profileDiscoverable":  "Помітність поруч",
+    "profileDiscoverableOnHint":  "Вас знайде будь-хто в радіусі",
+    "profileDiscoverableOffHint":  "Вас досягнуть лише ваші контакти",
+    "profileDiscoverableExplainer":  "Увімкнено — ваш анонс іде відкрито, тож незнайомець може познайомитися, просто підійшовши, але й будь-хто поруч запише ваш ключ та ім\u0027я. Вимкнено — той самий набір іде лише наявним контактам, запечатаним, а ваші маршрутні ID лишаються незв\u0027язними. Новим людям тоді потрібна картка контакту.",
+    "voiceHoldHint":  "Утримуйте, щоб записати голосове",
+    "voiceTrimPlay":  "Відтворити",
+    "voiceTrimPause":  "Пауза",
+    "voiceTrimDiscard":  "Видалити запис",
+    "voiceTrimSelection":  "Надсилаємо {duration}",
+    "@voiceTrimSelection":  {
+                                "placeholders":  {
+                                                     "duration":  {
+                                                                      "type":  "String"
+                                                                  }
+                                                 }
+                            },
+    "profilePrivacy":  "Приватність",
+    "profileLastSeen":  "Показувати час у мережі",
+    "profileLastSeenOnHint":  "Контакти бачать, коли ви в застосунку",
+    "profileLastSeenOffHint":  "Ніхто не бачить — і ви теж не бачите",
+    "profileMapLocation":  "Показувати мене на мапі",
+    "profileMapLocationOnHint":  "Геолокація доступна для ручного надсилання, а вашу точку показано на мапі",
+    "profileMapLocationOffHint":  "Застосунок не запитує геолокацію, а ваша точка прихована",
+    "profileReadReceipts":  "Показувати час прочитання",
+    "profileReadReceiptsOnHint":  "Відправник бачить, що ви прочитали",
+    "profileReadReceiptsOffHint":  "Не бачить — і ви не бачите його",
+    "profilePrivacyExplainer":  "Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само.",
+    "avatarSet":  "Обрати фото",
+    "avatarChange":  "Змінити фото",
+    "avatarRemove":  "Прибрати фото",
+    "avatarRemoveConfirm":  "Аватарку буде видалено з цього пристрою. Замість неї повернеться згенерований градієнт.",
+    "avatarFailed":  "Не вдалося прочитати зображення",
+    "fileOpenHint":  "Торкніться, щоб відкрити",
+    "fileMissing":  "Файл більше недоступний",
+    "fileNoHandlerTitle":  "Немає застосунку для цього файлу",
+    "fileNoHandlerHint":  "Жоден встановлений застосунок не відкриває цей тип. Можна надіслати його в інший застосунок.",
+    "fileRequestedAgain":  "Попросили надіслати ще раз",
+    "fileOpenFailed":  "Не вдалося відкрити цей файл",
+    "fileShareAction":  "Надіслати в застосунок",
+    "fileTooLargeMesh":  "Файл завеликий — максимум {limit} МБ через мережу пристроїв",
+    "fileTooLargeRelay":  "Через інтернет можна надіслати до {limit} МБ. Підійдіть ближче до співрозмовника, щоб надіслати більший файл.",
+    "mediaSendOriginal":  "Оригінал",
+    "attachFile":  "Файл",
+    "attachGallery":  "Галерея",
+    "attachCamera":  "Камера",
+    "profileEditName":  "Ім\u0027я",
+    "profileMyCard":  "Картка",
+    "mediaCaptionHint":  "Додати підпис…",
+    "mediaDiscardTitle":  "Відхилити вибір?",
+    "mediaDiscardMessage":  "Закрити галерею та скасувати вибрані фото?",
+    "mediaDiscardConfirm":  "Відхилити",
+    "contactProfileAutoDelete":  "Автоочищення чату",
+    "contactProfileAutoDeleteTitle":  "Автовидалення повідомлень",
+    "contactProfileAutoDeleteOff":  "Вимкнено",
+    "contactProfileAutoDeleteOneDay":  "Через 1 день",
+    "contactProfileAutoDeleteSevenDays":  "Через 7 днів",
+    "contactProfileAutoDeleteThirtyDays":  "Через 30 днів",
+    "contactProfileAutoDeleteUpdated":  "Автоочищення: {period}",
+    "@contactProfileAutoDeleteUpdated":  {
+                                             "placeholders":  {
+                                                                  "period":  {
+                                                                                 "type":  "String"
+                                                                             }
+                                                              }
+                                         },
+    "contactProfileShare":  "Поділитися контактом",
+    "contactProfileShareTitle":  "Надіслати контакт до",
+    "contactProfileShareEmpty":  "Інших чатів ще немає",
+    "contactProfileShareSent":  "Надіслано до {name}",
+    "@contactProfileShareSent":  {
+                                     "placeholders":  {
+                                                          "name":  {
+                                                                       "type":  "String"
+                                                                   }
+                                                      }
+                                 },
+    "contactProfileRestrictCopying":  "Заборонити копіювання",
+    "contactProfileAllowCopying":  "Дозволити копіювання",
+    "contactProfileCopyingRestricted":  "Копіювання і пересилання вимкнено",
+    "contactProfileCopyingRestrictedByPeer":  "Вимкнено співрозмовником",
+    "contactProfileCopyingAllowed":  "Копіювання і пересилання дозволено",
+    "contactProfileDelete":  "Видалити з контактів",
+    "contactProfileDeleteTitle":  "Видалити контакт?",
+    "contactProfileDeleteMessage":  "{name} зникне з розділу «Контакти». Історія чату залишиться на цьому пристрої.",
+    "@contactProfileDeleteMessage":  {
+                                         "placeholders":  {
+                                                              "name":  {
+                                                                           "type":  "String"
+                                                                       }
+                                                          }
+                                     },
+    "contactProfileMedia":  "Медіа",
+    "contactProfileVoiceMessages":  "Голосові повідомлення",
+    "contactProfileNoMedia":  "Медіа ще немає",
+    "contactProfileNoVoiceMessages":  "Голосових повідомлень ще немає",
+    "contactProfileOpen":  "Відкрити профіль",
+    "autoDeleteDays":  "{count, plural, one{{count} день} few{{count} дні} other{{count} днів}}",
+    "@autoDeleteDays":  {
+                            "placeholders":  {
+                                                 "count":  {
+                                                               "type":  "int"
+                                                           }
+                                             }
+                        },
+    "autoDeleteHours":  "{count, plural, one{{count} година} few{{count} години} other{{count} годин}}",
+    "@autoDeleteHours":  {
+                             "placeholders":  {
+                                                  "count":  {
+                                                                "type":  "int"
+                                                            }
+                                              }
+                         },
+    "autoDeleteMinutes":  "{count, plural, one{{count} хвилина} few{{count} хвилини} other{{count} хвилин}}",
+    "@autoDeleteMinutes":  {
+                               "placeholders":  {
+                                                    "count":  {
+                                                                  "type":  "int"
+                                                              }
+                                                }
+                           },
+    "autoDeleteSeconds":  "{count, plural, one{{count} секунда} few{{count} секунди} other{{count} секунд}}",
+    "@autoDeleteSeconds":  {
+                               "placeholders":  {
+                                                    "count":  {
+                                                                  "type":  "int"
+                                                              }
+                                                }
+                           },
+    "autoDeleteCustom":  "Свій варіант…",
+    "autoDeleteCustomHint":  "Кількість",
+    "autoDeleteUnitMinutes":  "хв",
+    "autoDeleteUnitHours":  "год",
+    "autoDeleteUnitDays":  "дні",
+    "contactProfileAutoDeleteSet":  "Встановити",
+    "contactProfileFiles":  "Файли",
+    "contactProfileNoFiles":  "Файлів ще немає",
+    "contactProfileLinks":  "Посилання",
+    "contactProfileNoLinks":  "Посилань ще немає",
+    "contactProfilePolls":  "Опитування",
+    "contactProfileNoPolls":  "Опитувань ще немає",
+    "presenceHidden":  "статус приховано",
+    "chatReadByCount":  "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
+    "@chatReadByCount":  {
+                             "placeholders":  {
+                                                  "count":  {
+                                                                "type":  "int"
+                                                            }
+                                              }
+                         },
+    "chatsSearchFrequent":  "З ким ви спілкуєтесь",
+    "chatsSearchRecent":  "Недавні",
+    "chatsSearchClear":  "Очистити",
+    "chatsSearchStartHint":  "Шукайте чати та канали за назвою.",
+    "chatsSearchEmpty":  "Нічого не знайдено",
+    "contactProfileViewInChat":  "Переглянути в чаті",
+    "chatDraft":  "Чернетка",
+    "chatSearchTitle":  "Пошук",
+    "chatSearchHint":  "Пошук у повідомленнях",
+    "chatSearchNoResults":  "Нічого не знайдено",
+    "chatSearchPrevious":  "Попередній результат",
+    "chatSearchNext":  "Наступний результат",
+    "chatMessageCount":  "{count} повідомлень",
+    "@chatMessageCount":  {
+                              "placeholders":  {
+                                                   "count":  {
+                                                                 "type":  "int"
+                                                             }
+                                               }
+                          },
+    "chatRouteBluetooth":  "Bluetooth",
+    "chatRouteMesh":  "Меш",
+    "chatRouteInternet":  "Інтернет",
+    "chatRouteQueued":  "У черзі",
+    "chatAttachmentUnavailable":  "Немає доступного з\u0027єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.",
+    "fileTransfersTitle":  "Центр передачі файлів",
+    "fileTransfersClear":  "Очистити історію",
+    "fileTransfersEmpty":  "Передач файлів ще немає",
+    "fileTransfersActive":  "Активні",
+    "fileTransfersHistory":  "Історія",
+    "fileTransferPause":  "Призупинити",
+    "fileTransferResume":  "Продовжити",
+    "fileTransferRetry":  "Повторити",
+    "fileTransferQueued":  "Очікує з’єднання",
+    "fileTransferRunning":  "Передавання",
+    "fileTransferPaused":  "Призупинено",
+    "fileTransferCompleted":  "Завершено",
+    "fileTransferFailed":  "Помилка",
+    "fileTransferCanceled":  "Скасовано",
+    "profileFileTransfers":  "Передача файлів",
+    "profileFileTransfersSubtitle":  "Прогрес, черга та історія передач",
+    "qrScanAction":  "Сканувати QR-код",
+    "qrScanTitle":  "Сканування QR-коду",
+    "qrScanHint":  "Наведіть камеру на QR-код контакту або каналу Cubechat.",
+    "qrFlash":  "Ліхтарик",
+    "qrCameraError":  "Камера недоступна. Перевірте дозвіл на камеру та спробуйте ще раз.",
+    "qrInvalid":  "Це недійсний QR-код Cubechat.",
+    "qrChannelAdded":  "{name} додано",
+    "@qrChannelAdded":  {
+                            "placeholders":  {
+                                                 "name":  {
+                                                              "type":  "String"
+                                                          }
+                                             }
+                        },
+    "qrShow":  "Показати QR-код",
+    "qrChannelTitle":  "Приєднатися до {name}",
+    "@qrChannelTitle":  {
+                            "placeholders":  {
+                                                 "name":  {
+                                                              "type":  "String"
+                                                          }
+                                             }
+                        },
+    "profileBackup":  "Зашифрована резервна копія",
+    "profileBackupSubtitle":  "Безпечне перенесення ключів, контактів та історії",
+    "backupTitle":  "Зашифрована резервна копія",
+    "backupExplainer":  "Резервна копія містить приватні ключі профілю, контакти, канали, налаштування та історію повідомлень. Вона шифрується на цьому телефоні вибраним паролем; Cubechat не зможе відновити забутий пароль.",
+    "backupCreate":  "Створити копію",
+    "backupCreateSubtitle":  "Зашифрувати все та зберегти файл .cchatbackup",
+    "backupRestore":  "Відновити копію",
+    "backupRestoreSubtitle":  "Замінити профіль Cubechat на цьому телефоні даними з копії",
+    "backupPasswordTitle":  "Пароль резервної копії",
+    "backupPasswordHint":  "Щонайменше 8 символів",
+    "backupConfirmPassword":  "Повторіть пароль",
+    "backupPasswordMismatch":  "Паролі не збігаються",
+    "backupPasswordShort":  "Використайте щонайменше 8 символів",
+    "backupSaveTitle":  "Зберегти резервну копію Cubechat",
+    "backupSaved":  "Зашифровану копію збережено",
+    "backupFailed":  "Не вдалося завершити операцію з резервною копією",
+    "backupRestoreConfirmTitle":  "Замінити цей профіль?",
+    "backupRestoreConfirmMessage":  "Поточні ключі, контакти, канали, налаштування та історію на цьому телефоні буде замінено вибраною резервною копією.",
+    "backupRestoreConfirmAction":  "Відновити",
+    "backupRestored":  "Резервну копію відновлено",
+    "backupInvalid":  "Неправильний пароль, пошкоджений файл або непідтримувана копія",
+    "channelInfoTitle":  "Про канал",
+    "channelParticipantsTitle":  "Учасники",
+    "channelAdministratorsTitle":  "Адміністратори",
+    "channelMakeAdmin":  "Зробити адміністратором",
+    "channelRemoveAdmin":  "Забрати права адміністратора",
+    "channelNoParticipants":  "Учасники з’являться після підписаної активності",
+    "channelSharedContent":  "Медіа, файли та опитування",
+    "channelDescriptionTitle":  "Опис",
+    "channelDescriptionEmpty":  "Опису ще немає",
+    "channelDescriptionHint":  "Для чого цей канал",
+    "channelDescriptionAdminOnly":  "Змінювати опис може лише адміністратор",
+    "channelDescriptionSave":  "Зберегти",
+    "chatTyping":  "пише…",
+    "onboardingMeshTitle":  "Працює без інтернету",
+    "onboardingMeshBody":  "Повідомлення йдуть через Bluetooth, від телефона до телефона. Без зв’язку, без Wi-Fi, без акаунтів — лише люди поруч.",
+    "onboardingRelayTitle":  "І з ним, коли він є",
+    "onboardingRelayBody":  "Поза зоною Bluetooth повідомлення йдуть інтернетом і доходять так само. Вам не треба обирати.",
+    "onboardingPrivacyTitle":  "Ніхто посередині не прочитає",
+    "onboardingPrivacyBody":  "Усе зашифровано наскрізно, а ваша особистість — це ключ на цьому телефоні: не номер, не пошта, не акаунт, який хтось може відібрати.",
+    "onboardingSkip":  "Пропустити",
+    "onboardingNext":  "Далі",
+    "onboardingStart":  "Почати",
+    "chatMediaShare":  "Поділитися",
+    "chatMediaSaveToGallery":  "Зберегти в галерею",
+    "chatMediaShowInChat":  "Показати в чаті",
+    "chatWallpaperTitle":  "Шпалери",
+    "chatWallpaperClear":  "Скинути",
+    "chatWallpaperDim":  "Затемнення під повідомленнями",
+    "chatSelectAction":  "Вибрати",
+    "chatForwardNothing":  "Тут немає чого переслати",
+    "chatSelectedCount":  "{count, plural, =1{Вибрано 1} few{Вибрано {count}} many{Вибрано {count}} other{Вибрано {count}}}",
+    "@chatSelectedCount":  {
+                               "placeholders":  {
+                                                    "count":  {
+                                                                  "type":  "int"
+                                                              }
+                                                }
+                           },
+    "chatDeleteSelectedTitle":  "{count, plural, =1{Видалити це повідомлення?} few{Видалити {count} повідомлення?} many{Видалити {count} повідомлень?} other{Видалити {count} повідомлення?}}",
+    "@chatDeleteSelectedTitle":  {
+                                     "placeholders":  {
+                                                          "count":  {
+                                                                        "type":  "int"
+                                                                    }
+                                                      }
+                                 },
+    "contactAliasAction":  "Перейменувати контакт",
+    "contactAliasHint":  "Це ім’я бачите лише ви. Порожньо — буде їхнє.",
+    "viewOnceSendLabel":  "Один перегляд",
+    "viewOnceTitle":  "Один перегляд",
+    "viewOnceTapToView":  "Фото · торкніться, щоб переглянути раз",
+    "viewOnceSent":  "Фото · надіслано",
+    "viewOnceOpened":  "Фото переглянуто",
+    "viewOnceUnavailable":  "Це фото більше недоступне",
+    "viewOnceWarning":  "Після виходу фото буде видалено в обох.",
+    "channelAvatarAdminOnly":  "Змінювати фото каналу може лише адміністратор",
+    "channelAdminOnly":  "Змінювати це може лише адміністратор",
+    "channelAvatarTooLarge":  "Це фото завелике для розсилки",
+    "channelMemberUnknown":  "Ще не у ваших контактах",
+    "channelPollTitle":  "Опитування",
+    "channelCreatePoll":  "Створити опитування",
+    "channelPollQuestion":  "Запитання",
+    "channelPollOption":  "Варіант {number}",
+    "@channelPollOption":  {
+                               "placeholders":  {
+                                                    "number":  {
+                                                                   "type":  "int"
+                                                               }
+                                                }
+                           },
+    "channelPollAddOption":  "Додати варіант",
+    "channelPollCreate":  "Опублікувати",
+    "channelPollVotes":  "{count, plural, =0{Немає голосів} =1{1 голос} few{{count} голоси} many{{count} голосів} other{{count} голосу}}",
+    "@channelPollVotes":  {
+                              "placeholders":  {
+                                                   "count":  {
+                                                                 "type":  "int"
+                                                             }
+                                               }
+                          },
+    "phoneTransferTitle":  "Перенесення на новий телефон",
+    "phoneTransferIntro":  "Перенесіть профіль, ключі, контакти, канали, налаштування та історію напряму між двома телефонами.",
+    "phoneTransferSend":  "Це старий телефон",
+    "phoneTransferReceive":  "Це новий телефон",
+    "phoneTransferSameWifi":  "Під’єднайте обидва телефони до однієї Wi-Fi мережі й не закривайте цей екран до завершення.",
+    "phoneTransferPreparing":  "Готуємо зашифроване перенесення…",
+    "phoneTransferReady":  "Відскануйте цей одноразовий QR-код на новому телефоні",
+    "phoneTransferScan":  "Сканувати старий телефон",
+    "phoneTransferConfirmTitle":  "Замінити профіль на цьому телефоні?",
+    "phoneTransferConfirmMessage":  "Поточний профіль на цьому телефоні буде замінено даними із зашифрованого локального перенесення.",
+    "phoneTransferConfirmAction":  "Перенести профіль",
+    "phoneTransferSuccess":  "Профіль успішно перенесено",
+    "phoneTransferFailed":  "Не вдалося завершити перенесення телефону",
+    "profileGroupConnection":  "З\u0027єднання",
+    "profileGroupPrivacy":  "Приватність",
+    "profileGroupData":  "Обмін і дані",
+    "profileGroupApp":  "Застосунок",
+    "profileSummaryMeshOnly":  "Тільки mesh",
+    "profileSummaryMeshInternet":  "Mesh · інтернет",
+    "profileSummaryBackgroundOn":  "працює у фоні",
+    "profileSummaryDiscoverable":  "Вас видно",
+    "profileSummaryHidden":  "Приховано",
+    "profileSummaryLastSeenHidden":  "час у мережі приховано",
+    "profileSummaryMapHidden":  "геолокацію приховано",
+    "profileSummaryTransfersActive":  "{count} у процесі",
+    "@profileSummaryTransfersActive":  {
+                                           "placeholders":  {
+                                                                "count":  {
+                                                                              "type":  "int"
+                                                                          }
+                                                            }
+                                       },
+    "profileSummaryCardBackup":  "Картка, файли, бекап",
+    "chatPlay":  "Відтворити",
+    "chatPause":  "Пауза",
+    "profileTheme":  "Колір",
+    "profileThemeEmerald":  "Смарагд",
+    "profileThemeIndigo":  "Індиго",
+    "profileThemeAmber":  "Бурштин",
+    "profileThemeRose":  "Троянда",
+    "profileThemeFuchsia":  "Фуксія",
+    "profileThemeViolet":  "Фіалка",
+    "profileThemeOcean":  "Океан",
+    "profileThemeSlate":  "Графіт",
+    "profileScale":  "Розмір інтерфейсу",
+    "profileScaleSystem":  "Системний",
+    "profileScaleSmall":  "Менший",
+    "profileScaleNormal":  "Звичайний",
+    "profileScaleLarge":  "Більший",
+    "profileScaleSample":  "Текст і рядки малюються цього розміру.",
+    "savedTitle":  "Збережені",
+    "savedSubtitle":  "Нотатки для себе, на цьому пристрої",
+    "savedEmpty":  "Усе, що ви тут напишете, залишиться на цьому телефоні.",
+    "meshOffTitle":  "Bluetooth-мережу вимкнено",
+    "meshOffHint":  "Ніхто поруч вас не знайде, і ви їх теж. Повідомлення й далі йдуть через інтернет-реле.",
+    "profileMeshSwitch":  "Bluetooth-мережа",
+    "profileMeshSwitchHint":  "Знаходить людей поруч і передає повідомлення без інтернету. Вимкнено — економить батарею.",
+    "channelAdminOnlyHint":  "Канал оголошень. Читати можуть усі.",
+    "attachLocation":  "Геолокація",
+    "locationBubbleTitle":  "Геолокація",
+    "locationOpenInMaps":  "Відкрити в картах",
+    "locationAccuracy":  "з точністю до {metres} м",
+    "@locationAccuracy":  {
+                              "placeholders":  {
+                                                   "metres":  {
+                                                                  "type":  "int"
+                                                              }
+                                               }
+                          },
+    "locationExpired":  "Ця геолокація вже не актуальна",
+    "locationDenied":  "Доступ до геолокації вимкнено",
+    "locationUnavailable":  "Не вдалося визначити місце",
+    "locationShareFor":  "Поділитися на",
+    "locationShareOnce":  "Разово",
+    "locationShare15m":  "15 хвилин",
+    "locationShare1h":  "1 година"
 }

@@ -128,6 +128,180 @@ abstract class AppLocalizations {
   /// **'Contacts'**
   String get navContacts;
 
+  /// No description provided for @navMap.
+  ///
+  /// In en, this message translates to:
+  /// **'Map'**
+  String get navMap;
+
+  /// No description provided for @mapTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Map'**
+  String get mapTitle;
+
+  /// No description provided for @mapInviteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite to the map'**
+  String get mapInviteTitle;
+
+  /// No description provided for @mapInviteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose one or more chats'**
+  String get mapInviteHint;
+
+  /// No description provided for @mapInviteEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no chats to invite yet.'**
+  String get mapInviteEmpty;
+
+  /// No description provided for @mapInviteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Send ({count})'**
+  String mapInviteAction(int count);
+
+  /// No description provided for @mapInviteMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Cubechat map invitation. Share your location in this chat to appear on the map.'**
+  String get mapInviteMessage;
+
+  /// No description provided for @mapInviteSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitations sent: {count}'**
+  String mapInviteSent(int count);
+
+  /// No description provided for @mapInviteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not send invitations'**
+  String get mapInviteFailed;
+
+  /// No description provided for @mapPeopleVisible.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} shared locations'**
+  String mapPeopleVisible(int count);
+
+  /// No description provided for @mapCenterMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Center on me'**
+  String get mapCenterMe;
+
+  /// No description provided for @mapNoSharedLocations.
+  ///
+  /// In en, this message translates to:
+  /// **'No shared locations yet'**
+  String get mapNoSharedLocations;
+
+  /// No description provided for @mapNoSharedLocationsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A contact appears here after they send a location in chat.'**
+  String get mapNoSharedLocationsHint;
+
+  /// No description provided for @mapWebHintTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby connections'**
+  String get mapWebHintTitle;
+
+  /// No description provided for @mapWebHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Lines show proximity, not the message route.'**
+  String get mapWebHint;
+
+  /// No description provided for @mapOpenProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get mapOpenProfile;
+
+  /// No description provided for @mapLocationPrivacyOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Map location is hidden'**
+  String get mapLocationPrivacyOff;
+
+  /// No description provided for @mapLocationPrivacyOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on Show me on map under Privacy to display your pin.'**
+  String get mapLocationPrivacyOffHint;
+
+  /// No description provided for @mapYouOnMap.
+  ///
+  /// In en, this message translates to:
+  /// **'Your position is visible on this device'**
+  String get mapYouOnMap;
+
+  /// No description provided for @locationSharingDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable Show me on map under Privacy first.'**
+  String get locationSharingDisabled;
+
+  /// No description provided for @mapLocationDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Location access is disabled'**
+  String get mapLocationDenied;
+
+  /// No description provided for @mapLocationServiceOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on location services to show yourself'**
+  String get mapLocationServiceOff;
+
+  /// No description provided for @mapLocationUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not determine your location'**
+  String get mapLocationUnavailable;
+
+  /// No description provided for @mapDistanceUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Distance unavailable'**
+  String get mapDistanceUnknown;
+
+  /// No description provided for @mapDistanceMetres.
+  ///
+  /// In en, this message translates to:
+  /// **'{metres} m away'**
+  String mapDistanceMetres(int metres);
+
+  /// No description provided for @mapDistanceKilometres.
+  ///
+  /// In en, this message translates to:
+  /// **'{kilometres} km away'**
+  String mapDistanceKilometres(String kilometres);
+
+  /// No description provided for @mapUpdatedNow.
+  ///
+  /// In en, this message translates to:
+  /// **'shared just now'**
+  String get mapUpdatedNow;
+
+  /// No description provided for @mapUpdatedMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'shared {minutes} min ago'**
+  String mapUpdatedMinutes(int minutes);
+
+  /// No description provided for @mapUpdatedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'shared {hours} h ago'**
+  String mapUpdatedHours(int hours);
+
   /// No description provided for @contactsTitle.
   ///
   /// In en, this message translates to:
@@ -143,7 +317,7 @@ abstract class AppLocalizations {
   /// No description provided for @contactsSearchHint.
   ///
   /// In en, this message translates to:
-  /// **'Search contacts…'**
+  /// **'Search contactsвЂ¦'**
   String get contactsSearchHint;
 
   /// No description provided for @contactsEmptyTitle.
@@ -221,7 +395,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatsSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Mesh · end-to-end encrypted'**
+  /// **'Mesh В· end-to-end encrypted'**
   String get chatsSubtitle;
 
   /// No description provided for @chatsEmptyTitle.
@@ -293,7 +467,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatsSearchHint.
   ///
   /// In en, this message translates to:
-  /// **'Search chats…'**
+  /// **'Search chatsвЂ¦'**
   String get chatsSearchHint;
 
   /// No description provided for @chatsStatusViaMesh.
@@ -311,7 +485,7 @@ abstract class AppLocalizations {
   /// No description provided for @peerKeyRotated.
   ///
   /// In en, this message translates to:
-  /// **'key changed — re-verify'**
+  /// **'key changed вЂ” re-verify'**
   String get peerKeyRotated;
 
   /// No description provided for @peersTitle.
@@ -329,7 +503,7 @@ abstract class AppLocalizations {
   /// No description provided for @peersEmpty.
   ///
   /// In en, this message translates to:
-  /// **'Looking for peers…'**
+  /// **'Looking for peersвЂ¦'**
   String get peersEmpty;
 
   /// No description provided for @peersHopsOne.
@@ -353,7 +527,7 @@ abstract class AppLocalizations {
   /// No description provided for @blePermissionHint.
   ///
   /// In en, this message translates to:
-  /// **'Cubechat needs Bluetooth to find peers and send messages — no internet required.'**
+  /// **'Cubechat needs Bluetooth to find peers and send messages вЂ” no internet required.'**
   String get blePermissionHint;
 
   /// No description provided for @blePermissionGrant.
@@ -401,7 +575,7 @@ abstract class AppLocalizations {
   /// No description provided for @bleScanning.
   ///
   /// In en, this message translates to:
-  /// **'Scanning…'**
+  /// **'ScanningвЂ¦'**
   String get bleScanning;
 
   /// No description provided for @bleRetry.
@@ -409,6 +583,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get bleRetry;
+
+  /// No description provided for @bleEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get bleEnable;
 
   /// No description provided for @bleConnectFailed.
   ///
@@ -557,13 +737,13 @@ abstract class AppLocalizations {
   /// No description provided for @chatSessionHandshaking.
   ///
   /// In en, this message translates to:
-  /// **'Establishing secure channel…'**
+  /// **'Establishing secure channelвЂ¦'**
   String get chatSessionHandshaking;
 
   /// No description provided for @chatSessionEstablished.
   ///
   /// In en, this message translates to:
-  /// **'Secured · Noise XX'**
+  /// **'Secured В· Noise XX'**
   String get chatSessionEstablished;
 
   /// No description provided for @chatSessionFailed.
@@ -599,7 +779,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatEmptyHandshaking.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for the other side to finish the handshake…'**
+  /// **'Waiting for the other side to finish the handshakeвЂ¦'**
   String get chatEmptyHandshaking;
 
   /// No description provided for @profileTitle.
@@ -1049,7 +1229,7 @@ abstract class AppLocalizations {
   /// No description provided for @peerBlockedNote.
   ///
   /// In en, this message translates to:
-  /// **'Blocked — their messages are dropped.'**
+  /// **'Blocked вЂ” their messages are dropped.'**
   String get peerBlockedNote;
 
   /// No description provided for @relaysTitle.
@@ -1073,7 +1253,7 @@ abstract class AppLocalizations {
   /// No description provided for @relaysExplainer.
   ///
   /// In en, this message translates to:
-  /// **'Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.'**
+  /// **'Messages stay end-to-end encrypted вЂ” a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.'**
   String get relaysExplainer;
 
   /// No description provided for @relaysMyAddress.
@@ -1127,7 +1307,7 @@ abstract class AppLocalizations {
   /// No description provided for @relaysStateConnecting.
   ///
   /// In en, this message translates to:
-  /// **'Connecting…'**
+  /// **'ConnectingвЂ¦'**
   String get relaysStateConnecting;
 
   /// No description provided for @relaysStateFailed.
@@ -1145,7 +1325,7 @@ abstract class AppLocalizations {
   /// No description provided for @relaysEmpty.
   ///
   /// In en, this message translates to:
-  /// **'No relays configured — the fallback stays off.'**
+  /// **'No relays configured вЂ” the fallback stays off.'**
   String get relaysEmpty;
 
   /// No description provided for @contactTitle.
@@ -1163,7 +1343,7 @@ abstract class AppLocalizations {
   /// No description provided for @contactMineExplainer.
   ///
   /// In en, this message translates to:
-  /// **'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.'**
+  /// **'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address вЂ” enough for them to start an encrypted chat with you over the internet.'**
   String get contactMineExplainer;
 
   /// No description provided for @contactCopy.
@@ -1307,7 +1487,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileDiscoverableExplainer.
   ///
   /// In en, this message translates to:
-  /// **'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.'**
+  /// **'On, your announcement is broadcast in the clear so strangers can meet you by walking up вЂ” and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.'**
   String get profileDiscoverableExplainer;
 
   /// No description provided for @voiceHoldHint.
@@ -1361,8 +1541,26 @@ abstract class AppLocalizations {
   /// No description provided for @profileLastSeenOffHint.
   ///
   /// In en, this message translates to:
-  /// **'Nobody sees yours — and you see nobody\'s'**
+  /// **'Nobody sees yours вЂ” and you see nobody\'s'**
   String get profileLastSeenOffHint;
+
+  /// No description provided for @profileMapLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Show me on map'**
+  String get profileMapLocation;
+
+  /// No description provided for @profileMapLocationOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Location is available for manual sharing and your pin is shown on the map'**
+  String get profileMapLocationOnHint;
+
+  /// No description provided for @profileMapLocationOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The app does not request location and your pin stays hidden'**
+  String get profileMapLocationOffHint;
 
   /// No description provided for @profileReadReceipts.
   ///
@@ -1379,7 +1577,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileReadReceiptsOffHint.
   ///
   /// In en, this message translates to:
-  /// **'They don\'t — and neither do you'**
+  /// **'They don\'t вЂ” and neither do you'**
   String get profileReadReceiptsOffHint;
 
   /// No description provided for @profilePrivacyExplainer.
@@ -1463,7 +1661,7 @@ abstract class AppLocalizations {
   /// No description provided for @fileTooLargeMesh.
   ///
   /// In en, this message translates to:
-  /// **'File is too large — {limit} MB is the limit over the mesh'**
+  /// **'File is too large вЂ” {limit} MB is the limit over the mesh'**
   String fileTooLargeMesh(int limit);
 
   /// No description provided for @fileTooLargeRelay.
@@ -1511,8 +1709,26 @@ abstract class AppLocalizations {
   /// No description provided for @mediaCaptionHint.
   ///
   /// In en, this message translates to:
-  /// **'Add a caption…'**
+  /// **'Add a captionвЂ¦'**
   String get mediaCaptionHint;
+
+  /// No description provided for @mediaDiscardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard selection?'**
+  String get mediaDiscardTitle;
+
+  /// No description provided for @mediaDiscardMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the gallery and discard the selected photos?'**
+  String get mediaDiscardMessage;
+
+  /// No description provided for @mediaDiscardConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get mediaDiscardConfirm;
 
   /// No description provided for @contactProfileAutoDelete.
   ///
@@ -1685,7 +1901,7 @@ abstract class AppLocalizations {
   /// No description provided for @autoDeleteCustom.
   ///
   /// In en, this message translates to:
-  /// **'Custom…'**
+  /// **'CustomвЂ¦'**
   String get autoDeleteCustom;
 
   /// No description provided for @autoDeleteCustomHint.
@@ -2069,7 +2285,7 @@ abstract class AppLocalizations {
   /// No description provided for @backupRestoreSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Replace this phone’s Cubechat profile from a backup file'**
+  /// **'Replace this phoneвЂ™s Cubechat profile from a backup file'**
   String get backupRestoreSubtitle;
 
   /// No description provided for @backupPasswordTitle.
@@ -2225,7 +2441,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatTyping.
   ///
   /// In en, this message translates to:
-  /// **'typing…'**
+  /// **'typingвЂ¦'**
   String get chatTyping;
 
   /// No description provided for @onboardingMeshTitle.
@@ -2237,7 +2453,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingMeshBody.
   ///
   /// In en, this message translates to:
-  /// **'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.'**
+  /// **'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts вЂ” just the people around you.'**
   String get onboardingMeshBody;
 
   /// No description provided for @onboardingRelayTitle.
@@ -2261,7 +2477,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingPrivacyBody.
   ///
   /// In en, this message translates to:
-  /// **'Everything is end-to-end encrypted, and your identity is a key on this phone — not a phone number, not an email, not an account anyone can take away.'**
+  /// **'Everything is end-to-end encrypted, and your identity is a key on this phone вЂ” not a phone number, not an email, not an account anyone can take away.'**
   String get onboardingPrivacyBody;
 
   /// No description provided for @onboardingSkip.
@@ -2369,13 +2585,13 @@ abstract class AppLocalizations {
   /// No description provided for @viewOnceTapToView.
   ///
   /// In en, this message translates to:
-  /// **'Photo · tap to view once'**
+  /// **'Photo В· tap to view once'**
   String get viewOnceTapToView;
 
   /// No description provided for @viewOnceSent.
   ///
   /// In en, this message translates to:
-  /// **'Photo · sent'**
+  /// **'Photo В· sent'**
   String get viewOnceSent;
 
   /// No description provided for @viewOnceOpened.
@@ -2495,7 +2711,7 @@ abstract class AppLocalizations {
   /// No description provided for @phoneTransferPreparing.
   ///
   /// In en, this message translates to:
-  /// **'Preparing encrypted transfer…'**
+  /// **'Preparing encrypted transferвЂ¦'**
   String get phoneTransferPreparing;
 
   /// No description provided for @phoneTransferReady.
@@ -2513,7 +2729,7 @@ abstract class AppLocalizations {
   /// No description provided for @phoneTransferConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Replace this phone’s profile?'**
+  /// **'Replace this phoneвЂ™s profile?'**
   String get phoneTransferConfirmTitle;
 
   /// No description provided for @phoneTransferConfirmMessage.
@@ -2573,7 +2789,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileSummaryMeshInternet.
   ///
   /// In en, this message translates to:
-  /// **'Mesh · internet'**
+  /// **'Mesh В· internet'**
   String get profileSummaryMeshInternet;
 
   /// No description provided for @profileSummaryBackgroundOn.
@@ -2599,6 +2815,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'last seen hidden'**
   String get profileSummaryLastSeenHidden;
+
+  /// No description provided for @profileSummaryMapHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'map location hidden'**
+  String get profileSummaryMapHidden;
 
   /// No description provided for @profileSummaryTransfersActive.
   ///

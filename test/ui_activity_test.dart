@@ -78,4 +78,18 @@ void main() {
       expect(notifications, 1);
     });
   });
+  test('scrolling signal changes only at the edges', () {
+    var notifications = 0;
+    void count() => notifications++;
+    UiActivity.instance.isScrolling.addListener(count);
+    addTearDown(() => UiActivity.instance.isScrolling.removeListener(count));
+
+    UiActivity.instance.setScrolling(true);
+    UiActivity.instance.setScrolling(true);
+    expect(UiActivity.instance.isScrolling.value, isTrue);
+
+    UiActivity.instance.setScrolling(false);
+    expect(UiActivity.instance.isScrolling.value, isFalse);
+    expect(notifications, 2);
+  });
 }

@@ -880,6 +880,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// bar, wrong as soon as a tapped quote pointed somewhere else, which landed
   /// you near the message instead of on it.
   final _jumpTargetKey = GlobalKey();
+  int _jumpRequest = 0;
   String _searchQuery = '';
   int _searchIndex = 0;
 
@@ -977,6 +978,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   }
 
   Future<void> _jumpTo(String wireId) async {
+    final request = ++_jumpRequest;
     final messages = widget.messages;
     final index = messages.indexWhere((m) => m.wireId == wireId);
     if (index < 0) {
@@ -987,7 +989,16 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // Flash first: the marker is also what puts [_jumpTargetKey] on the
     // destination, so the scroll below has something to finish against.
     _flash(messages[index].id);
-    await _jumpToMessageId(messages[index].id, _jumpTargetKey);
+    // Let the highlight rebuild move the key off the previous target. A
+    // second pin tap during the highlight window otherwise sees the old
+    // message context and scrolls back to that same pin.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || request != _jumpRequest) return;
+    await _jumpToMessageId(
+      messages[index].id,
+      _jumpTargetKey,
+      jumpRequest: request,
+    );
   }
 
   void _updateSearch(String query) {
@@ -1057,7 +1068,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// True once the message was brought on screen, so callers that only get one
   /// chance — the open-at-message jump — can tell a landing from a give-up and
   /// retry when more history arrives.
-  Future<bool> _jumpToMessageId(String messageId, GlobalKey targetKey) async {
+  Future<bool> _jumpToMessageId(
+    String messageId,
+    GlobalKey targetKey, {
+    int? jumpRequest,
+  }) async {
     final messages = widget.messages;
     final index = messages.indexWhere((message) => message.id == messageId);
     if (index < 0 || messages.isEmpty) return false;
@@ -1084,7 +1099,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     var estimated = false;
 
     for (var attempt = 0; attempt < 48; attempt++) {
-      if (!mounted) return false;
+      if (!mounted || (jumpRequest != null && jumpRequest != _jumpRequest)) {
+        return false;
+      }
       final targetContext = targetKey.currentContext;
       if (targetContext != null && targetContext.mounted) {
         await Scrollable.ensureVisible(
@@ -1287,8 +1304,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final pinIndex = visiblePins.isEmpty
         ? 0
         : () {
-            final at =
-                visiblePins.indexWhere((m) => m.wireId == _pinCursor);
+            final at = visiblePins.indexWhere((m) => m.wireId == _pinCursor);
             // Null cursor, or a pin that has since been removed: start at the
             // newest, the one nearest what you are reading.
             return at < 0 ? visiblePins.length - 1 : at;
@@ -2431,9 +2447,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _captureEditAndSend();
       case MediaPickerPoll():
         await showChannelPollComposer(context, ref, widget.peerId);
-      case MediaPickerAssets(:final assets):
+      case MediaPickerAssets(:final assets, :final caption):
         if (assets.isEmpty) return;
-        await _previewAndSend(assets);
+        await _previewAndSend(assets, initialCaption: caption);
       case MediaPickerLocation():
         await _shareLocation();
       case MediaPickerEdit(:final asset):
@@ -2466,6 +2482,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// the relay, in a chat or a channel, with nothing new taught to any of them.
   Future<void> _shareLocation() async {
     final t = AppLocalizations.of(context);
+    if (!ref.read(privacySettingsProvider).shareMapLocation) {
+      showGlassToast(
+        context,
+        t.locationSharingDisabled,
+        tone: ToastTone.danger,
+      );
+      return;
+    }
     final ttl = await _askLocationWindow();
     if (ttl == null || !mounted) return;
 
@@ -2602,7 +2626,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// forced the editor open for one photo and skipped straight to sending for
   /// several, which meant the two cases behaved nothing alike and neither gave
   /// a chance to look at what was about to go out.
-  Future<void> _previewAndSend(List<AssetEntity> assets) async {
+  Future<void> _previewAndSend(
+    List<AssetEntity> assets, {
+    String? initialCaption,
+  }) async {
     // Bounded-resolution copies: the preview only has to look right on screen,
     // and the mesh encoder downscales again afterwards anyway.
     final loaded = <Uint8List>[];
@@ -2621,6 +2648,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
           items: loaded,
           allowOriginal: !widget.isChannel,
           allowViewOnce: !widget.isChannel && !isSavedChat(widget.canonicalId),
+          initialCaption: initialCaption,
         ),
       ),
     );

@@ -46,3 +46,45 @@ The menu occupies most of the normalized viewport and all labels remain readable
 - Widget coverage: 360 x 800 layout, localized content, menu open/close, block/unblock state.
 - Route coverage: contact names and public keys are encoded correctly.
 - Static analysis: no errors in the new contact profile screen.
+---
+
+# Design QA: People map
+
+## Final result
+
+`passed`
+
+## Visual truth and implementation
+
+- Latest source reference: `C:\Users\kuzme\AppData\Local\Temp\codex-clipboard-9681190a-ce47-459d-b050-0c2b0a2edd74.png`
+- Implementation capture: `D:\projects\cubechat\.codex\design-qa\people-map-360x800.png`
+- Side-by-side comparison: `D:\projects\cubechat\.codex\design-qa\people-map-comparison.jpg`
+
+## Viewport and normalization
+
+- Implementation viewport: 360 x 800 logical pixels.
+- The source was cover-normalized to 360 x 800 for the comparison.
+- The in-app browser connection was unavailable because its Windows sandbox helper failed. Flutter rendered the implementation directly at the exact phone viewport instead.
+- Network tiles are disabled in the deterministic widget capture. The production build keeps the real OpenStreetMap street layer and applies a local monochrome inversion plus a black overlay.
+- Flutter's deterministic screenshot renderer displays text as geometry blocks. Semantic widget assertions separately verify the decoded Ukrainian labels, including the map title and privacy state.
+
+## Comparison findings
+
+- The map remains the full-screen dominant surface and supports the same real-world pan and zoom model as the source.
+- The requested color direction is implemented as black and graphite, with roads and labels retained by the local tile color matrix rather than replaced by a fake background.
+- Circular user avatars remain the strongest visual anchors. Theme-colored glows and restrained links preserve Cubechat's own glass language.
+- Header and state cards remain inside safe areas and clear the persistent bottom navigation.
+- The reference's blue utility buttons were not copied because the request targeted the map surface; Cubechat keeps its existing theme-aware controls and navigation.
+- No overflow or uncaught layout exception occurred at 360 x 800.
+
+## Functional verification
+
+- The fifth bottom-bar item opens the map branch.
+- All map labels now decode correctly in Ukrainian; the previous question-mark strings are gone.
+- `Show me on map` is persisted under Privacy and defaults to off.
+- When off, Cubechat does not request a GPS fix, hides the own pin, and blocks manual location sharing with a localized explanation.
+- When on, the own marker appears. Tapping it opens the own mini-profile card, whose Profile action returns to the profile tab.
+- Location checks run only while the map tab is visible, at a 90-second cadence; map animation pauses while hidden or idle.
+- Automatic precise-location fanout to contacts is not enabled.
+- Focused unit, widget, localization, navigation, and golden tests pass; static analysis reports no errors.
+- Android release compilation succeeded.

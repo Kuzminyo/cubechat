@@ -177,8 +177,9 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       final rb = ranks.indexOf(b.id);
       // A starred chat missing from the order (mid-load, say) falls to the end
       // of the group rather than jumping to the front of it.
-      if (ra != rb) return (ra < 0 ? ranks.length : ra)
-          .compareTo(rb < 0 ? ranks.length : rb);
+      if (ra != rb)
+        return (ra < 0 ? ranks.length : ra)
+            .compareTo(rb < 0 ? ranks.length : rb);
     }
     return b.lastTime.compareTo(a.lastTime);
   });
@@ -197,7 +198,8 @@ class ChatsListScreen extends ConsumerWidget {
     final selected = ref.watch(selectedFolderProvider);
     // A folder that was switched off while it was the one being shown would
     // otherwise leave the list filtered by something with no pill on screen.
-    final folder = selected != null && folders.contains(selected) ? selected : null;
+    final folder =
+        selected != null && folders.contains(selected) ? selected : null;
 
     final filtered = all.where((c) {
       if (folder != null && !folder.matches(c)) return false;
@@ -273,8 +275,9 @@ class ChatsListScreen extends ConsumerWidget {
                     PillButton(
                       label: t.chatsFilterAll,
                       active: folder == null,
-                      onTap: () =>
-                          ref.read(selectedFolderProvider.notifier).state = null,
+                      onTap: () => ref
+                          .read(selectedFolderProvider.notifier)
+                          .state = null,
                     ),
                     for (final f in folders) ...[
                       const SizedBox(width: 8),
@@ -396,11 +399,15 @@ class _SearchField extends StatelessWidget {
           children: [
             Icon(Icons.search, size: 18, color: AppColors.textOnGlassFaint),
             const SizedBox(width: 12),
-            Text(
-              hint,
-              style: TextStyle(
-                color: AppColors.textOnGlassFaint,
-                fontSize: 14,
+            Expanded(
+              child: Text(
+                hint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textOnGlassFaint,
+                  fontSize: 14,
+                ),
               ),
             ),
           ],

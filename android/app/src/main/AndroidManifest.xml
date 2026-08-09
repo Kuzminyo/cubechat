@@ -21,7 +21,7 @@
     <!-- Location, for two unrelated reasons.
 
          Historically only the first: Android 6..11 would not let an app scan
-         for BLE without it, which is why it was capped at API 30 — the mesh
+         for BLE without it, which is why it was capped at API 30 вЂ” the mesh
          never wanted anyone's position, and the BLUETOOTH_SCAN permission on
          12+ is declared neverForLocation precisely to say so.
 
@@ -31,7 +31,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- Declare hardware requirement (but don't fail on absence — phones may emulate) -->
+    <!-- Declare hardware requirement (but don't fail on absence вЂ” phones may emulate) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <!-- Voice messages (mic capture for press-and-hold recording) -->
@@ -55,7 +55,7 @@
     <!-- Internet fallback (M6): the Nostr relay pool opens wss:// sockets when
          the mesh can't deliver. Flutter's template declares INTERNET only in
          the debug/profile manifests (the tool needs it for hot reload), and
-         those are not merged into a release build — so without this line the
+         those are not merged into a release build вЂ” so without this line the
          fallback worked in debug and every relay sat "unreachable" in the
          release APK, with no permission error to explain why. -->
     <uses-permission android:name="android.permission.INTERNET" />

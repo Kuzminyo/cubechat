@@ -76,7 +76,8 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
       useRootNavigator: true,
-      builder: (_) => const MediaPickerSheet(allowFiles: false),
+      builder: (_) =>
+          const MediaPickerSheet(allowFiles: false, allowCaption: false),
     );
     if (result is! MediaPickerAssets || result.assets.isEmpty) return;
 
@@ -337,13 +338,12 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                   contact: contacts[member.id],
                   isMe: member.id == _myId,
                   canManage: canManage,
-                  onToggleAdmin: () => ref
-                      .read(messagingServiceProvider)
-                      .sendChannelAdminChange(
-                        widget.channelName,
-                        member.id,
-                        !member.isAdmin,
-                      ),
+                  onToggleAdmin: () =>
+                      ref.read(messagingServiceProvider).sendChannelAdminChange(
+                            widget.channelName,
+                            member.id,
+                            !member.isAdmin,
+                          ),
                 ),
           ],
         ),
@@ -637,8 +637,7 @@ class _ChannelDescription extends StatelessWidget {
           ),
           if (canManage) ...[
             const SizedBox(width: 8),
-            Icon(Icons.edit_outlined,
-                size: 18, color: AppColors.brandPrimary),
+            Icon(Icons.edit_outlined, size: 18, color: AppColors.brandPrimary),
           ],
         ],
       ),

@@ -45,6 +45,11 @@ class AppShell extends StatelessWidget {
         label: t.navPeers,
       ),
       _TabSpec(
+        icon: Icons.map_outlined,
+        activeIcon: Icons.map_rounded,
+        label: t.navMap,
+      ),
+      _TabSpec(
         icon: Icons.person_outline,
         activeIcon: Icons.person,
         label: t.navProfile,
@@ -53,9 +58,7 @@ class AppShell extends StatelessWidget {
 
     return AuroraBackground(
       // The backdrop leans toward whichever tab is open.
-      focus: tabs.length < 2
-          ? 1.0
-          : shell.currentIndex * 2 / (tabs.length - 1),
+      focus: tabs.length < 2 ? 1.0 : shell.currentIndex * 2 / (tabs.length - 1),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         // The keyboard must cover the bar, not push it.
@@ -223,48 +226,48 @@ class _GlassPillState extends State<_GlassPill>
       radius: _radius,
       padding: const EdgeInsets.symmetric(vertical: _padV, horizontal: _padH),
       child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final slot = constraints.maxWidth / n;
-                  return Stack(
-                    children: [
-                      // One glow for the whole bar: it slides between slots and
-                      // squashes along the direction of travel, which reads as a
-                      // single object moving rather than two cross-fading.
-                      //
-                      // AnimatedBuilder builds no render object, so the
-                      // Positioned it returns still lands directly on the Stack.
-                      AnimatedBuilder(
-                        animation: _c,
-                        builder: (context, _) {
-                          final w = _iconBox * _stretch;
-                          final h = _iconBox * _squash;
-                          return Positioned(
-                            left: slot * _position + (slot - w) / 2,
-                            top: (_iconBox - h) / 2,
-                            width: w,
-                            height: h,
-                            child: const _ActiveGlow(),
-                          );
-                        },
-                      ),
-                      Row(
-                        children: [
-                          for (var i = 0; i < n; i++)
-                            Expanded(
-                              child: _NavItem(
-                                spec: widget.tabs[i],
-                                active: i == widget.currentIndex,
-                                iconBox: _iconBox,
-                                iconSize: _iconSize,
-                                labelGap: _labelGap,
-                                onTap: () => widget.onTabChanged(i),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
+        builder: (context, constraints) {
+          final slot = constraints.maxWidth / n;
+          return Stack(
+            children: [
+              // One glow for the whole bar: it slides between slots and
+              // squashes along the direction of travel, which reads as a
+              // single object moving rather than two cross-fading.
+              //
+              // AnimatedBuilder builds no render object, so the
+              // Positioned it returns still lands directly on the Stack.
+              AnimatedBuilder(
+                animation: _c,
+                builder: (context, _) {
+                  final w = _iconBox * _stretch;
+                  final h = _iconBox * _squash;
+                  return Positioned(
+                    left: slot * _position + (slot - w) / 2,
+                    top: (_iconBox - h) / 2,
+                    width: w,
+                    height: h,
+                    child: const _ActiveGlow(),
                   );
                 },
+              ),
+              Row(
+                children: [
+                  for (var i = 0; i < n; i++)
+                    Expanded(
+                      child: _NavItem(
+                        spec: widget.tabs[i],
+                        active: i == widget.currentIndex,
+                        iconBox: _iconBox,
+                        iconSize: _iconSize,
+                        labelGap: _labelGap,
+                        onTap: () => widget.onTabChanged(i),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -332,7 +335,10 @@ class _NavItem extends StatelessWidget {
                     duration: const Duration(milliseconds: 220),
                     transitionBuilder: (child, anim) => ScaleTransition(
                       scale: Tween<double>(begin: 0.85, end: 1).animate(
-                        CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                        CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOutBack,
+                        ),
                       ),
                       child: FadeTransition(opacity: anim, child: child),
                     ),
@@ -353,7 +359,7 @@ class _NavItem extends StatelessWidget {
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 10.5,
                 height: 1.2,
                 color: color,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,

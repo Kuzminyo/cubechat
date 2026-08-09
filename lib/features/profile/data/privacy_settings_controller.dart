@@ -30,6 +30,7 @@ class PrivacySettings {
   const PrivacySettings({
     required this.shareLastSeen,
     required this.shareReadReceipts,
+    required this.shareMapLocation,
   });
 
   /// True: publish the presence beacon, and show peers' online state.
@@ -40,28 +41,43 @@ class PrivacySettings {
   /// messages. False: never answer, and never show the tick.
   final bool shareReadReceipts;
 
-  static const initial =
-      PrivacySettings(shareLastSeen: true, shareReadReceipts: true);
+  /// True: publish short-lived map coordinates while the map is open.
+  /// False: never request a fix for the map and withdraw our visible pin.
+  final bool shareMapLocation;
 
-  PrivacySettings copyWith({bool? shareLastSeen, bool? shareReadReceipts}) =>
+  static const initial = PrivacySettings(
+    shareLastSeen: true,
+    shareReadReceipts: true,
+    shareMapLocation: false,
+  );
+
+  PrivacySettings copyWith({
+    bool? shareLastSeen,
+    bool? shareReadReceipts,
+    bool? shareMapLocation,
+  }) =>
       PrivacySettings(
         shareLastSeen: shareLastSeen ?? this.shareLastSeen,
         shareReadReceipts: shareReadReceipts ?? this.shareReadReceipts,
+        shareMapLocation: shareMapLocation ?? this.shareMapLocation,
       );
 
   @override
   bool operator ==(Object other) =>
       other is PrivacySettings &&
       other.shareLastSeen == shareLastSeen &&
-      other.shareReadReceipts == shareReadReceipts;
+      other.shareReadReceipts == shareReadReceipts &&
+      other.shareMapLocation == shareMapLocation;
 
   @override
-  int get hashCode => Object.hash(shareLastSeen, shareReadReceipts);
+  int get hashCode =>
+      Object.hash(shareLastSeen, shareReadReceipts, shareMapLocation);
 }
 
 class PrivacySettingsController extends Notifier<PrivacySettings> {
   static const _keyLastSeen = 'privacy.shareLastSeen';
   static const _keyReceipts = 'privacy.shareReadReceipts';
+  static const _keyMapLocation = 'privacy.shareMapLocation';
 
   Box<dynamic>? _box;
 
@@ -79,6 +95,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
       state = PrivacySettings(
         shareLastSeen: box.get(_keyLastSeen) as bool? ?? true,
         shareReadReceipts: box.get(_keyReceipts) as bool? ?? true,
+        shareMapLocation: box.get(_keyMapLocation) as bool? ?? false,
       );
     } catch (e) {
       debugPrint('PrivacySettings load failed: $e');
@@ -93,6 +110,11 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   Future<void> setShareReadReceipts(bool value) async {
     state = state.copyWith(shareReadReceipts: value);
     await _put(_keyReceipts, value);
+  }
+
+  Future<void> setShareMapLocation(bool value) async {
+    state = state.copyWith(shareMapLocation: value);
+    await _put(_keyMapLocation, value);
   }
 
   Future<void> _put(String key, bool value) async {
@@ -110,6 +132,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
     try {
       await _box?.delete(_keyLastSeen);
       await _box?.delete(_keyReceipts);
+      await _box?.delete(_keyMapLocation);
     } catch (e) {
       debugPrint('PrivacySettings reset failed: $e');
     }

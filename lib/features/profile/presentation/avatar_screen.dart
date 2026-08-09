@@ -17,7 +17,7 @@ Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   final result = await showGlassSheet<MediaPickerResult>(
     context: context,
     useRootNavigator: true,
-    builder: (_) => const MediaPickerSheet(),
+    builder: (_) => const MediaPickerSheet(allowCaption: false),
   );
   if (result is! MediaPickerAssets || result.assets.isEmpty) return;
 

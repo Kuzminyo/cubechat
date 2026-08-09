@@ -1,4 +1,4 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -227,7 +227,8 @@ class _BackgroundModeCard extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final enabled = ref.watch(backgroundModeProvider);
     final controller = ref.read(backgroundModeProvider.notifier);
-    return _frame(framed,
+    return _frame(
+      framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -281,8 +282,8 @@ class _BackgroundModeCard extends ConsumerWidget {
                     size: 16, color: AppColors.brandPrimary),
                 label: Text(
                   t.profileBatteryExempt,
-                  style: TextStyle(
-                      color: AppColors.brandPrimary, fontSize: 12.5),
+                  style:
+                      TextStyle(color: AppColors.brandPrimary, fontSize: 12.5),
                 ),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -312,7 +313,8 @@ class _RelayFallbackCard extends ConsumerWidget {
     final settings = ref.watch(relaySettingsProvider);
     final on = settings.isActive;
 
-    return _frame(framed,
+    return _frame(
+      framed,
       onTap: () => context.push('/relays'),
       child: Row(
         children: [
@@ -372,7 +374,8 @@ class _FileTransfersCard extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final tasks = ref.watch(fileTransferControllerProvider).values;
     final active = tasks.where((task) => task.active).length;
-    return _frame(framed,
+    return _frame(
+      framed,
       onTap: () => context.push('/transfers'),
       child: Row(
         children: [
@@ -434,7 +437,8 @@ class _BackupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return _frame(framed,
+    return _frame(
+      framed,
       onTap: () => context.push('/backup'),
       child: Row(
         children: [
@@ -501,7 +505,8 @@ class _MeshSwitchCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final on = ref.watch(discoverySettingsProvider).meshEnabled;
-    return _frame(framed,
+    return _frame(
+      framed,
       child: _SettingSwitch(
         icon: on ? Icons.bluetooth_rounded : Icons.bluetooth_disabled_rounded,
         title: t.profileMeshSwitch,
@@ -530,7 +535,8 @@ class _DiscoverableCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final on = ref.watch(discoverySettingsProvider).discoverable;
-    return _frame(framed,
+    return _frame(
+      framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -674,7 +680,8 @@ class _PrivacyCard extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final s = ref.watch(privacySettingsProvider);
     final n = ref.read(privacySettingsProvider.notifier);
-    return _frame(framed,
+    return _frame(
+      framed,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -687,6 +694,18 @@ class _PrivacyCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
+          _SettingSwitch(
+            icon: s.shareMapLocation
+                ? Icons.location_on_outlined
+                : Icons.location_off_outlined,
+            title: t.profileMapLocation,
+            hint: s.shareMapLocation
+                ? t.profileMapLocationOnHint
+                : t.profileMapLocationOffHint,
+            value: s.shareMapLocation,
+            onChanged: n.setShareMapLocation,
+          ),
+          const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareLastSeen
                 ? Icons.schedule_outlined
@@ -737,7 +756,8 @@ class _ContactCardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    return _frame(framed,
+    return _frame(
+      framed,
       onTap: () => context.push('/contact'),
       child: Row(
         children: [
@@ -804,6 +824,8 @@ String _privacySummary(WidgetRef ref, AppLocalizations t) {
         : t.profileSummaryHidden,
     if (!ref.watch(privacySettingsProvider).shareLastSeen)
       t.profileSummaryLastSeenHidden,
+    if (!ref.watch(privacySettingsProvider).shareMapLocation)
+      t.profileSummaryMapHidden,
   ];
   return parts.join(' · ');
 }
@@ -843,8 +865,8 @@ class _TransportRow extends StatelessWidget {
               border: Border.all(
                   color: AppColors.brandPrimary.withValues(alpha: 0.4)),
             ),
-            child: Icon(Icons.bluetooth,
-                color: AppColors.brandPrimary, size: 18),
+            child:
+                Icon(Icons.bluetooth, color: AppColors.brandPrimary, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1787,8 +1809,10 @@ class _CoverBody extends ConsumerWidget {
                         // of `bgDeep` — right on the green theme and a band of
                         // dark green across the bottom of every other, which is
                         // the strip under the buttons people kept pointing at.
-                        colors: [Colors.transparent, AppColors.bgDeep
-                            .withValues(alpha: 0.90)],
+                        colors: [
+                          Colors.transparent,
+                          AppColors.bgDeep.withValues(alpha: 0.90)
+                        ],
                       ),
                     ),
                   ),

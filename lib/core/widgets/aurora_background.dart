@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../util/ui_activity.dart';
 
 /// Full-screen aurora gradient with slowly drifting blobs.
 ///
@@ -74,6 +75,9 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   /// would otherwise freeze the backdrop under the user's own finger.
   int _pointers = 0;
 
+  /// Pauses decorative work for both the drag and its inertial coast.
+  bool _scrolling = false;
+
   /// Drives the ease between the previous and the current [widget.focus].
   /// Starts completed so the first frame paints at the requested focus.
   late final AnimationController _focus = AnimationController(
@@ -106,7 +110,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   void _scheduleIdle() {
     _idleTimer?.cancel();
     _idleTimer = null;
-    if (_pointers > 0) return; // still under a finger — stay awake
+    if (_pointers > 0 || _scrolling) return;
     _idleTimer = Timer(_idleAfter, _stopTicker);
   }
 
@@ -127,12 +131,27 @@ class _AuroraBackgroundState extends State<AuroraBackground>
     _clock.stop(); // preserves elapsed, so the drift resumes seamlessly
   }
 
+  bool _onScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification && !_scrolling) {
+      _scrolling = true;
+      UiActivity.instance.setScrolling(true);
+      _stopTicker();
+    } else if (notification is ScrollEndNotification && _scrolling) {
+      _scrolling = false;
+      UiActivity.instance.setScrolling(false);
+      if (_pointers == 0) _wake();
+    }
+    return false;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _wake();
     } else {
       _pointers = 0; // no gesture survives backgrounding
+      _scrolling = false;
+      UiActivity.instance.setScrolling(false);
       _stopTicker();
     }
   }
@@ -159,6 +178,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    UiActivity.instance.setScrolling(false);
     _stopTicker();
     _drift.dispose();
     _focus.dispose();
@@ -184,23 +204,26 @@ class _AuroraBackgroundState extends State<AuroraBackground>
         // when a gesture starts and ends, to decide whether the drift is worth
         // painting. Counting pointers (rather than kicking a timer on every
         // move) keeps a scroll from churning a Timer per frame.
-        Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (_) {
-            _pointers++;
-            _idleTimer?.cancel();
-            _idleTimer = null;
-            _startTicker();
-          },
-          onPointerUp: (_) {
-            if (_pointers > 0) _pointers--;
-            _scheduleIdle();
-          },
-          onPointerCancel: (_) {
-            if (_pointers > 0) _pointers--;
-            _scheduleIdle();
-          },
-          child: widget.child,
+        NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) {
+              _pointers++;
+              // A moving background plus a moving list forces every glass
+              // surface to be recomposited. Park decoration under the finger.
+              _stopTicker();
+            },
+            onPointerUp: (_) {
+              if (_pointers > 0) _pointers--;
+              if (!_scrolling) _wake();
+            },
+            onPointerCancel: (_) {
+              if (_pointers > 0) _pointers--;
+              if (!_scrolling) _wake();
+            },
+            child: widget.child,
+          ),
         ),
       ],
     );
@@ -313,7 +336,8 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
-      Alignment(-0.7 + 0.25 * math.sin(t) - dx, -0.6 + 0.18 * math.cos(t * 0.8) - dy),
+      Alignment(
+          -0.7 + 0.25 * math.sin(t) - dx, -0.6 + 0.18 * math.cos(t * 0.8) - dy),
       AppColors.aurora1,
       0.55 + 0.05 * math.sin(t * 0.5),
       0.55,
@@ -321,7 +345,8 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
-      Alignment(0.7 + 0.20 * math.cos(t * 0.7) - dx, -0.7 + 0.22 * math.sin(t * 0.9) + dy),
+      Alignment(0.7 + 0.20 * math.cos(t * 0.7) - dx,
+          -0.7 + 0.22 * math.sin(t * 0.9) + dy),
       AppColors.aurora2,
       0.50 + 0.05 * math.cos(t * 0.6),
       0.55,
@@ -332,7 +357,8 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
-      Alignment(0.4 + 0.30 * math.sin(t * 1.1 + 1) - dx, 0.48 + 0.18 * math.cos(t * 0.8 + 1) + dy),
+      Alignment(0.4 + 0.30 * math.sin(t * 1.1 + 1) - dx,
+          0.48 + 0.18 * math.cos(t * 0.8 + 1) + dy),
       AppColors.aurora3,
       0.55 + 0.04 * math.sin(t * 0.7),
       0.46,
@@ -340,12 +366,12 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
-      Alignment(-0.6 + 0.25 * math.cos(t * 0.9 + 2) - dx, 0.52 + 0.15 * math.sin(t * 0.6 + 2) - dy),
+      Alignment(-0.6 + 0.25 * math.cos(t * 0.9 + 2) - dx,
+          0.52 + 0.15 * math.sin(t * 0.6 + 2) - dy),
       AppColors.aurora4,
       0.45 + 0.05 * math.cos(t * 0.85),
       0.30,
     );
-
   }
 
   /// One drifting blob, shaded only where it can actually be seen.

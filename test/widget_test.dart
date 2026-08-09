@@ -4,7 +4,9 @@ import 'package:cubechat/app.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/contacts/presentation/contacts_screen.dart';
+import 'package:cubechat/features/map/presentation/people_map_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -64,7 +66,18 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mapTileProviderProvider.overrideWithValue(
+            NetworkTileProvider(
+              cachingProvider: const DisabledMapCachingProvider(),
+            ),
+          ),
+        ],
+        child: const CubechatApp(),
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -75,6 +88,7 @@ void main() {
     // Contacts landing on its own screen is what proves Nearby did too.
     for (final (label, screen) in <(String, Type)>[
       ('Contacts', ContactsScreen),
+      ('Map', PeopleMapScreen),
       ('Profile', ProfileScreen),
       ('Chats', ChatsListScreen),
     ]) {

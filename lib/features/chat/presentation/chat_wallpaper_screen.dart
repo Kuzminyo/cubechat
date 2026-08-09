@@ -28,7 +28,8 @@ class ChatWallpaperScreen extends ConsumerWidget {
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
       useRootNavigator: true,
-      builder: (_) => const MediaPickerSheet(allowFiles: false),
+      builder: (_) =>
+          const MediaPickerSheet(allowFiles: false, allowCaption: false),
     );
     if (result is! MediaPickerAssets || result.assets.isEmpty) return;
 

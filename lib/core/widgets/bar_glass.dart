@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../theme/glass.dart';
+import '../util/ui_activity.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
 /// like the bar can *be* the bar rather than an approximation of it.
@@ -61,8 +62,8 @@ class BarGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: AppBlur.pane,
+        child: ValueListenableBuilder<bool>(
+          valueListenable: UiActivity.instance.isScrolling,
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -80,6 +81,13 @@ class BarGlass extends StatelessWidget {
             ),
             child: Padding(padding: padding, child: child),
           ),
+          builder: (context, scrolling, pane) {
+            // A live backdrop filter has to resample the moving list every
+            // frame. The pane's own tint stays visually identical during the
+            // gesture; the expensive blur returns when motion stops.
+            if (scrolling) return pane!;
+            return BackdropFilter(filter: AppBlur.pane, child: pane!);
+          },
         ),
       ),
     );

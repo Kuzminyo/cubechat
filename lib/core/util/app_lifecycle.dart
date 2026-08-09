@@ -34,4 +34,9 @@ class AppLifecycle {
   /// nobody was looking at. Discovery is only worth the active cadence when
   /// someone is watching it happen.
   bool isWatchingNearby = false;
+
+  /// True only while the live-map branch is actually painted. Location fixes
+  /// and map beacons are gated on this so a mounted-but-offstage tab cannot
+  /// keep GPS or the network awake.
+  bool isWatchingMap = false;
 }

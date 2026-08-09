@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/ble/bluetooth_power.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/ui_activity.dart';
@@ -29,6 +30,12 @@ class PeersScreen extends ConsumerStatefulWidget {
 }
 
 class _PeersScreenState extends ConsumerState<PeersScreen> {
+  Future<void> _turnOnBluetooth() async {
+    await const BluetoothPower().requestEnable();
+    if (!mounted) return;
+    await ref.read(peerDiscoveryControllerProvider.notifier).start();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -151,8 +158,8 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
             tone: _StatusTone.warning,
             title: t.bleAdapterOffTitle,
             hint: t.bleAdapterOffHint,
-            actionLabel: t.bleRetry,
-            onAction: controller.start,
+            actionLabel: t.bleEnable,
+            onAction: _turnOnBluetooth,
           ),
         ];
 

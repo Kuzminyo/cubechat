@@ -14,6 +14,7 @@ import '../../l10n/app_localizations.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/files/presentation/file_transfer_center_screen.dart';
+import '../../features/map/presentation/people_map_screen.dart';
 import '../../features/qr/presentation/qr_scanner_screen.dart';
 import '../../features/peers/presentation/contact_card_screen.dart';
 import '../../features/peers/presentation/contact_content_screen.dart';
@@ -103,6 +104,16 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
               GoRoute(
                 path: '/peers',
                 builder: (context, state) => const PeersScreen(),
+              ),
+            ],
+          ),
+          // The map stays lazy: opening it is the only time we ask for a
+          // location fix or paint map tiles.
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/map',
+                builder: (context, state) => const PeopleMapScreen(),
               ),
             ],
           ),

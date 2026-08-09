@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/util/ui_activity.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
+import '../../../../l10n/app_localizations.dart';
 import 'attach_island.dart';
 import 'gallery_viewer.dart';
 
@@ -52,8 +55,10 @@ class MediaPickerPoll extends MediaPickerResult {
 
 /// The user confirmed a gallery selection.
 class MediaPickerAssets extends MediaPickerResult {
-  const MediaPickerAssets(this.assets);
+  const MediaPickerAssets(this.assets, {this.caption});
+
   final List<AssetEntity> assets;
+  final String? caption;
 }
 
 /// Telegram-style in-app photo picker: a grid of the device's photos with
@@ -65,6 +70,7 @@ class MediaPickerSheet extends StatefulWidget {
     super.key,
     this.allowFiles = true,
     this.allowPoll = false,
+    this.allowCaption = true,
   });
 
   /// See [AttachIsland.allowFiles] — a channel takes photos but not documents.
@@ -72,6 +78,9 @@ class MediaPickerSheet extends StatefulWidget {
 
   /// See [AttachIsland.allowPoll] — a channel starts votes, a 1:1 does not.
   final bool allowPoll;
+
+  /// False when this picker is selecting an avatar, cover, or wallpaper.
+  final bool allowCaption;
 
   @override
   State<MediaPickerSheet> createState() => _MediaPickerSheetState();
@@ -81,6 +90,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   final List<AssetEntity> _assets = [];
   final List<AssetEntity> _selected = []; // tap order preserved for numbering
   final ScrollController _scroll = ScrollController();
+  final TextEditingController _caption = TextEditingController();
+
+  bool _allowPop = false;
+  bool _confirmingDiscard = false;
   PermissionState? _perm;
   bool _loading = true;
 
@@ -131,6 +144,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   @override
   void dispose() {
     _scroll.dispose();
+    _caption.dispose();
+    UiActivity.instance.setScrolling(false);
     super.dispose();
   }
 
@@ -229,6 +244,39 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     });
   }
 
+  void _close([MediaPickerResult? result]) {
+    if (!mounted || _allowPop) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop(result);
+    });
+  }
+
+  void _completeSelection() {
+    if (_selected.isEmpty) return;
+    final text = _caption.text.trim();
+    _close(
+      MediaPickerAssets(
+        List<AssetEntity>.from(_selected),
+        caption: text.isEmpty ? null : text,
+      ),
+    );
+  }
+
+  Future<void> _confirmDiscard() async {
+    if (_confirmingDiscard || _selected.isEmpty) return;
+    _confirmingDiscard = true;
+    final t = AppLocalizations.of(context);
+    final discard = await confirmAction(
+      context,
+      title: t.mediaDiscardTitle,
+      message: t.mediaDiscardMessage,
+      confirmLabel: t.mediaDiscardConfirm,
+    );
+    _confirmingDiscard = false;
+    if (discard && mounted) _close();
+  }
+
   /// Full screen, from the photo that was tapped, with the rest of the roll a
   /// swipe away.
   ///
@@ -252,10 +300,9 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     if (result == null || !mounted) return;
     switch (result.exit) {
       case GalleryViewerExit.send:
-        Navigator.of(context)
-            .pop(MediaPickerAssets(List<AssetEntity>.from(_selected)));
+        _completeSelection();
       case GalleryViewerExit.edit:
-        Navigator.of(context).pop(MediaPickerEdit(result.asset));
+        _close(MediaPickerEdit(result.asset));
     }
   }
 
@@ -266,49 +313,60 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     // showGlassSheet), so everything in here sits directly on it. A card inside
     // a card was the thing that made this look like a dialog stacked on a
     // plate rather than one island floating over the conversation.
-    return SizedBox(
-      height: media.size.height * 0.7,
-      child: Column(
-        children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.glass(0.24),
-              borderRadius: BorderRadius.circular(2),
+    return PopScope<MediaPickerResult>(
+      canPop: _allowPop || _selected.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_confirmDiscard());
+      },
+      child: SizedBox(
+        height: media.size.height * 0.7,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.glass(0.24),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            // Rounded to the island's own corners, so the grid ends where the
-            // glass does instead of squaring it off.
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: _body(),
+            const SizedBox(height: 10),
+            Expanded(
+              // Rounded to the island's own corners, so the grid ends where the
+              // glass does instead of squaring it off.
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: _body(),
+              ),
             ),
-          ),
-          _sendBar(),
-          AttachIsland(
-            bare: true,
-            allowFiles: widget.allowFiles,
-            allowPoll: widget.allowPoll,
-            selected: AttachChoice.gallery,
-            onPick: (choice) => switch (choice) {
-              AttachChoice.gallery => null,
-              AttachChoice.camera =>
-                Navigator.of(context).pop(const MediaPickerCamera()),
-              AttachChoice.file =>
-                Navigator.of(context).pop(const MediaPickerFile()),
-              AttachChoice.poll =>
-                Navigator.of(context).pop(const MediaPickerPoll()),
-              AttachChoice.location =>
-                Navigator.of(context).pop(const MediaPickerLocation()),
-            },
-          ),
-        ],
+            _sendBar(),
+            AttachIsland(
+              bare: true,
+              allowFiles: widget.allowFiles,
+              allowPoll: widget.allowPoll,
+              selected: AttachChoice.gallery,
+              onPick: (choice) => switch (choice) {
+                AttachChoice.gallery => null,
+                AttachChoice.camera => _close(const MediaPickerCamera()),
+                AttachChoice.file => _close(const MediaPickerFile()),
+                AttachChoice.poll => _close(const MediaPickerPoll()),
+                AttachChoice.location => _close(const MediaPickerLocation()),
+              },
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  bool _onGalleryScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      UiActivity.instance.setScrolling(true);
+    } else if (notification is ScrollEndNotification) {
+      UiActivity.instance.setScrolling(false);
+    }
+    return false;
   }
 
   Widget _body() {
@@ -325,63 +383,178 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         action: 'Open settings',
         onAction: PhotoManager.openSetting,
         secondaryAction: 'Take a photo',
-        onSecondaryAction: () =>
-            Navigator.of(context).pop(const MediaPickerCamera()),
+        onSecondaryAction: () => _close(const MediaPickerCamera()),
       );
     }
     // itemCount is assets + 1: the first cell is always the camera tile, so the
     // camera is reachable even when the gallery is empty.
-    return GridView.builder(
-      controller: _scroll,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 3,
-        crossAxisSpacing: 3,
-      ),
-      itemCount: _assets.length + 1,
-      itemBuilder: (_, i) {
-        if (i == 0) {
-          return _CameraTile(
-            onTap: () => Navigator.of(context).pop(const MediaPickerCamera()),
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onGalleryScroll,
+      child: GridView.builder(
+        controller: _scroll,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 3,
+          crossAxisSpacing: 3,
+        ),
+        itemCount: _assets.length + 1,
+        itemBuilder: (_, i) {
+          if (i == 0) {
+            return _CameraTile(
+              onTap: () => _close(const MediaPickerCamera()),
+            );
+          }
+          final asset = _assets[i - 1];
+          return _Thumb(
+            // Keyed by asset id so the element (and its decoded thumbnail) follows
+            // its photo instead of its grid slot as pages are appended.
+            key: ValueKey<String>(asset.id),
+            asset: asset,
+            order: _selected.indexOf(asset),
+            // Tap the photo to inspect it; tap its round control to select it.
+            // Long-press remains as a shortcut, but is never required.
+            onTap: () => _openViewer(i - 1),
+            onToggle: () => _toggle(asset),
           );
-        }
-        final asset = _assets[i - 1];
-        return _Thumb(
-          // Keyed by asset id so the element (and its decoded thumbnail) follows
-          // its photo instead of its grid slot as pages are appended.
-          key: ValueKey<String>(asset.id),
-          asset: asset,
-          order: _selected.indexOf(asset),
-          // Tap looks, hold ticks. The other way round for two years, which
-          // meant the only way to see a photo properly was to send it: three
-          // columns of thumbnails tell you a sunset from a screenshot and
-          // nothing finer.
-          onTap: () => _openViewer(i - 1),
-          onLongPress: () => _toggle(asset),
-        );
-      },
+        },
+      ),
     );
   }
 
   Widget _sendBar() {
     final n = _selected.length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.brandPrimary,
-            foregroundColor: Colors.black,
-            disabledBackgroundColor: AppColors.glassFill,
+    if (n == 0) return const SizedBox(height: 8);
+
+    if (!widget.allowCaption) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.brandPrimary,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: _completeSelection,
+            child: Text(n == 1 ? 'Select photo' : 'Select $n photos'),
           ),
-          onPressed: n == 0
-              ? null
-              : () => Navigator.of(context).pop(
-                    MediaPickerAssets(List<AssetEntity>.from(_selected)),
+        ),
+      );
+    }
+
+    final t = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 5, 5, 5),
+        decoration: BoxDecoration(
+          color: AppColors.pane(0.76),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: AppColors.glass(0.16)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+              spreadRadius: -10,
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 11),
+              child: Icon(
+                Icons.sentiment_satisfied_alt_outlined,
+                color: AppColors.brandPrimary,
+                size: 23,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _caption,
+                minLines: 1,
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 15,
+                ),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                  hintText: t.mediaCaptionHint,
+                  hintStyle: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 15,
                   ),
-          child: Text(n == 0 ? 'Select photos' : 'Send $n'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Semantics(
+              button: true,
+              label: 'Send $n',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _completeSelection,
+                child: SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: AppColors.brandGradient,
+                          ),
+                          child: const Icon(
+                            Icons.send_rounded,
+                            color: Colors.black,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -5,
+                        left: -4,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 22,
+                            minHeight: 22,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.danger,
+                            border: Border.all(
+                              color: AppColors.bgDeep,
+                              width: 2,
+                            ),
+                          ),
+                          child: Text(
+                            '$n',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -464,8 +637,7 @@ class _CameraTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.photo_camera,
-                color: AppColors.brandPrimary, size: 26),
+            Icon(Icons.photo_camera, color: AppColors.brandPrimary, size: 26),
             const SizedBox(height: 6),
             Text(
               'Camera',
@@ -488,7 +660,7 @@ class _Thumb extends StatefulWidget {
     required this.asset,
     required this.order,
     required this.onTap,
-    required this.onLongPress,
+    required this.onToggle,
   });
 
   final AssetEntity asset;
@@ -496,7 +668,7 @@ class _Thumb extends StatefulWidget {
   /// Index in the selection list, or -1 when unselected.
   final int order;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onToggle;
 
   @override
   State<_Thumb> createState() => _ThumbState();
@@ -523,7 +695,7 @@ class _ThumbState extends State<_Thumb> {
     final selected = widget.order >= 0;
     return GestureDetector(
       onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
+      onLongPress: widget.onToggle,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -539,27 +711,43 @@ class _ThumbState extends State<_Thumb> {
           ),
           if (selected) Container(color: Colors.black.withValues(alpha: 0.35)),
           Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: selected ? AppColors.brandPrimary : Colors.black38,
-                border: Border.all(color: Colors.white, width: 1.5),
-              ),
-              alignment: Alignment.center,
-              child: selected
-                  ? Text(
-                      '${widget.order + 1}',
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+            top: 1,
+            right: 1,
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: selected ? 'Deselect photo' : 'Select photo',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onToggle,
+                child: SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Center(
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            selected ? AppColors.brandPrimary : Colors.black45,
+                        border: Border.all(color: Colors.white, width: 1.6),
                       ),
-                    )
-                  : null,
+                      alignment: Alignment.center,
+                      child: selected
+                          ? Text(
+                              '${widget.order + 1}',
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],

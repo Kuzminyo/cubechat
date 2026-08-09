@@ -24,13 +24,119 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navContacts => 'Contacts';
 
   @override
+  String get navMap => 'Map';
+
+  @override
+  String get mapTitle => 'Map';
+
+  @override
+  String get mapInviteTitle => 'Invite to the map';
+
+  @override
+  String get mapInviteHint => 'Choose one or more chats';
+
+  @override
+  String get mapInviteEmpty => 'There are no chats to invite yet.';
+
+  @override
+  String mapInviteAction(int count) {
+    return 'Send ($count)';
+  }
+
+  @override
+  String get mapInviteMessage =>
+      'Cubechat map invitation. Share your location in this chat to appear on the map.';
+
+  @override
+  String mapInviteSent(int count) {
+    return 'Invitations sent: $count';
+  }
+
+  @override
+  String get mapInviteFailed => 'Could not send invitations';
+
+  @override
+  String mapPeopleVisible(int count) {
+    return '$count shared locations';
+  }
+
+  @override
+  String get mapCenterMe => 'Center on me';
+
+  @override
+  String get mapNoSharedLocations => 'No shared locations yet';
+
+  @override
+  String get mapNoSharedLocationsHint =>
+      'A contact appears here after they send a location in chat.';
+
+  @override
+  String get mapWebHintTitle => 'Nearby connections';
+
+  @override
+  String get mapWebHint => 'Lines show proximity, not the message route.';
+
+  @override
+  String get mapOpenProfile => 'Profile';
+
+  @override
+  String get mapLocationPrivacyOff => 'Map location is hidden';
+
+  @override
+  String get mapLocationPrivacyOffHint =>
+      'Turn on Show me on map under Privacy to display your pin.';
+
+  @override
+  String get mapYouOnMap => 'Your position is visible on this device';
+
+  @override
+  String get locationSharingDisabled =>
+      'Enable Show me on map under Privacy first.';
+
+  @override
+  String get mapLocationDenied => 'Location access is disabled';
+
+  @override
+  String get mapLocationServiceOff =>
+      'Turn on location services to show yourself';
+
+  @override
+  String get mapLocationUnavailable => 'Could not determine your location';
+
+  @override
+  String get mapDistanceUnknown => 'Distance unavailable';
+
+  @override
+  String mapDistanceMetres(int metres) {
+    return '$metres m away';
+  }
+
+  @override
+  String mapDistanceKilometres(String kilometres) {
+    return '$kilometres km away';
+  }
+
+  @override
+  String get mapUpdatedNow => 'shared just now';
+
+  @override
+  String mapUpdatedMinutes(int minutes) {
+    return 'shared $minutes min ago';
+  }
+
+  @override
+  String mapUpdatedHours(int hours) {
+    return 'shared $hours h ago';
+  }
+
+  @override
   String get contactsTitle => 'Contacts';
 
   @override
   String get contactsSubtitle => 'Everyone you have messaged';
 
   @override
-  String get contactsSearchHint => 'Search contacts…';
+  String get contactsSearchHint => 'Search contactsвЂ¦';
 
   @override
   String get contactsEmptyTitle => 'No contacts yet';
@@ -71,7 +177,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsTitle => 'Chats';
 
   @override
-  String get chatsSubtitle => 'Mesh · end-to-end encrypted';
+  String get chatsSubtitle => 'Mesh В· end-to-end encrypted';
 
   @override
   String get chatsEmptyTitle => 'No conversations yet';
@@ -109,7 +215,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Folders are cuts of this list, not places chats are moved to. Switch on the ones you want above the chats.';
 
   @override
-  String get chatsSearchHint => 'Search chats…';
+  String get chatsSearchHint => 'Search chatsвЂ¦';
 
   @override
   String get chatsStatusViaMesh => 'via mesh';
@@ -118,7 +224,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsStatusOffline => 'offline';
 
   @override
-  String get peerKeyRotated => 'key changed — re-verify';
+  String get peerKeyRotated => 'key changed вЂ” re-verify';
 
   @override
   String get peersTitle => 'Nearby';
@@ -127,7 +233,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peersSubtitle => 'Devices in Bluetooth range';
 
   @override
-  String get peersEmpty => 'Looking for peers…';
+  String get peersEmpty => 'Looking for peersвЂ¦';
 
   @override
   String peersHopsOne(int n) {
@@ -144,7 +250,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blePermissionHint =>
-      'Cubechat needs Bluetooth to find peers and send messages — no internet required.';
+      'Cubechat needs Bluetooth to find peers and send messages вЂ” no internet required.';
 
   @override
   String get blePermissionGrant => 'Grant permission';
@@ -170,10 +276,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'This device or platform doesn\'t expose Bluetooth Low Energy. Try it on a phone.';
 
   @override
-  String get bleScanning => 'Scanning…';
+  String get bleScanning => 'ScanningвЂ¦';
 
   @override
   String get bleRetry => 'Retry';
+
+  @override
+  String get bleEnable => 'Turn on';
 
   @override
   String get bleConnectFailed =>
@@ -264,10 +373,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Messages are end-to-end encrypted with the Noise Protocol.';
 
   @override
-  String get chatSessionHandshaking => 'Establishing secure channel…';
+  String get chatSessionHandshaking => 'Establishing secure channelвЂ¦';
 
   @override
-  String get chatSessionEstablished => 'Secured · Noise XX';
+  String get chatSessionEstablished => 'Secured В· Noise XX';
 
   @override
   String get chatSessionFailed => 'Connection failed';
@@ -288,7 +397,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatEmptyHandshaking =>
-      'Waiting for the other side to finish the handshake…';
+      'Waiting for the other side to finish the handshakeвЂ¦';
 
   @override
   String get profileTitle => 'Profile';
@@ -531,7 +640,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peerUnmute => 'Unmute';
 
   @override
-  String get peerBlockedNote => 'Blocked — their messages are dropped.';
+  String get peerBlockedNote => 'Blocked вЂ” their messages are dropped.';
 
   @override
   String get relaysTitle => 'Internet fallback';
@@ -545,7 +654,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relaysExplainer =>
-      'Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.';
+      'Messages stay end-to-end encrypted вЂ” a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.';
 
   @override
   String get relaysMyAddress => 'Your relay address';
@@ -572,7 +681,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysStateConnected => 'Connected';
 
   @override
-  String get relaysStateConnecting => 'Connecting…';
+  String get relaysStateConnecting => 'ConnectingвЂ¦';
 
   @override
   String get relaysStateFailed => 'Unreachable';
@@ -581,7 +690,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysStateIdle => 'Off';
 
   @override
-  String get relaysEmpty => 'No relays configured — the fallback stays off.';
+  String get relaysEmpty => 'No relays configured вЂ” the fallback stays off.';
 
   @override
   String get contactTitle => 'Contact card';
@@ -591,7 +700,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactMineExplainer =>
-      'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address — enough for them to start an encrypted chat with you over the internet.';
+      'Send this to someone who is out of Bluetooth range. It carries your keys and your relay address вЂ” enough for them to start an encrypted chat with you over the internet.';
 
   @override
   String get contactCopy => 'Copy';
@@ -669,7 +778,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileDiscoverableExplainer =>
-      'On, your announcement is broadcast in the clear so strangers can meet you by walking up — and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.';
+      'On, your announcement is broadcast in the clear so strangers can meet you by walking up вЂ” and anyone listening records your key and name. Off, the same bundle goes only to contacts you already have, sealed, and your routing ids stay unlinkable. New people then need a contact card.';
 
   @override
   String get voiceHoldHint => 'Hold to record a voice message';
@@ -700,7 +809,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileLastSeenOffHint =>
-      'Nobody sees yours — and you see nobody\'s';
+      'Nobody sees yours вЂ” and you see nobody\'s';
+
+  @override
+  String get profileMapLocation => 'Show me on map';
+
+  @override
+  String get profileMapLocationOnHint =>
+      'Location is available for manual sharing and your pin is shown on the map';
+
+  @override
+  String get profileMapLocationOffHint =>
+      'The app does not request location and your pin stays hidden';
 
   @override
   String get profileReadReceipts => 'Share read receipts';
@@ -709,7 +829,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileReadReceiptsOnHint => 'Senders see when you\'ve read them';
 
   @override
-  String get profileReadReceiptsOffHint => 'They don\'t — and neither do you';
+  String get profileReadReceiptsOffHint => 'They don\'t вЂ” and neither do you';
 
   @override
   String get profilePrivacyExplainer =>
@@ -755,7 +875,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String fileTooLargeMesh(int limit) {
-    return 'File is too large — $limit MB is the limit over the mesh';
+    return 'File is too large вЂ” $limit MB is the limit over the mesh';
   }
 
   @override
@@ -782,7 +902,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileMyCard => 'Card';
 
   @override
-  String get mediaCaptionHint => 'Add a caption…';
+  String get mediaCaptionHint => 'Add a captionвЂ¦';
+
+  @override
+  String get mediaDiscardTitle => 'Discard selection?';
+
+  @override
+  String get mediaDiscardMessage =>
+      'Close the gallery and discard the selected photos?';
+
+  @override
+  String get mediaDiscardConfirm => 'Discard';
 
   @override
   String get contactProfileAutoDelete => 'Auto-delete chat';
@@ -910,7 +1040,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get autoDeleteCustom => 'Custom…';
+  String get autoDeleteCustom => 'CustomвЂ¦';
 
   @override
   String get autoDeleteCustomHint => 'Amount';
@@ -1123,7 +1253,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupRestoreSubtitle =>
-      'Replace this phone’s Cubechat profile from a backup file';
+      'Replace this phoneвЂ™s Cubechat profile from a backup file';
 
   @override
   String get backupPasswordTitle => 'Backup password';
@@ -1205,14 +1335,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelDescriptionSave => 'Save';
 
   @override
-  String get chatTyping => 'typing…';
+  String get chatTyping => 'typingвЂ¦';
 
   @override
   String get onboardingMeshTitle => 'Works without internet';
 
   @override
   String get onboardingMeshBody =>
-      'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.';
+      'Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts вЂ” just the people around you.';
 
   @override
   String get onboardingRelayTitle => 'And with it, when there is some';
@@ -1226,7 +1356,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingPrivacyBody =>
-      'Everything is end-to-end encrypted, and your identity is a key on this phone — not a phone number, not an email, not an account anyone can take away.';
+      'Everything is end-to-end encrypted, and your identity is a key on this phone вЂ” not a phone number, not an email, not an account anyone can take away.';
 
   @override
   String get onboardingSkip => 'Skip';
@@ -1297,10 +1427,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewOnceTitle => 'View once';
 
   @override
-  String get viewOnceTapToView => 'Photo · tap to view once';
+  String get viewOnceTapToView => 'Photo В· tap to view once';
 
   @override
-  String get viewOnceSent => 'Photo · sent';
+  String get viewOnceSent => 'Photo В· sent';
 
   @override
   String get viewOnceOpened => 'Photo opened';
@@ -1375,7 +1505,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Connect both phones to the same Wi-Fi. Keep this screen open until the transfer finishes.';
 
   @override
-  String get phoneTransferPreparing => 'Preparing encrypted transfer…';
+  String get phoneTransferPreparing => 'Preparing encrypted transferвЂ¦';
 
   @override
   String get phoneTransferReady => 'Scan this one-use QR code on the new phone';
@@ -1384,7 +1514,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneTransferScan => 'Scan old phone';
 
   @override
-  String get phoneTransferConfirmTitle => 'Replace this phone’s profile?';
+  String get phoneTransferConfirmTitle => 'Replace this phoneвЂ™s profile?';
 
   @override
   String get phoneTransferConfirmMessage =>
@@ -1415,7 +1545,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileSummaryMeshOnly => 'Mesh only';
 
   @override
-  String get profileSummaryMeshInternet => 'Mesh · internet';
+  String get profileSummaryMeshInternet => 'Mesh В· internet';
 
   @override
   String get profileSummaryBackgroundOn => 'runs in background';
@@ -1428,6 +1558,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileSummaryLastSeenHidden => 'last seen hidden';
+
+  @override
+  String get profileSummaryMapHidden => 'map location hidden';
 
   @override
   String profileSummaryTransfersActive(int count) {

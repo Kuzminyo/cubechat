@@ -340,6 +340,60 @@ void main() {
         reason: 'the second tap must come back round to the newer one');
   });
 
+  testWidgets('a second pin tap works while the first highlight is active',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await beat(tester);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+
+    final messages = container.read(messagesControllerProvider.notifier);
+    for (var i = 0; i < 60; i++) {
+      messages.append(
+        '#test',
+        Message(
+          id: 'm$i',
+          chatId: '#test',
+          text: 'rapid row $i',
+          sentAt: DateTime(2026, 8, 8, 16).add(Duration(minutes: i)),
+          isMine: false,
+          wireId: i.toRadixString(16).padLeft(2, '0') * 16,
+        ),
+      );
+    }
+    final pins = container.read(pinnedControllerProvider.notifier);
+    for (final i in [8, 52]) {
+      await pins.pin('#test', i.toRadixString(16).padLeft(2, '0') * 16);
+    }
+    await beat(tester);
+
+    await tester.tap(find.text('#test').first);
+    await beat(tester);
+
+    Future<void> pumpJump({required bool keepHighlight}) async {
+      final frames = keepHighlight ? 24 : 70;
+      for (var i = 0; i < frames; i++) {
+        await tester.pump(const Duration(milliseconds: 25));
+      }
+    }
+
+    // Land on the newest pin, but stop pumping before its 1.6 second
+    // highlight clears. This is the timing from the device recording.
+    await tester.tap(find.textContaining('Pinned message'));
+    await pumpJump(keepHighlight: true);
+    expect(find.text('rapid row 52'), findsWidgets);
+    expect(find.text('Pinned message 1/2'), findsOneWidget);
+
+    // The old implementation reused the still-mounted GlobalKey from row 52
+    // here and silently scrolled to row 52 again.
+    await tester.tap(find.textContaining('Pinned message'));
+    await pumpJump(keepHighlight: false);
+    expect(find.text('rapid row 8'), findsWidgets);
+  });
+
   // The walk used to be a step counter that any write to the pinned map reset,
   // which is a second thing able to move the cursor and the likeliest reason
   // the bar appeared stuck. Pinning a *third* message is such a write.

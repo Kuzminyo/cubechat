@@ -24,6 +24,112 @@ class AppLocalizationsUk extends AppLocalizations {
   String get navContacts => 'Контакти';
 
   @override
+  String get navMap => 'Мапа';
+
+  @override
+  String get mapTitle => 'Карта';
+
+  @override
+  String get mapInviteTitle => 'Запросити на мапу';
+
+  @override
+  String get mapInviteHint => 'Оберіть один або кілька чатів';
+
+  @override
+  String get mapInviteEmpty => 'Поки немає чатів для запрошення.';
+
+  @override
+  String mapInviteAction(int count) {
+    return 'Надіслати ($count)';
+  }
+
+  @override
+  String get mapInviteMessage =>
+      'Запрошення на мапу Cubechat. Надішліть свою геолокацію в цей чат, щоб з’явитися на мапі.';
+
+  @override
+  String mapInviteSent(int count) {
+    return 'Надіслано запрошень: $count';
+  }
+
+  @override
+  String get mapInviteFailed => 'Не вдалося надіслати запрошення';
+
+  @override
+  String mapPeopleVisible(int count) {
+    return 'Спільних геолокацій: $count';
+  }
+
+  @override
+  String get mapCenterMe => 'Центрувати на мені';
+
+  @override
+  String get mapNoSharedLocations => 'Поки немає геолокацій';
+
+  @override
+  String get mapNoSharedLocationsHint =>
+      'Контакт з’явиться тут після того, як надішле геолокацію в чаті.';
+
+  @override
+  String get mapWebHintTitle => 'Зв’язки поблизу';
+
+  @override
+  String get mapWebHint =>
+      'Лінії показують близькість, а не маршрут повідомлення.';
+
+  @override
+  String get mapOpenProfile => 'Профіль';
+
+  @override
+  String get mapLocationPrivacyOff => 'Геолокацію приховано';
+
+  @override
+  String get mapLocationPrivacyOffHint =>
+      'Увімкніть «Показувати мене на мапі» у розділі «Приватність», щоб побачити свою точку.';
+
+  @override
+  String get mapYouOnMap => 'Вашу позицію видно на цьому пристрої';
+
+  @override
+  String get locationSharingDisabled =>
+      'Спочатку увімкніть «Показувати мене на мапі» у розділі «Приватність».';
+
+  @override
+  String get mapLocationDenied => 'Доступ до геолокації вимкнено';
+
+  @override
+  String get mapLocationServiceOff => 'Увімкніть геолокацію, щоб показати себе';
+
+  @override
+  String get mapLocationUnavailable => 'Не вдалося визначити вашу позицію';
+
+  @override
+  String get mapDistanceUnknown => 'Відстань невідома';
+
+  @override
+  String mapDistanceMetres(int metres) {
+    return '$metres м від вас';
+  }
+
+  @override
+  String mapDistanceKilometres(String kilometres) {
+    return '$kilometres км від вас';
+  }
+
+  @override
+  String get mapUpdatedNow => 'щойно надіслано';
+
+  @override
+  String mapUpdatedMinutes(int minutes) {
+    return 'надіслано $minutes хв тому';
+  }
+
+  @override
+  String mapUpdatedHours(int hours) {
+    return 'надіслано $hours год тому';
+  }
+
+  @override
   String get contactsTitle => 'Контакти';
 
   @override
@@ -175,6 +281,9 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get bleRetry => 'Повторити';
+
+  @override
+  String get bleEnable => 'Увімкнути';
 
   @override
   String get bleConnectFailed =>
@@ -703,6 +812,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileLastSeenOffHint => 'Ніхто не бачить — і ви теж не бачите';
 
   @override
+  String get profileMapLocation => 'Показувати мене на мапі';
+
+  @override
+  String get profileMapLocationOnHint =>
+      'Геолокація доступна для ручного надсилання, а вашу точку показано на мапі';
+
+  @override
+  String get profileMapLocationOffHint =>
+      'Застосунок не запитує геолокацію, а ваша точка прихована';
+
+  @override
   String get profileReadReceipts => 'Показувати час прочитання';
 
   @override
@@ -783,6 +903,16 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get mediaCaptionHint => 'Додати підпис…';
+
+  @override
+  String get mediaDiscardTitle => 'Відхилити вибір?';
+
+  @override
+  String get mediaDiscardMessage =>
+      'Закрити галерею та скасувати вибрані фото?';
+
+  @override
+  String get mediaDiscardConfirm => 'Відхилити';
 
   @override
   String get contactProfileAutoDelete => 'Автоочищення чату';
@@ -1440,6 +1570,9 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get profileSummaryLastSeenHidden => 'час у мережі приховано';
+
+  @override
+  String get profileSummaryMapHidden => 'геолокацію приховано';
 
   @override
   String profileSummaryTransfersActive(int count) {

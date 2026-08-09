@@ -36,6 +36,10 @@ class UiActivity {
   /// animations should park themselves while this is true.
   final ValueNotifier<bool> isQuiet = ValueNotifier<bool>(false);
 
+  /// True while a scroll view is under a finger or still coasting.
+  /// Glass surfaces skip live backdrop sampling during this window.
+  final ValueNotifier<bool> isScrolling = ValueNotifier<bool>(false);
+
   Timer? _timer;
 
   /// Suppresses the countdown, leaving the interface permanently "in use".
@@ -59,10 +63,15 @@ class UiActivity {
     _timer = Timer(_quietAfter, () => isQuiet.value = true);
   }
 
+  void setScrolling(bool value) {
+    if (isScrolling.value != value) isScrolling.value = value;
+  }
+
   @visibleForTesting
   void resetForTest() {
     _timer?.cancel();
     _timer = null;
     isQuiet.value = false;
+    isScrolling.value = false;
   }
 }
