@@ -604,9 +604,11 @@ class _ChatHeader extends StatelessWidget {
   /// carry a timer next to the name. Null when messages are kept.
   final String? autoDeleteLabel;
   final String statusText;
+
   /// Small mark beside the name — verified, or key-changed. Null for a
   /// channel, which has no single person to vouch for.
   final Widget? verification;
+
   /// How a message would leave here. Null when none would: notes to yourself
   /// are written straight to disk, and a globe over a notebook claims the
   /// opposite of what is true.
@@ -881,10 +883,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   String _searchQuery = '';
   int _searchIndex = 0;
 
-  /// How many times the pinned bar has been tapped. The bar itself shows where
-  /// the *next* tap goes, counting up from the newest pin, so this is a step
-  /// count rather than an index into anything.
-  int _pinStep = 0;
+  /// The `wireId` of the pin the bar is currently offering, or null for "the
+  /// newest".
+  ///
+  /// An id rather than a position, so nothing else in the app can put the walk
+  /// out of step: a pin arriving or leaving changes which messages are pinned,
+  /// not which one this names, and if the named one is gone the bar falls back
+  /// to the newest by itself.
+  String? _pinCursor;
   bool _initialMessageRevealed = false;
 
   /// The span of list positions the builder has laid out since the last jump.
@@ -1106,7 +1112,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         if (!estimated || from == null || to == null) {
           // One long move to get in the neighbourhood.
           estimated = true;
-          next = position.maxScrollExtent * (fromNewest / (messages.length - 1));
+          next =
+              position.maxScrollExtent * (fromNewest / (messages.length - 1));
         } else if (fromNewest > to) {
           // Further back in the history than anything laid out — in a reversed
           // list that is a larger offset.
@@ -1187,8 +1194,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         if (ids.contains(m.id)) m,
     ];
     if (picked.isEmpty) return;
-    final canForEveryone =
-        picked.every((m) => m.isMine && m.wireId != null);
+    final canForEveryone = picked.every((m) => m.isMine && m.wireId != null);
 
     final choice = await showDialog<String>(
       context: context,
@@ -1224,8 +1230,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.of(ctx).pop(),
-            child:
-                Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+            child: Text(t.cancel,
+                style: TextStyle(color: AppColors.textOnGlassDim)),
           ),
         ],
       ),
@@ -1250,12 +1256,6 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget build(BuildContext context) {
     final messages = widget.messages;
     ref.watch(pinnedControllerProvider);
-    // Pinning or unpinning anything puts the bar back on the newest pin.
-    // Leaving the cursor where it was after the set changed under it meant the
-    // bar could come back pointing at an arbitrary one.
-    ref.listen<Map<String, PinnedMessage>>(pinnedControllerProvider, (_, __) {
-      if (_pinStep != 0) setState(() => _pinStep = 0);
-    });
     final pins =
         ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
     // Ordered by where each pin sits in the conversation, not by when it was
@@ -1270,11 +1270,29 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       for (final m in messages)
         if (m.wireId != null && pinnedIds.contains(m.wireId)) m,
     ];
-    // Start at the newest pin — the one nearest what you are reading — and
-    // climb one pin per tap.
+    // Which pin the bar is offering, held as *that pin's id* rather than as a
+    // step count.
+    //
+    // A counter has to be reset whenever the set of pins changes under it, or
+    // it starts pointing at an arbitrary message — and that reset was a second
+    // thing able to move the cursor, firing on any write to the pinned map
+    // rather than only on a real pin or unpin. A tester's recording shows the
+    // result: two taps in a row on a two-pin bar, the jump happening both
+    // times, and the label sitting on 1/2 throughout before eventually
+    // changing on its own.
+    //
+    // An id cannot get out of step with anything. If the pin it names is gone,
+    // the fallback below picks the newest, which is exactly what the reset was
+    // trying to achieve — without a second writer.
     final pinIndex = visiblePins.isEmpty
         ? 0
-        : visiblePins.length - 1 - (_pinStep % visiblePins.length);
+        : () {
+            final at =
+                visiblePins.indexWhere((m) => m.wireId == _pinCursor);
+            // Null cursor, or a pin that has since been removed: start at the
+            // newest, the one nearest what you are reading.
+            return at < 0 ? visiblePins.length - 1 : at;
+          }();
     final pinnedMessage = visiblePins.isEmpty ? null : visiblePins[pinIndex];
     // Anything in the tree can ask to be taken to a message — a tapped quote,
     // most of all. Answered here because this is where the scroll controller
@@ -1301,148 +1319,156 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return ChatWallpaperLayer(
       chatId: widget.chatId,
       child: _FloatingComposerBody(
-      scrollToBottom: _canScrollDown
-          ? () => _scroll.animateTo(
-                0,
-                duration: const Duration(milliseconds: 320),
-                curve: Curves.easeOutCubic,
-              )
-          : null,
-      listBuilder: (padding) => messages.isEmpty
-          ? _EmptyConversationState(canSend: widget.canSend)
-          : ListView.builder(
-              reverse: true,
-              controller: _scroll,
-              padding: padding,
-              itemCount: messages.length,
-              itemBuilder: (_, i) {
-                // Where the list currently is, in the only terms it will give
-                // up. See [_noteBuilt] — a jump reads this to pick a direction.
-                _noteBuilt(i);
-                final m = messages[messages.length - 1 - i];
-                Widget bubble =
-                    MessageBubble(message: m, chatId: widget.chatId);
-                if (m.id == widget.initialMessageId) {
-                  bubble = KeyedSubtree(key: _initialMessageKey, child: bubble);
-                }
-                if (m.id == flashing) {
-                  bubble = KeyedSubtree(key: _jumpTargetKey, child: bubble);
-                }
-                if (selectedMessage?.id == m.id) {
-                  bubble = KeyedSubtree(
-                    key: _searchResultKey,
-                    child: _SearchResultHighlight(child: bubble),
-                  );
-                }
-                return bubble;
-              },
+        scrollToBottom: _canScrollDown
+            ? () => _scroll.animateTo(
+                  0,
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                )
+            : null,
+        listBuilder: (padding) => messages.isEmpty
+            ? _EmptyConversationState(canSend: widget.canSend)
+            : ListView.builder(
+                reverse: true,
+                controller: _scroll,
+                padding: padding,
+                itemCount: messages.length,
+                itemBuilder: (_, i) {
+                  // Where the list currently is, in the only terms it will give
+                  // up. See [_noteBuilt] — a jump reads this to pick a direction.
+                  _noteBuilt(i);
+                  final m = messages[messages.length - 1 - i];
+                  Widget bubble =
+                      MessageBubble(message: m, chatId: widget.chatId);
+                  if (m.id == widget.initialMessageId) {
+                    bubble =
+                        KeyedSubtree(key: _initialMessageKey, child: bubble);
+                  }
+                  if (m.id == flashing) {
+                    bubble = KeyedSubtree(key: _jumpTargetKey, child: bubble);
+                  }
+                  if (selectedMessage?.id == m.id) {
+                    bubble = KeyedSubtree(
+                      key: _searchResultKey,
+                      child: _SearchResultHighlight(child: bubble),
+                    );
+                  }
+                  return bubble;
+                },
+              ),
+        composer: widget.composer,
+        // Header and pinned island are siblings of the list inside the Stack, so
+        // appearing or vanishing no longer re-parents the list — which used to
+        // detach the scroll position and snap the conversation to the bottom
+        // whenever someone pinned a message while reading back through history.
+        header: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // One row at the top, three things it can be, and a cross-fade
+            // between them.
+            //
+            // Selecting replaces the header for the same reason searching does:
+            // while you are ticking messages the count and the two actions are
+            // the only things that matter, and while you are typing a query,
+            // whose chat it is is the one thing you already know. Two pills deep,
+            // the conversation started below the middle of the screen and the
+            // thing you were reading was the thing pushed off it.
+            //
+            // Swapped through [_HeaderSwap] rather than by three `if`s in a
+            // column: those cut from one bar to the next in a single frame, and
+            // because the list measures its top padding off this column, the
+            // whole conversation jumped with them.
+            _HeaderSwap(
+              child: selecting
+                  ? _ChatSelectionBar(
+                      key: const ValueKey('selection'),
+                      count: selection.length,
+                      onCancel: () => ref
+                          .read(
+                              messageSelectionProvider(widget.chatId).notifier)
+                          .clear(),
+                      onForward: () => unawaited(_forwardSelection(selection)),
+                      onDelete: () => unawaited(_deleteSelection(selection)),
+                    )
+                  : searchOpen
+                      ? _ChatSearchBar(
+                          key: const ValueKey('search'),
+                          totalMessages: messages.length,
+                          resultIndex:
+                              matches.isEmpty ? null : selectedIndex + 1,
+                          resultCount: matches.length,
+                          onChanged: _updateSearch,
+                          onPrevious: () => _moveSearch(-1),
+                          onNext: () => _moveSearch(1),
+                          onClose: _closeSearch,
+                        )
+                      : KeyedSubtree(
+                          key: const ValueKey('header'),
+                          child: widget.header,
+                        ),
             ),
-      composer: widget.composer,
-      // Header and pinned island are siblings of the list inside the Stack, so
-      // appearing or vanishing no longer re-parents the list — which used to
-      // detach the scroll position and snap the conversation to the bottom
-      // whenever someone pinned a message while reading back through history.
-      header: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // One row at the top, three things it can be, and a cross-fade
-          // between them.
-          //
-          // Selecting replaces the header for the same reason searching does:
-          // while you are ticking messages the count and the two actions are
-          // the only things that matter, and while you are typing a query,
-          // whose chat it is is the one thing you already know. Two pills deep,
-          // the conversation started below the middle of the screen and the
-          // thing you were reading was the thing pushed off it.
-          //
-          // Swapped through [_HeaderSwap] rather than by three `if`s in a
-          // column: those cut from one bar to the next in a single frame, and
-          // because the list measures its top padding off this column, the
-          // whole conversation jumped with them.
-          _HeaderSwap(
-            child: selecting
-                ? _ChatSelectionBar(
-                    key: const ValueKey('selection'),
-                    count: selection.length,
-                    onCancel: () => ref
-                        .read(messageSelectionProvider(widget.chatId).notifier)
-                        .clear(),
-                    onForward: () => unawaited(_forwardSelection(selection)),
-                    onDelete: () => unawaited(_deleteSelection(selection)),
-                  )
-                : searchOpen
-                    ? _ChatSearchBar(
-                        key: const ValueKey('search'),
-                        totalMessages: messages.length,
-                        resultIndex:
-                            matches.isEmpty ? null : selectedIndex + 1,
-                        resultCount: matches.length,
-                        onChanged: _updateSearch,
-                        onPrevious: () => _moveSearch(-1),
-                        onNext: () => _moveSearch(1),
-                        onClose: _closeSearch,
-                      )
-                    : KeyedSubtree(
-                        key: const ValueKey('header'),
-                        child: widget.header,
-                      ),
-          ),
-          // Grown and shrunk, not swapped. Pinning a message moved the whole
-          // conversation down a notch in a single frame, and unpinning yanked
-          // it back — the list's top padding is measured off this column, so
-          // easing the box eases the conversation with it.
-          _HeaderSlot(
-            child: pinnedMessage == null
-                ? null
-                : _PinnedBar(
-                    message: pinnedMessage,
-                    index: pinIndex,
-                    count: visiblePins.length,
-                    // One tap does both jobs, the way Telegram's bar does:
-                    // take me to this pin, and leave the bar pointing at the
-                    // one above it. A separate "next" chevron meant reading
-                    // four pins took eight taps, alternating between two
-                    // buttons a few pixels apart.
-                    onTap: () {
-                      if (visiblePins.length > 1) {
-                        setState(
-                          () => _pinStep = (_pinStep + 1) % visiblePins.length,
-                        );
-                      }
-                      unawaited(_jumpTo(pinnedMessage.wireId!));
-                    },
-                    // Unpinning clears the banner for everyone in the chat, not
-                    // just here, and the button sits next to one you tap to
-                    // jump — easy to hit by accident, impossible to undo
-                    // without finding the message again.
-                    onUnpin: () async {
-                      final t = AppLocalizations.of(context);
-                      if (!await confirmAction(
-                        context,
-                        title: t.chatUnpinConfirm,
-                        message: t.chatUnpinConfirmHint,
-                        confirmLabel: t.chatUnpinAction,
-                        destructive: false,
-                      )) {
-                        return;
-                      }
-                      await ref.read(messagingServiceProvider).sendPin(
-                            widget.chatId,
-                            pinnedMessage.wireId!,
-                            pinned: false,
+            // Grown and shrunk, not swapped. Pinning a message moved the whole
+            // conversation down a notch in a single frame, and unpinning yanked
+            // it back — the list's top padding is measured off this column, so
+            // easing the box eases the conversation with it.
+            _HeaderSlot(
+              child: pinnedMessage == null
+                  ? null
+                  : _PinnedBar(
+                      message: pinnedMessage,
+                      index: pinIndex,
+                      count: visiblePins.length,
+                      // One tap does both jobs, the way Telegram's bar does:
+                      // take me to this pin, and leave the bar pointing at the
+                      // one above it. A separate "next" chevron meant reading
+                      // four pins took eight taps, alternating between two
+                      // buttons a few pixels apart.
+                      onTap: () {
+                        // Take me to the one on show, and leave the bar
+                        // pointing at the one above it — wrapping round to the
+                        // newest at the top of the stack.
+                        if (visiblePins.length > 1) {
+                          final next = pinIndex == 0
+                              ? visiblePins.length - 1
+                              : pinIndex - 1;
+                          setState(
+                            () => _pinCursor = visiblePins[next].wireId,
                           );
-                    },
-                  ),
-          ),
-          // Last in the stack, and only while something is playing: whose chat
-          // this is comes first, then what is pinned in it, then what is coming
-          // out of the speaker. The list pads itself to whatever this column
-          // measures, so appearing and vanishing costs the conversation nothing
-          // but a reflow.
-          ChatVoiceBar(chatId: widget.chatId),
-        ],
-      ),
+                        }
+                        unawaited(_jumpTo(pinnedMessage.wireId!));
+                      },
+                      // Unpinning clears the banner for everyone in the chat, not
+                      // just here, and the button sits next to one you tap to
+                      // jump — easy to hit by accident, impossible to undo
+                      // without finding the message again.
+                      onUnpin: () async {
+                        final t = AppLocalizations.of(context);
+                        if (!await confirmAction(
+                          context,
+                          title: t.chatUnpinConfirm,
+                          message: t.chatUnpinConfirmHint,
+                          confirmLabel: t.chatUnpinAction,
+                          destructive: false,
+                        )) {
+                          return;
+                        }
+                        await ref.read(messagingServiceProvider).sendPin(
+                              widget.chatId,
+                              pinnedMessage.wireId!,
+                              pinned: false,
+                            );
+                      },
+                    ),
+            ),
+            // Last in the stack, and only while something is playing: whose chat
+            // this is comes first, then what is pinned in it, then what is coming
+            // out of the speaker. The list pads itself to whatever this column
+            // measures, so appearing and vanishing costs the conversation nothing
+            // but a reflow.
+            ChatVoiceBar(chatId: widget.chatId),
+          ],
+        ),
       ),
     );
   }
@@ -2574,8 +2600,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         (_) => MediaPreviewScreen(
           items: loaded,
           allowOriginal: !widget.isChannel,
-          allowViewOnce:
-              !widget.isChannel && !isSavedChat(widget.canonicalId),
+          allowViewOnce: !widget.isChannel && !isSavedChat(widget.canonicalId),
         ),
       ),
     );
@@ -2622,9 +2647,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         final origin = await asset.originFile;
         if (origin == null || !mounted) continue;
         final name = await asset.titleAsync;
-        final safe = name.trim().isEmpty
-            ? 'photo-${asset.id}.jpg'
-            : name;
+        final safe = name.trim().isEmpty ? 'photo-${asset.id}.jpg' : name;
         if (isSavedChat(widget.canonicalId)) {
           await ref.read(savedMessagesControllerProvider).saveFile(
                 origin,

@@ -288,4 +288,101 @@ void main() {
     expect(find.text('рядок 2'), findsWidgets,
         reason: 'the third tap must travel to the oldest pin');
   });
+
+  // Straight from a tester's screen recording: a two-pin bar, tapped twice,
+  // jumping both times and showing 1/2 throughout. Two is the case a counter
+  // gets wrong most easily — every wrong answer is also a plausible one.
+  testWidgets('two pins alternate on every tap', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await beat(tester);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+
+    final messages = container.read(messagesControllerProvider.notifier);
+    const bodies = ['старіше', 'новіше'];
+    const ids = ['aa', 'bb'];
+    for (var i = 0; i < bodies.length; i++) {
+      messages.append(
+        '#test',
+        Message(
+          id: 'm$i',
+          chatId: '#test',
+          text: bodies[i],
+          sentAt: DateTime(2026, 7, 26, 16, i),
+          isMine: false,
+          wireId: ids[i] * 16,
+        ),
+      );
+    }
+    final pins = container.read(pinnedControllerProvider.notifier);
+    for (final id in ids) {
+      await pins.pin('#test', id * 16);
+    }
+    await beat(tester);
+
+    await tester.tap(find.text('#test').first);
+    await beat(tester);
+
+    // Opens on the newest.
+    expect(find.text('Pinned message 2/2'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Pinned message'));
+    await beat(tester);
+    expect(find.text('Pinned message 1/2'), findsOneWidget,
+        reason: 'the first tap must move the bar to the older pin');
+
+    await tester.tap(find.textContaining('Pinned message'));
+    await beat(tester);
+    expect(find.text('Pinned message 2/2'), findsOneWidget,
+        reason: 'the second tap must come back round to the newer one');
+  });
+
+  // The walk used to be a step counter that any write to the pinned map reset,
+  // which is a second thing able to move the cursor and the likeliest reason
+  // the bar appeared stuck. Pinning a *third* message is such a write.
+  testWidgets('a new pin does not scramble where the bar is pointing',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await beat(tester);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+    final messages = container.read(messagesControllerProvider.notifier);
+    for (var i = 0; i < 3; i++) {
+      messages.append(
+        '#test',
+        Message(
+          id: 'm$i',
+          chatId: '#test',
+          text: 'рядок $i',
+          sentAt: DateTime(2026, 7, 26, 16, i),
+          isMine: false,
+          wireId: '${'abc'[i]}${'abc'[i]}' * 16,
+        ),
+      );
+    }
+    final pins = container.read(pinnedControllerProvider.notifier);
+    await pins.pin('#test', 'aa' * 16);
+    await pins.pin('#test', 'bb' * 16);
+    await beat(tester);
+
+    await tester.tap(find.text('#test').first);
+    await beat(tester);
+    await tester.tap(find.textContaining('Pinned message'));
+    await beat(tester);
+    // Now pointing at the older of the two.
+    expect(find.text('Pinned message 1/2'), findsOneWidget);
+
+    // A third pin arrives. The bar should still be offering the same message,
+    // which is now 1 of 3 rather than 1 of 2.
+    await pins.pin('#test', 'cc' * 16);
+    await beat(tester);
+    expect(find.text('Pinned message 1/3'), findsOneWidget,
+        reason: 'the bar must stay on the pin it was offering');
+  });
 }
