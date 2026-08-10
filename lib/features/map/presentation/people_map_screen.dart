@@ -23,6 +23,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
+import '../data/tile_cache.dart';
 import 'map_friends_sheet.dart';
 
 typedef MapLocationReader = Future<(LocationFix?, LocationFailure?)> Function();
@@ -101,6 +102,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   void initState() {
     super.initState();
     _camera.addListener(_tickCamera);
+    unawaited(CachedTileProvider.prepare());
   }
 
   void _tickCamera() {
@@ -461,11 +463,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           child: TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.cubechat.cubechat',
-            tileProvider: tileProvider,
+            // Cached to disk and rate-limited — see [CachedTileProvider]. A
+            // pinch used to fire every tile of every zoom level it crossed at
+            // the network at once, which is what crashed the app mid-gesture,
+            // and nothing was kept, so there was no map at all offline.
+            tileProvider: tileProvider ?? CachedTileProvider(),
             maxNativeZoom: 19,
             keepBuffer: 1,
             panBuffer: 0,
-            tileDisplay: const TileDisplay.instantaneous(opacity: 0.18),
+            // The map was drawn at 18% over a 58% black wash: legible on a
+            // bright desk, and on a phone outdoors a dark rectangle with a pin
+            // floating in it. Still dark — this screen is dark — but now the
+            // streets are streets.
+            tileDisplay: const TileDisplay.instantaneous(opacity: 0.42),
             tileUpdateTransformer: TileUpdateTransformers.throttle(
               const Duration(milliseconds: 180),
             ),
@@ -474,7 +484,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         ),
         IgnorePointer(
           child: ColoredBox(
-            color: Colors.black.withValues(alpha: 0.58),
+            color: Colors.black.withValues(alpha: 0.40),
           ),
         ),
         IgnorePointer(
