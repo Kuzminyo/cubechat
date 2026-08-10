@@ -175,12 +175,6 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                     ),
                   ),
                 const Spacer(),
-                // Editing a photo you are about to send untouched is a
-                // contradiction — the edit would be the one thing that got
-                // re-encoded — so the brush stands down while this is on.
-                if (!_asFile)
-                  _RoundAction(icon: Icons.brush_outlined, onTap: _edit),
-                if (!_asFile) const SizedBox(width: 8),
                 // Sending the original goes down the file path, which has no
                 // view-once flag and no viewer to burn it in — so the two are
                 // mutually exclusive rather than quietly contradictory.
@@ -211,10 +205,24 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 10,
             child: FloatingGlass(
               borderRadius: 26,
-              padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+              padding: EdgeInsets.fromLTRB(_asFile ? 16 : 6, 6, 6, 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // The brush lives down here with the caption and the send
+                  // button, because those are the three things you do to a
+                  // photo before it leaves. Up in the top bar it sat among
+                  // controls that change what the *recipient* gets — a
+                  // different question entirely — with the photo itself
+                  // between them.
+                  //
+                  // Editing a photo you are about to send untouched is a
+                  // contradiction (the edit would be the one thing that got
+                  // re-encoded), so it stands down while "original" is on.
+                  if (!_asFile) ...[
+                    _CaptionAction(icon: Icons.brush_outlined, onTap: _edit),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: TextField(
                       controller: _caption,
@@ -299,6 +307,35 @@ class _OriginalToggle extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An icon button sized to sit inside the caption island.
+///
+/// Not a [_RoundAction]: that one is a black disc for punching through a
+/// full-bleed photo, and inside the island it would read as a second surface
+/// stacked on the glass. Here the glyph alone is the control, in the brand
+/// colour, the way the composer's own icons are.
+class _CaptionAction extends StatelessWidget {
+  const _CaptionAction({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(icon, color: AppColors.brandPrimary, size: 23),
         ),
       ),
     );

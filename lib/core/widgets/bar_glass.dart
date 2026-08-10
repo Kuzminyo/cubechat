@@ -62,32 +62,52 @@ class BarGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: ValueListenableBuilder<bool>(
-          valueListenable: UiActivity.instance.isScrolling,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppColors.glass(0.07),
-                  AppColors.pane(0.52),
-                  AppColors.pane(0.66),
-                ],
-                stops: const [0, 0.35, 1],
+        // The surface sits *beside* the content in a stack rather than around
+        // it, because the blur comes and goes with scrolling and the content
+        // must not come and go with it.
+        //
+        // It used to wrap: the builder returned either `BackdropFilter(child:
+        // pane)` or `pane`, so the widget at that position in the tree changed
+        // type mid-gesture, and Flutter tore down the whole subtree under it
+        // and built a fresh one. Everything the caller had put inside was
+        // remounted — which is why the photo grid in the picker sheet snapped
+        // back to the top and reloaded the instant a drag started, i.e. would
+        // not scroll at all. Nothing above the content changes shape now.
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: UiActivity.instance.isScrolling,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppColors.glass(0.07),
+                        AppColors.pane(0.52),
+                        AppColors.pane(0.66),
+                      ],
+                      stops: const [0, 0.35, 1],
+                    ),
+                    borderRadius: BorderRadius.circular(radius),
+                    border: Border.all(color: AppColors.glass(0.16)),
+                  ),
+                ),
+                builder: (context, scrolling, pane) {
+                  // A live backdrop filter has to resample the moving list
+                  // every frame. The pane's own tint stays visually identical
+                  // during the gesture; the expensive blur returns when motion
+                  // stops.
+                  if (scrolling) return pane!;
+                  return BackdropFilter(filter: AppBlur.pane, child: pane!);
+                },
               ),
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: AppColors.glass(0.16)),
             ),
-            child: Padding(padding: padding, child: child),
-          ),
-          builder: (context, scrolling, pane) {
-            // A live backdrop filter has to resample the moving list every
-            // frame. The pane's own tint stays visually identical during the
-            // gesture; the expensive blur returns when motion stops.
-            if (scrolling) return pane!;
-            return BackdropFilter(filter: AppBlur.pane, child: pane!);
-          },
+            // The one unpositioned child, so it is what the stack sizes itself
+            // to — exactly as when it was the decorated box's child.
+            Padding(padding: padding, child: child),
+          ],
         ),
       ),
     );

@@ -212,7 +212,13 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       // Always advance, even on an empty page: paging is by index, so not
       // moving on would re-request the same page forever.
       _page++;
-      _hasMore = _page * _pageSize < _total;
+      // Either signal is enough to keep going, because either one can be wrong
+      // on its own. The count can come back short of what the album really
+      // holds — some devices report the count for one bucket while paging
+      // reads another — and that alone stopped the grid dead at 120 photos
+      // with nothing older to scroll to. A page returning full is the other
+      // direction: there is at least one more index worth asking for.
+      _hasMore = _page * _pageSize < _total || page.length >= _pageSize;
       if (page.isNotEmpty && mounted) {
         setState(() => _assets.addAll(page));
       } else {
@@ -319,7 +325,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         if (!didPop) unawaited(_confirmDiscard());
       },
       child: SizedBox(
-        height: media.size.height * 0.7,
+        height: media.size.height * 0.82,
         child: Column(
           children: [
             const SizedBox(height: 10),
@@ -392,6 +398,12 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       onNotification: _onGalleryScroll,
       child: GridView.builder(
         controller: _scroll,
+        primary: false,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        cacheExtent: 900,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -412,9 +424,11 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
             key: ValueKey<String>(asset.id),
             asset: asset,
             order: _selected.indexOf(asset),
-            // Tap the photo to inspect it; tap its round control to select it.
-            // Long-press remains as a shortcut, but is never required.
-            onTap: () => _openViewer(i - 1),
+            // Tap the photo or its round control to select it; the small
+            // control in the opposite corner opens it full screen. The
+            // caption/send bar below is the only confirmation surface.
+            onTap: () => _toggle(asset),
+            onPreview: () => _openViewer(i - 1),
             onToggle: () => _toggle(asset),
           );
         },
@@ -660,6 +674,7 @@ class _Thumb extends StatefulWidget {
     required this.asset,
     required this.order,
     required this.onTap,
+    required this.onPreview,
     required this.onToggle,
   });
 
@@ -668,6 +683,7 @@ class _Thumb extends StatefulWidget {
   /// Index in the selection list, or -1 when unselected.
   final int order;
   final VoidCallback onTap;
+  final VoidCallback onPreview;
   final VoidCallback onToggle;
 
   @override
@@ -695,7 +711,6 @@ class _ThumbState extends State<_Thumb> {
     final selected = widget.order >= 0;
     return GestureDetector(
       onTap: widget.onTap,
-      onLongPress: widget.onToggle,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -744,6 +759,42 @@ class _ThumbState extends State<_Thumb> {
                               ),
                             )
                           : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Looking at a photo is its own control rather than a long press.
+          // The cell's tap already ticks the photo, and one gesture cannot do
+          // both, so the way to *see* it before choosing had been hidden
+          // behind a press-and-hold nobody discovers.
+          Positioned(
+            bottom: 1,
+            left: 1,
+            child: Semantics(
+              button: true,
+              label: 'View photo',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onPreview,
+                child: SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Center(
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black45,
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.zoom_out_map_rounded,
+                        color: Colors.white,
+                        size: 14,
+                      ),
                     ),
                   ),
                 ),

@@ -4459,11 +4459,21 @@ class MessagingService {
           // conversation would bury the conversation, and — because history is
           // what read receipts are owed on — would have this device acking a
           // beacon every 45 seconds, per friend, forever.
+          //
+          // Recognised by [SharedLocation.isBeaconText] rather than by the flag
+          // alone: the flag is recent, and a friend still on an older build
+          // emits the same heartbeat without it. Matching on the shape of the
+          // thing — a position that expires within minutes of being sent —
+          // catches both, and catches nothing a person chose to send, since the
+          // share sheet's shortest window is fifteen minutes.
+          final arrivedAt = DateTime.now();
           final beacon = SharedLocation.tryParse(plaintext);
-          if (beacon != null && beacon.presence) {
+          if (beacon != null &&
+              SharedLocation.isBeaconText(plaintext, arrivedAt)) {
             _ref.read(mapPresenceStoreProvider.notifier).record(
                   senderPub != null ? _hexOf(senderPub) : peerId,
                   beacon,
+                  sentAt: arrivedAt,
                 );
             return;
           }

@@ -76,7 +76,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 
   final _conns = <String, _RelayConnection>{};
   final _states = <String, RelayState>{};
-  final _stateController = StreamController<Map<String, RelayState>>.broadcast();
+  final _stateController =
+      StreamController<Map<String, RelayState>>.broadcast();
 
   /// Inbound events, merged across relays. Created on the first [subscribe].
   StreamController<NostrEvent>? _inbound;
@@ -95,8 +96,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   Stream<Map<String, RelayState>> get stateChanges => _stateController.stream;
 
   /// True once at least one relay socket is up.
-  bool get isConnected =>
-      _states.values.any((s) => s == RelayState.connected);
+  bool get isConnected => _states.values.any((s) => s == RelayState.connected);
 
   /// Open every configured relay. Returns immediately; sockets come up in the
   /// background and [stateChanges] reports progress.
@@ -143,7 +143,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// that a send never visibly hangs behind one that has gone quiet. Silence is
   /// reported as silence rather than as refusal — the event has most likely
   /// been stored, we just did not hear so.
-  static const Duration defaultPublishAckTimeout = Duration(seconds: 5);
+  static const Duration defaultPublishAckTimeout = Duration(seconds: 2);
 
   final Duration _publishAckTimeout;
 
@@ -245,7 +245,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     final id = event.id;
     if (id == null || _seenIds.contains(id)) return;
     if (!await NostrRelayProtocol.verifyInboundEvent(event)) {
-      DebugLog.instance.log('NOSTR', 'drop event from $url: failed verification');
+      DebugLog.instance
+          .log('NOSTR', 'drop event from $url: failed verification');
       return;
     }
     _remember(id);
@@ -329,12 +330,14 @@ class _PendingPublish {
     _deadline?.cancel();
     _deadline = null;
     if (_completer.isCompleted) return;
-    _completer.complete(PublishReceipt(
-      sentTo: sentTo,
-      accepted: _accepted,
-      rejected: _rejected,
-      rejections: List.unmodifiable(_rejections),
-    ));
+    _completer.complete(
+      PublishReceipt(
+        sentTo: sentTo,
+        accepted: _accepted,
+        rejected: _rejected,
+        rejections: List.unmodifiable(_rejections),
+      ),
+    );
   }
 }
 
@@ -416,11 +419,13 @@ class _RelayConnection {
   void sendReqIfOpen() {
     final target = _pool._subscriptionTarget;
     if (target == null || _channel == null) return;
-    send(NostrRelayProtocol.req(
-      _subId,
-      recipientPubkeyHex: target,
-      since: _pool._reqSince,
-    ));
+    send(
+      NostrRelayProtocol.req(
+        _subId,
+        recipientPubkeyHex: target,
+        since: _pool._reqSince,
+      ),
+    );
   }
 
   /// Write [payload]; returns false if the socket rejected it (and schedules a
@@ -466,17 +471,18 @@ class _RelayConnection {
     // Without this the backoff would double per report rather than per failure,
     // and two retry timers would race.
     if (_channel == null) return;
-    DebugLog.instance.log('NOSTR', '$url down ($reason) — retry in '
-        '${_backoff.inSeconds}s');
+    DebugLog.instance.log(
+        'NOSTR',
+        '$url down ($reason) — retry in '
+            '${_backoff.inSeconds}s');
     _teardownSocket();
     _pool._setState(url, RelayState.failed);
     _retryTimer?.cancel();
     _retryTimer = Timer(_backoff, () => unawaited(open()));
     final next = _backoff * 2;
-    _backoff =
-        next > WebSocketNostrRelayClient._maxBackoff
-            ? WebSocketNostrRelayClient._maxBackoff
-            : next;
+    _backoff = next > WebSocketNostrRelayClient._maxBackoff
+        ? WebSocketNostrRelayClient._maxBackoff
+        : next;
   }
 
   void _teardownSocket() {

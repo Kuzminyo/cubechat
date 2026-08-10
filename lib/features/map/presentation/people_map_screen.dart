@@ -101,6 +101,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     with SingleTickerProviderStateMixin {
   static const _fallbackCenter = LatLng(50.4501, 30.5234);
   static const _initialZoom = 13.5;
+
+  /// Where the camera lands when it is pointed at a person. See [_focusOn].
+  ///
+  /// Close enough to tell which building, not merely which block — pointing the
+  /// camera at somebody answers "where exactly", and 16.5 still left a
+  /// neighbourhood on screen. Held one step below [MapOptions.maxZoom] so there
+  /// is somewhere left to pinch.
+  static const _focusZoom = 17.5;
   final _map = MapController();
   final _distance = const Distance();
 
@@ -164,6 +172,21 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
       (_zoomFrom ?? _initialZoom) +
           ((_zoomTo ?? _initialZoom) - (_zoomFrom ?? _initialZoom)) * k,
     );
+  }
+
+  /// Put [point] in the middle and get close enough to read the street.
+  ///
+  /// Used everywhere the map is asked to look at somebody: tapping a friend's
+  /// pin, tapping your own, and pressing "find me". Those all answer the
+  /// question "where exactly", and [_initialZoom] answers "which town" — you
+  /// could see the pin move to the centre and learn nothing you did not
+  /// already know.
+  ///
+  /// Never zooms *out*: somebody already pushed in closer than [_focusZoom]
+  /// asked for that, and yanking them back would undo it on every tap.
+  void _focusOn(LatLng point) {
+    _moveCamera(point, math.max(_map.camera.zoom, _focusZoom));
+    _centered = true;
   }
 
   /// Glide the camera to [target]. Falls back to a plain move for the first
@@ -230,8 +253,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     }
     if (fix != null && (recenter || !_centered)) {
       final point = LatLng(fix.latitude, fix.longitude);
-      _moveCamera(point, 14);
-      _centered = true;
+      _focusOn(point);
       _scheduleAddressLookup(point);
     }
   }
@@ -273,7 +295,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final ownPhoto = ref.watch(avatarProvider);
     final nodes = <_Node>[
       for (final entry in shared.entries)
-        if (!entry.value.location.expired && peers[entry.key] != null)
+        // A live pin outlives its own expiry — see [SharedMapLocation.live].
+        // A position shared into a conversation does not: that one carried a
+        // window its sender chose, and honouring it is the difference between
+        // "here I am" and "here is where I live".
+        if ((entry.value.live || !entry.value.location.expired) &&
+            peers[entry.key] != null)
           _Node(
             id: entry.key,
             name: peers[entry.key]!.displayName,
@@ -473,6 +500,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     Uint8List? ownPhoto,
     TileProvider? tileProvider,
   ) {
+    // A parameter does not stay promoted inside a closure, and the marker's
+    // onTap is one — hence the local copy the null check can promote.
+    final LatLng? me = mePoint;
     return FlutterMap(
       mapController: _map,
       options: MapOptions(
@@ -550,9 +580,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           ),
         MarkerLayer(
           markers: [
-            if (mePoint != null)
+            if (me != null)
               Marker(
-                point: mePoint,
+                point: me,
                 width: 72,
                 height: 72,
                 child: _MapAvatar(
@@ -562,10 +592,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   photo: ownPhoto,
                   mine: true,
                   selected: _mineSelected,
-                  onTap: () => setState(() {
-                    _mineSelected = true;
-                    _selectedId = null;
-                  }),
+                  onTap: () {
+                    setState(() {
+                      _mineSelected = true;
+                      _selectedId = null;
+                    });
+                    _focusOn(me);
+                  },
                 ),
               ),
             for (final node in nodes)
@@ -578,10 +611,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   name: node.name,
                   photo: node.photo,
                   selected: node.id == _selectedId,
-                  onTap: () => setState(() {
-                    _selectedId = node.id;
-                    _mineSelected = false;
-                  }),
+                  onTap: () {
+                    setState(() {
+                      _selectedId = node.id;
+                      _mineSelected = false;
+                    });
+                    _focusOn(node.point);
+                  },
                 ),
               ),
           ],

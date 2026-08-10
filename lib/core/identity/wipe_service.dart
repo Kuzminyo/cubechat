@@ -12,6 +12,7 @@ import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/hidden_chats_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/map/data/map_friends_controller.dart';
+import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
@@ -71,6 +72,10 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // talk to, and a fresh install has no folders at all.
   await ref.read(chatFoldersControllerProvider.notifier).clear();
     await ref.read(mapFriendsControllerProvider.notifier).clear();
+  // Where those friends were last seen is on disk now, so it has to be wiped
+  // like everything else — a map that still has pins on it after a wipe is a
+  // list of people and places the wipe was supposed to remove.
+  ref.read(mapPresenceStoreProvider.notifier).clear();
   await ref.read(pinnedControllerProvider.notifier).clear();
   await ref.read(draftsControllerProvider.notifier).clearAll();
   await ref.read(fileTransferControllerProvider.notifier).clearAll();

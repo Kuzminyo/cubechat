@@ -44,10 +44,10 @@ class MapPresenceController extends Notifier<int> {
 
   /// Tell every map friend to drop our pin, now.
   ///
-  /// An already-expired beacon rather than a new payload type: the receiver
-  /// treats an expired position as "remove this person", so retraction costs no
-  /// protocol surface and an older build simply lets the pin lapse as it always
-  /// did.
+  /// A flagged, already-expired beacon rather than a new payload type: the
+  /// receiver reads the flag as "remove this person", so retraction costs no
+  /// protocol surface, and an older build sees a position that expired before
+  /// it arrived and lets the pin lapse as it always did.
   Future<void> withdraw() async {
     _lastCell = null;
     _lastSentAt = null;
@@ -58,6 +58,7 @@ class MapPresenceController extends Notifier<int> {
       longitude: 0,
       expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
       presence: true,
+      retract: true,
     ).encode();
     final messaging = ref.read(messagingServiceProvider);
     for (final peerId in peers) {
