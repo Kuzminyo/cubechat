@@ -22,6 +22,7 @@ import '../../channels/data/channel_controller.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../../channels/data/channel_roster_controller.dart';
 import '../../chat/data/drafts_controller.dart';
+import '../../chat/data/message_visibility.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
@@ -72,8 +73,12 @@ const _meshReachableWindow = Duration(minutes: 5);
 /// inbound message is unread — opening the chat sets the marker and clears it.
 /// Public so the counting rule can be unit-tested without a Hive-backed store.
 int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
-  if (lastReadAt == null) return msgs.where((m) => !m.isMine).length;
-  return msgs.where((m) => !m.isMine && m.sentAt.isAfter(lastReadAt)).length;
+  // Map beacons are excluded: nobody wrote them, nobody can read them, and a
+  // badge counting them told the user there were forty new messages waiting in
+  // a chat where nothing had been said all day.
+  bool counts(Message m) => !m.isMine && !isMapBeaconMessage(m);
+  if (lastReadAt == null) return msgs.where(counts).length;
+  return msgs.where((m) => counts(m) && m.sentAt.isAfter(lastReadAt)).length;
 }
 
 final chatsProvider = Provider<List<Chat>>((ref) {
@@ -109,7 +114,10 @@ final chatsProvider = Provider<List<Chat>>((ref) {
           (messagesByChat[peer.pubkeyHex]?.isNotEmpty ?? false))
       .map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
-    final last = msgs.isNotEmpty ? msgs.last : null;
+    // Map beacons are not conversation, so they must not be what a tile says
+    // the conversation last was. New ones never reach history at all; this
+    // skips the ones an older build already filed there.
+    final last = lastVisibleMessage(msgs);
     final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
     final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
     final isReachableViaMesh =

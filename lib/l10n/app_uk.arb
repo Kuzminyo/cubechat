@@ -7,6 +7,20 @@
     "navContacts":  "Контакти",
     "navMap":  "Мапа",
     "mapTitle":  "Карта",
+    "mapFriendsTitle": "Люди на мапі",
+    "mapFriendsHint": "Лише ці контакти отримують вашу позицію",
+    "mapFriendsEmpty": "Ще ніхто не ділиться з вами мапою.",
+    "mapFriendsEmptyHint": "Запросіть контакт — він з'явиться тут, щойно прийме запрошення.",
+    "mapFriendsInvite": "Запросити",
+    "mapFriendsRemove": "Прибрати з мапи",
+    "mapFriendsRemoved": "{name} більше не ділиться з вами мапою",
+    "@mapFriendsRemoved": {
+      "placeholders": {
+        "name": { "type": "String" }
+      }
+    },
+    "mapFriendsLive": "Зараз на мапі",
+    "mapFriendsIdle": "Позиції зараз немає",
     "mapInviteTitle": "\u0417\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u0438 \u043d\u0430 \u043c\u0430\u043f\u0443",
     "mapInviteHint": "\u041e\u0431\u0435\u0440\u0456\u0442\u044c \u043e\u0434\u0438\u043d \u0430\u0431\u043e \u043a\u0456\u043b\u044c\u043a\u0430 \u0447\u0430\u0442\u0456\u0432",
     "mapInviteEmpty": "\u041f\u043e\u043a\u0438 \u043d\u0435\u043c\u0430\u0454 \u0447\u0430\u0442\u0456\u0432 \u0434\u043b\u044f \u0437\u0430\u043f\u0440\u043e\u0448\u0435\u043d\u043d\u044f.",

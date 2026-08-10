@@ -140,6 +140,60 @@ abstract class AppLocalizations {
   /// **'Map'**
   String get mapTitle;
 
+  /// No description provided for @mapFriendsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'People on the map'**
+  String get mapFriendsTitle;
+
+  /// No description provided for @mapFriendsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only these contacts receive your position'**
+  String get mapFriendsHint;
+
+  /// No description provided for @mapFriendsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is sharing the map with you yet.'**
+  String get mapFriendsEmpty;
+
+  /// No description provided for @mapFriendsEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite a contact and they will appear here once they accept.'**
+  String get mapFriendsEmptyHint;
+
+  /// No description provided for @mapFriendsInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite'**
+  String get mapFriendsInvite;
+
+  /// No description provided for @mapFriendsRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from map'**
+  String get mapFriendsRemove;
+
+  /// No description provided for @mapFriendsRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} no longer shares the map with you'**
+  String mapFriendsRemoved(String name);
+
+  /// No description provided for @mapFriendsLive.
+  ///
+  /// In en, this message translates to:
+  /// **'On the map now'**
+  String get mapFriendsLive;
+
+  /// No description provided for @mapFriendsIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'No position right now'**
+  String get mapFriendsIdle;
+
   /// No description provided for @mapInviteTitle.
   ///
   /// In en, this message translates to:

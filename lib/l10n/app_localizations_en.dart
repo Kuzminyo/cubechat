@@ -30,6 +30,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mapTitle => 'Map';
 
   @override
+  String get mapFriendsTitle => 'People on the map';
+
+  @override
+  String get mapFriendsHint => 'Only these contacts receive your position';
+
+  @override
+  String get mapFriendsEmpty => 'Nobody is sharing the map with you yet.';
+
+  @override
+  String get mapFriendsEmptyHint =>
+      'Invite a contact and they will appear here once they accept.';
+
+  @override
+  String get mapFriendsInvite => 'Invite';
+
+  @override
+  String get mapFriendsRemove => 'Remove from map';
+
+  @override
+  String mapFriendsRemoved(String name) {
+    return '$name no longer shares the map with you';
+  }
+
+  @override
+  String get mapFriendsLive => 'On the map now';
+
+  @override
+  String get mapFriendsIdle => 'No position right now';
+
+  @override
   String get mapInviteTitle => 'Invite to the map';
 
   @override

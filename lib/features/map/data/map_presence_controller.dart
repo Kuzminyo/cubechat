@@ -27,9 +27,46 @@ class MapPresenceController extends Notifier<int> {
   int build() {
     _arm();
     ref.listen<Set<String>>(mapFriendsControllerProvider, (_, __) => _arm());
-    ref.listen<PrivacySettings>(privacySettingsProvider, (_, __) => _arm());
+    ref.listen<PrivacySettings>(privacySettingsProvider, (before, after) {
+      // Switching map sharing off has to *retract* the pin, not merely stop
+      // refreshing it. Stopping leaves the last beacon standing on every
+      // friend's map until its own two-minute TTL lapses — so the switch that
+      // means "nobody sees where I am" would still show where you were, for two
+      // minutes, which is the whole of what someone reaches for it to prevent.
+      if ((before?.shareMapLocation ?? false) && !after.shareMapLocation) {
+        unawaited(withdraw());
+      }
+      _arm();
+    });
     ref.onDispose(() => _timer?.cancel());
     return 0;
+  }
+
+  /// Tell every map friend to drop our pin, now.
+  ///
+  /// An already-expired beacon rather than a new payload type: the receiver
+  /// treats an expired position as "remove this person", so retraction costs no
+  /// protocol surface and an older build simply lets the pin lapse as it always
+  /// did.
+  Future<void> withdraw() async {
+    _lastCell = null;
+    _lastSentAt = null;
+    final peers = ref.read(mapFriendsControllerProvider).toList(growable: false);
+    if (peers.isEmpty) return;
+    final gone = SharedLocation(
+      latitude: 0,
+      longitude: 0,
+      expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
+      presence: true,
+    ).encode();
+    final messaging = ref.read(messagingServiceProvider);
+    for (final peerId in peers) {
+      try {
+        await messaging.sendText(peerId, gone, transient: true);
+      } catch (e) {
+        debugPrint('MapPresenceController withdraw failed for $peerId: $e');
+      }
+    }
   }
 
   void _arm() {
@@ -67,12 +104,13 @@ class MapPresenceController extends Notifier<int> {
         longitude: fix.longitude,
         accuracyMetres: fix.accuracyMetres,
         expiresAt: now.add(_ttl),
+        presence: true,
       ).encode();
 
       final messaging = ref.read(messagingServiceProvider);
       for (final peerId in peers) {
         try {
-          await messaging.sendText(peerId, share);
+          await messaging.sendText(peerId, share, transient: true);
         } catch (e) {
           debugPrint('MapPresenceController send failed for $peerId: $e');
         }

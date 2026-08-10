@@ -14,7 +14,6 @@ import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/location_service.dart';
-import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -24,7 +23,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
-import 'map_invite_sheet.dart';
+import 'map_friends_sheet.dart';
 
 typedef MapLocationReader = Future<(LocationFix?, LocationFailure?)> Function();
 typedef MapAddressReader = Future<String?> Function(
@@ -73,17 +72,67 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   String? _queuedAddressCell;
   int _addressRequest = 0;
 
-  late final AnimationController _pulse = AnimationController(
+  /// Drives the camera between two positions instead of teleporting it.
+  ///
+  /// [MapController.move] is a jump cut: the whole world changes under your
+  /// thumb in one frame, and with a 90-second refresh re-centring on a fix that
+  /// drifted twenty metres, the map appeared to twitch for no reason anyone
+  /// watching could connect to anything. Interpolating turns that into a move
+  /// the eye can follow — and, when the fix has barely changed, into something
+  /// small enough not to notice at all.
+  late final AnimationController _camera = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 5),
-    lowerBound: 0.48,
-    upperBound: 0.82,
+    duration: const Duration(milliseconds: 520),
   );
+  LatLng? _cameraFrom;
+  LatLng? _cameraTo;
+  double? _zoomFrom;
+  double? _zoomTo;
+
+  /// Cached link geometry, rebuilt only when the points actually move.
+  ///
+  /// [_lines] is O(n²) with a sort inside the loop, and it used to run on every
+  /// build — which on this screen means every location fix, every beacon from
+  /// every friend, and every frame of a camera animation.
+  List<Polyline>? _cachedLines;
+  String? _cachedLinesKey;
 
   @override
   void initState() {
     super.initState();
-    UiActivity.instance.isQuiet.addListener(_syncAnimation);
+    _camera.addListener(_tickCamera);
+  }
+
+  void _tickCamera() {
+    final from = _cameraFrom;
+    final to = _cameraTo;
+    if (from == null || to == null) return;
+    final k = Curves.easeInOutCubic.transform(_camera.value);
+    _map.move(
+      LatLng(
+        from.latitude + (to.latitude - from.latitude) * k,
+        from.longitude + (to.longitude - from.longitude) * k,
+      ),
+      (_zoomFrom ?? _initialZoom) +
+          ((_zoomTo ?? _initialZoom) - (_zoomFrom ?? _initialZoom)) * k,
+    );
+  }
+
+  /// Glide the camera to [target]. Falls back to a plain move for the first
+  /// placement, where there is no "from" to animate out of.
+  void _moveCamera(LatLng target, double zoom) {
+    final current = _centered ? _map.camera.center : null;
+    if (current == null) {
+      _map.move(target, zoom);
+      return;
+    }
+    _cameraFrom = current;
+    _cameraTo = target;
+    _zoomFrom = _map.camera.zoom;
+    _zoomTo = zoom;
+    _camera
+      ..reset()
+      ..forward();
   }
 
   @override
@@ -105,16 +154,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           unawaited(_locate());
         }
       });
-    }
-    _syncAnimation();
-  }
-
-  void _syncAnimation() {
-    if (!mounted) return;
-    if (_watching && !UiActivity.instance.isQuiet.value) {
-      if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
-    } else {
-      _pulse.stop();
     }
   }
 
@@ -143,8 +182,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     }
     if (fix != null && (recenter || !_centered)) {
       final point = LatLng(fix.latitude, fix.longitude);
+      _moveCamera(point, 14);
       _centered = true;
-      _map.move(point, 14);
       _scheduleAddressLookup(point);
     }
   }
@@ -154,8 +193,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     AppLifecycle.instance.isWatchingMap = false;
     _refresh?.cancel();
     _addressDebounce?.cancel();
-    UiActivity.instance.isQuiet.removeListener(_syncAnimation);
-    _pulse.dispose();
+    _camera
+      ..removeListener(_tickCamera)
+      ..dispose();
     _map.dispose();
     super.dispose();
   }
@@ -168,6 +208,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final shared = ref.watch(sharedMapLocationsProvider);
     final mapSharing =
         ref.watch(privacySettingsProvider.select((s) => s.shareMapLocation));
+    // Switching sharing off drops the fix, not just its pin. Keeping it would
+    // mean switching back on re-displays where you were before — a position
+    // from a time you had asked not to be located.
+    ref.listen(privacySettingsProvider.select((s) => s.shareMapLocation),
+        (_, sharing) {
+      if (!sharing && _me != null && mounted) {
+        setState(() {
+          _me = null;
+          _failure = null;
+          _mineSelected = false;
+        });
+      }
+    });
     final nickname = ref.watch(nicknameControllerProvider);
     final ownPhoto = ref.watch(avatarProvider);
     final nodes = <_Node>[
@@ -267,10 +320,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                         ),
                       ),
                       IconButton(
-                        onPressed: () => showMapInviteSheet(context),
-                        tooltip: t.mapInviteTitle,
+                        onPressed: () => showMapFriendsSheet(context),
+                        tooltip: t.mapFriendsTitle,
                         icon: Icon(
-                          Icons.person_add_alt_1_rounded,
+                          Icons.group_add_rounded,
                           color: AppColors.brandPrimary,
                         ),
                       ),
@@ -429,13 +482,15 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             color: AppColors.brandPrimary.withValues(alpha: 0.025),
           ),
         ),
+        // Static, deliberately. These lines used to breathe on a five-second
+        // pulse, which meant repainting every gradient stroke on the map on
+        // every frame for as long as the screen was open — the most expensive
+        // thing here, spent on an effect nobody was looking at while trying to
+        // find someone.
         if (nodes.length > 1 && nodes.length <= 16)
-          FadeTransition(
-            opacity: _pulse,
-            child: RepaintBoundary(
-              child: PolylineLayer(
-                polylines: _lines(nodes, mePoint),
-              ),
+          RepaintBoundary(
+            child: PolylineLayer(
+              polylines: _lines(nodes, mePoint),
             ),
           ),
         MarkerLayer(
@@ -567,6 +622,28 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     List<_Node> nodes,
     LatLng? me,
   ) {
+    // Rounded to ~11 m: a fix jitters by a few metres while standing still, and
+    // recomputing an O(n²) graph because somebody's GPS breathed is work with
+    // no visible result.
+    String cell(LatLng p) => '${p.latitude.toStringAsFixed(4)},'
+        '${p.longitude.toStringAsFixed(4)}';
+    final key = [
+      if (me != null) 'me:${cell(me)}',
+      for (final n in nodes) '${n.id}:${cell(n.point)}',
+    ].join('|');
+    final cached = _cachedLines;
+    if (cached != null && key == _cachedLinesKey) return cached;
+
+    final built = _buildLines(nodes, me);
+    _cachedLines = built;
+    _cachedLinesKey = key;
+    return built;
+  }
+
+  List<Polyline> _buildLines(
+    List<_Node> nodes,
+    LatLng? me,
+  ) {
     final points = [if (me != null) me, ...nodes.map((n) => n.point)];
     final used = <String>{};
     final result = <Polyline>[];
@@ -646,46 +723,52 @@ class _MapAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = selected ? 58.0 : 52.0;
-    return GestureDetector(
-      onTap: onTap,
-      child: Center(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          width: size + 10,
-          height: size + 10,
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.pane(0.84),
-            border: Border.all(
-              color: mine
-                  ? AppColors.ink(0.85)
-                  : AppColors.brandPrimary.withValues(
-                      alpha: selected ? 0.95 : 0.62,
-                    ),
-              width: selected ? 2.2 : 1.3,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.brandPrimary.withValues(
-                  alpha: selected ? 0.46 : 0.25,
+    // Each avatar carries two shadows, one of them a 22px glow. Without a
+    // boundary every one of them re-rasterises whenever anything else on the
+    // map changes — panning, a beacon landing, the camera gliding — which is
+    // most of what made dragging the map feel like it was catching.
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: size + 10,
+            height: size + 10,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.pane(0.84),
+              border: Border.all(
+                color: mine
+                    ? AppColors.ink(0.85)
+                    : AppColors.brandPrimary.withValues(
+                        alpha: selected ? 0.95 : 0.62,
+                      ),
+                width: selected ? 2.2 : 1.3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandPrimary.withValues(
+                    alpha: selected ? 0.46 : 0.25,
+                  ),
+                  blurRadius: selected ? 22 : 14,
+                  spreadRadius: selected ? 2 : 0,
                 ),
-                blurRadius: selected ? 22 : 14,
-                spreadRadius: selected ? 2 : 0,
-              ),
-              const BoxShadow(
-                color: Colors.black54,
-                blurRadius: 12,
-                offset: Offset(0, 7),
-              ),
-            ],
-          ),
-          child: IdentityAvatar(
-            seed: seed,
-            label: name,
-            imageBytes: photo,
-            size: size,
-            online: mine,
+                const BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 12,
+                  offset: Offset(0, 7),
+                ),
+              ],
+            ),
+            child: IdentityAvatar(
+              seed: seed,
+              label: name,
+              imageBytes: photo,
+              size: size,
+              online: mine,
+            ),
           ),
         ),
       ),

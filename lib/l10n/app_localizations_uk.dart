@@ -30,6 +30,36 @@ class AppLocalizationsUk extends AppLocalizations {
   String get mapTitle => 'Карта';
 
   @override
+  String get mapFriendsTitle => 'Люди на мапі';
+
+  @override
+  String get mapFriendsHint => 'Лише ці контакти отримують вашу позицію';
+
+  @override
+  String get mapFriendsEmpty => 'Ще ніхто не ділиться з вами мапою.';
+
+  @override
+  String get mapFriendsEmptyHint =>
+      'Запросіть контакт — він з\'явиться тут, щойно прийме запрошення.';
+
+  @override
+  String get mapFriendsInvite => 'Запросити';
+
+  @override
+  String get mapFriendsRemove => 'Прибрати з мапи';
+
+  @override
+  String mapFriendsRemoved(String name) {
+    return '$name більше не ділиться з вами мапою';
+  }
+
+  @override
+  String get mapFriendsLive => 'Зараз на мапі';
+
+  @override
+  String get mapFriendsIdle => 'Позиції зараз немає';
+
+  @override
   String get mapInviteTitle => 'Запросити на мапу';
 
   @override

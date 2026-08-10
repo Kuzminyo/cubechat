@@ -7,6 +7,20 @@
   "navContacts": "Contacts",
   "navMap": "Map",
   "mapTitle": "Map",
+  "mapFriendsTitle": "People on the map",
+  "mapFriendsHint": "Only these contacts receive your position",
+  "mapFriendsEmpty": "Nobody is sharing the map with you yet.",
+  "mapFriendsEmptyHint": "Invite a contact and they will appear here once they accept.",
+  "mapFriendsInvite": "Invite",
+  "mapFriendsRemove": "Remove from map",
+  "mapFriendsRemoved": "{name} no longer shares the map with you",
+  "@mapFriendsRemoved": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "mapFriendsLive": "On the map now",
+  "mapFriendsIdle": "No position right now",
   "mapInviteTitle": "Invite to the map",
   "mapInviteHint": "Choose one or more chats",
   "mapInviteEmpty": "There are no chats to invite yet.",

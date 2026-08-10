@@ -43,6 +43,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../data/message_edit_target.dart';
 import '../data/message_selection.dart';
+import '../data/message_visibility.dart';
 import '../data/message_reply_target.dart';
 import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
@@ -217,8 +218,12 @@ class ChatScreen extends ConsumerWidget {
     // Prefer the canonical pubkey-keyed bucket; fall back to the transport
     // id (for chats that are still on the BLE-address URL).
     final canonicalId = session?.remotePubkeyHex ?? peerId;
-    final messages =
-        messagesMap[canonicalId] ?? messagesMap[peerId] ?? const [];
+    // Beacons filed by an older build are hidden rather than deleted: they are
+    // still the peer's signed messages, and a conversation is not something to
+    // quietly rewrite. See [isMapBeaconMessage].
+    final messages = visibleMessages(
+      messagesMap[canonicalId] ?? messagesMap[peerId] ?? const [],
+    );
     // A prior announcement gives us the peer's pubkey (and, when present, their
     // Nostr npub) even with no live BLE session — enough for sendText to carry
     // a frame over the mesh, the Nostr internet fallback, or store-and-forward.
@@ -410,7 +415,8 @@ class ChatScreen extends ConsumerWidget {
     final saved = isSavedChat(peerId);
     final joined =
         saved || ref.watch(channelControllerProvider).containsKey(peerId);
-    final messages = ref.watch(messagesControllerProvider)[peerId] ?? const [];
+    final messages =
+        visibleMessages(ref.watch(messagesControllerProvider)[peerId] ?? const []);
 
     final sessions = ref.watch(chatSessionManagerProvider);
     final availableRoute = resolveChatRoute(

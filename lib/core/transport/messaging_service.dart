@@ -21,6 +21,7 @@ import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/files/data/file_transfer_controller.dart';
+import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -53,6 +54,7 @@ import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'contact_card.dart';
 import 'dedup_cache.dart';
+import 'shared_location.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
@@ -892,10 +894,18 @@ class MessagingService {
   ///   1. live session by transport id
   ///   2. live session by pubkeyHex
   ///   3. KnownPeers entry by pubkeyHex (mesh-only — relayed via all links)
+  ///
+  /// [transient] sends the same encrypted frame but keeps none of it: no
+  /// bubble, no history, no delivery status, and no store-and-forward. It
+  /// exists for the map's presence beacon, which is a position valid for two
+  /// minutes emitted every forty-five seconds — worth transmitting, never worth
+  /// remembering, and actively harmful to queue, since a beacon handed over on
+  /// a reconnect half an hour later is a lie about where somebody is.
   Future<Message> sendText(
     String chatId,
     String text, {
     String? replyToWireId,
+    bool transient = false,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
@@ -952,12 +962,14 @@ class MessagingService {
       replyToWireId: replyTarget != null ? replyToWireId : null,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
-    messages.append(canonicalId, msg);
-    // Also append under the transport id if the caller passed one (so an
-    // open ChatScreen routed via /chat/<bleId> sees the outgoing message
-    // until we migrate it to the pubkey-keyed route).
-    if (chatId != canonicalId) {
-      messages.append(chatId, msg);
+    if (!transient) {
+      messages.append(canonicalId, msg);
+      // Also append under the transport id if the caller passed one (so an
+      // open ChatScreen routed via /chat/<bleId> sees the outgoing message
+      // until we migrate it to the pubkey-keyed route).
+      if (chatId != canonicalId) {
+        messages.append(chatId, msg);
+      }
     }
 
     try {
@@ -1014,9 +1026,11 @@ class MessagingService {
           // anyway, and on a ~207B iOS link was itself truncated). Forward
           // secrecy applies to every text to a peer whose prekey we hold.
           body = tagged;
-          messages.markForwardSecret(canonicalId, msg.id);
-          if (chatId != canonicalId) {
-            messages.markForwardSecret(chatId, msg.id);
+          if (!transient) {
+            messages.markForwardSecret(canonicalId, msg.id);
+            if (chatId != canonicalId) {
+              messages.markForwardSecret(chatId, msg.id);
+            }
           }
           DebugLog.instance.log(
               'CRYPTO',
@@ -1108,7 +1122,14 @@ class MessagingService {
         deliveredRoute = MessageRoute.internet;
       }
 
-      if (deliveredVia > 0) {
+      // A beacon that went nowhere is simply skipped: it says where somebody is
+      // *now*, and the next one is forty-five seconds away.
+      if (transient) {
+        if (deliveredVia == 0) {
+          DebugLog.instance
+              .log('MAP', 'presence beacon to $canonicalId found no route');
+        }
+      } else if (deliveredVia > 0) {
         messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
         messages.updateRoute(
             canonicalId, msg.id, deliveredRoute ?? MessageRoute.mesh,
@@ -1150,9 +1171,11 @@ class MessagingService {
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'sendText FAILED: $e');
       debugPrint('sendText failed: $e\n$st');
-      messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
-      if (chatId != canonicalId) {
-        messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+      if (!transient) {
+        messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
+        if (chatId != canonicalId) {
+          messages.updateStatus(chatId, msg.id, MessageStatus.failed);
+        }
       }
     }
     return msg;
@@ -3275,10 +3298,21 @@ class MessagingService {
       } catch (_) {}
     }
     final fanout = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    if (fanout > 0) return fanout;
     // Same internet fallback as sendText: a receipt or reaction the mesh can't
     // deliver still reaches a peer who's only on relays.
-    return await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
+    //
+    // The relay is tried even when the fan-out found links, unless one of them
+    // is a session with this peer. A fan-out onto somebody else's Bluetooth
+    // link is a *hope* that the mesh knows a route; for a peer we only ever
+    // reach over the internet it is a dead end — and counting it as delivery
+    // marked the receipt acknowledged, so it was never retried and the sender's
+    // tick never turned over. That is exactly the shape of "read receipts stop
+    // working over the internet as soon as any phone is nearby". Duplicates are
+    // free: both copies carry the same msgId, and the receiver dedups.
+    final direct = transportId != null;
+    if (fanout > 0 && direct) return fanout;
+    final viaRelay = await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
+    return fanout + viaRelay;
   }
 
   /// Build a broadcast channel frame: sign the inner payload (full signature,
@@ -4389,6 +4423,19 @@ class MessagingService {
             unpadTextPayload(unpacked.body),
             allowMalformed: true,
           );
+          // A map beacon is transport wearing a text message's clothes: it
+          // arrives every 45 seconds while their map is open. Filing it in the
+          // conversation would bury the conversation, and — because history is
+          // what read receipts are owed on — would have this device acking a
+          // beacon every 45 seconds, per friend, forever.
+          final beacon = SharedLocation.tryParse(plaintext);
+          if (beacon != null && beacon.presence) {
+            _ref.read(mapPresenceStoreProvider.notifier).record(
+                  senderPub != null ? _hexOf(senderPub) : peerId,
+                  beacon,
+                );
+            return;
+          }
           DebugLog.instance
               .log('NOISE', 'RX text from $peerId (${plaintext.length} chars)');
           final message = Message(
