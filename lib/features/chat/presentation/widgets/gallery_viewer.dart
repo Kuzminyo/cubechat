@@ -139,55 +139,6 @@ class _GalleryViewerState extends State<GalleryViewer> {
                   ],
                 ),
                 const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white24),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          onPressed: () => Navigator.of(context).pop(
-                            GalleryViewerResult(
-                              GalleryViewerExit.edit,
-                              _current,
-                            ),
-                          ),
-                          icon: const Icon(Icons.tune_rounded, size: 18),
-                          label: Text(t.chatEditAction),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.brandPrimary,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          // Sends what is ticked; ticks this one first if
-                          // nothing is, because arriving here and pressing
-                          // Send plainly means "this photo".
-                          onPressed: () {
-                            if (!widget.isSelected(_current)) {
-                              widget.onToggle(_current);
-                            }
-                            Navigator.of(context).pop(
-                              GalleryViewerResult(
-                                GalleryViewerExit.send,
-                                _current,
-                              ),
-                            );
-                          },
-                          child: Text(t.chatSend),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),

@@ -24,6 +24,12 @@ import '../data/map_address_service.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
 import 'map_friends_sheet.dart';
+import 'dart:io' show Platform;
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
+import 'package:dio_cache_interceptor_file_store/dio_cache_interceptor_file_store.dart';
+import 'package:flutter_map_cache/flutter_map_cache.dart';
+import 'package:path_provider/path_provider.dart';
+import '../../../core/util/debug_log.dart';
 
 typedef MapLocationReader = Future<(LocationFix?, LocationFailure?)> Function();
 typedef MapAddressReader = Future<String?> Function(
@@ -32,7 +38,49 @@ typedef MapAddressReader = Future<String?> Function(
   Locale locale,
 );
 
-final mapTileProviderProvider = Provider<TileProvider?>((ref) => null);
+/// Tiles, cached on disk.
+///
+/// Null meant flutter_map's plain network provider: every pan and every zoom
+/// step re-fetched squares the phone had already seen, there was no map at all
+/// without a connection, and a fast pinch turned into a burst of hundreds of
+/// simultaneous requests and decodes — which is what was taking the app down.
+///
+/// A disk cache answers all three. It also keeps the app a good citizen of a
+/// free tile service: the same square is asked for once rather than once per
+/// gesture.
+///
+/// Overridden with null in widget tests, which have no HTTP and no cache
+/// directory — see [PeopleMapScreen.tileProvider].
+final mapTileProviderProvider = Provider<TileProvider?>((ref) {
+  final store = _tileCacheStore;
+  if (store == null) return null;
+  return CachedTileProvider(
+    maxStale: const Duration(days: 30),
+    store: store,
+  );
+});
+
+/// Opened once at startup — see [initMapTileCache]. Held here rather than
+/// created lazily because building it needs a directory, which is async, and a
+/// provider that returns a future would make every rebuild of the map wait.
+CacheStore? _tileCacheStore;
+
+/// Prepare the on-disk tile cache. Safe to call more than once.
+///
+/// Failure is not fatal: without a store the map falls back to fetching every
+/// tile, which is how it behaved before there was a cache at all.
+Future<void> initMapTileCache() async {
+  if (_tileCacheStore != null) return;
+  try {
+    final dir = await getApplicationCacheDirectory();
+    // Deliberately the *cache* directory, unlike conversation media: a tile is
+    // reconstructible from the network and nobody loses anything if the OS
+    // reclaims the space. See [mediaDirectory] for the opposite case.
+    _tileCacheStore = FileCacheStore('${dir.path}${Platform.pathSeparator}map_tiles');
+  } catch (e) {
+    DebugLog.instance.log('MAP', 'tile cache unavailable: $e');
+  }
+}
 final mapLocationReaderProvider = Provider<MapLocationReader>(
   (ref) => const LocationService().current,
 );
@@ -457,29 +505,36 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         },
       ),
       children: [
+        // A dark, label-free basemap, drawn at full strength.
+        //
+        // This used to be the standard OpenStreetMap style — a light map with
+        // every street name printed into the raster — held down to 18% opacity
+        // under a 58% black sheet and a brand tint. Three ways of fighting the
+        // tiles instead of asking for different ones, which is why the map read
+        // as "very dark" and "broken": what showed through was a ghost of a
+        // light map, and the labels were baked into the image so no amount of
+        // dimming could remove them.
+        //
+        // CARTO's dark_nolabels is the same OpenStreetMap data rendered dark
+        // with no text at all, which is exactly what this screen wants: the
+        // street and city are read out in the panel above, where they can be
+        // localised and where they do not fight the avatars for space. It also
+        // drops two full-screen overlay passes per frame.
         RepaintBoundary(
           child: TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            urlTemplate:
+                'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+            subdomains: const ['a', 'b', 'c', 'd'],
+            retinaMode: RetinaMode.isHighDensity(context),
             userAgentPackageName: 'com.cubechat.cubechat',
             tileProvider: tileProvider,
-            maxNativeZoom: 19,
+            maxNativeZoom: 20,
             keepBuffer: 1,
             panBuffer: 0,
-            tileDisplay: const TileDisplay.instantaneous(opacity: 0.18),
             tileUpdateTransformer: TileUpdateTransformers.throttle(
               const Duration(milliseconds: 180),
             ),
             evictErrorTileStrategy: EvictErrorTileStrategy.dispose,
-          ),
-        ),
-        IgnorePointer(
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: 0.58),
-          ),
-        ),
-        IgnorePointer(
-          child: ColoredBox(
-            color: AppColors.brandPrimary.withValues(alpha: 0.025),
           ),
         ),
         // Static, deliberately. These lines used to breathe on a five-second
@@ -538,6 +593,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               onTap: () => launchUrl(
                 Uri.parse('https://www.openstreetmap.org/copyright'),
               ),
+            ),
+            // Required by the tile style's licence, and honest about who is
+            // being asked for the squares being looked at.
+            TextSourceAttribution(
+              'CARTO',
+              onTap: () => launchUrl(Uri.parse('https://carto.com/attributions')),
             ),
           ],
         ),

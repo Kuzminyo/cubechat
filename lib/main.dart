@@ -13,6 +13,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/media_storage.dart';
+import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
@@ -152,4 +153,10 @@ Future<void> main() async {
   // contains — the panel switching mode a few frames later is invisible — so it
   // has no business delaying one.
   unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
+
+  // Also after runApp, and also unawaited: the map is four tabs away, so
+  // opening its tile cache has no business delaying the first frame. By the
+  // time anyone reaches the Map tab this is long done, and if it never
+  // finishes the map simply fetches every tile as it did before.
+  unawaited(_bootStep('map-tile-cache', initMapTileCache));
 }

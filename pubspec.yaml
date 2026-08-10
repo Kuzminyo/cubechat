@@ -88,6 +88,8 @@ dependencies:
   flutter_map: 8.3.1
   latlong2: 0.10.1
   geocoding: ^5.0.0
+  flutter_map_cache: ^1.5.2
+  dio_cache_interceptor_file_store: ^1.2.3
 
 dev_dependencies:
   flutter_lints: ^4.0.0
