@@ -436,7 +436,20 @@ class MessagingService {
         // every state message, or a flapping relay would re-arm the drain
         // continuously and undo the back-off it exists to allow.
         final connected = client.isConnected;
-        if (connected && !_relayWasConnected) nudgeFileQueue();
+        if (connected && !_relayWasConnected) {
+          nudgeFileQueue();
+          // And the read receipts that had nowhere to go.
+          //
+          // A receipt is composed when a chat is opened, and a fan-out of zero
+          // is an ordinary return — so one composed while the relay was down is
+          // simply not sent, and nothing tries again until that chat is opened
+          // a second time. On iOS the relay was *always* down for the first
+          // moments after resume (see wakeRelays), which is exactly when
+          // somebody opens the app to read what arrived: the messages were
+          // read, the other phone's tick never moved, and only re-entering the
+          // conversation later fixed it.
+          unawaited(_flushPendingReadReceipts());
+        }
         _relayWasConnected = connected;
       });
       client.start();
@@ -1933,6 +1946,24 @@ class MessagingService {
         }
       } catch (e) {
         DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
+      }
+    }
+  }
+
+  /// Re-offer every read acknowledgement that has not gone out yet.
+  ///
+  /// Cheap enough to run on a relay coming up: [sendReadReceipts] filters to
+  /// messages it has not already acknowledged this run, so a chat with nothing
+  /// outstanding costs one map lookup and returns.
+  Future<void> _flushPendingReadReceipts() async {
+    if (_disposed) return;
+    if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
+    for (final chatId in _ref.read(messagesControllerProvider).keys.toList()) {
+      if (_disposed) return;
+      try {
+        await sendReadReceipts(chatId);
+      } catch (e) {
+        DebugLog.instance.log('RECEIPT', 'flush for $chatId failed: $e');
       }
     }
   }
@@ -5736,6 +5767,16 @@ class MessagingService {
   /// sendable: a file being queued, a session coming up, the relay connecting.
   /// Without this the back-off would be paid for by the user — a file queued
   /// while backed off would sit for minutes with a live link right there.
+  /// Bring the internet transport back up now, rather than on its own backoff.
+  ///
+  /// Called when the app returns to the foreground. See
+  /// [WebSocketNostrRelayClient.wake] for why iOS needs this and Android
+  /// mostly does not.
+  void wakeRelays() {
+    if (_disposed) return;
+    _relayClient?.wake();
+  }
+
   void nudgeFileQueue() {
     _fileQueueGap = _fileQueueBase;
     unawaited(_drainFileQueue());

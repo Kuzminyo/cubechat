@@ -211,6 +211,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // background mode whenever we come to the foreground so the service
     // actually starts (or restarts) from an allowed state.
     if (state == AppLifecycleState.resumed) {
+      // First, because everything else on this path is cheap and this is the
+      // one that decides whether the app has an internet transport at all.
+      // iOS tears the relay sockets down while suspended and nothing was
+      // asking them to come back, so a returning iPhone had no relay for up to
+      // the two minutes its backoff had grown to.
+      ref.read(messagingServiceProvider).wakeRelays();
       ref.read(backgroundModeProvider.notifier).apply();
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the

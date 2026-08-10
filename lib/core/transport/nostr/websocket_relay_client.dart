@@ -110,6 +110,32 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     }
   }
 
+  /// Reconnect every relay that is down, right now.
+  ///
+  /// The backoff exists for a phone with no network: it grows to two minutes so
+  /// a dead connection is not retried every second all day. That is exactly
+  /// wrong for the moment somebody opens the app again.
+  ///
+  /// iOS is where this hurt. Android keeps the process — and its sockets —
+  /// alive under the foreground service, so a relay that was up stays up. iOS
+  /// suspends the app and tears the socket down, so every return to the
+  /// foreground started with every relay disconnected and a backoff that had
+  /// been doubling while the phone was asleep. Nothing asked them to try again,
+  /// so the app sat there for up to two minutes with no internet transport at
+  /// all: messages did not arrive, receipts did not go back, and anything
+  /// between an iPhone and an Android took however long the timer happened to
+  /// have left. Coming back to the app is the strongest possible signal that
+  /// the network is worth another try.
+  void wake() {
+    if (_disposed) return;
+    // start() first, so a relay added while we were away gets a connection at
+    // all rather than only the existing ones being poked.
+    start();
+    for (final conn in _conns.values) {
+      conn.wake();
+    }
+  }
+
   /// How long to wait for relays to answer an `EVENT` before giving up on the
   /// stragglers.
   ///
@@ -332,6 +358,18 @@ class _RelayConnection {
   final String _subId = 'cc-${Random().nextInt(1 << 32).toRadixString(16)}';
 
   bool get isOpen => _connected;
+
+  /// Try again immediately, whatever the backoff had grown to.
+  ///
+  /// A no-op when the socket is already up: reopening a healthy connection
+  /// would drop the subscription and re-ask for the backlog for nothing.
+  void wake() {
+    if (_closed || _connected) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _backoff = WebSocketNostrRelayClient._initialBackoff;
+    unawaited(open());
+  }
 
   /// Open the socket and wait for it to actually be up.
   ///
