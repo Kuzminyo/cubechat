@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -337,71 +340,31 @@ class ChatsListScreen extends ConsumerWidget {
                         final chat = filtered[i];
                         final draggableFavorite =
                             chat.isFavorite && i < favoriteCount;
-                        final content = FloatingGlass(
-                          blur: false,
-                          borderRadius: 18,
-                          onTap: () => context.push(routeForChat(chat)),
-                          onLongPressAt: draggableFavorite
-                              ? null
-                              : (pos) => _showChatActions(
-                                    context,
-                                    ref,
-                                    chat,
-                                    t,
-                                    pos,
-                                  ),
-                          child: draggableFavorite
-                              ? Stack(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 42),
-                                      child: ChatTile(chat: chat),
-                                    ),
-                                    Positioned(
-                                      top: 0,
-                                      right: 0,
-                                      bottom: 0,
-                                      child: Builder(
-                                        builder: (buttonContext) => IconButton(
-                                          icon: Icon(
-                                            Icons.more_vert_rounded,
-                                            color: AppColors.textOnGlassDim,
-                                          ),
-                                          onPressed: () {
-                                            final box =
-                                                buttonContext.findRenderObject()
-                                                    as RenderBox?;
-                                            final pos = box == null
-                                                ? Offset.zero
-                                                : box.localToGlobal(
-                                                    box.size
-                                                        .center(Offset.zero),
-                                                  );
-                                            _showChatActions(
-                                              context,
-                                              ref,
-                                              chat,
-                                              t,
-                                              pos,
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : ChatTile(chat: chat),
-                        );
-                        final row = Padding(
-                          key: draggableFavorite ? null : ValueKey(chat.id),
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: content,
-                        );
-                        if (!draggableFavorite) return row;
-                        return ReorderableDelayedDragStartListener(
+                        if (draggableFavorite) {
+                          return _FavoriteChatReorderTile(
+                            key: ValueKey(chat.id),
+                            chat: chat,
+                            index: i,
+                            ref: ref,
+                            localizations: t,
+                          );
+                        }
+                        return Padding(
                           key: ValueKey(chat.id),
-                          index: i,
-                          child: row,
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: FloatingGlass(
+                            blur: false,
+                            borderRadius: 18,
+                            onTap: () => context.push(routeForChat(chat)),
+                            onLongPressAt: (pos) => _showChatActions(
+                              context,
+                              ref,
+                              chat,
+                              t,
+                              pos,
+                            ),
+                            child: ChatTile(chat: chat),
+                          ),
                         );
                       },
                     )
@@ -595,6 +558,224 @@ Future<void> _confirmWipe(
       ],
     ),
   );
+}
+
+class _FavoriteChatReorderTile extends StatefulWidget {
+  const _FavoriteChatReorderTile({
+    super.key,
+    required this.chat,
+    required this.index,
+    required this.ref,
+    required this.localizations,
+  });
+
+  final Chat chat;
+  final int index;
+  final WidgetRef ref;
+  final AppLocalizations localizations;
+
+  @override
+  State<_FavoriteChatReorderTile> createState() =>
+      _FavoriteChatReorderTileState();
+}
+
+class _FavoriteChatReorderTileState extends State<_FavoriteChatReorderTile> {
+  bool _menuOpen = false;
+  bool _dragging = false;
+
+  void _showMenu(Offset globalPosition) {
+    if (_menuOpen || _dragging || !mounted) return;
+    _menuOpen = true;
+    _showChatActions(
+      context,
+      widget.ref,
+      widget.chat,
+      widget.localizations,
+      globalPosition,
+    ).whenComplete(() {
+      _menuOpen = false;
+    });
+  }
+
+  void _dismissMenuForDrag() {
+    _dragging = true;
+    if (!_menuOpen || !mounted) return;
+    _menuOpen = false;
+    Navigator.of(context, rootNavigator: true).maybePop();
+  }
+
+  void _finishPointer() {
+    _dragging = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _HoldMenuReorderStartListener(
+      index: widget.index,
+      onHold: _showMenu,
+      onDragStart: _dismissMenuForDrag,
+      onPointerDone: _finishPointer,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: FloatingGlass(
+          blur: false,
+          borderRadius: 18,
+          onTap: () => context.push(routeForChat(widget.chat)),
+          child: ChatTile(chat: widget.chat),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoldMenuReorderStartListener extends StatelessWidget {
+  const _HoldMenuReorderStartListener({
+    required this.child,
+    required this.index,
+    required this.onHold,
+    required this.onDragStart,
+    required this.onPointerDone,
+  });
+
+  final Widget child;
+  final int index;
+  final ValueChanged<Offset> onHold;
+  final VoidCallback onDragStart;
+  final VoidCallback onPointerDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) => _startDragging(context, event),
+      child: child,
+    );
+  }
+
+  void _startDragging(BuildContext context, PointerDownEvent event) {
+    final settings = MediaQuery.maybeGestureSettingsOf(context);
+    final list = SliverReorderableList.maybeOf(context);
+    list?.startItemDragReorder(
+      index: index,
+      event: event,
+      recognizer: _HoldMenuThenMoveMultiDragGestureRecognizer(
+        debugOwner: this,
+        onHold: onHold,
+        onDragStart: onDragStart,
+        onPointerDone: onPointerDone,
+      )..gestureSettings = settings,
+    );
+  }
+}
+
+class _HoldMenuThenMoveMultiDragGestureRecognizer
+    extends MultiDragGestureRecognizer {
+  _HoldMenuThenMoveMultiDragGestureRecognizer({
+    super.debugOwner,
+    required this.onHold,
+    required this.onDragStart,
+    required this.onPointerDone,
+  });
+
+  final ValueChanged<Offset> onHold;
+  final VoidCallback onDragStart;
+  final VoidCallback onPointerDone;
+
+  @override
+  MultiDragPointerState createNewPointerState(PointerDownEvent event) {
+    return _HoldMenuThenMovePointerState(
+      event.position,
+      event.kind,
+      gestureSettings,
+      onHold: onHold,
+      onDragStart: onDragStart,
+      onPointerDone: onPointerDone,
+    );
+  }
+
+  @override
+  String get debugDescription => 'hold menu then move reorder';
+}
+
+class _HoldMenuThenMovePointerState extends MultiDragPointerState {
+  _HoldMenuThenMovePointerState(
+    super.initialPosition,
+    super.kind,
+    super.gestureSettings, {
+    required this.onHold,
+    required this.onDragStart,
+    required this.onPointerDone,
+  }) {
+    _timer = Timer(kLongPressTimeout, _handleHold);
+  }
+
+  static const _dragAfterHoldSlop = 6.0;
+
+  final ValueChanged<Offset> onHold;
+  final VoidCallback onDragStart;
+  final VoidCallback onPointerDone;
+
+  Timer? _timer;
+  GestureMultiDragStartCallback? _starter;
+  bool _held = false;
+  bool _dragStarted = false;
+  bool _done = false;
+
+  void _handleHold() {
+    _timer = null;
+    final distance = pendingDelta?.distance ?? double.infinity;
+    if (distance > computeHitSlop(kind, gestureSettings)) {
+      resolve(GestureDisposition.rejected);
+      return;
+    }
+    _held = true;
+    onHold(initialPosition);
+    resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  void checkForResolutionAfterMove() {
+    final distance = pendingDelta?.distance ?? 0;
+    if (!_held) {
+      if (distance > computeHitSlop(kind, gestureSettings)) {
+        _timer?.cancel();
+        _timer = null;
+        resolve(GestureDisposition.rejected);
+      }
+      return;
+    }
+    if (_dragStarted || distance <= _dragAfterHoldSlop || _starter == null) {
+      return;
+    }
+    _dragStarted = true;
+    onDragStart();
+    _starter!(initialPosition);
+    _starter = null;
+  }
+
+  @override
+  void accepted(GestureMultiDragStartCallback starter) {
+    _starter = starter;
+    checkForResolutionAfterMove();
+  }
+
+  @override
+  void rejected() {
+    _timer?.cancel();
+    _timer = null;
+    _starter = null;
+    super.rejected();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    if (!_done) {
+      _done = true;
+      onPointerDone();
+    }
+    super.dispose();
+  }
 }
 
 /// Long-press actions for one chat. Favourite rows still expose this menu;
