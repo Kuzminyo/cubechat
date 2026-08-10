@@ -9,6 +9,7 @@ import '../../../../core/util/ui_activity.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../l10n/app_localizations.dart';
 import 'attach_island.dart';
+import 'gallery_viewer.dart';
 
 /// What the picker sheet resolves to when it closes.
 ///
@@ -211,13 +212,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       // Always advance, even on an empty page: paging is by index, so not
       // moving on would re-request the same page forever.
       _page++;
-      // Either signal is enough to keep going, because either one can be wrong
-      // on its own. The count can come back short of what the album really
-      // holds — some devices report the count for one bucket while paging reads
-      // another — and that alone stopped the grid dead at 120 photos with no
-      // way to scroll to anything older. A page returning full is the other
-      // direction: there is at least one more index to ask for.
-      _hasMore = _page * _pageSize < _total || page.length >= _pageSize;
+      _hasMore = _page * _pageSize < _total;
       if (page.isNotEmpty && mounted) {
         setState(() => _assets.addAll(page));
       } else {
@@ -289,14 +284,27 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   /// there and ticking in the grid are one act on one list — the grid is
   /// already up to date when the viewer closes. Only leaving the picker
   /// entirely comes back as a result.
-  /// Straight to the editor, no detour.
-  ///
-  /// Tapping a photo used to open a full-screen viewer offering "send" and
-  /// "edit". It sat between wanting to send a photo and sending it: the grid
-  /// already shows the photo, and the caption bar already sends it, so the
-  /// viewer's two buttons were a second copy of decisions the sheet had made
-  /// available a tap earlier. Tapping selects again; editing is a long press.
-  void _openEditor(AssetEntity asset) => _close(MediaPickerEdit(asset));
+  Future<void> _openViewer(int index) async {
+    final result = await Navigator.of(context).push<GalleryViewerResult>(
+      MaterialPageRoute<GalleryViewerResult>(
+        fullscreenDialog: true,
+        builder: (_) => GalleryViewer(
+          assets: _assets,
+          initialIndex: index,
+          isSelected: _selected.contains,
+          orderOf: (a) => _selected.indexOf(a) + 1,
+          onToggle: _toggle,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    switch (result.exit) {
+      case GalleryViewerExit.send:
+        _completeSelection();
+      case GalleryViewerExit.edit:
+        _close(MediaPickerEdit(result.asset));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -384,10 +392,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       onNotification: _onGalleryScroll,
       child: GridView.builder(
         controller: _scroll,
-        // Room under the last row for the caption bar, which appears over the
-        // grid the moment anything is selected — without it the bottom row of
-        // photos sat behind the bar and could not be reached.
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           mainAxisSpacing: 3,
@@ -407,11 +412,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
             key: ValueKey<String>(asset.id),
             asset: asset,
             order: _selected.indexOf(asset),
-            // Tap selects — anywhere on the cell, control included. Long-press
-            // opens the editor for that one photo.
-            onTap: () => _toggle(asset),
+            // Tap the photo to inspect it; tap its round control to select it.
+            // Long-press remains as a shortcut, but is never required.
+            onTap: () => _openViewer(i - 1),
             onToggle: () => _toggle(asset),
-            onLongPress: () => _openEditor(asset),
           );
         },
       ),
@@ -657,7 +661,6 @@ class _Thumb extends StatefulWidget {
     required this.order,
     required this.onTap,
     required this.onToggle,
-    required this.onLongPress,
   });
 
   final AssetEntity asset;
@@ -666,7 +669,6 @@ class _Thumb extends StatefulWidget {
   final int order;
   final VoidCallback onTap;
   final VoidCallback onToggle;
-  final VoidCallback onLongPress;
 
   @override
   State<_Thumb> createState() => _ThumbState();
@@ -693,7 +695,7 @@ class _ThumbState extends State<_Thumb> {
     final selected = widget.order >= 0;
     return GestureDetector(
       onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
+      onLongPress: widget.onToggle,
       child: Stack(
         fit: StackFit.expand,
         children: [
