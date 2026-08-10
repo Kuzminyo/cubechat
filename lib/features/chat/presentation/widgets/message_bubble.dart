@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/routing/back_gesture.dart';
 import '../../../../core/routing/page_transitions.dart';
+import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/theme/typography.dart';
@@ -31,6 +32,9 @@ import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
+import '../../../map/data/map_friend_link.dart';
+import '../../../map/data/map_friends_controller.dart';
+import '../../../map/data/map_presence_controller.dart';
 import 'emoji_picker_sheet.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
@@ -204,8 +208,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   ///
   /// A notifier rather than a field, and moved with `.value` rather than
   /// `setState`, because of what sits underneath it. Rebuilding this widget
-  /// rebuilds the whole bubble — the photo, the caption, the reaction row, the
-  /// read-by chip, every `MediaQuery` and localization lookup in the subtree —
+  /// rebuilds the whole bubble � the photo, the caption, the reaction row, the
+  /// read-by chip, every `MediaQuery` and localization lookup in the subtree �
   /// and the offset was being changed twice per gesture at frame rate: once per
   /// pointer move while the finger drags, then again on every tick of the
   /// spring coming home. On a 120 Hz screen that was the entire bubble rebuilt
@@ -214,7 +218,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   ///
   /// The subtree is now built once and handed to [ValueListenableBuilder] as
   /// `child`, so a frame of this gesture costs one `Transform.translate` and
-  /// nothing else. The animation is unchanged — same curve, same duration, same
+  /// nothing else. The animation is unchanged � same curve, same duration, same
   /// distance; only the per-frame bill for it is gone.
   final ValueNotifier<double> _dragX = ValueNotifier<double>(0);
 
@@ -246,7 +250,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   bool get _canReact => widget.message.wireId != null;
 
   /// A reply needs the transport id everyone else filed the message under, and
-  /// somewhere to compose it — the composer only builds reply frames in 1:1,
+  /// somewhere to compose it � the composer only builds reply frames in 1:1,
   /// so offering the gesture in a channel would swallow it silently.
   bool get _canReply =>
       widget.message.wireId != null && !widget.chatId.startsWith('#');
@@ -262,7 +266,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
-  /// Double-tap: the one-gesture path to the reaction people actually use —
+  /// Double-tap: the one-gesture path to the reaction people actually use �
   /// which is now the last one *they* used, not a constant in this file.
   void _quickReact() {
     if (!_canReact) return;
@@ -297,7 +301,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (_swipeFrom != 0) _swipe.forward(from: 0);
   }
 
-  /// Anything with words in it can be copied — including the caption on a
+  /// Anything with words in it can be copied � including the caption on a
   /// photo. A voice note or a bare image has nothing to put on the clipboard.
   bool get _copyingRestricted =>
       ref
@@ -309,10 +313,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ? SharedContact.tryParse(widget.message.text)
       : null;
 
-  /// A position rides inside a text message — see [SharedLocation] for why —
+  /// A position rides inside a text message � see [SharedLocation] for why �
   /// so it is recognised the same way a shared contact is.
   SharedLocation? get _sharedLocation => widget.message.kind == MessageKind.text
       ? SharedLocation.tryParse(widget.message.text)
+      : null;
+
+  MapFriendLink? get _mapFriendLink => widget.message.kind == MessageKind.text
+      ? MapFriendLink.tryParse(widget.message.text)
       : null;
 
   bool get _canCopy => widget.message.text.trim().isNotEmpty;
@@ -394,7 +402,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     ),
                   ),
                 // The way out of the six. Everything the system can draw is
-                // behind it, and whatever is chosen there joins the strip — so
+                // behind it, and whatever is chosen there joins the strip � so
                 // the row in front of you drifts toward the emoji you actually
                 // use rather than staying the set that shipped.
                 Builder(
@@ -415,7 +423,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             ),
           ),
         // First, under the reactions. Selecting is how you act on more than
-        // one message, so it is the entry to every bulk action in the chat —
+        // one message, so it is the entry to every bulk action in the chat �
         // and buried between Edit and Delete it read as a rarely-wanted
         // setting. A tester asked for a way to start selecting by holding a
         // message, not knowing this was already it.
@@ -424,7 +432,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         if (widget.message.wireId != null)
           _menuRow(
               'reply', Icons.reply, t.chatReplyAction, AppColors.textOnGlass),
-        // A pin is conversation state, so it needs the shared transport id —
+        // A pin is conversation state, so it needs the shared transport id �
         // and either side may pin either side's message.
         if (widget.message.wireId != null)
           _menuRow(
@@ -507,7 +515,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// The quote box shown at the top of a reply bubble.
   Widget _quotedBox(String wireId) {
     final quoted = _resolveQuoted(wireId);
-    final preview = quoted == null ? '…' : _replyPreview(quoted);
+    final preview = quoted == null ? '�' : _replyPreview(quoted);
     // Tappable: a quote names a message, and the thing anyone wants from it is
     // to see the message. Nothing to go to when the original is gone, so the
     // tap is withheld rather than bouncing off a toast.
@@ -560,18 +568,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   static String _replyPreview(Message m) {
     final contact = SharedContact.tryParse(m.text);
     if (contact != null) return contact.displayName;
+    final mapLink = MapFriendLink.tryParse(m.text);
+    if (mapLink != null) return mapLink.displayName;
     switch (m.kind) {
       case MessageKind.image:
-        return '📷';
+        return '??';
       case MessageKind.audio:
-        return '🎤';
+        return '??';
       case MessageKind.file:
-        return '📎 ${m.fileName ?? ''}'.trimRight();
+        return '?? ${m.fileName ?? ''}'.trimRight();
       case MessageKind.poll:
-        return '📊 ${m.text}';
+        return '?? ${m.text}';
       case MessageKind.text:
         final t = m.text.replaceAll('\n', ' ').trim();
-        return t.length > 80 ? '${t.substring(0, 80)}…' : t;
+        return t.length > 80 ? '${t.substring(0, 80)}�' : t;
     }
   }
 
@@ -581,14 +591,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// This is where the read time lives rather than in the bubble: the bubble
   /// already carries a clock and a tick, and a second timestamp on every line
   /// would crowd the conversation for something you only look up occasionally.
-  /// It works for a photo or a voice note exactly as it does for text — the
+  /// It works for a photo or a voice note exactly as it does for text � the
   /// long-press covers the whole bubble, and media now carries the wireId a
   /// receipt refers to.
   PopupMenuItem<String> _detailsHeader(AppLocalizations t) {
     final m = widget.message;
     final readAt = m.readAt;
     // In a channel the answer to "who has seen this" is a list, because there
-    // is no roster to count against — only the people who said so. Newest last,
+    // is no roster to count against � only the people who said so. Newest last,
     // so the order matches the order they arrived in.
     final readers = m.readBy.entries.toList()
       ..sort((a, b) => a.value.at.compareTo(b.value.at));
@@ -614,7 +624,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             ),
           for (final r in readers)
             Text(
-              '${r.value.name} · '
+              '${r.value.name} � '
               '${formatMessageDetailsTime(context, r.value.at)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -658,7 +668,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   ///
   /// Forwarding is a fresh send, not a relay of the original frame: the text
   /// goes out under our own identity, signed and sealed for the new recipient.
-  /// That is the only shape that works here — the original is encrypted to a
+  /// That is the only shape that works here � the original is encrypted to a
   /// session the new chat has no key for, so it could not be passed along even
   /// if we wanted to.
   Future<void> _promptForward() async {
@@ -740,6 +750,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         false;
     final sharedContact = _sharedContact;
     final sharedLocation = _sharedLocation;
+    final mapFriendLink = _mapFriendLink;
+    final activeMapFriends = ref.watch(mapFriendsControllerProvider);
 
     // Marked in the bubble too, not only in the banner up top: scrolling back
     // through history, you want to see which line the banner is pointing at.
@@ -749,7 +761,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             .read(pinnedControllerProvider.notifier)
             .isPinned(widget.chatId, message.wireId!);
 
-    // Set for a moment after a jump lands on this message — from a tapped
+    // Set for a moment after a jump lands on this message � from a tapped
     // quote, the pinned bar, or a search result. Without it the screen simply
     // moves and nothing says which line you were sent to.
     final highlighted =
@@ -770,14 +782,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       bottomRight: Radius.circular(mine ? 6 : 18),
     );
     // Each bubble is its own levitating island, the same principle the chat
-    // list and the nav bar use — nothing welded behind it, just a pane over the
+    // list and the nav bar use � nothing welded behind it, just a pane over the
     // aurora. It can't be a FloatingGlass (that surface is deliberately neutral
     // and these have to stay colour-coded by sender), so it wears the shared
     // shadow recipe over its own fill.
     //
     // No BackdropFilter here, deliberately. Every bubble used to run its own
     // gaussian, which on a full screen of conversation is a dozen blur passes
-    // per frame — the most expensive thing in the app, on its most-scrolled
+    // per frame � the most expensive thing in the app, on its most-scrolled
     // screen. What it sampled was the aurora: four wide radial gradients.
     // Blurring a soft gradient returns the same soft gradient, so the passes
     // bought nothing visible (the same reasoning FloatingGlass.blur already
@@ -840,7 +852,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   ),
                   // The caption, which used to go missing entirely. It rides in
                   // `text`, and the chain below renders `text` only for a
-                  // message that matched none of these branches — so a photo
+                  // message that matched none of these branches � so a photo
                   // took the image branch and its caption was never drawn,
                   // however carefully it had been typed and delivered.
                   if (message.imageCaption case final caption?) ...[
@@ -856,7 +868,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a
                   // received file unopenable on the device it was sent to,
-                  // which is not a privacy control — it is the file simply not
+                  // which is not a privacy control � it is the file simply not
                   // working. The restriction belongs one level in, on the
                   // share-to-another-app fallback.
                   FileBubble(
@@ -867,6 +879,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   PollBubble(
                     message: message,
                     chatId: widget.chatId,
+                  )
+                else if (mapFriendLink != null && !widget.chatId.startsWith('#'))
+                  _MapFriendLinkBubble(
+                    link: mapFriendLink,
+                    active: activeMapFriends.contains(widget.chatId),
+                    mine: message.isMine,
+                    onTap: () async {
+                      if (mapFriendLink.kind == MapFriendLinkKind.invite &&
+                          !message.isMine &&
+                          !activeMapFriends.contains(widget.chatId)) {
+                        await ref
+                            .read(mapFriendsControllerProvider.notifier)
+                            .activate(widget.chatId);
+                        await ref.read(messagingServiceProvider).sendText(
+                              widget.chatId,
+                              MapFriendLink.accepted(
+                                displayName:
+                                    ref.read(nicknameControllerProvider),
+                              ).encode(),
+                            );
+                        await ref
+                            .read(mapPresenceControllerProvider.notifier)
+                            .pokeNow();
+                      }
+                      if (!context.mounted) return;
+                      context.go('/map');
+                    },
                   )
                 else if (sharedLocation != null)
                   _SharedLocationBubble(location: sharedLocation)
@@ -901,7 +940,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           scale: Tween<double>(begin: 0.92, end: 1.0).animate(_scale),
           alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
           // The jump marker is a band across the whole row, edge to edge, the
-          // way Telegram does it — not a ring around the bubble. A ring is
+          // way Telegram does it � not a ring around the bubble. A ring is
           // read as a property of the message ("this one is special"); a band
           // is read as a place ("you were brought here"), which is what a
           // tapped quote, the pinned bar and a search hit all mean. It fades
@@ -919,11 +958,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               // Horizontal only: a vertical drag stays with the list, so the
               // conversation scrolls exactly as before and the gesture arena
               // decides between them on direction rather than on timing.
-              // Swiping to reply is off while selecting — the row means one
+              // Swiping to reply is off while selecting � the row means one
               // thing at a time.
               // Holding a row once selection has started ticks it, rather than
-              // doing nothing at all. The bubble's own long-press — the one
-              // that opens the action menu — is suppressed while selecting, so
+              // doing nothing at all. The bubble's own long-press � the one
+              // that opens the action menu � is suppressed while selecting, so
               // without this a hold in that mode was simply dead, and holding
               // is what people do when they have just been told holding is how
               // you select.
@@ -942,7 +981,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // back gesture instead of being swallowed here. A plain
                 // horizontal drag detector accepts at the touch slop whichever
                 // way the finger went and then clamps the offset to zero on the
-                // right — winning the arena to do nothing, which is why
+                // right � winning the arena to do nothing, which is why
                 // swiping back did not work over the conversation.
                 gestures: selecting
                     ? const <Type, GestureRecognizerFactory>{}
@@ -961,7 +1000,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   valueListenable: _dragX,
                 // Rebuilt every frame of the gesture: a translate and, past a
                 // pixel of travel, the hint. The bubble itself arrives as
-                // `child` — built once, moved cheaply.
+                // `child` � built once, moved cheaply.
                 builder: (_, dragX, child) => Stack(
                   children: [
                     Transform.translate(
@@ -1062,7 +1101,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 /// A shared position: what it is, how precise, and a way out to a real map.
 ///
 /// No tiles. Rendering a map means fetching the square somebody is standing in
-/// from a tile server, which tells that server where they are — see
+/// from a tile server, which tells that server where they are � see
 /// [SharedLocation.geoUri]. The phone's own maps app is where the user already
 /// decided how they feel about that.
 class _SharedLocationBubble extends StatelessWidget {
@@ -1155,6 +1194,96 @@ class _SharedLocationBubble extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapFriendLinkBubble extends StatelessWidget {
+  const _MapFriendLinkBubble({
+    required this.link,
+    required this.active,
+    required this.mine,
+    required this.onTap,
+  });
+
+  final MapFriendLink link;
+  final bool active;
+  final bool mine;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final accepted = active || link.kind == MapFriendLinkKind.accepted;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => unawaited(onTap()),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 210, maxWidth: 250),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    accepted
+                        ? Icons.location_on_rounded
+                        : Icons.person_add_alt_1_rounded,
+                    size: 19,
+                    color: AppColors.brandPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      accepted ? t.mapTitle : t.mapInviteTitle,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                link.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 12.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    accepted || mine
+                        ? Icons.map_rounded
+                        : Icons.check_circle_rounded,
+                    size: 15,
+                    color: AppColors.brandPrimary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    accepted ? t.mapTitle : t.mapInviteAction(1),
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1268,7 +1397,7 @@ class _SwipeReplyHint extends StatelessWidget {
   }
 }
 
-/// Row of reaction chips shown under a bubble. Each chip is `emoji ×count`
+/// Row of reaction chips shown under a bubble. Each chip is `emoji ?count`
 /// (count hidden when 1); a chip the local user contributed to is tinted.
 class _ReactionsRow extends StatelessWidget {
   const _ReactionsRow({required this.reactions, required this.onTap});
@@ -1300,14 +1429,14 @@ class _ReactionsRow extends StatelessWidget {
 /// Deliberately just a count. The names and times are one tap away in the same
 /// details popup that already answers "when was this sent / read", because a
 /// channel with a dozen members would otherwise put a dozen names under every
-/// line — and the count is what anyone glancing at the chat actually wants.
+/// line � and the count is what anyone glancing at the chat actually wants.
 class _ReadByChip extends StatelessWidget {
   const _ReadByChip({required this.label, required this.onTapAt});
 
   final String label;
 
   /// Takes the tap's global position, because the details popup opens anchored
-  /// to where it was tapped — same as a long-press on the bubble itself.
+  /// to where it was tapped � same as a long-press on the bubble itself.
   final void Function(Offset) onTapAt;
 
   @override
@@ -1399,7 +1528,7 @@ class _ReactionChip extends StatelessWidget {
 
 /// In-bubble image rendering. While the bytes are still in flight (sender
 /// hasn't finished chunking, or receiver hasn't reassembled), shows a
-/// placeholder block with a spinner — the bubble still occupies space so
+/// placeholder block with a spinner � the bubble still occupies space so
 /// the list doesn't reflow when the image finally appears.
 class _ImagePayload extends StatelessWidget {
   const _ImagePayload({
@@ -1414,7 +1543,7 @@ class _ImagePayload extends StatelessWidget {
   /// Quick-reaction handler, handed down from the bubble.
   ///
   /// A photo owns its own tap (it opens the viewer), and a child's tap wins the
-  /// arena outright — so without this the second tap of a double-tap would just
+  /// arena outright � so without this the second tap of a double-tap would just
   /// open the gallery and the reaction would never fire. Registering both on the
   /// same detector lets Flutter hold the single tap until the double-tap window
   /// closes, which costs the viewer a barely perceptible delay and is what makes
@@ -1427,7 +1556,7 @@ class _ImagePayload extends StatelessWidget {
     final fileExists = path != null && MediaPaths.exists(path);
 
     // A view-once photo never renders as a thumbnail. The whole point is that
-    // it is looked at deliberately, once — a picture you can scroll past twice
+    // it is looked at deliberately, once � a picture you can scroll past twice
     // in the transcript has already been seen more than once.
     if (message.viewOnce) {
       return ConstrainedBox(
@@ -1461,8 +1590,8 @@ class _ImagePayload extends StatelessWidget {
                   fit: BoxFit.cover,
                   // Decoded at the size it is drawn, not the size it was sent.
                   //
-                  // Without this the bubble decodes the whole photo — the mesh
-                  // encoder tops out around 1600 px, so that is a 1600×1600
+                  // Without this the bubble decodes the whole photo � the mesh
+                  // encoder tops out around 1600 px, so that is a 1600?1600
                   // bitmap, ten megabytes of it, to fill a box 220 points
                   // wide. Every photo in the conversation, held in the image
                   // cache. Scrolling a chat with pictures in it then costs a
@@ -1499,12 +1628,12 @@ class _ImagePayload extends StatelessWidget {
 /// Never for our own: a photo you sent is gone from here the moment it leaves,
 /// the way Telegram treats one. It used to stay openable until the recipient's
 /// ack came back, which read as "still mine for now" and was worse than it
-/// sounds — the viewer fired the same "I have seen it" notice for it, so
+/// sounds � the viewer fired the same "I have seen it" notice for it, so
 /// glancing at what you sent destroyed the copy the other person had not
 /// opened. There is nothing to look at anyway now: an outgoing view-once photo
 /// is never written to this phone's disk.
 ///
-/// [fileExists] is the received half — the bytes may still be arriving, or have
+/// [fileExists] is the received half � the bytes may still be arriving, or have
 /// already been burned.
 bool viewOnceCanBeOpened(Message message, {required bool fileExists}) =>
     !message.isMine && !message.viewOnceConsumed && fileExists;
@@ -1513,7 +1642,7 @@ bool viewOnceCanBeOpened(Message message, {required bool fileExists}) =>
 /// arriving, or one of ours that was sent.
 ///
 /// Deliberately never the picture itself. Tapping opens
-/// [ViewOnceMediaScreen] — not the swipeable gallery, which has Share and
+/// [ViewOnceMediaScreen] � not the swipeable gallery, which has Share and
 /// Save buttons and would happily page from this photo to every other one in
 /// the chat.
 class _ViewOncePayload extends ConsumerWidget {
@@ -1732,3 +1861,5 @@ class _BubbleMeta extends StatelessWidget {
     );
   }
 }
+
+

@@ -11,7 +11,7 @@ import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/hidden_chats_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
-import '../../features/chats/data/read_markers_controller.dart';
+import '../../features/map/data/map_friends_controller.dart';
 import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
@@ -70,7 +70,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // Which cuts of the chat list you keep above it says something about who you
   // talk to, and a fresh install has no folders at all.
   await ref.read(chatFoldersControllerProvider.notifier).clear();
-  await ref.read(readMarkersControllerProvider.notifier).clear();
+    await ref.read(mapFriendsControllerProvider.notifier).clear();
   await ref.read(pinnedControllerProvider.notifier).clear();
   await ref.read(draftsControllerProvider.notifier).clearAll();
   await ref.read(fileTransferControllerProvider.notifier).clearAll();
@@ -120,3 +120,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   ref.invalidate(prekeyServiceProvider);
   ref.invalidate(messagingServiceProvider);
 }
+
+
+
+

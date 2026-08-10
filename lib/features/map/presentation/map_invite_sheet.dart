@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_sheet.dart';
@@ -8,12 +10,11 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import '../data/map_friend_link.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 
 Future<void> showMapInviteSheet(BuildContext context) => showGlassSheet<void>(
       context: context,
-      // This screen is inside a branch navigator, while the tab bar belongs
-      // to the root shell. A modal invitation must sit above both.
       useRootNavigator: true,
       builder: (_) => const _MapInviteSheet(),
     );
@@ -29,7 +30,19 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
   final _selected = <String>{};
   bool _sending = false;
 
-  Future<void> _send(List<Chat> chats) async {
+  Future<void> _copyLink(String link) async {
+    final t = AppLocalizations.of(context);
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      t.chatCopied,
+      icon: Icons.copy_rounded,
+      tone: ToastTone.success,
+    );
+  }
+
+  Future<void> _send(List<Chat> chats, String link) async {
     if (_selected.isEmpty || _sending) return;
     setState(() => _sending = true);
 
@@ -41,7 +54,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
     for (final chat in chats) {
       if (!_selected.contains(chat.id)) continue;
       try {
-        await messaging.sendText(chat.peerId, t.mapInviteMessage);
+        await messaging.sendText(chat.peerId, link);
         sent++;
       } catch (_) {
         // One unavailable contact must not prevent the remaining invitations.
@@ -61,11 +74,13 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final nickname = ref.watch(nicknameControllerProvider);
+    final inviteLink = MapFriendLink.invite(displayName: nickname).encode();
     final chats = ref
         .watch(chatsProvider)
         .where((chat) => !chat.isChannel)
         .toList(growable: false);
-    final height = MediaQuery.sizeOf(context).height * 0.72;
+    final height = MediaQuery.sizeOf(context).height * 0.78;
 
     return SafeArea(
       top: false,
@@ -126,7 +141,43 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                decoration: BoxDecoration(
+                  color: AppColors.glassFill,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.glass(0.14)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        inviteLink,
+                        maxLines: 3,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 12.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => _copyLink(inviteLink),
+                      tooltip: t.chatCopyAction,
+                      icon: Icon(
+                        Icons.copy_rounded,
+                        color: AppColors.brandPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             if (chats.isEmpty)
               Expanded(
                 child: Center(
@@ -192,8 +243,9 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed:
-                      _selected.isEmpty || _sending ? null : () => _send(chats),
+                  onPressed: _selected.isEmpty || _sending
+                      ? null
+                      : () => _send(chats, inviteLink),
                   icon: _sending
                       ? const SizedBox(
                           width: 17,

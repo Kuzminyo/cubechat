@@ -207,6 +207,10 @@ class ChatsListScreen extends ConsumerWidget {
       return c.peerName.toLowerCase().contains(query) ||
           c.lastMessage.toLowerCase().contains(query);
     }).toList();
+    final canReorderFavorites = query.isEmpty &&
+        (selected == ChatFolder.favorites || folder == null) &&
+        filtered.any((c) => c.isFavorite);
+    final favoriteCount = filtered.takeWhile((chat) => chat.isFavorite).length;
 
     return SafeArea(
       child: CustomScrollView(
@@ -309,7 +313,7 @@ class ChatsListScreen extends ConsumerWidget {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-              // Dragging to reorder, but only in the Favourites folder.
+              // Favourite rows move only when the card itself is held and dragged.
               //
               // That is the one view where every row is a favourite, so a drag
               // has an unambiguous meaning and a destination that is always
@@ -317,26 +321,87 @@ class ChatsListScreen extends ConsumerWidget {
               // starred row would be asking to be ordered against chats that
               // have no order — they are sorted by when somebody last wrote —
               // and there is no answer to give.
-              sliver: selected == ChatFolder.favorites
+              sliver: canReorderFavorites
                   ? SliverReorderableList(
                       itemCount: filtered.length,
-                      onReorder: (from, to) => ref
-                          .read(favoritesControllerProvider.notifier)
-                          .reorder(from, to),
+                      onReorder: (from, to) {
+                        if (from >= favoriteCount) return;
+                        var target = to;
+                        if (target > from) target -= 1;
+                        final capped = target.clamp(0, favoriteCount - 1);
+                        ref
+                            .read(favoritesControllerProvider.notifier)
+                            .reorder(from, capped);
+                      },
                       itemBuilder: (_, i) {
                         final chat = filtered[i];
+                        final draggableFavorite =
+                            chat.isFavorite && i < favoriteCount;
+                        final content = FloatingGlass(
+                          blur: false,
+                          borderRadius: 18,
+                          onTap: () => context.push(routeForChat(chat)),
+                          onLongPressAt: draggableFavorite
+                              ? null
+                              : (pos) => _showChatActions(
+                                    context,
+                                    ref,
+                                    chat,
+                                    t,
+                                    pos,
+                                  ),
+                          child: draggableFavorite
+                              ? Stack(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 42),
+                                      child: ChatTile(chat: chat),
+                                    ),
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Builder(
+                                        builder: (buttonContext) => IconButton(
+                                          icon: Icon(
+                                            Icons.more_vert_rounded,
+                                            color: AppColors.textOnGlassDim,
+                                          ),
+                                          onPressed: () {
+                                            final box =
+                                                buttonContext.findRenderObject()
+                                                    as RenderBox?;
+                                            final pos = box == null
+                                                ? Offset.zero
+                                                : box.localToGlobal(
+                                                    box.size
+                                                        .center(Offset.zero),
+                                                  );
+                                            _showChatActions(
+                                              context,
+                                              ref,
+                                              chat,
+                                              t,
+                                              pos,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : ChatTile(chat: chat),
+                        );
+                        final row = Padding(
+                          key: draggableFavorite ? null : ValueKey(chat.id),
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: content,
+                        );
+                        if (!draggableFavorite) return row;
                         return ReorderableDelayedDragStartListener(
                           key: ValueKey(chat.id),
                           index: i,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: FloatingGlass(
-                              blur: false,
-                              borderRadius: 18,
-                              onTap: () => context.push(routeForChat(chat)),
-                              child: ChatTile(chat: chat),
-                            ),
-                          ),
+                          child: row,
                         );
                       },
                     )
@@ -532,8 +597,8 @@ Future<void> _confirmWipe(
   );
 }
 
-/// Long-press actions for one chat: star it, or delete it. A small popup
-/// anchored at [pos], floating above the nav bar.
+/// Long-press actions for one chat. Favourite rows still expose this menu;
+/// their ordering is handled by holding and dragging the card itself.
 Future<void> _showChatActions(
   BuildContext context,
   WidgetRef ref,
@@ -542,56 +607,323 @@ Future<void> _showChatActions(
   Offset pos,
 ) async {
   final favorited = chat.isFavorite;
+  final blocked = !chat.isChannel &&
+      ref.read(knownPeersControllerProvider.notifier).isBlocked(chat.id);
 
   final action = await showContextPopup<String>(
     context: context,
     globalPosition: pos,
     items: [
-      PopupMenuItem<String>(
-        value: 'favorite',
-        height: 44,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(favorited ? Icons.star : Icons.star_border,
-                size: 19, color: AppColors.brandPrimary),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                favorited ? t.chatsActionUnfavorite : t.chatsActionFavorite,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-              ),
-            ),
-          ],
+      _chatMenuItem(
+        'folder',
+        Icons.folder_outlined,
+        _chatText(
+          context,
+          uk: '\u0414\u043e\u0434\u0430\u0442\u0438 \u0432 \u043f\u0430\u043f\u043a\u0443',
+          en: 'Add to folder',
         ),
       ),
-      PopupMenuItem<String>(
-        value: 'delete',
-        height: 44,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.delete_outline, size: 19, color: AppColors.danger),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(t.chatsActionDelete,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(color: AppColors.danger, fontSize: 14)),
-            ),
-          ],
+      _chatMenuItem(
+        'unread',
+        Icons.mark_chat_unread_outlined,
+        _chatText(
+          context,
+          uk: '\u041f\u043e\u0437\u043d\u0430\u0447\u0438\u0442\u0438 \u044f\u043a \u043d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u0435',
+          en: 'Mark as unread',
         ),
+      ),
+      _chatMenuItem(
+        'clear',
+        Icons.cleaning_services_outlined,
+        _chatText(
+          context,
+          uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438 \u0456\u0441\u0442\u043e\u0440\u0456\u044e \u0447\u0430\u0442\u0430',
+          en: 'Clear chat history',
+        ),
+      ),
+      if (!chat.isChannel)
+        _chatMenuItem(
+          'block',
+          blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+          blocked ? t.peerUnblock : t.peerBlock,
+          color: blocked ? AppColors.brandPrimary : AppColors.danger,
+        ),
+      _chatMenuItem(
+        'favorite',
+        favorited ? Icons.star : Icons.star_border,
+        favorited ? t.chatsActionUnfavorite : t.chatsActionFavorite,
+        color: AppColors.brandPrimary,
+      ),
+      _chatMenuItem(
+        'delete',
+        Icons.delete_outline,
+        t.chatsActionDelete,
+        color: AppColors.danger,
       ),
     ],
   );
 
-  if (action == 'favorite') {
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case 'folder':
+      await _showAddToFolderDialog(context, ref, chat, t);
+      return;
+    case 'unread':
+      await _markChatUnread(context, ref, chat);
+      return;
+    case 'clear':
+      await _confirmAndClearHistory(context, ref, chat);
+      return;
+    case 'block':
+      await _toggleBlocked(context, ref, chat, blocked: blocked, t: t);
+      return;
+    case 'favorite':
+      await ref.read(favoritesControllerProvider.notifier).toggle(chat.id);
+      return;
+    case 'delete':
+      await _confirmAndDeleteChat(context, ref, chat, t);
+      return;
+  }
+}
+
+PopupMenuItem<String> _chatMenuItem(
+  String value,
+  IconData icon,
+  String label, {
+  Color? color,
+}) {
+  final effectiveColor = color ?? AppColors.textOnGlass;
+  return PopupMenuItem<String>(
+    value: value,
+    height: 44,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 19, color: effectiveColor),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: effectiveColor, fontSize: 14),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+String _chatText(
+  BuildContext context, {
+  required String uk,
+  required String en,
+}) =>
+    Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
+
+Future<void> _showAddToFolderDialog(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+  AppLocalizations t,
+) async {
+  final choices = <ChatFolder>[
+    ChatFolder.favorites,
+    ChatFolder.unread,
+    if (chat.isChannel) ChatFolder.channels else ChatFolder.direct,
+    if (chat.isOnline || chat.isReachableViaMesh) ChatFolder.online,
+  ];
+
+  final picked = await showDialog<ChatFolder>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
+      ),
+      title: Text(
+        _chatText(
+          context,
+          uk: '\u0414\u043e\u0434\u0430\u0442\u0438 \u0432 \u043f\u0430\u043f\u043a\u0443',
+          en: 'Add to folder',
+        ),
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      children: [
+        for (final folder in choices)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(folder),
+            child: _MenuRow(
+              icon: folderIcon(folder),
+              label: folderLabel(t, folder),
+            ),
+          ),
+        SimpleDialogOption(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(
+            t.cancel,
+            style: TextStyle(color: AppColors.textOnGlassDim),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (picked == null) return;
+
+  if (picked == ChatFolder.favorites && !chat.isFavorite) {
     await ref.read(favoritesControllerProvider.notifier).toggle(chat.id);
+  }
+  if (picked == ChatFolder.unread) {
+    await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
+  }
+
+  final folders = ref.read(chatFoldersControllerProvider.notifier);
+  if (!folders.isOn(picked)) await folders.toggle(picked);
+  ref.read(selectedFolderProvider.notifier).state = picked;
+}
+
+Future<void> _markChatUnread(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat, {
+  bool showToast = true,
+}) async {
+  final messages = ref.read(messagesControllerProvider)[chat.id] ?? const [];
+  final hasInbound = messages.any((m) => !m.isMine);
+  if (!hasInbound) {
+    if (showToast && context.mounted) {
+      showGlassToast(
+        context,
+        _chatText(
+          context,
+          uk: '\u041d\u0435\u043c\u0430\u0454 \u0432\u0445\u0456\u0434\u043d\u0438\u0445 \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u044c',
+          en: 'No incoming messages',
+        ),
+        icon: Icons.mark_chat_unread_outlined,
+        tone: ToastTone.neutral,
+      );
+    }
     return;
   }
-  if (action != 'delete' || !context.mounted) return;
+  await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
+  if (showToast && context.mounted) {
+    showGlassToast(
+      context,
+      _chatText(
+        context,
+        uk: '\u041f\u043e\u0437\u043d\u0430\u0447\u0435\u043d\u043e \u044f\u043a \u043d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u0435',
+        en: 'Marked as unread',
+      ),
+      icon: Icons.mark_chat_unread_outlined,
+      tone: ToastTone.success,
+    );
+  }
+}
 
+Future<void> _confirmAndClearHistory(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
+      ),
+      title: Text(
+        _chatText(
+          context,
+          uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438 \u0456\u0441\u0442\u043e\u0440\u0456\u044e \u0447\u0430\u0442\u0430?',
+          en: 'Clear chat history?',
+        ),
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Text(
+        _chatText(
+          context,
+          uk: '\u041f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u043d\u044f \u0431\u0443\u0434\u0435 \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e \u0442\u0456\u043b\u044c\u043a\u0438 \u043d\u0430 \u0446\u044c\u043e\u043c\u0443 \u043f\u0440\u0438\u0441\u0442\u0440\u043e\u0457. \u0427\u0430\u0442, \u043a\u043e\u043d\u0442\u0430\u043a\u0442 \u0456 \u043e\u0431\u0440\u0430\u043d\u0456 \u0437\u0430\u043b\u0438\u0448\u0430\u0442\u044c\u0441\u044f.',
+          en: 'Messages will be removed only on this device. The chat, contact, and favorite state stay.',
+        ),
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(
+            AppLocalizations.of(ctx).cancel,
+            style: TextStyle(color: AppColors.textOnGlassDim),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(
+            _chatText(
+              context,
+              uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438',
+              en: 'Clear',
+            ),
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+
+  await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
+  await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
+  await ref.read(pinnedControllerProvider.notifier).forget(chat.id);
+  if (!context.mounted) return;
+  showGlassToast(
+    context,
+    _chatText(
+      context,
+      uk: '\u0406\u0441\u0442\u043e\u0440\u0456\u044e \u043e\u0447\u0438\u0449\u0435\u043d\u043e',
+      en: 'History cleared',
+    ),
+    icon: Icons.cleaning_services_outlined,
+    tone: ToastTone.success,
+  );
+}
+
+Future<void> _toggleBlocked(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat, {
+  required bool blocked,
+  required AppLocalizations t,
+}) async {
+  if (chat.isChannel) return;
+  await ref.read(knownPeersControllerProvider.notifier).setBlocked(
+        chat.id,
+        !blocked,
+      );
+  if (!context.mounted) return;
+  showGlassToast(
+    context,
+    blocked ? t.peerUnblock : t.peerBlockedNote,
+    icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+    tone: blocked ? ToastTone.success : ToastTone.danger,
+  );
+}
+
+Future<void> _confirmAndDeleteChat(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+  AppLocalizations t,
+) async {
   // Retracting only makes sense 1:1 and only for messages we sent: the wire
   // format can withdraw our own, and nothing can compel the other side to drop
   // theirs. Offering the choice on a channel, or when we have nothing of our

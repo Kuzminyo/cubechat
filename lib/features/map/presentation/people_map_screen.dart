@@ -22,6 +22,7 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
+import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
 import 'map_invite_sheet.dart';
 
@@ -137,6 +138,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
       _failure = failure;
       if (fix != null) _me = fix;
     });
+    if (fix != null) {
+      unawaited(ref.read(mapPresenceControllerProvider.notifier).pokeNow());
+    }
     if (fix != null && (recenter || !_centered)) {
       final point = LatLng(fix.latitude, fix.longitude);
       _centered = true;
@@ -287,11 +291,22 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           Positioned(
             right: 16,
             bottom: overlayBottom,
-            child: _MapActionButton(
-              icon: Icons.my_location_rounded,
-              tooltip: t.mapCenterMe,
-              onTap: _locating ? null : _centerOnMe,
-              loading: _locating,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _MapActionButton(
+                  icon: Icons.person_search_rounded,
+                  tooltip: t.contactsTitle,
+                  onTap: () => context.go('/contacts'),
+                ),
+                const SizedBox(height: 12),
+                _MapActionButton(
+                  icon: Icons.my_location_rounded,
+                  tooltip: t.mapCenterMe,
+                  onTap: _locating ? null : _centerOnMe,
+                  loading: _locating,
+                ),
+              ],
             ),
           ),
           Positioned(
@@ -851,3 +866,6 @@ class _MapActionButton extends StatelessWidget {
         ),
       );
 }
+
+
+

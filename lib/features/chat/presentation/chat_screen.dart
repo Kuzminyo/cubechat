@@ -59,7 +59,7 @@ import 'media_preview_screen.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
-import 'widgets/message_bubble.dart';
+import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
 import 'widgets/voice_island.dart';
 import 'widgets/voice_trim_bar.dart';
 import 'widgets/chat_wallpaper_layer.dart';
