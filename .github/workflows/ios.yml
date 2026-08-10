@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -110,7 +110,7 @@ jobs:
           ls -lh cubechat-unsigned.ipa
 
       - name: Publish IPA to rolling prerelease
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ipa-latest
           name: Latest unsigned IPA (${{ github.ref_name }})
@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload IPA as workflow artifact
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: cubechat-ios-unsigned-${{ github.sha }}
           path: build/ios/iphoneos/cubechat-unsigned.ipa
