@@ -173,13 +173,27 @@ Future<void> forwardTextTo(WidgetRef ref, Chat target, String text) {
 }
 
 class MessageBubble extends ConsumerStatefulWidget {
-  const MessageBubble({super.key, required this.message, required this.chatId});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    required this.chatId,
+    this.album,
+  });
 
   final Message message;
 
   /// The chat this bubble lives in (pubkey-hex peer id or `#channel`). Needed
   /// to route a reaction back over the wire.
   final String chatId;
+
+  /// Every photo of the batch this message opens, [message] included, or null
+  /// for a picture that arrived on its own.
+  ///
+  /// The bubble stays one message's bubble — its timestamp, ticks, reactions,
+  /// reply and menu are still [message]'s. Only the payload becomes the grid,
+  /// which is what keeps a batch of nine photos from being nine bubbles. The
+  /// grouping itself is `groupPhotoAlbums`, in the chat data layer.
+  final List<Message>? album;
 
   @override
   ConsumerState<MessageBubble> createState() => _MessageBubbleState();
@@ -248,6 +262,21 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   bool get _canReact => widget.message.wireId != null;
+
+  /// The words under the picture, or under the whole batch of them.
+  ///
+  /// A batch carries its caption on the first photo, which is where it was
+  /// drawn — as if it described that one picture. Any member's caption is the
+  /// album's, because there is only ever one.
+  String? get _caption {
+    final album = widget.album;
+    if (album == null) return widget.message.imageCaption;
+    for (final message in album) {
+      final caption = message.imageCaption;
+      if (caption != null) return caption;
+    }
+    return null;
+  }
 
   /// A reply needs the transport id everyone else filed the message under, and
   /// somewhere to compose it � the composer only builds reply frames in 1:1,
@@ -845,20 +874,32 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 if (message.replyToWireId != null)
                   _quotedBox(message.replyToWireId!),
                 if (message.kind == MessageKind.image) ...[
-                  _ImagePayload(
-                    message: message,
-                    chatId: widget.chatId,
-                    onDoubleTap: _canReact ? _quickReact : null,
-                  ),
+                  if (widget.album case final album?)
+                    _AlbumPayload(
+                      messages: album,
+                      chatId: widget.chatId,
+                      onDoubleTap: _canReact ? _quickReact : null,
+                    )
+                  else
+                    _ImagePayload(
+                      message: message,
+                      chatId: widget.chatId,
+                      onDoubleTap: _canReact ? _quickReact : null,
+                    ),
                   // The caption, which used to go missing entirely. It rides in
                   // `text`, and the chain below renders `text` only for a
                   // message that matched none of these branches � so a photo
                   // took the image branch and its caption was never drawn,
                   // however carefully it had been typed and delivered.
-                  if (message.imageCaption case final caption?) ...[
+                  // One caption for the set. It is sent on the first photo of a
+                  // batch, which is where it used to be drawn — reading as a
+                  // remark about that one picture rather than about the lot.
+                  if (_caption case final caption?) ...[
                     const SizedBox(height: 6),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 220),
+                      constraints: BoxConstraints(
+                        maxWidth: widget.album == null ? 220 : _kAlbumWidth,
+                      ),
                       child: MentionText(caption),
                     ),
                   ],
@@ -1530,6 +1571,141 @@ class _ReactionChip extends StatelessWidget {
 /// hasn't finished chunking, or receiver hasn't reassembled), shows a
 /// placeholder block with a spinner � the bubble still occupies space so
 /// the list doesn't reflow when the image finally appears.
+/// How wide an album is drawn. Wider than a single photo's 220, because a grid
+/// of three has to divide it and still show what is in each cell.
+const double _kAlbumWidth = 252;
+
+/// A batch of photos as one grid, the way they were sent.
+///
+/// Deliberately a plain grid rather than Telegram's mosaic, which sizes every
+/// cell from its picture's aspect ratio. The mosaic looks better on a set of
+/// mixed shapes and is a different feature: it needs each photo's dimensions
+/// before the first is decoded, which this app does not record, and would send
+/// the layout jumping about as they load. Equal cells need nothing and are
+/// stable from the first frame.
+///
+/// The last row stretches to fill the width instead of leaving a hole where
+/// the missing cells would be — five photos read as a row of three and a row of
+/// two, not as a row of three and two thirds of a row.
+class _AlbumPayload extends StatelessWidget {
+  const _AlbumPayload({
+    required this.messages,
+    required this.chatId,
+    this.onDoubleTap,
+  });
+
+  final List<Message> messages;
+  final String chatId;
+  final VoidCallback? onDoubleTap;
+
+  static const _gap = 3.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = messages.length <= 4 ? 2 : 3;
+    final cell = (_kAlbumWidth - _gap * (columns - 1)) / columns;
+    final rows = <List<Message>>[];
+    for (var i = 0; i < messages.length; i += columns) {
+      rows.add(messages.sublist(
+        i,
+        i + columns > messages.length ? messages.length : i + columns,
+      ));
+    }
+
+    return SizedBox(
+      width: _kAlbumWidth,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var r = 0; r < rows.length; r++) ...[
+              if (r > 0) const SizedBox(height: _gap),
+              SizedBox(
+                height: cell,
+                child: Row(
+                  children: [
+                    for (var c = 0; c < rows[r].length; c++) ...[
+                      if (c > 0) const SizedBox(width: _gap),
+                      Expanded(
+                        child: _AlbumCell(
+                          message: rows[r][c],
+                          chatId: chatId,
+                          width: cell,
+                          onDoubleTap: onDoubleTap,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlbumCell extends StatelessWidget {
+  const _AlbumCell({
+    required this.message,
+    required this.chatId,
+    required this.width,
+    this.onDoubleTap,
+  });
+
+  final Message message;
+  final String chatId;
+
+  /// The drawn width, which is also the decode width — a grid of nine photos
+  /// decoded at the size they were sent is the single most expensive thing a
+  /// conversation can ask of this phone.
+  final double width;
+  final VoidCallback? onDoubleTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = message.imagePath;
+    if (path == null || !MediaPaths.exists(path)) {
+      return _ImagePlaceholder(
+        icon: message.status == MessageStatus.failed
+            ? Icons.broken_image_outlined
+            : Icons.image_outlined,
+        label: '',
+        spinning: message.status == MessageStatus.sending,
+      );
+    }
+    return GestureDetector(
+      onDoubleTap: onDoubleTap,
+      // Straight to this photo, not to the album's first — tapping the fourth
+      // picture and being shown the first is the sort of thing that makes a
+      // grid feel like a picture of a grid.
+      onTap: () => Navigator.of(context).push(
+        mediaRoute<void>(
+          (_) => ChatMediaGalleryScreen(
+            chatId: chatId,
+            initialMessageId: message.id,
+          ),
+        ),
+      ),
+      child: Hero(
+        tag: 'image-${message.id}',
+        child: Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          cacheWidth:
+              (width * MediaQuery.devicePixelRatioOf(context)).round(),
+          errorBuilder: (_, __, ___) => _ImagePlaceholder(
+            icon: Icons.broken_image_outlined,
+            label: '',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ImagePayload extends StatelessWidget {
   const _ImagePayload({
     required this.message,

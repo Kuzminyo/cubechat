@@ -42,6 +42,7 @@ import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../data/message_edit_target.dart';
+import '../data/photo_albums.dart';
 import '../data/message_selection.dart';
 import '../data/message_visibility.dart';
 import '../data/message_reply_target.dart';
@@ -1278,6 +1279,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   @override
   Widget build(BuildContext context) {
     final messages = widget.messages;
+    // Photos sent as one batch, drawn as one grid. Derived here rather than
+    // stored: nothing on the wire says which pictures went together, and the
+    // conversation itself says it plainly enough.
+    final albums = groupPhotoAlbums(messages);
     ref.watch(pinnedControllerProvider);
     final pins =
         ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
@@ -1360,8 +1365,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   // up. See [_noteBuilt] — a jump reads this to pick a direction.
                   _noteBuilt(i);
                   final m = messages[messages.length - 1 - i];
-                  Widget bubble =
-                      MessageBubble(message: m, chatId: widget.chatId);
+                  // A photo drawn inside the album above it keeps its place in
+                  // the list and gives up its height. Collapsing here rather
+                  // than filtering the list keeps every index-sensitive thing
+                  // on this screen — the jump anchors, the search highlight,
+                  // _noteBuilt — addressing the same messages it always did.
+                  if (albums.isFolded(m.id)) return const SizedBox.shrink();
+                  Widget bubble = MessageBubble(
+                    message: m,
+                    chatId: widget.chatId,
+                    album: albums.albumAt(m.id),
+                  );
                   if (m.id == widget.initialMessageId) {
                     bubble =
                         KeyedSubtree(key: _initialMessageKey, child: bubble);
