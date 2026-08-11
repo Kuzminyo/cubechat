@@ -178,7 +178,14 @@ class _ChatInputState extends State<ChatInput> {
       }
     } else if (!_editing && widget.initialText != old.initialText) {
       final next = widget.initialText ?? '';
-      if (_controller.text != next) _replaceText(next);
+      // Never while they are typing. This text is the draft coming back from
+      // the store *because* they typed it, and assigning to `.text` drops the
+      // IME's composing region — which on Android is the half-typed word the
+      // keyboard is still predicting, so every round trip that landed here
+      // killed the suggestion the user was about to tap. It also used to eat a
+      // lone space outright: the draft store discards whitespace-only text, so
+      // the echo came back empty and cleared the field under them.
+      if (_controller.text != next && !_focus.hasFocus) _replaceText(next);
     }
   }
 
@@ -258,6 +265,15 @@ class _ChatInputState extends State<ChatInput> {
                               maxLines: 5,
                               cursorColor: AppColors.brandPrimary,
                               textCapitalization: TextCapitalization.sentences,
+                              // Spelled out rather than left to the defaults:
+                              // this is the field where predictive text (the
+                              // suggestion strip, autocorrect, glide typing)
+                              // has to work, so the flags that switch it on
+                              // are part of the composer's contract and not
+                              // something to inherit by accident.
+                              keyboardType: TextInputType.multiline,
+                              autocorrect: true,
+                              enableSuggestions: true,
                               style: TextStyle(
                                 color: AppColors.textOnGlass,
                                 fontSize: 14.5,
