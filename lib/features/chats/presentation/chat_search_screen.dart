@@ -77,6 +77,12 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
 
   @override
   void dispose() {
+    // Before disposing, not instead of it. A node that is still the primary
+    // focus when it is destroyed leaves the platform's text input attached to
+    // nothing: on iOS the keyboard then outlives the screen that raised it and
+    // sits on top of the chat list this route pops back to, with no field left
+    // anywhere to dismiss it from.
+    _focus.unfocus();
     _controller.dispose();
     _focus.dispose();
     super.dispose();

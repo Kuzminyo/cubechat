@@ -8,6 +8,44 @@ Current build: **0.17.1+64**.
 
 ---
 
+## The keyboard closes, files open, and a duplicate hello is not a fault (2026‑08‑11)
+
+- **The keyboard can always be put away.** Tab branches stay mounted for the
+  life of the shell — that is what makes switching tabs free — and nothing in
+  Flutter takes focus off a field just because the screen it sits on went
+  offstage. So a keyboard raised by the Contacts search stayed up over whatever
+  tab came next, attached to a field that was now offstage and behind an
+  `IgnorePointer`: nothing left to tap, and on iOS no system gesture that
+  dismisses a keyboard the app is holding open. It reads exactly as reported —
+  it would not close, by any means. Leaving a tab now drops focus (at the start
+  of the drag, so the arriving tab is uncovered while it slides), dragging the
+  Contacts list dismisses it, closing either search screen dismisses it, and a
+  tap on nothing in particular dismisses it anywhere in the app.
+- **Received files open again on Android, for the whole life of the install.**
+  `open_filex` builds its method channel when it attaches to the engine and
+  destroys it when the Activity detaches — and never rebuilds it, because
+  re-attaching to an Activity only stores the Activity. In an ordinary app that
+  asymmetry is invisible, since the engine dies with the Activity. cubechat's
+  engine deliberately outlives it (that is what keeps the mesh running after a
+  swipe from recents), so the first Activity teardown — a swipe away, or just a
+  configuration change — left the running isolate talking to a channel that was
+  no longer there. Every later tap on a file raised `MissingPluginException`
+  and fell through to "no app opens this type", which was never true. The
+  plugin is now re-attached whenever an Activity attaches to the cached engine.
+- **A duplicate handshake no longer kills a working session.** The mesh sees
+  one phone through several BLE addresses at once, and a reply can arrive over
+  our link to them and over their write to us — so a second copy of the Noise
+  IK reply, a millisecond after the first, is ordinary traffic. It was being
+  fed to a handshake that had already finished, which threw, and the catch
+  marked a fully-established session `failed`. Nothing re-established it: the
+  peer had no reason to hand shake again, so the link stayed up and usable
+  while the session on top of it was written off, and the handshake watchdog
+  then took the link down too. Messages went out over whatever mesh route was
+  left, or nowhere. An inbound handshake byte can no longer take away transport
+  keys that already exist — which also closes the same trick as an attack.
+
+---
+
 ## You choose the crop, and the cover stops leaning in (2026‑08‑04)
 
 - **Setting a photo now asks which part of it you mean.** What gets stored is a

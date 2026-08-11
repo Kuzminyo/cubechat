@@ -187,6 +187,29 @@ class ChatSession {
   /// frame to send (if any) — for the responder this is HS2 right after HS1,
   /// for the initiator this is HS3 right after HS2.
   Future<Frame?> handleHandshakeFrame(Frame frame) async {
+    // A handshake message arriving at a session that has already finished one
+    // is noise, not a fault. The mesh sees the same peer through several BLE
+    // addresses at once — a phone rotating its privacy address shows up as two
+    // or three, and both roles (our central link and their write to our
+    // peripheral) can carry the reply — so a duplicate IK2 landing a
+    // millisecond after the real one is ordinary traffic on a busy link.
+    //
+    // It used to be fatal. The duplicate went into readHandshake, which threw
+    // "handshake already finished", and the catch below marked a working,
+    // fully-established session `failed`. Nothing re-established it: the peer
+    // had no reason to hand shake again, so the link stayed up, stayed usable
+    // at the BLE level, and was written off at the session level — after which
+    // the handshake watchdog would take the link down as well, and messages to
+    // that peer went out over whatever mesh route was left, or nowhere.
+    //
+    // Dropping it is the whole fix. Re-reading it could not have helped even in
+    // principle: the Noise state that would have to interpret it is gone the
+    // moment the transport keys are split.
+    if (_noise.established) {
+      _status = ChatSessionStatus.established;
+      return null;
+    }
+
     try {
       await _noise.readHandshake(frame.payload);
       if (_noise.established) {
@@ -197,7 +220,12 @@ class ChatSession {
       return await nextHandshakeFrame();
     } catch (e, st) {
       debugPrint('ChatSession.handleHandshakeFrame failed: $e\n$st');
-      _status = ChatSessionStatus.failed;
+      // Only a session that never got there is failed by a bad frame. The
+      // guard above catches the duplicate that prompted this, but the rule
+      // belongs here too: once the transport keys exist, no inbound handshake
+      // byte is allowed to take them away — otherwise anyone who can write to
+      // the characteristic can end an established session by replaying one.
+      if (!_noise.established) _status = ChatSessionStatus.failed;
       return null;
     }
   }

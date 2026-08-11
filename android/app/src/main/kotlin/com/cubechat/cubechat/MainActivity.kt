@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.view.WindowManager
+import com.crazecoder.openfile.OpenFilePlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -38,6 +39,7 @@ class MainActivity : FlutterActivity() {
         // above), so it will not register the generated plugins a second time
         // over the set MainApplication already installed.
         super.configureFlutterEngine(flutterEngine)
+        reviveOpenFilePlugin(flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             SECURE_CHANNEL,
@@ -70,6 +72,47 @@ class MainActivity : FlutterActivity() {
                 "requestEnable" -> requestBluetoothEnable(result)
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /**
+     * Puts the `open_file` method channel back after an Activity has come and
+     * gone.
+     *
+     * open_filex creates its channel in onAttachedToEngine and *destroys* it in
+     * onDetachedFromActivity — but never recreates it, because
+     * onAttachedToActivity only stores the Activity and does not call its own
+     * setup() again. In an ordinary app the asymmetry is invisible: the engine
+     * dies with the Activity, so a channel torn down on detach was never going
+     * to be needed again.
+     *
+     * cubechat's engine outlives the Activity by design (see MainApplication —
+     * it is what keeps the mesh running after a swipe from recents). So the
+     * first time the Activity goes away — swiped away, or simply a
+     * configuration change, which routes through the same method — the channel
+     * is removed from a Dart isolate that carries on running, and every later
+     * tap on a received file raises
+     * `MissingPluginException(No implementation found for method open_file on
+     * channel open_file)`. Reported from the field as files that opened fine
+     * to begin with and then stopped for the rest of the install: accurate,
+     * and it needed the Activity to have been recreated once to reproduce.
+     *
+     * Removing and re-adding the plugin runs onAttachedToEngine again, which is
+     * the call that builds the channel. The engine's registry hands an
+     * already-attached Activity straight back to an ActivityAware plugin as it
+     * is added, so the re-added instance comes up complete. This runs on every
+     * attach, including the first, where it is a harmless replacement of a
+     * channel that was about to be identical.
+     */
+    private fun reviveOpenFilePlugin(flutterEngine: FlutterEngine) {
+        try {
+            flutterEngine.plugins.remove(OpenFilePlugin::class.java)
+            flutterEngine.plugins.add(OpenFilePlugin())
+        } catch (e: Throwable) {
+            // Opening files is worth a log line, never a crash on launch. The
+            // Dart side already falls back to the share sheet when the channel
+            // is missing, which is where this leaves it.
+            android.util.Log.e("MainActivity", "open_file revive failed", e)
         }
     }
 

@@ -66,6 +66,11 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
 
     return SafeArea(
       child: CustomScrollView(
+        // Scrolling the list puts the search keyboard away. This screen is the
+        // one tab-root that owns a text field, so it is also the one that could
+        // strand a keyboard on top of the whole shell; dragging past the field
+        // is the gesture that says you are done with it.
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(

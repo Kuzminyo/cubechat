@@ -318,6 +318,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         onPointerDown: (_) => UiActivity.instance.poke(),
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
+        child: _TapToDismissKeyboard(
         child: VoiceMiniPlayer(
           // The router lives below this builder, so the bar is handed the
           // one push it needs rather than looking one up it cannot see.
@@ -327,6 +328,44 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       ),
       ),
       ),
+      ),
+    );
+  }
+}
+
+/// A tap on nothing in particular puts the keyboard away.
+///
+/// The app-wide guarantee that the keyboard can always be closed. Individual
+/// screens dismiss it at the moments where it is clearly finished — leaving a
+/// tab, dragging a list, closing a search — but every one of those is a place
+/// somebody thought to add it, and the bug this exists for was the case nobody
+/// thought of: a keyboard left over from a field that is no longer on screen,
+/// on a platform with no system-level way to dismiss one.
+///
+/// Deliberately at the root and deliberately last in the arena. A tap that
+/// lands on a real target — a text field, a button, a chat tile — is claimed by
+/// that target's own recognizer, which sits deeper in the hit-test path and so
+/// wins outright; this only ever sees the taps nothing else wanted.
+class _TapToDismissKeyboard extends StatelessWidget {
+  const _TapToDismissKeyboard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      // Translucent so the tap is still offered to whatever is underneath:
+      // this widget covers the whole app and must not become a lid on it.
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        final focus = FocusManager.instance.primaryFocus;
+        // Only when something is actually holding the keyboard open. Unfocusing
+        // unconditionally would also throw away focus that no keyboard is
+        // attached to — a hardware-keyboard user tabbing through the UI, say.
+        if (focus == null || !focus.hasFocus) return;
+        focus.unfocus();
+      },
+      child: child,
     );
   }
 }

@@ -75,8 +75,24 @@ class _BranchContainerState extends State<BranchContainer>
     final index = widget.currentIndex;
     // A tap on the bar, a deep link, a notification: something moved the tab
     // from outside this widget, so the strip has to catch up.
+    if (index != _target) _dismissKeyboard();
     if (index != _target && !_dragging) _settleTo(index);
   }
+
+  /// Drop the keyboard on the way out of a tab.
+  ///
+  /// Branches stay mounted for the life of the shell — that is the whole point
+  /// of the strip — and [Offstage] does not touch focus. So a field left
+  /// focused in one tab (the Contacts search is the one that has one) kept its
+  /// text-input connection open after the tab was gone, and the keyboard stayed
+  /// up over whichever screen arrived next.
+  ///
+  /// On Android that was survivable: the system Back gesture dismisses a
+  /// keyboard whether or not the app agrees. iOS has no such escape, and the
+  /// field still holding focus was offstage and behind an [IgnorePointer], so
+  /// there was nothing left to tap and no way to close it at all — reported,
+  /// accurately, as "the keyboard won't go away".
+  void _dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
 
   @override
   void dispose() {
@@ -104,6 +120,11 @@ class _BranchContainerState extends State<BranchContainer>
 
   void _onDragStart(DragStartDetails _) {
     _dragging = true;
+    // The finger has started moving the strip, so the tab under it is already
+    // on its way out. Dropping the keyboard here rather than on landing means
+    // the screen being dragged in is uncovered while it slides, instead of
+    // arriving behind a keyboard that belongs to the tab now off-screen.
+    _dismissKeyboard();
     _page.stop();
   }
 

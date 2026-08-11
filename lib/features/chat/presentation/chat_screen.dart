@@ -1628,6 +1628,10 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
 
   @override
   void dispose() {
+    // Closing search takes the keyboard with it — see the same call in
+    // ChatSearchScreen for what a focused node destroyed in place leaves
+    // behind on iOS.
+    _focusNode.unfocus();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
