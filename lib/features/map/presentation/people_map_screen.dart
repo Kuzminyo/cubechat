@@ -21,9 +21,11 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
+import '../data/map_clusters.dart';
 import '../data/map_focus_request.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
+import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
 import 'dart:io' show Platform;
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
@@ -584,6 +586,54 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     await _locate(recenter: true);
   }
 
+  /// Fold pins that would be drawn on top of each other into one.
+  ///
+  /// The threshold is the pin itself: two people closer together than a pin is
+  /// wide cannot both be seen, and — worse — only the upper one can be tapped.
+  /// Expressed in pixels and converted to metres at the current zoom, so
+  /// pulling back gathers people up and pushing in lets them go again, which is
+  /// the behaviour every map has and the reason zooming in feels like it does
+  /// something.
+  List<List<_Node>> _cluster(List<_Node> nodes) {
+    if (nodes.length < 2) {
+      return [for (final node in nodes) [node]];
+    }
+    final latitude = _currentCentre?.latitude ?? nodes.first.point.latitude;
+    final metres = metresPerPixel(latitude, _markerZoom);
+    return clusterByDistance(
+      nodes,
+      pointOf: (node) => node.point,
+      thresholdMetres: 52 * _markerScale * metres,
+    );
+  }
+
+  static LatLng _centroid(List<_Node> nodes) {
+    var latitude = 0.0;
+    var longitude = 0.0;
+    for (final node in nodes) {
+      latitude += node.point.latitude;
+      longitude += node.point.longitude;
+    }
+    return LatLng(latitude / nodes.length, longitude / nodes.length);
+  }
+
+  void _openCluster(List<_Node> group) {
+    final t = AppLocalizations.of(context);
+    final mePoint = _me == null ? null : LatLng(_me!.latitude, _me!.longitude);
+    showMapClusterSheet(
+      context,
+      [
+        for (final node in group)
+          MapClusterMember(
+            peerId: node.id,
+            name: node.name,
+            detail: '${_distanceText(t, mePoint, node.point)}'
+                ' · ${_ageText(t, node.sentAt)}',
+          ),
+      ],
+    );
+  }
+
   Marker _ownMarker(LatLng me, String nickname, Uint8List? ownPhoto) => Marker(
         point: me,
         width: _markerBox,
@@ -708,26 +758,38 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             // doing nothing. Selecting is now what decides the order, and a
             // tap on empty map clears the selection and hands the top back.
             if (me != null && !_mineSelected) _ownMarker(me, nickname, ownPhoto),
-            for (final node in nodes)
-              Marker(
-                point: node.point,
-                width: _markerBox,
-                height: _markerBox,
-                child: _MapAvatar(
-                  seed: node.id,
-                  name: node.name,
-                  photo: node.photo,
-                  selected: node.id == _selectedId,
-                  scale: _markerScale,
-                  onTap: () {
-                    setState(() {
-                      _selectedId = node.id;
-                      _mineSelected = false;
-                    });
-                    _focusOn(node.point);
-                  },
+            for (final group in _cluster(nodes))
+              if (group.length == 1)
+                Marker(
+                  point: group.single.point,
+                  width: _markerBox,
+                  height: _markerBox,
+                  child: _MapAvatar(
+                    seed: group.single.id,
+                    name: group.single.name,
+                    photo: group.single.photo,
+                    selected: group.single.id == _selectedId,
+                    scale: _markerScale,
+                    onTap: () {
+                      setState(() {
+                        _selectedId = group.single.id;
+                        _mineSelected = false;
+                      });
+                      _focusOn(group.single.point);
+                    },
+                  ),
+                )
+              else
+                Marker(
+                  point: _centroid(group),
+                  width: _markerBox,
+                  height: _markerBox,
+                  child: _MapCluster(
+                    nodes: group,
+                    scale: _markerScale,
+                    onTap: () => _openCluster(group),
+                  ),
                 ),
-              ),
             if (me != null && _mineSelected) _ownMarker(me, nickname, ownPhoto),
           ],
         ),
@@ -979,6 +1041,102 @@ class _MapAvatar extends StatelessWidget {
               imageBytes: photo,
               size: size,
               online: mine,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Several people standing close enough to be one pin.
+///
+/// Four faces at most, in a two-by-two: enough to recognise who is in there
+/// without any of them becoming a dot. Beyond four the last slot becomes the
+/// count, because "+6" says what six more faces the size of a full stop cannot.
+class _MapCluster extends StatelessWidget {
+  const _MapCluster({
+    required this.nodes,
+    required this.scale,
+    required this.onTap,
+  });
+
+  final List<_Node> nodes;
+  final double scale;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = 58.0 * scale;
+    final shown = nodes.length > 4 ? nodes.take(3).toList() : nodes.take(4).toList();
+    final rest = nodes.length - shown.length;
+    final cell = (size - 10) / 2;
+
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Center(
+          child: Container(
+            width: size + 10,
+            height: size + 10,
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.pane(0.88),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.72),
+                width: 1.6,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.28),
+                  blurRadius: 16,
+                ),
+                const BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 12,
+                  offset: Offset(0, 7),
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: Wrap(
+                spacing: 1,
+                runSpacing: 1,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final node in shown)
+                    SizedBox(
+                      width: cell,
+                      height: cell,
+                      child: IdentityAvatar(
+                        seed: node.id,
+                        label: node.name,
+                        imageBytes: node.photo,
+                        size: cell,
+                      ),
+                    ),
+                  if (rest > 0)
+                    Container(
+                      width: cell,
+                      height: cell,
+                      alignment: Alignment.center,
+                      color: AppColors.brandPrimary.withValues(alpha: 0.22),
+                      child: FittedBox(
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Text(
+                            '+$rest',
+                            style: TextStyle(
+                              color: AppColors.textOnGlass,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

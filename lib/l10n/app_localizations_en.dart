@@ -36,6 +36,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mapFriendsHint => 'Only these contacts receive your position';
 
   @override
+  String mapClusterTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count people here',
+      one: '$count person here',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get mapClusterHint => 'Tap somebody to bring the map to them';
+
+  @override
   String get mapFriendsEmpty => 'Nobody is sharing the map with you yet.';
 
   @override

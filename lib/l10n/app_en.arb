@@ -9,6 +9,13 @@
   "mapTitle": "Map",
   "mapFriendsTitle": "People on the map",
   "mapFriendsHint": "Only these contacts receive your position",
+  "mapClusterTitle": "{count, plural, one{{count} person here} other{{count} people here}}",
+  "@mapClusterTitle": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "mapClusterHint": "Tap somebody to bring the map to them",
   "mapFriendsEmpty": "Nobody is sharing the map with you yet.",
   "mapFriendsEmptyHint": "Invite a contact and they will appear here once they accept.",
   "mapFriendsInvite": "Invite",

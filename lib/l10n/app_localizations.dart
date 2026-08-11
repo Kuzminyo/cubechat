@@ -152,6 +152,18 @@ abstract class AppLocalizations {
   /// **'Only these contacts receive your position'**
   String get mapFriendsHint;
 
+  /// No description provided for @mapClusterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} person here} other{{count} people here}}'**
+  String mapClusterTitle(int count);
+
+  /// No description provided for @mapClusterHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap somebody to bring the map to them'**
+  String get mapClusterHint;
+
   /// No description provided for @mapFriendsEmpty.
   ///
   /// In en, this message translates to:

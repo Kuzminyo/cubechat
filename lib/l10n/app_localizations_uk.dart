@@ -36,6 +36,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get mapFriendsHint => 'Лише ці контакти отримують вашу позицію';
 
   @override
+  String mapClusterTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count людей тут',
+      few: '$count людини тут',
+      one: '$count людина тут',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get mapClusterHint => 'Торкніться, щоб мапа перейшла до людини';
+
+  @override
   String get mapFriendsEmpty => 'Ще ніхто не ділиться з вами мапою.';
 
   @override

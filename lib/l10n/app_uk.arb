@@ -9,6 +9,8 @@
     "mapTitle":  "Карта",
     "mapFriendsTitle": "Люди на мапі",
     "mapFriendsHint": "Лише ці контакти отримують вашу позицію",
+    "mapClusterTitle":  "{count, plural, one{{count} людина тут} few{{count} людини тут} other{{count} людей тут}}",
+    "mapClusterHint":  "Торкніться, щоб мапа перейшла до людини",
     "mapFriendsEmpty": "Ще ніхто не ділиться з вами мапою.",
     "mapFriendsEmptyHint": "Запросіть контакт — він з'явиться тут, щойно прийме запрошення.",
     "mapFriendsInvite": "Запросити",
