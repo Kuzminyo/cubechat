@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../notifications/ios_significant_location.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import 'background_service.dart';
@@ -53,8 +54,15 @@ class BackgroundModeController extends Notifier<bool> {
         debugPrint('notification permission request failed: $e');
       }
       await BackgroundService.instance.start();
+      // The iOS half of the same preference. Android keeps the process alive
+      // and needs no doorbell; iOS cannot keep a killed process alive at all,
+      // so the best available is being relaunched when the phone moves and
+      // catching up then. Arms itself only if Always location is already
+      // granted — this never prompts.
+      await IosSignificantLocation.instance.start();
     } else {
       await BackgroundService.instance.stop();
+      await IosSignificantLocation.instance.stop();
     }
   }
 

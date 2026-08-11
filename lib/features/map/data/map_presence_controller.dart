@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/ble/background_service.dart';
+import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/shared_location.dart';
 import '../../../core/util/location_service.dart';
@@ -113,6 +114,12 @@ class MapPresenceController extends Notifier<int> {
       // is exactly the sort of thing somebody does while a system dialog is
       // in front of them.
       if (!_shouldShare) return;
+      if (PlatformInfo.isIOS && ref.read(backgroundModeProvider)) {
+        // Always authorisation has just been granted or confirmed, and that is
+        // the only thing the significant-change doorbell was ever waiting for.
+        // It tried to arm at boot, when there was nothing to arm with.
+        unawaited(IosSignificantLocation.instance.start());
+      }
       if (PlatformInfo.isAndroid && ref.read(backgroundModeProvider)) {
         // The mesh service usually starts at boot, i.e. before location was
         // ever granted — so it is running as a connectedDevice service only,
