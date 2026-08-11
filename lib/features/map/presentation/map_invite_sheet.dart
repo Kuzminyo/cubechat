@@ -11,6 +11,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../data/map_friend_link.dart';
+import '../data/map_friends_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 
 Future<void> showMapInviteSheet(BuildContext context) => showGlassSheet<void>(
@@ -51,10 +52,17 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
     final messaging = ref.read(messagingServiceProvider);
     var sent = 0;
 
+    final friends = ref.read(mapFriendsControllerProvider.notifier);
     for (final chat in chats) {
       if (!_selected.contains(chat.id)) continue;
       try {
         await messaging.sendText(chat.peerId, link);
+        // Inviting somebody to your map *is* the act of sharing it with them,
+        // so it takes effect here rather than when their acceptance gets back.
+        // Waiting for the reply is what used to leave the two phones
+        // disagreeing — they had you, you did not have them, and the only way
+        // out anybody found was an invitation back down the other direction.
+        await friends.activate(chat.peerId);
         sent++;
       } catch (_) {
         // One unavailable contact must not prevent the remaining invitations.
