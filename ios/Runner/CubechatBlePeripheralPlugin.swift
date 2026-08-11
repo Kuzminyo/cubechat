@@ -35,6 +35,14 @@ final class CubechatBlePeripheralPlugin: NSObject {
   private var running = false
   private var pendingStart = false
 
+  /// Stable across launches by contract: CoreBluetooth matches a relaunched
+  /// process to its old session by this string, so changing it orphans
+  /// whatever was being restored.
+  private static let restoreIdentifier = "com.cubechat.peripheral.restore"
+
+  /// True between iOS handing our old session back and Dart reconfiguring it.
+  private var restored = false
+
   /// Outbound notify backpressure. `updateValue` returns false when CoreBluetooth's
   /// transmit queue is full; frames wait here and drain from
   /// `peripheralManagerIsReadyToUpdateSubscribers`. Without this, a media burst
@@ -107,9 +115,33 @@ final class CubechatBlePeripheralPlugin: NSObject {
   // MARK: - Lifecycle
 
   private func startPeripheral() -> Bool {
-    if running { return true }
+    if running {
+      // A restored session is not a configured one. iOS handed back whatever
+      // we were advertising when the process died — including the previous
+      // rotating peer id — and Dart is calling in now with a fresh one. Tear
+      // the restored service down and build it again from these arguments,
+      // rather than keeping an old identity on the air.
+      if restored {
+        restored = false
+        stopPeripheral()
+      } else {
+        return true
+      }
+    }
     if manager == nil {
-      manager = CBPeripheralManager(delegate: self, queue: nil)
+      // The restore identifier is what lets iOS relaunch cubechat after the
+      // process is gone: a peer connecting to this GATT server and writing to
+      // us becomes a launch event rather than something that happens to an app
+      // that is not there. Without it, CoreBluetooth simply drops the session
+      // when we die, and a mesh message waits for the user to open the app.
+      manager = CBPeripheralManager(
+        delegate: self,
+        queue: nil,
+        options: [
+          CBPeripheralManagerOptionRestoreIdentifierKey: CubechatBlePeripheralPlugin
+            .restoreIdentifier
+        ]
+      )
     }
     if manager?.state == .poweredOn {
       configureAndStart()
@@ -245,6 +277,50 @@ final class CubechatBlePeripheralPlugin: NSObject {
 // MARK: - CBPeripheralManagerDelegate
 
 extension CubechatBlePeripheralPlugin: CBPeripheralManagerDelegate {
+  /// iOS handing our GATT server back after it relaunched the app.
+  ///
+  /// Called before the state callback, and before Dart has said anything — the
+  /// process is seconds old. The service and its characteristics are the ones
+  /// we published last time, so they are adopted by shape rather than by UUID:
+  /// the UUIDs live in Dart's arguments, which have not arrived yet, while
+  /// "the notifying one" and "the writable one" are true whatever they are.
+  ///
+  /// Adopting them matters for the seconds that follow. A peer that connected
+  /// and wrote is the reason we are running at all, and its write lands on
+  /// this delegate immediately; without the characteristic references the
+  /// reply could not be sent and the message would be lost with the very
+  /// wake-up that was supposed to deliver it.
+  func peripheralManager(
+    _ peripheral: CBPeripheralManager, willRestoreState dict: [String: Any]
+  ) {
+    guard
+      let services = dict[CBPeripheralManagerRestoredStateServicesKey]
+        as? [CBMutableService],
+      let service = services.first
+    else { return }
+
+    self.service = service
+    self.serviceUuid = service.uuid
+    for characteristic in service.characteristics ?? [] {
+      guard let mutable = characteristic as? CBMutableCharacteristic else { continue }
+      if mutable.properties.contains(.notify) {
+        inboundChar = mutable
+        inboundUuid = mutable.uuid
+      } else if mutable.properties.contains(.write)
+        || mutable.properties.contains(.writeWithoutResponse)
+      {
+        outboundChar = mutable
+        outboundUuid = mutable.uuid
+      } else if mutable.properties.contains(.read) {
+        peerInfoChar = mutable
+        peerInfoUuid = mutable.uuid
+      }
+    }
+    running = true
+    restored = true
+    NSLog("cubechat: restored BLE peripheral session after relaunch")
+  }
+
   func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
     switch peripheral.state {
     case .poweredOn:

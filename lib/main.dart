@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +13,7 @@ import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/debug_log.dart';
+import 'core/util/platform_info.dart';
 import 'core/util/media_storage.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
@@ -106,6 +108,27 @@ Future<void> main() async {
   // permission prompt; bounded because on Android it is a plugin channel like
   // any other.
   await _bootStep('notifications', NotificationService.instance.init);
+  // Before anything touches Bluetooth, which is the plugin's own condition:
+  // the option is only read when CoreBluetooth's central manager is created,
+  // and the first BLE call of the process is what creates it.
+  //
+  // What it buys is the iOS half of staying reachable. With a restore
+  // identifier, a peer connecting to us is a launch event — the system brings
+  // a terminated cubechat back into the background to handle it — and without
+  // one the session simply dies with the process and the message waits for the
+  // user. The peripheral side does the same thing natively; see
+  // CubechatBlePeripheralPlugin.
+  if (PlatformInfo.isIOS) {
+    await _bootStep(
+      'ble-restore-state',
+      // showPowerAlert stays off deliberately. It defaults to *on* in the
+      // plugin's Dart signature but is never applied unless this method is
+      // called, so leaving it at the default here would quietly introduce a
+      // system "turn Bluetooth on?" popup that the app has never shown.
+      () => FlutterBluePlus.setOptions(showPowerAlert: false, restoreState: true),
+      limit: const Duration(seconds: 2),
+    );
+  }
   await _bootStep(
     'orientation',
     () => SystemChrome.setPreferredOrientations(const [
