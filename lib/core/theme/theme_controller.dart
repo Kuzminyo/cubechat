@@ -193,11 +193,38 @@ class ThemeController extends Notifier<AppPalette> {
     _apply(palette);
     revision++;
     state = palette;
+    _rebuildEverything();
     try {
       await _box?.put(_key, palette.id);
     } catch (e) {
       debugPrint('ThemeController persist failed: $e');
     }
+  }
+
+  /// Mark every element in the tree dirty, const subtrees included.
+  ///
+  /// The key on the root throws most of the tree away, but that is not enough
+  /// on its own: a `const` widget is canonicalised, so the *same instance*
+  /// comes back on the other side, `Element.update` sees `identical(old, new)`
+  /// and skips the rebuild entirely. A const widget that reads [AppColors]
+  /// therefore goes on painting the previous palette until something unrelated
+  /// disturbs it — which is what kept the navigation bar's active glow green
+  /// after a switch to pink, right until the app was restarted.
+  ///
+  /// Marking everything dirty is what a hot reload does. It costs one extra
+  /// build pass on a palette change and nothing at all otherwise, and it is
+  /// the only thing that reaches inside a const subtree. Deferred to after the
+  /// frame because [select] can be called from a build (the settings list
+  /// rebuilds as the choice is made) and marking dirty during one throws.
+  void _rebuildEverything() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      void visit(Element element) {
+        element.markNeedsBuild();
+        element.visitChildren(visit);
+      }
+
+      WidgetsBinding.instance.rootElement?.visitChildren(visit);
+    });
   }
 
   void _apply(AppPalette p) {
