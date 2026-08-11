@@ -30,6 +30,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../data/contact_aliases_controller.dart';
 import '../data/known_peers_controller.dart';
 import '../data/peer_avatars_controller.dart';
+import '../data/presence_controller.dart';
 import '../models/known_peer.dart';
 
 class ContactProfileScreen extends ConsumerWidget {
@@ -531,6 +532,11 @@ class ContactProfileScreen extends ConsumerWidget {
     // which left this screen saying nothing about a person who was plainly
     // there.
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
+    // Theirs as well as ours: a peer whose own switch is off says so on every
+    // beacon, and this is the screen that would otherwise print the very clock
+    // they asked us not to.
+    final theirBeacon = ref.watch(presenceControllerProvider)[peerPubkeyHex];
+    final hideTimes = !presenceShared || (theirBeacon?.hidesLastSeen ?? false);
     final active =
         contact?.isOnline == true || contact?.isReachableViaMesh == true;
     final String status;
@@ -538,7 +544,7 @@ class ContactProfileScreen extends ConsumerWidget {
       status = t.presenceOnline;
     } else if (contact?.isReachableViaMesh == true) {
       status = t.chatsStatusViaMesh;
-    } else if (!presenceShared) {
+    } else if (hideTimes) {
       status = t.presenceRecently;
     } else if (peer == null) {
       status = t.presenceOffline;

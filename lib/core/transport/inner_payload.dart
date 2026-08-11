@@ -1463,35 +1463,62 @@ class MessagePin {
 ///
 /// ```
 ///   [state : 1 byte]   ← 0x01 online, 0x00 offline
+///   [flags : 1 byte]   ← optional; bit 0 = do not show my last-seen time
 /// ```
 ///
 /// The freshness that matters comes from the enclosing [SignedPayload]'s
 /// timestamp, which the receiver already checks against its replay window — so
-/// the beacon carries no time of its own to be lied about. A single byte also
-/// keeps the frame small enough that a heartbeat costs nothing on the wire.
+/// the beacon carries no time of its own to be lied about. One byte keeps a
+/// heartbeat free on the wire, and the second is only spent by somebody who has
+/// actually asked for their times to be hidden.
+///
+/// The flag is a *request*, and honestly so. In a mesh there is no server to
+/// enforce it: every message and every announcement tells the other phone that
+/// you were alive at that moment, and nothing can take that back. What the flag
+/// does is ask their cubechat not to put a clock on it — the same kind of
+/// promise as a read receipt, kept by the app rather than by the network.
+///
+/// It is deliberately *not* a lie about being online. Saying "offline" while
+/// somebody is reading your message is what this used to do, and it made the
+/// status line worthless in both directions.
 class PresenceBeacon {
-  const PresenceBeacon({required this.online});
+  const PresenceBeacon({required this.online, this.hideLastSeen = false});
 
   final bool online;
 
+  /// "Show that I am here if you like, but not when I was."
+  final bool hideLastSeen;
+
   static const int _onlineTag = 0x01;
   static const int _offlineTag = 0x00;
+  static const int _hideLastSeenBit = 0x01;
 
-  Uint8List encode() => Uint8List.fromList([online ? _onlineTag : _offlineTag]);
+  /// One byte unless the flag is set, so the common beacon is exactly what
+  /// every build has always sent and understood.
+  Uint8List encode() => Uint8List.fromList([
+        online ? _onlineTag : _offlineTag,
+        if (hideLastSeen) _hideLastSeenBit,
+      ]);
 
   static PresenceBeacon decode(Uint8List bytes) {
-    if (bytes.length != 1) {
-      throw const FormatException('presence beacon must be exactly one byte');
+    if (bytes.isEmpty || bytes.length > 2) {
+      throw const FormatException('presence beacon must be one or two bytes');
     }
+    final bool online;
     switch (bytes[0]) {
       case _onlineTag:
-        return const PresenceBeacon(online: true);
+        online = true;
       case _offlineTag:
-        return const PresenceBeacon(online: false);
+        online = false;
       default:
         throw FormatException(
             'unknown presence state 0x${bytes[0].toRadixString(16)}');
     }
+    final flags = bytes.length > 1 ? bytes[1] : 0;
+    return PresenceBeacon(
+      online: online,
+      hideLastSeen: flags & _hideLastSeenBit != 0,
+    );
   }
 }
 

@@ -4,13 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// The last presence beacon we received from one peer.
 @immutable
 class PeerPresence {
-  const PeerPresence({required this.online, required this.at});
+  const PeerPresence({
+    required this.online,
+    required this.at,
+    this.hidesLastSeen = false,
+  });
 
   /// What the beacon said: the peer had the app open, or was leaving it.
   final bool online;
 
   /// When it landed, by our clock.
   final DateTime at;
+
+  /// They asked not to be shown a clock: their switch is off, so we say
+  /// whether they are here but never when they were.
+  ///
+  /// A request rather than an enforcement — see [PresenceBeacon]. Honouring it
+  /// is what the same switch on this phone would want from theirs.
+  final bool hidesLastSeen;
 
   /// A beacon is only worth believing for a while: the app can be killed
   /// outright, and the goodbye beacon is best-effort. Two heartbeats
@@ -42,13 +53,22 @@ class PresenceController extends Notifier<Map<String, PeerPresence>> {
 
   /// Record a beacon from [canonicalId]. Out-of-order beacons are ignored — a
   /// stale "offline" arriving after a fresh "online" must not flip the dot.
-  void record(String canonicalId, {required bool online, DateTime? at}) {
+  void record(
+    String canonicalId, {
+    required bool online,
+    bool hidesLastSeen = false,
+    DateTime? at,
+  }) {
     final stamp = at ?? DateTime.now();
     final existing = state[canonicalId];
     if (existing != null && existing.at.isAfter(stamp)) return;
     state = {
       ...state,
-      canonicalId: PeerPresence(online: online, at: stamp),
+      canonicalId: PeerPresence(
+        online: online,
+        at: stamp,
+        hidesLastSeen: hidesLastSeen,
+      ),
     };
   }
 

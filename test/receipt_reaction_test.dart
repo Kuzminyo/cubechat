@@ -225,8 +225,31 @@ void main() {
 
     test('a beacon is a single byte on the wire', () {
       // The heartbeat runs for the life of the process, so the payload staying
-      // one byte is the point, not an accident.
+      // one byte is the point, not an accident. The second byte is spent only
+      // by somebody who has asked for their times to be hidden.
       expect(const PresenceBeacon(online: true).encode(), hasLength(1));
+      expect(
+        const PresenceBeacon(online: true, hideLastSeen: true).encode(),
+        hasLength(2),
+      );
+    });
+
+    test('the hide-my-times request rides alongside the state', () {
+      // The two are independent on purpose: asking for no clock is not the
+      // same as claiming to be away, which is what this used to send instead
+      // and what made the status line worthless.
+      for (final online in [true, false]) {
+        final decoded = PresenceBeacon.decode(
+          PresenceBeacon(online: online, hideLastSeen: true).encode(),
+        );
+        expect(decoded.online, online);
+        expect(decoded.hideLastSeen, isTrue);
+      }
+      expect(
+        PresenceBeacon.decode(const PresenceBeacon(online: true).encode())
+            .hideLastSeen,
+        isFalse,
+      );
     });
 
     test('rides through the inner-payload tag', () {
@@ -246,9 +269,20 @@ void main() {
       );
     });
 
-    test('a multi-byte body throws', () {
+    test('a second byte is flags, a third is not a beacon', () {
+      // The flags byte was added after the fact, so an all-zero one has to mean
+      // exactly what its absence meant — otherwise every build that already
+      // sends one byte would start reading as something else.
+      final plain = PresenceBeacon.decode(Uint8List.fromList([0x01, 0x00]));
+      expect(plain.online, isTrue);
+      expect(plain.hideLastSeen, isFalse);
+
       expect(
-        () => PresenceBeacon.decode(Uint8List.fromList([0x01, 0x00])),
+        () => PresenceBeacon.decode(Uint8List.fromList([0x01, 0x00, 0x00])),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => PresenceBeacon.decode(Uint8List(0)),
         throwsA(isA<FormatException>()),
       );
     });

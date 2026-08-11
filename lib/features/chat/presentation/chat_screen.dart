@@ -279,11 +279,17 @@ class ChatScreen extends ConsumerWidget {
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
+    final beacon = ref.watch(presenceControllerProvider)[canonicalId];
     final isOnline = peerIsOnline(
       hasLiveSession: session?.isEstablished ?? false,
-      beacon: ref.watch(presenceControllerProvider)[canonicalId],
+      beacon: beacon,
       lastSeen: lastSeen,
     );
+    // Two ways the clock comes off this line, and they are different requests:
+    // ours, because we gave up seeing everybody's times when we stopped
+    // publishing our own — and theirs, carried on their beacon, which is the
+    // only thing their switch can do from another phone.
+    final hideTimes = !presenceShared || (beacon?.hidesLastSeen ?? false);
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
     ref.watch(typingControllerProvider);
@@ -304,11 +310,9 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.chatTyping;
     } else if (isOnline) {
       statusText = t.presenceOnline;
-    } else if (!presenceShared) {
-      // Having given up publishing when you were last in the app, you are not
-      // shown when anybody else was — but they are still reported as online
-      // above when they are, which is a fact about now rather than a history
-      // of when they came and went.
+    } else if (hideTimes) {
+      // Still reported as online above when they are: that is a fact about
+      // now, not a history of when they came and went.
       statusText = t.presenceRecently;
     } else if (lastSeen != null) {
       // "offline · 14:05" / "offline · Mon" — precise last-seen.

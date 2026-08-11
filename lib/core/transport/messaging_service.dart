@@ -6215,19 +6215,34 @@ class MessagingService {
     // and the relays answer that with a rate limit that lands on real messages
     // too. Re-stating a status we already published this recently buys nothing:
     // the receiver holds it for a TTL that two heartbeats fit inside.
+    // The switch is part of what a beacon says, so flipping it has to get
+    // through this throttle — otherwise "stop showing my times" waits out the
+    // next twenty seconds, or the next heartbeat, before anybody is told.
+    final hidden = !_ref.read(privacySettingsProvider).shareLastSeen;
     final since = _lastPresenceAt;
     if (_presenceInFlight ||
         (_lastPresenceOnline == online &&
+            _lastPresenceHidden == hidden &&
             since != null &&
             now.difference(since) < _presenceMinInterval)) {
       return;
     }
     // Claimed before the first await, so a concurrent caller sees it.
     _presenceInFlight = true;
-    _lastPresenceOnline = online;
-    _lastPresenceAt = now;
     try {
-      await _fanOutPresence(online: online, now: now);
+      // Recorded only if it actually went out. Marking the attempt up front —
+      // which is what this did — meant a beacon that reached nobody still
+      // silenced the next twenty seconds of them, and on a cold start that is
+      // every beacon there is: the first one fires while the relay socket is
+      // still opening, fails quietly, and the retry two seconds later is
+      // discarded as a repeat. Nothing then goes out until the heartbeat
+      // seventy seconds on, which is exactly the "you have to leave the app
+      // and come back for it to work" this feature kept being accused of.
+      if (await _fanOutPresence(online: online, now: now)) {
+        _lastPresenceOnline = online;
+        _lastPresenceHidden = hidden;
+        _lastPresenceAt = now;
+      }
     } finally {
       _presenceInFlight = false;
     }
@@ -6239,17 +6254,19 @@ class MessagingService {
   static const Duration _presenceMinInterval = Duration(seconds: 20);
 
   bool? _lastPresenceOnline;
+  bool? _lastPresenceHidden;
   DateTime? _lastPresenceAt;
   bool _presenceInFlight = false;
 
-  Future<void> _fanOutPresence({
+  /// Returns true when at least one peer was actually told.
+  Future<bool> _fanOutPresence({
     required bool online,
     required DateTime now,
   }) async {
     // The beacon is relay-only, so with no socket up the whole fan-out is ten
     // peers of guaranteed failure spaced by [relayFanoutPacing] — a second of
     // wakeful work every 45 s on exactly the phone that has no internet.
-    if (_relayClient?.isConnected != true) return;
+    if (_relayClient?.isConnected != true) return false;
     final peers = _ref
         .read(knownPeersControllerProvider)
         .values
@@ -6259,9 +6276,16 @@ class MessagingService {
             now.difference(p.lastSeen) < _presenceMaxPeerAge)
         .toList()
       ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
-    if (peers.isEmpty) return;
+    if (peers.isEmpty) return false;
 
-    final body = PresenceBeacon(online: online).encode();
+    // The outgoing half of the last-seen switch. Not a lie about being here —
+    // a request that the clock beside it is not shown, which is what the
+    // setting says and all a mesh can honestly offer: every message already
+    // tells the other phone you were alive at that moment.
+    final body = PresenceBeacon(
+      online: online,
+      hideLastSeen: !_ref.read(privacySettingsProvider).shareLastSeen,
+    ).encode();
     var sent = 0;
     final targets = peers.take(_presenceFanoutCap).toList();
     for (var i = 0; i < targets.length; i++) {
@@ -6293,6 +6317,7 @@ class MessagingService {
       DebugLog.instance.log('PRESENCE',
           'sent ${online ? 'online' : 'offline'} beacon to $sent peer(s)');
     }
+    return sent > 0;
   }
 
   /// A presence beacon from a peer: they have the app open (or are leaving it).
@@ -6319,9 +6344,11 @@ class MessagingService {
       return;
     }
     final canonical = _hexOf(senderPub);
-    _ref
-        .read(presenceControllerProvider.notifier)
-        .record(canonical, online: beacon.online);
+    _ref.read(presenceControllerProvider.notifier).record(
+          canonical,
+          online: beacon.online,
+          hidesLastSeen: beacon.hideLastSeen,
+        );
     // Both kinds of beacon are evidence of life *now* — a goodbye most of all,
     // since it is the last thing they did before closing the app. Refreshing
     // only on "hello" left the header showing the moment they *arrived*
