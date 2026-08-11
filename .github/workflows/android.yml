@@ -161,13 +161,28 @@ jobs:
       # project can produce and the one whose frame times mean the least — and
       # the app has a diagnostics screen that reports exactly those numbers.
       # Testers were reading a debugger's performance and calling it the app's.
-      - name: Build release APK
+      # Per-ABI first, then the universal one.
+      #
+      # The universal APK carries native code for arm64, arm32 and x86_64 at
+      # once, and a phone runs exactly one of them — so two thirds of an 83 MB
+      # download is machine code that device will never execute. Over a mobile
+      # connection that is a long transfer with plenty of chances to break, and
+      # a half-downloaded APK does not announce itself as one; it just fails to
+      # install. The arm64 slice is about a third of the size and is what every
+      # phone made in the last decade actually wants.
+      #
+      # The universal build stays as the fallback for anything unusual, so
+      # picking wrong is recoverable rather than a dead end.
+      - name: Build release APKs
         env:
           CUBECHAT_RELEASE_STORE_FILE: ${{ steps.signing.outputs.store }}
           CUBECHAT_RELEASE_STORE_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_STORE_PASSWORD }}
           CUBECHAT_RELEASE_KEY_ALIAS: ${{ secrets.CUBECHAT_RELEASE_KEY_ALIAS }}
           CUBECHAT_RELEASE_KEY_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_KEY_PASSWORD }}
-        run: flutter build apk --release
+        run: |
+          set -e
+          flutter build apk --release --split-per-abi
+          flutter build apk --release
 
       - name: Show build output
         run: |
@@ -175,11 +190,13 @@ jobs:
           echo "build/app/outputs/flutter-apk:"
           ls -lh build/app/outputs/flutter-apk/ || echo "(missing)"
 
-      - name: Rename APK
+      - name: Rename APKs
         run: |
           set -e
-          cp build/app/outputs/flutter-apk/app-release.apk cubechat-release.apk
-          ls -lh cubechat-release.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk cubechat-arm64.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk cubechat-arm32.apk
+          cp build/app/outputs/flutter-apk/app-release.apk cubechat-universal.apk
+          ls -lh cubechat-arm64.apk cubechat-arm32.apk cubechat-universal.apk
 
       # Which key signed this build, in one line. "App not installed" almost
       # always means the signer changed since the copy on the phone, and that
@@ -191,9 +208,9 @@ jobs:
         run: |
           set -e
           signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
-          fp=$("$signer" verify --print-certs cubechat-release.apk \
+          fp=$("$signer" verify --print-certs cubechat-arm64.apk \
                 | grep -m1 'SHA-256 digest' | awk '{print $NF}')
-          subject=$("$signer" verify --print-certs cubechat-release.apk \
+          subject=$("$signer" verify --print-certs cubechat-arm64.apk \
                 | grep -m1 'certificate DN' | cut -d: -f2- | sed 's/^ //')
           echo "fingerprint=${fp:-unknown}" >> "$GITHUB_OUTPUT"
           echo "subject=${subject:-unknown}" >> "$GITHUB_OUTPUT"
@@ -228,9 +245,14 @@ jobs:
             - Commit: `${{ github.sha }}`
             - Branch: `${{ github.ref_name }}`
 
-            Download `cubechat-release.apk` below, open it on your Android
-            phone, and allow "Install unknown apps" for your browser/file
-            manager when prompted.
+            **Take `cubechat-arm64.apk`** — every phone made in roughly the
+            last decade is arm64, and it is a third the size of the universal
+            build, which matters over mobile data. Open it on the phone and
+            allow "Install unknown apps" for your browser or file manager when
+            prompted.
+
+            The others are fallbacks: `cubechat-arm32.apk` for old 32-bit
+            devices, `cubechat-universal.apk` if neither installs.
 
             **Signed by:** `${{ steps.cert.outputs.subject }}`
             **Key SHA-256:** `${{ steps.cert.outputs.fingerprint }}`
@@ -240,26 +262,32 @@ jobs:
             installed") — uninstall cubechat first, then install this APK. When
             the fingerprint matches, it installs straight over the top and
             keeps your chats.
-          files: cubechat-release.apk
+          files: |
+            cubechat-arm64.apk
+            cubechat-arm32.apk
+            cubechat-universal.apk
 
-      # The rolling tag used to carry cubechat-debug.apk, and publishing under a
-      # new filename leaves the old asset sitting next to it — an APK from an
-      # unrelated commit, offered on the same page as the current one. Delete it
-      # rather than let anyone install a stale build by picking the wrong link.
-      - name: Drop the superseded debug asset
+      # Publishing under new filenames leaves the previous ones sitting next to
+      # them — APKs from an unrelated commit, offered on the same page as the
+      # current build. Anything on the tag that this run did not just upload is
+      # stale by definition, so it goes.
+      - name: Drop superseded assets
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          id=$(gh api "repos/${{ github.repository }}/releases/tags/apk-latest" \
-            --jq '.assets[] | select(.name == "cubechat-debug.apk") | .id' \
-            || true)
-          if [ -n "$id" ]; then
-            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
-            echo "removed stale cubechat-debug.apk (asset $id)"
-          else
-            echo "no stale debug asset to remove"
-          fi
+          keep="cubechat-arm64.apk cubechat-arm32.apk cubechat-universal.apk"
+          gh api "repos/${{ github.repository }}/releases/tags/apk-latest" \
+            --jq '.assets[] | "\(.id) \(.name)"' | while read -r id name; do
+              case " $keep " in
+                *" $name "*) ;;
+                *)
+                  gh api -X DELETE \
+                    "repos/${{ github.repository }}/releases/assets/$id" \
+                    && echo "removed stale $name"
+                  ;;
+              esac
+            done
 
       - name: Summary
         if: success()
@@ -278,7 +306,7 @@ jobs:
             echo ""
             echo "### Install on Android"
             echo "1. Open the download link on your phone"
-            echo "2. Tap \`cubechat-release.apk\`"
+            echo "2. Tap \`cubechat-arm64.apk\` (universal build is the fallback)"
             echo "3. Allow \"Install unknown apps\" for your browser if prompted"
             echo "4. Install and open"
             echo ""
