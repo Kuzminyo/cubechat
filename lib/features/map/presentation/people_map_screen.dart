@@ -21,6 +21,7 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peer_avatars_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
+import '../data/map_focus_request.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
 import 'map_friends_sheet.dart';
@@ -189,6 +190,22 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     _centered = true;
   }
 
+  /// Point the camera at a friend picked from the list, and select them.
+  ///
+  /// Selecting as well as moving is the point: the card that names who you are
+  /// looking at is the same card a tap on their pin raises, so arriving from
+  /// the list lands you in the state you would have been in had you found them
+  /// yourself.
+  void _focusOnPeer(String peerId) {
+    final entry = ref.read(sharedMapLocationsProvider)[peerId];
+    if (entry == null || !mounted) return;
+    setState(() {
+      _mineSelected = false;
+      _selectedId = peerId;
+    });
+    _focusOn(LatLng(entry.location.latitude, entry.location.longitude));
+  }
+
   /// Glide the camera to [target]. Falls back to a plain move for the first
   /// placement, where there is no "from" to animate out of.
   void _moveCamera(LatLng target, double zoom) {
@@ -290,6 +307,11 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           _mineSelected = false;
         });
       }
+    });
+    // Somebody tapped a name in the sheet that floats over this screen. The
+    // sheet is gone by the time this fires; the camera is ours to move.
+    ref.listen(mapFocusRequestProvider, (_, request) {
+      if (request != null) _focusOnPeer(request.peerId);
     });
     final nickname = ref.watch(nicknameControllerProvider);
     final ownPhoto = ref.watch(avatarProvider);
@@ -424,8 +446,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               children: [
                 _MapActionButton(
                   icon: Icons.person_search_rounded,
-                  tooltip: t.contactsTitle,
-                  onTap: () => context.go('/contacts'),
+                  tooltip: t.mapFriendsTitle,
+                  // Used to jump to the address book, which left the map
+                  // entirely to answer a question about it. The people worth
+                  // finding from here are the handful already on the map, and
+                  // the sheet that lists them can now take the camera to one.
+                  onTap: () => showMapFriendsSheet(context),
                 ),
                 const SizedBox(height: 12),
                 _MapActionButton(

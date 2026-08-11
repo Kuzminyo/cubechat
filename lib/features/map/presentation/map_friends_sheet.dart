@@ -10,6 +10,7 @@ import '../../chats/presentation/chats_list_screen.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
+import '../data/map_focus_request.dart';
 import '../data/map_friends_controller.dart';
 import '../data/shared_map_locations_provider.dart';
 import 'map_invite_sheet.dart';
@@ -159,6 +160,25 @@ class _MapFriendsSheet extends ConsumerWidget {
                     final name = _nameFor(chatId, peers, chats);
                     final onMap = live[chatId] != null;
                     return ListTile(
+                      // Tapping a row answers "where are they", which is the
+                      // question the list raises and the map can already
+                      // answer: close the sheet and put them under the camera.
+                      // Somebody with no position has nowhere to be taken to,
+                      // so say that rather than dismissing the sheet onto an
+                      // unchanged map and leaving the tap looking broken.
+                      onTap: () {
+                        if (!onMap) {
+                          showGlassToast(
+                            context,
+                            t.mapFriendsIdle,
+                            icon: Icons.location_off_rounded,
+                          );
+                          return;
+                        }
+                        Navigator.of(context).pop();
+                        ref.read(mapFocusRequestProvider.notifier).state =
+                            MapFocusRequest(chatId);
+                      },
                       leading: PeerAvatar(
                         peerId: chatId,
                         label: name,
