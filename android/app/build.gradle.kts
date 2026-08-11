@@ -95,8 +95,15 @@ android {
 
     buildTypes {
         release {
-            // Real signing when the secrets are there, the debug keystore when
-            // they are not — never nothing.
+            // A real key when one is configured, the debug keystore only as a
+            // last resort — never nothing.
+            //
+            // CI no longer reaches this fallback: the workflow always hands
+            // over a keystore, generating its own on first use, precisely
+            // because a debug-signed APK is what Play Protect blocks on sight
+            // (`CN=Android Debug` is the placeholder every SDK produces, so it
+            // reads as an app nobody stands behind). This branch is now only
+            // for a local `flutter build apk --release` with nothing set up.
             //
             // An unsigned release APK is not a weaker build, it is an
             // uninstallable one: Android refuses the package outright. That is
