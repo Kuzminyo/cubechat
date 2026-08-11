@@ -35,6 +35,7 @@ import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
 import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
+import '../../../profile/data/privacy_settings_controller.dart';
 import 'emoji_picker_sheet.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
@@ -933,6 +934,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         await ref
                             .read(mapFriendsControllerProvider.notifier)
                             .activate(widget.chatId);
+                        // Accepting *is* agreeing to be on the map, so the
+                        // switch that decides whether a beacon is ever sent is
+                        // turned on here. It defaults to off, and leaving it
+                        // that way made accepting look like it had worked —
+                        // the pairing was real, the pin never came, and the
+                        // only cure was finding a toggle in Privacy nobody
+                        // knew to look for.
+                        await ref
+                            .read(privacySettingsProvider.notifier)
+                            .setShareMapLocation(true);
                         await ref.read(messagingServiceProvider).sendText(
                               widget.chatId,
                               MapFriendLink.accepted(

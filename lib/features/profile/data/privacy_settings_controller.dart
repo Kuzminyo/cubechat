@@ -81,9 +81,20 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
 
   Box<dynamic>? _box;
 
+  /// The box opening. Writes wait on it; see [_put].
+  Future<void>? _loading;
+
+  /// True once anything in this session has set a value.
+  ///
+  /// The box is opened through the platform keystore and is slow enough on a
+  /// cold start that somebody can flip a switch — or accept a map invitation,
+  /// which turns one on — before it is ready. [_load] would then overwrite
+  /// that with what was on disk a moment ago, quietly undoing it.
+  bool _changed = false;
+
   @override
   PrivacySettings build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return PrivacySettings.initial;
   }
 
@@ -92,6 +103,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
       final box = await hiveCipherProvider
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
+      if (_changed) return;
       state = PrivacySettings(
         shareLastSeen: box.get(_keyLastSeen) as bool? ?? true,
         shareReadReceipts: box.get(_keyReceipts) as bool? ?? true,
@@ -118,7 +130,12 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   }
 
   Future<void> _put(String key, bool value) async {
+    _changed = true;
     try {
+      // Waits for the box rather than dropping the write into a null one,
+      // which is how a setting could hold for a session and be gone on the
+      // next launch.
+      await _loading;
       await _box?.put(key, value);
     } catch (e) {
       debugPrint('PrivacySettings persist failed: $e');

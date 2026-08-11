@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_friend_link.dart';
 import '../data/map_friends_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
@@ -53,6 +54,12 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
     var sent = 0;
 
     final friends = ref.read(mapFriendsControllerProvider.notifier);
+    // Inviting people to your map is the consent the map-sharing switch asks
+    // for, so it is granted here rather than hidden in Privacy for the user to
+    // go and find. Without it the invitation "worked" and nothing happened:
+    // both sides paired, neither ever appeared, because a beacon is only sent
+    // while sharing is on and it defaults to off.
+    await ref.read(privacySettingsProvider.notifier).setShareMapLocation(true);
     for (final chat in chats) {
       if (!_selected.contains(chat.id)) continue;
       try {
