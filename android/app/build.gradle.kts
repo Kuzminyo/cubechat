@@ -74,8 +74,28 @@ android {
 
     buildTypes {
         release {
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
+            // Real signing when the secrets are there, the debug keystore when
+            // they are not — never nothing.
+            //
+            // An unsigned release APK is not a weaker build, it is an
+            // uninstallable one: Android refuses the package outright. That is
+            // why CI shipped a *debug* APK for so long, and a debug build is
+            // the wrong thing to hand a tester — the Dart is interpreted rather
+            // than AOT-compiled, every assertion is live, and the frame times
+            // it reports are not the ones the app actually has. Diagnosing "the
+            // UI is GPU-bound" from a debug build is measuring the debugger.
+            //
+            // Falling back to the debug keystore keeps the APK installable
+            // while leaving the release path intact for whenever
+            // CUBECHAT_RELEASE_* / key.properties do turn up. It is a
+            // sideloading key, not a distribution one: it is not the identity
+            // to publish under, and an APK signed with it cannot upgrade one
+            // signed with a real key (or vice versa) — that install has to be
+            // replaced rather than updated.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
         }
     }

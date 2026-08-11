@@ -1,4 +1,4 @@
-name: Android build (debug APK for sideloading)
+name: Android build (release APK for sideloading)
 
 # Triggers:
 # - every push to main (so each commit produces a fresh installable APK)
@@ -76,7 +76,7 @@ jobs:
         run: flutter test --exclude-tags golden
 
   build:
-    name: Build debug APK
+    name: Build release APK
     # No point spending a build, or publishing one, on a tree that fails its
     # own tests.
     needs: verify
@@ -112,13 +112,20 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
-      # A debug APK is self-signed with the Android debug keystore, so it
-      # installs on any device without release signing secrets. (A --release
-      # build here would be unsigned — this project only wires a release
-      # signingConfig when key.properties / CUBECHAT_RELEASE_* secrets exist —
-      # and an unsigned release APK won't install.)
-      - name: Build debug APK
-        run: flutter build apk --debug
+      # Release, not debug. This used to build --debug because an unsigned
+      # release APK will not install, and no release signing secrets are wired
+      # into this workflow — but the answer to that was the signing config, not
+      # the build type. app/build.gradle.kts now falls back to the debug
+      # keystore when CUBECHAT_RELEASE_* / key.properties are absent, so the
+      # release build comes out installable.
+      #
+      # It matters more than it sounds. A debug APK runs Dart through the
+      # interpreter with assertions live, so it is both the slowest build the
+      # project can produce and the one whose frame times mean the least — and
+      # the app has a diagnostics screen that reports exactly those numbers.
+      # Testers were reading a debugger's performance and calling it the app's.
+      - name: Build release APK
+        run: flutter build apk --release
 
       - name: Show build output
         run: |
@@ -129,8 +136,8 @@ jobs:
       - name: Rename APK
         run: |
           set -e
-          cp build/app/outputs/flutter-apk/app-debug.apk cubechat-debug.apk
-          ls -lh cubechat-debug.apk
+          cp build/app/outputs/flutter-apk/app-release.apk cubechat-release.apk
+          ls -lh cubechat-release.apk
 
       # Deliberately NOT uploaded as a workflow artifact.
       #
@@ -152,18 +159,42 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: apk-latest
-          name: Latest debug APK (${{ github.ref_name }})
+          name: Latest release APK (${{ github.ref_name }})
           prerelease: true
           body: |
-            Auto-built **debug** APK for sideloading on Android.
+            Auto-built **release** APK for sideloading on Android.
 
             - Commit: `${{ github.sha }}`
             - Branch: `${{ github.ref_name }}`
 
-            Download `cubechat-debug.apk` below, open it on your Android phone,
-            and allow "Install unknown apps" for your browser/file manager when
-            prompted.
-          files: cubechat-debug.apk
+            Download `cubechat-release.apk` below, open it on your Android
+            phone, and allow "Install unknown apps" for your browser/file
+            manager when prompted.
+
+            Signed with the runner's debug keystore, because no release signing
+            secrets are configured. That keeps it installable, but the key is
+            not stable between builds — so **uninstall the previous cubechat
+            before installing this one** if Android refuses the update.
+          files: cubechat-release.apk
+
+      # The rolling tag used to carry cubechat-debug.apk, and publishing under a
+      # new filename leaves the old asset sitting next to it — an APK from an
+      # unrelated commit, offered on the same page as the current one. Delete it
+      # rather than let anyone install a stale build by picking the wrong link.
+      - name: Drop the superseded debug asset
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh api "repos/${{ github.repository }}/releases/tags/apk-latest" \
+            --jq '.assets[] | select(.name == "cubechat-debug.apk") | .id' \
+            || true)
+          if [ -n "$id" ]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
+            echo "removed stale cubechat-debug.apk (asset $id)"
+          else
+            echo "no stale debug asset to remove"
+          fi
 
       - name: Summary
         if: success()
@@ -178,11 +209,14 @@ jobs:
             echo "  \`${{ github.server_url }}/${{ github.repository }}/releases/tag/apk-latest\`"
             echo ""
             echo "_No workflow artifact: the release above is the same file, and"
-            echo "a second 88 MB copy per push is what filled the artifact quota._"
+            echo "a second copy per push is what filled the artifact quota._"
             echo ""
             echo "### Install on Android"
             echo "1. Open the download link on your phone"
-            echo "2. Tap \`cubechat-debug.apk\`"
+            echo "2. Tap \`cubechat-release.apk\`"
             echo "3. Allow \"Install unknown apps\" for your browser if prompted"
             echo "4. Install and open"
+            echo ""
+            echo "Uninstall the previous build first if Android refuses the"
+            echo "update — the fallback signing key is not stable between runs."
           } >> "$GITHUB_STEP_SUMMARY"
