@@ -46,17 +46,45 @@ class LocationService {
           permission == LocationPermission.deniedForever) {
         return (null, LocationFailure.denied);
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          // Medium, not best. A shared pin is read at street level, and the
-          // last few metres of precision cost seconds of the radio staying up
-          // — which is the sort of thing that adds up on a phone this app is
-          // otherwise careful with.
-          accuracy: _accuracy,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-      return (_fixOf(position), null);
+      // What the platform already knows, before asking it to go and find out.
+      //
+      // A cold `getCurrentPosition` is seconds of radio even outdoors, and
+      // indoors it frequently runs the full twenty and gives up — which is the
+      // "it looks for ages and then does not find me" that made the map feel
+      // broken every time it was opened. The OS has almost always got a recent
+      // fix from some other app; a couple of minutes old is a pin on the right
+      // building, and the ninety-second refresh replaces it with a fresh one
+      // shortly anyway.
+      final cached = await _lastKnown();
+      if (cached != null &&
+          DateTime.now().difference(cached.timestamp) < _cacheStillGood) {
+        return (_fixOf(cached), null);
+      }
+
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            // Medium, not best. A shared pin is read at street level, and the
+            // last few metres of precision cost seconds of the radio staying
+            // up — which is the sort of thing that adds up on a phone this app
+            // is otherwise careful with.
+            accuracy: _accuracy,
+            timeLimit: Duration(seconds: 20),
+          ),
+        );
+        return (_fixOf(position), null);
+      } catch (e) {
+        // Timed out, or no fix to be had where the phone is standing. A stale
+        // position is not nothing: it is where the phone last was, which beats
+        // an empty map and a failure notice by a wide margin, and it is what
+        // every other map app shows in the same moment.
+        final stale = cached ?? await _lastKnown();
+        if (stale != null) {
+          DebugLog.instance.log('LOCATION', 'live fix failed ($e) — using last known');
+          return (_fixOf(stale), null);
+        }
+        rethrow;
+      }
     } catch (e) {
       // A timeout, no fix indoors, a platform that has no idea — all the same
       // answer to the caller, which is "we could not, say so and move on".
@@ -64,6 +92,23 @@ class LocationService {
       return (null, LocationFailure.unavailable);
     }
   }
+
+  /// The platform's own cached position, or null. Never throws: on a phone
+  /// that has none this is simply absent, which is not a failure worth
+  /// reporting to anybody.
+  Future<Position?> _lastKnown() async {
+    try {
+      return await Geolocator.getLastKnownPosition();
+    } catch (e) {
+      DebugLog.instance.log('LOCATION', 'last known unavailable: $e');
+      return null;
+    }
+  }
+
+  /// How old the platform's cached fix may be and still be worth showing
+  /// instead of waiting. Long enough to cover walking indoors and opening the
+  /// app; short enough that it cannot put somebody on the wrong street.
+  static const _cacheStillGood = Duration(minutes: 2);
 
   /// Positions for as long as somebody is on the map with you — including
   /// while the app is out of sight.

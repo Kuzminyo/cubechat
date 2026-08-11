@@ -146,6 +146,32 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   double? _zoomFrom;
   double? _zoomTo;
 
+  /// The zoom the pins are currently sized for.
+  ///
+  /// Pins used to be one size at every zoom, so pulling back to see a city
+  /// turned a handful of friends into one lump of overlapping discs covering
+  /// the streets they were on. Tracked in steps rather than continuously: a
+  /// pinch would otherwise rebuild every marker on every frame of the gesture,
+  /// and a quarter of a zoom level is finer than the eye follows anyway.
+  double _markerZoom = _initialZoom;
+
+  /// Pin size relative to its close-up size: full from [_shrinkFrom] in, down
+  /// to [_minMarkerScale] at [_shrinkTo] and beyond.
+  double get _markerScale {
+    const shrinkFrom = 14.0;
+    const shrinkTo = 6.0;
+    const minScale = 0.5;
+    final zoom = _markerZoom;
+    if (zoom >= shrinkFrom) return 1;
+    if (zoom <= shrinkTo) return minScale;
+    return minScale +
+        (zoom - shrinkTo) / (shrinkFrom - shrinkTo) * (1 - minScale);
+  }
+
+  /// The marker's hit box, which has to follow the drawing or a shrunken pin
+  /// keeps a full-size tap target and steals its neighbours' taps.
+  double get _markerBox => 72 * _markerScale;
+
   /// Cached link geometry, rebuilt only when the points actually move.
   ///
   /// [_lines] is O(n²) with a sort inside the loop, and it used to run on every
@@ -186,8 +212,31 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   /// Never zooms *out*: somebody already pushed in closer than [_focusZoom]
   /// asked for that, and yanking them back would undo it on every tap.
   void _focusOn(LatLng point) {
-    _moveCamera(point, math.max(_map.camera.zoom, _focusZoom));
+    _moveCamera(point, math.max(_currentZoom ?? _focusZoom, _focusZoom));
     _centered = true;
+  }
+
+  /// The camera's zoom, or null when there is no camera to ask.
+  ///
+  /// [MapController.camera] throws outright until the map has been laid out
+  /// once, and everything here that points the camera somewhere — a fix
+  /// arriving, a tap in the friends sheet, the refresh timer — can land in
+  /// that window. Reading it through here turns a crash into a first
+  /// placement, which is what the map does on its first fix anyway.
+  double? get _currentZoom {
+    try {
+      return _map.camera.zoom;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  LatLng? get _currentCentre {
+    try {
+      return _map.camera.center;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Point the camera at a friend picked from the list, and select them.
@@ -209,14 +258,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   /// Glide the camera to [target]. Falls back to a plain move for the first
   /// placement, where there is no "from" to animate out of.
   void _moveCamera(LatLng target, double zoom) {
-    final current = _centered ? _map.camera.center : null;
+    final current = _centered ? _currentCentre : null;
     if (current == null) {
-      _map.move(target, zoom);
+      try {
+        _map.move(target, zoom);
+      } catch (_) {
+        // Not laid out yet. The map places itself on the next fix, and the
+        // 90-second refresh guarantees there is one.
+      }
       return;
     }
     _cameraFrom = current;
     _cameraTo = target;
-    _zoomFrom = _map.camera.zoom;
+    _zoomFrom = _currentZoom ?? zoom;
     _zoomTo = zoom;
     _camera
       ..reset()
@@ -515,9 +569,42 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     );
   }
 
+  /// "Find me": move the camera *and* say which pin is the answer.
+  ///
+  /// Selecting is half the job. Standing next to somebody, the camera arrived
+  /// on a pin drawn underneath theirs, with their card on screen — so the
+  /// button looked like it had centred on the wrong person. Selecting raises
+  /// the pin above the crowd and puts your own card up; tapping the map
+  /// afterwards clears it and hands both back.
   Future<void> _centerOnMe() async {
+    setState(() {
+      _mineSelected = true;
+      _selectedId = null;
+    });
     await _locate(recenter: true);
   }
+
+  Marker _ownMarker(LatLng me, String nickname, Uint8List? ownPhoto) => Marker(
+        point: me,
+        width: _markerBox,
+        height: _markerBox,
+        child: _MapAvatar(
+          key: const ValueKey('map-own-marker'),
+          seed: 'me',
+          name: nickname,
+          photo: ownPhoto,
+          mine: true,
+          selected: _mineSelected,
+          scale: _markerScale,
+          onTap: () {
+            setState(() {
+              _mineSelected = true;
+              _selectedId = null;
+            });
+            _focusOn(me);
+          },
+        ),
+      );
 
   Widget _buildMap(
     List<_Node> nodes,
@@ -546,6 +633,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           _mineSelected = false;
         }),
         onMapEvent: (event) {
+          // Resize the pins in quarter-zoom steps. Finer than the eye follows,
+          // coarse enough that a pinch does not rebuild every marker on every
+          // frame of the gesture.
+          if ((event.camera.zoom - _markerZoom).abs() >= 0.25) {
+            setState(() => _markerZoom = event.camera.zoom);
+          }
           if (event is MapEventMoveStart ||
               event is MapEventFlingAnimationStart ||
               event is MapEventDoubleTapZoomStart) {
@@ -606,37 +699,26 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           ),
         MarkerLayer(
           markers: [
-            if (me != null)
-              Marker(
-                point: me,
-                width: 72,
-                height: 72,
-                child: _MapAvatar(
-                  key: const ValueKey('map-own-marker'),
-                  seed: 'me',
-                  name: nickname,
-                  photo: ownPhoto,
-                  mine: true,
-                  selected: _mineSelected,
-                  onTap: () {
-                    setState(() {
-                      _mineSelected = true;
-                      _selectedId = null;
-                    });
-                    _focusOn(me);
-                  },
-                ),
-              ),
+            // Own pin first, under everybody else's — until it is the selected
+            // one, when it goes last and therefore on top.
+            //
+            // A marker layer paints in list order, so standing next to a
+            // friend used to bury you under them: pressing "find me" moved the
+            // camera onto a pin you could not see, which read as the button
+            // doing nothing. Selecting is now what decides the order, and a
+            // tap on empty map clears the selection and hands the top back.
+            if (me != null && !_mineSelected) _ownMarker(me, nickname, ownPhoto),
             for (final node in nodes)
               Marker(
                 point: node.point,
-                width: 72,
-                height: 72,
+                width: _markerBox,
+                height: _markerBox,
                 child: _MapAvatar(
                   seed: node.id,
                   name: node.name,
                   photo: node.photo,
                   selected: node.id == _selectedId,
+                  scale: _markerScale,
                   onTap: () {
                     setState(() {
                       _selectedId = node.id;
@@ -646,6 +728,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   },
                 ),
               ),
+            if (me != null && _mineSelected) _ownMarker(me, nickname, ownPhoto),
           ],
         ),
         RichAttributionWidget(
@@ -833,6 +916,7 @@ class _MapAvatar extends StatelessWidget {
     this.photo,
     this.selected = false,
     this.mine = false,
+    this.scale = 1,
     this.onTap,
   });
 
@@ -841,11 +925,15 @@ class _MapAvatar extends StatelessWidget {
   final Uint8List? photo;
   final bool selected;
   final bool mine;
+
+  /// How large this pin is drawn relative to its close-up size — see
+  /// [_PeopleMapScreenState._markerScale].
+  final double scale;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final size = selected ? 58.0 : 52.0;
+    final size = (selected ? 58.0 : 52.0) * scale;
     // Each avatar carries two shadows, one of them a 22px glow. Without a
     // boundary every one of them re-rasterises whenever anything else on the
     // map changes — panning, a beacon landing, the camera gliding — which is
