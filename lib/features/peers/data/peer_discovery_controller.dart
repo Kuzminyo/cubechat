@@ -239,11 +239,12 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       unawaited(ref.read(messagingServiceProvider).announceNow());
     });
 
-    // Flipping the last-seen switch has to reach contacts now, not at the next
-    // heartbeat: turning it off is something people do *because* they want to
-    // stop being visible, and 45 s of still showing "online" is the whole
-    // complaint. announcePresence turns the requested state into whatever the
-    // setting permits, so passing `true` here means "say whatever is now true".
+    // Flipping the last-seen switch used to change what the beacon said, so it
+    // had to be re-sent at once. It no longer does — the switch hides times,
+    // not whether somebody is in the app — but the re-announcement is kept: it
+    // costs one beacon on a deliberate settings change, and it repairs the
+    // contacts still holding the "offline" this phone insisted on for as long
+    // as the switch was off, without waiting out a heartbeat.
     ref.listen<PrivacySettings>(privacySettingsProvider, (prev, next) {
       if (prev?.shareLastSeen == next.shareLastSeen) return;
       unawaited(

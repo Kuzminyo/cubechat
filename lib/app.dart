@@ -140,6 +140,35 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// still shows up promptly.
   static const Duration _goodbyeGrace = Duration(seconds: 6);
 
+  /// A finger on the glass is proof of being in the app, and the only proof
+  /// that cannot be missed.
+  ///
+  /// The lifecycle callback fires on a *transition*, and on Android the engine
+  /// is pre-warmed headless in MainApplication — so the seed in [initState]
+  /// reads whatever the process was born into, and an Activity that attaches
+  /// without producing a transition this observer sees leaves the flag stuck at
+  /// false. The phone then never claims to be online however long its owner
+  /// uses it, while the identical build on another phone works, because there
+  /// the callback happened to arrive. Both were in the logs.
+  ///
+  /// Nothing is sent unless the flag was actually wrong, so this costs one
+  /// comparison per touch.
+  void _noticeTouch() {
+    if (AppLifecycle.instance.isForeground) return;
+    AppLifecycle.instance.isForeground = true;
+    // Deliberately not through [_announcePresenceDebounced]: that one holds
+    // `_announcedOnline`, which starts life claiming we already said so — and
+    // in this exact case we never did, because the beacon was suppressed for
+    // not being in the foreground. Going straight to the service repairs that;
+    // it throttles a repeat on its own.
+    _goodbyeTimer?.cancel();
+    _goodbyeTimer = null;
+    _announcedOnline = true;
+    unawaited(
+      ref.read(messagingServiceProvider).announcePresence(online: true),
+    );
+  }
+
   void _announcePresenceDebounced({required bool online}) {
     _goodbyeTimer?.cancel();
     _goodbyeTimer = null;
@@ -315,7 +344,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       builder: (context, child) => _ClampedTextScale(
         child: Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => UiActivity.instance.poke(),
+        onPointerDown: (_) {
+          UiActivity.instance.poke();
+          _noticeTouch();
+        },
         onPointerMove: (_) => UiActivity.instance.poke(),
         onPointerSignal: (_) => UiActivity.instance.poke(),
         child: _TapToDismissKeyboard(

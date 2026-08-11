@@ -6187,25 +6187,24 @@ class MessagingService {
     if (_disposed) return;
     if (_nostr == null) return;
 
-    // Opted out of last-seen: say "offline", don't fall silent.
+    // The last-seen switch does not reach this beacon any more.
     //
-    // Silence was the obvious reading and it produced the opposite of what the
-    // toggle promises. A peer with no beacon to go on falls back to "did they
-    // announce recently" — and announcements are not presence, are not gated by
-    // this setting, and over a relay never stop. So turning the toggle on left
-    // contacts showing you permanently online, and leaving the app never
-    // corrected it because the goodbye was suppressed too.
+    // It used to force every beacon to "offline", which is where the status
+    // line stopped meaning anything: a phone with the switch off announced
+    // itself as not-in-the-app every seventy seconds while its owner was
+    // reading a message on it, and the other end dutifully showed "last seen
+    // recently" about somebody who was demonstrably there. A log from two
+    // phones has nothing in it but `sent offline beacon to 6 peer(s)`, over
+    // and over, from an app in active use.
     //
-    // Asserting offline is also the honest meaning of the setting: others see
-    // you as not-online, and never learn when you were. It costs nothing extra
-    // — the heartbeat that carried "online" now carries "offline" — and because
-    // [peerIsOnline] gives a fresh beacon precedence over that fallback, the
-    // 45 s heartbeat inside a 150 s TTL keeps the answer pinned.
-    final shareLastSeen = _ref.read(privacySettingsProvider).shareLastSeen;
-    if (!shareLastSeen) online = false;
-
-    // Checked after the override: a backgrounded process must not claim to be
-    // in the app, but it may still say it has left.
+    // What the switch hides is a *time* — see `presenceRecently` and the
+    // reading side in peerIsOnline. Whether somebody is in the app right now
+    // is not a time and is answered truthfully, which is also the only way the
+    // answer can be trusted at all.
+    //
+    // "Online" therefore means exactly one thing: the app is on screen. A
+    // backgrounded process must not claim it, and the goodbye that follows a
+    // pause is what corrects the other end.
     if (online && !AppLifecycle.instance.isForeground) return;
 
     final now = DateTime.now();
