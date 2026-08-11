@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/colors.dart';
@@ -11,6 +13,7 @@ import '../../../../core/util/debug_log.dart';
 import '../../../../core/util/open_in.dart';
 import '../../../../core/util/share_anchor.dart';
 import '../../../../core/utils/file_mime.dart';
+import '../../../../core/utils/file_signature.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/message.dart';
@@ -104,6 +107,75 @@ class FileBubble extends ConsumerWidget {
     );
   }
 
+  /// A temporary duplicate of [path] under a name the system can route, or
+  /// null when the file already has one (or when nothing can name it).
+  ///
+  /// The extension is taken from what the sender called the file, then from
+  /// the bytes themselves, then from the MIME for the formats no signature can
+  /// identify — a text file is just text, and there is nothing in it to read.
+  Future<String?> _openableCopy(String path, String mime) async {
+    try {
+      String? extension = _extensionOf(message.fileName) ?? _extensionOf(path);
+      if (extension == null) {
+        final file = File(path);
+        final length = await file.length();
+        if (length > 0) {
+          final header = await file.openRead(0, length < 32 ? length : 32).first;
+          extension = extensionFromSignature(Uint8List.fromList(header));
+        }
+      }
+      extension ??= switch (mime) {
+        'text/plain' => 'txt',
+        'text/markdown' => 'md',
+        'text/csv' => 'csv',
+        'text/html' => 'html',
+        'text/xml' || 'application/xml' => 'xml',
+        'application/json' => 'json',
+        'text/vcard' => 'vcf',
+        'text/calendar' => 'ics',
+        _ => null,
+      };
+      if (extension == null) return null;
+      if (path.toLowerCase().endsWith('.${extension.toLowerCase()}')) return null;
+
+      final dir = Directory('${(await getTemporaryDirectory()).path}'
+          '${Platform.pathSeparator}open');
+      await dir.create(recursive: true);
+      // Named after the file rather than after its id: this name is what the
+      // opening app shows in its title bar, and "3f9c1a…" is not a file name
+      // anybody recognises as theirs.
+      final stem = _stemOf(message.fileName ?? path);
+      final target = '${dir.path}${Platform.pathSeparator}$stem.$extension';
+      await File(path).copy(target);
+      return target;
+    } catch (e) {
+      DebugLog.instance.log('FILE', 'openable copy failed for $path: $e');
+      return null;
+    }
+  }
+
+  /// The extension of [name], or null when there is nothing usable — no dot, a
+  /// trailing dot, or something too long to be one (a dot in a date, say).
+  static String? _extensionOf(String? name) {
+    if (name == null) return null;
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return null;
+    final extension = name.substring(dot + 1);
+    if (extension.length > 5 || extension.contains(Platform.pathSeparator)) {
+      return null;
+    }
+    return RegExp(r'^[A-Za-z0-9]+$').hasMatch(extension) ? extension : null;
+  }
+
+  static String _stemOf(String nameOrPath) {
+    final name = nameOrPath.split(RegExp(r'[/\\]')).last;
+    final dot = name.lastIndexOf('.');
+    final stem = dot <= 0 ? name : name.substring(0, dot);
+    final cleaned = stem.replaceAll(RegExp(r'[^A-Za-z0-9 _.-]'), '_').trim();
+    if (cleaned.isEmpty) return 'file';
+    return cleaned.length > 60 ? cleaned.substring(0, 60) : cleaned;
+  }
+
   Future<void> _open(BuildContext context, WidgetRef ref) async {
     final t = AppLocalizations.of(context);
     final path = message.filePath;
@@ -168,6 +240,26 @@ class FileBubble extends ConsumerWidget {
         DebugLog.instance.log(
             'FILE', 'open as $declared gave ${result.type} — retrying untyped');
         result = await OpenFilex.open(path);
+      }
+
+      // Third and last: give the file a name the system can read.
+      //
+      // This is what old attachments need. A build from before any of this
+      // stored them under an id with no extension and frequently no MIME
+      // either, so the two attempts above ask Android to route "some bytes at
+      // a path ending in nothing" — which resolves to no handler on any phone,
+      // and is exactly the "no app opens this file" a tester photographed on a
+      // screenshot every phone can open.
+      //
+      // Nothing is renamed in place: the conversation's copy is what the
+      // transfer centre and the re-request path both address, so this hands
+      // the opener a temporary duplicate under a better name instead.
+      if (result.type != ResultType.done) {
+        final copy = await _openableCopy(path, mime);
+        if (copy != null) {
+          DebugLog.instance.log('FILE', 'retrying via $copy');
+          result = await OpenFilex.open(copy);
+        }
       }
     } catch (e) {
       // Falls through to the share offer below rather than stopping here.
