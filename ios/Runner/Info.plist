@@ -80,7 +80,9 @@
 	</array>
 	<!-- BLE mesh transport (M1) -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Only when you choose to share your location in a chat. Cubechat never tracks you in the background and never sends your position anywhere except to the people you send it to.</string>
+	<string>Only when you choose to share your location in a chat, or turn on the live map. Cubechat never sends your position anywhere except to the people you send it to.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Keeps your pin current for the contacts you added to your map, including while Cubechat is in the background. Only those contacts receive it, and turning map sharing off removes your pin from their map at once.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Cubechat uses Bluetooth to discover nearby peers and send messages over a local mesh network — no internet needed.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
@@ -108,6 +110,13 @@
 		     opens it. Bluetooth needs no such window; the two modes above keep
 		     the process alive for radio events. -->
 		<string>fetch</string>
+		<!-- The live map. Without this, CoreLocation stops delivering the
+		     moment the app leaves the screen, and a friend's pin freezes
+		     wherever they last had cubechat open. Claimed but not spent: the
+		     location manager only starts once somebody turns map sharing on
+		     and has friends receiving it, so an install that never opens the
+		     map never runs it. -->
+		<string>location</string>
 	</array>
 	<!-- BGTaskScheduler refuses to register an identifier that is not listed
 	     here, and throws at launch when the app tries. Must match

@@ -63,6 +63,17 @@
     <!-- Background mesh: keep BLE alive when the app isn't in the foreground -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- The live map, which keeps a pin current while the app is out of sight.
+         From Android 10 an app only gets location in the background through a
+         foreground service that declares the `location` type; from 14 that
+         type also needs its own permission. Both are conditional at runtime —
+         see MeshForegroundService, which adds the type only when location has
+         actually been granted, because asking to run a location service
+         without it is a SecurityException and would take the mesh down with
+         it. No ACCESS_BACKGROUND_LOCATION: the service is the grant, and the
+         "allow all the time" dialog it would otherwise take is one the user
+         has already answered by turning map sharing on. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -99,7 +110,7 @@
         <service
             android:name=".MeshForegroundService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="connectedDevice|location"
             android:stopWithTask="false" />
 
         <!-- Don't delete the meta-data below.

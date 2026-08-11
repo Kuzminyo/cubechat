@@ -1,15 +1,18 @@
 package com.cubechat.cubechat
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 /**
  * Keeps the cubechat process alive while the app is backgrounded so the BLE
@@ -58,15 +61,45 @@ class MeshForegroundService : Service() {
             .setShowWhen(false)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-            )
+            startForeground(NOTIF_ID, notification, foregroundTypes())
         } else {
             startForeground(NOTIF_ID, notification)
         }
     }
+
+    /**
+     * What this service claims to be doing, which decides what it is allowed
+     * to do. `connectedDevice` is the constant part — the mesh radio is why
+     * the service exists. `location` is added only when location has actually
+     * been granted, and is what lets the live map keep sending a pin while the
+     * app is out of sight: from Android 10 a backgrounded app gets location
+     * *only* through a foreground service declaring that type.
+     *
+     * Conditional because the alternative is worse than missing the feature:
+     * startForeground() with a location type the app has no permission for
+     * throws SecurityException, which here means the mesh service dies and
+     * cubechat stops being reachable at all — for users who simply never
+     * turned the map on. Re-promoting is cheap and idempotent, so the Dart
+     * side calls start() again once the permission is granted and this picks
+     * the type up then.
+     */
+    private fun foregroundTypes(): Int {
+        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        if (hasLocationPermission()) {
+            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        }
+        return types
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
