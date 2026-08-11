@@ -69,6 +69,27 @@ android {
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
             }
+            // Sign every scheme, including the old JAR one.
+            //
+            // At minSdk 24 the build tools drop v1 as redundant — v2 arrived in
+            // Android 7 and covers every device that can install this. That is
+            // true of the platform installer and not reliably true of the
+            // installers people actually tap: several vendor package installers
+            // (MIUI's among them) and a number of file managers still read the
+            // v1 manifest, and hand back a flat "app not installed" when there
+            // isn't one, with nothing to say which check failed.
+            //
+            // v1 costs a few hundred kilobytes and a couple of seconds. Not
+            // having it costs a build that some phones decline for reasons
+            // invisible from this side.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
