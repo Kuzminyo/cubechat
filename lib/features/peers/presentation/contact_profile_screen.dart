@@ -525,20 +525,21 @@ class ContactProfileScreen extends ConsumerWidget {
       }
     }
 
-    // Hiding last-seen is symmetric \u2014 it stops us receiving presence as well as
-    // sending it \u2014 so with it on there is nothing here we are entitled to
-    // claim, including the mesh-reachability guess, which never goes stale
-    // while announcements keep arriving.
+    // Hiding last-seen withholds *times*, in both directions: no time out, no
+    // times in. What somebody is doing right now is not a time, so being
+    // online or reachable is still reported \u2014 it used to be suppressed too,
+    // which left this screen saying nothing about a person who was plainly
+    // there.
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
-    final active = presenceShared &&
-        (contact?.isOnline == true || contact?.isReachableViaMesh == true);
+    final active =
+        contact?.isOnline == true || contact?.isReachableViaMesh == true;
     final String status;
-    if (!presenceShared) {
-      status = t.presenceHidden;
-    } else if (contact?.isOnline == true) {
+    if (contact?.isOnline == true) {
       status = t.presenceOnline;
     } else if (contact?.isReachableViaMesh == true) {
       status = t.chatsStatusViaMesh;
+    } else if (!presenceShared) {
+      status = t.presenceRecently;
     } else if (peer == null) {
       status = t.presenceOffline;
     } else {

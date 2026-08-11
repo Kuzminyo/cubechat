@@ -86,21 +86,20 @@ const Duration kMeshPresenceWindow = Duration(seconds: 150);
 ///     two minutes after they closed the app.
 ///   * With no beacon we're back to mesh evidence: were they announcing
 ///     recently.
+/// Independent of our own last-seen switch, which used to force a flat "no"
+/// here. It had to: with the switch off the beacon was dropped on arrival, so
+/// this fell through to the mesh fallback, and `lastSeen` is refreshed by every
+/// announcement — over a relay those never stop, so the guess was permanently
+/// "online" and every contact stuck there. The beacon is kept now, so the
+/// evidence is real again and the switch is free to mean what it says: it hides
+/// *times*, not who is in the app.
 bool peerIsOnline({
   required bool hasLiveSession,
   required PeerPresence? beacon,
   required DateTime? lastSeen,
   DateTime? now,
-  bool presenceShared = true,
 }) {
   if (hasLiveSession) return true;
-  // The last-seen toggle is symmetric: turning it off stops us receiving other
-  // people's beacons as well as sending our own. Having chosen not to know, the
-  // honest answer is "no idea", and the mesh fallback below is not allowed to
-  // guess one — `lastSeen` is refreshed by every announcement, and over a relay
-  // those never stop, so the guess was permanently "online". A tester turned
-  // the toggle on and watched every contact stick there.
-  if (!presenceShared) return false;
   final at = now ?? DateTime.now();
   if (beacon != null && at.difference(beacon.at) < PeerPresence.ttl) {
     return beacon.online;

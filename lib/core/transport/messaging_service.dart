@@ -4568,14 +4568,20 @@ class MessagingService {
           );
 
         case InnerPayloadType.presence:
-          // Same symmetry as receipts: no beacon out, no online dots in.
-          if (_ref.read(privacySettingsProvider).shareLastSeen) {
-            _ingestPresence(
-              peerId: peerId,
-              senderPub: senderPub,
-              body: unpacked.body,
-            );
-          }
+          // Kept regardless of our own last-seen switch, unlike receipts.
+          //
+          // That switch is about a *time*: it stops us publishing when we were
+          // last in the app, and stops us being told when anybody else was.
+          // Dropping the beacon threw away the other thing it carries — who is
+          // in the app right now — and left the header claiming nothing at all
+          // about somebody who was demonstrably online, which read as broken
+          // rather than as private. The time is withheld in the UI instead; see
+          // `presenceRecently`.
+          _ingestPresence(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
 
         case InnerPayloadType.avatarRequest:
           // Only for a peer we can name: the reply is addressed to a canonical
@@ -4646,8 +4652,11 @@ class MessagingService {
           );
 
         case InnerPayloadType.typing:
-          // Symmetric with presence, and with the same switch: withholding
-          // your own liveness gives up watching everybody else's.
+          // Still gated, and no longer symmetric with presence: hiding your
+          // last-seen time now costs you other people's times, not their
+          // liveness. Typing is left where it was on purpose — it is the
+          // loudest live signal there is, and quietly switching it back on is
+          // not something to do to somebody who asked for less of this.
           if (_ref.read(privacySettingsProvider).shareLastSeen) {
             _ingestTyping(
               peerId: peerId,

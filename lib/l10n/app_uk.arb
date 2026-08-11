@@ -354,7 +354,7 @@
     "profilePrivacy":  "Приватність",
     "profileLastSeen":  "Показувати час у мережі",
     "profileLastSeenOnHint":  "Контакти бачать, коли ви в застосунку",
-    "profileLastSeenOffHint":  "Ніхто не бачить — і ви теж не бачите",
+    "profileLastSeenOffHint":  "Ваш час не бачить ніхто, і ви не бачите чужий — лише хто в мережі",
     "profileMapLocation":  "Показувати мене на мапі",
     "profileMapLocationOnHint":  "Геолокація доступна для ручного надсилання, а вашу точку показано на мапі",
     "profileMapLocationOffHint":  "Застосунок не запитує геолокацію, а ваша точка прихована",
@@ -475,7 +475,7 @@
     "contactProfileNoLinks":  "Посилань ще немає",
     "contactProfilePolls":  "Опитування",
     "contactProfileNoPolls":  "Опитувань ще немає",
-    "presenceHidden":  "статус приховано",
+    "presenceRecently":  "був(ла) нещодавно",
     "chatReadByCount":  "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
     "@chatReadByCount":  {
                              "placeholders":  {

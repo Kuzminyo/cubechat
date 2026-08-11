@@ -145,23 +145,28 @@ void main() {
   group('hiding last-seen', () {
     final now = DateTime(2026, 8, 2, 23, 30);
 
-    test('never reports online off a stale-proof lastSeen', () {
-      // The toggle is symmetric, so with it off no beacon ever arrives and
-      // peerIsOnline used to fall through to "did they announce recently".
-      // Over a relay that is always yes — announcements refresh lastSeen and
-      // never stop — so every contact sat permanently at "online", which is
-      // what a tester reported the moment they turned the toggle on.
+    test('the beacon decides, not our own switch', () {
+      // Hiding last-seen used to force a flat "offline" here, and had to: the
+      // beacon was dropped on arrival, so this fell through to "did they
+      // announce recently" — always yes over a relay, where announcements
+      // refresh lastSeen and never stop — and every contact sat permanently at
+      // "online". The beacon is kept now, so it answers the question, and the
+      // switch is left to mean what it says: it hides times, not people.
       expect(
         peerIsOnline(
           hasLiveSession: false,
-          beacon: null,
-          lastSeen: now.subtract(const Duration(seconds: 1)),
+          beacon: PeerPresence(
+            online: true,
+            at: now.subtract(const Duration(seconds: 5)),
+          ),
+          lastSeen: null,
           now: now,
-          presenceShared: false,
         ),
-        isFalse,
+        isTrue,
       );
-      // Same input with sharing on is the old behaviour, unchanged.
+    });
+
+    test('mesh evidence still stands in for a missing beacon', () {
       expect(
         peerIsOnline(
           hasLiveSession: false,
@@ -201,7 +206,6 @@ void main() {
           beacon: null,
           lastSeen: null,
           now: now,
-          presenceShared: false,
         ),
         isTrue,
       );

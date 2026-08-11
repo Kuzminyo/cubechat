@@ -839,7 +839,8 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileLastSeenOnHint => 'Контакти бачать, коли ви в застосунку';
 
   @override
-  String get profileLastSeenOffHint => 'Ніхто не бачить — і ви теж не бачите';
+  String get profileLastSeenOffHint =>
+      'Ваш час не бачить ніхто, і ви не бачите чужий — лише хто в мережі';
 
   @override
   String get profileMapLocation => 'Показувати мене на мапі';
@@ -1110,7 +1111,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileNoPolls => 'Опитувань ще немає';
 
   @override
-  String get presenceHidden => 'статус приховано';
+  String get presenceRecently => 'був(ла) нещодавно';
 
   @override
   String chatReadByCount(int count) {

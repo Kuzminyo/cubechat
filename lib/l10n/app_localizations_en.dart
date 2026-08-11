@@ -839,7 +839,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileLastSeenOffHint =>
-      'Nobody sees yours вЂ” and you see nobody\'s';
+      'Nobody sees your time, and you see nobody\'s: only who is online';
 
   @override
   String get profileMapLocation => 'Show me on map';
@@ -1106,7 +1106,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileNoPolls => 'No polls yet';
 
   @override
-  String get presenceHidden => 'status hidden';
+  String get presenceRecently => 'last seen recently';
 
   @override
   String chatReadByCount(int count) {

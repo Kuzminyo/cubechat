@@ -381,7 +381,7 @@
   "profilePrivacy": "Privacy",
   "profileLastSeen": "Share last seen",
   "profileLastSeenOnHint": "Contacts can see when you're in the app",
-  "profileLastSeenOffHint": "Nobody sees yours вЂ” and you see nobody's",
+  "profileLastSeenOffHint": "Nobody sees your time, and you see nobody's: only who is online",
   "profileMapLocation": "Show me on map",
   "profileMapLocationOnHint": "Location is available for manual sharing and your pin is shown on the map",
   "profileMapLocationOffHint": "The app does not request location and your pin stays hidden",
@@ -516,7 +516,7 @@
   "contactProfileNoLinks": "No links yet",
   "contactProfilePolls": "Polls",
   "contactProfileNoPolls": "No polls yet",
-  "presenceHidden": "status hidden",
+  "presenceRecently": "last seen recently",
   "chatReadByCount": "{count, plural, one{Read by {count}} other{Read by {count}}}",
   "@chatReadByCount": {
     "placeholders": {

@@ -1595,7 +1595,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileLastSeenOffHint.
   ///
   /// In en, this message translates to:
-  /// **'Nobody sees yours вЂ” and you see nobody\'s'**
+  /// **'Nobody sees your time, and you see nobody\'s: only who is online'**
   String get profileLastSeenOffHint;
 
   /// No description provided for @profileMapLocation.
@@ -2024,11 +2024,11 @@ abstract class AppLocalizations {
   /// **'No polls yet'**
   String get contactProfileNoPolls;
 
-  /// No description provided for @presenceHidden.
+  /// No description provided for @presenceRecently.
   ///
   /// In en, this message translates to:
-  /// **'status hidden'**
-  String get presenceHidden;
+  /// **'last seen recently'**
+  String get presenceRecently;
 
   /// No description provided for @chatReadByCount.
   ///

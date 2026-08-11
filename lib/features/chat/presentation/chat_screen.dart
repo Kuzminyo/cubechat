@@ -282,7 +282,6 @@ class ChatScreen extends ConsumerWidget {
       hasLiveSession: session?.isEstablished ?? false,
       beacon: ref.watch(presenceControllerProvider)[canonicalId],
       lastSeen: lastSeen,
-      presenceShared: presenceShared,
     );
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
@@ -305,10 +304,11 @@ class ChatScreen extends ConsumerWidget {
     } else if (isOnline) {
       statusText = t.presenceOnline;
     } else if (!presenceShared) {
-      // Say why the line is empty of presence rather than showing a stale time
-      // that reads as fact. A live session is still reported above, because
-      // that is something we know without anybody telling us.
-      statusText = t.presenceHidden;
+      // Having given up publishing when you were last in the app, you are not
+      // shown when anybody else was — but they are still reported as online
+      // above when they are, which is a fact about now rather than a history
+      // of when they came and went.
+      statusText = t.presenceRecently;
     } else if (lastSeen != null) {
       // "offline · 14:05" / "offline · Mon" — precise last-seen.
       statusText =
