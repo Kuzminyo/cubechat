@@ -81,7 +81,13 @@ int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
   return msgs.where((m) => counts(m) && m.sentAt.isAfter(lastReadAt)).length;
 }
 
-final chatsProvider = Provider<List<Chat>>((ref) {
+/// Every conversation the app knows of, including ones whose history the user
+/// deleted. [chatsProvider] is this list minus those.
+///
+/// The split exists because a deleted conversation is not a deleted person:
+/// Contacts goes on listing them (see `contactChatsProvider`) while the chat
+/// list does not, and both need the same Chat objects to do it.
+final allChatsProvider = Provider<List<Chat>>((ref) {
   ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
@@ -92,7 +98,6 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   final presence = ref.watch(presenceControllerProvider);
   final drafts = ref.watch(draftsControllerProvider);
   final aliases = ref.watch(contactAliasesControllerProvider);
-  final hidden = ref.watch(hiddenChatsControllerProvider);
 
   final onlinePubkeys = <String>{
     for (final s in sessions.values)
@@ -105,14 +110,7 @@ final chatsProvider = Provider<List<Chat>>((ref) {
   };
 
   final now = DateTime.now();
-  final entries = known.values
-      // A deleted conversation keeps its contact but loses its tile — until
-      // there is something in it again, which is the moment it stops being a
-      // deleted conversation. Nothing has to remember to un-hide it.
-      .where((peer) =>
-          !hidden.contains(peer.pubkeyHex) ||
-          (messagesByChat[peer.pubkeyHex]?.isNotEmpty ?? false))
-      .map((peer) {
+  final entries = known.values.map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     // Map beacons are not conversation, so they must not be what a tile says
     // the conversation last was. New ones never reach history at all; this
@@ -195,6 +193,23 @@ final chatsProvider = Provider<List<Chat>>((ref) {
     return b.lastTime.compareTo(a.lastTime);
   });
   return entries;
+});
+
+/// The conversations worth listing as conversations.
+///
+/// A deleted conversation keeps its contact but loses its tile — until there
+/// is something in it again, which is the moment it stops being a deleted
+/// conversation. Nothing has to remember to un-hide it.
+final chatsProvider = Provider<List<Chat>>((ref) {
+  final all = ref.watch(allChatsProvider);
+  final hidden = ref.watch(hiddenChatsControllerProvider);
+  if (hidden.isEmpty) return all;
+  final messagesByChat = ref.watch(messagesControllerProvider);
+  return all
+      .where((chat) =>
+          !hidden.contains(chat.id) ||
+          (messagesByChat[chat.id]?.isNotEmpty ?? false))
+      .toList();
 });
 
 class ChatsListScreen extends ConsumerWidget {

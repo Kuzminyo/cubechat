@@ -9,16 +9,35 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
+import '../../chats/data/hidden_chats_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 
+/// Who belongs in Contacts: people you have actually corresponded with, and
+/// people you did until you deleted the conversation.
+///
+/// History alone used to be the whole rule, which quietly made "delete chat"
+/// mean "delete contact": clearing the messages emptied the only evidence this
+/// screen accepted, and somebody you had talked to for months was gone from
+/// Contacts — keys, npub and all still on disk, but no way left to reach them
+/// short of swapping codes again. [deletedChatIds] is the other half of the
+/// evidence. A conversation you deleted is a conversation you had.
+///
+/// Note what this still excludes: a phone that merely walked past yours is in
+/// the peer roster and in neither of these sets, so Contacts stays a list of
+/// people rather than a list of strangers the radio has met.
 List<Chat> contactChatsFromHistory(
   Iterable<Chat> chats,
-  Iterable<String> chatIdsWithHistory,
-) {
+  Iterable<String> chatIdsWithHistory, {
+  Iterable<String> deletedChatIds = const <String>[],
+}) {
   final ids = chatIdsWithHistory.toSet();
-  final contacts =
-      chats.where((chat) => !chat.isChannel && ids.contains(chat.id)).toList();
+  final deleted = deletedChatIds.toSet();
+  final contacts = chats
+      .where((chat) =>
+          !chat.isChannel &&
+          (ids.contains(chat.id) || deleted.contains(chat.id)))
+      .toList();
   contacts.sort((a, b) {
     final byName = a.peerName.toLowerCase().compareTo(
           b.peerName.toLowerCase(),
@@ -30,13 +49,17 @@ List<Chat> contactChatsFromHistory(
 }
 
 final contactChatsProvider = Provider<List<Chat>>((ref) {
-  final chats = ref.watch(chatsProvider);
+  // Deliberately the unfiltered list: chatsProvider has already dropped the
+  // deleted conversations, which are exactly the contacts this screen was
+  // losing.
+  final chats = ref.watch(allChatsProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   return contactChatsFromHistory(
     chats,
     messagesByChat.entries
         .where((entry) => entry.value.isNotEmpty)
         .map((entry) => entry.key),
+    deletedChatIds: ref.watch(hiddenChatsControllerProvider),
   );
 });
 String routeForContactProfile(Chat contact) =>

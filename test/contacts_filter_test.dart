@@ -29,6 +29,18 @@ void main() {
     expect(result.map((chat) => chat.id), ['alice', 'bob']);
   });
 
+  test('deleting the conversation does not delete the contact', () {
+    final result = contactChatsFromHistory(
+      [_chat('bob', 'Bob'), _chat('nearby-only', 'Nearby only')],
+      // Deleting the chat wipes its history, so Bob is in neither the message
+      // store nor — before this — the contacts list.
+      const <String>{},
+      deletedChatIds: const {'bob'},
+    );
+
+    expect(result.map((chat) => chat.id), ['bob']);
+  });
+
   test('contact opens its profile before the chat', () {
     final route = routeForContactProfile(_chat('ab cd', 'Alice & Bob'));
 
