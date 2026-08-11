@@ -112,6 +112,43 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
+      # Keep the sideload signing key across builds.
+      #
+      # Without this the runner generates a fresh ~/.android/debug.keystore on
+      # every run, so every APK is signed by a different identity — and Android
+      # refuses to install an APK over one signed by a different key. Testers
+      # had to uninstall cubechat (losing their history and their identity) for
+      # each build, which is not a thing to ask on every push.
+      #
+      # Restored before the build so Gradle finds an existing key rather than
+      # minting one; saved afterwards by the cache action's own post step. If
+      # the cache is ever evicted — GitHub drops entries untouched for a week —
+      # the next build mints a new key and that one install has to be replaced
+      # by hand. Real signing secrets below are the way out of that for good.
+      - name: Restore the sideload signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: cubechat-sideload-keystore-v1
+
+      # Wired up but not required: the moment CUBECHAT_RELEASE_KEYSTORE_BASE64
+      # and its passwords exist as repository secrets, builds switch to a real
+      # signing identity that never changes, and app/build.gradle.kts picks
+      # them up (it reads exactly these names from the environment). Until
+      # then this is a no-op and the debug keystore above carries the build.
+      - name: Decode the release keystore, if one is configured
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.CUBECHAT_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "store=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+            echo "Release keystore decoded — building with the real key."
+          else
+            echo "No release keystore secret — falling back to the debug key."
+          fi
+
       # Release, not debug. This used to build --debug because an unsigned
       # release APK will not install, and no release signing secrets are wired
       # into this workflow — but the answer to that was the signing config, not
@@ -125,6 +162,11 @@ jobs:
       # the app has a diagnostics screen that reports exactly those numbers.
       # Testers were reading a debugger's performance and calling it the app's.
       - name: Build release APK
+        env:
+          CUBECHAT_RELEASE_STORE_FILE: ${{ steps.signing.outputs.store }}
+          CUBECHAT_RELEASE_STORE_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_STORE_PASSWORD }}
+          CUBECHAT_RELEASE_KEY_ALIAS: ${{ secrets.CUBECHAT_RELEASE_KEY_ALIAS }}
+          CUBECHAT_RELEASE_KEY_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Show build output
@@ -138,6 +180,25 @@ jobs:
           set -e
           cp build/app/outputs/flutter-apk/app-release.apk cubechat-release.apk
           ls -lh cubechat-release.apk
+
+      # Which key signed this build, in one line. "App not installed" almost
+      # always means the signer changed since the copy on the phone, and that
+      # is invisible from the APK's version or its size — so the fingerprint
+      # goes in the release notes, where it can be compared against the last
+      # build before anyone starts guessing.
+      - name: Read the signing fingerprint
+        id: cert
+        run: |
+          set -e
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          fp=$("$signer" verify --print-certs cubechat-release.apk \
+                | grep -m1 'SHA-256 digest' | awk '{print $NF}')
+          subject=$("$signer" verify --print-certs cubechat-release.apk \
+                | grep -m1 'certificate DN' | cut -d: -f2- | sed 's/^ //')
+          echo "fingerprint=${fp:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "subject=${subject:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "signed by: $subject"
+          echo "SHA-256:   $fp"
 
       # Deliberately NOT uploaded as a workflow artifact.
       #
@@ -171,10 +232,14 @@ jobs:
             phone, and allow "Install unknown apps" for your browser/file
             manager when prompted.
 
-            Signed with the runner's debug keystore, because no release signing
-            secrets are configured. That keeps it installable, but the key is
-            not stable between builds — so **uninstall the previous cubechat
-            before installing this one** if Android refuses the update.
+            **Signed by:** `${{ steps.cert.outputs.subject }}`
+            **Key SHA-256:** `${{ steps.cert.outputs.fingerprint }}`
+
+            If that fingerprint differs from the build currently on your phone,
+            Android will refuse to install this one over it ("App not
+            installed") — uninstall cubechat first, then install this APK. When
+            the fingerprint matches, it installs straight over the top and
+            keeps your chats.
           files: cubechat-release.apk
 
       # The rolling tag used to carry cubechat-debug.apk, and publishing under a
@@ -217,6 +282,11 @@ jobs:
             echo "3. Allow \"Install unknown apps\" for your browser if prompted"
             echo "4. Install and open"
             echo ""
-            echo "Uninstall the previous build first if Android refuses the"
-            echo "update — the fallback signing key is not stable between runs."
+            echo "**Signed by:** \`${{ steps.cert.outputs.subject }}\`"
+            echo ""
+            echo "**Key SHA-256:** \`${{ steps.cert.outputs.fingerprint }}\`"
+            echo ""
+            echo "If that differs from the build on the phone, uninstall"
+            echo "cubechat first — Android will not install over a different"
+            echo "signing key."
           } >> "$GITHUB_STEP_SUMMARY"
