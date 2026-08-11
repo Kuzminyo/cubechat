@@ -42,13 +42,16 @@ class MapFriendsController extends Notifier<Set<String>> {
   Box<dynamic>? _box;
   Set<String> _dismissed = const <String>{};
 
+  /// The box opening. Every write waits on it — see [_persist].
+  Future<void>? _loading;
+
   @override
   Set<String> build() {
     ref.listen<Map<String, List<Message>>>(
       messagesControllerProvider,
       (_, next) => _mergeAcceptedLinks(next),
     );
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <String>{};
   }
 
@@ -129,8 +132,18 @@ class MapFriendsController extends Notifier<Set<String>> {
 
   Future<void> _persist() async {
     try {
-      await _box?.put(_key, state.toList()..sort());
-      await _box?.put(_dismissedKey, _dismissed.toList()..sort());
+      // The box is opened through the platform keystore, which on a cold start
+      // takes long enough for somebody to have opened the conversation and
+      // accepted the invitation already. Writing into a null box silently
+      // dropped exactly that: the pairing held until the app was closed and
+      // was simply gone on the next launch, which reads as the invitation
+      // never having worked — and the other phone, whose write happened to be
+      // late enough, kept theirs.
+      await _loading;
+      final box = _box;
+      if (box == null) return;
+      await box.put(_key, state.toList()..sort());
+      await box.put(_dismissedKey, _dismissed.toList()..sort());
     } catch (e) {
       debugPrint('MapFriendsController persist failed: $e');
     }
