@@ -714,6 +714,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           gm.Marker(
             markerId: gm.MarkerId('peer:${node.id}'),
             position: _gm(node.point),
+            // A circle marks its point with its middle. Google's default anchor
+            // is the bottom centre, which is right for a tailed pin and would
+            // leave this one floating above the place it means.
+            anchor: const Offset(0.5, 0.5),
             zIndexInt: node.id == _selectedId ? 20 : 10,
             icon: _markerIcon(
               seed: node.id,
@@ -741,6 +745,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           // recreated on the platform side instead of moved.
           markerId: gm.MarkerId('cluster:${group.first.id}'),
           position: _gm(point),
+          anchor: const Offset(0.5, 0.5),
           zIndexInt: 15,
           icon: _markerIcon(
             seed: 'cluster:',
@@ -757,6 +762,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         gm.Marker(
           markerId: const gm.MarkerId('me'),
           position: _gm(me),
+          anchor: const Offset(0.5, 0.5),
           zIndexInt: 30,
           icon: _markerIcon(
             seed: 'me',
@@ -825,37 +831,30 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     bool selected = false,
     int? clusterCount,
   }) async {
-    // A teardrop, not a disc with a dot stuck to it.
+    // A circle, which is what a face wants to be.
     //
-    // The first version was a circle centred on nothing in particular, wrapped
-    // in a neon glow, a gradient band and a green dot in the corner that meant
-    // nothing — four decorations arguing about which was the pin. This is one
-    // shape: a head that holds the face and a tail that points at the ground,
-    // which is also what makes the position legible. Google anchors a marker
-    // at the bottom centre by default, so the tip lands exactly on the
-    // coordinate without any anchor arithmetic.
+    // It was briefly a teardrop, on the reasoning that a tail points at the
+    // ground and makes the position exact. It does — and it reads worse: the
+    // tail is a second shape competing with the face for the eye, at the size
+    // a pin is actually drawn. Exactness is bought with the anchor instead
+    // (see the marker's `anchor`), which costs nothing to look at.
+    //
+    // What does not come back is the clutter the circle used to carry: a
+    // neon glow, a gradient band and a green dot in the corner that meant
+    // nothing. Ring, face, shadow.
     const size = 168.0;
     const logicalSize = 56.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const centre = Offset(size / 2, size * 0.40);
-    final head = selected ? 56.0 : 52.0;
-    const tip = Offset(size / 2, size * 0.95);
+    const centre = Offset(size / 2, size / 2);
+    final head = selected ? 62.0 : 58.0;
 
-    // The pin's outline, drawn once as a single filled path so the head and
-    // the tail share an edge instead of overlapping each other.
-    final body = ui.Path()
-      ..addOval(Rect.fromCircle(center: centre, radius: head))
-      ..moveTo(centre.dx - head * 0.52, centre.dy + head * 0.72)
-      ..lineTo(centre.dx + head * 0.52, centre.dy + head * 0.72)
-      ..lineTo(tip.dx, tip.dy)
-      ..close();
-
-    canvas.drawOval(
-      Rect.fromCenter(center: tip.translate(0, -4), width: 46, height: 16),
+    canvas.drawCircle(
+      centre.translate(0, 6),
+      head,
       Paint()
         ..color = Colors.black.withValues(alpha: 0.34)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
 
     if (selected) {
@@ -868,8 +867,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       );
     }
 
-    canvas.drawPath(
-      body,
+    canvas.drawCircle(
+      centre,
+      head,
       Paint()
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
@@ -1121,14 +1121,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           gm.Polyline(
             polylineId: gm.PolylineId('web:$a:$b'),
             points: [_gm(points[a]), _gm(points[b])],
-            // Dotted, thin and dim on purpose. A solid line on a map means a
-            // route — something to follow — and these are not routes; they say
-            // "these two are near each other", which is a hint and should look
-            // like one. Round caps and geodesic keep it honest over distance
-            // instead of cutting a straight line across the projection.
-            width: 3,
-            color: AppColors.brandPrimary.withValues(alpha: 0.30),
-            patterns: [gm.PatternItem.dot, gm.PatternItem.gap(14)],
+            // Solid and dim. It was briefly dotted, on the reasoning that a
+            // solid line reads as a route to follow — true in the abstract,
+            // and at this weight and opacity it simply looked broken up.
+            // Geodesic because a straight line on a projection is not a
+            // straight line on the ground.
+            width: 2,
+            color: AppColors.brandPrimary.withValues(alpha: 0.34),
             startCap: gm.Cap.roundCap,
             endCap: gm.Cap.roundCap,
             geodesic: true,
