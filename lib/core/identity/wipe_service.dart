@@ -9,8 +9,10 @@ import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
 import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
+import '../../features/chats/data/pinned_chats_controller.dart';
 import '../../features/chats/data/hidden_chats_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
+import '../../features/chats/data/user_chat_folders_controller.dart';
 import '../../features/map/data/map_friends_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
@@ -65,13 +67,15 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(channelRosterControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
   await ref.read(favoritesControllerProvider.notifier).clear();
+  await ref.read(pinnedChatsControllerProvider.notifier).clear();
   await ref.read(hiddenChatsControllerProvider.notifier).clear();
   // Who you went looking for is its own trace, and it lives in its own list.
   await ref.read(recentSearchesControllerProvider.notifier).clear();
   // Which cuts of the chat list you keep above it says something about who you
   // talk to, and a fresh install has no folders at all.
   await ref.read(chatFoldersControllerProvider.notifier).clear();
-    await ref.read(mapFriendsControllerProvider.notifier).clear();
+  await ref.read(userChatFoldersControllerProvider.notifier).clear();
+  await ref.read(mapFriendsControllerProvider.notifier).clear();
   // Where those friends were last seen is on disk now, so it has to be wiped
   // like everything else — a map that still has pins on it after a wipe is a
   // list of people and places the wipe was supposed to remove.
@@ -125,7 +129,3 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   ref.invalidate(prekeyServiceProvider);
   ref.invalidate(messagingServiceProvider);
 }
-
-
-
-

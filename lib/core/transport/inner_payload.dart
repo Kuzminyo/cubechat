@@ -184,7 +184,16 @@ enum InnerPayloadType {
   /// away the buttons, not the pixels. A screenshot, a camera pointed at the
   /// screen, or a modified client all still exist, and no message app has ever
   /// been able to say otherwise.
-  copyRestriction(0xF7);
+  copyRestriction(0xF7),
+
+  /// Shared conversation wallpaper. Body is a [ConversationWallpaperPayload].
+  ///
+  /// This deliberately carries only the lightweight built-in presets (or
+  /// "clear"): those are small enough to travel as one authenticated control
+  /// frame over BLE/mesh/relay. Custom photo wallpapers need the media
+  /// manifest/chunk path so they do not become a huge control packet that
+  /// freezes older phones while somebody is scrolling.
+  conversationWallpaper(0xF9);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -204,6 +213,49 @@ Uint8List packInnerPayload(InnerPayloadType type, Uint8List body) {
   out[0] = type.tag;
   out.setRange(1, out.length, body);
   return out;
+}
+
+/// Body of [InnerPayloadType.conversationWallpaper].
+///
+/// Wire layout:
+///   [version:1][kind:1][presetIndex:1][dim:1]
+///
+/// kind: 0 = clear wallpaper, 1 = built-in preset. Dim is encoded 0..255.
+class ConversationWallpaperPayload {
+  const ConversationWallpaperPayload({
+    required this.presetIndex,
+    required this.dim,
+  });
+
+  const ConversationWallpaperPayload.clear()
+      : presetIndex = null,
+        dim = 0.35;
+
+  final int? presetIndex;
+  final double dim;
+
+  bool get clears => presetIndex == null;
+
+  Uint8List encode() {
+    final dimByte = (dim.clamp(0.0, 1.0) * 255).round().clamp(0, 255);
+    final preset = presetIndex;
+    if (preset == null) {
+      return Uint8List.fromList([1, 0, 0, dimByte]);
+    }
+    return Uint8List.fromList([1, 1, preset.clamp(0, 255), dimByte]);
+  }
+
+  static ConversationWallpaperPayload decode(Uint8List bytes) {
+    if (bytes.length < 4 || bytes[0] != 1) {
+      throw const FormatException('bad conversation wallpaper payload');
+    }
+    final dim = bytes[3] / 255.0;
+    return switch (bytes[1]) {
+      0 => const ConversationWallpaperPayload.clear(),
+      1 => ConversationWallpaperPayload(presetIndex: bytes[2], dim: dim),
+      _ => throw const FormatException('unknown conversation wallpaper kind'),
+    };
+  }
 }
 
 /// Split a tagged inner payload back into (type, body). Throws
@@ -1582,7 +1634,12 @@ class LocationPayload {
     final lon = data.getFloat64(8);
     // A frame from a broken or hostile sender must not put a pin somewhere
     // impossible, or open a maps URL with nonsense in it.
-    if (lat.isNaN || lon.isNaN || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    if (lat.isNaN ||
+        lon.isNaN ||
+        lat < -90 ||
+        lat > 90 ||
+        lon < -180 ||
+        lon > 180) {
       throw const FormatException('location out of range');
     }
     return LocationPayload(

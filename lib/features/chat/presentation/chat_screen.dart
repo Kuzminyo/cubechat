@@ -29,6 +29,7 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../channels/data/channel_roster_controller.dart';
 import '../../channels/presentation/channel_poll_composer.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
@@ -79,6 +80,12 @@ bool _isBleDeviceId(String id) =>
 
 final _chatSearchOpenProvider =
     StateProvider.autoDispose.family<bool, String>((_, __) => false);
+final _channelSelfMemberProvider = FutureProvider.autoDispose
+    .family<ChannelMember, String>((ref, channelName) async {
+  return ref
+      .read(channelRosterControllerProvider.notifier)
+      .ensureSelf(channelName, adminWhenFirst: true);
+});
 
 enum ChatRoute { bluetooth, mesh, internet, queued }
 
@@ -426,11 +433,20 @@ class ChatScreen extends ConsumerWidget {
     // A saved-notes chat is never "joined" — there is nothing to join — but it
     // is always writable, which is the only thing `joined` gates.
     final saved = isSavedChat(peerId);
-    final joined =
-        saved || ref.watch(channelControllerProvider).containsKey(peerId);
-    final messages =
-        visibleMessages(ref.watch(messagesControllerProvider)[peerId] ?? const []);
-
+    final channel = saved ? null : ref.watch(channelControllerProvider)[peerId];
+    final joined = saved || channel != null;
+    final rosterVersion = ref.watch(channelRosterControllerProvider);
+    final self = saved
+        ? null
+        : ref.watch(_channelSelfMemberProvider(peerId)).valueOrNull;
+    final canPost = saved ||
+        (joined &&
+            (channel?.adminOnly != true ||
+                (self != null &&
+                    (self.isAdmin ||
+                        (rosterVersion[peerId]?[self.id]?.isAdmin ?? false)))));
+    final messages = visibleMessages(
+        ref.watch(messagesControllerProvider)[peerId] ?? const []);
     final sessions = ref.watch(chatSessionManagerProvider);
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
@@ -449,11 +465,11 @@ class ChatScreen extends ConsumerWidget {
             chatId: peerId,
             messages: messages,
             initialMessageId: initialMessageId,
-            canSend: joined,
+            canSend: canPost,
             composer: _ChatBottomBar(
               peerId: peerId,
               canonicalId: peerId,
-              canSend: joined,
+              canSend: canPost,
               // Saved notes are not a broadcast; the composer branches on the
               // reserved id before it consults this.
               isChannel: !saved,

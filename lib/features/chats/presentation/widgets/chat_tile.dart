@@ -142,16 +142,28 @@ class ChatTile extends StatelessWidget {
               // of the name. Small, and in the corner: it marks, it does not
               // announce. Sharing a line with the badge keeps every row the
               // same height whether or not either is there.
-              if (chat.unreadCount > 0 || chat.isFavorite) ...[
+              if (chat.unreadCount > 0 || chat.isPinned || chat.isFavorite) ...[
                 const SizedBox(height: 6),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (chat.isPinned)
+                      Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Icon(
+                          Icons.push_pin_rounded,
+                          color: AppColors.brandPrimary,
+                          size: 13,
+                        ),
+                      ),
                     if (chat.isFavorite)
                       const Padding(
                         padding: EdgeInsets.only(right: 4),
-                        child: Icon(Icons.star_rounded,
-                            color: AppColors.warning, size: 13),
+                        child: Icon(
+                          Icons.star_rounded,
+                          color: AppColors.warning,
+                          size: 13,
+                        ),
                       ),
                     if (chat.unreadCount > 0)
                       UnreadBadge(count: chat.unreadCount),

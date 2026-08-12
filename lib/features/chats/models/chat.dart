@@ -13,6 +13,7 @@ class Chat {
     required this.isOnline,
     this.isReachableViaMesh = false,
     this.isFavorite = false,
+    this.isPinned = false,
     this.isVerified = false,
     this.signKeyRotated = false,
     this.isChannel = false,
@@ -34,6 +35,7 @@ class Chat {
   final bool isReachableViaMesh;
 
   final bool isFavorite;
+  final bool isPinned;
   final bool isVerified;
 
   /// True when the peer's Ed25519 signing key was rotated after our last

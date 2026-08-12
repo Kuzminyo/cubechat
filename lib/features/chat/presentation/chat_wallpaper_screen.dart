@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -16,8 +17,9 @@ import 'widgets/media_picker_sheet.dart';
 
 /// Choose what one conversation is drawn on.
 ///
-/// Local and cosmetic — nothing here is transmitted, so both people in a chat
-/// can pick differently and neither ever knows.
+/// Presets can stay local or be sent as a tiny encrypted control frame so the
+/// other side/channel sees the same backdrop. Custom photos stay local until
+/// they get their own chunked wallpaper transfer path.
 class ChatWallpaperScreen extends ConsumerWidget {
   const ChatWallpaperScreen({super.key, required this.chatId});
 
@@ -25,6 +27,20 @@ class ChatWallpaperScreen extends ConsumerWidget {
 
   Future<void> _pickImage(BuildContext context, WidgetRef ref) async {
     final t = AppLocalizations.of(context);
+    final scope = await _askApplyScope(context, allowShared: false);
+    if (!context.mounted || scope == null) return;
+    if (scope == _WallpaperApplyScope.shared) {
+      showGlassToast(
+        context,
+        _wallpaperText(
+          context,
+          uk: 'Фото-шпалери поки можна ставити тільки локально',
+          en: 'Photo wallpapers are local-only for now',
+        ),
+        tone: ToastTone.neutral,
+      );
+      return;
+    }
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
       useRootNavigator: true,
@@ -92,8 +108,12 @@ class ChatWallpaperScreen extends ConsumerWidget {
           actions: [
             if (wallpaper.isSet)
               TextButton(
-                onPressed: () =>
-                    controller.setWallpaper(chatId, ChatWallpaper.none),
+                onPressed: () => _applyWallpaper(
+                  context,
+                  ref,
+                  controller,
+                  ChatWallpaper.none,
+                ),
                 child: Text(
                   t.chatWallpaperClear,
                   style: TextStyle(color: AppColors.warning),
@@ -113,8 +133,10 @@ class ChatWallpaperScreen extends ConsumerWidget {
                     wallpaper:
                         ChatWallpaper(presetIndex: i, dim: wallpaper.dim),
                   ),
-                  onTap: () => controller.setWallpaper(
-                    chatId,
+                  onTap: () => _applyWallpaper(
+                    context,
+                    ref,
+                    controller,
                     ChatWallpaper(presetIndex: i, dim: wallpaper.dim),
                   ),
                 ),
@@ -153,6 +175,163 @@ class ChatWallpaperScreen extends ConsumerWidget {
     );
   }
 }
+
+enum _WallpaperApplyScope { local, shared }
+
+extension on ChatWallpaperScreen {
+  Future<void> _applyWallpaper(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationSettingsController controller,
+    ChatWallpaper wallpaper,
+  ) async {
+    final scope = await _askApplyScope(
+      context,
+      allowShared: wallpaper.imagePath == null,
+    );
+    if (!context.mounted || scope == null) return;
+    if (scope == _WallpaperApplyScope.local) {
+      await controller.setWallpaper(chatId, wallpaper);
+      return;
+    }
+    if (wallpaper.imagePath != null) {
+      showGlassToast(
+        context,
+        _wallpaperText(
+          context,
+          uk: 'Фото-шпалери поки можна ставити тільки локально',
+          en: 'Photo wallpapers are local-only for now',
+        ),
+        tone: ToastTone.neutral,
+      );
+      return;
+    }
+    try {
+      final delivered = await ref
+          .read(messagingServiceProvider)
+          .sendSharedWallpaper(chatId, wallpaper);
+      if (context.mounted && !delivered) {
+        showGlassToast(
+          context,
+          _wallpaperText(
+            context,
+            uk: 'Збережено тут. Зараз немає маршруту до співрозмовника',
+            en: 'Saved here. There is no route to the peer right now',
+          ),
+          tone: ToastTone.neutral,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showGlassToast(context, '$e', tone: ToastTone.danger);
+      }
+    }
+  }
+
+  Future<_WallpaperApplyScope?> _askApplyScope(
+    BuildContext context, {
+    bool allowShared = true,
+  }) async {
+    final isChannel = chatId.startsWith('#');
+    final title = _wallpaperText(
+      context,
+      uk: 'Хто буде бачити ці шпалери?',
+      en: 'Who should see this wallpaper?',
+    );
+    final sharedLabel = isChannel
+        ? _wallpaperText(
+            context,
+            uk: 'Весь канал',
+            en: 'Whole channel',
+          )
+        : _wallpaperText(
+            context,
+            uk: 'Я і співрозмовник',
+            en: 'Me and the other person',
+          );
+    final picked = await showGlassSheet<_WallpaperApplyScope>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: Icon(Icons.phone_iphone_rounded,
+                    color: AppColors.brandPrimary),
+                title: Text(
+                  _wallpaperText(
+                    context,
+                    uk: 'Тільки у мене',
+                    en: 'Only on my phone',
+                  ),
+                  style: TextStyle(color: AppColors.textOnGlass),
+                ),
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(_WallpaperApplyScope.local),
+              ),
+              ListTile(
+                enabled: allowShared,
+                leading: Icon(
+                  Icons.sync_rounded,
+                  color: allowShared
+                      ? AppColors.brandPrimary
+                      : AppColors.textOnGlassFaint,
+                ),
+                title: Text(
+                  sharedLabel,
+                  style: TextStyle(
+                    color: allowShared
+                        ? AppColors.textOnGlass
+                        : AppColors.textOnGlassDim,
+                  ),
+                ),
+                subtitle: Text(
+                  allowShared
+                      ? _wallpaperText(
+                          context,
+                          uk: 'Надсилається зашифрованим службовим пакетом',
+                          en: 'Sent as an encrypted control frame',
+                        )
+                      : _wallpaperText(
+                          context,
+                          uk: 'Фото поки лишається тільки на цьому телефоні',
+                          en: 'Photos stay on this phone for now',
+                        ),
+                  style: TextStyle(color: AppColors.textOnGlassFaint),
+                ),
+                onTap: allowShared
+                    ? () => Navigator.of(sheetContext)
+                        .pop(_WallpaperApplyScope.shared)
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return picked;
+  }
+}
+
+String _wallpaperText(
+  BuildContext context, {
+  required String uk,
+  required String en,
+}) =>
+    Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
 
 class _WallpaperOption extends StatelessWidget {
   const _WallpaperOption({

@@ -48,6 +48,7 @@ import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../util/app_lifecycle.dart';
 import '../util/debug_log.dart';
+import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'chat_session.dart';
@@ -1352,6 +1353,8 @@ class MessagingService {
       ),
     );
     if (!_hasMediaRoute(canonicalId)) {
+      wakeRelays();
+      nudgeFileQueue();
       return msg;
     }
 
@@ -1952,8 +1955,8 @@ class MessagingService {
             _sentReadAcks.add(TransportEnvelope.hashHex(id));
           }
         } else {
-          DebugLog.instance.log(
-              'RECEIPT', 'no route for ${slice.length} read ack(s) — will retry');
+          DebugLog.instance.log('RECEIPT',
+              'no route for ${slice.length} read ack(s) — will retry');
         }
       } catch (e) {
         DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
@@ -2062,8 +2065,7 @@ class MessagingService {
 
     if (typing) {
       final last = _lastTypingSentAt[canonicalId];
-      if (last != null &&
-          DateTime.now().difference(last) < typingMinInterval) {
+      if (last != null && DateTime.now().difference(last) < typingMinInterval) {
         return;
       }
       _lastTypingSentAt[canonicalId] = DateTime.now();
@@ -2194,6 +2196,98 @@ class MessagingService {
     }
   }
 
+  static ConversationWallpaperPayload _wallpaperPayload(
+      ChatWallpaper wallpaper) {
+    final preset = wallpaper.presetIndex;
+    if (preset == null) return const ConversationWallpaperPayload.clear();
+    return ConversationWallpaperPayload(
+        presetIndex: preset, dim: wallpaper.dim);
+  }
+
+  static ChatWallpaper _wallpaperFromPayload(
+    ConversationWallpaperPayload payload,
+  ) {
+    final preset = payload.presetIndex;
+    if (preset == null) return ChatWallpaper.none;
+    final clamped = preset.clamp(0, ChatWallpaper.presets.length - 1);
+    return ChatWallpaper(presetIndex: clamped, dim: payload.dim);
+  }
+
+  /// Share a lightweight built-in wallpaper preset with a peer or channel.
+  ///
+  /// Custom photo wallpapers are intentionally not sent here: this path is a
+  /// single small control frame. Photos need the chunked media path so they do
+  /// not turn a cosmetic setting into a huge packet that can stall BLE and hot
+  /// devices while the user is scrolling.
+  Future<bool> sendSharedWallpaper(
+    String chatId,
+    ChatWallpaper wallpaper,
+  ) async {
+    if (wallpaper.imagePath != null) {
+      throw StateError('shared photo wallpapers are not chunked yet');
+    }
+    final body = _wallpaperPayload(wallpaper).encode();
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    await settings.loaded;
+
+    if (chatId.startsWith('#')) {
+      final channel =
+          _ref.read(channelControllerProvider.notifier).byName(chatId);
+      if (channel == null) throw StateError('not a member of $chatId');
+      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+      if (!roster.isAdmin(channel.name, me.id)) {
+        throw StateError('only an admin can set wallpaper for $chatId');
+      }
+      await settings.setWallpaper(channel.name, wallpaper);
+      final frame = await _buildChannelFrame(
+        channel,
+        InnerPayloadType.conversationWallpaper,
+        body,
+        TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+      );
+      final fanout = await _broadcastChannelFrame(frame);
+      DebugLog.instance.log(
+        'CHAN',
+        'shared wallpaper for ${channel.name}: ${wallpaper.presetIndex ?? "clear"} (fanout=$fanout)',
+      );
+      return fanout > 0;
+    }
+
+    await settings.setWallpaper(chatId, wallpaper);
+    final peerPub = _resolvePeerPub(chatId);
+    if (peerPub == null) return false;
+    final fanout = await _sendControlToPeer(
+      canonicalId: chatId,
+      peerPub: peerPub,
+      type: InnerPayloadType.conversationWallpaper,
+      innerBody: body,
+    );
+    DebugLog.instance.log(
+      'CHAT',
+      'shared wallpaper with $chatId: ${wallpaper.presetIndex ?? "clear"} ($fanout)',
+    );
+    return fanout > 0;
+  }
+
+  Future<void> _ingestConversationWallpaper({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) async {
+    final payload = ConversationWallpaperPayload.decode(body);
+    final wallpaper = _wallpaperFromPayload(payload);
+    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    await settings.loaded;
+    await settings.setWallpaper(canonical, wallpaper);
+    if (canonical != peerId) await settings.setWallpaper(peerId, wallpaper);
+    DebugLog.instance.log(
+      'CHAT',
+      '$canonical shared wallpaper ${wallpaper.presetIndex ?? "clear"}',
+    );
+  }
+
   /// Turn copying and forwarding off (or back on) for a whole room.
   ///
   /// The 1:1 notice cannot carry this: [announceCopyRestriction] addresses one
@@ -2264,7 +2358,8 @@ class MessagingService {
     final roster = _ref.read(channelRosterControllerProvider.notifier);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (!roster.isAdmin(channel.name, me.id)) {
-      throw StateError('only an admin can set the posting rule for $channelName');
+      throw StateError(
+          'only an admin can set the posting rule for $channelName');
     }
     await channels.setAdminOnly(channel.name, adminOnly);
     // Say who is imposing it, before imposing it.
@@ -2331,8 +2426,8 @@ class MessagingService {
         type: InnerPayloadType.conversationClear,
         innerBody: Uint8List(0),
       );
-      DebugLog.instance
-          .log('CHAT', 'asked $canonicalId to clear the conversation ($fanout)');
+      DebugLog.instance.log(
+          'CHAT', 'asked $canonicalId to clear the conversation ($fanout)');
       return fanout > 0;
     } catch (e) {
       DebugLog.instance.log('CHAT', 'conversation clear failed: $e');
@@ -2834,6 +2929,14 @@ class MessagingService {
     return null;
   }
 
+  Future<void> _ensureCanPostToChannel(Channel channel) async {
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (channel.adminOnly && !roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only admins can write to ${channel.name}');
+    }
+  }
+
   /// Post [text] to a joined channel. Encrypted under the shared channel key
   /// and broadcast across the mesh; every member with the key decrypts it.
   /// Returns the local pending Message (bucketed under the channel name).
@@ -2843,9 +2946,7 @@ class MessagingService {
     if (channel == null) {
       throw StateError('not a member of $channelName');
     }
-    await _ref
-        .read(channelRosterControllerProvider.notifier)
-        .ensureSelf(channel.name, adminWhenFirst: true);
+    await _ensureCanPostToChannel(channel);
     final canonicalId = channel.name;
     final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final msg = Message(
@@ -2906,9 +3007,7 @@ class MessagingService {
     final channel =
         _ref.read(channelControllerProvider.notifier).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    await _ref
-        .read(channelRosterControllerProvider.notifier)
-        .ensureSelf(channel.name, adminWhenFirst: true);
+    await _ensureCanPostToChannel(channel);
 
     final imageId = ImageChunk.newImageId();
     final caption0 = (caption?.trim().isEmpty ?? true) ? null : caption!.trim();
@@ -3016,9 +3115,7 @@ class MessagingService {
     final channel =
         _ref.read(channelControllerProvider.notifier).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    await _ref
-        .read(channelRosterControllerProvider.notifier)
-        .ensureSelf(channel.name, adminWhenFirst: true);
+    await _ensureCanPostToChannel(channel);
 
     final audioId = AudioChunk.newAudioId();
     final msg = Message(
@@ -3189,9 +3286,7 @@ class MessagingService {
         _ref.read(channelControllerProvider.notifier).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     final payload = ChannelPollPayload.create(question, options);
-    await _ref
-        .read(channelRosterControllerProvider.notifier)
-        .ensureSelf(channel.name, adminWhenFirst: true);
+    await _ensureCanPostToChannel(channel);
 
     final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
     final message = Message(
@@ -3744,6 +3839,17 @@ class MessagingService {
             unpadTextPayload(unpacked.body),
             allowMalformed: true,
           );
+          final arrivedAt = DateTime.now();
+          final beacon = SharedLocation.tryParse(plaintext);
+          if (beacon != null &&
+              SharedLocation.isBeaconText(plaintext, arrivedAt)) {
+            _ref.read(mapPresenceStoreProvider.notifier).record(
+                  reactorId,
+                  beacon,
+                  sentAt: arrivedAt,
+                );
+            return;
+          }
           final message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: channel.name,
@@ -3916,6 +4022,7 @@ class MessagingService {
         case InnerPayloadType.channelAdminOnly:
         case InnerPayloadType.copyRestriction:
         case InnerPayloadType.channelDescription:
+        case InnerPayloadType.conversationWallpaper:
           await _applyOrHoldChannelState(
             channelName: channel.name,
             type: unpacked.type,
@@ -4739,6 +4846,13 @@ class MessagingService {
 
         case InnerPayloadType.copyRestriction:
           await _ingestCopyRestriction(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.conversationWallpaper:
+          await _ingestConversationWallpaper(
             peerId: peerId,
             senderPub: senderPub,
             body: unpacked.body,
@@ -5627,8 +5741,8 @@ class MessagingService {
         relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
     final total = (jpeg.length + chunkData - 1) ~/ chunkData;
     if (total < 1 || total > ImageChunk.maxChunks) {
-      DebugLog.instance
-          .log('AVATAR', 'not sending to $pubkeyHex: $total chunks is too many');
+      DebugLog.instance.log(
+          'AVATAR', 'not sending to $pubkeyHex: $total chunks is too many');
       return;
     }
     final manifest = MediaManifest(
@@ -5887,6 +6001,10 @@ class MessagingService {
   void wakeRelays() {
     if (_disposed) return;
     _relayClient?.wake();
+    if (_relayClient?.isConnected == true) {
+      nudgeFileQueue();
+      unawaited(_flushPendingReadReceipts());
+    }
   }
 
   void nudgeFileQueue() {
@@ -5914,8 +6032,7 @@ class MessagingService {
       // an empty pass is evidence the one after it will be empty too.
       if (queued.isEmpty) {
         final next = _fileQueueGap * 2;
-        _fileQueueGap =
-            next >= _fileQueueIdleMax ? _fileQueueIdleMax : next;
+        _fileQueueGap = next >= _fileQueueIdleMax ? _fileQueueIdleMax : next;
       } else {
         _fileQueueGap = _fileQueueBase;
       }
@@ -6110,11 +6227,20 @@ class MessagingService {
       BleGattClient client, Uint8List frameBytes) async {
     final parts =
         fragmentFrame(frameBytes, effectivePayload(client.negotiatedMtu));
-    for (final part in parts) {
-      await client.writeOutbound(part);
+    for (var i = 0; i < parts.length; i++) {
+      await client.writeOutbound(parts[i]);
+      if ((i + 1) % _fragmentsBeforeYield == 0) {
+        await Future<void>.delayed(_fragmentPacing);
+      }
     }
     return true;
   }
+
+  Duration get _fragmentPacing => PlatformInfo.isAndroid
+      ? const Duration(milliseconds: 3)
+      : const Duration(milliseconds: 1);
+
+  static const int _fragmentsBeforeYield = 8;
 
   /// Notify one whole frame to every subscribed central via our peripheral,
   /// fragmenting to a conservative MTU (the per-central value isn't reported on
@@ -6125,9 +6251,12 @@ class MessagingService {
     final peripheral = _ref.read(blePeripheralProvider);
     final parts = fragmentFrame(frameBytes, conservativeEffectivePayload());
     var ok = true;
-    for (final part in parts) {
-      final accepted = await peripheral.notifyInbound(part);
+    for (var i = 0; i < parts.length; i++) {
+      final accepted = await peripheral.notifyInbound(parts[i]);
       if (!accepted) ok = false;
+      if ((i + 1) % _fragmentsBeforeYield == 0) {
+        await Future<void>.delayed(_fragmentPacing);
+      }
     }
     return ok;
   }
@@ -6484,6 +6613,15 @@ class MessagingService {
           utf8.decode(body, allowMalformed: true),
         );
 
+      case InnerPayloadType.conversationWallpaper:
+        final settings =
+            _ref.read(conversationSettingsControllerProvider.notifier);
+        await settings.loaded;
+        await settings.setWallpaper(
+          channelName,
+          _wallpaperFromPayload(ConversationWallpaperPayload.decode(body)),
+        );
+
       default:
         break;
     }
@@ -6521,7 +6659,8 @@ class MessagingService {
       final senderId = key.substring(separator + 1);
       final held = _heldChannelPosts[key];
       if (held == null) continue;
-      held.removeWhere((post) => now.difference(post.at) > _heldChannelStateTtl);
+      held.removeWhere(
+          (post) => now.difference(post.at) > _heldChannelStateTtl);
       if (held.isEmpty || !roster.isAdmin(channelName, senderId)) {
         if (held.isEmpty) _heldChannelPosts.remove(key);
         continue;
@@ -6593,13 +6732,12 @@ class MessagingService {
       final channelName = key.substring(0, separator);
       final typeName = key.substring(separator + 1);
       if (!roster.isAdmin(channelName, held.senderId)) continue;
-      final type = InnerPayloadType.values
-          .where((t) => t.name == typeName)
-          .firstOrNull;
+      final type =
+          InnerPayloadType.values.where((t) => t.name == typeName).firstOrNull;
       _heldChannelState.remove(key);
       if (type == null) continue;
-      DebugLog.instance
-          .log('CHAN', 'applying held $channelName $typeName — admin confirmed');
+      DebugLog.instance.log(
+          'CHAN', 'applying held $channelName $typeName — admin confirmed');
       try {
         await _applyChannelState(channelName, type, held.body);
       } catch (e) {
@@ -6654,7 +6792,8 @@ class MessagingService {
     for (final room in rooms) {
       final picture =
           _ref.read(channelAvatarsControllerProvider.notifier).forChannel(room);
-      final description = _ref.read(channelDescriptionsControllerProvider)[room];
+      final description =
+          _ref.read(channelDescriptionsControllerProvider)[room];
       if (picture == null && (description == null || description.isEmpty)) {
         continue;
       }

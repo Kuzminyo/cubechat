@@ -98,9 +98,11 @@ class IosBackgroundRefresh {
     _running = true;
     final started = DateTime.now();
     try {
-      // Stands the relay transport up (or lets a suspended one reconnect) and
-      // keeps it alive for the rest of this window.
-      container.read(messagingServiceProvider);
+      // Stands the relay transport up and pokes every relay immediately. A
+      // background window is short; spending it waiting for a reconnect backoff
+      // is exactly how iOS internet messages sat on relays until the user
+      // manually opened the app.
+      container.read(messagingServiceProvider).wakeRelays();
       DebugLog.instance.log('BGFETCH', 'window open');
       await Future<void>.delayed(window ?? IosBackgroundRefresh.window);
       final ms = DateTime.now().difference(started).inMilliseconds;

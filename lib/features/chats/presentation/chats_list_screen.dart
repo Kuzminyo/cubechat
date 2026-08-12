@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,7 +29,9 @@ import '../../peers/data/presence_controller.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/hidden_chats_controller.dart';
+import '../data/pinned_chats_controller.dart';
 import '../data/read_markers_controller.dart';
+import '../data/user_chat_folders_controller.dart';
 import '../data/saved_messages.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
@@ -105,6 +104,11 @@ final chatsQueryProvider = StateProvider<String>((_) => '');
 /// so a missed beacon doesn't make the tile flicker.
 const _meshReachableWindow = Duration(minutes: 5);
 
+/// The sort key for a conversation nobody has said anything in. Older than any
+/// real message, so those rows collect at the bottom of the list rather than
+/// riding whatever last refreshed the peer's `lastSeen`.
+final _neverSpoken = DateTime.fromMillisecondsSinceEpoch(0);
+
 /// Count of inbound messages the user hasn't seen yet: everything not-mine that
 /// arrived after the chat's read marker. With no marker (never opened), every
 /// inbound message is unread — opening the chat sets the marker and clears it.
@@ -131,6 +135,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final sessions = ref.watch(chatSessionManagerProvider);
   final channels = ref.watch(channelControllerProvider);
   final favorites = ref.watch(favoritesControllerProvider);
+  final pinnedChats = ref.watch(pinnedChatsControllerProvider);
   final readMarkers = ref.watch(readMarkersControllerProvider);
   final presence = ref.watch(presenceControllerProvider);
   final drafts = ref.watch(draftsControllerProvider);
@@ -167,7 +172,15 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         pubkeyHex: peer.pubkeyHex,
       ),
       lastMessage: draft?.text ?? last?.text ?? 'Secured · Noise XX',
-      lastTime: draft?.updatedAt ?? last?.sentAt ?? peer.lastSeen,
+      // An empty conversation sinks instead of floating.
+      //
+      // It used to fall back to the peer's lastSeen, which every announcement
+      // refreshes — so a chat whose history had just been cleared, by
+      // auto-delete or by hand, jumped straight to the top of the list as the
+      // most recent thing in it, with nothing in it. Nothing has been said
+      // here, so it sorts as though nothing has: at the bottom, where it can
+      // be found and does not push a live conversation down.
+      lastTime: draft?.updatedAt ?? last?.sentAt ?? _neverSpoken,
       unreadCount: unread,
       isMesh: true,
       isOnline: isOnline,
@@ -175,6 +188,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       isVerified: peer.isVerified,
       signKeyRotated: peer.hasUnacknowledgedRotation,
       isFavorite: favorites.contains(peer.pubkeyHex),
+      isPinned: pinnedChats.contains(peer.pubkeyHex),
       isDraft: draft != null,
     );
   }).toList();
@@ -204,29 +218,16 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       isOnline: false,
       isChannel: true,
       isFavorite: favorites.contains(ch.name),
+      isPinned: pinnedChats.contains(ch.name),
       isDraft: draft != null,
     ));
   }
 
-  // Favourites float to the top, in the order the user dragged them into;
-  // everything else is most recent first.
-  //
-  // Favourites used to be sorted by recency too, which quietly defeated the
-  // point of starring: the chat you pinned to the top because it matters moved
-  // down the moment anybody else wrote. An order somebody chose should not be
-  // rearranged by other people's activity.
-  final ranks = ref.watch(favoritesControllerProvider);
+  // Only pinned chats float. Favourites are just marked as favourites and sort
+  // like ordinary conversations; otherwise a starred chat looks like it is
+  // pinned even when the user never pinned it.
   entries.sort((a, b) {
-    if (a.isFavorite != b.isFavorite) return a.isFavorite ? -1 : 1;
-    if (a.isFavorite) {
-      final ra = ranks.indexOf(a.id);
-      final rb = ranks.indexOf(b.id);
-      // A starred chat missing from the order (mid-load, say) falls to the end
-      // of the group rather than jumping to the front of it.
-      if (ra != rb)
-        return (ra < 0 ? ranks.length : ra)
-            .compareTo(rb < 0 ? ranks.length : rb);
-    }
+    if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
     return b.lastTime.compareTo(a.lastTime);
   });
   return entries;
@@ -258,42 +259,39 @@ class ChatsListScreen extends ConsumerWidget {
     final query = ref.watch(chatsQueryProvider).toLowerCase();
     final all = ref.watch(chatsProvider);
     final folders = ref.watch(chatFoldersControllerProvider);
+    final userFolders = ref.watch(userChatFoldersControllerProvider);
     final selected = ref.watch(selectedFolderProvider);
+    final selectedUserFolderId = ref.watch(selectedUserFolderProvider);
     // A folder that was switched off while it was the one being shown would
     // otherwise leave the list filtered by something with no pill on screen.
     final folder =
         selected != null && folders.contains(selected) ? selected : null;
+    final userFolder = selectedUserFolderId == null
+        ? null
+        : ref
+            .read(userChatFoldersControllerProvider.notifier)
+            .byId(selectedUserFolderId);
 
     final saved = savedChatRow(ref, t);
     final filtered = [
-      // Always first, and outside the folders: the notebook is not a
-      // conversation with anybody, so "unread", "online" and "direct" have
-      // nothing to say about it, and burying it under a filter is how it ends
-      // up unreachable again.
+      // An ordinary row, sorted by when it was last written in like every
+      // other.
       if (saved != null &&
           folder == null &&
+          userFolder == null &&
           (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
         saved,
       ...all.where((c) {
         if (folder != null && !folder.matches(c)) return false;
+        if (userFolder != null && !userFolder.contains(c.id)) return false;
         if (query.isEmpty) return true;
         return c.peerName.toLowerCase().contains(query) ||
             c.lastMessage.toLowerCase().contains(query);
       }),
-    ];
-    // The notebook sits above the favourites and is not one of them, so every
-    // index the reorderable list works in is one further along than the
-    // favourites' own order. Counting from the top without this made the run
-    // of favourites zero-length, and dragging one silently did nothing.
-    final leadingRows = filtered.isNotEmpty && isSavedChat(filtered.first.id)
-        ? 1
-        : 0;
-    final canReorderFavorites = query.isEmpty &&
-        (selected == ChatFolder.favorites || folder == null) &&
-        filtered.any((c) => c.isFavorite);
-    final favoriteCount =
-        filtered.skip(leadingRows).takeWhile((chat) => chat.isFavorite).length;
-
+    ]..sort((a, b) {
+        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+        return b.lastTime.compareTo(a.lastTime);
+      });
     return SafeArea(
       child: CustomScrollView(
         slivers: [
@@ -350,7 +348,7 @@ class ChatsListScreen extends ConsumerWidget {
           // Only once there is something in it. An empty folder row would be a
           // permanent strip of chrome between the search field and the first
           // conversation, on the screen that opens the app.
-          if (folders.isNotEmpty)
+          if (folders.isNotEmpty || userFolders.isNotEmpty)
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 56,
@@ -360,18 +358,36 @@ class ChatsListScreen extends ConsumerWidget {
                   children: [
                     PillButton(
                       label: t.chatsFilterAll,
-                      active: folder == null,
-                      onTap: () => ref
-                          .read(selectedFolderProvider.notifier)
-                          .state = null,
+                      active: folder == null && userFolder == null,
+                      onTap: () {
+                        ref.read(selectedFolderProvider.notifier).state = null;
+                        ref.read(selectedUserFolderProvider.notifier).state =
+                            null;
+                      },
                     ),
                     for (final f in folders) ...[
                       const SizedBox(width: 8),
                       PillButton(
                         label: folderLabel(t, f),
                         active: folder == f,
-                        onTap: () =>
-                            ref.read(selectedFolderProvider.notifier).state = f,
+                        onTap: () {
+                          ref.read(selectedUserFolderProvider.notifier).state =
+                              null;
+                          ref.read(selectedFolderProvider.notifier).state = f;
+                        },
+                      ),
+                    ],
+                    for (final f in userFolders) ...[
+                      const SizedBox(width: 8),
+                      PillButton(
+                        label: f.name,
+                        active: userFolder?.id == f.id,
+                        onTap: () {
+                          ref.read(selectedFolderProvider.notifier).state =
+                              null;
+                          ref.read(selectedUserFolderProvider.notifier).state =
+                              f.id;
+                        },
                       ),
                     ],
                     const SizedBox(width: 8),
@@ -395,92 +411,27 @@ class ChatsListScreen extends ConsumerWidget {
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-              // Favourite rows move only when the card itself is held and dragged.
-              //
-              // That is the one view where every row is a favourite, so a drag
-              // has an unambiguous meaning and a destination that is always
-              // valid. In the full list a favourite dragged past the last
-              // starred row would be asking to be ordered against chats that
-              // have no order — they are sorted by when somebody last wrote —
-              // and there is no answer to give.
-              sliver: canReorderFavorites
-                  ? SliverReorderableList(
-                      itemCount: filtered.length,
-                      onReorder: (from, to) {
-                        // Back into the favourites' own numbering, which knows
-                        // nothing about the row above them.
-                        final source = from - leadingRows;
-                        if (source < 0 || source >= favoriteCount) return;
-                        var target = to - leadingRows;
-                        if (target > source) target -= 1;
-                        final capped = target.clamp(0, favoriteCount - 1);
-                        ref
-                            .read(favoritesControllerProvider.notifier)
-                            .reorder(source, capped);
-                      },
-                      itemBuilder: (_, i) {
-                        final chat = filtered[i];
-                        final draggableFavorite = chat.isFavorite &&
-                            i >= leadingRows &&
-                            i < leadingRows + favoriteCount;
-                        if (draggableFavorite) {
-                          return _FavoriteChatReorderTile(
-                            key: ValueKey(chat.id),
-                            chat: chat,
-                            index: i,
-                            ref: ref,
-                            localizations: t,
-                          );
-                        }
-                        return Padding(
-                          key: ValueKey(chat.id),
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: FloatingGlass(
-                            blur: false,
-                            borderRadius: 18,
-                            onTap: () => context.push(routeForChat(chat)),
-                            onLongPressAt: (pos) => _showChatActions(
-                              context,
-                              ref,
-                              chat,
-                              t,
-                              pos,
-                            ),
-                            child: ChatTile(chat: chat),
-                          ),
-                        );
-                      },
-                    )
-                  : AppearOnce(
-                      builder: (context, animate) => SliverList.separated(
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) {
-                          final chat = filtered[i];
-                          return AppearAnimation(
-                            enabled: animate,
-                            delay: AppearAnimation.stagger(i),
-                            // Each row is its own levitating pane of smoked
-                            // glass — the nav bar's treatment — so the list
-                            // reads as separate floating islands over the
-                            // aurora, not cards on a plate.
-                            //
-                            // Unblurred: the aurora behind is already a soft
-                            // gradient, and a backdrop filter per row is a full
-                            // blur pass per row per frame. See
-                            // [FloatingGlass.blur].
-                            child: FloatingGlass(
-                              blur: false,
-                              borderRadius: 18,
-                              onTap: () => context.push(routeForChat(chat)),
-                              onLongPressAt: (pos) =>
-                                  _showChatActions(context, ref, chat, t, pos),
-                              child: ChatTile(chat: chat),
-                            ),
-                          );
-                        },
+              sliver: AppearOnce(
+                builder: (context, animate) => SliverList.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final chat = filtered[i];
+                    return AppearAnimation(
+                      enabled: animate,
+                      delay: AppearAnimation.stagger(i),
+                      child: FloatingGlass(
+                        blur: false,
+                        borderRadius: 18,
+                        onTap: () => context.push(routeForChat(chat)),
+                        onLongPressAt: (pos) =>
+                            _showChatActions(context, ref, chat, t, pos),
+                        child: ChatTile(chat: chat),
                       ),
-                    ),
+                    );
+                  },
+                ),
+              ),
             ),
         ],
       ),
@@ -643,226 +594,7 @@ Future<void> _confirmWipe(
   );
 }
 
-class _FavoriteChatReorderTile extends StatefulWidget {
-  const _FavoriteChatReorderTile({
-    super.key,
-    required this.chat,
-    required this.index,
-    required this.ref,
-    required this.localizations,
-  });
-
-  final Chat chat;
-  final int index;
-  final WidgetRef ref;
-  final AppLocalizations localizations;
-
-  @override
-  State<_FavoriteChatReorderTile> createState() =>
-      _FavoriteChatReorderTileState();
-}
-
-class _FavoriteChatReorderTileState extends State<_FavoriteChatReorderTile> {
-  bool _menuOpen = false;
-  bool _dragging = false;
-
-  void _showMenu(Offset globalPosition) {
-    if (_menuOpen || _dragging || !mounted) return;
-    _menuOpen = true;
-    _showChatActions(
-      context,
-      widget.ref,
-      widget.chat,
-      widget.localizations,
-      globalPosition,
-    ).whenComplete(() {
-      _menuOpen = false;
-    });
-  }
-
-  void _dismissMenuForDrag() {
-    _dragging = true;
-    if (!_menuOpen || !mounted) return;
-    _menuOpen = false;
-    Navigator.of(context, rootNavigator: true).maybePop();
-  }
-
-  void _finishPointer() {
-    _dragging = false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _HoldMenuReorderStartListener(
-      index: widget.index,
-      onHold: _showMenu,
-      onDragStart: _dismissMenuForDrag,
-      onPointerDone: _finishPointer,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: FloatingGlass(
-          blur: false,
-          borderRadius: 18,
-          onTap: () => context.push(routeForChat(widget.chat)),
-          child: ChatTile(chat: widget.chat),
-        ),
-      ),
-    );
-  }
-}
-
-class _HoldMenuReorderStartListener extends StatelessWidget {
-  const _HoldMenuReorderStartListener({
-    required this.child,
-    required this.index,
-    required this.onHold,
-    required this.onDragStart,
-    required this.onPointerDone,
-  });
-
-  final Widget child;
-  final int index;
-  final ValueChanged<Offset> onHold;
-  final VoidCallback onDragStart;
-  final VoidCallback onPointerDone;
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (event) => _startDragging(context, event),
-      child: child,
-    );
-  }
-
-  void _startDragging(BuildContext context, PointerDownEvent event) {
-    final settings = MediaQuery.maybeGestureSettingsOf(context);
-    final list = SliverReorderableList.maybeOf(context);
-    list?.startItemDragReorder(
-      index: index,
-      event: event,
-      recognizer: _HoldMenuThenMoveMultiDragGestureRecognizer(
-        debugOwner: this,
-        onHold: onHold,
-        onDragStart: onDragStart,
-        onPointerDone: onPointerDone,
-      )..gestureSettings = settings,
-    );
-  }
-}
-
-class _HoldMenuThenMoveMultiDragGestureRecognizer
-    extends MultiDragGestureRecognizer {
-  _HoldMenuThenMoveMultiDragGestureRecognizer({
-    super.debugOwner,
-    required this.onHold,
-    required this.onDragStart,
-    required this.onPointerDone,
-  });
-
-  final ValueChanged<Offset> onHold;
-  final VoidCallback onDragStart;
-  final VoidCallback onPointerDone;
-
-  @override
-  MultiDragPointerState createNewPointerState(PointerDownEvent event) {
-    return _HoldMenuThenMovePointerState(
-      event.position,
-      event.kind,
-      gestureSettings,
-      onHold: onHold,
-      onDragStart: onDragStart,
-      onPointerDone: onPointerDone,
-    );
-  }
-
-  @override
-  String get debugDescription => 'hold menu then move reorder';
-}
-
-class _HoldMenuThenMovePointerState extends MultiDragPointerState {
-  _HoldMenuThenMovePointerState(
-    super.initialPosition,
-    super.kind,
-    super.gestureSettings, {
-    required this.onHold,
-    required this.onDragStart,
-    required this.onPointerDone,
-  }) {
-    _timer = Timer(kLongPressTimeout, _handleHold);
-  }
-
-  static const _dragAfterHoldSlop = 6.0;
-
-  final ValueChanged<Offset> onHold;
-  final VoidCallback onDragStart;
-  final VoidCallback onPointerDone;
-
-  Timer? _timer;
-  GestureMultiDragStartCallback? _starter;
-  bool _held = false;
-  bool _dragStarted = false;
-  bool _done = false;
-
-  void _handleHold() {
-    _timer = null;
-    final distance = pendingDelta?.distance ?? double.infinity;
-    if (distance > computeHitSlop(kind, gestureSettings)) {
-      resolve(GestureDisposition.rejected);
-      return;
-    }
-    _held = true;
-    onHold(initialPosition);
-    resolve(GestureDisposition.accepted);
-  }
-
-  @override
-  void checkForResolutionAfterMove() {
-    final distance = pendingDelta?.distance ?? 0;
-    if (!_held) {
-      if (distance > computeHitSlop(kind, gestureSettings)) {
-        _timer?.cancel();
-        _timer = null;
-        resolve(GestureDisposition.rejected);
-      }
-      return;
-    }
-    if (_dragStarted || distance <= _dragAfterHoldSlop || _starter == null) {
-      return;
-    }
-    _dragStarted = true;
-    onDragStart();
-    _starter!(initialPosition);
-    _starter = null;
-  }
-
-  @override
-  void accepted(GestureMultiDragStartCallback starter) {
-    _starter = starter;
-    checkForResolutionAfterMove();
-  }
-
-  @override
-  void rejected() {
-    _timer?.cancel();
-    _timer = null;
-    _starter = null;
-    super.rejected();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _timer = null;
-    if (!_done) {
-      _done = true;
-      onPointerDone();
-    }
-    super.dispose();
-  }
-}
-
-/// Long-press actions for one chat. Favourite rows still expose this menu;
-/// their ordering is handled by holding and dragging the card itself.
+/// Long-press actions for one chat.
 Future<void> _showChatActions(
   BuildContext context,
   WidgetRef ref,
@@ -875,6 +607,7 @@ Future<void> _showChatActions(
   // everything in it.
   if (isSavedChat(chat.id)) return;
   final favorited = chat.isFavorite;
+  final pinned = chat.isPinned;
   final blocked = !chat.isChannel &&
       ref.read(knownPeersControllerProvider.notifier).isBlocked(chat.id);
 
@@ -882,6 +615,18 @@ Future<void> _showChatActions(
     context: context,
     globalPosition: pos,
     items: [
+      _chatMenuItem(
+        'pin',
+        pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+        _chatText(
+          context,
+          uk: pinned
+              ? '\u0412\u0456\u0434\u043a\u0440\u0456\u043f\u0438\u0442\u0438'
+              : '\u0417\u0430\u043a\u0440\u0456\u043f\u0438\u0442\u0438',
+          en: pinned ? 'Unpin' : 'Pin',
+        ),
+        color: AppColors.brandPrimary,
+      ),
       _chatMenuItem(
         'folder',
         Icons.folder_outlined,
@@ -933,6 +678,9 @@ Future<void> _showChatActions(
 
   if (action == null || !context.mounted) return;
   switch (action) {
+    case 'pin':
+      await ref.read(pinnedChatsControllerProvider.notifier).toggle(chat.id);
+      return;
     case 'folder':
       await _showAddToFolderDialog(context, ref, chat, t);
       return;
@@ -994,14 +742,9 @@ Future<void> _showAddToFolderDialog(
   Chat chat,
   AppLocalizations t,
 ) async {
-  final choices = <ChatFolder>[
-    ChatFolder.favorites,
-    ChatFolder.unread,
-    if (chat.isChannel) ChatFolder.channels else ChatFolder.direct,
-    if (chat.isOnline || chat.isReachableViaMesh) ChatFolder.online,
-  ];
-
-  final picked = await showDialog<ChatFolder>(
+  final userFolders = ref.read(userChatFoldersControllerProvider);
+  const createToken = '__create__';
+  final picked = await showDialog<String>(
     context: context,
     builder: (ctx) => SimpleDialog(
       backgroundColor: AppColors.bgTop,
@@ -1022,14 +765,22 @@ Future<void> _showAddToFolderDialog(
         ),
       ),
       children: [
-        for (final folder in choices)
+        for (final folder in userFolders)
           SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop(folder),
-            child: _MenuRow(
-              icon: folderIcon(folder),
-              label: folderLabel(t, folder),
+            onPressed: () => Navigator.of(ctx).pop(folder.id),
+            child: _MenuRow(icon: Icons.folder_outlined, label: folder.name),
+          ),
+        SimpleDialogOption(
+          onPressed: () => Navigator.of(ctx).pop(createToken),
+          child: _MenuRow(
+            icon: Icons.create_new_folder_outlined,
+            label: _chatText(
+              context,
+              uk: '\u041d\u043e\u0432\u0430 \u043f\u0430\u043f\u043a\u0430',
+              en: 'New folder',
             ),
           ),
+        ),
         SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(),
           child: Text(
@@ -1042,16 +793,65 @@ Future<void> _showAddToFolderDialog(
   );
   if (picked == null) return;
 
-  if (picked == ChatFolder.favorites && !chat.isFavorite) {
-    await ref.read(favoritesControllerProvider.notifier).toggle(chat.id);
+  final controller = ref.read(userChatFoldersControllerProvider.notifier);
+  String folderId = picked;
+  if (picked == createToken) {
+    final name = await _askFolderName(context);
+    if (name == null) return;
+    final folder = await controller.create(name, chatIds: [chat.id]);
+    folderId = folder.id;
+  } else {
+    await controller.addChat(picked, chat.id);
   }
-  if (picked == ChatFolder.unread) {
-    await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
-  }
+  ref.read(selectedFolderProvider.notifier).state = null;
+  ref.read(selectedUserFolderProvider.notifier).state = folderId;
+}
 
-  final folders = ref.read(chatFoldersControllerProvider.notifier);
-  if (!folders.isOn(picked)) await folders.toggle(picked);
-  ref.read(selectedFolderProvider.notifier).state = picked;
+Future<String?> _askFolderName(BuildContext context,
+    {String initial = ''}) async {
+  final controller = TextEditingController(text: initial);
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text(
+        _chatText(
+          context,
+          uk: '\u041d\u0430\u0437\u0432\u0430 \u043f\u0430\u043f\u043a\u0438',
+          en: 'Folder name',
+        ),
+        style: TextStyle(color: AppColors.textOnGlass),
+      ),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        style: TextStyle(color: AppColors.textOnGlass),
+        decoration: InputDecoration(
+          hintText: _chatText(context,
+              uk: '\u0414\u0440\u0443\u0437\u0456', en: 'Friends'),
+          hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(_chatText(context,
+              uk: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
+              en: 'Cancel')),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+          child: Text(_chatText(context,
+              uk: '\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438',
+              en: 'Save')),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  if (result == null || result.trim().isEmpty) return null;
+  return result.trim();
 }
 
 Future<void> _markChatUnread(
@@ -1290,6 +1090,10 @@ Future<void> _confirmAndDeleteChat(
 
   await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
   await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
+  await ref.read(pinnedChatsControllerProvider.notifier).forget(chat.id);
+  await ref
+      .read(userChatFoldersControllerProvider.notifier)
+      .forgetChat(chat.id);
   await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
   await ref.read(pinnedControllerProvider.notifier).forget(chat.id);
   await ref.read(draftsControllerProvider.notifier).clear(chat.id);

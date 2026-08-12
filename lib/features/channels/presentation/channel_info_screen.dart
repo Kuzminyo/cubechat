@@ -299,20 +299,28 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            // A room-wide version of the 1:1 switch. Members receive it into
-            // the same field a peer's request lands in, so it is not something
-            // a reader can turn off for themselves — see
-            // [MessagingService.sendChannelCopyRestriction].
-            _ChannelCopyRestriction(
-              channelName: widget.channelName,
-              canManage: canManage,
-            ),
-            const SizedBox(height: 12),
-            _ChannelAdminOnly(
-              channelName: widget.channelName,
-              canManage: canManage,
-            ),
+            // The room's rules, shown to the people who set them.
+            //
+            // They used to be on screen for everybody, greyed out with a
+            // toast on tap — which tells a member the room has a switch, that
+            // it is not theirs, and nothing else they can act on. A rule is
+            // felt when it applies; a disabled control for it is furniture.
+            if (canManage) ...[
+              const SizedBox(height: 12),
+              // A room-wide version of the 1:1 switch. Members receive it into
+              // the same field a peer's request lands in, so it is not
+              // something a reader can turn off for themselves — see
+              // [MessagingService.sendChannelCopyRestriction].
+              _ChannelCopyRestriction(
+                channelName: widget.channelName,
+                canManage: canManage,
+              ),
+              const SizedBox(height: 12),
+              _ChannelAdminOnly(
+                channelName: widget.channelName,
+                canManage: canManage,
+              ),
+            ],
             const SizedBox(height: 20),
             Text(
               t.channelParticipantsTitle.toUpperCase(),
