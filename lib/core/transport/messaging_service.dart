@@ -6281,15 +6281,18 @@ class MessagingService {
   Future<bool> _notifyFrameToPeripheral(Uint8List frameBytes) async {
     final peripheral = _ref.read(blePeripheralProvider);
     final parts = fragmentFrame(frameBytes, conservativeEffectivePayload());
-    var ok = true;
     for (var i = 0; i < parts.length; i++) {
-      final accepted = await peripheral.notifyInbound(parts[i]);
-      if (!accepted) ok = false;
+      // Stop at the first refusal rather than pushing the rest of a frame
+      // whose middle was turned away. The caller retries whole frames, so the
+      // remaining fragments would arrive as the tail of something the far side
+      // can never assemble — and they would take the queue slots the retry
+      // needs.
+      if (!await peripheral.notifyInbound(parts[i])) return false;
       if ((i + 1) % _fragmentsBeforeYield == 0) {
         await Future<void>.delayed(_fragmentPacing);
       }
     }
-    return ok;
+    return true;
   }
 
   /// Replay-window gate shared by the full + compact signed paths. The

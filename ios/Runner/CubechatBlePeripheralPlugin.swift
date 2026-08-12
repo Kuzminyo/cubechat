@@ -231,10 +231,23 @@ final class CubechatBlePeripheralPlugin: NSObject {
     guard manager != nil, inboundChar != nil, !subscribers.isEmpty else {
       return false
     }
+    // Refuse rather than drop.
+    //
+    // This used to bound memory by throwing away the *oldest* queued frame and
+    // still answering "sent" — which is fine for a chat message, where a lost
+    // frame is one message, and fatal for a file, where it is one chunk of
+    // two thousand. Dart had no way to know: it kept producing chunks as fast
+    // as it could read the file, the queue overran within a second, and the
+    // far side sat on a transfer that could never complete. That is why a file
+    // sent from an iPhone over Bluetooth never arrived while a message did.
+    //
+    // A refusal is something the sender knows how to handle — see
+    // `_deliverMediaFrameRetrying`, which backs off and slows the whole
+    // transfer down for good the first time it is pushed back on. That turns
+    // an overrun into pacing, which is what it should have been.
     if notifyQueue.count >= maxNotifyQueue {
-      // Sustained overrun — drop the oldest so we bound memory. The reassembler
-      // on the far side times the partial transfer out.
-      notifyQueue.removeFirst()
+      drainNotifyQueue()
+      if notifyQueue.count >= maxNotifyQueue { return false }
     }
     notifyQueue.append(data)
     drainNotifyQueue()
@@ -381,6 +394,20 @@ extension CubechatBlePeripheralPlugin: CBPeripheralManagerDelegate {
     }
     request.value = payload.subdata(in: request.offset..<payload.count)
     peripheral.respond(to: request, withResult: .success)
+  }
+
+  /// CoreBluetooth's transmit queue has room again.
+  ///
+  /// The one callback the whole notify path depends on, and it was never
+  /// implemented — every comment in this file promised it. `updateValue`
+  /// returns false the moment the system queue is full, which on a file
+  /// transfer is within the first handful of chunks; the drain stopped there
+  /// and nothing ever started it again. Frames then piled up in our own queue
+  /// until it overran and began discarding them, silently, while the sender
+  /// was told each one had gone. A message survived that because a message is
+  /// one frame; a file never did.
+  func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+    drainNotifyQueue()
   }
 
   func peripheralManager(
