@@ -58,7 +58,6 @@ import '../models/message.dart';
 import '../domain/command_processor.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
-import 'media_preview_screen.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
@@ -2535,7 +2534,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await showChannelPollComposer(context, ref, widget.peerId);
       case MediaPickerAssets(:final assets, :final caption):
         if (assets.isEmpty) return;
-        await _previewAndSend(assets, initialCaption: caption);
+        await _sendGallerySelection(assets, caption: caption);
       case MediaPickerLocation():
         await _shareLocation();
       case MediaPickerEdit(:final asset):
@@ -2706,116 +2705,28 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Gallery pick в†’ preview with a caption в†’ send.
+  /// Gallery pick → send.
   ///
-  /// Both the single pick and the batch come through here now. The old flow
-  /// forced the editor open for one photo and skipped straight to sending for
-  /// several, which meant the two cases behaved nothing alike and neither gave
-  /// a chance to look at what was about to go out.
-  Future<void> _previewAndSend(
-    List<AssetEntity> assets, {
-    String? initialCaption,
-  }) async {
-    // Bounded-resolution copies: the preview only has to look right on screen,
-    // and the mesh encoder downscales again afterwards anyway.
-    final loaded = <Uint8List>[];
-    for (final a in assets) {
-      final bytes = await a.thumbnailDataWithSize(
-        const ThumbnailSize(1600, 1600),
-        quality: 90,
-      );
-      if (bytes != null) loaded.add(bytes);
-    }
-    if (loaded.isEmpty || !mounted) return;
-
-    final result = await Navigator.of(context).push<MediaPreviewResult>(
-      mediaRoute<MediaPreviewResult>(
-        (_) => MediaPreviewScreen(
-          items: loaded,
-          allowOriginal: !widget.isChannel,
-          allowViewOnce: !widget.isChannel && !isSavedChat(widget.canonicalId),
-          initialCaption: initialCaption,
-        ),
-      ),
-    );
-    if (result == null || !mounted) return;
-
-    if (result.asFile) {
-      await _sendOriginals(assets, caption: result.caption);
-      return;
-    }
-
-    for (var i = 0; i < result.bytes.length; i++) {
-      // The caption belongs to the set, not to each photo — repeating it under
-      // every picture in a batch would read as a stutter. It goes on the first.
-      await _encodeAndSend(
-        result.bytes[i],
-        '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
-        caption: i == 0 ? result.caption : null,
-        viewOnce: result.viewOnce,
-      );
-      if (!mounted) return;
-    }
-  }
-
-  /// The picked photos, sent as they sit in the gallery.
-  ///
-  /// The ordinary photo path downscales and re-encodes to fit a picture through
-  /// Bluetooth, which is right for a snapshot and wrong for a document you
-  /// photographed to be read — the text is the first thing the encoder spends.
-  /// This one hands the asset's own file to [MessagingService.sendFile], the
-  /// same route the document picker uses, so the bytes that arrive are the
-  /// bytes that left and the receiver checks them against the signed hash.
-  ///
-  /// A caption follows as its own message: a file carries its mime type where a
-  /// photo carries a caption, and there is nowhere in the manifest to put one.
-  Future<void> _sendOriginals(
+  /// The picker already has the confirmation row and caption field, so sending
+  /// selected photos used to ask twice: first in the picker, then in a second
+  /// full-screen preview with Send/Edit. That extra screen is gone; the picker
+  /// is now the only confirmation surface for gallery photos.
+  Future<void> _sendGallerySelection(
     List<AssetEntity> assets, {
     String? caption,
   }) async {
-    final t = AppLocalizations.of(context);
-    final messaging = ref.read(messagingServiceProvider);
-    var sent = 0;
-    for (final asset in assets) {
-      try {
-        final origin = await asset.originFile;
-        if (origin == null || !mounted) continue;
-        final name = await asset.titleAsync;
-        final safe = name.trim().isEmpty ? 'photo-${asset.id}.jpg' : name;
-        if (isSavedChat(widget.canonicalId)) {
-          await ref.read(savedMessagesControllerProvider).saveFile(
-                origin,
-                fileName: safe,
-                mime: fileMimeType(safe),
-              );
-          sent++;
-          continue;
-        }
-        await messaging.sendFile(
-          widget.canonicalId,
-          file: origin,
-          fileName: safe,
-          mime: fileMimeType(safe),
-        );
-        sent++;
-      } on FileTooLarge catch (e) {
-        if (!mounted) return;
-        final limit = e.cap ~/ (1024 * 1024);
-        showGlassToast(
-          context,
-          e.relayOnly ? t.fileTooLargeRelay(limit) : t.fileTooLargeMesh(limit),
-          tone: ToastTone.danger,
-        );
-        return;
-      } catch (e) {
-        if (!mounted) return;
-        _showAttachmentFailure(e);
-        return;
-      }
-    }
-    if (!mounted) return;
-    if (sent > 0 && caption != null) {
-      await messaging.sendText(widget.peerId, caption);
+    for (var i = 0; i < assets.length; i++) {
+      final bytes = await assets[i].thumbnailDataWithSize(
+        const ThumbnailSize(1600, 1600),
+        quality: 90,
+      );
+      if (bytes == null || !mounted) continue;
+      await _encodeAndSend(
+        bytes,
+        '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
+        caption: i == 0 ? caption : null,
+      );
+      if (!mounted) return;
     }
   }
 

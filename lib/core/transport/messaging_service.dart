@@ -1779,7 +1779,11 @@ class MessagingService {
       // Size chunks to the link's real MTU (see sendImage for the why).
       final audTid = session?.peerId;
       final audDirect = audTid != null ? _clients[audTid] : null;
-      final relayOnly = !_hasAnyLink;
+      // Match image/file routing: relay-only is valid only when the relay is
+      // actually connected. If Bluetooth drops and the relay is still waking,
+      // keep the route decision honest so retry/backoff can recover instead of
+      // committing a voice note to a dead internet path.
+      final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
       final chunkData = _mediaChunkData(audDirect,
           relayOnly: relayOnly, ceiling: AudioChunk.maxDataBytes);
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
@@ -1811,6 +1815,7 @@ class MessagingService {
         DebugLog.instance.log(
             'CRYPTO', 'sendAudio: forward-secret (X3DH) media to $canonicalId');
       }
+      var audGap = Duration.zero;
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
         final end = (start + chunkData).clamp(0, bytes.length);
@@ -1847,18 +1852,23 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        final sent = await _deliverMediaFrame(
+        final delivery = await _deliverMediaFrameRetrying(
           frameBytes: frameBytes,
           session: session,
           canonicalId: canonicalId,
           relayOnly: relayOnly,
+          gap: audGap,
         );
-        if (!sent) {
+        audGap = delivery.gap;
+        if (!delivery.sent) {
           throw const MediaRouteUnavailable();
         }
-        // BLE notify pacing; see sendImage. Not needed over the relay.
-        if (i + 1 < total && !relayOnly) {
-          await Future<void>.delayed(const Duration(milliseconds: 15));
+        // BLE notify pacing; see sendImage. Over the relay the only gap is
+        // backpressure returned by the relay path.
+        if (i + 1 < total) {
+          final pause =
+              relayOnly ? audGap : const Duration(milliseconds: 15) + audGap;
+          if (pause > Duration.zero) await Future<void>.delayed(pause);
         }
       }
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);

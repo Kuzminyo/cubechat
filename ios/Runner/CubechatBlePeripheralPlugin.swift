@@ -388,16 +388,17 @@ extension CubechatBlePeripheralPlugin: CBPeripheralManagerDelegate {
     didReceiveWrite requests: [CBATTRequest]
   ) {
     for r in requests {
-      guard r.characteristic.uuid == outboundUuid, let data = r.value else { continue }
+      guard r.characteristic.uuid == outboundUuid, let data = r.value else {
+        peripheral.respond(to: r, withResult: .requestNotSupported)
+        continue
+      }
       emit([
         "type": "write",
         "centralId": r.central.identifier.uuidString,
         "charUuid": r.characteristic.uuid.uuidString,
         "data": FlutterStandardTypedData(bytes: data),
       ])
-    }
-    if let first = requests.first {
-      peripheral.respond(to: first, withResult: .success)
+      peripheral.respond(to: r, withResult: .success)
     }
   }
 }
