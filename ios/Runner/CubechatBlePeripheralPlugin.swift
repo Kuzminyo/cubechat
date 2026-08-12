@@ -223,10 +223,11 @@ final class CubechatBlePeripheralPlugin: NSObject {
   }
 
   /// Enqueue a frame for notify and kick the drain. Returns true when the frame
-  /// was accepted into our queue (there is at least one subscriber and a live
-  /// characteristic) — a full CoreBluetooth transmit queue is handled by the
-  /// drain + `peripheralManagerIsReadyToUpdateSubscribers`, not surfaced as a
-  /// failure to Dart.
+  /// was accepted into our queue.
+  ///
+  /// A full *CoreBluetooth* transmit queue is not a failure — the drain stops
+  /// and `peripheralManagerIsReady(toUpdateSubscribers:)` resumes it. A full
+  /// *own* queue is, and says so; see below.
   private func notifyInbound(_ data: Data) -> Bool {
     guard manager != nil, inboundChar != nil, !subscribers.isEmpty else {
       return false
@@ -394,20 +395,6 @@ extension CubechatBlePeripheralPlugin: CBPeripheralManagerDelegate {
     }
     request.value = payload.subdata(in: request.offset..<payload.count)
     peripheral.respond(to: request, withResult: .success)
-  }
-
-  /// CoreBluetooth's transmit queue has room again.
-  ///
-  /// The one callback the whole notify path depends on, and it was never
-  /// implemented — every comment in this file promised it. `updateValue`
-  /// returns false the moment the system queue is full, which on a file
-  /// transfer is within the first handful of chunks; the drain stopped there
-  /// and nothing ever started it again. Frames then piled up in our own queue
-  /// until it overran and began discarding them, silently, while the sender
-  /// was told each one had gone. A message survived that because a message is
-  /// one frame; a file never did.
-  func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
-    drainNotifyQueue()
   }
 
   func peripheralManager(
