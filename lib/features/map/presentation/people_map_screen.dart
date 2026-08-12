@@ -136,23 +136,23 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   @override
   void initState() {
     super.initState();
-    // Hybrid composition on Android, which is what stops the map coming back
-    // black.
+    // Texture layer, not hybrid composition — stated rather than left to the
+    // default, because it was the other way round for one build and the
+    // reasoning is worth keeping.
     //
-    // The default puts the native map on a texture layer, and a texture layer
-    // does not survive what this screen does to it: every panel over the map
-    // is glass — a BackdropFilter sampling what is behind it — and the whole
-    // tab is kept mounted but offstage by the shell while another tab is on
-    // screen. Both are the classic ways a texture-layer platform view renders
-    // as a black rectangle. Hybrid composition puts the real view into the
-    // Flutter scene instead; it costs some frame time, and a map that is
-    // sometimes black costs everything.
+    // Hybrid composition was turned on to stop the map coming back black, and
+    // it did: a texture-layer platform view goes black under a BackdropFilter,
+    // and every panel on this screen was glass sampling what was behind it. It
+    // also made the map crawl, because hybrid composition synchronises the
+    // native view with the Flutter scene on every frame.
     //
-    // Must be set before the first GoogleMap is built, which is why it is here
-    // and not in build.
+    // The blur is what was actually wrong. Those panes now sit on the map
+    // without sampling it (see `blur: false` below), which removes the black
+    // *and* the most expensive thing in the frame — so the fast path is
+    // affordable again.
     final platform = GoogleMapsFlutterPlatform.instance;
     if (platform is GoogleMapsFlutterAndroid) {
-      platform.useAndroidViewSurface = true;
+      platform.useAndroidViewSurface = false;
     }
   }
 
@@ -353,6 +353,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: FloatingGlass(
                   borderRadius: 24,
+                  // No blur over the map. A BackdropFilter snapshots the
+                  // layer below and runs a gaussian over it every frame, and
+                  // below this one is a native map view — the most expensive
+                  // backdrop there is to sample, and the one that renders
+                  // black when a texture-layer platform view is sampled at
+                  // all. The pane keeps its fill, border and shadows.
+                  blur: false,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Row(
@@ -843,7 +850,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     // neon glow, a gradient band and a green dot in the corner that meant
     // nothing. Ring, face, shadow.
     const size = 168.0;
-    const logicalSize = 56.0;
+    // The circle fills about seven tenths of the bitmap, the rest being the
+    // room the shadow and the selected glow need. So the drawn box has to be
+    // bigger than the pin to *be* the size of the old pin — at 56 it came out
+    // around forty points across, visibly smaller than the widget markers it
+    // replaced.
+    const logicalSize = 84.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const centre = Offset(size / 2, size / 2);
@@ -1126,8 +1138,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             // and at this weight and opacity it simply looked broken up.
             // Geodesic because a straight line on a projection is not a
             // straight line on the ground.
-            width: 2,
-            color: AppColors.brandPrimary.withValues(alpha: 0.34),
+            // Screen *pixels*, not logical points — the plugin's unit, and the
+            // reason 2 came out as a hairline on a 3x phone.
+            width: 6,
+            color: AppColors.brandPrimary.withValues(alpha: 0.38),
             startCap: gm.Cap.roundCap,
             endCap: gm.Cap.roundCap,
             geodesic: true,
@@ -1405,6 +1419,8 @@ class _PersonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => FloatingGlass(
         borderRadius: 24,
+        // See the address pane above: nothing blurs the map.
+        blur: false,
         onTap: onTap,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
@@ -1484,6 +1500,7 @@ class _MapActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => FloatingGlass(
         borderRadius: 22,
+        blur: false,
         onTap: onTap,
         padding: const EdgeInsets.all(12),
         child: Tooltip(
