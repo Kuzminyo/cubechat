@@ -188,15 +188,23 @@ class MapPresenceController extends Notifier<int> {
       ).encode();
 
       final messaging = ref.read(messagingServiceProvider);
+      var sent = 0;
       for (final peerId in peers) {
         try {
           await messaging.sendText(peerId, share, transient: true);
+          sent++;
         } catch (e) {
           debugPrint('MapPresenceController send failed for $peerId: $e');
         }
       }
-      _lastCell = cell;
-      _lastSentAt = now;
+      // Only a beacon that got out counts against the next one. Marking the
+      // attempt regardless meant a failure — the transport still starting up,
+      // most often — bought thirty-five seconds of deliberate silence on top
+      // of it.
+      if (sent > 0) {
+        _lastCell = cell;
+        _lastSentAt = now;
+      }
     } finally {
       _sending = false;
     }

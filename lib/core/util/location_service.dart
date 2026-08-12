@@ -179,10 +179,31 @@ class LocationService {
         accuracy: _accuracy,
         distanceFilter: _watchDistanceMetres,
         intervalDuration: const Duration(seconds: 45),
-        // No foregroundNotificationConfig on purpose: cubechat already runs
-        // MeshForegroundService, which now declares the `location` type, and
-        // letting geolocator start a second foreground service would put two
-        // permanent notifications in the shade for one app.
+        // The second notification is the price of the feature working at all.
+        //
+        // Leaving this out was the plan — cubechat already runs a foreground
+        // service for the mesh, and that service now declares the `location`
+        // type, so the app has location access while it is backgrounded. What
+        // that does not cover is the plugin: without a notification config,
+        // geolocator subscribes through the *Activity* and its own service
+        // never goes foreground, so swiping the app away takes the position
+        // stream with it. That is exactly the report — a killed app stops
+        // sending its pin — and no amount of our own service being alive
+        // brings the plugin's stream back.
+        //
+        // Also honest: Android wants a person to see, permanently and without
+        // digging, that something is reading their location while they are not
+        // looking at it. Two rows in the shade is a fair price for that.
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Cubechat live map',
+          notificationText: 'Sharing your position with your map friends',
+          notificationChannelName: 'Live map',
+          // Without a wake lock the phone sleeps and every fix arrives in a
+          // burst whenever it next wakes, which for a live map means a pin
+          // that jumps an hour at a time.
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       );
     }
     if (PlatformInfo.isIOS) {
