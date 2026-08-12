@@ -1529,6 +1529,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelMemberUnknown => 'Not in your contacts yet';
 
   @override
+  String get channelInviteToContacts => 'Send them your contact card';
+
+  @override
+  String channelContactInviteSent(String name) {
+    return 'Contact card offered to $name';
+  }
+
+  @override
+  String get chatContactInvitation => 'Invitation to connect';
+
+  @override
+  String get chatContactInvitationForYou => 'Invitation for you';
+
+  @override
   String get channelPollTitle => 'Poll';
 
   @override

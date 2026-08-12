@@ -110,7 +110,7 @@ class ChannelRosterController
     bool adminWhenFirst = false,
   }) async {
     final identity = await ref.read(identityProvider.future);
-    final id = _fingerprint(identity.signPublicKey);
+    final id = fingerprintOf(identity.signPublicKey);
     final existing = state[channel]?[id];
     final invited =
         ref.read(channelControllerProvider.notifier).byName(channel)?.viaInvite ??
@@ -216,7 +216,8 @@ class ChannelRosterController
     });
   }
 
-  static String _fingerprint(Uint8List bytes) => bytes
+  /// Public so callers outside a room can derive the same id.
+  static String fingerprintOf(Uint8List bytes) => bytes
       .take(8)
       .map((value) => value.toRadixString(16).padLeft(2, '0'))
       .join();
@@ -225,3 +226,15 @@ class ChannelRosterController
 final channelRosterControllerProvider = NotifierProvider<
     ChannelRosterController,
     Map<String, Map<String, ChannelMember>>>(ChannelRosterController.new);
+
+/// The sixteen hex characters of our own signing key that a channel frame
+/// carries as its author id.
+///
+/// The same thing [ChannelRosterController.ensureSelf] files us under, but
+/// without needing a room to ask about — the id is a property of this phone,
+/// not of any membership. Read by anything that has to answer "is this frame
+/// about me", such as a contact invitation posted into a room.
+final myChannelFingerprintProvider = FutureProvider<String>((ref) async {
+  final identity = await ref.watch(identityProvider.future);
+  return ChannelRosterController.fingerprintOf(identity.signPublicKey);
+});

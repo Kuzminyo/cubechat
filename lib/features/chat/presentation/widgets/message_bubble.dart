@@ -33,6 +33,7 @@ import '../../data/messages_controller.dart';
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
+import '../../../channels/data/channel_roster_controller.dart';
 import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
@@ -263,6 +264,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   bool get _canReact => widget.message.wireId != null;
+
+  /// Open the person a card names — importing them first when the card is an
+  /// invitation carrying the whole signed announcement.
+  ///
+  /// An invitation from a room is the one case where the profile would
+  /// otherwise open on somebody the app knows nothing about: no prekey, no
+  /// relay identity, nothing to send to. Importing is exactly what the QR
+  /// scanner does with the same card, and it is what turns "a name from a
+  /// channel" into a contact who can be written to.
+  Future<void> _openSharedContact(SharedContact contact) async {
+    final card = contact.card;
+    if (card != null) {
+      try {
+        await ref.read(messagingServiceProvider).addContactFromCard(card);
+      } catch (e) {
+        // Already known, or our own card offered back to us. Neither is worth
+        // stopping the tap over — the profile below is still the right place
+        // to land.
+        debugPrint('contact invitation import: $e');
+      }
+    }
+    if (!mounted) return;
+    context.push(
+      '/person/${Uri.encodeComponent(contact.pubkeyHex)}'
+      '?name=${Uri.encodeQueryComponent(contact.displayName)}',
+    );
+  }
 
   /// The words under the picture, or under the whole batch of them.
   ///
@@ -964,14 +992,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 else if (sharedContact != null)
                   _SharedContactBubble(
                     contact: sharedContact,
-                    onTap: () => context.push(
-                      '/person/' +
-                          Uri.encodeComponent(sharedContact.pubkeyHex) +
-                          '?name=' +
-                          Uri.encodeQueryComponent(
-                            sharedContact.displayName,
-                          ),
-                    ),
+                    onTap: () => _openSharedContact(sharedContact),
                   )
                 else
                   MentionText(message.text),
@@ -1341,7 +1362,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
   }
 }
 
-class _SharedContactBubble extends StatelessWidget {
+class _SharedContactBubble extends ConsumerWidget {
   const _SharedContactBubble({
     required this.contact,
     required this.onTap,
@@ -1351,8 +1372,14 @@ class _SharedContactBubble extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
+    // Whether the invitation names us, by the sixteen hex characters of our
+    // own signing key that a room frame carries.
+    final myFingerprint = ref.watch(myChannelFingerprintProvider).value;
+    final forMe = contact.invitedMemberId != null &&
+        myFingerprint != null &&
+        contact.invitedMemberId == myFingerprint;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -1375,9 +1402,19 @@ class _SharedContactBubble extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      t.profileContactCard,
+                      // An invitation says so, and says so louder when it is
+                      // addressed to the person reading it — in a room where
+                      // everybody sees every frame, that is the difference
+                      // between "somebody was invited" and "you were".
+                      contact.isInvitation
+                          ? (forMe
+                              ? t.chatContactInvitationForYou
+                              : t.chatContactInvitation)
+                          : t.profileContactCard,
                       style: TextStyle(
-                        color: AppColors.textOnGlassDim,
+                        color: contact.isInvitation && forMe
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassDim,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                       ),

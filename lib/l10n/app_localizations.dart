@@ -2756,6 +2756,30 @@ abstract class AppLocalizations {
   /// **'Not in your contacts yet'**
   String get channelMemberUnknown;
 
+  /// No description provided for @channelInviteToContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Send them your contact card'**
+  String get channelInviteToContacts;
+
+  /// No description provided for @channelContactInviteSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact card offered to {name}'**
+  String channelContactInviteSent(String name);
+
+  /// No description provided for @chatContactInvitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation to connect'**
+  String get chatContactInvitation;
+
+  /// No description provided for @chatContactInvitationForYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation for you'**
+  String get chatContactInvitationForYou;
+
   /// No description provided for @channelPollTitle.
   ///
   /// In en, this message translates to:

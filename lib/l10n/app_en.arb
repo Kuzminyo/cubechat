@@ -685,6 +685,15 @@
   "channelAdminOnly": "Only an administrator can change this",
   "channelAvatarTooLarge": "That photo is too large to broadcast",
   "channelMemberUnknown": "Not in your contacts yet",
+  "channelInviteToContacts": "Send them your contact card",
+  "channelContactInviteSent": "Contact card offered to {name}",
+  "@channelContactInviteSent": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "chatContactInvitation": "Invitation to connect",
+  "chatContactInvitationForYou": "Invitation for you",
   "channelPollTitle": "Poll",
   "channelCreatePoll": "Create poll",
   "channelPollQuestion": "Question",

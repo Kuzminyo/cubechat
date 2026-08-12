@@ -43,6 +43,7 @@ import '../crypto/signed_payload.dart';
 import '../crypto/x3dh.dart';
 import '../identity/avatar_controller.dart';
 import '../identity/nickname_controller.dart';
+import 'shared_contact.dart';
 import '../notifications/notification_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
@@ -7100,6 +7101,36 @@ class MessagingService {
   /// not prove.
   Future<String> myContactCard() async =>
       ContactCard.encode(await buildSignedAnnouncement());
+
+  /// Offer one member of a room our contact card, so they can write to us
+  /// outside it.
+  ///
+  /// The only direction a room allows. A channel frame carries its author's
+  /// signing *fingerprint* and never their public key, so a member cannot be
+  /// added from what the room shows — which is what makes "invite them" mean
+  /// "hand them mine". The card is the whole signed announcement, prekey
+  /// included, because a stranger has nothing of ours on file and a bare
+  /// pubkey would name somebody they still could not encrypt to.
+  ///
+  /// Posted into the room rather than sent privately, for the same reason:
+  /// there is no private route to somebody we have never met. Everyone in the
+  /// room can see it — as they can see everything else posted there — and the
+  /// `to` field is what lets one member's app say the invitation is theirs
+  /// while everybody else's stays quiet about it.
+  Future<void> sendChannelContactInvite(
+    String channelName,
+    String memberId,
+  ) async {
+    final identity = await _ref.read(identityProvider.future);
+    final invite = SharedContact(
+      pubkeyHex: _hexOf(Uint8List.fromList(identity.publicKey)),
+      displayName: _ref.read(nicknameControllerProvider),
+      invitedMemberId: memberId,
+      card: await myContactCard(),
+    );
+    await sendChannelText(channelName, invite.encode());
+    DebugLog.instance.log('CHAN', 'offered contact card to $memberId');
+  }
 
   /// Import a contact card someone sent us.
   ///

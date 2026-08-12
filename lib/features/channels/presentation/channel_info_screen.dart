@@ -71,6 +71,26 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     return out;
   }
 
+  /// Hand a member our contact card so they can write to us outside the room.
+  Future<void> _inviteToContacts(ChannelMember member) async {
+    final t = AppLocalizations.of(context);
+    try {
+      await ref
+          .read(messagingServiceProvider)
+          .sendChannelContactInvite(widget.channelName, member.id);
+      if (!mounted) return;
+      showGlassToast(
+        context,
+        t.channelContactInviteSent(member.name),
+        icon: Icons.person_add_alt_1_rounded,
+        tone: ToastTone.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
   Future<void> _pickChannelAvatar() async {
     final t = AppLocalizations.of(context);
     final result = await showGlassSheet<MediaPickerResult>(
@@ -346,6 +366,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                   contact: contacts[member.id],
                   isMe: member.id == _myId,
                   canManage: canManage,
+                  onInvite: () => _inviteToContacts(member),
                   onToggleAdmin: () =>
                       ref.read(messagingServiceProvider).sendChannelAdminChange(
                             widget.channelName,
@@ -697,6 +718,7 @@ class _MemberRow extends StatelessWidget {
     required this.isMe,
     required this.canManage,
     required this.onToggleAdmin,
+    required this.onInvite,
   });
 
   final ChannelMember member;
@@ -704,6 +726,10 @@ class _MemberRow extends StatelessWidget {
   final bool isMe;
   final bool canManage;
   final VoidCallback onToggleAdmin;
+
+  /// Offer this member our contact card, so they can start a conversation
+  /// outside the room. See `_inviteToContacts`.
+  final VoidCallback onInvite;
 
   @override
   Widget build(BuildContext context) {
@@ -775,7 +801,17 @@ class _MemberRow extends StatelessWidget {
             Icon(Icons.verified_user_rounded, color: AppColors.brandPrimary)
           else if (peer != null)
             Icon(Icons.chevron_right_rounded,
-                color: AppColors.textOnGlassFaint),
+                color: AppColors.textOnGlassFaint)
+          // Somebody in the room we have never spoken to 1:1. The room shows
+          // their signing fingerprint and nothing we could message, so the
+          // only move available is to hand them ours.
+          else if (!isMe)
+            IconButton(
+              tooltip: t.channelInviteToContacts,
+              onPressed: onInvite,
+              icon: Icon(Icons.person_add_alt_1_rounded,
+                  color: AppColors.brandPrimary),
+            ),
         ],
       ),
     );

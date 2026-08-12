@@ -1540,6 +1540,20 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelMemberUnknown => 'Ще не у ваших контактах';
 
   @override
+  String get channelInviteToContacts => 'Надіслати свою картку контакту';
+
+  @override
+  String channelContactInviteSent(String name) {
+    return 'Картку контакту надіслано $name';
+  }
+
+  @override
+  String get chatContactInvitation => 'Запрошення додати контакт';
+
+  @override
+  String get chatContactInvitationForYou => 'Запрошення для вас';
+
+  @override
   String get channelPollTitle => 'Опитування';
 
   @override
