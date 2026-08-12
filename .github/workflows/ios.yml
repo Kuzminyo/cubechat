@@ -105,13 +105,9 @@ jobs:
           if [ ! -f Podfile ]; then
             flutter build ios --release --no-codesign --config-only || true
           fi
-          if grep -q "^platform :ios" Podfile; then
-            sed -i '' "s/^platform :ios.*/platform :ios, '15.0'/" Podfile
-          else
-            sed -i '' "1i\\
-platform :ios, '15.0'
-" Podfile
-          fi
+          grep -v "^platform :ios" Podfile > Podfile.pinned
+          printf "platform :ios, '15.0'\n" | cat - Podfile.pinned > Podfile
+          rm -f Podfile.pinned
           head -3 Podfile
 
       - name: Build unsigned iOS app
