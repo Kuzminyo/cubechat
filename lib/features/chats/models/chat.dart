@@ -18,6 +18,9 @@ class Chat {
     this.signKeyRotated = false,
     this.isChannel = false,
     this.isDraft = false,
+    this.isMuted = false,
+    this.autoDeleteSeconds = 0,
+    this.pinRank = -1,
   });
 
   final String id;
@@ -52,4 +55,21 @@ class Chat {
 
   /// True when [lastMessage] is the unsent composer text for this chat.
   final bool isDraft;
+
+  /// Messages from this conversation arrive without a sound. Worth a mark in
+  /// the list: silence is otherwise indistinguishable from nobody writing, and
+  /// the switch that caused it lives two screens away.
+  final bool isMuted;
+
+  /// How long a message survives here, in seconds; zero means it is kept. The
+  /// list only cares whether the timer is on — see [autoDeletes] — but the
+  /// period is carried so a row could say how long without asking again.
+  final int autoDeleteSeconds;
+
+  /// Where this chat sits among the pinned ones, or -1 when it is not pinned.
+  /// The user drags this order; without it pinned rows re-sorted by recency and
+  /// swapped places on their own.
+  final int pinRank;
+
+  bool get autoDeletes => autoDeleteSeconds > 0;
 }

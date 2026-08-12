@@ -11,7 +11,12 @@ import '../../models/chat.dart';
 /// preview. It paints no surface of its own — the [FloatingGlass] island the
 /// list wraps it in owns the background, tap ripple and long-press.
 class ChatTile extends StatelessWidget {
-  const ChatTile({super.key, required this.chat, this.selected = false});
+  const ChatTile({
+    super.key,
+    required this.chat,
+    this.selected = false,
+    this.reorderIndex,
+  });
 
   final Chat chat;
 
@@ -20,6 +25,13 @@ class ChatTile extends StatelessWidget {
   /// whether there is something unread in it, and a second meaning on the same
   /// surface makes both harder to read.
   final bool selected;
+
+  /// Position in the reorderable list, when this row is one that can be dragged
+  /// — pinned rows only. The pin itself becomes the handle: it is the mark that
+  /// says why this row is allowed to move, a long press is already taken by
+  /// selection, and making the whole row a handle would mean the list could no
+  /// longer be scrolled by starting on a pinned chat.
+  final int? reorderIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -52,10 +64,17 @@ class ChatTile extends StatelessWidget {
                 size: 48,
                 online: chat.isOnline,
               ),
-              if (selected)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
+              // Grows in and shrinks out rather than appearing between two
+              // frames. Picking chats out was the one place in the app where
+              // something the finger did landed as a jump; the timing is the
+              // nav bar's, so the two read as the same app.
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: AnimatedScale(
+                  scale: selected ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: selected ? Curves.easeOutBack : Curves.easeInCubic,
                   child: Container(
                     width: 20,
                     height: 20,
@@ -68,6 +87,31 @@ class ChatTile extends StatelessWidget {
                       Icons.check_rounded,
                       size: 12,
                       color: Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+              // Bottom *left*: the presence dot owns the other corner, and a
+              // timer stacked on it would be two states in one place.
+              if (chat.autoDeletes)
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.bgDeep,
+                      border: Border.all(
+                        color: AppColors.brandPrimary.withValues(alpha: 0.55),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.timer_outlined,
+                      size: 11,
+                      color: AppColors.brandPrimary,
                     ),
                   ),
                 ),
@@ -99,6 +143,17 @@ class ChatTile extends StatelessWidget {
                         Icons.verified,
                         color: AppColors.brandPrimary,
                         size: 14,
+                      ),
+                    ],
+                    // Next to the name, because it is the name that stays
+                    // quiet. Dim and small: it explains a silence, it is not an
+                    // alert of its own.
+                    if (chat.isMuted) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.notifications_off_rounded,
+                        color: AppColors.textOnGlassFaint,
+                        size: 13,
                       ),
                     ],
                     if (chat.isChannel) ...[
@@ -176,15 +231,7 @@ class ChatTile extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (chat.isPinned)
-                      Padding(
-                        padding: EdgeInsets.only(right: 4),
-                        child: Icon(
-                          Icons.push_pin_rounded,
-                          color: AppColors.brandPrimary,
-                          size: 13,
-                        ),
-                      ),
+                    if (chat.isPinned) _PinMark(reorderIndex: reorderIndex),
                     if (chat.isFavorite)
                       const Padding(
                         padding: EdgeInsets.only(right: 4),
@@ -202,6 +249,38 @@ class ChatTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The pin, and — when the list it is in can be reordered — the grip that moves
+/// the row.
+///
+/// A drag has to start from something small enough that the list can still be
+/// scrolled from anywhere else, and obvious enough to be found. The pin is
+/// already on exactly the rows that are allowed to move, so it is both; it
+/// simply gets a finger-sized area around it, which it did not have at 13px.
+class _PinMark extends StatelessWidget {
+  const _PinMark({required this.reorderIndex});
+
+  final int? reorderIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      Icons.push_pin_rounded,
+      color: AppColors.brandPrimary,
+      size: reorderIndex == null ? 13 : 15,
+    );
+    if (reorderIndex == null) {
+      return Padding(padding: const EdgeInsets.only(right: 4), child: icon);
+    }
+    return ReorderableDragStartListener(
+      index: reorderIndex!,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 2, left: 6, top: 6, bottom: 6),
+        child: icon,
       ),
     );
   }

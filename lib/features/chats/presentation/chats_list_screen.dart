@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -69,6 +70,8 @@ Chat? savedChatRow(WidgetRef ref, AppLocalizations t) {
   final messages = ref.watch(messagesControllerProvider)[savedChatId];
   if (messages == null || messages.isEmpty) return null;
   final last = lastVisibleMessage(messages);
+  final pinned = ref.watch(pinnedChatsControllerProvider);
+  final settings = ref.watch(conversationSettingsControllerProvider);
   return Chat(
     id: savedChatId,
     peerId: savedChatId,
@@ -82,6 +85,10 @@ Chat? savedChatRow(WidgetRef ref, AppLocalizations t) {
     unreadCount: 0,
     isMesh: false,
     isOnline: false,
+    // A normal row in every other respect, so it pins and expires like one.
+    isPinned: pinned.contains(savedChatId),
+    pinRank: pinned.indexOf(savedChatId),
+    autoDeleteSeconds: settings[savedChatId]?.autoDelete.seconds ?? 0,
   );
 }
 
@@ -129,8 +136,22 @@ int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
 /// The split exists because a deleted conversation is not a deleted person:
 /// Contacts goes on listing them (see `contactChatsProvider`) while the chat
 /// list does not, and both need the same Chat objects to do it.
+/// Row order for the chat list, in one place because two lists sort by it.
+///
+/// Pinned first, and among the pinned by the order the user dragged them into —
+/// not by recency. Recency is what a pin is for overriding: pinned rows used to
+/// re-sort themselves every time somebody wrote, so the row a thumb was aiming
+/// for had moved by the time it landed.
+int compareChatRows(Chat a, Chat b) {
+  if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+  if (a.isPinned && b.isPinned && a.pinRank != b.pinRank) {
+    return a.pinRank.compareTo(b.pinRank);
+  }
+  return b.lastTime.compareTo(a.lastTime);
+}
+
 final allChatsProvider = Provider<List<Chat>>((ref) {
-  ref.watch(conversationSettingsControllerProvider);
+  final settings = ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
   final sessions = ref.watch(chatSessionManagerProvider);
@@ -190,7 +211,10 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       signKeyRotated: peer.hasUnacknowledgedRotation,
       isFavorite: favorites.contains(peer.pubkeyHex),
       isPinned: pinnedChats.contains(peer.pubkeyHex),
+      pinRank: pinnedChats.indexOf(peer.pubkeyHex),
       isDraft: draft != null,
+      isMuted: peer.isMuted,
+      autoDeleteSeconds: settings[peer.pubkeyHex]?.autoDelete.seconds ?? 0,
     );
   }).toList();
 
@@ -220,17 +244,16 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       isChannel: true,
       isFavorite: favorites.contains(ch.name),
       isPinned: pinnedChats.contains(ch.name),
+      pinRank: pinnedChats.indexOf(ch.name),
       isDraft: draft != null,
+      autoDeleteSeconds: settings[ch.name]?.autoDelete.seconds ?? 0,
     ));
   }
 
   // Only pinned chats float. Favourites are just marked as favourites and sort
   // like ordinary conversations; otherwise a starred chat looks like it is
   // pinned even when the user never pinned it.
-  entries.sort((a, b) {
-    if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-    return b.lastTime.compareTo(a.lastTime);
-  });
+  entries.sort(compareChatRows);
   return entries;
 });
 
@@ -290,58 +313,79 @@ class ChatsListScreen extends ConsumerWidget {
         return c.peerName.toLowerCase().contains(query) ||
             c.lastMessage.toLowerCase().contains(query);
       }),
-    ]..sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        return b.lastTime.compareTo(a.lastTime);
-      });
+    ]..sort(compareChatRows);
     return SafeArea(
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The title row becomes a bar of actions while chats are
-                  // picked out, which is the whole point of picking them out.
-                  if (selection.isNotEmpty)
-                    _ChatSelectionBar(
-                      selected: [
-                        for (final chat in filtered)
-                          if (selection.contains(chat.id)) chat,
-                      ],
-                    )
-                  else ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        TripleTapDetector(
-                          onTripleTap: () => _confirmWipe(context, ref, t),
-                          child: const CubeLogo(size: 32),
+              // The title row becomes a bar of actions while chats are picked
+              // out, which is the whole point of picking them out — but the
+              // two are different heights, so swapping them outright shoved
+              // the search field and the whole list up the screen in one
+              // frame. Cross-fade for the contents, and animate the height
+              // they leave behind, on the nav bar's timing.
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  // Top-aligned: the default centres both children while they
+                  // cross-fade, which slides the outgoing one as it goes.
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.topLeft,
+                    children: [
+                      ...previous,
+                      if (current != null) current,
+                    ],
+                  ),
+                  child: selection.isNotEmpty
+                      ? _ChatSelectionBar(
+                          key: const ValueKey('selection'),
+                          selected: [
+                            for (final chat in filtered)
+                              if (selection.contains(chat.id)) chat,
+                          ],
+                        )
+                      : Column(
+                          key: const ValueKey('title'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                TripleTapDetector(
+                                  onTripleTap: () =>
+                                      _confirmWipe(context, ref, t),
+                                  child: const CubeLogo(size: 32),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(t.chatsTitle,
+                                      style: AppTypography.display()),
+                                ),
+                                _ChatsOverflowMenu(
+                                  onAddContact: () => context.push('/contact'),
+                                  onNewChannel: () =>
+                                      showNewChannelDialog(context, ref, t),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              t.chatsSubtitle,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textOnGlassDim,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child:
-                              Text(t.chatsTitle, style: AppTypography.display()),
-                        ),
-                        _ChatsOverflowMenu(
-                          onAddContact: () => context.push('/contact'),
-                          onNewChannel: () =>
-                              showNewChannelDialog(context, ref, t),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      t.chatsSubtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textOnGlassDim,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
@@ -425,35 +469,81 @@ class ChatsListScreen extends ConsumerWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
               sliver: AppearOnce(
-                builder: (context, animate) => SliverList.separated(
+                builder: (context, animate) => SliverReorderableList(
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  onReorderStart: (_) => HapticFeedback.selectionClick(),
+                  // The dragged row lifts instead of gaining the Material
+                  // elevation the default draws, which on these glass cards
+                  // arrives as a grey rectangle under the finger.
+                  proxyDecorator: (child, index, animation) => AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, inner) => Transform.scale(
+                      scale: 1 +
+                          0.04 * Curves.easeOutCubic.transform(animation.value),
+                      child: inner,
+                    ),
+                  ),
+                  // Only the pinned block moves, and only within itself. A pin
+                  // is the one row whose position somebody chose; everything
+                  // below it is sorted by when it was last written in, and a
+                  // list you can drag rows around in that then re-sorts itself
+                  // is a list that ignores you.
+                  onReorder: (oldIndex, newIndex) {
+                    final pins = [
+                      for (final chat in filtered)
+                        if (chat.isPinned) chat.id,
+                    ];
+                    if (oldIndex >= pins.length) return;
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final target = newIndex.clamp(0, pins.length - 1);
+                    if (target == oldIndex) return;
+                    pins.insert(target, pins.removeAt(oldIndex));
+                    ref
+                        .read(pinnedChatsControllerProvider.notifier)
+                        .reorderVisible(pins);
+                  },
                   itemBuilder: (_, i) {
                     final chat = filtered[i];
                     final picked = selection.contains(chat.id);
-                    return AppearAnimation(
-                      enabled: animate,
-                      delay: AppearAnimation.stagger(i),
-                      child: FloatingGlass(
-                        blur: false,
-                        borderRadius: 18,
-                        // While anything is selected, a tap picks rather than
-                        // opens — the same rule every list of this shape uses,
-                        // and the only one that lets somebody select a second
-                        // chat without the first one's chat opening on them.
-                        onTap: () {
-                          if (selection.isEmpty) {
-                            context.push(routeForChat(chat));
-                            return;
-                          }
-                          ref
+                    return Padding(
+                      key: ValueKey(chat.id),
+                      // The gap rides with the row: a reorderable list has no
+                      // separators to keep it out of the way of a drag.
+                      padding: EdgeInsets.only(
+                        bottom: i == filtered.length - 1 ? 0 : 8,
+                      ),
+                      child: AppearAnimation(
+                        enabled: animate,
+                        delay: AppearAnimation.stagger(i),
+                        child: FloatingGlass(
+                          blur: false,
+                          borderRadius: 18,
+                          // While anything is selected, a tap picks rather
+                          // than opens — the same rule every list of this
+                          // shape uses, and the only one that lets somebody
+                          // select a second chat without the first one's chat
+                          // opening on them.
+                          onTap: () {
+                            if (selection.isEmpty) {
+                              context.push(routeForChat(chat));
+                              return;
+                            }
+                            ref
+                                .read(chatSelectionProvider.notifier)
+                                .toggle(chat.id);
+                          },
+                          onLongPressAt: (_) => ref
                               .read(chatSelectionProvider.notifier)
-                              .toggle(chat.id);
-                        },
-                        onLongPressAt: (_) => ref
-                            .read(chatSelectionProvider.notifier)
-                            .toggle(chat.id),
-                        child: ChatTile(chat: chat, selected: picked),
+                              .toggle(chat.id),
+                          child: ChatTile(
+                            chat: chat,
+                            selected: picked,
+                            // Pinned rows carry a grip; the rest have nothing
+                            // to drag and nowhere to go.
+                            reorderIndex: chat.isPinned ? i : null,
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -473,7 +563,7 @@ class ChatsListScreen extends ConsumerWidget {
 /// list a single row used to open on a long press. Nothing here is destructive
 /// without a confirmation of its own.
 class _ChatSelectionBar extends ConsumerWidget {
-  const _ChatSelectionBar({required this.selected});
+  const _ChatSelectionBar({super.key, required this.selected});
 
   final List<Chat> selected;
 

@@ -57,6 +57,34 @@ class PinnedChatsController extends Notifier<List<String>> {
     await _persist();
   }
 
+  /// Rewrite the order of [ids] among the pins, leaving every other pin in the
+  /// slot it already holds.
+  ///
+  /// The list somebody drags in can be a subset of this one — a search, a
+  /// folder, a chat whose history was deleted — and a drag there says nothing
+  /// about the pins it is not showing. Taking the slots the visible ids occupy
+  /// and refilling them in the new order moves exactly what was moved: the
+  /// obvious `[...dragged, ...rest]` would quietly demote every pin the filter
+  /// happened to hide.
+  Future<void> reorderVisible(List<String> ids) async {
+    if (ids.length < 2) return;
+    final wanted = ids.toSet();
+    final slots = <int>[
+      for (var i = 0; i < state.length; i++)
+        if (wanted.contains(state[i])) i,
+    ];
+    // An id we have no slot for means the caller's idea of what is pinned is
+    // stale; refilling would drop a pin on the floor.
+    if (slots.length != ids.length) return;
+    final next = [...state];
+    for (var i = 0; i < slots.length; i++) {
+      next[slots[i]] = ids[i];
+    }
+    if (listEquals(next, state)) return;
+    state = next;
+    await _persist();
+  }
+
   Future<void> toggle(String chatId) =>
       state.contains(chatId) ? unpin(chatId) : pin(chatId);
 
