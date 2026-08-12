@@ -51,6 +51,32 @@ class AppLocalizationsUk extends AppLocalizations {
   String get mapClusterHint => 'Торкніться, щоб мапа перейшла до людини';
 
   @override
+  String get mapLayerTitle => 'Вигляд мапи';
+
+  @override
+  String get mapLayerHint => 'На чому намальовані позначки';
+
+  @override
+  String get mapLayerDark => 'Темна';
+
+  @override
+  String get mapLayerDarkHint =>
+      'Вулиці без написів — найтихіше тло під позначками';
+
+  @override
+  String get mapLayerSatellite => 'Супутник';
+
+  @override
+  String get mapLayerSatelliteHint =>
+      'Знімки з висоти: який будинок, яке подвір’я';
+
+  @override
+  String get mapLayerTerrain => 'Рельєф';
+
+  @override
+  String get mapLayerTerrainHint => 'Горизонталі й рельєф — пагорби та стежки';
+
+  @override
   String get mapFriendsEmpty => 'Ще ніхто не ділиться з вами мапою.';
 
   @override

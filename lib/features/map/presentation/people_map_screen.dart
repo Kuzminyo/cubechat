@@ -23,10 +23,12 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_address_service.dart';
 import '../data/map_clusters.dart';
 import '../data/map_focus_request.dart';
+import '../data/map_layer_controller.dart';
 import '../data/map_presence_controller.dart';
 import '../data/shared_map_locations_provider.dart';
 import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
+import 'map_layer_sheet.dart';
 import 'dart:io' show Platform;
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 import 'package:dio_cache_interceptor_file_store/dio_cache_interceptor_file_store.dart';
@@ -157,17 +159,21 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   /// and a quarter of a zoom level is finer than the eye follows anyway.
   double _markerZoom = _initialZoom;
 
-  /// Pin size relative to its close-up size: full from [_shrinkFrom] in, down
-  /// to [_minMarkerScale] at [_shrinkTo] and beyond.
+  /// Pin size relative to its close-up size, in four steps.
+  ///
+  /// Steps rather than a smooth curve, and that is about memory rather than
+  /// looks. An avatar is decoded at the size it is drawn, so every distinct
+  /// size is its own bitmap in the image cache — a continuous scale meant a
+  /// fresh decode of every face on screen at every quarter of a zoom level,
+  /// and a pinch across a city left dozens of copies of each. On a phone with
+  /// eighty pins that is how a map gets killed for memory, which is what iOS
+  /// was doing.
   double get _markerScale {
-    const shrinkFrom = 14.0;
-    const shrinkTo = 6.0;
-    const minScale = 0.5;
     final zoom = _markerZoom;
-    if (zoom >= shrinkFrom) return 1;
-    if (zoom <= shrinkTo) return minScale;
-    return minScale +
-        (zoom - shrinkTo) / (shrinkFrom - shrinkTo) * (1 - minScale);
+    if (zoom >= 14) return 1;
+    if (zoom >= 11) return 0.85;
+    if (zoom >= 8) return 0.7;
+    return 0.55;
   }
 
   /// The marker's hit box, which has to follow the drawing or a shrunken pin
@@ -401,6 +407,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         : LatLng(_me!.latitude, _me!.longitude);
     final testTileProvider =
         widget.tileProvider ?? ref.watch(mapTileProviderProvider);
+    final mapLayer = ref.watch(mapLayerControllerProvider);
     final overlayBottom = MediaQuery.paddingOf(context).bottom + 104;
     final profileTop = MediaQuery.paddingOf(context).top + 86;
     final selectedNode = _mineSelected && mePoint != null
@@ -430,6 +437,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               nickname,
               ownPhoto,
               testTileProvider,
+              mapLayer,
             ),
           ),
           SafeArea(
@@ -500,6 +508,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _MapActionButton(
+                  icon: Icons.layers_rounded,
+                  tooltip: t.mapLayerTitle,
+                  onTap: () => showMapLayerSheet(context),
+                ),
+                const SizedBox(height: 12),
                 _MapActionButton(
                   icon: Icons.person_search_rounded,
                   tooltip: t.mapFriendsTitle,
@@ -662,6 +676,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     String nickname,
     Uint8List? ownPhoto,
     TileProvider? tileProvider,
+    MapLayer layer,
   ) {
     // A parameter does not stay promoted inside a closure, and the marker's
     // onTap is one — hence the local copy the null check can promote.
@@ -720,14 +735,18 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         // localised and where they do not fight the avatars for space. It also
         // drops two full-screen overlay passes per frame.
         RepaintBoundary(
+          // Keyed on the style, so switching swaps the layer outright instead
+          // of asking one TileLayer to change its own URL — which leaves the
+          // previous style's squares on screen until each is replaced.
           child: TileLayer(
-            urlTemplate:
-                'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
-            subdomains: const ['a', 'b', 'c', 'd'],
-            retinaMode: RetinaMode.isHighDensity(context),
+            key: ValueKey('map-tiles-${layer.id}'),
+            urlTemplate: layer.urlTemplate,
+            subdomains: layer.subdomains,
+            retinaMode:
+                layer.supportsRetina && RetinaMode.isHighDensity(context),
             userAgentPackageName: 'com.cubechat.cubechat',
             tileProvider: tileProvider,
-            maxNativeZoom: 20,
+            maxNativeZoom: layer.maxNativeZoom,
             keepBuffer: 1,
             panBuffer: 0,
             tileUpdateTransformer: TileUpdateTransformers.throttle(
@@ -793,20 +812,16 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             if (me != null && _mineSelected) _ownMarker(me, nickname, ownPhoto),
           ],
         ),
+        // Required by each style's licence, and honest about who is being
+        // asked for the squares being looked at — which changes with the
+        // style, so the credit has to as well.
         RichAttributionWidget(
           attributions: [
-            TextSourceAttribution(
-              'OpenStreetMap contributors',
-              onTap: () => launchUrl(
-                Uri.parse('https://www.openstreetmap.org/copyright'),
+            for (final (name, url) in layer.attributions)
+              TextSourceAttribution(
+                name,
+                onTap: () => launchUrl(Uri.parse(url)),
               ),
-            ),
-            // Required by the tile style's licence, and honest about who is
-            // being asked for the squares being looked at.
-            TextSourceAttribution(
-              'CARTO',
-              onTap: () => launchUrl(Uri.parse('https://carto.com/attributions')),
-            ),
           ],
         ),
       ],

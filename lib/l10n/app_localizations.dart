@@ -164,6 +164,54 @@ abstract class AppLocalizations {
   /// **'Tap somebody to bring the map to them'**
   String get mapClusterHint;
 
+  /// No description provided for @mapLayerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Map style'**
+  String get mapLayerTitle;
+
+  /// No description provided for @mapLayerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What the pins are drawn on'**
+  String get mapLayerHint;
+
+  /// No description provided for @mapLayerDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get mapLayerDark;
+
+  /// No description provided for @mapLayerDarkHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Streets, no labels — the quietest under the pins'**
+  String get mapLayerDarkHint;
+
+  /// No description provided for @mapLayerSatellite.
+  ///
+  /// In en, this message translates to:
+  /// **'Satellite'**
+  String get mapLayerSatellite;
+
+  /// No description provided for @mapLayerSatelliteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Aerial imagery: which building, which yard'**
+  String get mapLayerSatelliteHint;
+
+  /// No description provided for @mapLayerTerrain.
+  ///
+  /// In en, this message translates to:
+  /// **'Terrain'**
+  String get mapLayerTerrain;
+
+  /// No description provided for @mapLayerTerrainHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Contours and relief, for hills and trails'**
+  String get mapLayerTerrainHint;
+
   /// No description provided for @mapFriendsEmpty.
   ///
   /// In en, this message translates to:

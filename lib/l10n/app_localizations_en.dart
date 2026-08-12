@@ -50,6 +50,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mapClusterHint => 'Tap somebody to bring the map to them';
 
   @override
+  String get mapLayerTitle => 'Map style';
+
+  @override
+  String get mapLayerHint => 'What the pins are drawn on';
+
+  @override
+  String get mapLayerDark => 'Dark';
+
+  @override
+  String get mapLayerDarkHint =>
+      'Streets, no labels — the quietest under the pins';
+
+  @override
+  String get mapLayerSatellite => 'Satellite';
+
+  @override
+  String get mapLayerSatelliteHint =>
+      'Aerial imagery: which building, which yard';
+
+  @override
+  String get mapLayerTerrain => 'Terrain';
+
+  @override
+  String get mapLayerTerrainHint => 'Contours and relief, for hills and trails';
+
+  @override
   String get mapFriendsEmpty => 'Nobody is sharing the map with you yet.';
 
   @override
