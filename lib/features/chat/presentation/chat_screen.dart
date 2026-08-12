@@ -1007,17 +1007,37 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
     // Flash first: the marker is also what puts [_jumpTargetKey] on the
     // destination, so the scroll below has something to finish against.
-    _flash(messages[index].id);
+    _flash(_reachable(messages[index].id));
     // Let the highlight rebuild move the key off the previous target. A
     // second pin tap during the highlight window otherwise sees the old
     // message context and scrolls back to that same pin.
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || request != _jumpRequest) return;
     await _jumpToMessageId(
-      messages[index].id,
+      _reachable(messages[index].id),
       _jumpTargetKey,
       jumpRequest: request,
     );
+  }
+
+  /// The message the list will actually draw for [messageId].
+  ///
+  /// A photo folded into the album above it renders as nothing at all — no
+  /// height, and no key for the jump to finish against — so asking the list to
+  /// scroll to one is asking for a widget that will never appear. The walk
+  /// then spends its forty-eight attempts estimating its way around the
+  /// conversation and stops wherever it happens to be, which is the "the
+  /// second pin jumps somewhere random" that was reported. The album's first
+  /// photo is the thing on screen, and is where that pin lives.
+  String _reachable(String messageId) {
+    final albums = groupPhotoAlbums(widget.messages);
+    if (!albums.isFolded(messageId)) return messageId;
+    for (final message in widget.messages) {
+      final album = albums.albumAt(message.id);
+      if (album == null) continue;
+      if (album.any((member) => member.id == messageId)) return message.id;
+    }
+    return messageId;
   }
 
   void _updateSearch(String query) {
@@ -1383,19 +1403,33 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   // on this screen — the jump anchors, the search highlight,
                   // _noteBuilt — addressing the same messages it always did.
                   if (albums.isFolded(m.id)) return const SizedBox.shrink();
+                  final album = albums.albumAt(m.id);
+                  // An album answers to the ids of every photo in it.
+                  //
+                  // Only the first photo of a batch is drawn; the rest give up
+                  // their height. So a jump aimed at one of those — a pinned
+                  // photo, a search hit, a notification tap — was aimed at a
+                  // widget that would never exist, and the walk spent its
+                  // attempts hunting for it and stopped wherever it had got
+                  // to. The album is where those photos are on screen, so it
+                  // takes their keys.
+                  bool isHere(String? id) =>
+                      id != null &&
+                      (m.id == id ||
+                          (album?.any((photo) => photo.id == id) ?? false));
                   Widget bubble = MessageBubble(
                     message: m,
                     chatId: widget.chatId,
-                    album: albums.albumAt(m.id),
+                    album: album,
                   );
-                  if (m.id == widget.initialMessageId) {
+                  if (isHere(widget.initialMessageId)) {
                     bubble =
                         KeyedSubtree(key: _initialMessageKey, child: bubble);
                   }
-                  if (m.id == flashing) {
+                  if (isHere(flashing)) {
                     bubble = KeyedSubtree(key: _jumpTargetKey, child: bubble);
                   }
-                  if (selectedMessage?.id == m.id) {
+                  if (isHere(selectedMessage?.id)) {
                     bubble = KeyedSubtree(
                       key: _searchResultKey,
                       child: _SearchResultHighlight(child: bubble),

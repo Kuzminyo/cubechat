@@ -1155,6 +1155,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   }
 
   List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final points = [if (me != null) me, ...nodes.map((n) => n.point)];
     final used = <String>{};
     final result = <gm.Polyline>[];
@@ -1172,25 +1173,39 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         final a = math.min(i, other.i);
         final b = math.max(i, other.i);
         if (!used.add('$a:$b')) continue;
-        result.add(
-          gm.Polyline(
-            polylineId: gm.PolylineId('web:$a:$b'),
-            points: [_gm(points[a]), _gm(points[b])],
-            // Solid and dim. It was briefly dotted, on the reasoning that a
-            // solid line reads as a route to follow — true in the abstract,
-            // and at this weight and opacity it simply looked broken up.
-            // Geodesic because a straight line on a projection is not a
-            // straight line on the ground.
-            // Screen *pixels*, not logical points — the plugin's unit, and the
-            // reason 2 came out as a hairline on a 3x phone.
-            width: 6,
-            color: AppColors.brandPrimary.withValues(alpha: 0.38),
-            startCap: gm.Cap.roundCap,
-            endCap: gm.Cap.roundCap,
-            geodesic: true,
-            zIndex: 1,
-          ),
-        );
+        // Two strokes, the way the old map drew it: a wide, nearly transparent
+        // halo with a thin bright thread down the middle. That is what made
+        // the line look lit rather than drawn, and Google offers neither a
+        // gradient stroke nor a glow — so the halo *is* the glow.
+        //
+        // The widths are the old logical ones converted, because a polyline
+        // here is measured in screen pixels; that unit is why an earlier
+        // attempt came out as a hairline on a 3x phone.
+        final path = [_gm(points[a]), _gm(points[b])];
+        result
+          ..add(
+            gm.Polyline(
+              polylineId: gm.PolylineId('web:$a:$b:halo'),
+              points: path,
+              width: (8 * pixelRatio).round(),
+              color: AppColors.brandPrimary.withValues(alpha: 0.10),
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+              geodesic: true,
+            ),
+          )
+          ..add(
+            gm.Polyline(
+              polylineId: gm.PolylineId('web:$a:$b'),
+              points: path,
+              width: (1.6 * pixelRatio).round(),
+              color: AppColors.brandSecondary.withValues(alpha: 0.58),
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+              geodesic: true,
+              zIndex: 1,
+            ),
+          );
       }
     }
     return result;
