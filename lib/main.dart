@@ -20,7 +20,7 @@ import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-12-position-survives-the-swipe';
+const String _buildStamp = '2026-08-12-rooms-tell-newcomers-how-they-look';
 
 /// Ask Android for the panel's real refresh rate.
 ///
