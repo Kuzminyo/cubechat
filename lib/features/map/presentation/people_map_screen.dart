@@ -1,13 +1,21 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show Factory;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
+// Narrowed with `show`: both packages export their own LatLng, which would
+// collide with latlong2's — the one this screen and the whole map layer speak.
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart'
+    show GoogleMapsFlutterAndroid;
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart'
+    show GoogleMapsFlutterPlatform;
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
@@ -29,12 +37,14 @@ import '../data/shared_map_locations_provider.dart';
 import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
 import 'map_layer_sheet.dart';
-import 'dart:io' show Platform;
-import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
-import 'package:dio_cache_interceptor_file_store/dio_cache_interceptor_file_store.dart';
-import 'package:flutter_map_cache/flutter_map_cache.dart';
-import 'package:path_provider/path_provider.dart';
-import '../../../core/util/debug_log.dart';
+
+// Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
+// the production screen ignores it and mounts native Google Maps instead.
+final mapTileProviderProvider = Provider<Object?>((ref) => null);
+
+// Google Maps owns its own tile/network cache. The old flutter_map cache init is
+// intentionally a no-op now, but main.dart still calls it during startup.
+Future<void> initMapTileCache() async {}
 
 typedef MapLocationReader = Future<(LocationFix?, LocationFailure?)> Function();
 typedef MapAddressReader = Future<String?> Function(
@@ -43,49 +53,6 @@ typedef MapAddressReader = Future<String?> Function(
   Locale locale,
 );
 
-/// Tiles, cached on disk.
-///
-/// Null meant flutter_map's plain network provider: every pan and every zoom
-/// step re-fetched squares the phone had already seen, there was no map at all
-/// without a connection, and a fast pinch turned into a burst of hundreds of
-/// simultaneous requests and decodes — which is what was taking the app down.
-///
-/// A disk cache answers all three. It also keeps the app a good citizen of a
-/// free tile service: the same square is asked for once rather than once per
-/// gesture.
-///
-/// Overridden with null in widget tests, which have no HTTP and no cache
-/// directory — see [PeopleMapScreen.tileProvider].
-final mapTileProviderProvider = Provider<TileProvider?>((ref) {
-  final store = _tileCacheStore;
-  if (store == null) return null;
-  return CachedTileProvider(
-    maxStale: const Duration(days: 30),
-    store: store,
-  );
-});
-
-/// Opened once at startup — see [initMapTileCache]. Held here rather than
-/// created lazily because building it needs a directory, which is async, and a
-/// provider that returns a future would make every rebuild of the map wait.
-CacheStore? _tileCacheStore;
-
-/// Prepare the on-disk tile cache. Safe to call more than once.
-///
-/// Failure is not fatal: without a store the map falls back to fetching every
-/// tile, which is how it behaved before there was a cache at all.
-Future<void> initMapTileCache() async {
-  if (_tileCacheStore != null) return;
-  try {
-    final dir = await getApplicationCacheDirectory();
-    // Deliberately the *cache* directory, unlike conversation media: a tile is
-    // reconstructible from the network and nobody loses anything if the OS
-    // reclaims the space. See [mediaDirectory] for the opposite case.
-    _tileCacheStore = FileCacheStore('${dir.path}${Platform.pathSeparator}map_tiles');
-  } catch (e) {
-    DebugLog.instance.log('MAP', 'tile cache unavailable: $e');
-  }
-}
 final mapLocationReaderProvider = Provider<MapLocationReader>(
   (ref) => const LocationService().current,
 );
@@ -94,29 +61,28 @@ final mapAddressReaderProvider = Provider<MapAddressReader>(
 );
 
 class PeopleMapScreen extends ConsumerStatefulWidget {
-  const PeopleMapScreen({super.key, this.tileProvider});
+  const PeopleMapScreen({
+    super.key,
+    this.tileProvider,
+    this.nativeMapEnabled = true,
+  });
 
-  final TileProvider? tileProvider;
+  final Object? tileProvider;
+  final bool nativeMapEnabled;
 
   @override
   ConsumerState<PeopleMapScreen> createState() => _PeopleMapScreenState();
 }
 
-class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
-    with SingleTickerProviderStateMixin {
+class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   static const _fallbackCenter = LatLng(50.4501, 30.5234);
-  static const _initialZoom = 13.5;
+  static const _initialZoom = 15.0;
+  static const _focusZoom = 17.2;
+  static const _markerTapZoom = 17.0;
 
-  /// Where the camera lands when it is pointed at a person. See [_focusOn].
-  ///
-  /// Close enough to tell which building, not merely which block — pointing the
-  /// camera at somebody answers "where exactly", and 16.5 still left a
-  /// neighbourhood on screen. Held one step below [MapOptions.maxZoom] so there
-  /// is somewhere left to pinch.
-  static const _focusZoom = 17.5;
-  final _map = MapController();
   final _distance = const Distance();
 
+  gm.GoogleMapController? _googleMap;
   LocationFix? _me;
   LocationFailure? _failure;
   Timer? _refresh;
@@ -126,167 +92,57 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   bool _watching = false;
   bool _centered = false;
   bool _mineSelected = false;
+  bool _rotated = false;
   String? _selectedId;
   String? _centerAddress;
   String? _addressCell;
   LatLng? _queuedAddressPoint;
   String? _queuedAddressCell;
   int _addressRequest = 0;
-
-  /// Drives the camera between two positions instead of teleporting it.
-  ///
-  /// [MapController.move] is a jump cut: the whole world changes under your
-  /// thumb in one frame, and with a 90-second refresh re-centring on a fix that
-  /// drifted twenty metres, the map appeared to twitch for no reason anyone
-  /// watching could connect to anything. Interpolating turns that into a move
-  /// the eye can follow — and, when the fix has barely changed, into something
-  /// small enough not to notice at all.
-  late final AnimationController _camera = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 520),
-  );
-  LatLng? _cameraFrom;
-  LatLng? _cameraTo;
-  double? _zoomFrom;
-  double? _zoomTo;
-
-  /// True while north is not up, which is the only time the compass is worth
-  /// the corner it occupies.
-  bool _rotated = false;
-
-  /// The zoom the pins are currently sized for.
-  ///
-  /// Pins used to be one size at every zoom, so pulling back to see a city
-  /// turned a handful of friends into one lump of overlapping discs covering
-  /// the streets they were on. Tracked in steps rather than continuously: a
-  /// pinch would otherwise rebuild every marker on every frame of the gesture,
-  /// and a quarter of a zoom level is finer than the eye follows anyway.
+  LatLng _cameraCentre = _fallbackCenter;
   double _markerZoom = _initialZoom;
+  gm.CameraPosition? _pendingCamera;
+  List<gm.Polyline>? _cachedLines;
+  String? _cachedLinesKey;
+  final _markerIcons = <String, gm.BitmapDescriptor>{};
+  final _markerIconsInFlight = <String>{};
 
-  /// Pin size relative to its close-up size, in four steps.
-  ///
-  /// Steps rather than a smooth curve, and that is about memory rather than
-  /// looks. An avatar is decoded at the size it is drawn, so every distinct
-  /// size is its own bitmap in the image cache — a continuous scale meant a
-  /// fresh decode of every face on screen at every quarter of a zoom level,
-  /// and a pinch across a city left dozens of copies of each. On a phone with
-  /// eighty pins that is how a map gets killed for memory, which is what iOS
-  /// was doing.
+  bool get _usesNativeMap =>
+      widget.nativeMapEnabled &&
+      widget.tileProvider == null &&
+      ref.read(mapTileProviderProvider) == null;
+
   double get _markerScale {
     final zoom = _markerZoom;
     if (zoom >= 14) return 1;
-    if (zoom >= 11) return 0.85;
-    if (zoom >= 8) return 0.7;
-    return 0.55;
+    if (zoom >= 11) return 0.86;
+    if (zoom >= 8) return 0.72;
+    return 0.58;
   }
 
-  /// The marker's hit box, which has to follow the drawing or a shrunken pin
-  /// keeps a full-size tap target and steals its neighbours' taps.
   double get _markerBox => 72 * _markerScale;
-
-  /// Cached link geometry, rebuilt only when the points actually move.
-  ///
-  /// [_lines] is O(n²) with a sort inside the loop, and it used to run on every
-  /// build — which on this screen means every location fix, every beacon from
-  /// every friend, and every frame of a camera animation.
-  List<Polyline>? _cachedLines;
-  String? _cachedLinesKey;
 
   @override
   void initState() {
     super.initState();
-    _camera.addListener(_tickCamera);
-  }
-
-  void _tickCamera() {
-    final from = _cameraFrom;
-    final to = _cameraTo;
-    if (from == null || to == null) return;
-    final k = Curves.easeInOutCubic.transform(_camera.value);
-    _map.move(
-      LatLng(
-        from.latitude + (to.latitude - from.latitude) * k,
-        from.longitude + (to.longitude - from.longitude) * k,
-      ),
-      (_zoomFrom ?? _initialZoom) +
-          ((_zoomTo ?? _initialZoom) - (_zoomFrom ?? _initialZoom)) * k,
-    );
-  }
-
-  /// Put [point] in the middle and get close enough to read the street.
-  ///
-  /// Used everywhere the map is asked to look at somebody: tapping a friend's
-  /// pin, tapping your own, and pressing "find me". Those all answer the
-  /// question "where exactly", and [_initialZoom] answers "which town" — you
-  /// could see the pin move to the centre and learn nothing you did not
-  /// already know.
-  ///
-  /// Never zooms *out*: somebody already pushed in closer than [_focusZoom]
-  /// asked for that, and yanking them back would undo it on every tap.
-  void _focusOn(LatLng point) {
-    _moveCamera(point, math.max(_currentZoom ?? _focusZoom, _focusZoom));
-    _centered = true;
-  }
-
-  /// The camera's zoom, or null when there is no camera to ask.
-  ///
-  /// [MapController.camera] throws outright until the map has been laid out
-  /// once, and everything here that points the camera somewhere — a fix
-  /// arriving, a tap in the friends sheet, the refresh timer — can land in
-  /// that window. Reading it through here turns a crash into a first
-  /// placement, which is what the map does on its first fix anyway.
-  double? get _currentZoom {
-    try {
-      return _map.camera.zoom;
-    } catch (_) {
-      return null;
+    // Hybrid composition on Android, which is what stops the map coming back
+    // black.
+    //
+    // The default puts the native map on a texture layer, and a texture layer
+    // does not survive what this screen does to it: every panel over the map
+    // is glass — a BackdropFilter sampling what is behind it — and the whole
+    // tab is kept mounted but offstage by the shell while another tab is on
+    // screen. Both are the classic ways a texture-layer platform view renders
+    // as a black rectangle. Hybrid composition puts the real view into the
+    // Flutter scene instead; it costs some frame time, and a map that is
+    // sometimes black costs everything.
+    //
+    // Must be set before the first GoogleMap is built, which is why it is here
+    // and not in build.
+    final platform = GoogleMapsFlutterPlatform.instance;
+    if (platform is GoogleMapsFlutterAndroid) {
+      platform.useAndroidViewSurface = true;
     }
-  }
-
-  LatLng? get _currentCentre {
-    try {
-      return _map.camera.center;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Point the camera at a friend picked from the list, and select them.
-  ///
-  /// Selecting as well as moving is the point: the card that names who you are
-  /// looking at is the same card a tap on their pin raises, so arriving from
-  /// the list lands you in the state you would have been in had you found them
-  /// yourself.
-  void _focusOnPeer(String peerId) {
-    final entry = ref.read(sharedMapLocationsProvider)[peerId];
-    if (entry == null || !mounted) return;
-    setState(() {
-      _mineSelected = false;
-      _selectedId = peerId;
-    });
-    _focusOn(LatLng(entry.location.latitude, entry.location.longitude));
-  }
-
-  /// Glide the camera to [target]. Falls back to a plain move for the first
-  /// placement, where there is no "from" to animate out of.
-  void _moveCamera(LatLng target, double zoom) {
-    final current = _centered ? _currentCentre : null;
-    if (current == null) {
-      try {
-        _map.move(target, zoom);
-      } catch (_) {
-        // Not laid out yet. The map places itself on the next fix, and the
-        // 90-second refresh guarantees there is one.
-      }
-      return;
-    }
-    _cameraFrom = current;
-    _cameraTo = target;
-    _zoomFrom = _currentZoom ?? zoom;
-    _zoomTo = zoom;
-    _camera
-      ..reset()
-      ..forward();
   }
 
   @override
@@ -299,14 +155,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     _refresh?.cancel();
     if (visible) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _watching) {
-          unawaited(_locate());
-        }
+        if (mounted && _watching) unawaited(_locate());
       });
       _refresh = Timer.periodic(const Duration(seconds: 90), (_) {
-        if (mounted && _watching) {
-          unawaited(_locate());
-        }
+        if (mounted && _watching) unawaited(_locate());
       });
     }
   }
@@ -341,15 +193,59 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     }
   }
 
+  void _focusOnPeer(String peerId) {
+    final entry = ref.read(sharedMapLocationsProvider)[peerId];
+    if (entry == null || !mounted) return;
+    setState(() {
+      _mineSelected = false;
+      _selectedId = peerId;
+    });
+    _focusOn(LatLng(entry.location.latitude, entry.location.longitude));
+  }
+
+  void _focusOn(LatLng point, {double zoom = _focusZoom}) {
+    _moveCamera(point, math.max(_markerZoom, zoom));
+    _centered = true;
+  }
+
+  Future<void> _moveCamera(LatLng target, double zoom) async {
+    _cameraCentre = target;
+    final update = gm.CameraUpdate.newCameraPosition(
+      gm.CameraPosition(target: _gm(target), zoom: zoom),
+    );
+    final controller = _googleMap;
+    if (controller == null) {
+      _pendingCamera = gm.CameraPosition(target: _gm(target), zoom: zoom);
+      return;
+    }
+    try {
+      await controller.animateCamera(update);
+    } catch (_) {
+      try {
+        await controller.moveCamera(update);
+      } catch (_) {
+        // The platform view can briefly be unavailable during route changes.
+      }
+    }
+  }
+
+  Future<void> _centerOnMe() async {
+    await _locate(recenter: true);
+    final me = _me;
+    if (me == null) return;
+    setState(() {
+      _mineSelected = true;
+      _selectedId = null;
+    });
+    _focusOn(LatLng(me.latitude, me.longitude));
+  }
+
   @override
   void dispose() {
     AppLifecycle.instance.isWatchingMap = false;
     _refresh?.cancel();
     _addressDebounce?.cancel();
-    _camera
-      ..removeListener(_tickCamera)
-      ..dispose();
-    _map.dispose();
+    _googleMap?.dispose();
     super.dispose();
   }
 
@@ -361,9 +257,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final shared = ref.watch(sharedMapLocationsProvider);
     final mapSharing =
         ref.watch(privacySettingsProvider.select((s) => s.shareMapLocation));
-    // Switching sharing off drops the fix, not just its pin. Keeping it would
-    // mean switching back on re-displays where you were before — a position
-    // from a time you had asked not to be located.
+
     ref.listen(privacySettingsProvider.select((s) => s.shareMapLocation),
         (_, sharing) {
       if (!sharing && _me != null && mounted) {
@@ -374,19 +268,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         });
       }
     });
-    // Somebody tapped a name in the sheet that floats over this screen. The
-    // sheet is gone by the time this fires; the camera is ours to move.
     ref.listen(mapFocusRequestProvider, (_, request) {
       if (request != null) _focusOnPeer(request.peerId);
     });
+
     final nickname = ref.watch(nicknameControllerProvider);
     final ownPhoto = ref.watch(avatarProvider);
     final nodes = <_Node>[
       for (final entry in shared.entries)
-        // A live pin outlives its own expiry — see [SharedMapLocation.live].
-        // A position shared into a conversation does not: that one carried a
-        // window its sender chose, and honouring it is the difference between
-        // "here I am" and "here is where I live".
         if ((entry.value.live || !entry.value.location.expired) &&
             peers[entry.key] != null)
           _Node(
@@ -409,9 +298,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final mePoint = !mapSharing || _me == null
         ? null
         : LatLng(_me!.latitude, _me!.longitude);
-    final testTileProvider =
-        widget.tileProvider ?? ref.watch(mapTileProviderProvider);
     final mapLayer = ref.watch(mapLayerControllerProvider);
+    final testMapProvider =
+        widget.tileProvider ?? ref.watch(mapTileProviderProvider);
+    final nativeMap = widget.nativeMapEnabled && testMapProvider == null;
     final overlayBottom = MediaQuery.paddingOf(context).bottom + 104;
     final profileTop = MediaQuery.paddingOf(context).top + 86;
     final selectedNode = _mineSelected && mePoint != null
@@ -428,7 +318,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         : selected == null
             ? null
             : '${_distanceText(t, mePoint, selected.point)}'
-                ' \u00B7 ${_ageText(t, selected.sentAt)}';
+                ' · ${_ageText(t, selected.sentAt)}';
 
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
@@ -440,8 +330,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               mePoint,
               nickname,
               ownPhoto,
-              testTileProvider,
               mapLayer,
+              nativeMap: nativeMap,
             ),
           ),
           SafeArea(
@@ -516,10 +406,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   _MapActionButton(
                     icon: Icons.explore_rounded,
                     tooltip: t.mapNorthUp,
-                    onTap: () {
-                      _map.rotate(0);
-                      setState(() => _rotated = false);
-                    },
+                    onTap: _resetBearing,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -532,10 +419,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                 _MapActionButton(
                   icon: Icons.person_search_rounded,
                   tooltip: t.mapFriendsTitle,
-                  // Used to jump to the address book, which left the map
-                  // entirely to answer a question about it. The people worth
-                  // finding from here are the handful already on the map, and
-                  // the sheet that lists them can now take the camera to one.
                   onTap: () => showMapFriendsSheet(context),
                 ),
                 const SizedBox(height: 12),
@@ -600,50 +483,414 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     );
   }
 
-  /// "Find me": move the camera *and* say which pin is the answer.
-  ///
-  /// Selecting is half the job. Standing next to somebody, the camera arrived
-  /// on a pin drawn underneath theirs, with their card on screen — so the
-  /// button looked like it had centred on the wrong person. Selecting raises
-  /// the pin above the crowd and puts your own card up; tapping the map
-  /// afterwards clears it and hands both back.
-  Future<void> _centerOnMe() async {
-    setState(() {
-      _mineSelected = true;
-      _selectedId = null;
-    });
-    await _locate(recenter: true);
-  }
-
-  /// Fold pins that would be drawn on top of each other into one.
-  ///
-  /// The threshold is the pin itself: two people closer together than a pin is
-  /// wide cannot both be seen, and — worse — only the upper one can be tapped.
-  /// Expressed in pixels and converted to metres at the current zoom, so
-  /// pulling back gathers people up and pushing in lets them go again, which is
-  /// the behaviour every map has and the reason zooming in feels like it does
-  /// something.
-  List<List<_Node>> _cluster(List<_Node> nodes) {
-    if (nodes.length < 2) {
-      return [for (final node in nodes) [node]];
+  Widget _buildMap(
+    List<_Node> nodes,
+    LatLng? me,
+    String nickname,
+    Uint8List? ownPhoto,
+    MapLayer layer, {
+    required bool nativeMap,
+  }) {
+    if (!nativeMap) {
+      return _buildFallbackMap(nodes, me, nickname, ownPhoto);
     }
-    final latitude = _currentCentre?.latitude ?? nodes.first.point.latitude;
-    final metres = metresPerPixel(latitude, _markerZoom);
-    return clusterByDistance(
-      nodes,
-      pointOf: (node) => node.point,
-      thresholdMetres: 52 * _markerScale * metres,
+
+    final target =
+        me ?? (nodes.isNotEmpty ? nodes.first.point : _fallbackCenter);
+    return gm.GoogleMap(
+      initialCameraPosition: gm.CameraPosition(
+        target: _gm(target),
+        zoom: _initialZoom,
+      ),
+      style: layer == MapLayer.dark ? _googleDarkStyle : null,
+      mapType: _googleMapType(layer),
+      minMaxZoomPreference: const gm.MinMaxZoomPreference(4, 20),
+      compassEnabled: false,
+      mapToolbarEnabled: false,
+      myLocationButtonEnabled: false,
+      myLocationEnabled: false,
+      rotateGesturesEnabled: true,
+      tiltGesturesEnabled: true,
+      zoomControlsEnabled: false,
+      buildingsEnabled: true,
+      trafficEnabled: false,
+      indoorViewEnabled: false,
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top + 184,
+        bottom: MediaQuery.paddingOf(context).bottom + 160,
+        right: 84,
+      ),
+      markers: _googleMarkers(nodes, me, nickname, ownPhoto),
+      polylines: _googleLines(nodes, me).toSet(),
+      // Without this the map cannot be panned or zoomed at all, and the reason
+      // is this app rather than the plugin: every page is wrapped in a
+      // drag-anywhere back gesture (see EdgeBackGesture), so Flutter's arena
+      // claims the horizontal drag before the platform view ever sees it, and
+      // a native map that never receives a drag is a picture. Claiming the
+      // gesture eagerly hands everything inside the map's own bounds to the
+      // map — which also means no back-swipe over it, and that is the right
+      // trade: this screen is a tab, there is nothing behind it to swipe to.
+      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+        Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new),
+      },
+      onMapCreated: (controller) {
+        _googleMap = controller;
+        final pending = _pendingCamera;
+        _pendingCamera = null;
+        if (pending != null) {
+          unawaited(
+            controller.moveCamera(
+              gm.CameraUpdate.newCameraPosition(pending),
+            ),
+          );
+        }
+      },
+      onTap: (_) {
+        setState(() {
+          _selectedId = null;
+          _mineSelected = false;
+        });
+      },
+      onCameraMove: (position) {
+        _cameraCentre = LatLng(
+          position.target.latitude,
+          position.target.longitude,
+        );
+        final zoomStep = (position.zoom * 4).round() / 4;
+        final rotated = position.bearing.abs() > 2;
+        if (zoomStep != _markerZoom || rotated != _rotated) {
+          setState(() {
+            _markerZoom = zoomStep;
+            _rotated = rotated;
+          });
+        }
+      },
+      onCameraIdle: () => _scheduleAddressLookup(_cameraCentre),
     );
   }
 
-  static LatLng _centroid(List<_Node> nodes) {
-    var latitude = 0.0;
-    var longitude = 0.0;
-    for (final node in nodes) {
-      latitude += node.point.latitude;
-      longitude += node.point.longitude;
+  Widget _buildFallbackMap(
+    List<_Node> nodes,
+    LatLng? me,
+    String nickname,
+    Uint8List? ownPhoto,
+  ) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedId = null;
+          _mineSelected = false;
+        });
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _TestMapBackdrop(),
+          for (final node in nodes)
+            Positioned(
+              left: 72 +
+                  (node.point.longitude - _fallbackCenter.longitude) * 4600,
+              top:
+                  318 - (node.point.latitude - _fallbackCenter.latitude) * 4600,
+              child: SizedBox(
+                width: _markerBox,
+                height: _markerBox,
+                child: _MapAvatar(
+                  seed: node.id,
+                  name: node.name,
+                  photo: node.photo,
+                  selected: node.id == _selectedId,
+                  scale: _markerScale,
+                  onTap: () {
+                    setState(() {
+                      _selectedId = node.id;
+                      _mineSelected = false;
+                    });
+                  },
+                ),
+              ),
+            ),
+          if (me != null)
+            Positioned(
+              left: 154,
+              top: 386,
+              child: SizedBox(
+                width: _markerBox,
+                height: _markerBox,
+                child: _MapAvatar(
+                  key: const ValueKey('map-own-marker'),
+                  seed: 'me',
+                  name: nickname,
+                  photo: ownPhoto,
+                  selected: _mineSelected,
+                  mine: true,
+                  scale: _markerScale,
+                  onTap: () {
+                    setState(() {
+                      _mineSelected = true;
+                      _selectedId = null;
+                    });
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Set<gm.Marker> _googleMarkers(
+    List<_Node> nodes,
+    LatLng? me,
+    String nickname,
+    Uint8List? ownPhoto,
+  ) {
+    final markers = <gm.Marker>{};
+    final clusters = clusterByDistance<_Node>(
+      nodes,
+      pointOf: (node) => node.point,
+      thresholdMetres: metresPerPixel(_cameraCentre.latitude, _markerZoom) * 58,
+    );
+
+    for (final group in clusters) {
+      if (group.length == 1) {
+        final node = group.first;
+        markers.add(
+          gm.Marker(
+            markerId: gm.MarkerId('peer:${node.id}'),
+            position: _gm(node.point),
+            zIndexInt: node.id == _selectedId ? 20 : 10,
+            icon: _markerIcon(
+              seed: node.id,
+              name: node.name,
+              photo: node.photo,
+              selected: node.id == _selectedId,
+            ),
+            infoWindow: gm.InfoWindow(title: node.name),
+            onTap: () {
+              setState(() {
+                _selectedId = node.id;
+                _mineSelected = false;
+              });
+              _focusOn(node.point, zoom: _markerTapZoom);
+            },
+          ),
+        );
+        continue;
+      }
+      final point = _clusterCenter(group);
+      markers.add(
+        gm.Marker(
+          markerId: gm.MarkerId('cluster:${group.map((n) => n.id).join(',')}'),
+          position: _gm(point),
+          zIndexInt: 15,
+          icon: _markerIcon(
+            seed: 'cluster:',
+            name: '',
+            clusterCount: group.length,
+          ),
+          infoWindow: gm.InfoWindow(title: '${group.length}'),
+          onTap: () => _openCluster(group),
+        ),
+      );
     }
-    return LatLng(latitude / nodes.length, longitude / nodes.length);
+
+    if (me != null) {
+      markers.add(
+        gm.Marker(
+          markerId: const gm.MarkerId('me'),
+          position: _gm(me),
+          zIndexInt: 30,
+          icon: _markerIcon(
+            seed: 'me',
+            name: nickname,
+            photo: ownPhoto,
+            mine: true,
+            selected: _mineSelected,
+          ),
+          infoWindow: gm.InfoWindow(title: nickname),
+          onTap: () {
+            setState(() {
+              _mineSelected = true;
+              _selectedId = null;
+            });
+            _focusOn(me, zoom: _markerTapZoom);
+          },
+        ),
+      );
+    }
+    return markers;
+  }
+
+  gm.BitmapDescriptor _markerIcon({
+    required String seed,
+    required String name,
+    Uint8List? photo,
+    bool mine = false,
+    bool selected = false,
+    int? clusterCount,
+  }) {
+    final photoStamp = photo == null
+        ? 0
+        : Object.hash(photo.length, photo.firstOrNull, photo.lastOrNull);
+    final key = '$seed:$photoStamp:$mine:$selected:${clusterCount ?? 0}';
+    final cached = _markerIcons[key];
+    if (cached != null) return cached;
+
+    if (_markerIconsInFlight.add(key)) {
+      unawaited(
+        _createMarkerIcon(
+          name: name,
+          photo: photo,
+          mine: mine,
+          selected: selected,
+          clusterCount: clusterCount,
+        ).then((icon) {
+          if (!mounted) return;
+          setState(() => _markerIcons[key] = icon);
+        }).whenComplete(() => _markerIconsInFlight.remove(key)),
+      );
+    }
+
+    return gm.BitmapDescriptor.defaultMarkerWithHue(
+      mine || selected
+          ? gm.BitmapDescriptor.hueAzure
+          : gm.BitmapDescriptor.hueGreen,
+    );
+  }
+
+  Future<gm.BitmapDescriptor> _createMarkerIcon({
+    required String name,
+    Uint8List? photo,
+    bool mine = false,
+    bool selected = false,
+    int? clusterCount,
+  }) async {
+    const size = 148.0;
+    const logicalSize = 62.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const center = Offset(size / 2, size / 2);
+    final glow = Paint()
+      ..color = AppColors.brandPrimary.withValues(alpha: selected ? 0.40 : 0.24)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
+    canvas.drawCircle(center, 54, glow);
+
+    final shell = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.brandPrimary,
+          mine ? AppColors.brandSecondary : const Color(0xFF9FFFD0),
+        ],
+      ).createShader(Rect.fromCircle(center: center, radius: 48));
+    canvas.drawCircle(center, 47, shell);
+    canvas.drawCircle(center, 40, Paint()..color = const Color(0xFF102018));
+
+    final avatarRect = Rect.fromCircle(center: center, radius: 35);
+    if (clusterCount != null) {
+      canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
+      _drawMarkerText(
+        canvas,
+        '+$clusterCount',
+        center,
+        fontSize: clusterCount > 9 ? 26 : 30,
+      );
+    } else if (photo != null && photo.isNotEmpty) {
+      try {
+        final codec = await ui.instantiateImageCodec(
+          photo,
+          targetWidth: 96,
+          targetHeight: 96,
+        );
+        final frame = await codec.getNextFrame();
+        canvas.save();
+        canvas.clipPath(ui.Path()..addOval(avatarRect));
+        paintImage(
+          canvas: canvas,
+          rect: avatarRect,
+          image: frame.image,
+          fit: BoxFit.cover,
+        );
+        canvas.restore();
+        frame.image.dispose();
+      } catch (_) {
+        canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
+        _drawMarkerText(canvas, _initials(name), center);
+      }
+    } else {
+      canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
+      _drawMarkerText(canvas, _initials(name), center);
+    }
+
+    canvas.drawCircle(
+      const Offset(106, 106),
+      14,
+      Paint()..color = const Color(0xFF07120E),
+    );
+    canvas.drawCircle(
+      const Offset(106, 106),
+      11,
+      Paint()..color = AppColors.brandPrimary,
+    );
+
+    final image =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return gm.BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: size / logicalSize,
+      width: logicalSize,
+      height: logicalSize,
+    );
+  }
+
+  void _drawMarkerText(
+    Canvas canvas,
+    String text,
+    Offset center, {
+    double fontSize = 30,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      center - Offset(painter.width / 2, painter.height / 2),
+    );
+  }
+
+  String _initials(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '?';
+    final parts =
+        trimmed.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      return '${parts[0].characters.first}${parts[1].characters.first}'
+          .toUpperCase();
+    }
+    return trimmed.characters.first.toUpperCase();
+  }
+
+  LatLng _clusterCenter(List<_Node> group) {
+    var lat = 0.0;
+    var lon = 0.0;
+    for (final node in group) {
+      lat += node.point.latitude;
+      lon += node.point.longitude;
+    }
+    return LatLng(lat / group.length, lon / group.length);
   }
 
   void _openCluster(List<_Node> group) {
@@ -663,192 +910,18 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     );
   }
 
-  Marker _ownMarker(LatLng me, String nickname, Uint8List? ownPhoto) => Marker(
-        point: me,
-        width: _markerBox,
-        height: _markerBox,
-        child: _MapAvatar(
-          key: const ValueKey('map-own-marker'),
-          seed: 'me',
-          name: nickname,
-          photo: ownPhoto,
-          mine: true,
-          selected: _mineSelected,
-          scale: _markerScale,
-          onTap: () {
-            setState(() {
-              _mineSelected = true;
-              _selectedId = null;
-            });
-            _focusOn(me);
-          },
+  void _resetBearing() {
+    final controller = _googleMap;
+    if (controller != null) {
+      unawaited(
+        controller.animateCamera(
+          gm.CameraUpdate.newCameraPosition(
+            gm.CameraPosition(target: _gm(_cameraCentre), zoom: _markerZoom),
+          ),
         ),
       );
-
-  Widget _buildMap(
-    List<_Node> nodes,
-    LatLng? mePoint,
-    String nickname,
-    Uint8List? ownPhoto,
-    TileProvider? tileProvider,
-    MapLayer layer,
-  ) {
-    // A parameter does not stay promoted inside a closure, and the marker's
-    // onTap is one — hence the local copy the null check can promote.
-    final LatLng? me = mePoint;
-    return FlutterMap(
-      mapController: _map,
-      options: MapOptions(
-        initialCenter: _fallbackCenter,
-        initialZoom: _initialZoom,
-        minZoom: 3,
-        maxZoom: 18,
-        backgroundColor: const Color(0xFF101A22),
-        // Rotation is on now. It was excluded because a map that turns under a
-        // thumb and cannot be turned back is worse than one that never turns —
-        // so the way back is the point: the compass appears the moment north
-        // stops being up, and puts it back.
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.all,
-        ),
-        onMapReady: () => _scheduleAddressLookup(_fallbackCenter),
-        onTap: (_, __) => setState(() {
-          _selectedId = null;
-          _mineSelected = false;
-        }),
-        onMapEvent: (event) {
-          // Resize the pins in quarter-zoom steps. Finer than the eye follows,
-          // coarse enough that a pinch does not rebuild every marker on every
-          // frame of the gesture.
-          if ((event.camera.zoom - _markerZoom).abs() >= 0.25) {
-            setState(() => _markerZoom = event.camera.zoom);
-          }
-          // Rounded, so a fingertip's worth of wobble does not raise the
-          // compass on a map nobody meant to turn.
-          final rotated = event.camera.rotation.abs() > 1;
-          if (rotated != _rotated) setState(() => _rotated = rotated);
-          if (event is MapEventMoveStart ||
-              event is MapEventFlingAnimationStart ||
-              event is MapEventDoubleTapZoomStart) {
-            _addressDebounce?.cancel();
-            return;
-          }
-          if (event is MapEventMoveEnd ||
-              event is MapEventFlingAnimationEnd ||
-              event is MapEventFlingAnimationNotStarted ||
-              event is MapEventDoubleTapZoomEnd) {
-            _scheduleAddressLookup(event.camera.center);
-          }
-        },
-      ),
-      children: [
-        // A dark, label-free basemap, drawn at full strength.
-        //
-        // This used to be the standard OpenStreetMap style — a light map with
-        // every street name printed into the raster — held down to 18% opacity
-        // under a 58% black sheet and a brand tint. Three ways of fighting the
-        // tiles instead of asking for different ones, which is why the map read
-        // as "very dark" and "broken": what showed through was a ghost of a
-        // light map, and the labels were baked into the image so no amount of
-        // dimming could remove them.
-        //
-        // CARTO's dark_nolabels is the same OpenStreetMap data rendered dark
-        // with no text at all, which is exactly what this screen wants: the
-        // street and city are read out in the panel above, where they can be
-        // localised and where they do not fight the avatars for space. It also
-        // drops two full-screen overlay passes per frame.
-        RepaintBoundary(
-          // Keyed on the style, so switching swaps the layer outright instead
-          // of asking one TileLayer to change its own URL — which leaves the
-          // previous style's squares on screen until each is replaced.
-          child: TileLayer(
-            key: ValueKey('map-tiles-${layer.id}'),
-            urlTemplate: layer.urlTemplate,
-            subdomains: layer.subdomains,
-            retinaMode:
-                layer.supportsRetina && RetinaMode.isHighDensity(context),
-            userAgentPackageName: 'com.cubechat.cubechat',
-            tileProvider: tileProvider,
-            maxNativeZoom: layer.maxNativeZoom,
-            keepBuffer: 1,
-            panBuffer: 0,
-            tileUpdateTransformer: TileUpdateTransformers.throttle(
-              const Duration(milliseconds: 180),
-            ),
-            evictErrorTileStrategy: EvictErrorTileStrategy.dispose,
-          ),
-        ),
-        // Static, deliberately. These lines used to breathe on a five-second
-        // pulse, which meant repainting every gradient stroke on the map on
-        // every frame for as long as the screen was open — the most expensive
-        // thing here, spent on an effect nobody was looking at while trying to
-        // find someone.
-        if (nodes.length > 1 && nodes.length <= 16)
-          RepaintBoundary(
-            child: PolylineLayer(
-              polylines: _lines(nodes, mePoint),
-            ),
-          ),
-        MarkerLayer(
-          markers: [
-            // Own pin first, under everybody else's — until it is the selected
-            // one, when it goes last and therefore on top.
-            //
-            // A marker layer paints in list order, so standing next to a
-            // friend used to bury you under them: pressing "find me" moved the
-            // camera onto a pin you could not see, which read as the button
-            // doing nothing. Selecting is now what decides the order, and a
-            // tap on empty map clears the selection and hands the top back.
-            if (me != null && !_mineSelected) _ownMarker(me, nickname, ownPhoto),
-            for (final group in _cluster(nodes))
-              if (group.length == 1)
-                Marker(
-                  point: group.single.point,
-                  width: _markerBox,
-                  height: _markerBox,
-                  child: _MapAvatar(
-                    seed: group.single.id,
-                    name: group.single.name,
-                    photo: group.single.photo,
-                    selected: group.single.id == _selectedId,
-                    scale: _markerScale,
-                    onTap: () {
-                      setState(() {
-                        _selectedId = group.single.id;
-                        _mineSelected = false;
-                      });
-                      _focusOn(group.single.point);
-                    },
-                  ),
-                )
-              else
-                Marker(
-                  point: _centroid(group),
-                  width: _markerBox,
-                  height: _markerBox,
-                  child: _MapCluster(
-                    nodes: group,
-                    scale: _markerScale,
-                    onTap: () => _openCluster(group),
-                  ),
-                ),
-            if (me != null && _mineSelected) _ownMarker(me, nickname, ownPhoto),
-          ],
-        ),
-        // Required by each style's licence, and honest about who is being
-        // asked for the squares being looked at — which changes with the
-        // style, so the credit has to as well.
-        RichAttributionWidget(
-          attributions: [
-            for (final (name, url) in layer.attributions)
-              TextSourceAttribution(
-                name,
-                onTap: () => launchUrl(Uri.parse(url)),
-              ),
-          ],
-        ),
-      ],
-    );
+    }
+    setState(() => _rotated = false);
   }
 
   String _failureText(AppLocalizations t, LocationFailure failure) =>
@@ -875,8 +948,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   }
 
   void _scheduleAddressLookup(LatLng point) {
-    // Widget tests inject a tile provider and have no native geocoder.
-    if (widget.tileProvider != null) return;
+    if (!_usesNativeMap) return;
     final cell = '${point.latitude.toStringAsFixed(3)}:'
         '${point.longitude.toStringAsFixed(3)}';
     if (cell == _addressCell) return;
@@ -924,13 +996,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     }
   }
 
-  List<Polyline> _lines(
-    List<_Node> nodes,
-    LatLng? me,
-  ) {
-    // Rounded to ~11 m: a fix jitters by a few metres while standing still, and
-    // recomputing an O(n²) graph because somebody's GPS breathed is work with
-    // no visible result.
+  List<gm.Polyline> _googleLines(List<_Node> nodes, LatLng? me) {
     String cell(LatLng p) => '${p.latitude.toStringAsFixed(4)},'
         '${p.longitude.toStringAsFixed(4)}';
     final key = [
@@ -939,20 +1005,16 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     ].join('|');
     final cached = _cachedLines;
     if (cached != null && key == _cachedLinesKey) return cached;
-
-    final built = _buildLines(nodes, me);
+    final built = _buildGoogleLines(nodes, me);
     _cachedLines = built;
     _cachedLinesKey = key;
     return built;
   }
 
-  List<Polyline> _buildLines(
-    List<_Node> nodes,
-    LatLng? me,
-  ) {
+  List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
     final points = [if (me != null) me, ...nodes.map((n) => n.point)];
     final used = <String>{};
-    final result = <Polyline>[];
+    final result = <gm.Polyline>[];
     for (var i = 0; i < points.length; i++) {
       final nearest = <({int i, double metres})>[
         for (var j = 0; j < points.length; j++)
@@ -967,29 +1029,118 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         final a = math.min(i, other.i);
         final b = math.max(i, other.i);
         if (!used.add('$a:$b')) continue;
-        final path = [points[a], points[b]];
-        result
-          ..add(
-            Polyline(
-              points: path,
-              strokeWidth: 8,
-              color: AppColors.brandPrimary.withValues(alpha: 0.10),
-            ),
-          )
-          ..add(
-            Polyline(
-              points: path,
-              strokeWidth: 1.5,
-              gradientColors: [
-                AppColors.brandPrimary.withValues(alpha: 0.34),
-                AppColors.brandSecondary.withValues(alpha: 0.58),
-              ],
-            ),
-          );
+        result.add(
+          gm.Polyline(
+            polylineId: gm.PolylineId('web:$a:$b'),
+            points: [_gm(points[a]), _gm(points[b])],
+            width: 2,
+            color: AppColors.brandPrimary.withValues(alpha: 0.36),
+            zIndex: 1,
+          ),
+        );
       }
     }
     return result;
   }
+}
+
+gm.LatLng _gm(LatLng point) => gm.LatLng(point.latitude, point.longitude);
+
+gm.MapType _googleMapType(MapLayer layer) => switch (layer) {
+      MapLayer.dark => gm.MapType.normal,
+      MapLayer.satellite => gm.MapType.satellite,
+      MapLayer.terrain => gm.MapType.terrain,
+    };
+
+const _googleDarkStyle = '''
+[
+  {"elementType":"geometry","stylers":[{"color":"#111c25"}]},
+  {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#8fa1af"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#0a1117"},{"weight":3}]},
+  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#263949"}]},
+  {"featureType":"poi","elementType":"labels","stylers":[{"visibility":"off"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#16242e"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#23384a"}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#0e1922"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#7e93a6"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#2e4b63"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#112433"}]},
+  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#1a2b38"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#07141c"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4f6d7d"}]},
+  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#101d26"}]},
+  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#122a25"}]}
+]
+''';
+
+class _TestMapBackdrop extends StatelessWidget {
+  const _TestMapBackdrop();
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: CustomPaint(
+          painter: _TestMapPainter(),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF0A1713), Color(0xFF10261E)],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _TestMapPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final road = Paint()
+      ..color = const Color(0xFF274538).withValues(alpha: 0.42)
+      ..strokeWidth = 2.8
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final minor = Paint()
+      ..color = const Color(0xFF1A332B).withValues(alpha: 0.46)
+      ..strokeWidth = 1.1
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final park = Paint()
+      ..color = const Color(0xFF0F3A2A).withValues(alpha: 0.35);
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * 0.28, size.height * 0.32),
+        width: size.width * 0.52,
+        height: size.height * 0.26,
+      ),
+      park,
+    );
+
+    for (var i = -2; i < 9; i++) {
+      final y = size.height * (0.12 + i * 0.105);
+      canvas.drawLine(Offset(-30, y), Offset(size.width + 40, y + 90), minor);
+    }
+    for (var i = -1; i < 7; i++) {
+      final x = size.width * (0.08 + i * 0.17);
+      canvas.drawLine(Offset(x, -20), Offset(x - 60, size.height + 30), minor);
+    }
+    canvas.drawLine(
+      Offset(size.width * 0.12, size.height * 0.84),
+      Offset(size.width * 0.82, size.height * 0.12),
+      road,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.05, size.height * 0.48),
+      Offset(size.width * 0.95, size.height * 0.54),
+      road,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _Node {
@@ -1079,102 +1230,6 @@ class _MapAvatar extends StatelessWidget {
               imageBytes: photo,
               size: size,
               online: mine,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Several people standing close enough to be one pin.
-///
-/// Four faces at most, in a two-by-two: enough to recognise who is in there
-/// without any of them becoming a dot. Beyond four the last slot becomes the
-/// count, because "+6" says what six more faces the size of a full stop cannot.
-class _MapCluster extends StatelessWidget {
-  const _MapCluster({
-    required this.nodes,
-    required this.scale,
-    required this.onTap,
-  });
-
-  final List<_Node> nodes;
-  final double scale;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final size = 58.0 * scale;
-    final shown = nodes.length > 4 ? nodes.take(3).toList() : nodes.take(4).toList();
-    final rest = nodes.length - shown.length;
-    final cell = (size - 10) / 2;
-
-    return RepaintBoundary(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Center(
-          child: Container(
-            width: size + 10,
-            height: size + 10,
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.pane(0.88),
-              border: Border.all(
-                color: AppColors.brandPrimary.withValues(alpha: 0.72),
-                width: 1.6,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.28),
-                  blurRadius: 16,
-                ),
-                const BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 12,
-                  offset: Offset(0, 7),
-                ),
-              ],
-            ),
-            child: ClipOval(
-              child: Wrap(
-                spacing: 1,
-                runSpacing: 1,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final node in shown)
-                    SizedBox(
-                      width: cell,
-                      height: cell,
-                      child: IdentityAvatar(
-                        seed: node.id,
-                        label: node.name,
-                        imageBytes: node.photo,
-                        size: cell,
-                      ),
-                    ),
-                  if (rest > 0)
-                    Container(
-                      width: cell,
-                      height: cell,
-                      alignment: Alignment.center,
-                      color: AppColors.brandPrimary.withValues(alpha: 0.22),
-                      child: FittedBox(
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: Text(
-                            '+$rest',
-                            style: TextStyle(
-                              color: AppColors.textOnGlass,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             ),
           ),
         ),
@@ -1356,6 +1411,3 @@ class _MapActionButton extends StatelessWidget {
         ),
       );
 }
-
-
-

@@ -1,6 +1,7 @@
 import BackgroundTasks
 import CoreLocation
 import Flutter
+import GoogleMaps
 import UIKit
 import UserNotifications
 
@@ -49,6 +50,14 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "GoogleMapsApiKey") as? String,
+       !mapsKey.isEmpty,
+       !mapsKey.hasPrefix("$(") {
+      GMSServices.provideAPIKey(mapsKey)
+    } else {
+      NSLog("cubechat: Google Maps API key is missing")
+    }
+
     // Required by flutter_local_notifications, and the reason notifications
     // were invisible on iOS: without a UNUserNotificationCenter delegate the
     // system never calls willPresentNotification, so a notification raised

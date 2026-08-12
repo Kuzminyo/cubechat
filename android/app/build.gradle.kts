@@ -14,11 +14,18 @@ val releaseProperties = Properties().apply {
         FileInputStream(propsFile).use { load(it) }
     }
 }
+val localProperties = Properties().apply {
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.isFile) {
+        FileInputStream(localPropsFile).use { load(it) }
+    }
+}
 
 fun secret(name: String): String? =
     (project.findProperty(name) as String?)
         ?: System.getenv(name)
         ?: releaseProperties.getProperty(name)
+        ?: localProperties.getProperty(name)
 
 val releaseStoreFile = secret("CUBECHAT_RELEASE_STORE_FILE")
 val releaseStorePassword = secret("CUBECHAT_RELEASE_STORE_PASSWORD")
@@ -58,6 +65,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = secret("GOOGLE_MAPS_API_KEY") ?: ""
 
     }
 

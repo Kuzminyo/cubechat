@@ -90,6 +90,12 @@ dependencies:
   geocoding: ^5.0.0
   flutter_map_cache: ^1.5.2
   dio_cache_interceptor_file_store: ^1.2.3
+  google_maps_flutter: ^2.18.0
+  # Direct, not transitive: the Android platform view has to be told to render
+  # in hybrid composition, and that switch lives on the Android implementation.
+  # See PeopleMapScreen.initState.
+  google_maps_flutter_android: ^2.18.0
+  google_maps_flutter_platform_interface: ^2.16.0
 
 dev_dependencies:
   flutter_lints: ^4.0.0

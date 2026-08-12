@@ -41,6 +41,7 @@ ios/Flutter/Flutter.podspec
 ios/Flutter/flutter_export_environment.sh
 ios/Flutter/App.framework
 ios/Flutter/Generated.xcconfig
+ios/Flutter/MapsKeys.xcconfig
 ios/Runner/GeneratedPluginRegistrant.*
 
 # macOS
