@@ -33,6 +33,7 @@ import '../data/chat_folders_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/hidden_chats_controller.dart';
 import '../data/read_markers_controller.dart';
+import '../data/saved_messages.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -45,8 +46,44 @@ enum ChatsFilter { all, unread, mesh, favorites }
 /// leading `#` is a URL fragment delimiter and can't live in a path.
 String routeForChat(Chat chat) => chat.isChannel
     ? channelRoute(chat.peerId)
-    : '/chat/${Uri.encodeComponent(chat.peerId)}'
-        '?name=${Uri.encodeQueryComponent(chat.peerName)}';
+    : isSavedChat(chat.peerId)
+        // Its own route, because the chat route's path parameter is a peer
+        // pubkey and this conversation has no peer.
+        ? '/saved'
+        : '/chat/${Uri.encodeComponent(chat.peerId)}'
+            '?name=${Uri.encodeQueryComponent(chat.peerName)}';
+
+/// The notebook, as a row in the chat list.
+///
+/// It was reachable only from the overflow menu, which is a strange place for
+/// the conversation somebody uses most often after their friends — every
+/// messenger that has one of these puts it in the list. Built here rather than
+/// added to [chatsProvider] because that list is also what Contacts, search
+/// and the forward sheet read, and none of them should offer to forward
+/// something to a notebook or list it as a person.
+///
+/// Null until there is something in it: an empty notebook advertising itself
+/// at the top of an empty chat list is noise on the one screen a new install
+/// has nothing on.
+Chat? savedChatRow(WidgetRef ref, AppLocalizations t) {
+  final messages = ref.watch(messagesControllerProvider)[savedChatId];
+  if (messages == null || messages.isEmpty) return null;
+  final last = lastVisibleMessage(messages);
+  return Chat(
+    id: savedChatId,
+    peerId: savedChatId,
+    peerName: t.savedTitle,
+    // A photo's `text` is its mime type, which is not a preview of anything —
+    // its caption is, when it has one.
+    lastMessage: last == null
+        ? ''
+        : (last.kind == MessageKind.text ? last.text : last.imageCaption ?? ''),
+    lastTime: last?.sentAt ?? messages.last.sentAt,
+    unreadCount: 0,
+    isMesh: false,
+    isOnline: false,
+  );
+}
 
 /// [name] is the channel's chat id, e.g. `#ios-team`.
 String channelRoute(String name) =>
@@ -227,16 +264,35 @@ class ChatsListScreen extends ConsumerWidget {
     final folder =
         selected != null && folders.contains(selected) ? selected : null;
 
-    final filtered = all.where((c) {
-      if (folder != null && !folder.matches(c)) return false;
-      if (query.isEmpty) return true;
-      return c.peerName.toLowerCase().contains(query) ||
-          c.lastMessage.toLowerCase().contains(query);
-    }).toList();
+    final saved = savedChatRow(ref, t);
+    final filtered = [
+      // Always first, and outside the folders: the notebook is not a
+      // conversation with anybody, so "unread", "online" and "direct" have
+      // nothing to say about it, and burying it under a filter is how it ends
+      // up unreachable again.
+      if (saved != null &&
+          folder == null &&
+          (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
+        saved,
+      ...all.where((c) {
+        if (folder != null && !folder.matches(c)) return false;
+        if (query.isEmpty) return true;
+        return c.peerName.toLowerCase().contains(query) ||
+            c.lastMessage.toLowerCase().contains(query);
+      }),
+    ];
+    // The notebook sits above the favourites and is not one of them, so every
+    // index the reorderable list works in is one further along than the
+    // favourites' own order. Counting from the top without this made the run
+    // of favourites zero-length, and dragging one silently did nothing.
+    final leadingRows = filtered.isNotEmpty && isSavedChat(filtered.first.id)
+        ? 1
+        : 0;
     final canReorderFavorites = query.isEmpty &&
         (selected == ChatFolder.favorites || folder == null) &&
         filtered.any((c) => c.isFavorite);
-    final favoriteCount = filtered.takeWhile((chat) => chat.isFavorite).length;
+    final favoriteCount =
+        filtered.skip(leadingRows).takeWhile((chat) => chat.isFavorite).length;
 
     return SafeArea(
       child: CustomScrollView(
@@ -351,18 +407,22 @@ class ChatsListScreen extends ConsumerWidget {
                   ? SliverReorderableList(
                       itemCount: filtered.length,
                       onReorder: (from, to) {
-                        if (from >= favoriteCount) return;
-                        var target = to;
-                        if (target > from) target -= 1;
+                        // Back into the favourites' own numbering, which knows
+                        // nothing about the row above them.
+                        final source = from - leadingRows;
+                        if (source < 0 || source >= favoriteCount) return;
+                        var target = to - leadingRows;
+                        if (target > source) target -= 1;
                         final capped = target.clamp(0, favoriteCount - 1);
                         ref
                             .read(favoritesControllerProvider.notifier)
-                            .reorder(from, capped);
+                            .reorder(source, capped);
                       },
                       itemBuilder: (_, i) {
                         final chat = filtered[i];
-                        final draggableFavorite =
-                            chat.isFavorite && i < favoriteCount;
+                        final draggableFavorite = chat.isFavorite &&
+                            i >= leadingRows &&
+                            i < leadingRows + favoriteCount;
                         if (draggableFavorite) {
                           return _FavoriteChatReorderTile(
                             key: ValueKey(chat.id),
@@ -810,6 +870,10 @@ Future<void> _showChatActions(
   AppLocalizations t,
   Offset pos,
 ) async {
+  // Nothing in this menu means anything for the notebook: there is nobody to
+  // block, no folder it belongs to, and no history to clear that is not simply
+  // everything in it.
+  if (isSavedChat(chat.id)) return;
   final favorited = chat.isFavorite;
   final blocked = !chat.isChannel &&
       ref.read(knownPeersControllerProvider.notifier).isBlocked(chat.id);

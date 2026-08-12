@@ -1187,8 +1187,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             gm.Polyline(
               polylineId: gm.PolylineId('web:$a:$b:halo'),
               points: path,
-              width: (8 * pixelRatio).round(),
-              color: AppColors.brandPrimary.withValues(alpha: 0.10),
+              width: (4 * pixelRatio).round(),
+              color: AppColors.brandPrimary.withValues(alpha: 0.09),
               startCap: gm.Cap.roundCap,
               endCap: gm.Cap.roundCap,
               geodesic: true,
@@ -1198,7 +1198,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             gm.Polyline(
               polylineId: gm.PolylineId('web:$a:$b'),
               points: path,
-              width: (1.6 * pixelRatio).round(),
+              width: (1.1 * pixelRatio).round(),
               color: AppColors.brandSecondary.withValues(alpha: 0.58),
               startCap: gm.Cap.roundCap,
               endCap: gm.Cap.roundCap,
