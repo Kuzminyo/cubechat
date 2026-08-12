@@ -22,6 +22,7 @@ import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/location_service.dart';
+import '../../../core/util/ui_activity.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -93,6 +94,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   bool _centered = false;
   bool _mineSelected = false;
   bool _rotated = false;
+
+  /// True once the camera is leaning, which is the only angle from which 3D
+  /// buildings can be seen — and therefore the only one worth drawing them at.
+  bool _tilted = false;
   String? _selectedId;
   String? _centerAddress;
   String? _addressCell;
@@ -186,6 +191,23 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       return;
     }
     if (_locating) return;
+    // The position the live-map subscription is already receiving, when it is
+    // recent. This screen used to ask for its own fix every ninety seconds
+    // beside the beacon's own forty-five — two radios' worth of work for one
+    // pin, on the one screen where the phone is already busy drawing a map.
+    final shared = ref.read(lastLocationFixProvider)?.fresh;
+    if (shared != null) {
+      setState(() {
+        _failure = null;
+        _me = shared;
+      });
+      if (recenter || !_centered) {
+        final point = LatLng(shared.latitude, shared.longitude);
+        _focusOn(point);
+        _scheduleAddressLookup(point);
+      }
+      return;
+    }
     setState(() => _locating = true);
     final (fix, failure) = await ref.read(mapLocationReaderProvider)();
     if (!mounted) return;
@@ -530,7 +552,11 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       rotateGesturesEnabled: true,
       tiltGesturesEnabled: true,
       zoomControlsEnabled: false,
-      buildingsEnabled: true,
+      // Only once somebody has actually tilted the camera. Extruded buildings
+      // are the map's most expensive layer and they are invisible from
+      // straight above, so drawing them flat is heat spent on nothing — which
+      // is what the map tab was doing on every phone that opened it.
+      buildingsEnabled: _tilted,
       trafficEnabled: false,
       indoorViewEnabled: false,
       padding: EdgeInsets.only(
@@ -570,6 +596,16 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         });
       },
       onCameraMove: (position) {
+        // Tell the app the interface is moving.
+        //
+        // This is the same flag a scrolling list raises, and the navigation
+        // bar reads it to drop its backdrop filter while the motion lasts. A
+        // moving map never raised it — there is no ScrollNotification behind a
+        // platform view — so the bar went on resampling and blurring the map
+        // on every frame of every drag. That is a full-width gaussian over the
+        // most expensive backdrop in the app, sixty times a second, and it is
+        // what the phone was getting warm doing.
+        UiActivity.instance.setScrolling(true);
         // Deliberately no setState for the position itself: it arrives on
         // every frame of a drag, and the only things that care are the address
         // lookup (which runs when the camera stops) and the next camera move.
@@ -585,14 +621,21 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         // finely anyway.
         final clusterZoom = position.zoom.roundToDouble();
         final rotated = position.bearing.abs() > 2;
-        if (clusterZoom != _clusterZoom || rotated != _rotated) {
+        final tilted = position.tilt > 5;
+        if (clusterZoom != _clusterZoom ||
+            rotated != _rotated ||
+            tilted != _tilted) {
           setState(() {
             _clusterZoom = clusterZoom;
             _rotated = rotated;
+            _tilted = tilted;
           });
         }
       },
-      onCameraIdle: () => _scheduleAddressLookup(_cameraCentre),
+      onCameraIdle: () {
+        UiActivity.instance.setScrolling(false);
+        _scheduleAddressLookup(_cameraCentre);
+      },
     );
   }
 

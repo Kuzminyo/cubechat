@@ -195,9 +195,17 @@ class LocationService {
   static LocationSettings _watchSettings() {
     if (PlatformInfo.isAndroid) {
       return AndroidSettings(
-        accuracy: _accuracy,
+        // Not [_accuracy], which is what a one-shot asks for.
+        //
+        // High accuracy on a *subscription* means GPS held on for as long as
+        // the map is shared, and on Android that is felt as a warm phone in a
+        // pocket with the app closed. Fused medium leans on cell and Wi-Fi and
+        // wakes the satellite radio only when it must; against a pin that
+        // moves every forty metres, that difference is invisible on the map
+        // and is most of the battery.
+        accuracy: LocationAccuracy.medium,
         distanceFilter: _watchDistanceMetres,
-        intervalDuration: const Duration(seconds: 45),
+        intervalDuration: const Duration(seconds: 60),
         // The second notification is the price of the feature working at all.
         //
         // Leaving this out was the plan — cubechat already runs a foreground
@@ -217,10 +225,16 @@ class LocationService {
           notificationTitle: 'Cubechat live map',
           notificationText: 'Sharing your position with your map friends',
           notificationChannelName: 'Live map',
-          // Without a wake lock the phone sleeps and every fix arrives in a
-          // burst whenever it next wakes, which for a live map means a pin
-          // that jumps an hour at a time.
-          enableWakeLock: true,
+          // No wake lock, deliberately, and it was on for one build.
+          //
+          // It holds the CPU awake for as long as the map is shared so that
+          // fixes arrive as they happen rather than in a burst when the phone
+          // next wakes. That is a nicer pin and a hot phone: a device that is
+          // never allowed to sleep is the single most expensive thing an app
+          // can do to a battery, and it is felt with the app closed, which is
+          // exactly what was reported. Doze delivers the fixes late instead —
+          // a pin that lags rather than a phone that cooks.
+          enableWakeLock: false,
           setOngoing: true,
         ),
       );

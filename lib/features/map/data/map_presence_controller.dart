@@ -13,6 +13,35 @@ import '../../../core/util/platform_info.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import 'map_friends_controller.dart';
 
+/// A position, and the moment it was taken.
+///
+/// Shared so that everything wanting to know where this phone is reads the
+/// same answer instead of asking the radio for its own. See
+/// [lastLocationFixProvider].
+@immutable
+class StampedLocationFix {
+  const StampedLocationFix(this.fix, this.at);
+
+  final LocationFix fix;
+  final DateTime at;
+
+  /// How old a fix may be and still stand in for a new one. Long enough to
+  /// cover the gap between the beacon's timer and the map's own refresh;
+  /// short enough that a walking person's pin is still where they are.
+  static const stillGood = Duration(seconds: 60);
+
+  LocationFix? get fresh =>
+      DateTime.now().difference(at) <= stillGood ? fix : null;
+}
+
+/// The last position the app obtained, from whichever consumer obtained it.
+///
+/// Deliberately a plain state provider rather than a getter on the presence
+/// controller: reading it must not bring that controller to life, because the
+/// map screen reads it on every refresh and building the controller starts a
+/// location subscription.
+final lastLocationFixProvider = StateProvider<StampedLocationFix?>((_) => null);
+
 /// Keeps our live position current for confirmed map friends — while the app
 /// is open, and while it is not.
 ///
@@ -129,7 +158,10 @@ class MapPresenceController extends Notifier<int> {
         unawaited(BackgroundService.instance.start());
       }
       _watch = service.watch().listen(
-        (fix) => unawaited(_publish(fix)),
+        (fix) {
+          _noteFix(fix);
+          unawaited(_publish(fix));
+        },
         onError: (Object e) =>
             debugPrint('MapPresenceController location stream failed: $e'),
         cancelOnError: false,
@@ -150,10 +182,24 @@ class MapPresenceController extends Notifier<int> {
   /// Take a fix and publish it. The timer's half of the job.
   Future<void> _sendUpdate({bool force = false}) async {
     if (_sending || !_shouldShare) return;
+    // What the subscription last delivered, if it is recent. Asking the phone
+    // to find itself again forty-five seconds after it just said where it was
+    // is two radios' worth of work for one pin — and on the map screen it was
+    // three, since that screen runs its own refresh as well.
+    final known = ref.read(lastLocationFixProvider)?.fresh;
+    if (known != null) {
+      await _publish(known, force: force);
+      return;
+    }
     final (fix, _) = await const LocationService().current();
     if (fix == null) return;
+    _noteFix(fix);
     await _publish(fix, force: force);
   }
+
+  void _noteFix(LocationFix fix) => ref
+      .read(lastLocationFixProvider.notifier)
+      .state = StampedLocationFix(fix, DateTime.now());
 
   /// Hand one position to every map friend.
   ///
