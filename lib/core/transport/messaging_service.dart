@@ -3458,9 +3458,75 @@ class MessagingService {
   /// Capped and paced, because relays rate-limit: a burst of publishes earns a
   /// `rate-limited` that lands on real messages too.
   Future<int> _broadcastChannelFrame(Uint8List frameBytes) async {
+    _rememberChannelFrame(frameBytes);
     final mesh = await _fanoutAllLinks(frameBytes, excludePeerId: null);
     final relayed = await _broadcastChannelOverNostr(frameBytes);
     return mesh + relayed;
+  }
+
+  /// The last few room frames, kept to hand to a neighbour who arrives after
+  /// they were sent.
+  ///
+  /// A room frame is addressed to nobody, so store-and-forward — which files
+  /// mail by destination — has nothing to file it under, and the mesh fan-out
+  /// reaches exactly the links that happen to be up at that instant. Over
+  /// Bluetooth that is the whole problem: post something with nobody
+  /// connected, or with the other phone thirty seconds from walking into
+  /// range, and it is simply gone. Nothing re-sends it, because a broadcast
+  /// has no acknowledgement to be missing.
+  ///
+  /// Small and short-lived on purpose. This is a catch-up for the last few
+  /// minutes of a conversation, not history sync: the relay path already
+  /// carries the room for anybody with internet, and a phone that has been
+  /// away for an hour is not going to be caught up by its neighbour's memory.
+  /// Pictures are left out — a 35 KB avatar handed to every link that comes up
+  /// is a lot of Bluetooth for something the room can live without.
+  final _recentChannelFrames = <_RecentChannelFrame>[];
+
+  static const Duration _channelReplayWindow = Duration(minutes: 20);
+  static const int _channelReplayCap = 40;
+  static const int _channelReplayMaxBytes = 4 * 1024;
+
+  void _rememberChannelFrame(Uint8List frameBytes) {
+    if (frameBytes.length > _channelReplayMaxBytes) return;
+    final now = DateTime.now();
+    _recentChannelFrames
+      ..removeWhere((f) => now.difference(f.at) > _channelReplayWindow)
+      ..add(_RecentChannelFrame(bytes: frameBytes, at: now));
+    if (_recentChannelFrames.length > _channelReplayCap) {
+      _recentChannelFrames.removeAt(0);
+    }
+  }
+
+  /// Hand a freshly-connected neighbour the room traffic they just missed.
+  ///
+  /// Duplicates are free: every frame carries its origin and message id, and
+  /// the receiving side has always dropped a repeat of a pair it has seen.
+  Future<void> _replayChannelFramesTo(ChatSession session) async {
+    final now = DateTime.now();
+    _recentChannelFrames
+        .removeWhere((f) => now.difference(f.at) > _channelReplayWindow);
+    if (_recentChannelFrames.isEmpty) return;
+    final frames =
+        _recentChannelFrames.map((f) => f.bytes).toList(growable: false);
+    DebugLog.instance.log('CHAN',
+        'catching ${session.peerId} up on ${frames.length} room frame(s)');
+    final client = _clients[session.peerId];
+    for (final bytes in frames) {
+      try {
+        if (client != null && client.isConnected) {
+          await _writeFrameToClient(client, bytes);
+        } else {
+          await _notifyFrameToPeripheral(bytes);
+        }
+      } catch (e) {
+        DebugLog.instance.log('CHAN', 'room catch-up failed: $e');
+        return;
+      }
+      // Paced like every other chunked send, so a cheap stack is not asked to
+      // swallow forty frames at once.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 
   Future<int> _broadcastChannelOverNostr(
@@ -3529,6 +3595,11 @@ class MessagingService {
     }
     final bytes =
         Frame(type: FrameType.transport, payload: relayed.encode()).encode();
+    // Worth carrying, not just passing on. We are in this room, so the frame
+    // that just reached us is the frame the next neighbour to walk up is
+    // missing — and their link may not exist for another ten minutes. The
+    // mesh's own relay only reaches the links that are up right now.
+    _rememberChannelFrame(bytes);
     final sent = await _broadcastChannelOverNostr(
       bytes,
       excludePubkeyHex: originHex,
@@ -7026,6 +7097,11 @@ class MessagingService {
     // …and hand over anything we've been holding for this peer while they
     // were unreachable (store-and-forward delivery).
     unawaited(_flushStoreForwardFor(session));
+    // …and the rooms. A channel frame is addressed to nobody, so it is not in
+    // the store above — without this, everything posted while this neighbour
+    // was out of range is lost to them, which is what "channels do not work
+    // over Bluetooth" actually is.
+    unawaited(_replayChannelFramesTo(session));
     // A link coming up is the event the queued-file drain has been backing off
     // waiting for. Without this the back-off would be charged to the user: a
     // file queued for someone who just walked into range would sit for minutes
@@ -7434,5 +7510,14 @@ class _HeldChannelPost {
   _HeldChannelPost({required this.deliver, required this.at});
 
   final Future<void> Function() deliver;
+  final DateTime at;
+}
+
+/// A room frame kept briefly so a neighbour arriving late can be caught up.
+/// See [MessagingService._rememberChannelFrame].
+class _RecentChannelFrame {
+  _RecentChannelFrame({required this.bytes, required this.at});
+
+  final Uint8List bytes;
   final DateTime at;
 }
