@@ -101,6 +101,17 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   int _addressRequest = 0;
   LatLng _cameraCentre = _fallbackCenter;
   double _markerZoom = _initialZoom;
+
+  /// The zoom the clusters were last computed at, in whole levels.
+  double _clusterZoom = _initialZoom.roundToDouble();
+
+  /// Bumped whenever a marker bitmap finishes rendering, so the memoised
+  /// marker set knows to rebuild with the real picture in place of the
+  /// placeholder pin.
+  int _markerIconGeneration = 0;
+
+  Set<gm.Marker>? _cachedMarkers;
+  String? _cachedMarkersKey;
   gm.CameraPosition? _pendingCamera;
   List<gm.Polyline>? _cachedLines;
   String? _cachedLinesKey;
@@ -552,15 +563,24 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         });
       },
       onCameraMove: (position) {
+        // Deliberately no setState for the position itself: it arrives on
+        // every frame of a drag, and the only things that care are the address
+        // lookup (which runs when the camera stops) and the next camera move.
         _cameraCentre = LatLng(
           position.target.latitude,
           position.target.longitude,
         );
-        final zoomStep = (position.zoom * 4).round() / 4;
+        _markerZoom = position.zoom;
+        // Whole zoom levels, not quarters. This is the number the clustering
+        // threshold is derived from, so every change of it recomputes the
+        // clusters and rebuilds every marker — four times per level was three
+        // rebuilds too many, and the huddles do not visibly regroup that
+        // finely anyway.
+        final clusterZoom = position.zoom.roundToDouble();
         final rotated = position.bearing.abs() > 2;
-        if (zoomStep != _markerZoom || rotated != _rotated) {
+        if (clusterZoom != _clusterZoom || rotated != _rotated) {
           setState(() {
-            _markerZoom = zoomStep;
+            _clusterZoom = clusterZoom;
             _rotated = rotated;
           });
         }
@@ -639,7 +659,41 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     );
   }
 
+  /// The marker set, rebuilt only when something it depends on has moved.
+  ///
+  /// This screen rebuilds for a great many reasons that have nothing to do
+  /// with the pins — an address coming back, a presence beacon, a friend list
+  /// change, and every camera event — and rebuilding the set means the plugin
+  /// diffs it and pushes the difference over the platform channel. During a
+  /// pinch that was dozens of full marker updates a second, which is most of
+  /// what made the map feel like treacle.
   Set<gm.Marker> _googleMarkers(
+    List<_Node> nodes,
+    LatLng? me,
+    String nickname,
+    Uint8List? ownPhoto,
+  ) {
+    final signature = [
+      _clusterZoom.toStringAsFixed(0),
+      _selectedId ?? '',
+      _mineSelected ? 'me' : '',
+      _markerIconGeneration.toString(),
+      if (me != null) 'me:${me.latitude.toStringAsFixed(5)},'
+          '${me.longitude.toStringAsFixed(5)}',
+      for (final node in nodes)
+        '${node.id}:${node.point.latitude.toStringAsFixed(5)},'
+            '${node.point.longitude.toStringAsFixed(5)}',
+    ].join('|');
+    final cached = _cachedMarkers;
+    if (cached != null && signature == _cachedMarkersKey) return cached;
+
+    final markers = _buildGoogleMarkers(nodes, me, nickname, ownPhoto);
+    _cachedMarkers = markers;
+    _cachedMarkersKey = signature;
+    return markers;
+  }
+
+  Set<gm.Marker> _buildGoogleMarkers(
     List<_Node> nodes,
     LatLng? me,
     String nickname,
@@ -649,7 +703,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     final clusters = clusterByDistance<_Node>(
       nodes,
       pointOf: (node) => node.point,
-      thresholdMetres: metresPerPixel(_cameraCentre.latitude, _markerZoom) * 58,
+      thresholdMetres:
+          metresPerPixel(_cameraCentre.latitude, _clusterZoom) * 58,
     );
 
     for (final group in clusters) {
@@ -666,7 +721,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
               photo: node.photo,
               selected: node.id == _selectedId,
             ),
-            infoWindow: gm.InfoWindow(title: node.name),
             onTap: () {
               setState(() {
                 _selectedId = node.id;
@@ -681,7 +735,11 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       final point = _clusterCenter(group);
       markers.add(
         gm.Marker(
-          markerId: gm.MarkerId('cluster:${group.map((n) => n.id).join(',')}'),
+          // Named after the pin it formed around rather than after everybody
+          // in it. A membership-derived id changes the moment anyone joins or
+          // leaves the huddle, and a changed id is a marker destroyed and
+          // recreated on the platform side instead of moved.
+          markerId: gm.MarkerId('cluster:${group.first.id}'),
           position: _gm(point),
           zIndexInt: 15,
           icon: _markerIcon(
@@ -689,7 +747,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             name: '',
             clusterCount: group.length,
           ),
-          infoWindow: gm.InfoWindow(title: '${group.length}'),
           onTap: () => _openCluster(group),
         ),
       );
@@ -708,7 +765,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             mine: true,
             selected: _mineSelected,
           ),
-          infoWindow: gm.InfoWindow(title: nickname),
           onTap: () {
             setState(() {
               _mineSelected = true;
@@ -747,7 +803,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           clusterCount: clusterCount,
         ).then((icon) {
           if (!mounted) return;
-          setState(() => _markerIcons[key] = icon);
+          setState(() {
+            _markerIcons[key] = icon;
+            _markerIconGeneration++;
+          });
         }).whenComplete(() => _markerIconsInFlight.remove(key)),
       );
     }
@@ -766,43 +825,85 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     bool selected = false,
     int? clusterCount,
   }) async {
-    const size = 148.0;
-    const logicalSize = 62.0;
+    // A teardrop, not a disc with a dot stuck to it.
+    //
+    // The first version was a circle centred on nothing in particular, wrapped
+    // in a neon glow, a gradient band and a green dot in the corner that meant
+    // nothing — four decorations arguing about which was the pin. This is one
+    // shape: a head that holds the face and a tail that points at the ground,
+    // which is also what makes the position legible. Google anchors a marker
+    // at the bottom centre by default, so the tip lands exactly on the
+    // coordinate without any anchor arithmetic.
+    const size = 168.0;
+    const logicalSize = 56.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const center = Offset(size / 2, size / 2);
-    final glow = Paint()
-      ..color = AppColors.brandPrimary.withValues(alpha: selected ? 0.40 : 0.24)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
-    canvas.drawCircle(center, 54, glow);
+    const centre = Offset(size / 2, size * 0.40);
+    final head = selected ? 56.0 : 52.0;
+    const tip = Offset(size / 2, size * 0.95);
 
-    final shell = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          AppColors.brandPrimary,
-          mine ? AppColors.brandSecondary : const Color(0xFF9FFFD0),
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: 48));
-    canvas.drawCircle(center, 47, shell);
-    canvas.drawCircle(center, 40, Paint()..color = const Color(0xFF102018));
+    // The pin's outline, drawn once as a single filled path so the head and
+    // the tail share an edge instead of overlapping each other.
+    final body = ui.Path()
+      ..addOval(Rect.fromCircle(center: centre, radius: head))
+      ..moveTo(centre.dx - head * 0.52, centre.dy + head * 0.72)
+      ..lineTo(centre.dx + head * 0.52, centre.dy + head * 0.72)
+      ..lineTo(tip.dx, tip.dy)
+      ..close();
 
-    final avatarRect = Rect.fromCircle(center: center, radius: 35);
+    canvas.drawOval(
+      Rect.fromCenter(center: tip.translate(0, -4), width: 46, height: 16),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.34)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+    );
+
+    if (selected) {
+      canvas.drawCircle(
+        centre,
+        head + 6,
+        Paint()
+          ..color = AppColors.brandPrimary.withValues(alpha: 0.34)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+      );
+    }
+
+    canvas.drawPath(
+      body,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: mine
+              ? [AppColors.brandPrimary, AppColors.brandSecondary]
+              : [AppColors.brandPrimary, const Color(0xFF8FF3C4)],
+        ).createShader(Rect.fromCircle(center: centre, radius: head)),
+    );
+
+    // The face sits inside the ring rather than on top of it, so the ring
+    // reads as the pin's edge and not as a second circle.
+    final avatarRadius = head - 7;
+    final avatarRect = Rect.fromCircle(center: centre, radius: avatarRadius);
+    canvas.drawCircle(centre, avatarRadius, Paint()..color = AppColors.bgDeep);
+
     if (clusterCount != null) {
-      canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
+      canvas.drawCircle(
+        centre,
+        avatarRadius,
+        Paint()..color = AppColors.brandPrimary.withValues(alpha: 0.22),
+      );
       _drawMarkerText(
         canvas,
-        '+$clusterCount',
-        center,
-        fontSize: clusterCount > 9 ? 26 : 30,
+        '$clusterCount',
+        centre,
+        fontSize: clusterCount > 99 ? 34 : 44,
       );
     } else if (photo != null && photo.isNotEmpty) {
       try {
         final codec = await ui.instantiateImageCodec(
           photo,
-          targetWidth: 96,
-          targetHeight: 96,
+          targetWidth: 128,
+          targetHeight: 128,
         );
         final frame = await codec.getNextFrame();
         canvas.save();
@@ -816,24 +917,11 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         canvas.restore();
         frame.image.dispose();
       } catch (_) {
-        canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
-        _drawMarkerText(canvas, _initials(name), center);
+        _drawMarkerText(canvas, _initials(name), centre, fontSize: 40);
       }
     } else {
-      canvas.drawCircle(center, 35, Paint()..color = AppColors.brandPrimary);
-      _drawMarkerText(canvas, _initials(name), center);
+      _drawMarkerText(canvas, _initials(name), centre, fontSize: 40);
     }
-
-    canvas.drawCircle(
-      const Offset(106, 106),
-      14,
-      Paint()..color = const Color(0xFF07120E),
-    );
-    canvas.drawCircle(
-      const Offset(106, 106),
-      11,
-      Paint()..color = AppColors.brandPrimary,
-    );
 
     final image =
         await recorder.endRecording().toImage(size.toInt(), size.toInt());
@@ -1033,8 +1121,17 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           gm.Polyline(
             polylineId: gm.PolylineId('web:$a:$b'),
             points: [_gm(points[a]), _gm(points[b])],
-            width: 2,
-            color: AppColors.brandPrimary.withValues(alpha: 0.36),
+            // Dotted, thin and dim on purpose. A solid line on a map means a
+            // route — something to follow — and these are not routes; they say
+            // "these two are near each other", which is a hint and should look
+            // like one. Round caps and geodesic keep it honest over distance
+            // instead of cutting a straight line across the projection.
+            width: 3,
+            color: AppColors.brandPrimary.withValues(alpha: 0.30),
+            patterns: [gm.PatternItem.dot, gm.PatternItem.gap(14)],
+            startCap: gm.Cap.roundCap,
+            endCap: gm.Cap.roundCap,
+            geodesic: true,
             zIndex: 1,
           ),
         );
