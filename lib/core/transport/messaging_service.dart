@@ -505,13 +505,12 @@ class MessagingService {
   Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
     final transport = _nostr;
     if (transport == null) return false;
-    // With every socket down there is nothing to try: publish would throw "no
-    // relay connected" for each peer in turn, and the caller falls through to
-    // store-and-forward either way. Asking first is not an optimisation — a
-    // phone with no internet ran the 45 s presence heartbeat against its whole
-    // roster and wrote two failure lines per peer per beacon, which is what
-    // buried the log.
-    if (_relayClient?.isConnected != true) return false;
+    // If the relay pool is merely asleep/backing off, wake it and wait briefly
+    // for one socket. This is the common iOS path: the user opens the app or a
+    // background window starts, immediately sends/flushes something, and the
+    // relay is still in `connecting`. Returning false in that window pushed a
+    // perfectly sendable message into the slow mesh/store-forward path.
+    if (!await _ensureRelayAwakeForSend()) return false;
     final npub =
         _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
     if (npub == null || npub.length != 32) {
@@ -6015,6 +6014,27 @@ class MessagingService {
       nudgeFileQueue();
       unawaited(_flushPendingReadReceipts());
     }
+  }
+
+  Future<bool> _ensureRelayAwakeForSend({
+    Duration timeout = const Duration(milliseconds: 1500),
+  }) async {
+    final client = _relayClient;
+    if (client == null) return false;
+    if (client.isConnected) return true;
+    client.wake();
+    if (client.isConnected) return true;
+    try {
+      await client.stateChanges
+          .firstWhere(
+            (_) => client.isConnected || _disposed,
+          )
+          .timeout(timeout);
+    } on TimeoutException {
+      // The caller falls back to mesh/store-forward. Keeping this short matters:
+      // a send button should feel broken if it blocks behind bad mobile data.
+    }
+    return !_disposed && client.isConnected;
   }
 
   void nudgeFileQueue() {
