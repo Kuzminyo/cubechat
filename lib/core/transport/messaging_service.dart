@@ -151,6 +151,7 @@ class MessagingService {
       channelRosterControllerProvider,
       (previous, next) {
         unawaited(_replayHeldChannelState());
+        unawaited(_replayHeldChannelPosts());
         _noteNewRoomMembers(previous, next);
       },
     );
@@ -2266,6 +2267,15 @@ class MessagingService {
       throw StateError('only an admin can set the posting rule for $channelName');
     }
     await channels.setAdminOnly(channel.name, adminOnly);
+    // Say who is imposing it, before imposing it.
+    //
+    // The rule is enforced by each reader against their own roster, and a
+    // member who has never been told who the admin is drops everything —
+    // including this room's only admin. Announcing the seat first is what
+    // makes the rule land on a room where the answer is known.
+    if (adminOnly) {
+      await _announceOwnAdminSeat(channel.name);
+    }
     final frame = await _buildChannelFrame(
       channel,
       InnerPayloadType.channelAdminOnly,
@@ -3249,6 +3259,36 @@ class MessagingService {
 
   /// Changes an administrator role locally and broadcasts the signed change.
   /// Only a signer already known as an administrator may create the event.
+  /// Tell the room that this phone holds the admin seat.
+  ///
+  /// A room has no creation event: the seat is claimed locally by the first
+  /// member who did not arrive by invitation, and until now that claim never
+  /// left the phone that made it. Every rule enforced against "is this person
+  /// an admin" therefore ran against an answer nobody else had.
+  ///
+  /// Best-effort and quiet: a room where somebody else is already known to be
+  /// the admin refuses this on arrival, which is the correct outcome and not
+  /// worth a word to the user.
+  Future<void> _announceOwnAdminSeat(String channelName) async {
+    try {
+      final channel =
+          _ref.read(channelControllerProvider.notifier).byName(channelName);
+      if (channel == null) return;
+      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+      if (!roster.isAdmin(channel.name, me.id)) return;
+      final frame = await _buildChannelFrame(
+        channel,
+        InnerPayloadType.channelAdmin,
+        ChannelAdminChange(memberId: me.id, isAdmin: true).encode(),
+        TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+      );
+      await _broadcastChannelFrame(frame);
+    } catch (e) {
+      DebugLog.instance.log('CHAN', 'admin seat announce failed: $e');
+    }
+  }
+
   Future<void> sendChannelAdminChange(
     String channelName,
     String memberId,
@@ -3599,13 +3639,31 @@ class MessagingService {
       // Control frames are exempt and handled below on their own admin checks:
       // an admin change, the picture, the topic and the copy rule each decide
       // for themselves, and a reaction or a read receipt is not a post.
+      // Held rather than dropped, for the same reason the room's picture is:
+      // a roster is learned from the room over time, and a member who has not
+      // yet been told who the admin is would otherwise refuse that admin's
+      // own posts — permanently, since nothing is ever sent twice. Once the
+      // roster names them, the post is delivered.
       if (channel.adminOnly &&
           _isChannelPost(unpacked.type) &&
           !_ref
               .read(channelRosterControllerProvider.notifier)
               .isAdmin(channel.name, reactorId)) {
         DebugLog.instance.log('CHAN',
-            'drop ${channel.name} post: $reactorId is not an admin');
+            'hold ${channel.name} post: $reactorId is not a known admin yet');
+        // Held as the frame it arrived as, and simply handed back through
+        // this same path once the roster has learned who the admin is — the
+        // check is re-run then, so nothing is let through that would not be
+        // let through now.
+        _holdChannelPost(
+          channelName: channel.name,
+          senderId: reactorId,
+          deliver: () => _handleChannelBody(
+            env: env,
+            peerId: peerId,
+            channelBody: channelBody,
+          ),
+        );
         return;
       }
 
@@ -3757,7 +3815,25 @@ class MessagingService {
         case InnerPayloadType.channelAdmin:
           final change = ChannelAdminChange.decode(unpacked.body);
           final roster = _ref.read(channelRosterControllerProvider.notifier);
-          if (roster.isAdmin(channel.name, reactorId)) {
+          // Somebody saying they are the admin of a room that has none.
+          //
+          // Without this a room's admin is a fact only their own phone holds.
+          // Appointing anybody is itself an admin action, so a member accepts
+          // an admin change only from somebody they *already* have as an
+          // admin — and nothing ever told them who the first one was. Turn on
+          // "only admins may post" in that state and every member drops every
+          // post, including the admin's own, which is what a log of three
+          // phones shows: `drop #room post: … is not an admin`, over and over,
+          // in a room somebody was talking in.
+          //
+          // Accepted on the same terms this phone claims the seat for itself
+          // — see ChannelRosterController.ensureSelf: the room is unowned, so
+          // the first claim wins. It is trust on first use rather than proof,
+          // which is all a shared key can offer, and a claim on a room that
+          // already has an admin is refused below as it always was.
+          final claimsSelf = change.memberId == reactorId && change.isAdmin;
+          if (roster.isAdmin(channel.name, reactorId) ||
+              (claimsSelf && !roster.hasAdmin(channel.name))) {
             await roster.setAdmin(
               channel.name,
               change.memberId,
@@ -6342,6 +6418,56 @@ class MessagingService {
     }
   }
 
+  /// Posts waiting on the roster to say their author may speak here.
+  ///
+  /// Keyed by sender within a room and capped, so a stranger shouting into an
+  /// announcement room cannot fill memory: the newest few from any one sender
+  /// are kept and the rest let go.
+  final Map<String, List<_HeldChannelPost>> _heldChannelPosts = {};
+
+  static const int _heldPostsPerSender = 20;
+
+  void _holdChannelPost({
+    required String channelName,
+    required String senderId,
+    required Future<void> Function() deliver,
+  }) {
+    final key = '$channelName|$senderId';
+    final held = _heldChannelPosts.putIfAbsent(key, () => <_HeldChannelPost>[]);
+    held.add(_HeldChannelPost(deliver: deliver, at: DateTime.now()));
+    if (held.length > _heldPostsPerSender) held.removeAt(0);
+  }
+
+  /// Deliver what the roster has since authorised, oldest first so a room
+  /// reads in the order it was spoken in.
+  Future<void> _replayHeldChannelPosts() async {
+    if (_heldChannelPosts.isEmpty) return;
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final now = DateTime.now();
+    for (final key in _heldChannelPosts.keys.toList(growable: false)) {
+      final separator = key.lastIndexOf('|');
+      final channelName = key.substring(0, separator);
+      final senderId = key.substring(separator + 1);
+      final held = _heldChannelPosts[key];
+      if (held == null) continue;
+      held.removeWhere((post) => now.difference(post.at) > _heldChannelStateTtl);
+      if (held.isEmpty || !roster.isAdmin(channelName, senderId)) {
+        if (held.isEmpty) _heldChannelPosts.remove(key);
+        continue;
+      }
+      _heldChannelPosts.remove(key);
+      DebugLog.instance.log(
+          'CHAN', 'delivering ${held.length} held post(s) in $channelName');
+      for (final post in held) {
+        try {
+          await post.deliver();
+        } catch (e) {
+          DebugLog.instance.log('CHAN', 'held post failed in $channelName: $e');
+        }
+      }
+    }
+  }
+
   /// Frames waiting on the roster to say who is allowed to have sent them.
   ///
   /// One per room and kind, newest wins: a picture set twice while we still
@@ -7299,5 +7425,14 @@ class _HeldChannelState {
 
   final String senderId;
   final Uint8List body;
+  final DateTime at;
+}
+
+/// A channel post whose author is not yet known to be allowed to speak in an
+/// announcement room. See [MessagingService._holdChannelPost].
+class _HeldChannelPost {
+  _HeldChannelPost({required this.deliver, required this.at});
+
+  final Future<void> Function() deliver;
   final DateTime at;
 }
