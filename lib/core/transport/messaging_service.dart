@@ -144,6 +144,16 @@ class MessagingService {
     _wirePeripheralEvents();
     _startAnnouncementTimer();
     _startPresenceTimer();
+    // A room's picture and topic can arrive before the roster knows who is
+    // allowed to have sent them; this is what lets the answer catch up, and
+    // what tells a new member what the room looks like.
+    _ref.listen(
+      channelRosterControllerProvider,
+      (previous, next) {
+        unawaited(_replayHeldChannelState());
+        _noteNewRoomMembers(previous, next);
+      },
+    );
     _startFileQueueTimer();
     _wireNostrFallback();
     _startInBackground('relay buffer', _loadRelayBuffer());
@@ -3756,78 +3766,14 @@ class MessagingService {
           }
 
         case InnerPayloadType.channelAvatar:
-          // The authorisation, and the only one that counts: the frame's
-          // signature says who sent it, and our own roster says whether they
-          // are allowed to change what the room looks like.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
-            DebugLog.instance.log('CHAN',
-                'drop ${channel.name} picture: $reactorId is not an admin');
-            break;
-          }
-          final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
-          await avatars.loaded;
-          if (unpacked.body.isEmpty) {
-            await avatars.forget(channel.name);
-          } else {
-            await avatars.store(
-              channel.name,
-              AvatarPayload.decode(unpacked.body).jpeg,
-            );
-          }
-
         case InnerPayloadType.channelAdminOnly:
-          // Same authorisation as the picture and the topic.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
-            DebugLog.instance.log('CHAN',
-                'drop ${channel.name} posting rule: $reactorId is not an admin');
-            break;
-          }
-          if (unpacked.body.isEmpty) break;
-          await _ref
-              .read(channelControllerProvider.notifier)
-              .setAdminOnly(channel.name, unpacked.body[0] == 0x01);
-
         case InnerPayloadType.copyRestriction:
-          // Same authorisation as the picture and the topic. Stored into the
-          // "somebody else asked for this" field rather than our own setting,
-          // so a member cannot lift a room's restriction for themselves — the
-          // 1:1 path draws the same distinction for the same reason.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
-            DebugLog.instance.log('CHAN',
-                'drop ${channel.name} copy rule: $reactorId is not an admin');
-            break;
-          }
-          if (unpacked.body.isEmpty) break;
-          final settings =
-              _ref.read(conversationSettingsControllerProvider.notifier);
-          await settings.loaded;
-          await settings.setPeerRestrictsCopying(
-            channel.name,
-            unpacked.body[0] == 0x01,
-          );
-
         case InnerPayloadType.channelDescription:
-          // Same authorisation as the picture, and for the same reason: the
-          // signature says who sent it, our roster says whether they may.
-          if (!_ref
-              .read(channelRosterControllerProvider.notifier)
-              .isAdmin(channel.name, reactorId)) {
-            DebugLog.instance.log('CHAN',
-                'drop ${channel.name} topic: $reactorId is not an admin');
-            break;
-          }
-          final descriptions =
-              _ref.read(channelDescriptionsControllerProvider.notifier);
-          await descriptions.loaded;
-          await descriptions.store(
-            channel.name,
-            utf8.decode(unpacked.body, allowMalformed: true),
+          await _applyOrHoldChannelState(
+            channelName: channel.name,
+            type: unpacked.type,
+            senderId: reactorId,
+            body: unpacked.body,
           );
         // Photos in a room. The manifest commits to the byte count and the
         // SHA-256, and it arrived inside a frame the channel signature already
@@ -6320,6 +6266,215 @@ class MessagingService {
     return sent > 0;
   }
 
+  /// What a room looks like and how it behaves: its picture, its topic, its
+  /// posting rule, its copy rule.
+  ///
+  /// All four carry the same authorisation, and it is the only one that counts:
+  /// the frame's signature says who sent it, and our own roster says whether
+  /// they are allowed to change the room.
+  ///
+  /// Held rather than dropped when the roster cannot answer yet. A roster is
+  /// learned from the room over time, so a member who has just joined — or who
+  /// has just reinstalled — routinely receives the picture *before* they have
+  /// any evidence that the sender is the admin. Dropping it there is
+  /// permanent: nobody re-broadcasts a picture, so the room stays a logo
+  /// forever, "sometimes" loads depending on which frame arrived first, and
+  /// re-entering never fixes it. That was three separate bug reports and one
+  /// cause. Once the roster does name that sender an admin, the held frame is
+  /// applied — see [_replayHeldChannelState].
+  Future<void> _applyOrHoldChannelState({
+    required String channelName,
+    required InnerPayloadType type,
+    required String senderId,
+    required Uint8List body,
+  }) async {
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    if (!roster.isAdmin(channelName, senderId)) {
+      _holdChannelState(channelName, type, senderId, body);
+      return;
+    }
+    await _applyChannelState(channelName, type, body);
+  }
+
+  Future<void> _applyChannelState(
+    String channelName,
+    InnerPayloadType type,
+    Uint8List body,
+  ) async {
+    switch (type) {
+      case InnerPayloadType.channelAvatar:
+        final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
+        await avatars.loaded;
+        if (body.isEmpty) {
+          await avatars.forget(channelName);
+        } else {
+          await avatars.store(channelName, AvatarPayload.decode(body).jpeg);
+        }
+
+      case InnerPayloadType.channelAdminOnly:
+        if (body.isEmpty) return;
+        await _ref
+            .read(channelControllerProvider.notifier)
+            .setAdminOnly(channelName, body[0] == 0x01);
+
+      case InnerPayloadType.copyRestriction:
+        // Stored into the "somebody else asked for this" field rather than our
+        // own setting, so a member cannot lift a room's restriction for
+        // themselves — the 1:1 path draws the same distinction for the same
+        // reason.
+        if (body.isEmpty) return;
+        final settings =
+            _ref.read(conversationSettingsControllerProvider.notifier);
+        await settings.loaded;
+        await settings.setPeerRestrictsCopying(channelName, body[0] == 0x01);
+
+      case InnerPayloadType.channelDescription:
+        final descriptions =
+            _ref.read(channelDescriptionsControllerProvider.notifier);
+        await descriptions.loaded;
+        await descriptions.store(
+          channelName,
+          utf8.decode(body, allowMalformed: true),
+        );
+
+      default:
+        break;
+    }
+  }
+
+  /// Frames waiting on the roster to say who is allowed to have sent them.
+  ///
+  /// One per room and kind, newest wins: a picture set twice while we still
+  /// know nothing is one picture, the later one. Memory only — a restart
+  /// re-reads nothing and simply waits for the next broadcast, which is where
+  /// this started.
+  final Map<String, _HeldChannelState> _heldChannelState = {};
+
+  /// How long a frame from an unproven sender is worth keeping. Long enough to
+  /// cover a roster arriving over a slow mesh; short enough that a member who
+  /// never was an admin cannot leave something parked in memory for a week.
+  static const Duration _heldChannelStateTtl = Duration(hours: 6);
+
+  static const int _heldChannelStateCap = 24;
+
+  void _holdChannelState(
+    String channelName,
+    InnerPayloadType type,
+    String senderId,
+    Uint8List body,
+  ) {
+    DebugLog.instance.log('CHAN',
+        'hold ${channelName} ${type.name} from $senderId: not a known admin yet');
+    if (_heldChannelState.length >= _heldChannelStateCap) {
+      // Oldest out. This only fills up under a stream of unauthorised frames,
+      // which is somebody trying it on rather than a room being used.
+      final oldest = _heldChannelState.entries
+          .reduce((a, b) => a.value.at.isBefore(b.value.at) ? a : b);
+      _heldChannelState.remove(oldest.key);
+    }
+    _heldChannelState['$channelName|${type.name}'] = _HeldChannelState(
+      senderId: senderId,
+      body: body,
+      at: DateTime.now(),
+    );
+  }
+
+  /// Apply anything the roster has since authorised, and forget what has gone
+  /// stale. Runs on every roster change.
+  Future<void> _replayHeldChannelState() async {
+    if (_heldChannelState.isEmpty) return;
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final now = DateTime.now();
+    for (final key in _heldChannelState.keys.toList(growable: false)) {
+      final held = _heldChannelState[key];
+      if (held == null) continue;
+      if (now.difference(held.at) > _heldChannelStateTtl) {
+        _heldChannelState.remove(key);
+        continue;
+      }
+      final separator = key.lastIndexOf('|');
+      final channelName = key.substring(0, separator);
+      final typeName = key.substring(separator + 1);
+      if (!roster.isAdmin(channelName, held.senderId)) continue;
+      final type = InnerPayloadType.values
+          .where((t) => t.name == typeName)
+          .firstOrNull;
+      _heldChannelState.remove(key);
+      if (type == null) continue;
+      DebugLog.instance
+          .log('CHAN', 'applying held $channelName $typeName — admin confirmed');
+      try {
+        await _applyChannelState(channelName, type, held.body);
+      } catch (e) {
+        DebugLog.instance.log('CHAN', 'held $channelName $typeName failed: $e');
+      }
+    }
+  }
+
+  /// Somebody new in a room we run: tell them what it looks like.
+  ///
+  /// A picture is broadcast once, at the moment it is set, and nothing repeats
+  /// it — so everybody who joined afterwards saw a room with no picture and no
+  /// topic, permanently, and the only cure was the admin setting it again. The
+  /// receiving end of that same gap is [_holdChannelState]; this is the half
+  /// that was never sent at all.
+  ///
+  /// Only what we are entitled to send: [sendChannelAvatar] and
+  /// [sendChannelDescription] both refuse unless this phone is the room's
+  /// admin, which is exactly the right answer for a member who happens to
+  /// notice somebody joining.
+  void _noteNewRoomMembers(
+    Map<String, Map<String, ChannelMember>>? previous,
+    Map<String, Map<String, ChannelMember>> next,
+  ) {
+    if (previous == null) return;
+    for (final entry in next.entries) {
+      final before = previous[entry.key];
+      // A room appearing for the first time is us joining it, not somebody
+      // joining us — there is nobody to catch up and the picture is on its way
+      // to us, not from us.
+      if (before == null) continue;
+      final arrived = entry.value.keys.where((id) => !before.containsKey(id));
+      if (arrived.isEmpty) continue;
+      _roomsToIntroduce.add(entry.key);
+    }
+    if (_roomsToIntroduce.isEmpty) return;
+    // Debounced: a roster catches up in bursts — a dozen members can land in a
+    // second after a reconnect — and each broadcast reaches the whole room.
+    _introduceRoomsTimer?.cancel();
+    _introduceRoomsTimer = Timer(const Duration(seconds: 5), () {
+      _introduceRoomsTimer = null;
+      unawaited(_introduceRooms());
+    });
+  }
+
+  final Set<String> _roomsToIntroduce = {};
+  Timer? _introduceRoomsTimer;
+
+  Future<void> _introduceRooms() async {
+    final rooms = _roomsToIntroduce.toList(growable: false);
+    _roomsToIntroduce.clear();
+    for (final room in rooms) {
+      final picture =
+          _ref.read(channelAvatarsControllerProvider.notifier).forChannel(room);
+      final description = _ref.read(channelDescriptionsControllerProvider)[room];
+      if (picture == null && (description == null || description.isEmpty)) {
+        continue;
+      }
+      try {
+        if (picture != null) await sendChannelAvatar(room, picture);
+        if (description != null && description.isNotEmpty) {
+          await sendChannelDescription(room, description);
+        }
+        DebugLog.instance.log('CHAN', 're-shared $room state with new members');
+      } catch (e) {
+        // Not our room to describe — the usual case, and not worth a word
+        // beyond the log.
+        DebugLog.instance.log('CHAN', 'no re-share for $room: $e');
+      }
+    }
+  }
+
   /// A presence beacon from a peer: they have the app open (or are leaving it).
   ///
   /// Also refreshes their roster `lastSeen`, but only for an "online" beacon —
@@ -7025,6 +7180,8 @@ class MessagingService {
     _presenceTimer = null;
     _fileQueueTimer?.cancel();
     _fileQueueTimer = null;
+    _introduceRoomsTimer?.cancel();
+    _introduceRoomsTimer = null;
     // Flush any pending buffer write synchronously so a held frame isn't
     // lost if we're disposed inside the debounce window.
     _relayPersistTimer?.cancel();
@@ -7129,4 +7286,18 @@ class _PendingFsChunk {
   final String peerId;
   final Uint8List body;
   final DateTime arrivedAt;
+}
+
+/// A room's picture, topic or rule, waiting on the roster to confirm that the
+/// person who sent it was allowed to. See [MessagingService._holdChannelState].
+class _HeldChannelState {
+  _HeldChannelState({
+    required this.senderId,
+    required this.body,
+    required this.at,
+  });
+
+  final String senderId;
+  final Uint8List body;
+  final DateTime at;
 }
