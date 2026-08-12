@@ -51,6 +51,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get mapClusterHint => 'Торкніться, щоб мапа перейшла до людини';
 
   @override
+  String get mapNorthUp => 'Повернути північ угору';
+
+  @override
   String get mapLayerTitle => 'Вигляд мапи';
 
   @override

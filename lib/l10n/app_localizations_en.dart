@@ -50,6 +50,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mapClusterHint => 'Tap somebody to bring the map to them';
 
   @override
+  String get mapNorthUp => 'Point north up';
+
+  @override
   String get mapLayerTitle => 'Map style';
 
   @override

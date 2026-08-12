@@ -150,6 +150,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   double? _zoomFrom;
   double? _zoomTo;
 
+  /// True while north is not up, which is the only time the compass is worth
+  /// the corner it occupies.
+  bool _rotated = false;
+
   /// The zoom the pins are currently sized for.
   ///
   /// Pins used to be one size at every zoom, so pulling back to see a city
@@ -508,6 +512,17 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_rotated) ...[
+                  _MapActionButton(
+                    icon: Icons.explore_rounded,
+                    tooltip: t.mapNorthUp,
+                    onTap: () {
+                      _map.rotate(0);
+                      setState(() => _rotated = false);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _MapActionButton(
                   icon: Icons.layers_rounded,
                   tooltip: t.mapLayerTitle,
@@ -689,8 +704,12 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         minZoom: 3,
         maxZoom: 18,
         backgroundColor: const Color(0xFF101A22),
+        // Rotation is on now. It was excluded because a map that turns under a
+        // thumb and cannot be turned back is worse than one that never turns —
+        // so the way back is the point: the compass appears the moment north
+        // stops being up, and puts it back.
         interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          flags: InteractiveFlag.all,
         ),
         onMapReady: () => _scheduleAddressLookup(_fallbackCenter),
         onTap: (_, __) => setState(() {
@@ -704,6 +723,10 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           if ((event.camera.zoom - _markerZoom).abs() >= 0.25) {
             setState(() => _markerZoom = event.camera.zoom);
           }
+          // Rounded, so a fingertip's worth of wobble does not raise the
+          // compass on a map nobody meant to turn.
+          final rotated = event.camera.rotation.abs() > 1;
+          if (rotated != _rotated) setState(() => _rotated = rotated);
           if (event is MapEventMoveStart ||
               event is MapEventFlingAnimationStart ||
               event is MapEventDoubleTapZoomStart) {

@@ -16,6 +16,7 @@
     }
   },
   "mapClusterHint": "Tap somebody to bring the map to them",
+  "mapNorthUp": "Point north up",
   "mapLayerTitle": "Map style",
   "mapLayerHint": "What the pins are drawn on",
   "mapLayerDark": "Dark",

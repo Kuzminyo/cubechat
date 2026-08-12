@@ -164,6 +164,12 @@ abstract class AppLocalizations {
   /// **'Tap somebody to bring the map to them'**
   String get mapClusterHint;
 
+  /// No description provided for @mapNorthUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Point north up'**
+  String get mapNorthUp;
+
   /// No description provided for @mapLayerTitle.
   ///
   /// In en, this message translates to:

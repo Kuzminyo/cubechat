@@ -138,7 +138,14 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   ///
   /// Long enough to cover picking a file, short enough that genuinely leaving
   /// still shows up promptly.
-  static const Duration _goodbyeGrace = Duration(seconds: 6);
+  ///
+  /// Six seconds was the first answer and it read as a lag: leaving the app
+  /// and watching the other phone, the dot stayed lit long enough to look
+  /// broken. Three is the compromise — a picker or a camera round trip is
+  /// almost always longer than that, so it costs the occasional extra pair of
+  /// beacons, and the twenty-second floor inside the transport is what stops
+  /// that becoming a storm.
+  static const Duration _goodbyeGrace = Duration(seconds: 3);
 
   /// A finger on the glass is proof of being in the app, and the only proof
   /// that cannot be missed.

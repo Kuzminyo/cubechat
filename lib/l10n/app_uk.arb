@@ -11,6 +11,7 @@
     "mapFriendsHint": "Лише ці контакти отримують вашу позицію",
     "mapClusterTitle":  "{count, plural, one{{count} людина тут} few{{count} людини тут} other{{count} людей тут}}",
     "mapClusterHint":  "Торкніться, щоб мапа перейшла до людини",
+    "mapNorthUp":  "Повернути північ угору",
     "mapLayerTitle":  "Вигляд мапи",
     "mapLayerHint":  "На чому намальовані позначки",
     "mapLayerDark":  "Темна",

@@ -155,9 +155,17 @@ class ChatScreen extends ConsumerWidget {
   void _goBack(BuildContext context) {
     if (returnToChats) {
       context.go('/chats');
-    } else {
-      Navigator.of(context).maybePop();
+      return;
     }
+    // A back button that does nothing is worse than one that goes somewhere
+    // sensible. `maybePop` answers false when this route is the only thing on
+    // its navigator — which is not supposed to happen for a pushed chat, and
+    // did: Saved, opened from the overflow menu, could land with nothing
+    // underneath it, and then neither the button nor the drag had anywhere to
+    // go.
+    Navigator.of(context).maybePop().then((popped) {
+      if (!popped && context.mounted) context.go('/chats');
+    });
   }
 
   /// Opened from search, this chat has to land on the chats list rather than
