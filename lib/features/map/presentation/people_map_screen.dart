@@ -109,6 +109,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
 
   /// The zoom the clusters were last computed at, in whole levels.
   double _clusterZoom = _initialZoom.roundToDouble();
+  double _cameraClusterZoom = _initialZoom.roundToDouble();
+  bool _cameraRotated = false;
+  bool _cameraTilted = false;
 
   /// Bumped whenever a marker bitmap finishes rendering, so the memoised
   /// marker set knows to rebuild with the real picture in place of the
@@ -118,8 +121,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   Set<gm.Marker>? _cachedMarkers;
   String? _cachedMarkersKey;
   gm.CameraPosition? _pendingCamera;
-  List<gm.Polyline>? _cachedLines;
-  String? _cachedLinesKey;
   final _markerIcons = <String, gm.BitmapDescriptor>{};
   final _markerIconsInFlight = <String>{};
 
@@ -565,7 +566,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         right: 84,
       ),
       markers: _googleMarkers(nodes, me, nickname, ownPhoto),
-      polylines: _googleLines(nodes, me).toSet(),
       // Without this the map cannot be panned or zoomed at all, and the reason
       // is this app rather than the plugin: every page is wrapped in a
       // drag-anywhere back gesture (see EdgeBackGesture), so Flutter's arena
@@ -574,7 +574,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       // gesture eagerly hands everything inside the map's own bounds to the
       // map — which also means no back-swipe over it, and that is the right
       // trade: this screen is a tab, there is nothing behind it to swipe to.
-      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+      gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{
         Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new),
       },
       onMapCreated: (controller) {
@@ -614,27 +614,27 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           position.target.longitude,
         );
         _markerZoom = position.zoom;
-        // Whole zoom levels, not quarters. This is the number the clustering
-        // threshold is derived from, so every change of it recomputes the
-        // clusters and rebuilds every marker — four times per level was three
-        // rebuilds too many, and the huddles do not visibly regroup that
-        // finely anyway.
-        final clusterZoom = position.zoom.roundToDouble();
-        final rotated = position.bearing.abs() > 2;
-        final tilted = position.tilt > 5;
-        if (clusterZoom != _clusterZoom ||
-            rotated != _rotated ||
-            tilted != _tilted) {
-          setState(() {
-            _clusterZoom = clusterZoom;
-            _rotated = rotated;
-            _tilted = tilted;
-          });
-        }
+        // Do not rebuild Flutter while the native map is under a pinch/drag.
+        // Google Maps is already doing high-frequency work on the platform
+        // thread; feeding every camera frame back into Riverpod/markers was the
+        // path to ANR on quick zooms. Remember the visual state and apply it
+        // once when the camera settles.
+        _cameraClusterZoom = position.zoom.roundToDouble();
+        _cameraRotated = position.bearing.abs() > 2;
+        _cameraTilted = position.tilt > 5;
       },
       onCameraIdle: () {
         UiActivity.instance.setScrolling(false);
         _scheduleAddressLookup(_cameraCentre);
+        if (_cameraClusterZoom != _clusterZoom ||
+            _cameraRotated != _rotated ||
+            _cameraTilted != _tilted) {
+          setState(() {
+            _clusterZoom = _cameraClusterZoom;
+            _rotated = _cameraRotated;
+            _tilted = _cameraTilted;
+          });
+        }
       },
     );
   }
@@ -728,8 +728,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       _selectedId ?? '',
       _mineSelected ? 'me' : '',
       _markerIconGeneration.toString(),
-      if (me != null) 'me:${me.latitude.toStringAsFixed(5)},'
-          '${me.longitude.toStringAsFixed(5)}',
+      if (me != null)
+        'me:${me.latitude.toStringAsFixed(5)},'
+            '${me.longitude.toStringAsFixed(5)}',
       for (final node in nodes)
         '${node.id}:${node.point.latitude.toStringAsFixed(5)},'
             '${node.point.longitude.toStringAsFixed(5)}',
@@ -1138,78 +1139,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       }
     }
   }
-
-  List<gm.Polyline> _googleLines(List<_Node> nodes, LatLng? me) {
-    String cell(LatLng p) => '${p.latitude.toStringAsFixed(4)},'
-        '${p.longitude.toStringAsFixed(4)}';
-    final key = [
-      if (me != null) 'me:${cell(me)}',
-      for (final n in nodes) '${n.id}:${cell(n.point)}',
-    ].join('|');
-    final cached = _cachedLines;
-    if (cached != null && key == _cachedLinesKey) return cached;
-    final built = _buildGoogleLines(nodes, me);
-    _cachedLines = built;
-    _cachedLinesKey = key;
-    return built;
-  }
-
-  List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
-    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final points = [if (me != null) me, ...nodes.map((n) => n.point)];
-    final used = <String>{};
-    final result = <gm.Polyline>[];
-    for (var i = 0; i < points.length; i++) {
-      final nearest = <({int i, double metres})>[
-        for (var j = 0; j < points.length; j++)
-          if (i != j)
-            (
-              i: j,
-              metres: _distance.as(LengthUnit.Meter, points[i], points[j]),
-            ),
-      ]..sort((a, b) => a.metres.compareTo(b.metres));
-      for (final other in nearest.take(2)) {
-        if (other.metres > 50000) continue;
-        final a = math.min(i, other.i);
-        final b = math.max(i, other.i);
-        if (!used.add('$a:$b')) continue;
-        // Two strokes, the way the old map drew it: a wide, nearly transparent
-        // halo with a thin bright thread down the middle. That is what made
-        // the line look lit rather than drawn, and Google offers neither a
-        // gradient stroke nor a glow — so the halo *is* the glow.
-        //
-        // The widths are the old logical ones converted, because a polyline
-        // here is measured in screen pixels; that unit is why an earlier
-        // attempt came out as a hairline on a 3x phone.
-        final path = [_gm(points[a]), _gm(points[b])];
-        result
-          ..add(
-            gm.Polyline(
-              polylineId: gm.PolylineId('web:$a:$b:halo'),
-              points: path,
-              width: (4 * pixelRatio).round(),
-              color: AppColors.brandPrimary.withValues(alpha: 0.09),
-              startCap: gm.Cap.roundCap,
-              endCap: gm.Cap.roundCap,
-              geodesic: true,
-            ),
-          )
-          ..add(
-            gm.Polyline(
-              polylineId: gm.PolylineId('web:$a:$b'),
-              points: path,
-              width: (1.1 * pixelRatio).round(),
-              color: AppColors.brandSecondary.withValues(alpha: 0.58),
-              startCap: gm.Cap.roundCap,
-              endCap: gm.Cap.roundCap,
-              geodesic: true,
-              zIndex: 1,
-            ),
-          );
-      }
-    }
-    return result;
-  }
 }
 
 gm.LatLng _gm(LatLng point) => gm.LatLng(point.latitude, point.longitude);
@@ -1222,23 +1151,19 @@ gm.MapType _googleMapType(MapLayer layer) => switch (layer) {
 
 const _googleDarkStyle = '''
 [
-  {"elementType":"geometry","stylers":[{"color":"#111c25"}]},
+  {"elementType":"geometry","stylers":[{"color":"#17222b"}]},
   {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#8fa1af"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#0a1117"},{"weight":3}]},
-  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#263949"}]},
-  {"featureType":"poi","elementType":"labels","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#16242e"}]},
-  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#23384a"}]},
-  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#0e1922"}]},
-  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#7e93a6"}]},
-  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#2e4b63"}]},
-  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#112433"}]},
-  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#1a2b38"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#07141c"}]},
-  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4f6d7d"}]},
-  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#101d26"}]},
-  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#122a25"}]}
+  {"elementType":"labels.text","stylers":[{"visibility":"off"}]},
+  {"featureType":"administrative","elementType":"geometry","stylers":[{"visibility":"off"}]},
+  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#30465a"},{"lightness":6}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#111b24"},{"weight":1}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3e5d77"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#162737"}]},
+  {"featureType":"transit","stylers":[{"visibility":"off"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0b1822"}]},
+  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#17242c"}]},
+  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#18342b"}]}
 ]
 ''';
 
