@@ -56,8 +56,7 @@ class LocationService {
       // building, and the ninety-second refresh replaces it with a fresh one
       // shortly anyway.
       final cached = await _lastKnown();
-      if (cached != null &&
-          DateTime.now().difference(cached.timestamp) < _cacheStillGood) {
+      if (cached != null && _worthShowing(cached)) {
         return (_fixOf(cached), null);
       }
 
@@ -105,10 +104,30 @@ class LocationService {
     }
   }
 
-  /// How old the platform's cached fix may be and still be worth showing
-  /// instead of waiting. Long enough to cover walking indoors and opening the
-  /// app; short enough that it cannot put somebody on the wrong street.
+  /// Whether the platform's cached fix is worth showing instead of waiting for
+  /// a real one.
+  ///
+  /// Age was the only test, and on iOS that is not enough: CoreLocation hands
+  /// back a *recent* fix that can be a cell-tower estimate kilometres wide, so
+  /// "two minutes old" was being shown as a pin on a street the phone had
+  /// never been on. Accuracy has to pass too — a fix that only knows the
+  /// district is worse than a second of waiting.
+  static bool _worthShowing(Position position) {
+    if (DateTime.now().difference(position.timestamp) >= _cacheStillGood) {
+      return false;
+    }
+    final accuracy = position.accuracy;
+    return accuracy.isFinite && accuracy > 0 && accuracy <= _cacheMaxErrorMetres;
+  }
+
+  /// How old the platform's cached fix may be and still be worth showing.
+  /// Long enough to cover walking indoors and opening the app; short enough
+  /// that it cannot put somebody on the wrong street.
   static const _cacheStillGood = Duration(minutes: 2);
+
+  /// And how wrong it may be. Past this it is a neighbourhood, not a position,
+  /// and the map would be drawing confidence it does not have.
+  static const double _cacheMaxErrorMetres = 120;
 
   /// Positions for as long as somebody is on the map with you — including
   /// while the app is out of sight.
@@ -227,7 +246,16 @@ class LocationService {
     );
   }
 
-  static const _accuracy = LocationAccuracy.medium;
+  /// High, not medium.
+  ///
+  /// Medium is `kCLLocationAccuracyHundredMeters` on iOS, and a hundred metres
+  /// is a different building — sometimes a different street. It was chosen to
+  /// keep the radio down, back when the pin was a one-off share; a live map
+  /// that puts a friend on the wrong corner is not cheaper, it is wrong. Best
+  /// is still not asked for: that is the last few metres, and they cost the
+  /// most seconds of GPS for the least difference on a map read at street
+  /// level.
+  static const _accuracy = LocationAccuracy.high;
 
   /// How far the phone must move before the OS bothers waking us with a fix.
   ///
