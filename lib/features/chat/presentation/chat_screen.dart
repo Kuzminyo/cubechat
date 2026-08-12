@@ -70,6 +70,7 @@ import 'widgets/mention_suggestions.dart';
 import '../../../core/routing/page_transitions.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
+import 'media_preview_screen.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
 /// than the 64-char pubkey-hex the Chats list routes with. Only the former can
@@ -2705,28 +2706,113 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Gallery pick → send.
+  /// Gallery pick -> full-screen preview -> send.
   ///
-  /// The picker already has the confirmation row and caption field, so sending
-  /// selected photos used to ask twice: first in the picker, then in a second
-  /// full-screen preview with Send/Edit. That extra screen is gone; the picker
-  /// is now the only confirmation surface for gallery photos.
+  /// The sheet is for choosing; this screen is for the final look before the
+  /// photo leaves: caption, one-view, original quality, or a quick brush edit.
+  /// That is the window users expect after tapping the send arrow in the
+  /// gallery.
   Future<void> _sendGallerySelection(
     List<AssetEntity> assets, {
     String? caption,
   }) async {
-    for (var i = 0; i < assets.length; i++) {
-      final bytes = await assets[i].thumbnailDataWithSize(
+    final loaded = <Uint8List>[];
+    final previewAssets = <AssetEntity>[];
+    for (final asset in assets) {
+      final bytes = await asset.thumbnailDataWithSize(
         const ThumbnailSize(1600, 1600),
         quality: 90,
       );
-      if (bytes == null || !mounted) continue;
+      if (bytes == null) continue;
+      loaded.add(bytes);
+      previewAssets.add(asset);
+    }
+    if (loaded.isEmpty || !mounted) return;
+
+    final result = await Navigator.of(context).push<MediaPreviewResult>(
+      mediaRoute<MediaPreviewResult>(
+        (_) => MediaPreviewScreen(
+          items: loaded,
+          allowOriginal: !widget.isChannel,
+          allowViewOnce: !widget.isChannel && !isSavedChat(widget.canonicalId),
+          initialCaption: caption,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    if (result.asFile) {
+      await _sendOriginals(previewAssets, caption: result.caption);
+      return;
+    }
+
+    for (var i = 0; i < result.bytes.length; i++) {
       await _encodeAndSend(
-        bytes,
+        result.bytes[i],
         '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
-        caption: i == 0 ? caption : null,
+        caption: i == 0 ? result.caption : null,
+        viewOnce: result.viewOnce,
       );
       if (!mounted) return;
+    }
+  }
+
+  /// The picked photos, sent as they sit in the gallery.
+  ///
+  /// The ordinary photo path downscales and re-encodes to fit a picture through
+  /// Bluetooth. Original sends the asset's own file through the file transport
+  /// instead, so screenshots and documents stay readable.
+  Future<void> _sendOriginals(
+    List<AssetEntity> assets, {
+    String? caption,
+  }) async {
+    final t = AppLocalizations.of(context);
+    final messaging = ref.read(messagingServiceProvider);
+    var sent = 0;
+    for (final asset in assets) {
+      try {
+        final origin = await asset.originFile;
+        if (origin == null || !mounted) continue;
+        final name = await asset.titleAsync;
+        final safe = name.trim().isEmpty ? 'photo-${asset.id}.jpg' : name;
+        if (isSavedChat(widget.canonicalId)) {
+          await ref.read(savedMessagesControllerProvider).saveFile(
+                origin,
+                fileName: safe,
+                mime: fileMimeType(safe),
+              );
+          sent++;
+          continue;
+        }
+        await messaging.sendFile(
+          widget.canonicalId,
+          file: origin,
+          fileName: safe,
+          mime: fileMimeType(safe),
+        );
+        sent++;
+      } on FileTooLarge catch (e) {
+        if (!mounted) return;
+        final limit = e.cap ~/ (1024 * 1024);
+        showGlassToast(
+          context,
+          e.relayOnly ? t.fileTooLargeRelay(limit) : t.fileTooLargeMesh(limit),
+          tone: ToastTone.danger,
+        );
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        _showAttachmentFailure(e);
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (sent > 0 && caption != null) {
+      if (widget.isChannel) {
+        await messaging.sendChannelText(widget.canonicalId, caption);
+      } else {
+        await messaging.sendText(widget.peerId, caption);
+      }
     }
   }
 

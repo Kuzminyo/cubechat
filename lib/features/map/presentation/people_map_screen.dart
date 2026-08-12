@@ -121,6 +121,8 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
   Set<gm.Marker>? _cachedMarkers;
   String? _cachedMarkersKey;
   gm.CameraPosition? _pendingCamera;
+  List<gm.Polyline>? _cachedLines;
+  String? _cachedLinesKey;
   final _markerIcons = <String, gm.BitmapDescriptor>{};
   final _markerIconsInFlight = <String>{};
 
@@ -566,6 +568,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
         right: 84,
       ),
       markers: _googleMarkers(nodes, me, nickname, ownPhoto),
+      polylines: _googleLines(nodes, me).toSet(),
       // Without this the map cannot be panned or zoomed at all, and the reason
       // is this app rather than the plugin: every page is wrapped in a
       // drag-anywhere back gesture (see EdgeBackGesture), so Flutter's arena
@@ -769,7 +772,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
             // is the bottom centre, which is right for a tailed pin and would
             // leave this one floating above the place it means.
             anchor: const Offset(0.5, 0.5),
-            zIndexInt: node.id == _selectedId ? 20 : 10,
+            zIndexInt: node.id == _selectedId ? 40 : 20,
             icon: _markerIcon(
               seed: node.id,
               name: node.name,
@@ -797,7 +800,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           markerId: gm.MarkerId('cluster:${group.first.id}'),
           position: _gm(point),
           anchor: const Offset(0.5, 0.5),
-          zIndexInt: 15,
+          zIndexInt: 30,
           icon: _markerIcon(
             seed: 'cluster:',
             name: '',
@@ -814,7 +817,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           markerId: const gm.MarkerId('me'),
           position: _gm(me),
           anchor: const Offset(0.5, 0.5),
-          zIndexInt: 30,
+          zIndexInt: _mineSelected ? 50 : 10,
           icon: _markerIcon(
             seed: 'me',
             name: nickname,
@@ -1139,29 +1142,103 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       }
     }
   }
+
+  List<gm.Polyline> _googleLines(List<_Node> nodes, LatLng? me) {
+    String cell(LatLng p) => '${p.latitude.toStringAsFixed(4)},'
+        '${p.longitude.toStringAsFixed(4)}';
+    final key = [
+      if (me != null) 'me:${cell(me)}',
+      for (final n in nodes) '${n.id}:${cell(n.point)}',
+    ].join('|');
+    final cached = _cachedLines;
+    if (cached != null && key == _cachedLinesKey) return cached;
+    final built = _buildGoogleLines(nodes, me);
+    _cachedLines = built;
+    _cachedLinesKey = key;
+    return built;
+  }
+
+  List<gm.Polyline> _buildGoogleLines(List<_Node> nodes, LatLng? me) {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final points = [if (me != null) me, ...nodes.map((n) => n.point)];
+    if (points.length < 2) return const [];
+    final used = <String>{};
+    final result = <gm.Polyline>[];
+    for (var i = 0; i < points.length; i++) {
+      final nearest = <({int i, double metres})>[
+        for (var j = 0; j < points.length; j++)
+          if (i != j)
+            (
+              i: j,
+              metres: _distance.as(LengthUnit.Meter, points[i], points[j]),
+            ),
+      ]..sort((a, b) => a.metres.compareTo(b.metres));
+      for (final other in nearest.take(2)) {
+        if (other.metres > 50000) continue;
+        final a = math.min(i, other.i);
+        final b = math.max(i, other.i);
+        if (!used.add('$a:$b')) continue;
+        final path = [_gm(points[a]), _gm(points[b])];
+        result
+          ..add(
+            gm.Polyline(
+              polylineId: gm.PolylineId('web:$a:$b:halo'),
+              points: path,
+              width: math.max(1, (4 * pixelRatio).round()),
+              color: AppColors.brandPrimary.withValues(alpha: 0.08),
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+              geodesic: true,
+            ),
+          )
+          ..add(
+            gm.Polyline(
+              polylineId: gm.PolylineId('web:$a:$b'),
+              points: path,
+              width: math.max(1, (1.1 * pixelRatio).round()),
+              color: AppColors.brandSecondary.withValues(alpha: 0.48),
+              startCap: gm.Cap.roundCap,
+              endCap: gm.Cap.roundCap,
+              geodesic: true,
+              zIndex: 1,
+            ),
+          );
+      }
+    }
+    return result;
+  }
 }
 
 gm.LatLng _gm(LatLng point) => gm.LatLng(point.latitude, point.longitude);
 
 gm.MapType _googleMapType(MapLayer layer) => switch (layer) {
       MapLayer.dark => gm.MapType.normal,
-      MapLayer.satellite => gm.MapType.satellite,
+      MapLayer.satellite => gm.MapType.hybrid,
       MapLayer.terrain => gm.MapType.terrain,
     };
 
 const _googleDarkStyle = '''
 [
   {"elementType":"geometry","stylers":[{"color":"#17222b"}]},
-  {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
-  {"elementType":"labels.text","stylers":[{"visibility":"off"}]},
-  {"featureType":"administrative","elementType":"geometry","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"elementType":"labels.icon","stylers":[{"visibility":"on"},{"saturation":-45},{"lightness":-10}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#a8bac8"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#0d151d"},{"weight":3}]},
+  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#344858"},{"visibility":"on"}]},
+  {"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#c6d2dc"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#22313b"},{"visibility":"on"}]},
+  {"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"saturation":-55},{"lightness":-8}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#93a8b6"}]},
+  {"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#101920"},{"weight":3}]},
   {"featureType":"road","elementType":"geometry","stylers":[{"color":"#30465a"},{"lightness":6}]},
   {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#111b24"},{"weight":1}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#9cafbc"}]},
+  {"featureType":"road","elementType":"labels.text.stroke","stylers":[{"color":"#0d151d"},{"weight":3}]},
   {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3e5d77"}]},
   {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#162737"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
+  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#223543"},{"visibility":"on"}]},
+  {"featureType":"transit","elementType":"labels.text.fill","stylers":[{"color":"#8598a6"}]},
   {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0b1822"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#6f8a9a"}]},
   {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#17242c"}]},
   {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#18342b"}]}
 ]
