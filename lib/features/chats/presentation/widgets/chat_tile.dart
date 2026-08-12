@@ -11,9 +11,15 @@ import '../../models/chat.dart';
 /// preview. It paints no surface of its own — the [FloatingGlass] island the
 /// list wraps it in owns the background, tap ripple and long-press.
 class ChatTile extends StatelessWidget {
-  const ChatTile({super.key, required this.chat});
+  const ChatTile({super.key, required this.chat, this.selected = false});
 
   final Chat chat;
+
+  /// Picked out for a bulk action — see `chatSelectionProvider`. Marked on the
+  /// avatar rather than by tinting the row: the row's own colours already say
+  /// whether there is something unread in it, and a second meaning on the same
+  /// surface makes both harder to read.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -38,11 +44,34 @@ class ChatTile extends StatelessWidget {
           // gesture, most of all — can leave the source hidden. That is a row
           // whose picture is simply missing until something rebuilds it, which
           // is the other half of what was reported.
-          PeerAvatar(
-            peerId: chat.peerId,
-            label: chat.peerName,
-            size: 48,
-            online: chat.isOnline,
+          Stack(
+            children: [
+              PeerAvatar(
+                peerId: chat.peerId,
+                label: chat.peerName,
+                size: 48,
+                online: chat.isOnline,
+              ),
+              if (selected)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.brandPrimary,
+                      border: Border.all(color: AppColors.bgDeep, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      size: 12,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -27,6 +27,7 @@ import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../data/chat_folders_controller.dart';
+import '../data/chat_selection_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/hidden_chats_controller.dart';
 import '../data/pinned_chats_controller.dart';
@@ -272,6 +273,7 @@ class ChatsListScreen extends ConsumerWidget {
             .read(userChatFoldersControllerProvider.notifier)
             .byId(selectedUserFolderId);
 
+    final selection = ref.watch(chatSelectionProvider);
     final saved = savedChatRow(ref, t);
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
@@ -301,33 +303,44 @@ class ChatsListScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      TripleTapDetector(
-                        onTripleTap: () => _confirmWipe(context, ref, t),
-                        child: const CubeLogo(size: 32),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child:
-                            Text(t.chatsTitle, style: AppTypography.display()),
-                      ),
-                      _ChatsOverflowMenu(
-                        onAddContact: () => context.push('/contact'),
-                        onNewChannel: () =>
-                            showNewChannelDialog(context, ref, t),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    t.chatsSubtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textOnGlassDim,
+                  // The title row becomes a bar of actions while chats are
+                  // picked out, which is the whole point of picking them out.
+                  if (selection.isNotEmpty)
+                    _ChatSelectionBar(
+                      selected: [
+                        for (final chat in filtered)
+                          if (selection.contains(chat.id)) chat,
+                      ],
+                    )
+                  else ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        TripleTapDetector(
+                          onTripleTap: () => _confirmWipe(context, ref, t),
+                          child: const CubeLogo(size: 32),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child:
+                              Text(t.chatsTitle, style: AppTypography.display()),
+                        ),
+                        _ChatsOverflowMenu(
+                          onAddContact: () => context.push('/contact'),
+                          onNewChannel: () =>
+                              showNewChannelDialog(context, ref, t),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      t.chatsSubtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textOnGlassDim,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -417,16 +430,30 @@ class ChatsListScreen extends ConsumerWidget {
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (_, i) {
                     final chat = filtered[i];
+                    final picked = selection.contains(chat.id);
                     return AppearAnimation(
                       enabled: animate,
                       delay: AppearAnimation.stagger(i),
                       child: FloatingGlass(
                         blur: false,
                         borderRadius: 18,
-                        onTap: () => context.push(routeForChat(chat)),
-                        onLongPressAt: (pos) =>
-                            _showChatActions(context, ref, chat, t, pos),
-                        child: ChatTile(chat: chat),
+                        // While anything is selected, a tap picks rather than
+                        // opens — the same rule every list of this shape uses,
+                        // and the only one that lets somebody select a second
+                        // chat without the first one's chat opening on them.
+                        onTap: () {
+                          if (selection.isEmpty) {
+                            context.push(routeForChat(chat));
+                            return;
+                          }
+                          ref
+                              .read(chatSelectionProvider.notifier)
+                              .toggle(chat.id);
+                        },
+                        onLongPressAt: (_) => ref
+                            .read(chatSelectionProvider.notifier)
+                            .toggle(chat.id),
+                        child: ChatTile(chat: chat, selected: picked),
                       ),
                     );
                   },
@@ -435,6 +462,207 @@ class ChatsListScreen extends ConsumerWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// What the title row turns into while chats are picked out.
+///
+/// The quick actions are the ones worth reaching without a menu — pin, mute,
+/// delete — and everything else lives behind the overflow, which is the same
+/// list a single row used to open on a long press. Nothing here is destructive
+/// without a confirmation of its own.
+class _ChatSelectionBar extends ConsumerWidget {
+  const _ChatSelectionBar({required this.selected});
+
+  final List<Chat> selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final peers = ref.read(knownPeersControllerProvider.notifier);
+    final pinned = ref.watch(pinnedChatsControllerProvider);
+    // "Un-pin them" only when every one of them is pinned; a mixed selection
+    // pins, which is the answer that leaves the set in a state somebody asked
+    // for rather than half of one.
+    final allPinned =
+        selected.isNotEmpty && selected.every((c) => pinned.contains(c.id));
+    final direct = selected.where((c) => !c.isChannel).toList();
+    final allMuted =
+        direct.isNotEmpty && direct.every((c) => peers.isMuted(c.id));
+
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(Icons.close_rounded, color: AppColors.textOnGlass),
+          tooltip: t.cancel,
+          onPressed: () => ref.read(chatSelectionProvider.notifier).clear(),
+        ),
+        Text(
+          '${selected.length}',
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        IconButton(
+          icon: Icon(
+            allPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+            color: AppColors.brandPrimary,
+          ),
+          tooltip: _chatText(context, uk: 'Закріпити', en: 'Pin'),
+          onPressed: () async {
+            final pins = ref.read(pinnedChatsControllerProvider.notifier);
+            for (final chat in selected) {
+              await (allPinned ? pins.unpin(chat.id) : pins.pin(chat.id));
+            }
+            ref.read(chatSelectionProvider.notifier).clear();
+          },
+        ),
+        if (direct.isNotEmpty)
+          IconButton(
+            icon: Icon(
+              allMuted
+                  ? Icons.notifications_active_outlined
+                  : Icons.notifications_off_outlined,
+              color: AppColors.textOnGlass,
+            ),
+            tooltip: _chatText(context, uk: 'Без звуку', en: 'Mute'),
+            onPressed: () async {
+              for (final chat in direct) {
+                await peers.setMuted(chat.id, !allMuted);
+              }
+              ref.read(chatSelectionProvider.notifier).clear();
+            },
+          ),
+        IconButton(
+          icon: Icon(Icons.delete_outline, color: AppColors.danger),
+          tooltip: t.chatsActionDelete,
+          onPressed: () async {
+            final chats = [...selected];
+            ref.read(chatSelectionProvider.notifier).clear();
+            for (final chat in chats) {
+              if (!context.mounted) return;
+              await _confirmAndDeleteChat(context, ref, chat, t);
+            }
+          },
+        ),
+        _SelectionOverflow(selected: selected),
+      ],
+    );
+  }
+}
+
+/// The rest of the menu, unchanged in content from the one a long press used
+/// to open — it simply applies to everything picked out instead of to the row
+/// under the finger.
+class _SelectionOverflow extends ConsumerWidget {
+  const _SelectionOverflow({required this.selected});
+
+  final List<Chat> selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final single = selected.length == 1 ? selected.first : null;
+    return IconButton(
+      icon: Icon(Icons.more_vert, color: AppColors.textOnGlass),
+      onPressed: () async {
+        final box = context.findRenderObject() as RenderBox?;
+        final origin = box == null
+            ? Offset.zero
+            : box.localToGlobal(box.size.center(Offset.zero));
+        final action = await showContextPopup<String>(
+          context: context,
+          globalPosition: origin,
+          items: [
+            _chatMenuItem(
+              'folder',
+              Icons.folder_outlined,
+              _chatText(context, uk: 'Додати в папку', en: 'Add to folder'),
+            ),
+            _chatMenuItem(
+              'unread',
+              Icons.mark_chat_unread_outlined,
+              _chatText(
+                context,
+                uk: 'Позначити як непрочитане',
+                en: 'Mark as unread',
+              ),
+            ),
+            _chatMenuItem(
+              'clear',
+              Icons.cleaning_services_outlined,
+              _chatText(
+                context,
+                uk: 'Очистити історію чату',
+                en: 'Clear chat history',
+              ),
+            ),
+            // One person at a time: blocking is about somebody, and a channel
+            // has nobody to block.
+            if (single != null && !single.isChannel)
+              _chatMenuItem(
+                'block',
+                ref
+                        .read(knownPeersControllerProvider.notifier)
+                        .isBlocked(single.id)
+                    ? Icons.lock_open_rounded
+                    : Icons.block_rounded,
+                ref
+                        .read(knownPeersControllerProvider.notifier)
+                        .isBlocked(single.id)
+                    ? t.peerUnblock
+                    : t.peerBlock,
+                color: AppColors.danger,
+              ),
+            _chatMenuItem(
+              'favorite',
+              Icons.star_border,
+              t.chatsActionFavorite,
+              color: AppColors.brandPrimary,
+            ),
+          ],
+        );
+        if (action == null || !context.mounted) return;
+        final chats = [...selected];
+        switch (action) {
+          case 'folder':
+            for (final chat in chats) {
+              if (!context.mounted) return;
+              await _showAddToFolderDialog(context, ref, chat, t);
+            }
+          case 'unread':
+            for (final chat in chats) {
+              if (!context.mounted) return;
+              await _markChatUnread(context, ref, chat);
+            }
+          case 'clear':
+            for (final chat in chats) {
+              if (!context.mounted) return;
+              await _confirmAndClearHistory(context, ref, chat);
+            }
+          case 'block':
+            if (single == null || !context.mounted) return;
+            await _toggleBlocked(
+              context,
+              ref,
+              single,
+              blocked: ref
+                  .read(knownPeersControllerProvider.notifier)
+                  .isBlocked(single.id),
+              t: t,
+            );
+          case 'favorite':
+            final favorites = ref.read(favoritesControllerProvider.notifier);
+            for (final chat in chats) {
+              await favorites.toggle(chat.id);
+            }
+        }
+        ref.read(chatSelectionProvider.notifier).clear();
+      },
     );
   }
 }
@@ -595,112 +823,6 @@ Future<void> _confirmWipe(
 }
 
 /// Long-press actions for one chat.
-Future<void> _showChatActions(
-  BuildContext context,
-  WidgetRef ref,
-  Chat chat,
-  AppLocalizations t,
-  Offset pos,
-) async {
-  // Nothing in this menu means anything for the notebook: there is nobody to
-  // block, no folder it belongs to, and no history to clear that is not simply
-  // everything in it.
-  if (isSavedChat(chat.id)) return;
-  final favorited = chat.isFavorite;
-  final pinned = chat.isPinned;
-  final blocked = !chat.isChannel &&
-      ref.read(knownPeersControllerProvider.notifier).isBlocked(chat.id);
-
-  final action = await showContextPopup<String>(
-    context: context,
-    globalPosition: pos,
-    items: [
-      _chatMenuItem(
-        'pin',
-        pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-        _chatText(
-          context,
-          uk: pinned
-              ? '\u0412\u0456\u0434\u043a\u0440\u0456\u043f\u0438\u0442\u0438'
-              : '\u0417\u0430\u043a\u0440\u0456\u043f\u0438\u0442\u0438',
-          en: pinned ? 'Unpin' : 'Pin',
-        ),
-        color: AppColors.brandPrimary,
-      ),
-      _chatMenuItem(
-        'folder',
-        Icons.folder_outlined,
-        _chatText(
-          context,
-          uk: '\u0414\u043e\u0434\u0430\u0442\u0438 \u0432 \u043f\u0430\u043f\u043a\u0443',
-          en: 'Add to folder',
-        ),
-      ),
-      _chatMenuItem(
-        'unread',
-        Icons.mark_chat_unread_outlined,
-        _chatText(
-          context,
-          uk: '\u041f\u043e\u0437\u043d\u0430\u0447\u0438\u0442\u0438 \u044f\u043a \u043d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u0435',
-          en: 'Mark as unread',
-        ),
-      ),
-      _chatMenuItem(
-        'clear',
-        Icons.cleaning_services_outlined,
-        _chatText(
-          context,
-          uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438 \u0456\u0441\u0442\u043e\u0440\u0456\u044e \u0447\u0430\u0442\u0430',
-          en: 'Clear chat history',
-        ),
-      ),
-      if (!chat.isChannel)
-        _chatMenuItem(
-          'block',
-          blocked ? Icons.lock_open_rounded : Icons.block_rounded,
-          blocked ? t.peerUnblock : t.peerBlock,
-          color: blocked ? AppColors.brandPrimary : AppColors.danger,
-        ),
-      _chatMenuItem(
-        'favorite',
-        favorited ? Icons.star : Icons.star_border,
-        favorited ? t.chatsActionUnfavorite : t.chatsActionFavorite,
-        color: AppColors.brandPrimary,
-      ),
-      _chatMenuItem(
-        'delete',
-        Icons.delete_outline,
-        t.chatsActionDelete,
-        color: AppColors.danger,
-      ),
-    ],
-  );
-
-  if (action == null || !context.mounted) return;
-  switch (action) {
-    case 'pin':
-      await ref.read(pinnedChatsControllerProvider.notifier).toggle(chat.id);
-      return;
-    case 'folder':
-      await _showAddToFolderDialog(context, ref, chat, t);
-      return;
-    case 'unread':
-      await _markChatUnread(context, ref, chat);
-      return;
-    case 'clear':
-      await _confirmAndClearHistory(context, ref, chat);
-      return;
-    case 'block':
-      await _toggleBlocked(context, ref, chat, blocked: blocked, t: t);
-      return;
-    case 'favorite':
-      await ref.read(favoritesControllerProvider.notifier).toggle(chat.id);
-      return;
-    case 'delete':
-      await _confirmAndDeleteChat(context, ref, chat, t);
-      return;
-  }
-}
 
 PopupMenuItem<String> _chatMenuItem(
   String value,

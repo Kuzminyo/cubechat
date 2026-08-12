@@ -4,6 +4,7 @@ import 'package:cubechat/app.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
 import 'package:cubechat/features/chats/data/favorites_controller.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -25,7 +26,8 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  testWidgets('long-pressing a chat opens the actions popup', (tester) async {
+  testWidgets('long-pressing a chat picks it out for a bulk action',
+      (tester) async {
     await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
@@ -39,18 +41,23 @@ void main() {
     expect(find.text('#test'), findsWidgets);
 
     await tester.longPress(find.text('#test').first);
-    // Let the popup route animate in (not pumpAndSettle: the aurora animates
-    // forever, so the tree never settles).
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // The popup carries both actions — proof it opened (and, being on the root
-    // navigator, above the floating bar).
-    expect(find.text('Delete chat'), findsOneWidget);
-    expect(find.text('Add to favorites'), findsOneWidget);
+    // The title row has become the selection bar: a count, and the actions
+    // worth reaching without opening anything.
+    expect(find.text('1'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+
+    // And the way out puts the header back.
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
   });
 
-  testWidgets('favoriting from the popup persists and re-sorts', (tester) async {
+  testWidgets('favouriting from the selection menu persists', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 300));
@@ -62,6 +69,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     await tester.longPress(find.text('#test').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The rest of the actions live behind the overflow on the selection bar.
+    await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
