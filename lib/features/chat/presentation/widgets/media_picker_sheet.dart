@@ -89,6 +89,7 @@ class MediaPickerSheet extends StatefulWidget {
 class _MediaPickerSheetState extends State<MediaPickerSheet> {
   final List<AssetEntity> _assets = [];
   final List<AssetEntity> _selected = []; // tap order preserved for numbering
+  final Map<String, int> _selectedOrder = <String, int>{};
   final ScrollController _scroll = ScrollController();
   final TextEditingController _caption = TextEditingController();
 
@@ -246,9 +247,27 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
 
   void _toggle(AssetEntity asset) {
     setState(() {
-      if (!_selected.remove(asset)) _selected.add(asset);
+      final existing = _selected.indexWhere((item) => item.id == asset.id);
+      if (existing >= 0) {
+        _selected.removeAt(existing);
+      } else {
+        _selected.add(asset);
+      }
+      _rebuildSelectedOrder();
     });
   }
+
+  void _rebuildSelectedOrder() {
+    _selectedOrder
+      ..clear()
+      ..addEntries(
+        _selected.indexed.map(
+          (entry) => MapEntry(entry.$2.id, entry.$1),
+        ),
+      );
+  }
+
+  int _orderOf(AssetEntity asset) => _selectedOrder[asset.id] ?? -1;
 
   void _close([MediaPickerResult? result]) {
     if (!mounted || _allowPop) return;
@@ -297,8 +316,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         builder: (_) => GalleryViewer(
           assets: _assets,
           initialIndex: index,
-          isSelected: _selected.contains,
-          orderOf: (a) => _selected.indexOf(a) + 1,
+          isSelected: (asset) => _selectedOrder.containsKey(asset.id),
+          orderOf: (asset) => _orderOf(asset) + 1,
           onToggle: _toggle,
         ),
       ),
@@ -404,7 +423,12 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         ),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         cacheExtent: 900,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: EdgeInsets.fromLTRB(
+          8,
+          0,
+          8,
+          120 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           mainAxisSpacing: 3,
@@ -423,7 +447,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
             // its photo instead of its grid slot as pages are appended.
             key: ValueKey<String>(asset.id),
             asset: asset,
-            order: _selected.indexOf(asset),
+            order: _orderOf(asset),
             // Tap the photo or its round control to select it; the small
             // control in the opposite corner opens it full screen. The
             // caption/send bar below is the only confirmation surface.
@@ -721,7 +745,12 @@ class _ThumbState extends State<_Thumb> {
               if (bytes == null) {
                 return Container(color: AppColors.glassFill);
               }
-              return Image.memory(bytes, fit: BoxFit.cover);
+              return Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.low,
+              );
             },
           ),
           if (selected) Container(color: Colors.black.withValues(alpha: 0.35)),
