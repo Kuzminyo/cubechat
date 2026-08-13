@@ -209,8 +209,18 @@ jobs:
           CUBECHAT_RELEASE_STORE_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_STORE_PASSWORD || steps.signing.outputs.store_pass }}
           CUBECHAT_RELEASE_KEY_ALIAS: ${{ secrets.CUBECHAT_RELEASE_KEY_ALIAS || 'cubechat' }}
           CUBECHAT_RELEASE_KEY_PASSWORD: ${{ secrets.CUBECHAT_RELEASE_KEY_PASSWORD || steps.signing.outputs.store_pass }}
+          # Gradle reads this through `secret()`, which falls back to the
+          # environment. Locally it comes from local.properties, which is not in
+          # the repository — so every APK CI has ever published shipped with an
+          # empty key and a map that draws nothing but the Google logo. That is
+          # the "black map on some phones": the phones with the release build.
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -e
+          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+            echo "::error::GOOGLE_MAPS_API_KEY secret is empty — the map would build black"
+            exit 1
+          fi
           flutter build apk --release --split-per-abi
           flutter build apk --release
 

@@ -79,6 +79,25 @@ jobs:
       - name: Pre-cache iOS artifacts
         run: flutter precache --ios
 
+      # Without this the IPA ships with no Maps key at all: MapsKeys.xcconfig
+      # is gitignored, so the placeholder in Info.plist stays literal,
+      # provideAPIKey is never called, and the Google Maps SDK throws the
+      # moment a map view is created — the app quits on the Map tab. The key
+      # is a repo secret rather than a file in the tree because this
+      # repository is public.
+      - name: Write the Google Maps key
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+            echo "::error::GOOGLE_MAPS_API_KEY secret is empty — the map would crash the app"
+            exit 1
+          fi
+          printf 'GOOGLE_MAPS_API_KEY=%s\n' "$GOOGLE_MAPS_API_KEY" \
+            > ios/Flutter/MapsKeys.xcconfig
+          echo "key written, ${#GOOGLE_MAPS_API_KEY} chars"
+
       - name: Check Runner Swift sources are in the build phase
         run: |
           set -e
