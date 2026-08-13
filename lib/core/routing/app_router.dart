@@ -31,12 +31,36 @@ import 'page_transitions.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 
+/// Put the keyboard away when the screen that raised it goes.
+///
+/// A field keeps focus while its route is torn down, and on iOS that leaves the
+/// keyboard standing over whatever comes next — the chat list, Contacts,
+/// Nearby — with nothing on screen to dismiss it. The only way out a tester
+/// found was to open a chat and tap the composer, which moves focus somewhere
+/// that can give it up. Focus is released as the pop begins instead, which is
+/// where it should have been let go.
+class _DismissKeyboardOnPop extends NavigatorObserver {
+  void _release() => FocusManager.instance.primaryFocus?.unfocus();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _release();
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _release();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      _release();
+}
+
 /// [seenOnboarding] is read from disk before the first frame (see
 /// `readSeenOnboardingFlag`) so a first run opens straight onto the intro
 /// rather than rendering the chats list and redirecting away from it.
 GoRouter buildRouter({bool seenOnboarding = true}) {
   return GoRouter(
     navigatorKey: _rootNavKey,
+    observers: [_DismissKeyboardOnPop()],
     initialLocation: seenOnboarding ? '/chats' : '/onboarding',
     // Two directions, both narrow. A deep link cannot land somebody inside the
     // app before they have seen the intro, and revisiting /onboarding after

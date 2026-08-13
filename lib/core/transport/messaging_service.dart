@@ -19,6 +19,7 @@ import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
+import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chat/models/message.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
@@ -1921,9 +1922,22 @@ class MessagingService {
         : null;
     if (isChannel && channel == null) return; // left it, or never joined
 
+    // Only what the user has actually read.
+    //
+    // The read marker is the record of that, and it was not consulted here at
+    // all: this acknowledged every inbound message that had not been
+    // acknowledged yet, and the retry sweep runs it over *every* chat whenever
+    // a route appears. So messages sitting unopened were reported as read —
+    // the other phone showed two ticks for a conversation nobody had looked
+    // at. No marker means the chat has never been opened, and there is nothing
+    // honest to report about it.
+    final readUpTo = _ref.read(readMarkersControllerProvider)[canonicalId];
+    if (readUpTo == null) return;
+
     final fresh = <Uint8List>[];
     for (final m in msgs) {
       if (m.isMine) continue;
+      if (m.sentAt.isAfter(readUpTo)) continue;
       final w = m.wireId;
       if (w == null || _sentReadAcks.contains(w)) continue;
       try {

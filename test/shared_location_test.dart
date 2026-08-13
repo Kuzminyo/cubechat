@@ -112,4 +112,13 @@ void main() {
     expect(uri.toString(), contains('50.45'));
     expect(uri.toString(), contains('30.52'));
   });
+
+  test('the link the platform opens is the one it knows', () {
+    const here = SharedLocation(latitude: 50.45, longitude: 30.52);
+    // The test host is not iOS, so this is the Android answer; the iOS branch
+    // is the reason the getter exists at all — `geo:` has no handler there and
+    // the tap did nothing but raise an error toast.
+    expect(here.mapsUri, here.geoUri);
+    expect(here.mapsUri.toString(), contains('50.45'));
+  });
 }

@@ -1241,7 +1241,7 @@ class _SharedLocationBubble extends StatelessWidget {
           else
             GestureDetector(
               onTap: () async {
-                final uri = location.geoUri;
+                final uri = location.mapsUri;
                 if (!await launchUrl(uri,
                     mode: LaunchMode.externalApplication)) {
                   if (!context.mounted) return;

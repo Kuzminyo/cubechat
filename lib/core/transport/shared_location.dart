@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../util/platform_info.dart';
+
 /// A position, shared into a conversation as an ordinary text message.
 ///
 /// The same trick [SharedContact] uses, and for the same reason: a location is
@@ -171,4 +173,16 @@ class SharedLocation {
   Uri get geoUri => Uri.parse(
         'geo:$latitude,$longitude?q=$latitude,$longitude',
       );
+
+  /// The same place, in the form the platform under us will actually open.
+  ///
+  /// iOS registers no handler for `geo:` at all — not Apple Maps, not Google
+  /// Maps — so tapping "open in maps" there did nothing but raise the error
+  /// toast, while the identical build on Android opened Google Maps. Apple's
+  /// https form is routed to the Maps app by the system, and to Google Maps
+  /// for anyone who has set it as their default.
+  Uri get mapsUri => PlatformInfo.isIOS
+      ? Uri.parse('https://maps.apple.com/?ll=$latitude,$longitude'
+          '&q=$latitude,$longitude')
+      : geoUri;
 }

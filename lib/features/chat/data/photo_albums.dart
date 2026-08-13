@@ -47,7 +47,15 @@ const int kMaxAlbumPhotos = 9;
 /// what this measures. Long enough to cover a set of heavy photos; short
 /// enough that a picture sent later, as a reply to something said in between,
 /// stays its own message.
-const Duration kAlbumWindow = Duration(seconds: 90);
+///
+/// Five minutes, not ninety seconds, because a received photo is stamped when
+/// its last chunk lands rather than when it was sent — nothing on the wire
+/// carries the sender's clock — so the gap between two of them includes the
+/// whole transfer of the first. Two pictures sent together from an iPhone over
+/// Bluetooth arrived four minutes apart and drew as two bubbles, while the
+/// same pair over a fast link grouped correctly. The proper fix is a timestamp
+/// in the manifest; this stops the display depending on the link speed.
+const Duration kAlbumWindow = Duration(minutes: 5);
 
 /// Fold consecutive photos from one sender into albums.
 ///
