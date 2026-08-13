@@ -806,7 +806,7 @@ class _ChatHeader extends StatelessWidget {
   }
 }
 
-class _ChatRouteIndicator extends StatelessWidget {
+class _ChatRouteIndicator extends ConsumerWidget {
   const _ChatRouteIndicator({
     required this.route,
     this.hops,
@@ -818,8 +818,24 @@ class _ChatRouteIndicator extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
+    // A queued message with the internet fallback switched off is a message
+    // that is not going anywhere until the two phones are in Bluetooth range
+    // again — and nothing said so. It read as "sending", for hours. The
+    // fallback is opt-in for a good reason (a relay learns both Nostr pubkeys
+    // and when you talk), so this does not turn it on; it says which switch is
+    // the reason and takes you to it.
+    if (route == ChatRoute.queued && !ref.watch(relaySettingsProvider).isActive) {
+      return GestureDetector(
+        onTap: () => context.push('/relays'),
+        child: _routeChip(
+          Icons.cloud_off_rounded,
+          t.chatRouteFallbackOff,
+          AppColors.warning,
+        ),
+      );
+    }
     final (icon, baseLabel, color) = switch (route) {
       ChatRoute.bluetooth => (
           Icons.bluetooth_rounded,
@@ -845,29 +861,31 @@ class _ChatRouteIndicator extends StatelessWidget {
     final label = route == ChatRoute.mesh && hops != null
         ? '$baseLabel · $hops'
         : baseLabel;
-    return Tooltip(
-      message: label,
-      child: compact
-          ? Icon(icon, size: 13, color: color)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 12, color: color),
-                const SizedBox(width: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-    );
+    return _routeChip(icon, label, color);
   }
+
+  Widget _routeChip(IconData icon, String label, Color color) => Tooltip(
+        message: label,
+        child: compact
+            ? Icon(icon, size: 13, color: color)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 12, color: color),
+                  const SizedBox(width: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      );
 }
 
 /// The conversation itself: an optional pinned-message bar, the message list,
@@ -1921,13 +1939,13 @@ class _PinnedBar extends StatelessWidget {
         // The thumbnail carries the "it's a photo" part, so the line beside it
         // is free for the caption — or, failing that, a plain label.
         final caption = message.text.trim();
-        preview = _looksLikeMime(caption) ? 'рџ“· Photo' : caption;
+        preview = _looksLikeMime(caption) ? '📷 Photo' : caption;
       case MessageKind.audio:
-        preview = 'рџЋ¤ Voice message';
+        preview = '🎤 Voice message';
       case MessageKind.file:
-        preview = 'рџ“Ћ ${message.fileName ?? 'File'}';
+        preview = '📎 ${message.fileName ?? 'File'}';
       case MessageKind.poll:
-        preview = 'рџ“Љ ${message.text}';
+        preview = '📊 ${message.text}';
       case MessageKind.text:
         preview = message.text.replaceAll('\n', ' ').trim();
     }
@@ -2816,7 +2834,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  /// Camera tile в†’ in-app capture в†’ editor в†’ send.
+  /// Camera tile → in-app capture → editor → send.
   Future<void> _captureEditAndSend() async {
     final captured = await Navigator.of(context).push<Uint8List>(
       mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),

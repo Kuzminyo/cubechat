@@ -278,7 +278,7 @@ class BleScanner {
       // that rotation (for an epoch) and is what a cubechat build now
       // advertises, so it is the best key we have. Older builds advertising a
       // name fall back to it, and anything unnamed to the MAC.
-      final key = rotatingId != null
+      var key = rotatingId != null
           ? 'r:$rotatingId'
           : (advName.isNotEmpty ? 'n:$advName' : 'm:$mac');
       // Logged once per newly-seen advertiser, not per scan result — this fires
@@ -292,7 +292,29 @@ class BleScanner {
                   '${r.advertisementData.serviceData.length} service-data entries)',
         );
       }
-      final existing = _peers[key];
+      var existing = _peers[key];
+      // One phone, two keys. iOS puts the service data in the scan *response*,
+      // so a run of advertisements from the same peripheral alternates between
+      // carrying a rotating id and not — and those two produce different keys.
+      // Both are the same device, which the platform id proves, and the result
+      // on screen was five "Anonymous" rows in a room with two people in it.
+      //
+      // Whichever key we end up under, the entry is merged rather than added:
+      // the one with a rotating id wins, because that is the key that survives
+      // an address rotation.
+      if (existing == null) {
+        final twinKey = _keyOfDeviceId(mac);
+        if (twinKey != null) {
+          final twin = _peers[twinKey]!;
+          if (rotatingId != null && !twinKey.startsWith('r:')) {
+            _peers.remove(twinKey);
+            existing = twin;
+          } else {
+            key = twinKey;
+            existing = twin;
+          }
+        }
+      }
       if (existing == null) {
         _peers[key] = DiscoveredPeer(
           id: mac,
@@ -387,6 +409,18 @@ class BleScanner {
     _gcTimer?.cancel();
     _gcTimerPeriod = period;
     _gcTimer = Timer.periodic(period, (_) => _gcStalePeers());
+  }
+
+  /// The key of the entry already holding [deviceId], if any.
+  ///
+  /// Linear, and deliberately: this map holds what is in Bluetooth range, which
+  /// is a handful of entries, and a second index would have to be kept honest
+  /// through every rotation and eviction below.
+  String? _keyOfDeviceId(String deviceId) {
+    for (final entry in _peers.entries) {
+      if (entry.value.id == deviceId) return entry.key;
+    }
+    return null;
   }
 
   void _gcStalePeers() {

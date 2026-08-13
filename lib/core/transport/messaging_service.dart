@@ -505,7 +505,14 @@ class MessagingService {
   /// caller then falls through to store-and-forward exactly as before.
   Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
     final transport = _nostr;
-    if (transport == null) return false;
+    // Said out loud, because the silence here is what made a phone look broken:
+    // messages queued for hours with no line in the log to say the internet
+    // fallback was simply switched off on that device.
+    if (transport == null) {
+      DebugLog.instance.log(
+          'NOSTR', 'internet fallback is off — $canonicalId stays queued');
+      return false;
+    }
     // If the relay pool is merely asleep/backing off, wake it and wait briefly
     // for one socket. This is the common iOS path: the user opens the app or a
     // background window starts, immediately sends/flushes something, and the

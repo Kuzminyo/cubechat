@@ -1223,6 +1223,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatRouteQueued => 'У черзі';
 
   @override
+  String get chatRouteFallbackOff => 'Інтернет вимк.';
+
+  @override
   String get chatAttachmentUnavailable =>
       'Немає доступного з\'єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.';
 

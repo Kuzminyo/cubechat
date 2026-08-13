@@ -46,7 +46,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     WidgetsBinding.instance.addObserver(this);
     // Seed the foreground flag. didChangeAppLifecycleState only fires on a
     // *transition*, so an app that starts already resumed never gets the
-    // callback вЂ” isForeground would stay false for the whole session, and
+    // callback — isForeground would stay false for the whole session, and
     // AppLifecycle.isViewingChat (foreground && this chat open) could never be
     // true. The visible symptom: notifications for the very chat you're
     // reading, until you background and reopen the app once.
@@ -67,7 +67,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   /// Bring Bluetooth up when the app does, not when somebody opens Nearby.
   ///
-  /// This used to be called from exactly one place вЂ” `PeersScreen.initState` вЂ”
+  /// This used to be called from exactly one place — `PeersScreen.initState` —
   /// and the Nearby branch is deliberately the one tab the router does not
   /// preload. Between them, a phone that launched into Chats and stayed there
   /// never advertised, never scanned, and held no links: the mesh was off for
@@ -76,7 +76,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// whole premise is working without a relay to fall through to.
   ///
   /// It does not undo the heat work. What that changed was the *cadence*, and
-  /// the cadence is picked per scan window by `shouldScanActively` вЂ” active
+  /// the cadence is picked per scan window by `shouldScanActively` — active
   /// only while somebody is watching the Nearby list or we owe a delivery, idle
   /// everywhere else. Starting the scanner at launch runs it at the idle
   /// cadence, which is the state that fix was aiming for; what it was not
@@ -87,7 +87,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     unawaited(ref.read(peerDiscoveryControllerProvider.notifier).start());
   }
 
-  /// Opens the chat for [chatId] вЂ” a pubkey-hex canonical id, or a `#channel`
+  /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`
   /// name. Resolves the display name from the KnownPeers roster for the header.
   void _openChat(String chatId) {
     // A channel's id starts with '#', which is the URL fragment delimiter and
@@ -105,7 +105,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     );
   }
 
-  /// Send the text of an inline notification reply to [chatId] вЂ” a `#channel`
+  /// Send the text of an inline notification reply to [chatId] — a `#channel`
   /// broadcast or a 1:1 peer send. Best-effort; a send failure is already
   /// surfaced/logged inside the messaging layer.
   void _replyToChat(String chatId, String text) {
@@ -115,11 +115,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     } else {
       unawaited(messaging.sendText(chatId, text));
     }
-    // A reply means the user has seen the conversation вЂ” clear its badge.
+    // A reply means the user has seen the conversation — clear its badge.
     ref.read(readMarkersControllerProvider.notifier).markRead(chatId);
   }
 
-  /// Pending "I'm gone" beacon вЂ” see [_announcePresenceDebounced].
+  /// Pending "I'm gone" beacon — see [_announcePresenceDebounced].
   Timer? _goodbyeTimer;
 
   /// What our contacts currently believe. Starts true because the app is in the
@@ -129,7 +129,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// How long the app has to come back before its contacts are told it left.
   ///
   /// `inactive` was already excluded for this reason, but Android reports a
-  /// full `paused` for the file picker, the camera and the share sheet вЂ” so a
+  /// full `paused` for the file picker, the camera and the share sheet — so a
   /// tester sending one screenshot produced goodbye/hello pairs seconds apart,
   /// each fanning out to every contact on every relay. Their own log shows the
   /// result: presence flipping four times in fifteen seconds, and
@@ -182,7 +182,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
     if (online) {
       // Coming back before the grace ran out means nobody was ever told we
-      // left, so there is nothing to correct вЂ” staying quiet is the whole
+      // left, so there is nothing to correct — staying quiet is the whole
       // point.
       if (_announcedOnline) return;
       _announcedOnline = true;
@@ -217,13 +217,13 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     _applyBackgroundRadioPolicy(resumed: state == AppLifecycleState.resumed);
     // Tell internet-reachable peers we've arrived / are leaving, so their "in
     // the app" dot flips now instead of waiting out the heartbeat. The goodbye
-    // is best-effort by nature вЂ” the OS can kill us without another callback вЂ”
+    // is best-effort by nature — the OS can kill us without another callback —
     // which is why the beacon also carries a TTL on the receiving side.
     //
     // Only the two states that actually mean something. `inactive` is the
     // transient step the OS passes through whenever anything covers the app for
-    // a moment вЂ” the camera, the photo picker, the share sheet, the notification
-    // shade вЂ” and treating it as "left the app" made every one of those emit a
+    // a moment — the camera, the photo picker, the share sheet, the notification
+    // shade — and treating it as "left the app" made every one of those emit a
     // goodbye and then a hello, each fanning out to every peer on every relay.
     // On a real device that read as a burst several times a second and earned a
     // `rate-limited: you are noting too much` from the relays, which then
@@ -242,7 +242,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       unawaited(ref.read(messagesControllerProvider.notifier).flushPending());
     }
     // The engine is pre-warmed in MainApplication, so main() (and this
-    // widget) can build while the app is still headless вЂ” and Android 12+
+    // widget) can build while the app is still headless — and Android 12+
     // forbids starting a foreground service from the background. Re-apply
     // background mode whenever we come to the foreground so the service
     // actually starts (or restarts) from an allowed state.
@@ -273,7 +273,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   ///
   /// iOS has no equivalent of Android's foreground service. Info.plist declares
   /// the bluetooth-central/peripheral background modes, so the process is never
-  /// suspended вЂ” scanning kept cycling the radio, the peripheral kept
+  /// suspended — scanning kept cycling the radio, the peripheral kept
   /// advertising, and the timers kept firing, forever, no matter what the
   /// toggle said. The toggle was inert on iOS (the `cubechat/background`
   /// channel only exists in MainApplication.kt), which is why an iPhone ran hot
@@ -284,8 +284,8 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// That is true eventually and not soon: a paused Android process keeps its
   /// Dart timers running and its advertisement live until Doze takes over,
   /// which needs the device to be still, and which the foreground service opts
-  /// out of entirely. So the phone that was promised the cheapest behaviour вЂ”
-  /// preference off, screen off, in a pocket вЂ” was the one still advertising
+  /// out of entirely. So the phone that was promised the cheapest behaviour —
+  /// preference off, screen off, in a pocket — was the one still advertising
   /// four times a second. Both platforms now take the radio down when the
   /// preference is off.
   ///
@@ -303,7 +303,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   /// Cheap advertising while the app is out of sight, normal while it is not.
   ///
-  /// Only meaningful when the radio stays up at all вЂ” which is the
+  /// Only meaningful when the radio stays up at all — which is the
   /// stay-reachable case, where suspending is exactly what the user asked us
   /// not to do. Scanning already backs off on its own; this is the other half,
   /// and the one that runs continuously rather than in windows.
@@ -324,7 +324,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     ref.watch(mapPresenceControllerProvider);
     // Keyed on the palette revision. AppColors' fields are mutated in place
     // (see ThemeController for why), so widgets already built are holding the
-    // old colours вЂ” changing the key throws the tree away and builds it again.
+    // old colours — changing the key throws the tree away and builds it again.
     final palette = ref.watch(themeControllerProvider);
     return KeyedSubtree(
       key: ValueKey('palette-${palette.id}'),
@@ -346,7 +346,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // pointer event without claiming any of them, so nothing downstream
       // changes behaviour; `poke` only re-arms a timer.
       // The voice bar wraps everything the router builds, so it survives a
-      // push into a profile, a search, or another chat вЂ” which is the whole
+      // push into a profile, a search, or another chat — which is the whole
       // point of playback outliving the bubble that started it.
       builder: (context, child) => _ClampedTextScale(
         child: Listener(
@@ -411,8 +411,8 @@ class _TapToDismissKeyboard extends StatelessWidget {
 
 /// Decide how large this UI draws, and bound how far that can go.
 ///
-/// The app is built from capsules of fixed height вЂ” the 56-pixel chat header,
-/// the nav bar, the settings rows вЂ” so a phone set to its largest font pushed
+/// The app is built from capsules of fixed height — the 56-pixel chat header,
+/// the nav bar, the settings rows — so a phone set to its largest font pushed
 /// labels out of them, which is what "the text runs off" looked like on some
 /// devices. Clamping rather than ignoring: an accessibility setting is a
 /// request, and honouring most of it beats honouring none, which is what
@@ -422,7 +422,7 @@ class _TapToDismissKeyboard extends StatelessWidget {
 /// but going much smaller makes the timestamps unreadable, which is its own
 /// accessibility failure.
 ///
-/// On top of that the user can override the phone entirely вЂ” see [UiScale] for
+/// On top of that the user can override the phone entirely — see [UiScale] for
 /// why anyone would want to. An override is still clamped, so a setting in here
 /// can never break the layout either.
 class _ClampedTextScale extends ConsumerWidget {
