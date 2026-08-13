@@ -85,9 +85,16 @@ jobs:
       # moment a map view is created — the app quits on the Map tab. The key
       # is a repo secret rather than a file in the tree because this
       # repository is public.
+      #
+      # Its own key, falling back to the shared one. A Maps key can be
+      # restricted to the apps allowed to use it, and an iOS bundle id and an
+      # Android package name are different restrictions — one key that only
+      # names the Android app is accepted by the SDK and then refuses to draw
+      # tiles, which is a grey map with a Google logo on it and no error
+      # anywhere.
       - name: Write the Google Maps key
         env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY_IOS || secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -e
           if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
