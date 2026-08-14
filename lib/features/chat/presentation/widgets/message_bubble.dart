@@ -855,6 +855,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     //
     // The RepaintBoundary stays: it keeps one bubble's repaint out of its
     // neighbours as the list scrolls.
+    // Drawn edge to edge, so the rows around it put their own inset back.
+    final photo = message.kind == MessageKind.image;
+    const inset = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
+    Widget inBubble(Widget child) =>
+        photo ? Padding(padding: inset, child: child) : child;
+
     final bubble = RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -864,7 +870,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         child: ClipRRect(
           borderRadius: radius,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            // A photo fills its bubble; everything else sits inside padding.
+            //
+            // A picture framed by fourteen points of tinted glass on every side
+            // reads as a picture *of* a message. Letting it run to the rounded
+            // corners is what every messenger does, and it also buys back the
+            // width: the same photo is drawn larger without the bubble growing.
+            // The rows that keep their inset — an author's name, the caption,
+            // the time — ask for it themselves below.
+            padding: photo
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: mine
                 ? BoxDecoration(
                     gradient: LinearGradient(
@@ -890,18 +906,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // Channel messages from others: show the author's name on top,
                 // since a channel mixes many senders in one conversation.
                 if (!mine && message.authorName != null) ...[
-                  Text(
-                    message.authorName!,
-                    style: TextStyle(
-                      color: AppColors.brandPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  inBubble(
+                    Text(
+                      message.authorName!,
+                      style: TextStyle(
+                        color: AppColors.brandPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  if (!photo) const SizedBox(height: 2),
                 ],
                 if (message.replyToWireId != null)
-                  _quotedBox(message.replyToWireId!),
+                  inBubble(_quotedBox(message.replyToWireId!)),
                 if (message.kind == MessageKind.image) ...[
                   if (widget.album case final album?)
                     _AlbumPayload(
@@ -923,15 +941,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // One caption for the set. It is sent on the first photo of a
                   // batch, which is where it used to be drawn — reading as a
                   // remark about that one picture rather than about the lot.
-                  if (_caption case final caption?) ...[
-                    const SizedBox(height: 6),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: widget.album == null ? 220 : _kAlbumWidth,
+                  if (_caption case final caption?)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: widget.album == null ? 220 : _kAlbumWidth,
+                        ),
+                        child: MentionText(caption),
                       ),
-                      child: MentionText(caption),
                     ),
-                  ],
                 ] else if (message.kind == MessageKind.audio)
                   VoiceBubble(message: message, chatId: widget.chatId)
                 else if (message.kind == MessageKind.file)
@@ -996,8 +1015,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   )
                 else
                   MentionText(message.text),
-                const SizedBox(height: 4),
-                _BubbleMeta(message: message, pinned: pinned),
+                if (!photo) const SizedBox(height: 4),
+                inBubble(_BubbleMeta(message: message, pinned: pinned)),
               ],
             ),
           ),
@@ -1807,8 +1826,12 @@ class _ImagePayload extends StatelessWidget {
             ),
             child: Hero(
               tag: heroTag,
+              // No rounding of its own any more: the bubble clips to its own
+              // corners now that the photo reaches them, and a second, tighter
+              // radius inside that one drew a visible sliver of bubble in each
+              // corner — the frame this change exists to remove, only thinner.
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.zero,
                 child: Image.file(
                   File(path),
                   fit: BoxFit.cover,
