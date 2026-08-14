@@ -72,7 +72,7 @@ class MainActivity : FlutterActivity() {
             BUILD_INFO_CHANNEL,
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "buildFacts" -> result(
+                "buildFacts" -> result.success(
                     mapOf(
                         "mapsKeyTail" to mapsKeyTail(),
                         "bundleId" to packageName,
