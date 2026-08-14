@@ -194,7 +194,7 @@ class Message {
     final t = text.trim();
     if (t.isEmpty) return null;
     if (t.startsWith('image/') || t.startsWith('audio/')) return null;
-    if (t == stickerMarker) return null;
+    if (t.startsWith(stickerMarker)) return null;
     return t;
   }
 
@@ -211,10 +211,31 @@ class Message {
   /// odd line under it, rather than nothing at all.
   static const String stickerMarker = 'cubechat:sticker:v1';
 
+  /// The marker for a sticker that was given a face: `…:v1:😀`.
+  ///
+  /// The emoji is what a sticker is *called* — it is what the chat list and a
+  /// reply quote show in place of a picture they cannot draw, because "🔥" says
+  /// what was sent and "cubechat:sticker:v1" says only that the reader is
+  /// looking at plumbing. It rides in the same field for the same reason the
+  /// marker does: no new payload type, and an older build shows a picture with
+  /// an odd line under it rather than nothing.
+  static String stickerMarkerFor(String? emoji) =>
+      emoji == null || emoji.isEmpty ? stickerMarker : '$stickerMarker:$emoji';
+
   /// Drawn without a bubble, larger, and with no caption line — the way every
   /// messenger draws one.
   bool get isSticker =>
-      kind == MessageKind.image && text.trim() == stickerMarker;
+      kind == MessageKind.image && text.trim().startsWith(stickerMarker);
+
+  /// The emoji this sticker was filed under, or null for one sent before they
+  /// had any (or by a build that does not set them).
+  String? get stickerEmoji {
+    if (!isSticker) return null;
+    final rest = text.trim().substring(stickerMarker.length);
+    if (!rest.startsWith(':')) return null;
+    final emoji = rest.substring(1).trim();
+    return emoji.isEmpty ? null : emoji;
+  }
 
   Message copyWith({
     MessageStatus? status,

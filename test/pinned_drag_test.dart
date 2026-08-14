@@ -28,7 +28,7 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  testWidgets('dragging a pin by its mark reorders the pinned block',
+  testWidgets('dragging a pinned row by its grip reorders the pinned block',
       (tester) async {
     await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
     await tester.pump(const Duration(milliseconds: 50));
@@ -48,12 +48,22 @@ void main() {
     // Pinning prepends, so the newest pin is on top.
     expect(container.read(pinnedChatsControllerProvider), ['#two', '#one']);
 
-    final handle = find.byIcon(Icons.push_pin_rounded).first;
+    // Nothing to drag by until the list is held: a permanently visible grip is
+    // a control on every pinned row of a list nobody is rearranging.
+    expect(find.byIcon(Icons.drag_handle_rounded), findsNothing);
+
+    await tester.longPress(find.text('#two').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The two bars at the end of the row, not the pin: the pin marks, the grip
+    // drags. A pinned row has both, and only the grip starts a reorder.
+    final handle = find.byIcon(Icons.drag_handle_rounded).first;
     expect(handle, findsOneWidget);
     final rowHeight = tester.getSize(find.byType(ChatTile).first).height;
 
-    // The mark is the grip: a plain drag on it starts the reorder, no long
-    // press — that gesture belongs to selection.
+    // A plain drag on it starts the reorder, no long press — that gesture
+    // belongs to selection.
     final gesture = await tester.startGesture(tester.getCenter(handle));
     for (var i = 0; i < 4; i++) {
       await gesture.moveBy(Offset(0, rowHeight / 3));

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
+import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../peers/data/contact_removal.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
@@ -189,6 +193,13 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         borderRadius: 18,
                         onTap: () =>
                             context.push(routeForContactProfile(contact)),
+                        // Deleting somebody lived one screen in, at the bottom
+                        // of their profile, behind a panel that has to be
+                        // opened first — which is three steps away from the
+                        // list people look at when they want somebody gone.
+                        onLongPressAt: (at) => unawaited(
+                          _showContactMenu(context, ref, contact, at),
+                        ),
                         child: _ContactTile(contact: contact),
                       ),
                     );
@@ -200,6 +211,97 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
       ),
     );
   }
+}
+
+/// What holding a contact offers: the profile, and the way out of the list.
+Future<void> _showContactMenu(
+  BuildContext context,
+  WidgetRef ref,
+  Chat contact,
+  Offset at,
+) async {
+  final t = AppLocalizations.of(context);
+  final action = await showContextPopup<String>(
+    context: context,
+    globalPosition: at,
+    items: [
+      PopupMenuItem<String>(
+        value: 'open',
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_outline, size: 19, color: AppColors.textOnGlass),
+            const SizedBox(width: 12),
+            Text(
+              t.contactProfileOpen,
+              style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'delete',
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.person_remove_outlined,
+                size: 19, color: AppColors.danger),
+            const SizedBox(width: 12),
+            Text(
+              t.contactProfileDelete,
+              style: const TextStyle(color: AppColors.danger, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+  if (action == null || !context.mounted) return;
+  if (action == 'open') {
+    context.push(routeForContactProfile(contact));
+    return;
+  }
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
+      ),
+      title: Text(
+        t.contactProfileDeleteTitle,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Text(
+        t.contactProfileDeleteMessage(contact.peerName),
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(
+            t.contactProfileDelete,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await forgetContactEverywhere(ref, contact.peerId);
 }
 
 /// The pinned row that opens the contact-card screen.

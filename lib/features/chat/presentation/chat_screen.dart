@@ -42,6 +42,7 @@ import '../../peers/data/presence_controller.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
+import '../../stickers/data/sticker_library.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
 import '../data/message_selection.dart';
@@ -59,6 +60,7 @@ import '../domain/command_processor.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
 import 'widgets/chat_input.dart';
+import 'widgets/emoji_picker_sheet.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
@@ -196,7 +198,11 @@ class ChatScreen extends ConsumerWidget {
     return PopScope<void>(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) context.go('/chats');
+        // `!canPop` as well, because every registered scope on this route is
+        // told about a blocked pop — including the ones that blocked it for
+        // their own reasons (an open emoji panel, a running selection). Without
+        // this, closing the panel with the back gesture also left the chat.
+        if (!didPop && !canPop) context.go('/chats');
       },
       child: child,
     );
@@ -2277,6 +2283,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// start a second recording on top of an unreviewed one.
   PendingVoice? _pendingVoice;
 
+  /// Bumped to ask the composer to open its sticker panel — see
+  /// [ChatInput.openStickerPanel]. A counter rather than a flag because the
+  /// same request can arrive twice and both times mean "open it now".
+  final ValueNotifier<int> _stickerPanelRequests = ValueNotifier<int>(0);
+
   void _showAttachmentFailure(Object error) {
     final t = AppLocalizations.of(context);
     // Also into the log, not just the toast. A toast is gone in three seconds
@@ -2395,6 +2406,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   @override
   void dispose() {
     _tick?.cancel();
+    _stickerPanelRequests.dispose();
     // Only clear if we're still the active chat — guards against the
     // next chat's initState having already set itself during a transition.
     if (AppLifecycle.instance.activeChatId == widget.canonicalId) {
@@ -2576,8 +2588,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _shareLocation();
       case MediaPickerEdit(:final asset):
         await _editGalleryPhoto(asset);
-      case MediaPickerSticker(:final path):
-        await _sendSticker(path);
+      case MediaPickerStickers():
+        // Straight to the composer's own panel — the one the smiley opens —
+        // rather than a second picker of this sheet's own.
+        _stickerPanelRequests.value++;
+      case MediaPickerStickerCreate():
+        await _createSticker();
     }
   }
 
@@ -2586,22 +2602,110 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// Straight down the image path with the marker where a caption goes — no
   /// editor, no downscale prompt, no confirmation. A sticker is already the
   /// size it was kept at, and one tap is the entire interaction it is for.
-  Future<void> _sendSticker(String path) async {
+  Future<void> _sendSticker(String path, String? emoji) async {
     try {
-      final bytes = await File(MediaPaths.repair(path)).readAsBytes();
+      final repaired = MediaPaths.repair(path);
+      final bytes = await File(repaired).readAsBytes();
+      final marker = Message.stickerMarkerFor(emoji);
+      if (isSavedChat(widget.canonicalId)) {
+        await ref
+            .read(savedMessagesControllerProvider)
+            .saveImage(bytes, caption: marker);
+        return;
+      }
       await ref.read(messagingServiceProvider).sendImage(
             widget.canonicalId,
             bytes: bytes,
-            mime: 'image/png',
-            cachedPath: MediaPaths.repair(path),
-            caption: Message.stickerMarker,
+            // Stated from the bytes rather than assumed: everything the library
+            // keeps is PNG now, but a sticker saved by an older build is
+            // whatever the photo was, and a JPEG announced as a PNG is a
+            // thumbnail some other client will decline to draw.
+            mime: _stickerMime(bytes),
+            cachedPath: repaired,
+            caption: marker,
           );
     } catch (e) {
       DebugLog.instance.log('STICKER', 'send failed: $e');
       if (!mounted) return;
-      showGlassToast(context, AppLocalizations.of(context).chatForwardNothing,
+      showGlassToast(context, AppLocalizations.of(context).stickerFailed,
           tone: ToastTone.danger);
     }
+  }
+
+  static String _stickerMime(Uint8List bytes) =>
+      bytes.length >= 8 &&
+              bytes[0] == 0x89 &&
+              bytes[1] == 0x50 &&
+              bytes[2] == 0x4E &&
+              bytes[3] == 0x47
+          ? 'image/png'
+          : 'image/jpeg';
+
+  /// Make a sticker out of a picture on this phone.
+  ///
+  /// The same three steps the app already has, in a row: the gallery sheet
+  /// picks one, the editor decides what part of it is the sticker, and the
+  /// library re-encodes it to a transparent PNG small enough to send. Answers
+  /// whether one was actually made, so the composer knows whether to bring the
+  /// panel back with it in.
+  Future<bool> _createSticker() async {
+    final picked = await showGlassSheet<MediaPickerResult>(
+      context: context,
+      builder: (_) => const MediaPickerSheet(
+        allowFiles: false,
+        allowPoll: false,
+        allowCaption: false,
+      ),
+    );
+    if (picked == null || !mounted) return false;
+
+    Uint8List? source;
+    switch (picked) {
+      case MediaPickerAssets(:final assets):
+        if (assets.isEmpty) return false;
+        source = await assets.first.originBytes;
+      case MediaPickerEdit(:final asset):
+        source = await asset.originBytes;
+      case MediaPickerCamera():
+        source = await Navigator.of(context).push<Uint8List>(
+          mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
+        );
+      // A sticker made out of a file, a poll, a place or another sticker is
+      // not a thing; those tiles simply end the flow.
+      case MediaPickerFile():
+      case MediaPickerPoll():
+      case MediaPickerLocation():
+      case MediaPickerStickers():
+      case MediaPickerStickerCreate():
+        return false;
+    }
+    if (source == null || !mounted) return false;
+
+    final cropped = await openImageEditor(context, source);
+    if (cropped == null || !mounted) return false;
+
+    // What the sticker is *called*. Telegram asks the same question for the
+    // same reason: a picture has no name, and without one a quoted sticker and
+    // a chat-list preview have nothing to show but the word "sticker". Backing
+    // out of the picker is allowed — the sticker is then simply unnamed.
+    final emoji = await showEmojiPicker(
+      context,
+      title: AppLocalizations.of(context).stickerEmojiTitle,
+    );
+    if (!mounted) return false;
+
+    final kept = await ref
+        .read(stickerLibraryProvider.notifier)
+        .keepBytes(cropped, emoji: emoji);
+    if (!mounted) return kept;
+    final t = AppLocalizations.of(context);
+    showGlassToast(
+      context,
+      kept ? t.stickerKept : t.stickerFailed,
+      icon: kept ? Icons.auto_awesome_outlined : null,
+      tone: kept ? ToastTone.success : ToastTone.danger,
+    );
+    return kept;
   }
 
   /// One photo from the roll, opened in the editor and then sent.
@@ -3009,6 +3113,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     final mediaEnabled = widget.canSend && !widget.isChannel;
     final photosEnabled = widget.canSend;
 
+    // Picking messages out is a mode, and the system back gesture is how a
+    // mode is left on a phone with no back button. Registered here rather than
+    // around the conversation because a [PopScope] answers for the whole route
+    // wherever it sits, and this is the widget that already rebuilds when the
+    // selection changes.
+    final selectedMessages = ref.watch(messageSelectionProvider(
+      widget.canonicalId,
+    ));
+
     // Inline edit: only when the target belongs to THIS chat.
     final editTarget = ref.watch(messageEditTargetProvider);
     final editingText =
@@ -3056,6 +3169,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       },
       onAttach:
           photosEnabled && !voiceState.isRecording ? _pickAndSendImage : null,
+      // A sticker is a picture, so it travels only where pictures do.
+      onSticker: photosEnabled && widget.canSend ? _sendSticker : null,
+      onCreateSticker: photosEnabled ? _createSticker : null,
+      openStickerPanel: _stickerPanelRequests,
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
@@ -3167,25 +3284,38 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
                 ?.isBlocked ??
             false);
 
-    if (activeReply == null && !blocked) return composerWithMentions;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (blocked)
-          _UnblockIsland(
-            onUnblock: () => ref
-                .read(knownPeersControllerProvider.notifier)
-                .setBlocked(widget.canonicalId, false),
-          ),
-        if (activeReply != null)
-          _ReplyComposeBar(
-            target: activeReply,
-            onCancel: () =>
-                ref.read(messageReplyTargetProvider.notifier).state = null,
-          ),
-        composerWithMentions,
-      ],
+    final Widget bar;
+    if (activeReply == null && !blocked) {
+      bar = composerWithMentions;
+    } else {
+      bar = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (blocked)
+            _UnblockIsland(
+              onUnblock: () => ref
+                  .read(knownPeersControllerProvider.notifier)
+                  .setBlocked(widget.canonicalId, false),
+            ),
+          if (activeReply != null)
+            _ReplyComposeBar(
+              target: activeReply,
+              onCancel: () =>
+                  ref.read(messageReplyTargetProvider.notifier).state = null,
+            ),
+          composerWithMentions,
+        ],
+      );
+    }
+
+    return PopScope<void>(
+      canPop: selectedMessages.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || selectedMessages.isEmpty) return;
+        ref.read(messageSelectionProvider(widget.canonicalId).notifier).clear();
+      },
+      child: bar,
     );
   }
 }

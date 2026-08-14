@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +27,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/contact_aliases_controller.dart';
+import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../data/chat_folders_controller.dart';
@@ -150,6 +153,13 @@ int compareChatRows(Chat a, Chat b) {
   return b.lastTime.compareTo(a.lastTime);
 }
 
+/// The tick a row shows, or nothing at all. See [Chat.outgoingStatus] for when
+/// each of the three "nothing" cases applies.
+MessageStatus? _outgoingStatus(Message? last, {required bool hasDraft}) {
+  if (hasDraft || last == null || !last.isMine) return null;
+  return last.status;
+}
+
 final allChatsProvider = Provider<List<Chat>>((ref) {
   final settings = ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
@@ -215,6 +225,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       isDraft: draft != null,
       isMuted: peer.isMuted,
       autoDeleteSeconds: settings[peer.pubkeyHex]?.autoDelete.seconds ?? 0,
+      outgoingStatus: _outgoingStatus(last, hasDraft: draft != null),
     );
   }).toList();
 
@@ -247,6 +258,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       pinRank: pinnedChats.indexOf(ch.name),
       isDraft: draft != null,
       autoDeleteSeconds: settings[ch.name]?.autoDelete.seconds ?? 0,
+      outgoingStatus: _outgoingStatus(last, hasDraft: draft != null),
     ));
   }
 
@@ -297,6 +309,11 @@ class ChatsListScreen extends ConsumerWidget {
             .byId(selectedUserFolderId);
 
     final selection = ref.watch(chatSelectionProvider);
+    // The system back gesture means "undo the mode I am in" before it means
+    // "leave the screen". Picking chats out is a mode, and on a phone where
+    // back *is* a swipe there was no other way to say "never mind" without
+    // finding the small × in the bar that had replaced the title.
+    final selecting = selection.isNotEmpty;
     final saved = savedChatRow(ref, t);
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
@@ -314,7 +331,14 @@ class ChatsListScreen extends ConsumerWidget {
             c.lastMessage.toLowerCase().contains(query);
       }),
     ]..sort(compareChatRows);
-    return SafeArea(
+    return PopScope<void>(
+      canPop: !selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && selecting) {
+          ref.read(chatSelectionProvider.notifier).clear();
+        }
+      },
+      child: SafeArea(
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -472,17 +496,38 @@ class ChatsListScreen extends ConsumerWidget {
                 builder: (context, animate) => SliverReorderableList(
                   itemCount: filtered.length,
                   onReorderStart: (_) => HapticFeedback.selectionClick(),
+                  // A click on the way down as well as on the way up: the drop
+                  // is the half that changes something, and without it the row
+                  // simply stops moving.
+                  onReorderEnd: (_) => HapticFeedback.selectionClick(),
                   // The dragged row lifts instead of gaining the Material
                   // elevation the default draws, which on these glass cards
-                  // arrives as a grey rectangle under the finger.
+                  // arrives as a grey rectangle under the finger. The shadow
+                  // grows with the lift so the row reads as picked up rather
+                  // than as suddenly larger.
                   proxyDecorator: (child, index, animation) => AnimatedBuilder(
                     animation: animation,
                     child: child,
-                    builder: (context, inner) => Transform.scale(
-                      scale: 1 +
-                          0.04 * Curves.easeOutCubic.transform(animation.value),
-                      child: inner,
-                    ),
+                    builder: (context, inner) {
+                      final t = Curves.easeOutCubic.transform(animation.value);
+                      return Transform.scale(
+                        scale: 1 + 0.04 * t,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.38 * t),
+                                blurRadius: 24 * t,
+                                offset: Offset(0, 10 * t),
+                                spreadRadius: -8 * t,
+                              ),
+                            ],
+                          ),
+                          child: inner,
+                        ),
+                      );
+                    },
                   ),
                   // Only the pinned block moves, and only within itself. A pin
                   // is the one row whose position somebody chose; everything
@@ -533,15 +578,29 @@ class ChatsListScreen extends ConsumerWidget {
                                 .read(chatSelectionProvider.notifier)
                                 .toggle(chat.id);
                           },
+                          // Holding a row picks it out, and nothing else. A
+                          // menu was tried here and taken back out: the hold is
+                          // what puts the list into the mode where a pinned row
+                          // grows its drag handle, so a popup on top of it took
+                          // away the way to reorder pins. Every action lives in
+                          // the bar the selection opens — including deleting
+                          // the chat and deleting the person.
                           onLongPressAt: (_) => ref
                               .read(chatSelectionProvider.notifier)
                               .toggle(chat.id),
                           child: ChatTile(
                             chat: chat,
                             selected: picked,
-                            // Pinned rows carry a grip; the rest have nothing
-                            // to drag and nowhere to go.
-                            reorderIndex: chat.isPinned ? i : null,
+                            // The grip appears when the list is held — the
+                            // same gesture that starts a selection — and only
+                            // on the rows that can move. Permanently visible it
+                            // was a control on every pinned row of a list
+                            // nobody is currently rearranging; and dragging is
+                            // gated on it, so outside that mode a pinned row
+                            // scrolls like any other instead of setting off a
+                            // reorder under a thumb that meant to scroll.
+                            reorderIndex:
+                                chat.isPinned && selection.isNotEmpty ? i : null,
                           ),
                         ),
                       ),
@@ -551,6 +610,7 @@ class ChatsListScreen extends ConsumerWidget {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -714,6 +774,17 @@ class _SelectionOverflow extends ConsumerWidget {
               t.chatsActionFavorite,
               color: AppColors.brandPrimary,
             ),
+            // Deleting the *person*, which the bin in the bar deliberately does
+            // not do — that one empties the conversation and keeps the keys
+            // that let it start again. One at a time, and never for a channel,
+            // which has nobody to forget.
+            if (single != null && !single.isChannel)
+              _chatMenuItem(
+                'forget',
+                Icons.person_remove_outlined,
+                t.contactProfileDelete,
+                color: AppColors.danger,
+              ),
           ],
         );
         if (action == null || !context.mounted) return;
@@ -750,6 +821,9 @@ class _SelectionOverflow extends ConsumerWidget {
             for (final chat in chats) {
               await favorites.toggle(chat.id);
             }
+          case 'forget':
+            if (single == null || !context.mounted) return;
+            await _confirmAndForgetContact(context, ref, single, t);
         }
         ref.read(chatSelectionProvider.notifier).clear();
       },
@@ -912,7 +986,64 @@ Future<void> _confirmWipe(
   );
 }
 
-/// Long-press actions for one chat.
+/// Delete the person, not just the conversation.
+///
+/// Next to "delete chat" on purpose, and spelled out in the dialog, because
+/// the two are genuinely different and the difference is the thing people get
+/// wrong: one empties a conversation and keeps the keys that let it start
+/// again, the other throws the keys away.
+Future<void> _confirmAndForgetContact(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+  AppLocalizations t,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgTop,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: AppColors.glass(0.15)),
+      ),
+      title: Text(
+        t.contactProfileDeleteTitle,
+        style: TextStyle(
+          color: AppColors.textOnGlass,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      content: Text(
+        t.contactProfileDeleteMessage(chat.peerName),
+        style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child:
+              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(
+            t.contactProfileDelete,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await forgetContactEverywhere(ref, chat.id);
+  if (!context.mounted) return;
+  showGlassToast(
+    context,
+    t.contactProfileDelete,
+    icon: Icons.person_remove_outlined,
+    tone: ToastTone.success,
+  );
+}
 
 PopupMenuItem<String> _chatMenuItem(
   String value,

@@ -75,6 +75,20 @@ bool messageCanBeForwarded(
 const double _swipeTrigger = 56;
 const double _swipeMax = 76;
 
+/// How wide a photo is drawn in a bubble.
+///
+/// It used to be a flat 220 points, which on a modern phone is a third of the
+/// screen — a picture sent to be looked at, shown as a stamp, with the bubble's
+/// own width unused around it. A share of the screen instead, clamped so it
+/// stays inside the 75% the bubble itself is allowed and so a small phone does
+/// not end up with something smaller than the old fixed size.
+double photoBubbleWidth(BuildContext context) =>
+    (MediaQuery.sizeOf(context).width * 0.68).clamp(220.0, 300.0);
+
+/// A sticker is a gesture, not content: it keeps a size of its own, and a
+/// larger one stops being an aside and starts being an announcement.
+const double kStickerWidth = 158;
+
 /// Ask which chat to forward into. Null when the dialog was dismissed.
 ///
 /// Shared by the single-message menu and the multi-select bar so the two
@@ -318,7 +332,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
       chatId: widget.chatId,
       wireId: m.wireId!,
-      preview: _replyPreview(m),
+      preview: _replyPreview(m, AppLocalizations.of(context)),
       mine: m.isMine,
       authorName: m.authorName,
     );
@@ -573,7 +587,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// The quote box shown at the top of a reply bubble.
   Widget _quotedBox(String wireId) {
     final quoted = _resolveQuoted(wireId);
-    final preview = quoted == null ? '�' : _replyPreview(quoted);
+    final preview = quoted == null
+        ? '…'
+        : _replyPreview(quoted, AppLocalizations.of(context));
     // Tappable: a quote names a message, and the thing anyone wants from it is
     // to see the message. Nothing to go to when the original is gone, so the
     // tap is withheld rather than bouncing off a toast.
@@ -623,20 +639,29 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   /// A one-line snippet of [m] for a reply preview / quote box.
-  static String _replyPreview(Message m) {
+  ///
+  /// The media lines are a glyph and a word rather than the stored text, which
+  /// for anything but a message is plumbing: a mime type, or a sticker's
+  /// marker. A quoted sticker says which sticker — the emoji it was filed
+  /// under is the only name it has.
+  static String _replyPreview(Message m, AppLocalizations t) {
     final contact = SharedContact.tryParse(m.text);
     if (contact != null) return contact.displayName;
     final mapLink = MapFriendLink.tryParse(m.text);
     if (mapLink != null) return mapLink.displayName;
     switch (m.kind) {
       case MessageKind.image:
-        return '??';
+        if (m.isSticker) {
+          final emoji = m.stickerEmoji;
+          return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';
+        }
+        return '🖼';
       case MessageKind.audio:
-        return '??';
+        return '🎤';
       case MessageKind.file:
-        return '?? ${m.fileName ?? ''}'.trimRight();
+        return '📎 ${m.fileName ?? ''}'.trimRight();
       case MessageKind.poll:
-        return '?? ${m.text}';
+        return '📊 ${m.text}';
       case MessageKind.text:
         final t = m.text.replaceAll('\n', ' ').trim();
         return t.length > 80 ? '${t.substring(0, 80)}�' : t;
@@ -866,6 +891,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     Widget inBubble(Widget child) =>
         photo ? Padding(padding: inset, child: child) : child;
 
+    final reacted = message.reactions.values.any((by) => by.isNotEmpty);
+    // The clock rides *on* a picture that has nothing else to say — the way
+    // every messenger draws one. A strip of bubble under the photo carrying
+    // four characters is the frame this design spent a release removing, put
+    // back one edge at a time. As soon as there is something else on that line
+    // (a caption, a reaction) the row comes back and the clock joins it.
+    final metaOnMedia = photo && !reacted && _caption == null;
+    final meta = _BubbleMeta(
+      message: message,
+      pinned: pinned,
+      onMedia: metaOnMedia,
+    );
+
     final bubble = RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -928,18 +966,32 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 if (message.replyToWireId != null)
                   inBubble(_quotedBox(message.replyToWireId!)),
                 if (message.kind == MessageKind.image) ...[
-                  if (widget.album case final album?)
-                    _AlbumPayload(
-                      messages: album,
-                      chatId: widget.chatId,
-                      onDoubleTap: _canReact ? _quickReact : null,
-                    )
-                  else
-                    _ImagePayload(
-                      message: message,
-                      chatId: widget.chatId,
-                      onDoubleTap: _canReact ? _quickReact : null,
-                    ),
+                  // The picture, with the clock floating in its bottom corner
+                  // when the bubble has no other line to put it on.
+                  Stack(
+                    children: [
+                      if (widget.album case final album?)
+                        _AlbumPayload(
+                          messages: album,
+                          chatId: widget.chatId,
+                          onDoubleTap: _canReact ? _quickReact : null,
+                        )
+                      else
+                        _ImagePayload(
+                          message: message,
+                          chatId: widget.chatId,
+                          onDoubleTap: _canReact ? _quickReact : null,
+                        ),
+                      if (metaOnMedia)
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          // Inert, so the pill cannot swallow the tap that
+                          // opens the photo underneath it.
+                          child: IgnorePointer(child: _MetaPill(child: meta)),
+                        ),
+                    ],
+                  ),
                   // The caption, which used to go missing entirely. It rides in
                   // `text`, and the chain below renders `text` only for a
                   // message that matched none of these branches � so a photo
@@ -953,7 +1005,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                          maxWidth: widget.album == null ? 220 : _kAlbumWidth,
+                          maxWidth: widget.album == null
+                              ? photoBubbleWidth(context)
+                              : _kAlbumWidth,
                         ),
                         child: MentionText(caption),
                       ),
@@ -1022,8 +1076,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   )
                 else
                   MentionText(message.text),
-                if (!photo) const SizedBox(height: 4),
-                inBubble(_BubbleMeta(message: message, pinned: pinned)),
+                if (!metaOnMedia) ...[
+                  if (!photo) const SizedBox(height: 4),
+                  // Reactions and the clock on one line, inside the bubble.
+                  //
+                  // They used to be a second row hanging *below* the bubble,
+                  // which is a shape no messenger draws: it detached the
+                  // reaction from the thing reacted to, pushed the next message
+                  // down by a whole row, and left the bubble's own bottom line
+                  // carrying nothing but four characters of time. One line, the
+                  // reaction where it was put and the clock where it always is.
+                  inBubble(
+                    _BubbleFooter(
+                      reactions: reacted
+                          ? _ReactionsRow(
+                              reactions: message.reactions,
+                              onTap: _canReact ? _toggleReaction : null,
+                            )
+                          : null,
+                      meta: meta,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1156,14 +1230,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                   child: bubble,
                                 ),
                               ),
-                              if (message.reactions.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: _ReactionsRow(
-                                    reactions: message.reactions,
-                                    onTap: _canReact ? _toggleReaction : null,
-                                  ),
-                                ),
                               // Only under our own: "who has seen mine" is the
                               // question people ask. On someone else's it would
                               // put a counter under every line of the channel.
@@ -1512,6 +1578,55 @@ class _SwipeReplyHint extends StatelessWidget {
   }
 }
 
+/// The bottom line of a bubble: what people reacted with, then the clock.
+///
+/// A [Row] with the reactions flexible and the meta fixed, so a long run of
+/// chips wraps inside its own half instead of pushing the time out of the
+/// bubble. With nothing to show on the left it collapses to exactly what it
+/// used to be — the meta, right-aligned.
+class _BubbleFooter extends StatelessWidget {
+  const _BubbleFooter({required this.meta, this.reactions});
+
+  final Widget meta;
+  final Widget? reactions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (reactions == null) return meta;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Flexible(child: reactions!),
+        const SizedBox(width: 8),
+        meta,
+      ],
+    );
+  }
+}
+
+/// The dark lozenge the clock sits in when it is drawn over a picture.
+///
+/// A photo can be any colour under those four characters, including white sky,
+/// so the contrast has to be brought along rather than assumed.
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Row of reaction chips shown under a bubble. Each chip is `emoji ?count`
 /// (count hidden when 1); a chip the local user contributed to is tinted.
 class _ReactionsRow extends StatelessWidget {
@@ -1607,30 +1722,38 @@ class _ReactionChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        // A rounded lozenge rather than a small square badge: it now sits on
+        // the bubble's own bottom line beside the clock, and at this size and
+        // radius it reads as a chip on the message instead of a second bubble
+        // stuck to it.
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
           color: mine
-              ? AppColors.brandPrimary.withValues(alpha: 0.22)
-              : AppColors.glass(0.08),
-          borderRadius: BorderRadius.circular(12),
+              ? AppColors.brandPrimary.withValues(alpha: 0.26)
+              : AppColors.glass(0.14),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: mine
-                ? AppColors.brandPrimary.withValues(alpha: 0.6)
-                : AppColors.glass(0.14),
+                ? AppColors.brandPrimary.withValues(alpha: 0.65)
+                : AppColors.glass(0.18),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 13)),
+            Text(
+              emoji,
+              style: const TextStyle(fontSize: 14),
+              textScaler: TextScaler.noScaling,
+            ),
             if (count > 1) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: 5),
               Text(
                 '$count',
                 style: TextStyle(
                   color: AppColors.textOnGlass,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -1855,7 +1978,10 @@ class _ImagePayload extends StatelessWidget {
                   // full-resolution decode per photo and a texture upload to
                   // match, which is most of why such a chat warms the phone.
                   // At the drawn size it is a twenty-fifth of the pixels.
-                  cacheWidth: (220 * MediaQuery.devicePixelRatioOf(context))
+                  cacheWidth: ((message.isSticker
+                              ? kStickerWidth
+                              : photoBubbleWidth(context)) *
+                          MediaQuery.devicePixelRatioOf(context))
                       .round(),
                   errorBuilder: (_, __, ___) => _ImagePlaceholder(
                     icon: Icons.broken_image_outlined,
@@ -1873,13 +1999,16 @@ class _ImagePayload extends StatelessWidget {
             spinning: message.status == MessageStatus.sending,
           );
 
+    final width =
+        message.isSticker ? kStickerWidth : photoBubbleWidth(context);
     return ConstrainedBox(
-      // Stickers are smaller than photos on purpose. A photo is content and
-      // gets the width; a sticker is a gesture, and at 220 it stops being an
-      // aside and starts being an announcement.
+      // Stickers keep a size of their own — see [kStickerWidth]. A photo takes
+      // the width it is given and as much height as its own shape asks for,
+      // capped so a panorama shot in portrait cannot become a bubble you have
+      // to scroll past.
       constraints: BoxConstraints(
-        maxWidth: message.isSticker ? 148 : 220,
-        maxHeight: message.isSticker ? 148 : 220,
+        maxWidth: width,
+        maxHeight: message.isSticker ? kStickerWidth : width * 1.25,
       ),
       child: body,
     );
@@ -2042,15 +2171,28 @@ class _ImagePlaceholder extends StatelessWidget {
 }
 
 class _BubbleMeta extends StatelessWidget {
-  const _BubbleMeta({required this.message, this.pinned = false});
+  const _BubbleMeta({
+    required this.message,
+    this.pinned = false,
+    this.onMedia = false,
+  });
 
   final Message message;
 
   /// True when this is the chat's pinned message.
   final bool pinned;
 
+  /// True when this row is drawn over the picture rather than under it, on the
+  /// dark pill — where the sender's own tint is the wrong contrast to reach
+  /// for, because what is behind it is a photograph and not a bubble.
+  final bool onMedia;
+
   /// Distinct tint for a "read" tick so it reads apart from plain delivery.
   static const _readColor = Color(0xFF66D9FF);
+
+  /// The ink for everything in this row, given what it is drawn on.
+  Color _ink(double onBubble) =>
+      onMedia ? Colors.white.withValues(alpha: 0.95) : AppColors.ink(onBubble);
 
   @override
   Widget build(BuildContext context) {
@@ -2065,7 +2207,7 @@ class _BubbleMeta extends StatelessWidget {
           Icon(
             Icons.push_pin,
             size: 11,
-            color: AppColors.ink(message.isMine ? 0.8 : 0.55),
+            color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: t.chatPinnedTitle,
           ),
           const SizedBox(width: 4),
@@ -2074,7 +2216,7 @@ class _BubbleMeta extends StatelessWidget {
           Icon(
             Icons.lock_clock,
             size: 11,
-            color: AppColors.ink(message.isMine ? 0.8 : 0.55),
+            color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: 'forward secret',
           ),
           const SizedBox(width: 4),
@@ -2085,7 +2227,7 @@ class _BubbleMeta extends StatelessWidget {
             style: TextStyle(
               fontSize: 10.5,
               fontStyle: FontStyle.italic,
-              color: AppColors.ink(message.isMine ? 0.7 : 0.45),
+              color: _ink(message.isMine ? 0.7 : 0.45),
             ),
           ),
           const SizedBox(width: 4),
@@ -2094,7 +2236,7 @@ class _BubbleMeta extends StatelessWidget {
           time,
           style: TextStyle(
             fontSize: 10.5,
-            color: AppColors.ink(message.isMine ? 0.8 : 0.5),
+            color: _ink(message.isMine ? 0.8 : 0.5),
           ),
         ),
         if (message.isMine) ...[
@@ -2110,7 +2252,7 @@ class _BubbleMeta extends StatelessWidget {
             color: switch (message.status) {
               MessageStatus.failed => AppColors.danger,
               MessageStatus.read => _readColor,
-              _ => AppColors.ink(0.85),
+              _ => _ink(0.85),
             },
             semanticLabel: switch (message.status) {
               MessageStatus.sending => t.chatSending,

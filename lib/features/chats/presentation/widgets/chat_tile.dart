@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
+import '../../../chat/models/message.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
@@ -27,10 +28,10 @@ class ChatTile extends StatelessWidget {
   final bool selected;
 
   /// Position in the reorderable list, when this row is one that can be dragged
-  /// — pinned rows only. The pin itself becomes the handle: it is the mark that
-  /// says why this row is allowed to move, a long press is already taken by
-  /// selection, and making the whole row a handle would mean the list could no
-  /// longer be scrolled by starting on a pinned chat.
+  /// — a pinned row, while the list is in the mode a long press puts it in.
+  /// Null everywhere else, which is also what withholds the grip: no grip, no
+  /// way to start a drag, so an ordinary scroll that begins on a pinned chat
+  /// stays a scroll.
   final int? reorderIndex;
 
   @override
@@ -186,7 +187,7 @@ class ChatTile extends StatelessWidget {
                 Text(
                   chat.isDraft
                       ? '${t.chatDraft}: ${chat.lastMessage}'
-                      : chat.lastMessage,
+                      : _previewOf(chat.lastMessage, t),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -212,12 +213,26 @@ class ChatTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                formatChatListTime(context, chat.lastTime),
-                style: TextStyle(
-                  color: AppColors.textOnGlassFaint,
-                  fontSize: 11,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Before the time, the way it is in the bubble and in every
+                  // other list of conversations: the row already answers "when"
+                  // and "who last spoke", and this is the third question people
+                  // open a chat to check — whether the last thing they said got
+                  // there.
+                  if (chat.outgoingStatus case final status?) ...[
+                    _StatusTick(status: status),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    formatChatListTime(context, chat.lastTime),
+                    style: TextStyle(
+                      color: AppColors.textOnGlassFaint,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ),
               // The star sits here, under the timestamp, rather than beside the
               // name. Next to the name it was one more thing pushing the name
@@ -231,7 +246,7 @@ class ChatTile extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (chat.isPinned) _PinMark(reorderIndex: reorderIndex),
+                    if (chat.isPinned) const _PinMark(),
                     if (chat.isFavorite)
                       const Padding(
                         padding: EdgeInsets.only(right: 4),
@@ -248,39 +263,108 @@ class ChatTile extends StatelessWidget {
               ],
             ],
           ),
+          // Only on the rows that can actually move — the pinned block.
+          if (reorderIndex case final index?) ...[
+            const SizedBox(width: 2),
+            _DragGrip(index: index),
+          ],
         ],
       ),
     );
   }
 }
 
-/// The pin, and — when the list it is in can be reordered — the grip that moves
-/// the row.
+/// What the preview line says, for the payloads whose stored text is plumbing
+/// rather than words.
 ///
-/// A drag has to start from something small enough that the list can still be
-/// scrolled from anywhere else, and obvious enough to be found. The pin is
-/// already on exactly the rows that are allowed to move, so it is both; it
-/// simply gets a finger-sized area around it, which it did not have at 13px.
-class _PinMark extends StatelessWidget {
-  const _PinMark({required this.reorderIndex});
+/// A sticker keeps its marker in the text field — see [Message.stickerMarker] —
+/// and the list was printing it verbatim: rows reading `cubechat:sticker:v1`
+/// where the last thing said was a picture of a cat. What goes here instead is
+/// the emoji the sticker is filed under and the word for what it is.
+String _previewOf(String stored, AppLocalizations t) {
+  final trimmed = stored.trim();
+  if (!trimmed.startsWith(Message.stickerMarker)) return stored;
+  final rest = trimmed.substring(Message.stickerMarker.length);
+  final emoji = rest.startsWith(':') ? rest.substring(1).trim() : '';
+  return emoji.isEmpty ? t.stickerLabel : '$emoji ${t.stickerLabel}';
+}
 
-  final int? reorderIndex;
+/// One tick sent, two delivered, two tinted read — the same glyphs and the same
+/// colours the bubble uses, so the mark means the same thing in both places.
+class _StatusTick extends StatelessWidget {
+  const _StatusTick({required this.status});
+
+  final MessageStatus status;
+
+  /// Matches `_BubbleMeta._readColor`. Copied rather than shared because that
+  /// one is private to the bubble and this is the only other place it appears;
+  /// if a third turns up it should move somewhere common.
+  static const _readColor = Color(0xFF66D9FF);
 
   @override
   Widget build(BuildContext context) {
-    final icon = Icon(
-      Icons.push_pin_rounded,
-      color: AppColors.brandPrimary,
-      size: reorderIndex == null ? 13 : 15,
+    return Icon(
+      switch (status) {
+        MessageStatus.sending => Icons.schedule,
+        MessageStatus.delivered => Icons.done,
+        MessageStatus.read => Icons.done_all,
+        MessageStatus.failed => Icons.error_outline,
+      },
+      size: 13,
+      color: switch (status) {
+        MessageStatus.failed => AppColors.danger,
+        MessageStatus.read => _readColor,
+        _ => AppColors.textOnGlassFaint,
+      },
     );
-    if (reorderIndex == null) {
-      return Padding(padding: const EdgeInsets.only(right: 4), child: icon);
-    }
+  }
+}
+
+/// The mark that says this row is pinned. Just the mark — dragging is the
+/// [_DragGrip] at the end of the row.
+class _PinMark extends StatelessWidget {
+  const _PinMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Icon(
+        Icons.push_pin_rounded,
+        color: AppColors.brandPrimary,
+        size: 13,
+      ),
+    );
+  }
+}
+
+/// The two bars at the trailing edge of a pinned row that the row is dragged
+/// by.
+///
+/// The pin itself used to be the handle, which failed twice over. It is 13
+/// points of icon inside 25 of padding, tucked under the timestamp among the
+/// unread badge and the star — too small to hit reliably, which is what "the
+/// drag works every other time" was — and nothing about a pin says "pull me".
+/// So the grip is now its own thing: the standard two-bar glyph, at the end of
+/// the row where every list in every app puts one, in a target the width of a
+/// thumb.
+class _DragGrip extends StatelessWidget {
+  const _DragGrip({required this.index});
+
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
     return ReorderableDragStartListener(
-      index: reorderIndex!,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 2, left: 6, top: 6, bottom: 6),
-        child: icon,
+      index: index,
+      child: SizedBox(
+        width: 34,
+        height: 52,
+        child: Icon(
+          Icons.drag_handle_rounded,
+          size: 22,
+          color: AppColors.textOnGlassFaint,
+        ),
       ),
     );
   }

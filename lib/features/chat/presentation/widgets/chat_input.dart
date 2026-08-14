@@ -1,11 +1,12 @@
-import 'dart:ui';
-
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/theme/glass.dart';
+import 'emoji_sticker_panel.dart';
 
 /// The canonical smoked-glass texture for the message composer island.
 /// Other chat chrome that must look identical should reuse this widget rather
@@ -94,47 +95,37 @@ class ChatInput extends StatefulWidget {
     this.onEditCancel,
     this.initialText,
     this.onChanged,
+    this.onSticker,
+    this.onCreateSticker,
+    this.openStickerPanel,
   });
+
+  /// Bumped by the screen around this one to say "open the panel on stickers".
+  final ValueListenable<int>? openStickerPanel;
 
   final String hint;
   final String sendTooltip;
   final ValueChanged<String> onSend;
 
-  /// Tapped on the attachment (image) button. When null the button is
-  /// hidden — caller decides whether image send is wired up.
+  /// Tapped on the attachment button. When null the button is hidden.
   final VoidCallback? onAttach;
 
-  /// Press-and-hold voice recording. When all three are non-null the mic
-  /// button appears next to send; long-press drives onRecordStart, release
-  /// commits via onRecordStop, drag-cancel via onRecordCancel.
+  /// A sticker was chosen in the smiley panel: file path plus its emoji name.
+  final void Function(String path, String? emoji)? onSticker;
+
+  /// Tapped "make a sticker" in the panel.
+  final Future<bool> Function()? onCreateSticker;
+
   final VoidCallback? onRecordStart;
   final VoidCallback? onRecordStop;
   final VoidCallback? onRecordCancel;
-
-  /// Fired when the finger slides far enough up that the recording should
-  /// continue without it. The caller flips [recordLocked].
   final VoidCallback? onRecordLock;
-
-  /// True while a locked recording runs hands-free: the strip grows a Cancel
-  /// button and the mic becomes Send.
   final bool recordLocked;
-
-  /// True while a recording is in progress — flips the UI into
-  /// "recording" mode (red dot + elapsed counter + live waveform).
   final bool recording;
   final Duration recordElapsed;
-
-  /// Rolling input-loudness samples (0..1, newest last) for the waveform.
   final List<double> recordLevels;
-
-  /// Persisted draft for this conversation. It is restored after inline edit
-  /// mode as well, so editing an old message never destroys an unsent draft.
   final String? initialText;
   final ValueChanged<String>? onChanged;
-
-  /// Non-null puts the input in edit mode: the field is prefilled with this
-  /// text, an "editing" banner shows, and the send button commits via
-  /// [onEditCommit] instead of [onSend].
   final String? editingText;
   final ValueChanged<String>? onEditCommit;
   final VoidCallback? onEditCancel;
@@ -147,12 +138,16 @@ class _ChatInputState extends State<ChatInput> {
   late final TextEditingController _controller;
   final _focus = FocusNode();
   bool _hasText = false;
+  bool _panelOpen = false;
+  bool _panelOnStickers = false;
+  bool _closingPanel = false;
 
   bool get _editing => widget.editingText != null;
 
   @override
   void initState() {
     super.initState();
+    widget.openStickerPanel?.addListener(_openStickersFromOutside);
     _controller = TextEditingController(text: widget.initialText ?? '');
     _hasText = _controller.text.trim().isNotEmpty;
     _controller.addListener(() {
@@ -164,9 +159,10 @@ class _ChatInputState extends State<ChatInput> {
   @override
   void didUpdateWidget(covariant ChatInput old) {
     super.didUpdateWidget(old);
-    // Entering edit mode (or switching to a different message): load its text
-    // and drop the caret at the end. Leaving edit mode restores the unsent
-    // conversation draft instead of discarding it.
+    if (old.openStickerPanel != widget.openStickerPanel) {
+      old.openStickerPanel?.removeListener(_openStickersFromOutside);
+      widget.openStickerPanel?.addListener(_openStickersFromOutside);
+    }
     if (widget.editingText != old.editingText) {
       if (widget.editingText != null) {
         _controller.text = widget.editingText!;
@@ -178,13 +174,6 @@ class _ChatInputState extends State<ChatInput> {
       }
     } else if (!_editing && widget.initialText != old.initialText) {
       final next = widget.initialText ?? '';
-      // Never while they are typing. This text is the draft coming back from
-      // the store *because* they typed it, and assigning to `.text` drops the
-      // IME's composing region — which on Android is the half-typed word the
-      // keyboard is still predicting, so every round trip that landed here
-      // killed the suggestion the user was about to tap. It also used to eat a
-      // lone space outright: the draft store discards whitespace-only text, so
-      // the echo came back empty and cleared the field under them.
       if (_controller.text != next && !_focus.hasFocus) _replaceText(next);
     }
   }
@@ -194,11 +183,64 @@ class _ChatInputState extends State<ChatInput> {
     _controller.selection = TextSelection.collapsed(offset: text.length);
   }
 
+  void closePanel() {
+    if (!_panelOpen || _closingPanel) return;
+    setState(() => _closingPanel = true);
+    Future<void>.delayed(AnimatedEmojiStickerPanel.motion, () {
+      if (!mounted) return;
+      setState(() {
+        _panelOpen = false;
+        _closingPanel = false;
+      });
+    });
+  }
+
+  void _openStickersFromOutside() {
+    if (mounted && widget.onSticker != null) _togglePanel(stickers: true);
+  }
+
   @override
   void dispose() {
+    widget.openStickerPanel?.removeListener(_openStickersFromOutside);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void _insertEmoji(String emoji) {
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+    final next = text.replaceRange(start, end, emoji);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+    if (!_editing) widget.onChanged?.call(next);
+  }
+
+  void _togglePanel({bool stickers = false}) {
+    if (_panelOpen && !stickers) {
+      setState(() {
+        _panelOpen = false;
+        _closingPanel = false;
+      });
+      _focus.requestFocus();
+      return;
+    }
+    _focus.unfocus();
+    setState(() {
+      _panelOnStickers = stickers;
+      _closingPanel = false;
+      _panelOpen = true;
+    });
+  }
+
+  Future<void> _createStickerThenReopen() async {
+    final made = await widget.onCreateSticker!();
+    if (!mounted || !made) return;
+    _togglePanel(stickers: true);
   }
 
   void _send() {
@@ -215,106 +257,154 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   Widget build(BuildContext context) {
+    KeyboardHeight.observe(context);
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    // Keyboard and stickers are one bottom slot. Once the system keyboard
+    // starts taking that slot, remove the custom panel so the keyboard replaces
+    // it instead of opening as a second layer underneath.
+    if (_panelOpen && keyboard > 0) {
+      _panelOpen = false;
+      _closingPanel = false;
+    }
+
     final showAttach =
         widget.onAttach != null && !widget.recording && !_editing;
+    final showEmoji = !widget.recording;
     final showVoice = widget.onRecordStart != null &&
         widget.onRecordStop != null &&
         widget.onRecordCancel != null &&
         !_hasText &&
         !_editing;
 
-    return SafeArea(
-      top: false,
-      // Margins on every side: the capsule floats, with the aurora showing
-      // through around it. No full-width plate, no welded top border.
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: MessageIslandGlass(
-          borderRadius: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_editing)
-                _EditBanner(
-                  text: widget.editingText!,
-                  onCancel: widget.onEditCancel,
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (showAttach) ...[
-                    _AttachButton(onTap: widget.onAttach!),
-                    const SizedBox(width: 6),
-                  ],
-                  Expanded(
-                    child: widget.recording
-                        ? _RecordingIndicator(
-                            elapsed: widget.recordElapsed,
-                            levels: widget.recordLevels,
-                            locked: widget.recordLocked,
-                            onCancel: widget.onRecordCancel,
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focus,
-                              onChanged: _editing ? null : widget.onChanged,
-                              minLines: 1,
-                              maxLines: 5,
-                              cursorColor: AppColors.brandPrimary,
-                              textCapitalization: TextCapitalization.sentences,
-                              // Spelled out rather than left to the defaults:
-                              // this is the field where predictive text (the
-                              // suggestion strip, autocorrect, glide typing)
-                              // has to work, so the flags that switch it on
-                              // are part of the composer's contract and not
-                              // something to inherit by accident.
-                              keyboardType: TextInputType.multiline,
-                              autocorrect: true,
-                              enableSuggestions: true,
-                              style: TextStyle(
-                                color: AppColors.textOnGlass,
+    return PopScope<void>(
+      canPop: !_panelOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) closePanel();
+      },
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _capsule(
+              showEmoji: showEmoji,
+              showAttach: showAttach,
+              showVoice: showVoice,
+            ),
+            if (_panelOpen)
+              AnimatedEmojiStickerPanel(
+                visible: !_closingPanel,
+                startOnStickers: _panelOnStickers,
+                onEmoji: _insertEmoji,
+                onSticker: widget.onSticker,
+                onCreateSticker: widget.onCreateSticker == null
+                    ? null
+                    : () => unawaited(_createStickerThenReopen()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _capsule({
+    required bool showEmoji,
+    required bool showAttach,
+    required bool showVoice,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: MessageIslandGlass(
+        borderRadius: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_editing)
+              _EditBanner(
+                text: widget.editingText!,
+                onCancel: widget.onEditCancel,
+              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (showEmoji) ...[
+                  _RoundIconButton(
+                    icon: _panelOpen
+                        ? Icons.keyboard_alt_outlined
+                        : Icons.emoji_emotions_outlined,
+                    onTap: _togglePanel,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: widget.recording
+                      ? _RecordingIndicator(
+                          elapsed: widget.recordElapsed,
+                          levels: widget.recordLevels,
+                          locked: widget.recordLocked,
+                          onCancel: widget.onRecordCancel,
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focus,
+                            onChanged: _editing ? null : widget.onChanged,
+                            minLines: 1,
+                            maxLines: 5,
+                            cursorColor: AppColors.brandPrimary,
+                            textCapitalization: TextCapitalization.sentences,
+                            keyboardType: TextInputType.multiline,
+                            autocorrect: true,
+                            enableSuggestions: true,
+                            style: TextStyle(
+                              color: AppColors.textOnGlass,
+                              fontSize: 14.5,
+                            ),
+                            onSubmitted: (_) => _send(),
+                            textInputAction: TextInputAction.send,
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 12),
+                              border: InputBorder.none,
+                              hintText: widget.hint,
+                              hintStyle: TextStyle(
+                                color: AppColors.textOnGlassFaint,
                                 fontSize: 14.5,
-                              ),
-                              onSubmitted: (_) => _send(),
-                              textInputAction: TextInputAction.send,
-                              decoration: InputDecoration(
-                                isCollapsed: true,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                border: InputBorder.none,
-                                hintText: widget.hint,
-                                hintStyle: TextStyle(
-                                  color: AppColors.textOnGlassFaint,
-                                  fontSize: 14.5,
-                                ),
                               ),
                             ),
                           ),
+                        ),
+                ),
+                if (showAttach) ...[
+                  const SizedBox(width: 2),
+                  _RoundIconButton(
+                    icon: Icons.attach_file_rounded,
+                    onTap: widget.onAttach!,
                   ),
-                  const SizedBox(width: 6),
-                  if (showVoice)
-                    _VoiceButton(
-                      active: widget.recording,
-                      locked: widget.recordLocked,
-                      onStart: widget.onRecordStart!,
-                      onStop: widget.onRecordStop!,
-                      onCancel: widget.onRecordCancel!,
-                      onLock: widget.onRecordLock ?? () {},
-                    )
-                  else
-                    _SendButton(
-                      enabled: _hasText,
-                      isEdit: _editing,
-                      tooltip: widget.sendTooltip,
-                      onTap: _send,
-                    ),
                 ],
-              ),
-            ],
-          ),
+                const SizedBox(width: 6),
+                if (showVoice)
+                  _VoiceButton(
+                    active: widget.recording,
+                    locked: widget.recordLocked,
+                    onStart: widget.onRecordStart!,
+                    onStop: widget.onRecordStop!,
+                    onCancel: widget.onRecordCancel!,
+                    onLock: widget.onRecordLock ?? () {},
+                  )
+                else
+                  _SendButton(
+                    enabled: _hasText,
+                    isEdit: _editing,
+                    tooltip: widget.sendTooltip,
+                    onTap: _send,
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -383,8 +473,10 @@ class _EditBanner extends StatelessWidget {
   }
 }
 
-class _AttachButton extends StatelessWidget {
-  const _AttachButton({required this.onTap});
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -398,11 +490,7 @@ class _AttachButton extends StatelessWidget {
           shape: BoxShape.circle,
           color: AppColors.glass(0.08),
         ),
-        child: Icon(
-          Icons.image_outlined,
-          color: AppColors.textOnGlass,
-          size: 20,
-        ),
+        child: Icon(icon, color: AppColors.textOnGlass, size: 20),
       ),
     );
   }

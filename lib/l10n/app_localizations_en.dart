@@ -1235,6 +1235,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stickerForget => 'Remove sticker';
 
   @override
+  String get stickerCreate => 'Make a sticker from a photo';
+
+  @override
+  String get stickerFailed => 'That picture could not be made into a sticker';
+
+  @override
+  String get stickerLabel => 'Sticker';
+
+  @override
+  String get stickerEmojiTitle => 'Pick an emoji for it';
+
+  @override
+  String get stickersMine => 'My stickers';
+
+  @override
+  String get stickersStarterPack => 'Starter pack';
+
+  @override
+  String get emojiTab => 'Emoji';
+
+  @override
   String get chatBlockedStatus => 'blocked';
 
   @override

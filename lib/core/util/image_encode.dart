@@ -52,6 +52,51 @@ Uint8List? _encodeBytesForMesh(Uint8List src) {
   return smallest;
 }
 
+/// Re-encode a picture as the square, transparent-capable PNG a sticker is.
+///
+/// Not [encodeBytesForMesh], because that ends in a JPEG: a sticker's whole
+/// shape comes from the pixels it does *not* draw, and JPEG has no way to say
+/// "nothing here" — every transparent pixel would come back as a white (or
+/// black) rectangle around the picture. PNG keeps the alpha channel, so a
+/// cut-out stays a cut-out.
+///
+/// The ladder is dimension-only for the same reason: PNG has no quality knob,
+/// so when 512 px overshoots the budget the only thing left to spend is size.
+/// Returns null when even the smallest rung is too big for the mesh, so the
+/// caller can say so instead of queueing something that will never arrive.
+Future<Uint8List?> encodeStickerPng(Uint8List src) => compute(_encodeSticker, src);
+
+Uint8List? _encodeSticker(Uint8List src) {
+  final decoded = img.decodeImage(src);
+  if (decoded == null) {
+    return src.length <= kMaxOutgoingImageBytes ? src : null;
+  }
+  // Trimmed to what is actually drawn before anything else: a picture saved
+  // out of another app is often a small shape in the middle of a large
+  // transparent canvas, and every one of those empty rows is bytes on the wire
+  // and empty space in the bubble.
+  final trimmed = img.trim(decoded, mode: img.TrimMode.transparent);
+  final source = trimmed.width > 8 && trimmed.height > 8 ? trimmed : decoded;
+
+  const rungs = <int>[512, 384, 320, 256, 192];
+  Uint8List? smallest;
+  for (final side in rungs) {
+    final longest =
+        source.width > source.height ? source.width : source.height;
+    final resized = longest > side
+        ? (source.width >= source.height
+            ? img.copyResize(source, width: side)
+            : img.copyResize(source, height: side))
+        : source;
+    final bytes = Uint8List.fromList(img.encodePng(resized));
+    smallest = bytes;
+    if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
+  }
+  return smallest != null && smallest.length <= kMaxOutgoingImageBytes
+      ? smallest
+      : null;
+}
+
 /// Square-crop and re-encode a picture small enough to be broadcast in one
 /// frame, for a channel's photo.
 ///

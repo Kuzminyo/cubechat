@@ -1,19 +1,24 @@
 import 'package:cubechat/features/chat/presentation/widgets/chat_input.dart';
+import 'package:cubechat/features/chat/presentation/widgets/emoji_sticker_panel.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(Widget child) => MaterialApp(
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('en'),
-      home: Scaffold(
-          body: Align(alignment: Alignment.bottomCenter, child: child)),
+Widget _host(Widget child) => ProviderScope(
+      child: MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: Align(alignment: Alignment.bottomCenter, child: child),
+        ),
+      ),
     );
 
 void main() {
@@ -147,5 +152,28 @@ void main() {
 
     expect(changes, contains('new draft'));
     expect(changes.last, isEmpty);
+  });
+  testWidgets(
+      'keyboard button replaces the emoji/sticker panel instead of stacking under it',
+      (tester) async {
+    Widget input() => ChatInput(
+          hint: 'Message',
+          sendTooltip: 'Send',
+          onSend: (_) {},
+          onSticker: (_, __) {},
+        );
+
+    await tester.pumpWidget(_host(input()));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pump();
+    expect(find.byType(AnimatedEmojiStickerPanel), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
+    await tester.pump();
+
+    expect(find.byType(AnimatedEmojiStickerPanel), findsNothing);
+    expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
   });
 }

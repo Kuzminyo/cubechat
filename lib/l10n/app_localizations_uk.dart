@@ -1242,6 +1242,27 @@ class AppLocalizationsUk extends AppLocalizations {
   String get stickerForget => 'Видалити стікер';
 
   @override
+  String get stickerCreate => 'Створити стікер з фото';
+
+  @override
+  String get stickerFailed => 'Не вдалося зробити стікер із цієї картинки';
+
+  @override
+  String get stickerLabel => 'Наліпка';
+
+  @override
+  String get stickerEmojiTitle => 'Оберіть емодзі для неї';
+
+  @override
+  String get stickersMine => 'Мої стікери';
+
+  @override
+  String get stickersStarterPack => 'Базовий набір';
+
+  @override
+  String get emojiTab => 'Емодзі';
+
+  @override
   String get chatBlockedStatus => 'заблоковано';
 
   @override

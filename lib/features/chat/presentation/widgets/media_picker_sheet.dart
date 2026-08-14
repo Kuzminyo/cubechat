@@ -8,8 +8,8 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/util/ui_activity.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../l10n/app_localizations.dart';
-import '../../../stickers/presentation/sticker_grid.dart';
 import 'attach_island.dart';
+import 'emoji_sticker_panel.dart';
 import 'gallery_viewer.dart';
 
 /// What the picker sheet resolves to when it closes.
@@ -54,15 +54,25 @@ class MediaPickerPoll extends MediaPickerResult {
   const MediaPickerPoll();
 }
 
-/// One sticker from the library, by the path of its file.
+/// The user tapped the Stickers tile in the attachment row.
 ///
-/// Carries a path rather than bytes for the same reason the gallery carries an
-/// asset: the sheet's job is to answer "which one", and reading the file is
-/// the sender's.
-class MediaPickerSticker extends MediaPickerResult {
-  const MediaPickerSticker(this.path);
+/// The sheet closes and the caller opens the sticker panel. It used to push a
+/// second sheet on top of this one from inside it, which stacks two modal
+/// routes over the same conversation and left the picker orphaned behind the
+/// panel — one tap of the scrim and both were gone. The panel is the composer's
+/// own now, so both ways in end up in exactly the same place.
+class MediaPickerStickers extends MediaPickerResult {
+  const MediaPickerStickers();
+}
 
-  final String path;
+/// The user asked to make a sticker of their own.
+///
+/// The sheet cannot run that flow itself: it ends in a gallery pick and an
+/// editor, and this sheet *is* the gallery pick — reopening one inside the
+/// other leaves two of them stacked with the first one orphaned. So it closes
+/// and says what was wanted, the way the file and poll tiles already do.
+class MediaPickerStickerCreate extends MediaPickerResult {
+  const MediaPickerStickerCreate();
 }
 
 /// The user confirmed a gallery selection.
@@ -104,6 +114,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   final Map<String, int> _selectedOrder = <String, int>{};
   final ScrollController _scroll = ScrollController();
   final TextEditingController _caption = TextEditingController();
+  final FocusNode _captionFocus = FocusNode();
+
+  /// True while the emoji panel stands in for the keyboard under the caption.
+  bool _emojiOpen = false;
 
   bool _allowPop = false;
   bool _confirmingDiscard = false;
@@ -158,6 +172,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   void dispose() {
     _scroll.dispose();
     _caption.dispose();
+    _captionFocus.dispose();
     UiActivity.instance.setScrolling(false);
     super.dispose();
   }
@@ -289,31 +304,30 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     });
   }
 
-  /// Stickers get a sheet of their own rather than a fifth pane in this one.
+  /// Emoji for the caption, in the panel that stands where the keyboard was.
   ///
-  /// This sheet is built around choosing several things and then confirming —
-  /// a selection count, a caption field, a send button. A sticker is none of
-  /// that: one tap is the whole interaction, and it should not be sitting
-  /// behind a Send.
-  void _openStickers() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.bgTop,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheet) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.of(sheet).size.height * 0.45,
-          child: StickerGrid(
-            onPick: (path) {
-              Navigator.of(sheet).pop();
-              _close(MediaPickerSticker(path));
-            },
-          ),
-        ),
-      ),
+  /// Not a second sheet on top of this one: this sheet *is* a route, so one
+  /// pushed from inside it arrives either underneath it (which looked exactly
+  /// like the button doing nothing) or over the caption being typed into.
+  void _toggleCaptionEmoji() {
+    if (_emojiOpen) {
+      setState(() => _emojiOpen = false);
+      _captionFocus.requestFocus();
+      return;
+    }
+    _captionFocus.unfocus();
+    setState(() => _emojiOpen = true);
+  }
+
+  void _insertCaptionEmoji(String emoji) {
+    final text = _caption.text;
+    final selection = _caption.selection;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+    final next = text.replaceRange(start, end, emoji);
+    _caption.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
     );
   }
 
@@ -374,6 +388,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
+    KeyboardHeight.observe(context);
+    // The keyboard and the panel share one strip of screen; raising one puts
+    // the other away.
+    if (_emojiOpen && media.viewInsets.bottom > 0) _emojiOpen = false;
     // No surface of its own: the sheet *is* one pane of glass now (see
     // showGlassSheet), so everything in here sits directly on it. A card inside
     // a card was the thing that made this look like a dialog stacked on a
@@ -406,20 +424,29 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
               ),
             ),
             _sendBar(),
-            AttachIsland(
-              bare: true,
-              allowFiles: widget.allowFiles,
-              allowPoll: widget.allowPoll,
-              selected: AttachChoice.gallery,
-              onPick: (choice) => switch (choice) {
-                AttachChoice.gallery => null,
-                AttachChoice.camera => _close(const MediaPickerCamera()),
-                AttachChoice.file => _close(const MediaPickerFile()),
-                AttachChoice.poll => _close(const MediaPickerPoll()),
-                AttachChoice.location => _close(const MediaPickerLocation()),
-                AttachChoice.stickers => _openStickers(),
-              },
-            ),
+            // The panel takes the category row's place rather than stacking
+            // above it: they are the same strip of screen, and the emoji are
+            // being typed into the caption right above.
+            if (_emojiOpen)
+              EmojiStickerPanel(
+                height: KeyboardHeight.value,
+                onEmoji: _insertCaptionEmoji,
+              )
+            else
+              AttachIsland(
+                bare: true,
+                allowFiles: widget.allowFiles,
+                allowPoll: widget.allowPoll,
+                selected: AttachChoice.gallery,
+                onPick: (choice) => switch (choice) {
+                  AttachChoice.gallery => null,
+                  AttachChoice.camera => _close(const MediaPickerCamera()),
+                  AttachChoice.file => _close(const MediaPickerFile()),
+                  AttachChoice.poll => _close(const MediaPickerPoll()),
+                  AttachChoice.location => _close(const MediaPickerLocation()),
+                  AttachChoice.stickers => _close(const MediaPickerStickers()),
+                },
+              ),
           ],
         ),
       ),
@@ -543,18 +570,29 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 11),
-              child: Icon(
-                Icons.sentiment_satisfied_alt_outlined,
-                color: AppColors.brandPrimary,
-                size: 23,
+            // Tappable at last. It has been drawn here since the caption row
+            // was added and did nothing at all: a smiley next to a text field
+            // is a promise, and this one opened no keyboard, inserted no
+            // character and gave no feedback when pressed.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleCaptionEmoji,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 11, 4, 11),
+                child: Icon(
+                  _emojiOpen
+                      ? Icons.keyboard_alt_outlined
+                      : Icons.sentiment_satisfied_alt_outlined,
+                  color: AppColors.brandPrimary,
+                  size: 23,
+                ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
                 controller: _caption,
+                focusNode: _captionFocus,
                 minLines: 1,
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,

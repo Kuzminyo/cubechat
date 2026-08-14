@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../chat/models/message.dart';
+
 @immutable
 class Chat {
   const Chat({
@@ -21,6 +23,7 @@ class Chat {
     this.isMuted = false,
     this.autoDeleteSeconds = 0,
     this.pinRank = -1,
+    this.outgoingStatus,
   });
 
   final String id;
@@ -70,6 +73,16 @@ class Chat {
   /// The user drags this order; without it pinned rows re-sorted by recency and
   /// swapped places on their own.
   final int pinRank;
+
+  /// How the last message in this conversation got on — but only when it is
+  /// ours. Null when the last word was theirs, when there is nothing here yet,
+  /// or while a draft is what the row is previewing: a tick beside somebody
+  /// else's message would be claiming they had read their own, and a tick on an
+  /// unsent draft would be claiming it had gone.
+  ///
+  /// This is the answer to "did that arrive?" without opening the chat, which
+  /// is the one thing a list of conversations was not saying.
+  final MessageStatus? outgoingStatus;
 
   bool get autoDeletes => autoDeleteSeconds > 0;
 }

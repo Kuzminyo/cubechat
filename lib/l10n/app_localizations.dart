@@ -2240,6 +2240,48 @@ abstract class AppLocalizations {
   /// **'Remove sticker'**
   String get stickerForget;
 
+  /// No description provided for @stickerCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Make a sticker from a photo'**
+  String get stickerCreate;
+
+  /// No description provided for @stickerFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That picture could not be made into a sticker'**
+  String get stickerFailed;
+
+  /// No description provided for @stickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sticker'**
+  String get stickerLabel;
+
+  /// No description provided for @stickerEmojiTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick an emoji for it'**
+  String get stickerEmojiTitle;
+
+  /// No description provided for @stickersMine.
+  ///
+  /// In en, this message translates to:
+  /// **'My stickers'**
+  String get stickersMine;
+
+  /// No description provided for @stickersStarterPack.
+  ///
+  /// In en, this message translates to:
+  /// **'Starter pack'**
+  String get stickersStarterPack;
+
+  /// No description provided for @emojiTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Emoji'**
+  String get emojiTab;
+
   /// No description provided for @chatBlockedStatus.
   ///
   /// In en, this message translates to:

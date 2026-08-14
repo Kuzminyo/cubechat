@@ -12,11 +12,11 @@ import 'emoji_catalog.dart';
 /// `useRootNavigator` because the caller is usually the message long-press
 /// popup, which is itself a route: pushing onto the same navigator would put
 /// the sheet behind the popup it was opened from.
-Future<String?> showEmojiPicker(BuildContext context) {
+Future<String?> showEmojiPicker(BuildContext context, {String? title}) {
   return showGlassSheet<String>(
     context: context,
     useRootNavigator: true,
-    builder: (_) => const EmojiPickerSheet(),
+    builder: (_) => EmojiPickerSheet(title: title),
   );
 }
 
@@ -25,34 +25,16 @@ Future<String?> showEmojiPicker(BuildContext context) {
 /// Reactions used to be six emoji and nothing else. This is the "and nothing
 /// else" removed: the strip on the long-press menu stays (it is faster, and it
 /// learns what you use), and the last chip on it opens this.
-class EmojiPickerSheet extends ConsumerStatefulWidget {
-  const EmojiPickerSheet({super.key});
+class EmojiPickerSheet extends ConsumerWidget {
+  const EmojiPickerSheet({super.key, this.title});
+
+  /// Why the sheet is open, when it is not obvious. Naming a sticker is the
+  /// case: the same grid, asked for a different reason.
+  final String? title;
 
   @override
-  ConsumerState<EmojiPickerSheet> createState() => _EmojiPickerSheetState();
-}
-
-class _EmojiPickerSheetState extends ConsumerState<EmojiPickerSheet> {
-  int _group = 0;
-
-  /// One controller per rebuild would jump the grid back to the top every time
-  /// a category is tapped — which is what the tap is *for* in the other
-  /// direction, so it has to be deliberate rather than accidental.
-  final _scroll = ScrollController();
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  void _pick(String emoji) => Navigator.of(context).pop(emoji);
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final media = MediaQuery.of(context);
-    final recents = ref.watch(reactionEmojiControllerProvider);
-    final group = EmojiCatalog.groups[_group];
     return SafeArea(
       child: SizedBox(
         height: media.size.height * 0.6,
@@ -67,33 +49,95 @@ class _EmojiPickerSheetState extends ConsumerState<EmojiPickerSheet> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            if (recents.isNotEmpty) _RecentRow(recents: recents, onPick: _pick),
-            Expanded(
-              child: GridView.builder(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 52,
-                  mainAxisSpacing: 2,
-                  crossAxisSpacing: 2,
-                ),
-                itemCount: group.emoji.length,
-                itemBuilder: (_, i) => _EmojiCell(
-                  emoji: group.emoji[i],
-                  onTap: () => _pick(group.emoji[i]),
+            if (title case final label?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            _CategoryBar(
-              selected: _group,
-              onSelect: (i) {
-                setState(() => _group = i);
-                if (_scroll.hasClients) _scroll.jumpTo(0);
-              },
+            Expanded(
+              child: EmojiPane(
+                onPick: (emoji) => Navigator.of(context).pop(emoji),
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The keyboard itself: recents on top, one category at a time, and the bar
+/// that switches between them.
+///
+/// Public and callback-driven because it is used twice now — the sheet above,
+/// which closes on a pick because a reaction is one choice, and the composer's
+/// panel, which stays open because typing emoji is several.
+class EmojiPane extends ConsumerStatefulWidget {
+  const EmojiPane({super.key, required this.onPick, this.showRecents = true});
+
+  final ValueChanged<String> onPick;
+
+  /// The six the reaction strip already offers, repeated at the top.
+  final bool showRecents;
+
+  @override
+  ConsumerState<EmojiPane> createState() => _EmojiPaneState();
+}
+
+class _EmojiPaneState extends ConsumerState<EmojiPane> {
+  int _group = 0;
+
+  /// One controller per rebuild would jump the grid back to the top every time
+  /// a category is tapped — which is what the tap is *for* in the other
+  /// direction, so it has to be deliberate rather than accidental.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recents = ref.watch(reactionEmojiControllerProvider);
+    final group = EmojiCatalog.groups[_group];
+    return Column(
+      children: [
+        if (widget.showRecents && recents.isNotEmpty)
+          _RecentRow(recents: recents, onPick: widget.onPick),
+        Expanded(
+          child: GridView.builder(
+            controller: _scroll,
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 52,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
+            ),
+            itemCount: group.emoji.length,
+            itemBuilder: (_, i) => _EmojiCell(
+              emoji: group.emoji[i],
+              onTap: () => widget.onPick(group.emoji[i]),
+            ),
+          ),
+        ),
+        _CategoryBar(
+          selected: _group,
+          onSelect: (i) {
+            setState(() => _group = i);
+            if (_scroll.hasClients) _scroll.jumpTo(0);
+          },
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
+import 'widgets/emoji_sticker_panel.dart';
 import 'widgets/image_editor.dart';
 
 /// What the preview returns: the (possibly edited) bytes and the caption.
@@ -77,7 +78,11 @@ class MediaPreviewScreen extends StatefulWidget {
 
 class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   late final TextEditingController _caption;
+  final _captionFocus = FocusNode();
   final _page = PageController();
+
+  /// True while the emoji panel stands in for the keyboard.
+  bool _emojiOpen = false;
   late final List<Uint8List> _bytes = [...widget.items];
   int _index = 0;
 
@@ -96,8 +101,31 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   @override
   void dispose() {
     _caption.dispose();
+    _captionFocus.dispose();
     _page.dispose();
     super.dispose();
+  }
+
+  void _toggleEmoji() {
+    if (_emojiOpen) {
+      setState(() => _emojiOpen = false);
+      _captionFocus.requestFocus();
+      return;
+    }
+    _captionFocus.unfocus();
+    setState(() => _emojiOpen = true);
+  }
+
+  void _insertEmoji(String emoji) {
+    final text = _caption.text;
+    final selection = _caption.selection;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+    final next = text.replaceRange(start, end, emoji);
+    _caption.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
   }
 
   Future<void> _edit() async {
@@ -122,6 +150,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final many = _bytes.length > 1;
+    KeyboardHeight.observe(context);
+    if (_emojiOpen && MediaQuery.viewInsetsOf(context).bottom > 0) {
+      _emojiOpen = false;
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -196,12 +228,15 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
             ),
           ),
 
-          // Caption + send, as one island above the keyboard.
+          // Caption + send, as one island above the keyboard — or above the
+          // emoji panel standing in for it.
           Positioned(
             left: 10,
             right: 10,
-            bottom: MediaQuery.viewInsetsOf(context).bottom +
-                MediaQuery.paddingOf(context).bottom +
+            bottom: (_emojiOpen
+                    ? KeyboardHeight.value
+                    : MediaQuery.viewInsetsOf(context).bottom +
+                        MediaQuery.paddingOf(context).bottom) +
                 10,
             child: FloatingGlass(
               borderRadius: 26,
@@ -223,9 +258,20 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                     _CaptionAction(icon: Icons.brush_outlined, onTap: _edit),
                     const SizedBox(width: 4),
                   ],
+                  // The same smiley the composer and the gallery caption have,
+                  // opening the same panel in the same place — under the field,
+                  // where the keyboard was.
+                  _CaptionAction(
+                    icon: _emojiOpen
+                        ? Icons.keyboard_alt_outlined
+                        : Icons.sentiment_satisfied_alt_outlined,
+                    onTap: _toggleEmoji,
+                  ),
+                  const SizedBox(width: 2),
                   Expanded(
                     child: TextField(
                       controller: _caption,
+                      focusNode: _captionFocus,
                       maxLines: 4,
                       minLines: 1,
                       textCapitalization: TextCapitalization.sentences,
@@ -252,6 +298,20 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
               ),
             ),
           ),
+
+          // The panel, flush with the bottom edge. The caption island above
+          // positions itself off the same number, so the two move together
+          // whether what is down there is the keyboard or this.
+          if (_emojiOpen)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: EmojiStickerPanel(
+                height: KeyboardHeight.value,
+                onEmoji: _insertEmoji,
+              ),
+            ),
         ],
       ),
     );
