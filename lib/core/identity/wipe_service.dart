@@ -11,6 +11,8 @@ import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/pinned_chats_controller.dart';
 import '../../features/chats/data/hidden_chats_controller.dart';
+import '../../features/chat/data/conversation_settings_controller.dart';
+import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/chats/data/user_chat_folders_controller.dart';
 import '../../features/map/data/map_friends_controller.dart';
@@ -128,4 +130,40 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   ref.invalidate(identityProvider);
   ref.invalidate(prekeyServiceProvider);
   ref.invalidate(messagingServiceProvider);
+
+  // Everything that holds a Hive box has to be built again.
+  //
+  // Each of these was emptied through its own API above, which is correct and
+  // not enough: the box handle it cached is now a handle to a file that has
+  // been deleted. The controller does not know that, so the next thing it
+  // saves throws "Box has already been closed" and is simply lost — which on a
+  // phone transfer means the imported pins, avatar and nickname are written
+  // into nothing and the new phone comes up anonymous.
+  //
+  // The rule, for whoever adds the next one: if a controller keeps a `Box` in
+  // a field, its provider belongs in this list.
+  for (final provider in [
+    messagesControllerProvider,
+    knownPeersControllerProvider,
+    peerAvatarsControllerProvider,
+    contactAliasesControllerProvider,
+    channelAvatarsControllerProvider,
+    channelDescriptionsControllerProvider,
+    channelRosterControllerProvider,
+    channelControllerProvider,
+    favoritesControllerProvider,
+    pinnedChatsControllerProvider,
+    hiddenChatsControllerProvider,
+    recentSearchesControllerProvider,
+    chatFoldersControllerProvider,
+    userChatFoldersControllerProvider,
+    mapFriendsControllerProvider,
+    mapPresenceStoreProvider,
+    pinnedControllerProvider,
+    draftsControllerProvider,
+    readMarkersControllerProvider,
+    conversationSettingsControllerProvider,
+  ]) {
+    ref.invalidate(provider);
+  }
 }
