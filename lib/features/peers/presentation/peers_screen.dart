@@ -705,7 +705,12 @@ class _PeerCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${peer.rssi} dBm · ${peer.id}',
+                  // No reading is said as no reading. "127 dBm" is the
+                  // platform's way of shrugging, and printing it verbatim
+                  // claimed a signal strength no radio has ever produced.
+                  peer.hasSignalReading
+                      ? '${peer.rssi} dBm · ${peer.id}'
+                      : '· ${peer.id}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

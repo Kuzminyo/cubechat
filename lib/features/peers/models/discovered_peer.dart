@@ -19,9 +19,18 @@ class DiscoveredPeer {
     this.resolvedPubkeyHex,
   });
 
+  /// What the platform reports for an advertisement it has no signal reading
+  /// for. It is a sentinel, not a measurement: a real RSSI is negative, and
+  /// 127 dBm would be a transmitter you could hear from orbit. Shown as
+  /// "unknown" and sorted last rather than treated as the loudest thing in the
+  /// room, which is where it used to end up.
+  static const int unknownRssi = 127;
+
   final String id;
   final String advertisedName;
   final int rssi;
+
+  bool get hasSignalReading => rssi < unknownRssi && rssi != 0;
   final DateTime lastSeen;
   final String? pubkeyFingerprint;
   final bool isConnected;
@@ -45,6 +54,10 @@ class DiscoveredPeer {
   /// 0..1 signal strength — handy for UI bars. -45 dBm or better → 1.0,
   /// -95 dBm or worse → 0.0.
   double get signalStrength {
+    // Unknown reads as weakest, not strongest. Clamping the 127 sentinel to
+    // the top of the scale drew four full bars beside the one device we had
+    // no measurement for at all.
+    if (!hasSignalReading) return 0;
     const min = -95;
     const max = -45;
     final clamped = rssi.clamp(min, max);

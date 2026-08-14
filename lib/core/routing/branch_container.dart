@@ -75,8 +75,24 @@ class _BranchContainerState extends State<BranchContainer>
     final index = widget.currentIndex;
     // A tap on the bar, a deep link, a notification: something moved the tab
     // from outside this widget, so the strip has to catch up.
-    if (index != _target) _dismissKeyboard();
-    if (index != _target && !_dragging) _settleTo(index);
+    //
+    // Unconditionally — this used to stand aside while `_dragging` was set, and
+    // that flag is only ever lowered by a drag that ends. A drag that does not
+    // end (see [_onDragCancel]) therefore left the strip parked between two
+    // screens *and* deaf to the one thing that could have rescued it: tapping
+    // the tab you wanted. The bar lit up, the screens stayed half and half, and
+    // the only thing that still worked was dragging by hand — which is exactly
+    // how it was reported.
+    //
+    // Nothing legitimate is lost. Our own [_onDragEnd] sets `_target` before it
+    // calls back, so the rebuild it causes compares equal and is ignored; any
+    // other source of a new index is something the user asked for, and landing
+    // on it is the right answer whatever the finger is doing.
+    if (index != _target) {
+      _dismissKeyboard();
+      _dragging = false;
+      _settleTo(index);
+    }
   }
 
   /// Drop the keyboard on the way out of a tab.
@@ -136,6 +152,25 @@ class _BranchContainerState extends State<BranchContainer>
     _page.value = (_page.value - d.primaryDelta! / _width).clamp(0.0, last);
   }
 
+  /// The finger is gone without an ending.
+  ///
+  /// A drag does not always finish: another recognizer can take the arena
+  /// after we accepted it, and iOS's own edge-swipe does exactly that. Then
+  /// `onHorizontalDragEnd` never arrives — and everything that settles the
+  /// strip lived in it. So the tabs stopped mid-slide, showing half of each
+  /// screen, and stayed there: `_dragging` was still true, which is also the
+  /// flag that stops [didUpdateWidget] from catching up, so tapping the bar
+  /// could not rescue it either. The tab could still be dragged by hand,
+  /// because that path never needed the flag — which is precisely how it was
+  /// reported.
+  ///
+  /// A cancel is treated as a release with no throw behind it: land on
+  /// whichever tab the strip is nearest.
+  void _onDragCancel() {
+    if (!_dragging) return;
+    _onDragEnd(DragEndDetails());
+  }
+
   void _onDragEnd(DragEndDetails d) {
     _dragging = false;
     final velocity = d.primaryVelocity ?? 0;
@@ -171,6 +206,7 @@ class _BranchContainerState extends State<BranchContainer>
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: _onDragEnd,
+          onHorizontalDragCancel: _onDragCancel,
           child: Stack(
             fit: StackFit.expand,
             children: [

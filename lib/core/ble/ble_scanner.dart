@@ -439,8 +439,16 @@ class BleScanner {
   }
 
   void _emit() {
+    // Nearest first, and "no idea" last. The platform reports 127 when it has
+    // no RSSI for an advertisement — a sentinel, not a reading — and sorting
+    // on it put the one device we knew least about at the top of the list,
+    // wearing a full-strength signal bar and a "127 dBm" label.
     final snapshot = _peers.values.toList()
-      ..sort((a, b) => b.rssi.compareTo(a.rssi));
+      ..sort((a, b) {
+        final known = (int r) => r < DiscoveredPeer.unknownRssi;
+        if (known(a.rssi) != known(b.rssi)) return known(a.rssi) ? -1 : 1;
+        return b.rssi.compareTo(a.rssi);
+      });
     _controller.add(snapshot);
   }
 
