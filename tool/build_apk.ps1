@@ -192,7 +192,16 @@ Step "local.properties pinned to $versionName / $versionCode"
 # --- Build -------------------------------------------------------------------
 Step 'gradlew assembleRelease (this takes ~8 minutes)'
 $sw = [Diagnostics.Stopwatch]::StartNew()
-& (Join-Path $root 'android\gradlew.bat') -p (Join-Path $root 'android') assembleRelease --console=plain
+# Kotlin's incremental caches break on this machine specifically: the plugin
+# sources live on C: and the project on D:, and the cache keys do not survive
+# the crossing. Compiling in-process without them is the workaround — passed
+# here rather than written into android/gradle.properties, because that file
+# is also read by CI, where the fault does not exist and the cost is a cold
+# Kotlin compile on every push.
+& (Join-Path $root 'android\gradlew.bat') -p (Join-Path $root 'android') `
+    '-Pkotlin.incremental=false' `
+    '-Pkotlin.compiler.execution.strategy=in-process' `
+    assembleRelease --console=plain
 if ($LASTEXITCODE -ne 0) { throw "Gradle failed ($LASTEXITCODE)." }
 $sw.Stop()
 
