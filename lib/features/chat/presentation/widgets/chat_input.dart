@@ -134,7 +134,7 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> {
+class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   late final TextEditingController _controller;
   final _focus = FocusNode();
   bool _hasText = false;
@@ -147,7 +147,9 @@ class _ChatInputState extends State<ChatInput> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.openStickerPanel?.addListener(_openStickersFromOutside);
+    _focus.addListener(_closePanelWhenFieldFocused);
     _controller = TextEditingController(text: widget.initialText ?? '');
     _hasText = _controller.text.trim().isNotEmpty;
     _controller.addListener(() {
@@ -201,10 +203,34 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
+    _focus.removeListener(_closePanelWhenFieldFocused);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_panelOpen) return;
+      final view = View.maybeOf(context);
+      final keyboardVisible = (view?.viewInsets.bottom ?? 0) > 0;
+      if (keyboardVisible) _closePanelImmediately();
+    });
+  }
+
+  void _closePanelWhenFieldFocused() {
+    if (_focus.hasFocus) _closePanelImmediately();
+  }
+
+  void _closePanelImmediately() {
+    if (!_panelOpen && !_closingPanel) return;
+    setState(() {
+      _panelOpen = false;
+      _closingPanel = false;
+    });
   }
 
   void _insertEmoji(String emoji) {
@@ -222,10 +248,7 @@ class _ChatInputState extends State<ChatInput> {
 
   void _togglePanel({bool stickers = false}) {
     if (_panelOpen && !stickers) {
-      setState(() {
-        _panelOpen = false;
-        _closingPanel = false;
-      });
+      _closePanelImmediately();
       _focus.requestFocus();
       return;
     }
@@ -258,15 +281,6 @@ class _ChatInputState extends State<ChatInput> {
   @override
   Widget build(BuildContext context) {
     KeyboardHeight.observe(context);
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-    // Keyboard and stickers are one bottom slot. Once the system keyboard
-    // starts taking that slot, remove the custom panel so the keyboard replaces
-    // it instead of opening as a second layer underneath.
-    if (_panelOpen && keyboard > 0) {
-      _panelOpen = false;
-      _closingPanel = false;
-    }
-
     final showAttach =
         widget.onAttach != null && !widget.recording && !_editing;
     final showEmoji = !widget.recording;
