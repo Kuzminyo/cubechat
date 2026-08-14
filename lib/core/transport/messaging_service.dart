@@ -1915,7 +1915,12 @@ class MessagingService {
   Future<void> sendReadReceipts(String canonicalId) async {
     // Opted out of read receipts: say nothing. The messages are still marked
     // read locally — this only withholds telling anyone else about it.
-    if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
+    if (!_ref.read(privacySettingsProvider).shareReadReceipts) {
+      // Both halves of the switch are silent by design — see the ingest side —
+      // so without this the setting looks exactly like a broken feature.
+      DebugLog.instance.log('RECEIPT', 'not sending: read receipts are off');
+      return;
+    }
     final msgs = _ref.read(messagesControllerProvider)[canonicalId];
     if (msgs == null || msgs.isEmpty) return;
 
@@ -1988,6 +1993,11 @@ class MessagingService {
           for (final id in slice) {
             _sentReadAcks.add(TransportEnvelope.hashHex(id));
           }
+          DebugLog.instance.log(
+            'RECEIPT',
+            'sent ${slice.length} read ack(s) to ${_short(canonicalId)} '
+            '(fanout $fanout)',
+          );
         } else {
           DebugLog.instance.log('RECEIPT',
               'no route for ${slice.length} read ack(s) — will retry');
@@ -4137,8 +4147,18 @@ class MessagingService {
     final ids = r.msgIds.map(TransportEnvelope.hashHex).toSet();
     final messages = _ref.read(messagesControllerProvider.notifier);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    messages.markRead(canonical, ids);
-    if (canonical != peerId) messages.markRead(peerId, ids);
+    var moved = messages.markRead(canonical, ids);
+    if (canonical != peerId) moved += messages.markRead(peerId, ids);
+    // Said out loud, because "the tick never turns blue" has no other evidence
+    // to work from: the frame arriving and the frame *meaning* something are
+    // different failures, and only this line tells them apart. Zero moved with
+    // ids present means the handles in the receipt match nothing we sent —
+    // which is a different bug from the receipt never arriving.
+    DebugLog.instance.log(
+      'RECEIPT',
+      'read ack from ${_short(canonical)}: ${ids.length} id(s), '
+      '$moved marked',
+    );
   }
 
   /// The channel counterpart: record *who* read, rather than flipping a status.
@@ -4261,6 +4281,10 @@ class MessagingService {
       isGroup: true,
     ));
   }
+
+  /// The first eight characters of a chat id, which is how every other line
+  /// in the log names a peer.
+  static String _short(String id) => id.length > 8 ? id.substring(0, 8) : id;
 
   /// The app's strings, in the language it is set to.
   ///

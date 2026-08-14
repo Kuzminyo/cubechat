@@ -195,10 +195,13 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// non-mine messages and already-read ones are left untouched. No-op when
   /// nothing matched (idempotent under resends — the first receipt's timestamp
   /// is the one that sticks).
-  void markRead(String peerId, Set<String> wireIds) {
+  /// Returns how many of our messages the receipt actually moved, so the
+  /// caller can say whether a receipt that arrived did anything. Zero is the
+  /// interesting number: it means the ids in it matched nothing in this chat.
+  int markRead(String peerId, Set<String> wireIds) {
     final current = state[peerId];
-    if (current == null || wireIds.isEmpty) return;
-    var changed = false;
+    if (current == null || wireIds.isEmpty) return 0;
+    var changed = 0;
     final now = DateTime.now();
     final list = [...current];
     for (var i = 0; i < list.length; i++) {
@@ -208,12 +211,13 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           m.status != MessageStatus.read &&
           wireIds.contains(m.wireId)) {
         list[i] = m.copyWith(status: MessageStatus.read, readAt: now);
-        changed = true;
+        changed++;
       }
     }
-    if (!changed) return;
+    if (changed == 0) return 0;
     state = {...state, peerId: list};
     _persist(peerId, list);
+    return changed;
   }
 
   /// Remove one message from a chat by its local [messageId] — the "delete for
