@@ -73,9 +73,19 @@ class PinnedChatsController extends Notifier<List<String>> {
       for (var i = 0; i < state.length; i++)
         if (wanted.contains(state[i])) i,
     ];
-    // An id we have no slot for means the caller's idea of what is pinned is
-    // stale; refilling would drop a pin on the floor.
-    if (slots.length != ids.length) return;
+    // The caller's idea of what is pinned can be a beat behind ours — the list
+    // it dragged in was built from the state before the *last* drag landed.
+    // This used to refuse the whole move on any mismatch, which is the "every
+    // other drag does nothing" that got reported: the second drag in a row
+    // arrived with one stale id and was thrown away entire. Reorder what we
+    // can recognise instead, in the order asked for; an id we have no slot for
+    // simply is not ours to place.
+    final known = [
+      for (final id in ids)
+        if (state.contains(id)) id,
+    ];
+    if (known.length < 2) return;
+    ids = known;
     final next = [...state];
     for (var i = 0; i < slots.length; i++) {
       next[slots[i]] = ids[i];
