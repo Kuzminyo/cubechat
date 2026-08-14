@@ -202,6 +202,12 @@ class _FramePanelState extends State<_FramePanel> {
   @override
   void dispose() {
     _tick?.cancel();
+    // And stop measuring. `start` was called on the way in and nothing ever
+    // undid it, so one visit to this screen left a per-frame callback running
+    // for the rest of the process — on every screen, forever, in aid of a
+    // panel nobody was looking at any more. Cheap per frame and permanent,
+    // which is the shape of a cost that only shows up as warmth.
+    FrameStats.instance.stop();
     super.dispose();
   }
 

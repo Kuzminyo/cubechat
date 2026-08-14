@@ -1,5 +1,6 @@
 import 'dart:ui' show FrameTiming;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/scheduler.dart';
 
 /// Where a frame's time actually goes, measured rather than guessed.
@@ -43,11 +44,31 @@ class FrameStats {
   /// Frames whose raster or build overran a 60 Hz budget.
   int _janky = 0;
 
+  /// Frames before this are dropped on the floor: they are the ones spent
+  /// arriving.
+  DateTime? _collectFrom;
+
+  /// How long to look away for after starting.
+  ///
+  /// The panel begins measuring as the screen it lives on is still sliding in,
+  /// so the first frames it sees are a route transition over a full-screen
+  /// glass background — the most expensive thing this app ever draws, and over
+  /// in a moment. They were counted, and on a slow phone they put an alarming
+  /// red number at the top of the panel for the three seconds it took the
+  /// rolling window to flush them out. That number described opening
+  /// Diagnostics, not the app.
+  static const Duration _warmUp = Duration(milliseconds: 700);
+
   void start() {
     if (_listening) return;
     _listening = true;
+    _collectFrom = DateTime.now().add(_warmUp);
     SchedulerBinding.instance.addTimingsCallback(_onTimings);
   }
+
+  /// Whether frames are being collected. False means the engine is not calling
+  /// us at all, which is what a screen nobody is looking at should cost.
+  bool get isRunning => _listening;
 
   void stop() {
     if (!_listening) return;
@@ -62,7 +83,20 @@ class FrameStats {
     _janky = 0;
   }
 
+  /// Feed timings in as if the engine had reported them. The engine's own
+  /// callback list is not reachable from a test, and the two rules worth
+  /// pinning down here — that the frames spent arriving are discarded, and
+  /// that a stopped panel costs nothing — are both about what this does with
+  /// what it is given.
+  @visibleForTesting
+  void ingestForTest(List<FrameTiming> timings) => _onTimings(timings);
+
   void _onTimings(List<FrameTiming> timings) {
+    final from = _collectFrom;
+    if (from != null) {
+      if (DateTime.now().isBefore(from)) return;
+      _collectFrom = null;
+    }
     for (final t in timings) {
       final build = t.buildDuration.inMicroseconds;
       final raster = t.rasterDuration.inMicroseconds;
