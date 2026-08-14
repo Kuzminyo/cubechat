@@ -49,6 +49,33 @@ class _ChatMediaGalleryScreenState
   /// on the photo takes it away.
   bool _chromeVisible = true;
 
+  /// How far a downward drag has carried the picture, in pixels.
+  ///
+  /// Swipe-down-to-close is how every photo viewer on a phone is dismissed, and
+  /// this one only had a back button in a corner that the chrome tap could hide.
+  double _dragY = 0;
+
+  /// Past this the picture goes rather than springs back — or any downward
+  /// flick, however short, because a flick has already said what it means.
+  static const double _dismissAfter = 120;
+  static const double _dismissVelocity = 700;
+
+  /// The photo shrinks and the black recedes as it is pulled, so the
+  /// conversation showing through says where it is going.
+  double get _dragProgress => (_dragY.abs() / 400).clamp(0.0, 1.0);
+
+  void _onDragUpdate(DragUpdateDetails d) =>
+      setState(() => _dragY = (_dragY + d.delta.dy).clamp(0.0, 1000.0));
+
+  void _onDragEnd(DragEndDetails d) {
+    final velocity = d.velocity.pixelsPerSecond.dy;
+    if (_dragY > _dismissAfter || velocity > _dismissVelocity) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() => _dragY = 0);
+  }
+
   /// Snapshot the image list once so paging isn't disturbed if a new message
   /// arrives mid-view; still enough for the common "look through photos" flow.
   late final List<Message> _images = _collectImages();
@@ -147,7 +174,10 @@ class _ChatMediaGalleryScreenState
     final count = _images.length;
     final current = _current;
     return Scaffold(
-      backgroundColor: Colors.black,
+      // The black lets go as the picture is pulled, so the conversation shows
+      // through and the gesture reads as "back to the chat" rather than "some
+      // photo is moving".
+      backgroundColor: Colors.black.withValues(alpha: 1 - _dragProgress),
       extendBodyBehindAppBar: true,
       // Hidden while the photo is being looked at rather than operated on. The
       // chrome is worth a tap to bring back and worth nothing while it sits on
@@ -247,7 +277,18 @@ class _ChatMediaGalleryScreenState
               // Tap anywhere to get the chrome out of the way, the way every
               // photo viewer works.
               onTap: () => setState(() => _chromeVisible = !_chromeVisible),
-              child: PageView.builder(
+              // Vertical only: the horizontal axis belongs to the PageView, and
+              // pinch-zoom belongs to the InteractiveViewer inside it. A drag
+              // that starts as a scale gesture never reaches here, so a
+              // two-finger zoom cannot close the picture by accident.
+              onVerticalDragUpdate: _onDragUpdate,
+              onVerticalDragEnd: _onDragEnd,
+              onVerticalDragCancel: () => setState(() => _dragY = 0),
+              child: Transform.translate(
+                offset: Offset(0, _dragY),
+                child: Transform.scale(
+                  scale: 1 - 0.15 * _dragProgress,
+                  child: PageView.builder(
                 controller: _controller,
                 itemCount: count,
                 onPageChanged: (i) => setState(() => _index = i),
@@ -268,6 +309,8 @@ class _ChatMediaGalleryScreenState
                     ),
                   );
                 },
+                  ),
+                ),
               ),
             ),
     );

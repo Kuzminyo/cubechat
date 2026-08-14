@@ -174,7 +174,13 @@ PageRoute<T> mediaRoute<T>(WidgetBuilder builder) {
     transitionDuration: const Duration(milliseconds: 300),
     reverseTransitionDuration: const Duration(milliseconds: 260),
     opaque: false,
-    barrierColor: Colors.black,
+    // No barrier of its own. Every screen opened this way paints its own black
+    // background, so the barrier only ever duplicated it — and being a fixed
+    // colour on the route, it could not get out of the way when one of those
+    // screens wants to reveal what is underneath. Which is exactly what
+    // swipe-down-to-close needs: the conversation showing through as the
+    // picture is pulled towards it.
+    barrierColor: null,
     pageBuilder: (context, animation, secondary) => builder(context),
     transitionsBuilder: (context, animation, secondary, child) {
       final curved = CurvedAnimation(
