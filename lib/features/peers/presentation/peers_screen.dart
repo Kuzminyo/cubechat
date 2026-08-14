@@ -631,12 +631,24 @@ Future<void> _connectWithFeedback(
   AppLocalizations t,
 ) async {
   final messaging = ref.read(messagingServiceProvider);
-  final scanner = ref.read(bleScannerProvider);
+  final discovery = ref.read(peerDiscoveryControllerProvider.notifier);
+  final identity = peer.resolvedPubkeyHex;
+  // Already talking to them? Then the row was tapped to open the chat, not to
+  // dial. A contact who called us, or who answered on another of their
+  // addresses, has no link filed under this row's — so tapping them spent
+  // three eight-second timeouts against an address nobody was on and finished
+  // with a red toast, while their messages were arriving the whole time.
+  if (identity != null && messaging.hasSessionWithPubkey(identity)) return;
   try {
     await messaging.connectAsInitiatorWithRetry(
-      deviceId: peer.id,
+      // The address this identity is answering on now. The row can be a few
+      // seconds old, and on Android a few seconds is enough to be a rotation
+      // behind.
+      deviceId: (identity == null ? null : discovery.addressOf(identity)) ??
+          peer.id,
       displayName: label,
-      refreshId: () => scanner.refreshPeerId(peer.advertisedName),
+      refreshId: () =>
+          identity == null ? Future.value(null) : discovery.awaitAddressOf(identity),
     );
   } catch (_) {
     // The per-attempt cause is already in the debug log; the user gets the
