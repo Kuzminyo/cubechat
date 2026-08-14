@@ -134,7 +134,7 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> {
+class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   late final TextEditingController _controller;
   final _focus = FocusNode();
   bool _hasText = false;
@@ -150,6 +150,12 @@ class _ChatInputState extends State<ChatInput> {
   @override
   void initState() {
     super.initState();
+    // Measuring the keyboard is this widget's job, not the panel's. The panel
+    // exists only while it is open, so if it were the only observer the app
+    // would never see a keyboard rise on its own — and would still be sizing
+    // itself against the fallback the first time anybody pressed the smiley.
+    // The composer is alive for as long as the conversation is.
+    WidgetsBinding.instance.addObserver(this);
     widget.openStickerPanel?.addListener(_openStickersFromOutside);
     _focus.addListener(_closePanelWhenFieldFocused);
     _controller = TextEditingController(text: widget.initialText ?? '');
@@ -205,12 +211,18 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _keyboardWatchdog?.cancel();
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
     _focus.removeListener(_closePanelWhenFieldFocused);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (mounted) KeyboardHeight.observeInset(KeyboardHeight.insetOf(context));
   }
 
   /// The keyboard was asked for and never came — no soft keyboard on this

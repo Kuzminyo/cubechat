@@ -36,6 +36,10 @@ abstract final class KeyboardHeight {
   static const Duration _settleDelay = Duration(milliseconds: 220);
 
   static double _seen = 0;
+
+  /// The tallest the keyboard has been since it last went away. Resets when it
+  /// does, so a keyboard that changes size between openings is re-measured.
+  static double _peak = 0;
   static Timer? _settle;
 
   /// The keyboard's height in logical pixels right now: full while it is up,
@@ -48,9 +52,29 @@ abstract final class KeyboardHeight {
     return view.viewInsets.bottom / ratio;
   }
 
-  /// Feed a reading in. Only a value that stops changing is kept.
+  /// Feed a reading in. Only a value that stops changing is kept — and only
+  /// from a keyboard that is arriving or already there.
+  ///
+  /// A keyboard on its way *out* passes through every height between its own
+  /// and nothing, and those are not measurements of anything. Taking them
+  /// recorded whatever the last frame above the floor happened to be, so one
+  /// trip down left the app believing keyboards on this phone were a hundred
+  /// and fifty points tall; the panel then drew itself that size and, worse,
+  /// read the departing keyboard as one arriving and took itself back out —
+  /// which is the switch from the keyboard to the smileys not happening at all.
+  ///
+  /// Compared against the episode's high-water mark rather than against the
+  /// previous sample, because the platform repeats a value across frames: "not
+  /// smaller than last time" is true of a keyboard that has stopped halfway out
+  /// as well as of one at rest, and that repeat was enough to record it.
   static void observeInset(double inset) {
-    if (inset <= _floor) return;
+    if (inset <= _floor) {
+      // Gone. The next rise is a new measurement.
+      _peak = 0;
+      return;
+    }
+    if (inset < _peak) return;
+    _peak = inset;
     _settle?.cancel();
     _settle = Timer(_settleDelay, () {
       _seen = inset;
@@ -71,6 +95,7 @@ abstract final class KeyboardHeight {
     _settle?.cancel();
     _settle = null;
     _seen = 0;
+    _peak = 0;
   }
 }
 
@@ -288,9 +313,14 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
     final next = KeyboardHeight.insetOf(context);
     KeyboardHeight.observeInset(next);
     if ((next - _inset).abs() < 0.5) return;
+    final rising = next > _inset;
     setState(() => _inset = next);
-    // Zero left to show and a keyboard in front of it: the swap is complete.
-    if (widget.open && !_toldParent && next > _presence && _slack <= 0.5) {
+    // Nothing left to show *and the keyboard is the one arriving*: the swap is
+    // complete. The direction is the whole test. Without it a keyboard on its
+    // way out — which also passes through "the panel has nothing to draw yet" —
+    // was read as a takeover, and the panel the user had just asked for was
+    // taken back out of the tree before it could grow into the space.
+    if (widget.open && !_toldParent && rising && _slack <= 0.5) {
       _toldParent = true;
       widget.onKeyboardTookOver?.call();
     }

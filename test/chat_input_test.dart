@@ -186,7 +186,8 @@ void main() {
     expect(find.byType(KeyboardSlotPanel), findsOneWidget);
   });
 
-  testWidgets('the panel gives its space back point for point as the keyboard '
+  testWidgets(
+      'the panel gives its space back point for point as the keyboard '
       'rises, and goes when the keyboard has it all', (tester) async {
     // The host is a Scaffold, deliberately: with resizeToAvoidBottomInset on
     // (the default) it strips the bottom inset from the MediaQuery it hands
@@ -210,8 +211,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    final full =
-        tester.getSize(find.byType(KeyboardSlotPanel)).height;
+    final full = tester.getSize(find.byType(KeyboardSlotPanel)).height;
     expect(full, greaterThan(100));
 
     // Halfway up: the panel is holding half as much, so the two together still
@@ -263,9 +263,14 @@ void main() {
     // of a keyboard that was also leaving, drew the panel twice over.
     expect(tester.getSize(find.byType(KeyboardSlotPanel)).height, lessThan(1));
 
+    // Long pumps between the steps on purpose: a keyboard on its way out passes
+    // through every height there is, and if any of those counted as a
+    // measurement the panel would end up the size of the last frame before the
+    // keyboard vanished — and would decide it had been taken over on the way.
     view.viewInsets = const FakeViewPadding(bottom: 150 * 3);
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
     expect(
       tester.getSize(find.byType(KeyboardSlotPanel)).height,
       closeTo(150, 1),
@@ -273,7 +278,8 @@ void main() {
 
     view.viewInsets = FakeViewPadding.zero;
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
     expect(
       tester.getSize(find.byType(KeyboardSlotPanel)).height,
       closeTo(300, 1),
