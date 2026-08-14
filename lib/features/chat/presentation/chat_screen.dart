@@ -395,14 +395,22 @@ class ChatScreen extends ConsumerWidget {
                       final manager =
                           ref.read(chatSessionManagerProvider.notifier);
                       manager.drop(peerId);
-                      final scanner = ref.read(bleScannerProvider);
+                      final discovery =
+                          ref.read(peerDiscoveryControllerProvider.notifier);
                       try {
                         await ref
                             .read(messagingServiceProvider)
                             .connectAsInitiatorWithRetry(
-                              deviceId: peerId,
+                              // Where they are now, if the scan can say — not
+                              // the address this screen was opened with, which
+                              // is however old the conversation is. A dead
+                              // address costs the whole connect timeout before
+                              // anything else gets a turn.
+                              deviceId:
+                                  discovery.addressOf(canonicalId) ?? peerId,
                               displayName: peerLabel,
-                              refreshId: () => scanner.refreshPeerId(peerLabel),
+                              refreshId: () =>
+                                  discovery.awaitAddressOf(canonicalId),
                             );
                       } catch (_) {
                         if (!context.mounted) return;

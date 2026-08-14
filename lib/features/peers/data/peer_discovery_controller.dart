@@ -471,6 +471,49 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     return out;
   }
 
+  /// The BLE address [pubkeyHex] is answering on right now, or null if we have
+  /// not seen them this scan.
+  ///
+  /// Identity, not name. The other way of asking this — match the *advertised*
+  /// name — cannot work any more: a cubechat build broadcasts a rotating id and
+  /// no name at all, so every peer answers to the anonymous default. Asked with
+  /// a contact's display name it matched nobody, and asked with the default it
+  /// would match whichever stranger was closest.
+  ///
+  /// Freshest sighting wins, because an address the peer has rotated away from
+  /// is still in the list until it goes stale, and connecting to it costs the
+  /// full connect timeout before anything else can be tried.
+  String? addressOf(String pubkeyHex) {
+    DiscoveredPeer? best;
+    for (final peer in state.peers) {
+      if (peer.resolvedPubkeyHex != pubkeyHex) continue;
+      if (best == null || peer.lastSeen.isAfter(best.lastSeen)) best = peer;
+    }
+    return best?.id;
+  }
+
+  /// Wait for [pubkeyHex] to be seen on an address, up to [timeout].
+  ///
+  /// Only a sighting from after this call counts: the list still holds the
+  /// address they have just rotated away from, which is the one that failed.
+  Future<String?> awaitAddressOf(
+    String pubkeyHex, {
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    final since = DateTime.now();
+    final deadline = since.add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      for (final peer in state.peers) {
+        if (peer.resolvedPubkeyHex == pubkeyHex &&
+            peer.lastSeen.isAfter(since)) {
+          return peer.id;
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    return null;
+  }
+
   /// Reverse index over the roster, shared across scan emissions so a busy
   /// window does not re-hash every contact for every advertisement.
   final PeerIdIndex _peerIds = PeerIdIndex();
