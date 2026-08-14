@@ -45,9 +45,27 @@ class ContactCard {
   /// therefore only make tappable/copyable in one piece) an `://` URI.
   static const String uriScheme = 'cubechat://c1/';
 
+  /// The form a scanner that has never heard of cubechat can act on.
+  ///
+  /// A QR holding `cubechat:c1:…` decodes perfectly and then goes nowhere:
+  /// Google Lens and the iOS camera find a scheme no app on the phone claims,
+  /// so they offer nothing. Wrapping the card in an https link gives them
+  /// something they know how to open, and gives us a universal link to claim.
+  ///
+  /// The payload sits in the *fragment*, which is the part a browser never
+  /// sends to a server — so even a card opened in a browser leaks nothing to
+  /// the host. The domain here is a name, not a service.
+  static const String linkPrefix = 'https://cubechat.app/c1#';
+
   /// Wrap already-signed announcement bytes into a card string.
+  ///
+  /// The old token is kept *inside* the link rather than replaced by it, so
+  /// one string satisfies everybody: a scanner sees a URL, and a phone still
+  /// running a build that only knows `cubechat:c1:` finds that prefix by
+  /// search and reads the card exactly as before. Thirty characters buys not
+  /// having to care which build somebody is holding.
   static String encode(Uint8List signedAnnouncement) =>
-      '$scheme${_base64UrlNoPad(signedAnnouncement)}';
+      '$linkPrefix$scheme${_base64UrlNoPad(signedAnnouncement)}';
 
   /// Pull the card token out of arbitrary pasted text and decode it to raw
   /// announcement bytes. Returns null when [raw] holds nothing card-shaped.

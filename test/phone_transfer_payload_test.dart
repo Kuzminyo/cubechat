@@ -13,7 +13,8 @@ void main() {
     final encoded = payload.encode();
     final decoded = PhoneTransferPayload.tryDecode(encoded);
 
-    expect(encoded, startsWith(PhoneTransferPayload.prefix));
+    expect(encoded, startsWith(PhoneTransferPayload.linkPrefix));
+    expect(encoded, contains(PhoneTransferPayload.prefix));
     expect(decoded?.host, payload.host);
     expect(decoded?.port, payload.port);
     expect(decoded?.token, payload.token);

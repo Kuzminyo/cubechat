@@ -59,9 +59,13 @@ void main() {
       expect(decoded.nickname, 'Alice');
     });
 
-    test('carries the scheme prefix', () async {
+    test('is a link that still carries the scheme token', () async {
       final c = await _card();
-      expect(c.card, startsWith(ContactCard.scheme));
+      // The card leads with https now, so a scanner that has never heard of
+      // cubechat has something to open — and keeps the old token inside, so a
+      // phone on an older build still finds what it is looking for.
+      expect(c.card, startsWith(ContactCard.linkPrefix));
+      expect(c.card, contains(ContactCard.scheme));
     });
 
     test('UTF-8 nickname survives the round trip', () async {

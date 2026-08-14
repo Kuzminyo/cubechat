@@ -23,7 +23,18 @@ class PhoneTransferPayload {
   final String token;
   final String password;
 
+  /// Wrapped in an https link so a scanner that has never heard of cubechat —
+  /// Google Lens, the iOS camera — has something it knows how to open. The
+  /// token stays in the *fragment*, the one part of a URL a browser never
+  /// sends to a server, so the address and password of a transfer in progress
+  /// never leave the two phones even if the link is opened in a browser.
+  ///
+  /// The old `cubechat:t1:` token is kept inside the link rather than replaced
+  /// by it, so the string carries both readings at once.
+  static const linkPrefix = 'https://cubechat.app/t1#';
+
   String encode() =>
+      linkPrefix +
       prefix +
       base64Url
           .encode(utf8.encode(jsonEncode({
@@ -35,9 +46,13 @@ class PhoneTransferPayload {
           .replaceAll('=', '');
 
   static PhoneTransferPayload? tryDecode(String raw) {
-    if (!raw.startsWith(prefix)) return null;
+    // Found by search rather than required at the front: the token now travels
+    // inside an https link, and a scanner may hand back the URL with anything
+    // around it.
+    final at = raw.indexOf(prefix);
+    if (at < 0) return null;
     try {
-      final encoded = raw.substring(prefix.length);
+      final encoded = raw.substring(at + prefix.length).trim();
       final padding = '=' * ((4 - encoded.length % 4) % 4);
       final dynamic value =
           jsonDecode(utf8.decode(base64Url.decode(encoded + padding)));
