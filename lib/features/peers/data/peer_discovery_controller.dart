@@ -468,7 +468,7 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
         advertisedName: roster[hex]?.displayName,
       ));
     }
-    return out;
+    return oneRowPerContact(out);
   }
 
   /// The BLE address [pubkeyHex] is answering on right now, or null if we have
@@ -565,6 +565,13 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       // and every already-linked peer was walked all the way into
       // connectAsInitiator to be turned away by its own membership check.
       if (messaging.hasLinkOrPendingTo(peer.id)) continue;
+      // …and not by address alone. A contact reached on one address, or one
+      // who dialled us, has no client under any of the others they advertise —
+      // so every rotation of theirs looked like somebody new to call.
+      final identity = peer.resolvedPubkeyHex;
+      if (identity != null && messaging.hasSessionWithPubkey(identity)) {
+        continue;
+      }
       final last = _autoAttempts[peer.id];
       if (last != null && now.difference(last) < _autoCooldown) continue;
       _autoAttempts[peer.id] = now;
@@ -588,4 +595,45 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     _peerSub = null;
     _adapterSub = null;
   }
+}
+
+/// Collapse the entries that turned out to be the same person.
+///
+/// Android rotates its BLE address for privacy, so a phone that rotates while
+/// we are watching is two advertisers to the radio — two addresses, two signal
+/// strengths — and both stay listed until the old one goes stale. Once a
+/// rotating id has been matched to a contact we know better than the radio
+/// does: it is one person, and the row shows where they are answering now.
+///
+/// Only *resolved* entries collapse. Two strangers are two strangers; there is
+/// nothing here to say otherwise, and merging them on a guess would hide
+/// somebody.
+List<DiscoveredPeer> oneRowPerContact(List<DiscoveredPeer> peers) {
+  final best = <String, DiscoveredPeer>{};
+  var resolved = 0;
+  for (final peer in peers) {
+    final id = peer.resolvedPubkeyHex;
+    if (id == null) continue;
+    resolved++;
+    final rival = best[id];
+    if (rival == null || identical(_preferred(peer, rival), peer)) {
+      best[id] = peer;
+    }
+  }
+  if (best.length == resolved) return peers; // nobody doubled up
+  final shown = <String>{};
+  return [
+    for (final peer in peers)
+      if (peer.resolvedPubkeyHex == null)
+        peer
+      else if (shown.add(peer.resolvedPubkeyHex!))
+        best[peer.resolvedPubkeyHex]!,
+  ];
+}
+
+/// Which of two sightings of one contact to keep: a live link first — that
+/// address is demonstrably the one that answers — then the more recent.
+DiscoveredPeer _preferred(DiscoveredPeer a, DiscoveredPeer b) {
+  if (a.isConnected != b.isConnected) return a.isConnected ? a : b;
+  return a.lastSeen.isAfter(b.lastSeen) ? a : b;
 }

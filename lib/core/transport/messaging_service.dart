@@ -7567,6 +7567,31 @@ class MessagingService {
   /// costs a scan-result pass and a log line every time.
   bool hasLinkOrPendingTo(String peerId) => _clients.containsKey(peerId);
 
+  /// True when we are already talking to this identity, on any address and in
+  /// either direction.
+  ///
+  /// [hasLinkOrPendingTo] answers about one BLE address, and an address is not
+  /// a person: a peer rotates through several, and a peer that dialled *us*
+  /// has no entry there at all. A phone in a busy room was therefore seen as
+  /// unconnected on every address it had ever advertised, and dialled on each
+  /// of them — in one log, the same contact was chased at a dead address for
+  /// twenty seconds, in a storm of GATT 133s, while their messages were
+  /// arriving over the link they had opened themselves.
+  bool hasSessionWithPubkey(String pubkeyHex) {
+    for (final session in _ref.read(chatSessionManagerProvider).values) {
+      if (session.remotePubkeyHex != pubkeyHex) continue;
+      switch (session.status) {
+        case ChatSessionStatus.established:
+        case ChatSessionStatus.handshakingInitiator:
+        case ChatSessionStatus.handshakingResponder:
+          return true;
+        default:
+          continue;
+      }
+    }
+    return false;
+  }
+
   /// True while a held frame is recent enough to be worth spending radio on.
   ///
   /// Distinct from [hasPendingDelivery], which stays true for the buffer's full
