@@ -194,8 +194,27 @@ class Message {
     final t = text.trim();
     if (t.isEmpty) return null;
     if (t.startsWith('image/') || t.startsWith('audio/')) return null;
+    if (t == stickerMarker) return null;
     return t;
   }
+
+  /// What a sticker says in the caption field instead of a caption.
+  ///
+  /// A sticker is a picture, and it travels as one: the whole media path —
+  /// chunking, encryption, mesh relay, reassembly, the store-and-forward
+  /// buffer — already carries pictures across this network reliably, and none
+  /// of it needed a second kind of thing to learn. What makes it a sticker is
+  /// this one word riding where a caption would, which is the same trick the
+  /// map beacons and contact cards use for small facts.
+  ///
+  /// A build that has never heard of stickers therefore shows a photo with an
+  /// odd line under it, rather than nothing at all.
+  static const String stickerMarker = 'cubechat:sticker:v1';
+
+  /// Drawn without a bubble, larger, and with no caption line — the way every
+  /// messenger draws one.
+  bool get isSticker =>
+      kind == MessageKind.image && text.trim() == stickerMarker;
 
   Message copyWith({
     MessageStatus? status,

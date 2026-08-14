@@ -855,6 +855,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     //
     // The RepaintBoundary stays: it keeps one bubble's repaint out of its
     // neighbours as the list scrolls.
+    // A sticker has no bubble at all: no fill, no border, no shadow. It is a
+    // picture with a transparent background, and any of those would draw a
+    // rectangle around something whose whole point is not having one.
+    final sticker = message.isSticker;
+
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
     const inset = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
@@ -865,7 +870,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
-          boxShadow: FloatingGlass.shadows,
+          boxShadow: sticker ? const <BoxShadow>[] : FloatingGlass.shadows,
         ),
         child: ClipRRect(
           borderRadius: radius,
@@ -881,7 +886,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             padding: photo
                 ? EdgeInsets.zero
                 : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: mine
+            decoration: sticker
+                ? const BoxDecoration()
+                : mine
                 ? BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1834,7 +1841,10 @@ class _ImagePayload extends StatelessWidget {
                 borderRadius: BorderRadius.zero,
                 child: Image.file(
                   File(path),
-                  fit: BoxFit.cover,
+                  // A sticker is drawn whole, not cropped to a square: it has a
+                  // shape, usually with transparency around it, and cover would
+                  // trim exactly the part that gives it one.
+                  fit: message.isSticker ? BoxFit.contain : BoxFit.cover,
                   // Decoded at the size it is drawn, not the size it was sent.
                   //
                   // Without this the bubble decodes the whole photo � the mesh
@@ -1864,7 +1874,13 @@ class _ImagePayload extends StatelessWidget {
           );
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 220, maxHeight: 220),
+      // Stickers are smaller than photos on purpose. A photo is content and
+      // gets the width; a sticker is a gesture, and at 220 it stops being an
+      // aside and starts being an announcement.
+      constraints: BoxConstraints(
+        maxWidth: message.isSticker ? 148 : 220,
+        maxHeight: message.isSticker ? 148 : 220,
+      ),
       child: body,
     );
   }

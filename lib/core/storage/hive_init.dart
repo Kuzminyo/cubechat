@@ -44,6 +44,12 @@ abstract final class HiveBoxes {
   /// churns.
   static const contactAliases = 'cubechat.contact_aliases';
 
+  /// The stickers this person keeps, as paths into app storage. Only the paths
+  /// live here — the pictures themselves are files, for the same reason peer
+  /// avatars are: a box that is read on every keystroke of a picker has no
+  /// business carrying a few hundred kilobytes of PNG.
+  static const stickers = 'cubechat.stickers';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -55,6 +61,7 @@ abstract final class HiveBoxes {
     channelAvatars,
     channelDescriptions,
     contactAliases,
+    stickers,
   ];
 }
 
