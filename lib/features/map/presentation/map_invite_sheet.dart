@@ -2,6 +2,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../chat/domain/message_preview.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -241,7 +242,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                         style: TextStyle(color: AppColors.textOnGlass),
                       ),
                       subtitle: Text(
-                        chat.lastMessage,
+                        storedTextPreview(chat.lastMessage, t),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

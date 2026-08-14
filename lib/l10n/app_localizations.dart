@@ -2258,6 +2258,24 @@ abstract class AppLocalizations {
   /// **'Sticker'**
   String get stickerLabel;
 
+  /// No description provided for @previewPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get previewPhoto;
+
+  /// No description provided for @previewVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice message'**
+  String get previewVoice;
+
+  /// No description provided for @previewFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get previewFile;
+
   /// No description provided for @stickerEmojiTitle.
   ///
   /// In en, this message translates to:

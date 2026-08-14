@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../chat/domain/message_preview.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/aurora_background.dart';
@@ -254,7 +255,10 @@ Future<void> _editFolder(
                     style: TextStyle(color: AppColors.textOnGlass),
                   ),
                   subtitle: Text(
-                    chat.lastMessage,
+                    storedTextPreview(
+                      chat.lastMessage,
+                      AppLocalizations.of(ctx),
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: AppColors.textOnGlassDim),

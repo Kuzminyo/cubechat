@@ -26,6 +26,8 @@ import '../../chat/data/message_visibility.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
+import '../../../core/locale/locale_controller.dart';
+import '../../chat/domain/message_preview.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -79,11 +81,9 @@ Chat? savedChatRow(WidgetRef ref, AppLocalizations t) {
     id: savedChatId,
     peerId: savedChatId,
     peerName: t.savedTitle,
-    // A photo's `text` is its mime type, which is not a preview of anything —
-    // its caption is, when it has one.
-    lastMessage: last == null
-        ? ''
-        : (last.kind == MessageKind.text ? last.text : last.imageCaption ?? ''),
+    // A photo's `text` is its mime type and a sticker's is its marker, so what
+    // a row shows is composed rather than copied — see [messagePreview].
+    lastMessage: last == null ? '' : messagePreview(last, t),
     lastTime: last?.sentAt ?? messages.last.sentAt,
     unreadCount: 0,
     isMesh: false,
@@ -161,6 +161,9 @@ MessageStatus? _outgoingStatus(Message? last, {required bool hasDraft}) {
 }
 
 final allChatsProvider = Provider<List<Chat>>((ref) {
+  // The row previews are words — "Photo", "Sticker" — so the list re-derives
+  // when the language does.
+  final t = lookupAppLocalizations(ref.watch(localeControllerProvider));
   final settings = ref.watch(conversationSettingsControllerProvider);
   final known = ref.watch(knownPeersControllerProvider);
   final messagesByChat = ref.watch(messagesControllerProvider);
@@ -203,7 +206,8 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         rawBroadcastName: peer.displayName,
         pubkeyHex: peer.pubkeyHex,
       ),
-      lastMessage: draft?.text ?? last?.text ?? 'Secured · Noise XX',
+      lastMessage: draft?.text ??
+          (last == null ? 'Secured · Noise XX' : messagePreview(last, t)),
       // An empty conversation sinks instead of floating.
       //
       // It used to fall back to the peer's lastSeen, which every announcement
@@ -241,8 +245,8 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         (last == null
             ? 'Group channel'
             : (!last.isMine && last.authorName != null
-                ? '${last.authorName}: ${last.text}'
-                : last.text));
+                ? '${last.authorName}: ${messagePreview(last, t)}'
+                : messagePreview(last, t)));
     entries.add(Chat(
       id: ch.name,
       peerId: ch.name,

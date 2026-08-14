@@ -187,7 +187,7 @@ class ChatTile extends StatelessWidget {
                 Text(
                   chat.isDraft
                       ? '${t.chatDraft}: ${chat.lastMessage}'
-                      : _previewOf(chat.lastMessage, t),
+                      : chat.lastMessage,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -272,21 +272,6 @@ class ChatTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// What the preview line says, for the payloads whose stored text is plumbing
-/// rather than words.
-///
-/// A sticker keeps its marker in the text field — see [Message.stickerMarker] —
-/// and the list was printing it verbatim: rows reading `cubechat:sticker:v1`
-/// where the last thing said was a picture of a cat. What goes here instead is
-/// the emoji the sticker is filed under and the word for what it is.
-String _previewOf(String stored, AppLocalizations t) {
-  final trimmed = stored.trim();
-  if (!trimmed.startsWith(Message.stickerMarker)) return stored;
-  final rest = trimmed.substring(Message.stickerMarker.length);
-  final emoji = rest.startsWith(':') ? rest.substring(1).trim() : '';
-  return emoji.isEmpty ? t.stickerLabel : '$emoji ${t.stickerLabel}';
 }
 
 /// One tick sent, two delivered, two tinted read — the same glyphs and the same

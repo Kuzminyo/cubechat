@@ -1251,6 +1251,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get stickerLabel => 'Наліпка';
 
   @override
+  String get previewPhoto => 'Фото';
+
+  @override
+  String get previewVoice => 'Голосове повідомлення';
+
+  @override
+  String get previewFile => 'Файл';
+
+  @override
   String get stickerEmojiTitle => 'Оберіть емодзі для неї';
 
   @override

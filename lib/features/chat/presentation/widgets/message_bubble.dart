@@ -30,6 +30,7 @@ import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
+import '../../domain/message_preview.dart';
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
@@ -640,32 +641,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   /// A one-line snippet of [m] for a reply preview / quote box.
   ///
-  /// The media lines are a glyph and a word rather than the stored text, which
-  /// for anything but a message is plumbing: a mime type, or a sticker's
-  /// marker. A quoted sticker says which sticker — the emoji it was filed
-  /// under is the only name it has.
+  /// The same line the chat list and a notification show — one description of
+  /// a message per app, not one per screen. A shared contact and a map link
+  /// are the two things a quote can say more about than a list can: they are
+  /// text on the wire, and the name inside them is the useful part.
   static String _replyPreview(Message m, AppLocalizations t) {
     final contact = SharedContact.tryParse(m.text);
     if (contact != null) return contact.displayName;
     final mapLink = MapFriendLink.tryParse(m.text);
     if (mapLink != null) return mapLink.displayName;
-    switch (m.kind) {
-      case MessageKind.image:
-        if (m.isSticker) {
-          final emoji = m.stickerEmoji;
-          return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';
-        }
-        return '🖼';
-      case MessageKind.audio:
-        return '🎤';
-      case MessageKind.file:
-        return '📎 ${m.fileName ?? ''}'.trimRight();
-      case MessageKind.poll:
-        return '📊 ${m.text}';
-      case MessageKind.text:
-        final t = m.text.replaceAll('\n', ' ').trim();
-        return t.length > 80 ? '${t.substring(0, 80)}�' : t;
-    }
+    final preview = messagePreview(m, t).replaceAll('\n', ' ').trim();
+    return preview.length > 80 ? '${preview.substring(0, 80)}…' : preview;
   }
 
   /// Non-tappable first row of the long-press menu: when this message was sent

@@ -20,7 +20,10 @@ import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
+import '../../features/chat/domain/message_preview.dart';
 import '../../features/chat/models/message.dart';
+import '../../l10n/app_localizations.dart';
+import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
@@ -4253,11 +4256,19 @@ class MessagingService {
     unawaited(NotificationService.instance.showMessage(
       threadKey: channel.name,
       title: mentioned ? '@ ${channel.name}' : channel.name,
-      body: '$authorName: ${message.text}',
+      body: '$authorName: ${messagePreview(message, _localizations)}',
       senderId: channel.name,
       isGroup: true,
     ));
   }
+
+  /// The app's strings, in the language it is set to.
+  ///
+  /// A notification is composed outside the widget tree, so there is no
+  /// context to look these up from — and the lines it used to build were
+  /// English constants regardless of what the user had chosen.
+  AppLocalizations get _localizations =>
+      lookupAppLocalizations(_ref.read(localeControllerProvider));
 
   /// Linear scan through active sessions for the one whose authenticated
   /// pubkey matches [pubkeyHex]. Returns null if no live session for that
@@ -7282,19 +7293,10 @@ class MessagingService {
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
         : 'New message';
-    final String preview;
-    switch (message.kind) {
-      case MessageKind.image:
-        preview = '📷 Photo';
-      case MessageKind.audio:
-        preview = '🎤 Voice message';
-      case MessageKind.file:
-        preview = '📎 ${message.fileName ?? 'File'}';
-      case MessageKind.text:
-        preview = message.text;
-      case MessageKind.poll:
-        preview = '📊 ${message.text}';
-    }
+    // The same line the chat list shows, in the language the app is set to: a
+    // notification used to announce '📷 Photo' for a sticker and, in English,
+    // to somebody using the app in Ukrainian.
+    final preview = messagePreview(message, _localizations);
     unawaited(NotificationService.instance.showMessage(
       threadKey: canonicalId,
       title: name,

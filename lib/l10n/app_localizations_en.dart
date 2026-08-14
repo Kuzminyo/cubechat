@@ -1244,6 +1244,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stickerLabel => 'Sticker';
 
   @override
+  String get previewPhoto => 'Photo';
+
+  @override
+  String get previewVoice => 'Voice message';
+
+  @override
+  String get previewFile => 'File';
+
+  @override
   String get stickerEmojiTitle => 'Pick an emoji for it';
 
   @override
