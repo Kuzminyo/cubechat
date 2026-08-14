@@ -2576,6 +2576,31 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
         await _shareLocation();
       case MediaPickerEdit(:final asset):
         await _editGalleryPhoto(asset);
+      case MediaPickerSticker(:final path):
+        await _sendSticker(path);
+    }
+  }
+
+  /// Send one from the library.
+  ///
+  /// Straight down the image path with the marker where a caption goes — no
+  /// editor, no downscale prompt, no confirmation. A sticker is already the
+  /// size it was kept at, and one tap is the entire interaction it is for.
+  Future<void> _sendSticker(String path) async {
+    try {
+      final bytes = await File(MediaPaths.repair(path)).readAsBytes();
+      await ref.read(messagingServiceProvider).sendImage(
+            widget.canonicalId,
+            bytes: bytes,
+            mime: 'image/png',
+            cachedPath: MediaPaths.repair(path),
+            caption: Message.stickerMarker,
+          );
+    } catch (e) {
+      DebugLog.instance.log('STICKER', 'send failed: $e');
+      if (!mounted) return;
+      showGlassToast(context, AppLocalizations.of(context).chatForwardNothing,
+          tone: ToastTone.danger);
     }
   }
 

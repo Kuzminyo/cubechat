@@ -1216,6 +1216,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRouteQueued => 'Queued';
 
   @override
+  String get attachStickers => 'Stickers';
+
+  @override
+  String get stickersEmpty => 'No stickers yet';
+
+  @override
+  String get stickersEmptyHint =>
+      'Keep a picture from a chat and it appears here.';
+
+  @override
+  String get stickerKeep => 'Save as sticker';
+
+  @override
+  String get stickerKept => 'Saved to your stickers';
+
+  @override
+  String get stickerForget => 'Remove sticker';
+
+  @override
   String get chatBlockedStatus => 'blocked';
 
   @override

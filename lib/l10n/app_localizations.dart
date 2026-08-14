@@ -2204,6 +2204,42 @@ abstract class AppLocalizations {
   /// **'Queued'**
   String get chatRouteQueued;
 
+  /// No description provided for @attachStickers.
+  ///
+  /// In en, this message translates to:
+  /// **'Stickers'**
+  String get attachStickers;
+
+  /// No description provided for @stickersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No stickers yet'**
+  String get stickersEmpty;
+
+  /// No description provided for @stickersEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep a picture from a chat and it appears here.'**
+  String get stickersEmptyHint;
+
+  /// No description provided for @stickerKeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Save as sticker'**
+  String get stickerKeep;
+
+  /// No description provided for @stickerKept.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to your stickers'**
+  String get stickerKept;
+
+  /// No description provided for @stickerForget.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove sticker'**
+  String get stickerForget;
+
   /// No description provided for @chatBlockedStatus.
   ///
   /// In en, this message translates to:

@@ -20,6 +20,7 @@ import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../stickers/data/sticker_library.dart';
 
 /// Telegram-style media browser: every image in a conversation, full-screen and
 /// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
@@ -130,6 +131,19 @@ class _ChatMediaGalleryScreenState
     } catch (e) {
       _toast('Could not share: $e', ok: false);
     }
+  }
+
+  /// Keep this picture as a sticker.
+  ///
+  /// A copy, not a reference: the message it came from can be deleted, its
+  /// history cleared, or the whole chat auto-expired, and a sticker that
+  /// vanished with it would be a strange thing to have kept.
+  Future<void> _keepAsSticker() async {
+    final path = _current?.imagePath;
+    if (path == null) return;
+    await ref.read(stickerLibraryProvider.notifier).keep(path);
+    if (!mounted) return;
+    showGlassToast(context, AppLocalizations.of(context).stickerKept);
   }
 
   Future<void> _save() async {
@@ -248,6 +262,8 @@ class _ChatMediaGalleryScreenState
                       unawaited(_save());
                     } else if (value == 'chat') {
                       _showInChat();
+                    } else if (value == 'sticker') {
+                      unawaited(_keepAsSticker());
                     }
                   },
                   itemBuilder: (_) => [
@@ -266,6 +282,15 @@ class _ChatMediaGalleryScreenState
                       value: 'chat',
                       child: _menuRow(
                           Icons.chat_bubble_outline_rounded, t.chatMediaShowInChat),
+                    ),
+                    // Kept inside the app rather than exported, so this one
+                    // stays offered even when sharing is restricted: the
+                    // picture does not leave the conversation, it stays in it
+                    // and becomes reusable.
+                    PopupMenuItem(
+                      value: 'sticker',
+                      child: _menuRow(
+                          Icons.emoji_emotions_outlined, t.stickerKeep),
                     ),
                   ],
                 ),

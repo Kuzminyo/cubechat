@@ -1223,6 +1223,25 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatRouteQueued => 'У черзі';
 
   @override
+  String get attachStickers => 'Стікери';
+
+  @override
+  String get stickersEmpty => 'Стікерів ще немає';
+
+  @override
+  String get stickersEmptyHint =>
+      'Збережіть картинку з чату — і вона з\'явиться тут.';
+
+  @override
+  String get stickerKeep => 'Зберегти як стікер';
+
+  @override
+  String get stickerKept => 'Збережено у стікери';
+
+  @override
+  String get stickerForget => 'Видалити стікер';
+
+  @override
   String get chatBlockedStatus => 'заблоковано';
 
   @override

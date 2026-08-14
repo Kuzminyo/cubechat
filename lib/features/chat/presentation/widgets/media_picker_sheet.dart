@@ -8,6 +8,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/util/ui_activity.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../stickers/presentation/sticker_grid.dart';
 import 'attach_island.dart';
 import 'gallery_viewer.dart';
 
@@ -51,6 +52,17 @@ class MediaPickerEdit extends MediaPickerResult {
 
 class MediaPickerPoll extends MediaPickerResult {
   const MediaPickerPoll();
+}
+
+/// One sticker from the library, by the path of its file.
+///
+/// Carries a path rather than bytes for the same reason the gallery carries an
+/// asset: the sheet's job is to answer "which one", and reading the file is
+/// the sender's.
+class MediaPickerSticker extends MediaPickerResult {
+  const MediaPickerSticker(this.path);
+
+  final String path;
 }
 
 /// The user confirmed a gallery selection.
@@ -277,6 +289,34 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     });
   }
 
+  /// Stickers get a sheet of their own rather than a fifth pane in this one.
+  ///
+  /// This sheet is built around choosing several things and then confirming —
+  /// a selection count, a caption field, a send button. A sticker is none of
+  /// that: one tap is the whole interaction, and it should not be sitting
+  /// behind a Send.
+  void _openStickers() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.bgTop,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(sheet).size.height * 0.45,
+          child: StickerGrid(
+            onPick: (path) {
+              Navigator.of(sheet).pop();
+              _close(MediaPickerSticker(path));
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   void _completeSelection() {
     if (_selected.isEmpty) return;
     final text = _caption.text.trim();
@@ -377,6 +417,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 AttachChoice.file => _close(const MediaPickerFile()),
                 AttachChoice.poll => _close(const MediaPickerPoll()),
                 AttachChoice.location => _close(const MediaPickerLocation()),
+                AttachChoice.stickers => _openStickers(),
               },
             ),
           ],
