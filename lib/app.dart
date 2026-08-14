@@ -214,7 +214,20 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
-    _applyBackgroundRadioPolicy(resumed: state == AppLifecycleState.resumed);
+    // Only the two states that mean something — the same filter the presence
+    // beacon below already uses, and for the same reason.
+    //
+    // This ran on every callback, including `inactive`, which Android emits for
+    // anything that covers the app for a moment: the notification shade, a
+    // permission dialog, the recents switcher. Each one restarted advertising,
+    // and a field log caught the result — BALANCED, LOW_POWER, BALANCED,
+    // LOW_POWER inside two seconds. Restarting the advertiser four times to
+    // land back where it started costs more radio than the power step it was
+    // choosing between saves.
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.paused) {
+      _applyBackgroundRadioPolicy(resumed: state == AppLifecycleState.resumed);
+    }
     // Tell internet-reachable peers we've arrived / are leaving, so their "in
     // the app" dot flips now instead of waiting out the heartbeat. The goodbye
     // is best-effort by nature — the OS can kill us without another callback —
