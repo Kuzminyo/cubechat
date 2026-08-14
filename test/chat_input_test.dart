@@ -168,21 +168,118 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
     await tester.pump();
-    expect(find.byType(AnimatedEmojiStickerPanel), findsOneWidget);
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
     // The panel holds its space while the keyboard comes up rather than
-    // blinking out and leaving a hole; with no keyboard in a test the watchdog
-    // is what finally closes it. Pumped past both.
+    // blinking out and leaving a hole; with no keyboard in a test nothing ever
+    // fills the slot, so the watchdog is what closes it. Pumped past both.
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 1200));
 
-    expect(find.byType(AnimatedEmojiStickerPanel), findsNothing);
+    expect(find.byType(KeyboardSlotPanel), findsNothing);
     expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
     await tester.pump();
 
-    expect(find.byType(AnimatedEmojiStickerPanel), findsOneWidget);
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
+  });
+
+  testWidgets('the panel gives its space back point for point as the keyboard '
+      'rises, and goes when the keyboard has it all', (tester) async {
+    // The host is a Scaffold, deliberately: with resizeToAvoidBottomInset on
+    // (the default) it strips the bottom inset from the MediaQuery it hands
+    // down, so anything measuring the keyboard from a MediaQuery inside a chat
+    // reads zero forever. Measuring the view is what makes this work at all.
+    final view = tester.view;
+    addTearDown(view.reset);
+    addTearDown(KeyboardHeight.debugReset);
+    view.devicePixelRatio = 3;
+    view.viewInsets = FakeViewPadding.zero;
+
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+    )));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final full =
+        tester.getSize(find.byType(KeyboardSlotPanel)).height;
+    expect(full, greaterThan(100));
+
+    // Halfway up: the panel is holding half as much, so the two together still
+    // add up to one keyboard and nothing above them moves.
+    view.viewInsets = const FakeViewPadding(bottom: 150 * 3);
+    await tester.pump();
+    await tester.pump();
+    final half = tester.getSize(find.byType(KeyboardSlotPanel)).height;
+    expect(half, closeTo(full - 150, 1));
+
+    // All the way: nothing left to draw, and the panel takes itself out rather
+    // than vanishing from half-height in one frame.
+    view.viewInsets = const FakeViewPadding(bottom: 300 * 3);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(KeyboardSlotPanel), findsNothing);
+    expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
+
+    // Let the settle timer that records the keyboard's height run out; it is a
+    // static one, so leaving it pending would be flagged against this test.
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('opening on a raised keyboard grows into the space it leaves',
+      (tester) async {
+    final view = tester.view;
+    addTearDown(view.reset);
+    addTearDown(KeyboardHeight.debugReset);
+    view.devicePixelRatio = 3;
+
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+    )));
+    await tester.pump();
+
+    // A keyboard is up and has been measured.
+    view.viewInsets = const FakeViewPadding(bottom: 300 * 3);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pump();
+
+    // Nothing is drawn yet — the keyboard still has the slot. This is the
+    // "flashes and never opens" case: entering with a curve of its own, on top
+    // of a keyboard that was also leaving, drew the panel twice over.
+    expect(tester.getSize(find.byType(KeyboardSlotPanel)).height, lessThan(1));
+
+    view.viewInsets = const FakeViewPadding(bottom: 150 * 3);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      tester.getSize(find.byType(KeyboardSlotPanel)).height,
+      closeTo(150, 1),
+    );
+
+    view.viewInsets = FakeViewPadding.zero;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      tester.getSize(find.byType(KeyboardSlotPanel)).height,
+      closeTo(300, 1),
+    );
+
+    // Drain the static settle timer — see the test above.
+    await tester.pump(const Duration(milliseconds: 300));
   });
 }

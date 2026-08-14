@@ -134,7 +134,7 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
+class _ChatInputState extends State<ChatInput> {
   late final TextEditingController _controller;
   final _focus = FocusNode();
   bool _hasText = false;
@@ -150,7 +150,6 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     widget.openStickerPanel?.addListener(_openStickersFromOutside);
     _focus.addListener(_closePanelWhenFieldFocused);
     _controller = TextEditingController(text: widget.initialText ?? '');
@@ -191,7 +190,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   void closePanel() {
     if (!_panelOpen || _closingPanel) return;
     setState(() => _closingPanel = true);
-    Future<void>.delayed(AnimatedEmojiStickerPanel.motion, () {
+    Future<void>.delayed(KeyboardSlotPanel.motion, () {
       if (!mounted) return;
       setState(() {
         _panelOpen = false;
@@ -207,7 +206,6 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   @override
   void dispose() {
     _keyboardWatchdog?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
     _focus.removeListener(_closePanelWhenFieldFocused);
     _controller.dispose();
@@ -215,47 +213,37 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Drop the panel once the keyboard has taken most of the slot they share.
-  ///
-  /// Half, not "any of it" and not "all of it". Any of it fires on the first
-  /// frame of the keyboard's rise, which is the hole this exists to avoid; all
-  /// of it never fires when the live keyboard is shorter than the tallest one
-  /// [KeyboardHeight] has seen (one with a suggestion strip, say) — and the
-  /// panel then stays open *under* the keyboard, which is the bug that started
-  /// this. Halfway is reached by every keyboard and by nothing else.
-  @override
-  void didChangeMetrics() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_panelOpen) return;
-      final view = View.maybeOf(context);
-      if (view == null) return;
-      // Physical pixels on a FlutterView; the panel is measured in logical ones.
-      final inset = view.viewInsets.bottom / view.devicePixelRatio;
-      if (inset > KeyboardHeight.value / 2) _closePanelImmediately();
-    });
-  }
-
-  /// The keyboard was asked for but never came — no soft keyboard on this
-  /// device, focus refused, or a hardware keyboard attached. The panel would
-  /// otherwise sit there forever waiting for an inset that is not coming.
+  /// The keyboard was asked for and never came — no soft keyboard on this
+  /// device, a hardware one attached, or focus refused. Nothing will fill the
+  /// slot, so the panel folds away on its own instead of waiting for an inset
+  /// that is not coming. When a keyboard *does* arrive the panel is taken out
+  /// by [KeyboardSlotPanel.onKeyboardTookOver], well before this fires.
   void _armKeyboardWatchdog() {
     _keyboardWatchdog?.cancel();
-    _keyboardWatchdog = Timer(const Duration(milliseconds: 450), () {
-      if (mounted) _closePanelImmediately();
+    // Long enough that a slow keyboard is never mistaken for an absent one —
+    // some Android IMEs take a third of a second to draw their first frame —
+    // and it checks before acting, so a keyboard that arrived late still wins.
+    _keyboardWatchdog = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || !_panelOpen) return;
+      if (KeyboardHeight.insetOf(context) > 8) return;
+      closePanel();
     });
   }
 
   void _closePanelWhenFieldFocused() {
     // Tapping the field is the other way to ask for the keyboard, and it gets
-    // the same swap: the panel holds its space until the keyboard is halfway
-    // up rather than blinking out under the finger.
+    // the same swap: the panel holds its space until the keyboard has taken it,
+    // rather than blinking out from under the finger.
     if (_focus.hasFocus && _panelOpen) _armKeyboardWatchdog();
   }
 
-  void _closePanelImmediately() {
+  /// The keyboard now fills the slot. The panel is already drawing nothing —
+  /// this only takes the finished thing out of the tree and puts the smiley
+  /// back on the button.
+  void _keyboardTookOver() {
     _keyboardWatchdog?.cancel();
     _keyboardWatchdog = null;
-    if (!_panelOpen && !_closingPanel) return;
+    if (!_panelOpen) return;
     setState(() {
       _panelOpen = false;
       _closingPanel = false;
@@ -277,14 +265,16 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
 
   void _togglePanel({bool stickers = false}) {
     if (_panelOpen && !stickers) {
-      // The panel stays up and shrinks as the keyboard rises into its place —
-      // see [didChangeMetrics] for what finally takes it out of the tree.
+      // The panel stays up and gives its space back point for point as the
+      // keyboard rises into it — see [KeyboardSlotPanel].
       _focus.requestFocus();
       _armKeyboardWatchdog();
       return;
     }
     _keyboardWatchdog?.cancel();
     _keyboardWatchdog = null;
+    // Dropping focus starts the keyboard on its way out; the panel grows into
+    // the space behind it rather than on top of it.
     _focus.unfocus();
     setState(() {
       _panelOnStickers = stickers;
@@ -313,7 +303,6 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    KeyboardHeight.observe(context);
     final showAttach =
         widget.onAttach != null && !widget.recording && !_editing;
     final showEmoji = !widget.recording;
@@ -339,8 +328,9 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
               showVoice: showVoice,
             ),
             if (_panelOpen)
-              AnimatedEmojiStickerPanel(
-                visible: !_closingPanel,
+              KeyboardSlotPanel(
+                open: !_closingPanel,
+                onKeyboardTookOver: _keyboardTookOver,
                 startOnStickers: _panelOnStickers,
                 onEmoji: _insertEmoji,
                 onSticker: widget.onSticker,

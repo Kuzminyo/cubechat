@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -151,9 +152,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
     final t = AppLocalizations.of(context);
     final many = _bytes.length > 1;
     KeyboardHeight.observe(context);
-    if (_emojiOpen && MediaQuery.viewInsetsOf(context).bottom > 0) {
-      _emojiOpen = false;
-    }
+    // What the bottom of the screen is holding: the keyboard, or the panel that
+    // stands in for it. While one hands over to the other the sum stays put, so
+    // the caption island above does not move.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final slot = _emojiOpen
+        ? math.max(keyboard, KeyboardHeight.value)
+        : keyboard;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -233,11 +238,9 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
           Positioned(
             left: 10,
             right: 10,
-            bottom: (_emojiOpen
-                    ? KeyboardHeight.value
-                    : MediaQuery.viewInsetsOf(context).bottom +
-                        MediaQuery.paddingOf(context).bottom) +
-                10,
+            // The gesture bar only needs clearing when nothing else is down
+            // there; a keyboard or a panel already covers it.
+            bottom: slot + (slot > 0 ? 0 : MediaQuery.paddingOf(context).bottom) + 10,
             child: FloatingGlass(
               borderRadius: 26,
               padding: EdgeInsets.fromLTRB(_asFile ? 16 : 6, 6, 6, 6),
@@ -307,9 +310,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: EmojiStickerPanel(
-                height: KeyboardHeight.value,
+              child: KeyboardSlotPanel(
+                open: _emojiOpen,
                 onEmoji: _insertEmoji,
+                onKeyboardTookOver: () => setState(() => _emojiOpen = false),
               ),
             ),
         ],

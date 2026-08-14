@@ -389,9 +389,6 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     KeyboardHeight.observe(context);
-    // The keyboard and the panel share one strip of screen; raising one puts
-    // the other away.
-    if (_emojiOpen && media.viewInsets.bottom > 0) _emojiOpen = false;
     // No surface of its own: the sheet *is* one pane of glass now (see
     // showGlassSheet), so everything in here sits directly on it. A card inside
     // a card was the thing that made this look like a dialog stacked on a
@@ -428,9 +425,10 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
             // above it: they are the same strip of screen, and the emoji are
             // being typed into the caption right above.
             if (_emojiOpen)
-              EmojiStickerPanel(
-                height: KeyboardHeight.value,
+              KeyboardSlotPanel(
+                open: _emojiOpen,
                 onEmoji: _insertCaptionEmoji,
+                onKeyboardTookOver: () => setState(() => _emojiOpen = false),
               )
             else
               AttachIsland(
