@@ -1223,6 +1223,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatRouteQueued => 'У черзі';
 
   @override
+  String get chatBlockedStatus => 'заблоковано';
+
+  @override
+  String get chatBlockedHint => 'Ви заблокували цю людину';
+
+  @override
   String get chatRouteFallbackOff => 'Інтернет вимк.';
 
   @override

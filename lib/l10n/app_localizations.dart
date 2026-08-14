@@ -2204,6 +2204,18 @@ abstract class AppLocalizations {
   /// **'Queued'**
   String get chatRouteQueued;
 
+  /// No description provided for @chatBlockedStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'blocked'**
+  String get chatBlockedStatus;
+
+  /// No description provided for @chatBlockedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You blocked this person'**
+  String get chatBlockedHint;
+
   /// No description provided for @chatRouteFallbackOff.
   ///
   /// In en, this message translates to:

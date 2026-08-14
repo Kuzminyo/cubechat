@@ -565,6 +565,8 @@
   "chatRouteMesh": "Mesh",
   "chatRouteInternet": "Internet",
   "chatRouteQueued": "Queued",
+  "chatBlockedStatus": "blocked",
+  "chatBlockedHint": "You blocked this person",
   "chatRouteFallbackOff": "Internet off",
   "chatAttachmentUnavailable": "No connection is available. Connect over Bluetooth or the internet and try again.",
   "fileTransfersTitle": "File transfers",

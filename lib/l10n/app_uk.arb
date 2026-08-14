@@ -519,6 +519,8 @@
     "chatRouteMesh":  "Меш",
     "chatRouteInternet":  "Інтернет",
     "chatRouteQueued":  "У черзі",
+    "chatBlockedStatus":  "заблоковано",
+    "chatBlockedHint":  "Ви заблокували цю людину",
     "chatRouteFallbackOff":  "Інтернет вимк.",
     "chatAttachmentUnavailable":  "Немає доступного з\u0027єднання. Підключіться через Bluetooth або інтернет і спробуйте ще раз.",
     "fileTransfersTitle":  "Центр передачі файлів",

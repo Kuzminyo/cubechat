@@ -311,8 +311,18 @@ class ChatScreen extends ConsumerWidget {
     final isTyping =
         ref.read(typingControllerProvider.notifier).isTyping(canonicalId);
 
+    final blocked = known?.isBlocked ?? false;
+
     final String statusText;
-    if (session != null &&
+    // Ahead of everything else, and deliberately: nothing this person's phone
+    // says about itself is worth repeating once you have blocked them. Their
+    // beacons are dropped on arrival ("drop inbound from blocked peer"), so
+    // the last-seen shown here was frozen at the moment of the block and grew
+    // staler by the day — the header cheerfully reporting somebody as absent
+    // for a week when the truth is you stopped listening.
+    if (blocked) {
+      statusText = t.chatBlockedStatus;
+    } else if (session != null &&
         (session.status == ChatSessionStatus.handshakingInitiator ||
             session.status == ChatSessionStatus.handshakingResponder ||
             session.status == ChatSessionStatus.idle)) {
@@ -3120,18 +3130,91 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       );
     }
 
-    if (activeReply == null) return composerWithMentions;
+    // The way back out of a block, where the block is felt.
+    //
+    // Blocking is done from the contact's profile, two taps away, and nothing
+    // in the conversation said it had happened — messages simply stopped
+    // arriving. A small island above the composer says so and undoes it in one
+    // tap, which is where somebody wondering "why is this quiet?" is already
+    // looking.
+    final blocked = !widget.isChannel &&
+        (ref.watch(knownPeersControllerProvider)[widget.canonicalId]
+                ?.isBlocked ??
+            false);
+
+    if (activeReply == null && !blocked) return composerWithMentions;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ReplyComposeBar(
-          target: activeReply,
-          onCancel: () =>
-              ref.read(messageReplyTargetProvider.notifier).state = null,
-        ),
+        if (blocked)
+          _UnblockIsland(
+            onUnblock: () => ref
+                .read(knownPeersControllerProvider.notifier)
+                .setBlocked(widget.canonicalId, false),
+          ),
+        if (activeReply != null)
+          _ReplyComposeBar(
+            target: activeReply,
+            onCancel: () =>
+                ref.read(messageReplyTargetProvider.notifier).state = null,
+          ),
         composerWithMentions,
       ],
+    );
+  }
+}
+
+/// "You blocked this person · Unblock", sitting above the composer.
+///
+/// Deliberately small and quiet: it is a statement of fact with a way out, not
+/// a warning. It replaces nothing — the composer stays usable, because a block
+/// stops *their* messages reaching you, and stopping yours as well would be a
+/// second decision nobody made.
+class _UnblockIsland extends StatelessWidget {
+  const _UnblockIsland({required this.onUnblock});
+
+  final VoidCallback onUnblock;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: FloatingGlass(
+        blur: false,
+        borderRadius: 18,
+        onTap: onUnblock,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.block_rounded, size: 15, color: AppColors.danger),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  t.chatBlockedHint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                t.peerUnblock,
+                style: TextStyle(
+                  color: AppColors.brandPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

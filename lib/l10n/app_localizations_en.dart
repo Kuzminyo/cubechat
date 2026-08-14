@@ -1216,6 +1216,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRouteQueued => 'Queued';
 
   @override
+  String get chatBlockedStatus => 'blocked';
+
+  @override
+  String get chatBlockedHint => 'You blocked this person';
+
+  @override
   String get chatRouteFallbackOff => 'Internet off';
 
   @override

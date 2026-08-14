@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/widgets/identity_avatar.dart';
 import '../../../channels/data/channel_avatars_controller.dart';
 import '../../../chats/data/saved_messages.dart';
+import '../../data/known_peers_controller.dart';
 import '../../data/peer_avatars_controller.dart';
 
 /// Somebody else's avatar: their picture if we hold it, the generated identity
@@ -50,9 +51,18 @@ class PeerAvatar extends ConsumerWidget {
     // when a picture arrives or is dropped, so selecting per-peer would buy
     // nothing but indirection.
     final isChannel = peerId.startsWith('#');
-    final bytes = isChannel
-        ? ref.watch(channelAvatarsControllerProvider)[peerId]
-        : ref.watch(peerAvatarsControllerProvider)[peerId];
+    // A blocked person keeps their picture in storage and loses it on screen.
+    // Blocking is the one decision the app makes visible everywhere, and a
+    // face smiling out of a list you blocked them from is the opposite of what
+    // was asked for. The generated gradient takes its place — the same one a
+    // stranger gets, which is what they now are.
+    final blocked = !isChannel &&
+        (ref.watch(knownPeersControllerProvider)[peerId]?.isBlocked ?? false);
+    final bytes = blocked
+        ? null
+        : isChannel
+            ? ref.watch(channelAvatarsControllerProvider)[peerId]
+            : ref.watch(peerAvatarsControllerProvider)[peerId];
     return IdentityAvatar(
       seed: peerId,
       label: label,
