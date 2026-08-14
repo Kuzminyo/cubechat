@@ -15,12 +15,10 @@ import '../../../core/storage/hive_init.dart';
 /// switching them off costs nothing but the signal itself. Messages, delivery
 /// and everything else are untouched.
 ///
-/// **Both are symmetric, deliberately.** Turning off "last seen" also stops us
-/// *reading* other people's, and the same for read receipts. Anything else
-/// would be a one-way mirror: you would keep watching people who can no longer
-/// watch you, and a privacy switch that quietly buys you an advantage over the
-/// person on the other end is not a privacy switch. It is also the behaviour
-/// every mainstream messenger has settled on, so it will not surprise anyone.
+/// Last seen stays symmetric: hiding your own presence also hides other
+/// people's presence. Read receipts are send-only: if you switch them off, this
+/// device stops answering with its own read receipts, but it still applies
+/// receipts that peers explicitly chose to send.
 ///
 /// **On by default.** Seeing that someone is around, and that they read you, is
 /// most of what makes a conversation feel alive; a messenger that hides it
@@ -37,8 +35,8 @@ class PrivacySettings {
   /// False: publish nothing, and treat every peer's presence as unknown.
   final bool shareLastSeen;
 
-  /// True: answer with read receipts, and show the read tick on our own
-  /// messages. False: never answer, and never show the tick.
+  /// True: answer with read receipts. False: never answer. Incoming receipts
+  /// are still applied because they only update ticks on our own messages.
   final bool shareReadReceipts;
 
   /// True: publish short-lived map coordinates while the map is open.

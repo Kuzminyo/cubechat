@@ -904,11 +904,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileReadReceiptsOnHint => 'Відправник бачить, що ви прочитали';
 
   @override
-  String get profileReadReceiptsOffHint => 'Не бачить — і ви не бачите його';
+  String get profileReadReceiptsOffHint =>
+      'Ви не надсилаєте час прочитання, але бачите його від інших';
 
   @override
   String get profilePrivacyExplainer =>
-      'Обидва перемикачі працюють в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Інакше вийшло б одностороннє дзеркало. На доставку повідомлень це не впливає — вони йдуть так само.';
+      'Останній візит працює в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Час прочитання керує лише тим, що надсилаєте ви. На доставку повідомлень це не впливає — вони йдуть так само.';
 
   @override
   String get avatarSet => 'Обрати фото';

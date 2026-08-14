@@ -1697,13 +1697,13 @@ abstract class AppLocalizations {
   /// No description provided for @profileReadReceiptsOffHint.
   ///
   /// In en, this message translates to:
-  /// **'They don\'t — and neither do you'**
+  /// **'You stop sending your read time, but still see theirs'**
   String get profileReadReceiptsOffHint;
 
   /// No description provided for @profilePrivacyExplainer.
   ///
   /// In en, this message translates to:
-  /// **'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.'**
+  /// **'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.'**
   String get profilePrivacyExplainer;
 
   /// No description provided for @avatarSet.

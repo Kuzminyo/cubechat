@@ -902,11 +902,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileReadReceiptsOnHint => 'Senders see when you\'ve read them';
 
   @override
-  String get profileReadReceiptsOffHint => 'They don\'t — and neither do you';
+  String get profileReadReceiptsOffHint =>
+      'You stop sending your read time, but still see theirs';
 
   @override
   String get profilePrivacyExplainer =>
-      'Both switches cut both ways: hide your own status and you stop seeing everyone else\'s. Anything else would be a one-way mirror. Message delivery is untouched.';
+      'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.';
 
   @override
   String get avatarSet => 'Choose a photo';

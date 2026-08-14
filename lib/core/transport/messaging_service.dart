@@ -3984,16 +3984,15 @@ class MessagingService {
           );
 
         case InnerPayloadType.receipt:
-          // Symmetric with the 1:1 path: withholding your own receipts also
-          // gives up watching other people's.
-          if (_ref.read(privacySettingsProvider).shareReadReceipts) {
-            _ingestChannelReceipt(
-              channel: channel,
-              readerId: reactorId,
-              readerName: authorName,
-              body: unpacked.body,
-            );
-          }
+          // The local privacy switch controls what this device sends. If a
+          // channel member chooses to send a receipt, applying it only updates
+          // ticks on our own messages.
+          _ingestChannelReceipt(
+            channel: channel,
+            readerId: reactorId,
+            readerName: authorName,
+            body: unpacked.body,
+          );
 
         case InnerPayloadType.channelPoll:
           final poll = ChannelPollPayload.decode(unpacked.body);
@@ -4781,15 +4780,14 @@ class MessagingService {
               fallbackPeerId: peerId, message: message);
 
         case InnerPayloadType.receipt:
-          // Symmetric with the send side: someone who withholds their own read
-          // receipts does not get to watch other people's.
-          if (_ref.read(privacySettingsProvider).shareReadReceipts) {
-            _ingestReceipt(
-              peerId: peerId,
-              senderPub: senderPub,
-              body: unpacked.body,
-            );
-          }
+          // The local privacy switch controls what this device sends. If the
+          // peer chooses to send a receipt, applying it only updates ticks on
+          // our own messages.
+          _ingestReceipt(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
 
         case InnerPayloadType.reaction:
           _ingestPeerReaction(
