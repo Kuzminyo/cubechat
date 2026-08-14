@@ -214,7 +214,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   @override
   void didChangeMetrics() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_panelOpen) return;
+      if (!mounted || !_panelOpen || !_focus.hasFocus) return;
       final view = View.maybeOf(context);
       final keyboardVisible = (view?.viewInsets.bottom ?? 0) > 0;
       if (keyboardVisible) _closePanelImmediately();

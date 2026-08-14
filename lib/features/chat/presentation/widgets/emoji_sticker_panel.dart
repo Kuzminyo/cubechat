@@ -160,8 +160,6 @@ class AnimatedEmojiStickerPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final full = KeyboardHeight.value;
-    final taken = MediaQuery.viewInsetsOf(context).bottom.clamp(0.0, full);
-    final room = (full - taken) / full;
     return TweenAnimationBuilder<double>(
       // Only the open/close half is tweened. The keyboard half is *not*: the
       // system is already animating that inset, and running a second curve over
@@ -172,7 +170,7 @@ class AnimatedEmojiStickerPanel extends StatelessWidget {
       builder: (context, open, child) => ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
-          heightFactor: (open * room).clamp(0.0, 1.0),
+          heightFactor: open.clamp(0.0, 1.0),
           child: child,
         ),
       ),

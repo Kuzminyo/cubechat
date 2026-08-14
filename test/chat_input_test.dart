@@ -175,5 +175,10 @@ void main() {
 
     expect(find.byType(AnimatedEmojiStickerPanel), findsNothing);
     expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.pump();
+
+    expect(find.byType(AnimatedEmojiStickerPanel), findsOneWidget);
   });
 }
