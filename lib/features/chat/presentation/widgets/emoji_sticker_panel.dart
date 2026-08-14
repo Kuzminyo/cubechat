@@ -160,6 +160,14 @@ class AnimatedEmojiStickerPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final full = KeyboardHeight.value;
+    // What the keyboard has already taken of the slot the two share. Giving it
+    // back frame by frame is the whole trick: while the keyboard rises this
+    // shrinks by exactly as much, so the composer above never moves and the one
+    // surface appears to turn into the other. Without it the panel vanishes in
+    // a single frame and the conversation falls into the hole for the two
+    // hundred milliseconds the keyboard takes to arrive.
+    final taken = MediaQuery.viewInsetsOf(context).bottom.clamp(0.0, full);
+    final room = (full - taken) / full;
     return TweenAnimationBuilder<double>(
       // Only the open/close half is tweened. The keyboard half is *not*: the
       // system is already animating that inset, and running a second curve over
@@ -170,7 +178,7 @@ class AnimatedEmojiStickerPanel extends StatelessWidget {
       builder: (context, open, child) => ClipRect(
         child: Align(
           alignment: Alignment.topCenter,
-          heightFactor: open.clamp(0.0, 1.0),
+          heightFactor: (open * room).clamp(0.0, 1.0),
           child: child,
         ),
       ),

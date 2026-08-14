@@ -142,6 +142,9 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   bool _panelOnStickers = false;
   bool _closingPanel = false;
 
+  /// Fallback for a keyboard that never arrives — see [_armKeyboardWatchdog].
+  Timer? _keyboardWatchdog;
+
   bool get _editing => widget.editingText != null;
 
   @override
@@ -203,6 +206,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _keyboardWatchdog?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
     _focus.removeListener(_closePanelWhenFieldFocused);
@@ -211,21 +215,46 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// Drop the panel once the keyboard has taken most of the slot they share.
+  ///
+  /// Half, not "any of it" and not "all of it". Any of it fires on the first
+  /// frame of the keyboard's rise, which is the hole this exists to avoid; all
+  /// of it never fires when the live keyboard is shorter than the tallest one
+  /// [KeyboardHeight] has seen (one with a suggestion strip, say) — and the
+  /// panel then stays open *under* the keyboard, which is the bug that started
+  /// this. Halfway is reached by every keyboard and by nothing else.
   @override
   void didChangeMetrics() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_panelOpen || !_focus.hasFocus) return;
+      if (!mounted || !_panelOpen) return;
       final view = View.maybeOf(context);
-      final keyboardVisible = (view?.viewInsets.bottom ?? 0) > 0;
-      if (keyboardVisible) _closePanelImmediately();
+      if (view == null) return;
+      // Physical pixels on a FlutterView; the panel is measured in logical ones.
+      final inset = view.viewInsets.bottom / view.devicePixelRatio;
+      if (inset > KeyboardHeight.value / 2) _closePanelImmediately();
+    });
+  }
+
+  /// The keyboard was asked for but never came — no soft keyboard on this
+  /// device, focus refused, or a hardware keyboard attached. The panel would
+  /// otherwise sit there forever waiting for an inset that is not coming.
+  void _armKeyboardWatchdog() {
+    _keyboardWatchdog?.cancel();
+    _keyboardWatchdog = Timer(const Duration(milliseconds: 450), () {
+      if (mounted) _closePanelImmediately();
     });
   }
 
   void _closePanelWhenFieldFocused() {
-    if (_focus.hasFocus) _closePanelImmediately();
+    // Tapping the field is the other way to ask for the keyboard, and it gets
+    // the same swap: the panel holds its space until the keyboard is halfway
+    // up rather than blinking out under the finger.
+    if (_focus.hasFocus && _panelOpen) _armKeyboardWatchdog();
   }
 
   void _closePanelImmediately() {
+    _keyboardWatchdog?.cancel();
+    _keyboardWatchdog = null;
     if (!_panelOpen && !_closingPanel) return;
     setState(() {
       _panelOpen = false;
@@ -248,10 +277,14 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
 
   void _togglePanel({bool stickers = false}) {
     if (_panelOpen && !stickers) {
-      _closePanelImmediately();
+      // The panel stays up and shrinks as the keyboard rises into its place —
+      // see [didChangeMetrics] for what finally takes it out of the tree.
       _focus.requestFocus();
+      _armKeyboardWatchdog();
       return;
     }
+    _keyboardWatchdog?.cancel();
+    _keyboardWatchdog = null;
     _focus.unfocus();
     setState(() {
       _panelOnStickers = stickers;

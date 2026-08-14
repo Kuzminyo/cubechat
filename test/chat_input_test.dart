@@ -171,7 +171,11 @@ void main() {
     expect(find.byType(AnimatedEmojiStickerPanel), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
+    // The panel holds its space while the keyboard comes up rather than
+    // blinking out and leaving a hole; with no keyboard in a test the watchdog
+    // is what finally closes it. Pumped past both.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
 
     expect(find.byType(AnimatedEmojiStickerPanel), findsNothing);
     expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
