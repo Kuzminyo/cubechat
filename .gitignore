@@ -80,3 +80,10 @@ cubechat-promo.mp4
 cubechat-lantsyug.mp4
 cubechat-film.mp4
 cubechat-film-25s.mp4
+
+# Golden diffs. Written by every failing `flutter test` run and never read by
+# anything but a person looking at them once — but they were tracked, so a
+# red run turned into a fistful of modified binaries that rode along in the
+# next `git add -A`, and blocked a `git stash pop` on the way. The goldens
+# themselves live in .codex/design-qa and stay in the repository.
+test/failures/
