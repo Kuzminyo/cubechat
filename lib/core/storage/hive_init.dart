@@ -82,10 +82,16 @@ class HiveInit {
   static Future<void> wipeAll() async {
     for (final name in HiveBoxes.all) {
       try {
-        if (Hive.isBoxOpen(name)) {
-          await Hive.box<dynamic>(name).clear();
-          await Hive.box<dynamic>(name).close();
-        }
+        // Straight to the delete, which closes the box itself if it is open.
+        //
+        // What stood here first asked for `Hive.box<dynamic>(name)`, and that
+        // insists on the exact type the box was opened with — ours are opened
+        // as `Box<Map<...>>` and `Box<List<...>>`, so it threw "already open
+        // and of type ..." on every one of them, took the delete down with it
+        // into the catch, and left the box on disk untouched. Visible as a
+        // phone transfer that arrived and changed nothing: the old contacts,
+        // pins and nickname were never cleared, so the imported ones had
+        // nowhere to land.
         await Hive.deleteBoxFromDisk(name);
       } catch (e) {
         debugPrint('Hive wipe of box "$name" failed: $e');
