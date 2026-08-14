@@ -24,6 +24,10 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/data/pinned_controller.dart';
 import '../../chat/models/message.dart';
 import '../../chats/data/favorites_controller.dart';
+import '../../chats/data/hidden_chats_controller.dart';
+import '../../chats/data/pinned_chats_controller.dart';
+import '../../chats/data/read_markers_controller.dart';
+import '../../chats/data/user_chat_folders_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../../profile/data/privacy_settings_controller.dart';
@@ -314,6 +318,17 @@ class ContactProfileScreen extends ConsumerWidget {
     await ref.read(favoritesControllerProvider.notifier).forget(peerPubkeyHex);
     await ref.read(pinnedControllerProvider.notifier).forget(peerPubkeyHex);
     await ref.read(draftsControllerProvider.notifier).clear(peerPubkeyHex);
+    // And the rest of what this person leaves behind. Deleting a contact used
+    // to take the roster entry and the settings while the conversation itself,
+    // the name you gave them, their place in your folders and the pin holding
+    // them at the top of the list all stayed — so the contact came back on the
+    // next screen you opened, wearing the alias you had given them.
+    await ref.read(messagesControllerProvider.notifier).clearForChat(peerPubkeyHex);
+    await ref.read(readMarkersControllerProvider.notifier).forget(peerPubkeyHex);
+    await ref.read(contactAliasesControllerProvider.notifier).clearAlias(peerPubkeyHex);
+    await ref.read(pinnedChatsControllerProvider.notifier).forget(peerPubkeyHex);
+    await ref.read(hiddenChatsControllerProvider.notifier).unhide(peerPubkeyHex);
+    await ref.read(userChatFoldersControllerProvider.notifier).forgetChat(peerPubkeyHex);
     if (context.mounted) Navigator.of(context).maybePop();
   }
 
