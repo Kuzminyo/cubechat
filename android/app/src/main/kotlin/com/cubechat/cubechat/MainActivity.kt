@@ -64,6 +64,24 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // The same two facts iOS reports: which Maps key this build carries,
+        // and what the install is called. Release APKs from CI shipped with an
+        // empty key for months and drew a black map with no error anywhere.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            BUILD_INFO_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "buildFacts" -> result(
+                    mapOf(
+                        "mapsKeyTail" to mapsKeyTail(),
+                        "bundleId" to packageName,
+                    ),
+                )
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             BLUETOOTH_POWER_CHANNEL,
@@ -148,6 +166,23 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * The manifest is where the Maps key ends up on Android, so the manifest is
+     * what gets asked — this reports what the *installed* app holds rather than
+     * what a build file said at compile time.
+     */
+    private fun mapsKeyTail(): String = try {
+        @Suppress("DEPRECATION")
+        val info = packageManager.getApplicationInfo(
+            packageName,
+            android.content.pm.PackageManager.GET_META_DATA,
+        )
+        val key = info.metaData?.getString("com.google.android.geo.API_KEY").orEmpty()
+        if (key.isEmpty()) "missing" else key.takeLast(4)
+    } catch (_: Exception) {
+        "unknown"
+    }
+
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -166,6 +201,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         const val SECURE_CHANNEL = "cubechat/secure_window"
+        const val BUILD_INFO_CHANNEL = "cubechat/build_info"
         const val BLUETOOTH_POWER_CHANNEL = "cubechat/bluetooth_power"
         const val REQUEST_ENABLE_BLUETOOTH = 4242
     }

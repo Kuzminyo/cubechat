@@ -39,6 +39,12 @@ import UserNotifications
   private var locationChannel: FlutterMethodChannel?
   private var locationWatcher: SignificantLocationWatcher?
 
+  /// Channel Dart asks build questions on. Must match `BuildProbe`.
+  private static let buildInfoChannelName = "cubechat/build_info"
+
+  /// Last four characters of the Maps key handed to the SDK — never the key.
+  private var mapsKeyTail = "none"
+
   /// How long to keep asking Dart to run the catch-up after a relaunch, and how
   /// often. A wake-up launches the process from nothing, so `main()` is still
   /// opening Hive when the location event lands and there is no handler on the
@@ -54,8 +60,10 @@ import UserNotifications
        !mapsKey.isEmpty,
        !mapsKey.hasPrefix("$(") {
       GMSServices.provideAPIKey(mapsKey)
+      mapsKeyTail = String(mapsKey.suffix(4))
     } else {
       NSLog("cubechat: Google Maps API key is missing")
+      mapsKeyTail = "missing"
     }
 
     // Required by flutter_local_notifications, and the reason notifications
@@ -127,6 +135,30 @@ import UserNotifications
         }
       }
       locationChannel = location
+
+      // What this install actually *is*, asked from inside it.
+      //
+      // A Maps key restricted to an iOS app is checked against the bundle
+      // identifier of the running app — and a sideloaded build does not
+      // necessarily keep the one that was compiled in: the signing tools
+      // rewrite it to fit the Apple ID doing the signing. The map then draws
+      // its own markers over a grey sheet and reports nothing, which is
+      // exactly what a tester spent an evening looking at. Four characters of
+      // the key and the bundle id are what tell the two suspects apart.
+      FlutterMethodChannel(
+        name: AppDelegate.buildInfoChannelName,
+        binaryMessenger: messenger
+      ).setMethodCallHandler { [weak self] call, result in
+        switch call.method {
+        case "buildFacts":
+          result([
+            "mapsKeyTail": self?.mapsKeyTail ?? "unknown",
+            "bundleId": Bundle.main.bundleIdentifier ?? "unknown",
+          ])
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
     }
   }
 

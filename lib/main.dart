@@ -12,6 +12,7 @@ import 'app.dart';
 import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
+import 'core/util/build_probe.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/media_storage.dart';
@@ -20,7 +21,7 @@ import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-13-read-receipts-keyboard-maps-link';
+const String _buildStamp = '2026-08-14-say-what-this-install-is';
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -176,6 +177,11 @@ Future<void> main() async {
   // contains — the panel switching mode a few frames later is invisible — so it
   // has no business delaying one.
   unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
+
+  // After runApp for the same reason: a question, not a step. The answer lands
+  // in the log a few frames in, which is where anybody reading it is looking.
+  unawaited(_bootStep('build-facts', BuildProbe.logBuildFacts,
+      limit: const Duration(seconds: 3)));
 
   // Also after runApp, and also unawaited: the map is four tabs away, so
   // opening its tile cache has no business delaying the first frame. By the
