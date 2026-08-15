@@ -13,7 +13,6 @@ import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
-import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
