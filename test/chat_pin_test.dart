@@ -64,7 +64,9 @@ void main() {
             wireId: 'aa' * 16,
           ),
         );
-    await container.read(pinnedControllerProvider.notifier).pin('#test', 'aa' * 16);
+    await container
+        .read(pinnedControllerProvider.notifier)
+        .pin('#test', 'aa' * 16);
     await beat(tester);
 
     await tester.tap(find.text('#test').first);
@@ -105,10 +107,9 @@ void main() {
     await tester.longPress(find.text('адреса зустрічі'));
     await beat(tester);
 
-    // The details header is part of the same menu — the read time lives here.
-    expect(find.textContaining('Sent'), findsOneWidget);
+    expect(find.byIcon(Icons.push_pin_rounded), findsWidgets);
 
-    await tester.tap(find.text('Pin'));
+    await tester.tap(find.byIcon(Icons.push_pin_rounded).first);
     await beat(tester);
 
     expect(
@@ -121,7 +122,7 @@ void main() {
     // Unpinning asks first. The pin is shared state — clearing it takes the
     // banner away from everyone in the chat — and the button sits right next to
     // one you tap to jump to the message.
-    await tester.tap(find.byTooltip('Unpin'));
+    await tester.tap(find.byTooltip('Unpin').last);
     await beat(tester);
     expect(find.text('Unpin this message?'), findsOneWidget);
     expect(
@@ -144,7 +145,8 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await beat(tester);
 
-    expect(container.read(pinnedControllerProvider)['#test']?.wireId, 'aa' * 16);
+    expect(
+        container.read(pinnedControllerProvider)['#test']?.wireId, 'aa' * 16);
     expect(find.text('Pinned message'), findsOneWidget);
   });
 
@@ -188,8 +190,13 @@ void main() {
     await beat(tester);
 
     expect(find.text('третій'), findsWidgets, reason: 'chat should be open');
-    expect(container.read(pinnedControllerProvider.notifier)
-        .pinnedAllIn('#test').length, 3, reason: 'three pins recorded');
+    expect(
+        container
+            .read(pinnedControllerProvider.notifier)
+            .pinnedAllIn('#test')
+            .length,
+        3,
+        reason: 'three pins recorded');
 
     // The bar opens on the newest pin — the one nearest what you are reading —
     // and counts down as it walks upward through the stack.

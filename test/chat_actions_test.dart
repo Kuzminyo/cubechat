@@ -48,13 +48,13 @@ void main() {
     // worth reaching without opening anything.
     expect(find.text('1'), findsOneWidget);
     expect(find.byIcon(Icons.close_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
 
     // And the way out puts the header back.
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byIcon(Icons.delete_outline), findsNothing);
+    expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
   });
 
   testWidgets('favouriting from the selection menu persists', (tester) async {
@@ -73,7 +73,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     // The rest of the actions live behind the overflow on the selection bar.
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 

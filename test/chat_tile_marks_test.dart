@@ -63,10 +63,10 @@ void main() {
       (tester) async {
     await _pumpTile(tester, _chat());
     await tester.pump();
-    expect(find.byIcon(Icons.timer_outlined), findsNothing);
+    expect(find.byIcon(Icons.timer_rounded), findsNothing);
 
     await _pumpTile(tester, _chat(autoDeleteSeconds: 3600));
     await tester.pump();
-    expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.timer_rounded), findsOneWidget);
   });
 }

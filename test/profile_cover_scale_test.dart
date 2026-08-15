@@ -70,7 +70,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      final photoAction = find.byIcon(Icons.add_a_photo_outlined);
+      final photoAction = find.byIcon(Icons.add_a_photo_rounded);
       expect(photoAction, findsOneWidget);
       final status = find.text('Anyone in range can find you');
       expect(status, findsOneWidget);

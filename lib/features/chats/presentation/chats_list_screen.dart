@@ -595,18 +595,20 @@ class _PinnedChatSelectionHeader extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.bgDeep.withValues(alpha: 0.97),
-            AppColors.bgDeep.withValues(alpha: 0.74),
-          ],
+    return SizedBox.expand(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.bgDeep.withValues(alpha: 0.97),
+              AppColors.bgDeep.withValues(alpha: 0.74),
+            ],
+          ),
         ),
+        child: child,
       ),
-      child: child,
     );
   }
 

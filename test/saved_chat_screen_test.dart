@@ -54,7 +54,7 @@ void main() {
     final container =
         ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await beat(tester);
     await tester.tap(find.text('Saved').last);
     await beat(tester);
@@ -67,8 +67,8 @@ void main() {
     expect(find.byTooltip('Search'), findsOneWidget,
         reason: 'searching your own notes is the one header action that '
             'still means something');
-    expect(find.byIcon(Icons.poll_outlined), findsNothing);
-    expect(find.byIcon(Icons.person_add_alt_1_outlined), findsNothing);
+    expect(find.byIcon(Icons.poll_rounded), findsNothing);
+    expect(find.byIcon(Icons.person_add_alt_1_rounded), findsNothing);
   });
 
   testWidgets('the header carries a bookmark, not an initial', (tester) async {

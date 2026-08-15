@@ -74,11 +74,11 @@ void main() {
   testWidgets('Original sends the file instead, and puts the brush away',
       (tester) async {
     final result = await open(tester, act: (tester) async {
-      expect(find.byIcon(Icons.brush_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.brush_rounded), findsOneWidget);
       await tester.tap(find.text('Original'));
       await tester.pumpAndSettle();
       expect(
-        find.byIcon(Icons.brush_outlined),
+        find.byIcon(Icons.brush_rounded),
         findsNothing,
         reason: 'editing a photo you are about to send untouched is a '
             'contradiction — the edit is the one thing that would be re-encoded',
