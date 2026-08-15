@@ -360,6 +360,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
       if (saved != null) saved,
       ...all,
     ].where((chat) => selection.contains(chat.id)).toList();
+    final hasFolders = folders.isNotEmpty || userFolders.isNotEmpty;
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
       // other.
@@ -394,49 +395,55 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
             SliverPersistentHeader(
               pinned: true,
               delegate: _ChatsTopHeader(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  child: _ChatsTopPanel(
-                    selected: selectedChats,
-                    searching: _searching,
-                    searchController: _searchController,
-                    searchFocusNode: _searchFocusNode,
-                    onSearchChanged: (value) =>
-                        ref.read(chatsQueryProvider.notifier).state = value,
-                    onOpenSearch: _openSearch,
-                    onCloseSearch: _closeSearch,
-                    onWipe: () => _confirmWipe(context, ref, t),
-                    onAddContact: () => context.push('/contact'),
-                    onNewChannel: () => showNewChannelDialog(context, ref, t),
-                  ),
+                hasFolders: hasFolders,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 10, 20, 4),
+                      child: _ChatsTopPanel(
+                        selected: selectedChats,
+                        searching: _searching,
+                        searchController: _searchController,
+                        searchFocusNode: _searchFocusNode,
+                        onSearchChanged: (value) =>
+                            ref.read(chatsQueryProvider.notifier).state = value,
+                        onOpenSearch: _openSearch,
+                        onCloseSearch: _closeSearch,
+                        onWipe: () => _confirmWipe(context, ref, t),
+                        onAddContact: () => context.push('/contact'),
+                        onNewChannel: () =>
+                            showNewChannelDialog(context, ref, t),
+                      ),
+                    ),
+                    if (hasFolders)
+                      _FolderFilterIsland(
+                        folders: folders,
+                        userFolders: userFolders,
+                        selectedFolder: folder,
+                        selectedUserFolder: userFolder,
+                        onAll: () {
+                          ref.read(selectedFolderProvider.notifier).state =
+                              null;
+                          ref.read(selectedUserFolderProvider.notifier).state =
+                              null;
+                        },
+                        onBuiltIn: (f) {
+                          ref.read(selectedUserFolderProvider.notifier).state =
+                              null;
+                          ref.read(selectedFolderProvider.notifier).state = f;
+                        },
+                        onUserFolder: (id) {
+                          ref.read(selectedFolderProvider.notifier).state =
+                              null;
+                          ref.read(selectedUserFolderProvider.notifier).state =
+                              id;
+                        },
+                        onManage: () => context.push('/folders'),
+                      ),
+                  ],
                 ),
               ),
             ),
-            // Only once there is something in it. An empty folder row would be a
-            // permanent strip of chrome between the header and the first
-            // conversation, on the screen that opens the app.
-            if (folders.isNotEmpty || userFolders.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _FolderFilterIsland(
-                  folders: folders,
-                  userFolders: userFolders,
-                  selectedFolder: folder,
-                  selectedUserFolder: userFolder,
-                  onAll: () {
-                    ref.read(selectedFolderProvider.notifier).state = null;
-                    ref.read(selectedUserFolderProvider.notifier).state = null;
-                  },
-                  onBuiltIn: (f) {
-                    ref.read(selectedUserFolderProvider.notifier).state = null;
-                    ref.read(selectedFolderProvider.notifier).state = f;
-                  },
-                  onUserFolder: (id) {
-                    ref.read(selectedFolderProvider.notifier).state = null;
-                    ref.read(selectedUserFolderProvider.notifier).state = id;
-                  },
-                  onManage: () => context.push('/folders'),
-                ),
-              ),
             if (filtered.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -576,11 +583,15 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
 }
 
 class _ChatsTopHeader extends SliverPersistentHeaderDelegate {
-  const _ChatsTopHeader({required this.child});
+  const _ChatsTopHeader({required this.child, required this.hasFolders});
 
-  static const double _height = 80;
+  static const double _topOnlyHeight = 82;
+  static const double _withFoldersHeight = 138;
 
   final Widget child;
+  final bool hasFolders;
+
+  double get _height => hasFolders ? _withFoldersHeight : _topOnlyHeight;
 
   @override
   double get minExtent => _height;
@@ -614,7 +625,8 @@ class _ChatsTopHeader extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  bool shouldRebuild(_ChatsTopHeader oldDelegate) => oldDelegate.child != child;
+  bool shouldRebuild(_ChatsTopHeader oldDelegate) =>
+      oldDelegate.child != child || oldDelegate.hasFolders != hasFolders;
 }
 
 class _ChatsTopPanel extends ConsumerWidget {
@@ -649,51 +661,47 @@ class _ChatsTopPanel extends ConsumerWidget {
         : searching
             ? 'search'
             : 'normal';
-    return FloatingGlass(
-      blur: true,
-      borderRadius: 28,
-      child: SizedBox(
-        height: 60,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 240),
-          reverseDuration: const Duration(milliseconds: 190),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final enteringSearch = child.key == const ValueKey('search');
-            final offset = Tween<Offset>(
-              begin: Offset(enteringSearch ? 0.10 : -0.06, 0),
-              end: Offset.zero,
-            ).chain(CurveTween(curve: Curves.easeOutCubic));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: animation.drive(offset),
-                child: child,
-              ),
-            );
-          },
-          child: switch (mode) {
-            'selection' => _ChatSelectionBar(
-                key: const ValueKey('selection'),
-                selected: selected,
-              ),
-            'search' => _ChatsSearchPanel(
-                key: const ValueKey('search'),
-                controller: searchController,
-                focusNode: searchFocusNode,
-                onChanged: onSearchChanged,
-                onClose: onCloseSearch,
-              ),
-            _ => _ChatsTitlePanel(
-                key: const ValueKey('normal'),
-                onSearch: onOpenSearch,
-                onWipe: onWipe,
-                onAddContact: onAddContact,
-                onNewChannel: onNewChannel,
-              ),
-          },
-        ),
+    return SizedBox(
+      height: 64,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 240),
+        reverseDuration: const Duration(milliseconds: 190),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          final enteringSearch = child.key == const ValueKey('search');
+          final offset = Tween<Offset>(
+            begin: Offset(enteringSearch ? 0.10 : -0.06, 0),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic));
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: animation.drive(offset),
+              child: child,
+            ),
+          );
+        },
+        child: switch (mode) {
+          'selection' => _ChatSelectionBar(
+              key: const ValueKey('selection'),
+              selected: selected,
+            ),
+          'search' => _ChatsSearchPanel(
+              key: const ValueKey('search'),
+              controller: searchController,
+              focusNode: searchFocusNode,
+              onChanged: onSearchChanged,
+              onClose: onCloseSearch,
+            ),
+          _ => _ChatsTitlePanel(
+              key: const ValueKey('normal'),
+              onSearch: onOpenSearch,
+              onWipe: onWipe,
+              onAddContact: onAddContact,
+              onNewChannel: onNewChannel,
+            ),
+        },
       ),
     );
   }
@@ -716,22 +724,20 @@ class _ChatsTitlePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 14, right: 4),
+      padding: const EdgeInsets.only(left: 2, right: 2),
       child: Row(
         children: [
-          TripleTapDetector(
-            onTripleTap: onWipe,
-            child: const CubeLogo(size: 32),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'CubeChat',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.display().copyWith(
-                fontSize: 28,
-                height: 1,
+            child: TripleTapDetector(
+              onTripleTap: onWipe,
+              child: Text(
+                'CubeChat',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.display().copyWith(
+                  fontSize: 31,
+                  height: 1.05,
+                ),
               ),
             ),
           ),
@@ -1104,19 +1110,19 @@ class _FolderFilterIsland extends StatelessWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+      padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
       child: SizedBox(
-        height: 52,
+        height: 48,
         child: FloatingGlass(
           blur: false,
-          borderRadius: 26,
+          borderRadius: 24,
           padding: EdgeInsets.zero,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(24),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
               child: Row(children: tabs),
             ),
           ),
