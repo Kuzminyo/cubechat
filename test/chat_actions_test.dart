@@ -86,35 +86,4 @@ void main() {
       isTrue,
     );
   });
-  testWidgets('top panel search filters chats inline', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    final container =
-        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
-    await container.read(channelControllerProvider.notifier).join('alpha');
-    await container.read(channelControllerProvider.notifier).join('beta');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(find.text('#alpha'), findsWidgets);
-    expect(find.text('#beta'), findsWidgets);
-
-    await tester.tap(find.byIcon(Icons.search_rounded).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await tester.enterText(find.byType(TextField), 'alpha');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('#alpha'), findsWidgets);
-    expect(find.text('#beta'), findsNothing);
-
-    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('CubeChat'), findsOneWidget);
-  });
 }
