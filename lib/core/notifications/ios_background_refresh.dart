@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/map/data/map_presence_controller.dart';
 import '../transport/messaging_service.dart';
 import '../util/debug_log.dart';
 
@@ -35,12 +36,13 @@ import '../util/debug_log.dart';
 ///
 /// ## How the window is spent
 ///
-/// Reading [messagingServiceProvider] is the whole trick: constructing the
+/// Reading [messagingServiceProvider] is the main trick: constructing the
 /// service stands the Nostr transport up (or, on a warm resume, the existing
 /// socket reconnects on its own backoff timer), the relay replays everything
 /// since our persisted watermark, and each frame walks the same path a
-/// foreground message does — dedup, signature check, store, notify. So there is
-/// nothing to duplicate here; we just have to stay awake while it happens.
+/// foreground message does — dedup, signature check, store, notify. The same
+/// short window also pokes map presence, so a significant-location wake can
+/// publish the user's current pin instead of only draining chat messages.
 class IosBackgroundRefresh {
   IosBackgroundRefresh._();
 
@@ -56,6 +58,11 @@ class IosBackgroundRefresh {
   /// the native side complete the task on our return. Long enough for a socket
   /// handshake plus a backlog replay on a slow connection.
   static const Duration window = Duration(seconds: 20);
+
+  /// Unit tests use millisecond windows to prove boundedness; those are too
+  /// short to do useful location work and would only start async provider work
+  /// that outlives the test container. Real native windows are much longer.
+  static const Duration mapPresenceMinimumWindow = Duration(seconds: 1);
 
   ProviderContainer? _container;
 
@@ -102,15 +109,35 @@ class IosBackgroundRefresh {
       // background window is short; spending it waiting for a reconnect backoff
       // is exactly how iOS internet messages sat on relays until the user
       // manually opened the app.
+      final effectiveWindow = window ?? IosBackgroundRefresh.window;
       container.read(messagingServiceProvider).wakeRelays();
+      if (effectiveWindow >= mapPresenceMinimumWindow) {
+        unawaited(_pokeMapPresence(container));
+      }
       DebugLog.instance.log('BGFETCH', 'window open');
-      await Future<void>.delayed(window ?? IosBackgroundRefresh.window);
+      await Future<void>.delayed(effectiveWindow);
       final ms = DateTime.now().difference(started).inMilliseconds;
       DebugLog.instance.log('BGFETCH', 'window closed after ${ms}ms');
     } catch (e) {
       DebugLog.instance.log('BGFETCH', 'refresh failed: $e');
     } finally {
       _running = false;
+    }
+  }
+
+  Future<void> _pokeMapPresence(ProviderContainer container) async {
+    try {
+      await container
+          .read(mapPresenceControllerProvider.notifier)
+          .pokeNow()
+          .timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          DebugLog.instance.log('BGFETCH', 'map presence poke timed out');
+        },
+      );
+    } catch (e) {
+      DebugLog.instance.log('BGFETCH', 'map presence poke failed: $e');
     }
   }
 }

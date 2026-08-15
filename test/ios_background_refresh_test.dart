@@ -2,11 +2,24 @@ import 'dart:io';
 
 import 'package:cubechat/core/notifications/ios_background_refresh.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
+import 'package:cubechat/features/map/data/map_presence_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'support/hive_settle.dart';
+
+class _FakeMapPresenceController extends MapPresenceController {
+  static bool poked = false;
+
+  @override
+  int build() => 0;
+
+  @override
+  Future<void> pokeNow() async {
+    poked = true;
+  }
+}
 
 /// The Dart half of the iOS background window. The native half (BGTaskScheduler
 /// registration, the 25 s deadline) can only be exercised on a device, so what
@@ -72,6 +85,24 @@ void main() {
     expect(built, isTrue);
   });
 
+  test('the window also gives live map presence a chance to publish', () async {
+    _FakeMapPresenceController.poked = false;
+    final container = ProviderContainer(
+      overrides: [
+        mapPresenceControllerProvider.overrideWith(
+          _FakeMapPresenceController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    IosBackgroundRefresh.instance.install(container);
+
+    await IosBackgroundRefresh.instance.refreshNow(
+      window: const Duration(milliseconds: 1100),
+    );
+
+    expect(_FakeMapPresenceController.poked, isTrue);
+  });
   test('the window is bounded — it returns rather than running until killed',
       () async {
     final container = ProviderContainer();

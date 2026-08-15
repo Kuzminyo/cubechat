@@ -289,11 +289,50 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       .toList();
 });
 
-class ChatsListScreen extends ConsumerWidget {
+class ChatsListScreen extends ConsumerStatefulWidget {
   const ChatsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatsListScreen> createState() => _ChatsListScreenState();
+}
+
+class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
+  bool _searching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _openSearch() {
+    if (_searching) return;
+    setState(() => _searching = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocusNode.requestFocus();
+    });
+  }
+
+  void _closeSearch() {
+    if (!_searching && _searchController.text.isEmpty) return;
+    _searchController.clear();
+    ref.read(chatsQueryProvider.notifier).state = '';
+    _searchFocusNode.unfocus();
+    if (mounted) setState(() => _searching = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final query = ref.watch(chatsQueryProvider).toLowerCase();
     final all = ref.watch(chatsProvider);
@@ -313,18 +352,23 @@ class ChatsListScreen extends ConsumerWidget {
 
     final selection = ref.watch(chatSelectionProvider);
     // The system back gesture means "undo the mode I am in" before it means
-    // "leave the screen". Picking chats out is a mode, and on a phone where
-    // back *is* a swipe there was no other way to say "never mind" without
-    // finding the small × in the bar that had replaced the title.
+    // "leave the screen". Picking chats out and searching are both modes, and
+    // on gesture phones the back swipe should leave those modes first.
     final selecting = selection.isNotEmpty;
     final saved = savedChatRow(ref, t);
+    final selectedChats = [
+      if (saved != null) saved,
+      ...all,
+    ].where((chat) => selection.contains(chat.id)).toList();
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
       // other.
       if (saved != null &&
           folder == null &&
           userFolder == null &&
-          (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
+          (query.isEmpty ||
+              saved.peerName.toLowerCase().contains(query) ||
+              saved.lastMessage.toLowerCase().contains(query)))
         saved,
       ...all.where((c) {
         if (folder != null && !folder.matches(c)) return false;
@@ -335,86 +379,41 @@ class ChatsListScreen extends ConsumerWidget {
       }),
     ]..sort(compareChatRows);
     return PopScope<void>(
-      canPop: !selecting,
+      canPop: !selecting && !_searching,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && selecting) {
+        if (didPop) return;
+        if (selecting) {
           ref.read(chatSelectionProvider.notifier).clear();
+        } else if (_searching) {
+          _closeSearch();
         }
       },
       child: SafeArea(
         child: CustomScrollView(
           slivers: [
-            if (selection.isNotEmpty)
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _PinnedChatSelectionHeader(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                    child: _ChatSelectionBar(
-                      key: const ValueKey('selection'),
-                      selected: [
-                        for (final chat in filtered)
-                          if (selection.contains(chat.id)) chat,
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else
-              SliverToBoxAdapter(
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _ChatsTopHeader(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          TripleTapDetector(
-                            onTripleTap: () => _confirmWipe(context, ref, t),
-                            child: const CubeLogo(size: 32),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              t.chatsTitle,
-                              style: AppTypography.display(),
-                            ),
-                          ),
-                          _ChatsOverflowMenu(
-                            onAddContact: () => context.push('/contact'),
-                            onNewChannel: () =>
-                                showNewChannelDialog(context, ref, t),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        t.chatsSubtitle,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textOnGlassDim,
-                        ),
-                      ),
-                    ],
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: _ChatsTopPanel(
+                    selected: selectedChats,
+                    searching: _searching,
+                    searchController: _searchController,
+                    searchFocusNode: _searchFocusNode,
+                    onSearchChanged: (value) =>
+                        ref.read(chatsQueryProvider.notifier).state = value,
+                    onOpenSearch: _openSearch,
+                    onCloseSearch: _closeSearch,
+                    onWipe: () => _confirmWipe(context, ref, t),
+                    onAddContact: () => context.push('/contact'),
+                    onNewChannel: () => showNewChannelDialog(context, ref, t),
                   ),
-                ),
-              ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                // Looks like a field, behaves like a button. Typing happens on
-                // the search screen, which has room to offer who you talk to and
-                // who you last looked up — neither of which fits above a list
-                // that is already full of chats.
-                child: _SearchField(
-                  onTap: () => context.push('/search'),
-                  hint: t.chatsSearchHint,
                 ),
               ),
             ),
             // Only once there is something in it. An empty folder row would be a
-            // permanent strip of chrome between the search field and the first
+            // permanent strip of chrome between the header and the first
             // conversation, on the screen that opens the app.
             if (folders.isNotEmpty || userFolders.isNotEmpty)
               SliverToBoxAdapter(
@@ -576,8 +575,8 @@ class ChatsListScreen extends ConsumerWidget {
   }
 }
 
-class _PinnedChatSelectionHeader extends SliverPersistentHeaderDelegate {
-  const _PinnedChatSelectionHeader({required this.child});
+class _ChatsTopHeader extends SliverPersistentHeaderDelegate {
+  const _ChatsTopHeader({required this.child});
 
   static const double _height = 80;
 
@@ -603,8 +602,10 @@ class _PinnedChatSelectionHeader extends SliverPersistentHeaderDelegate {
             end: Alignment.bottomCenter,
             colors: [
               AppColors.bgDeep.withValues(alpha: 0.97),
-              AppColors.bgDeep.withValues(alpha: 0.74),
+              AppColors.bgDeep.withValues(alpha: 0.76),
+              AppColors.bgDeep.withValues(alpha: 0.0),
             ],
+            stops: const [0, 0.72, 1],
           ),
         ),
         child: child,
@@ -613,8 +614,210 @@ class _PinnedChatSelectionHeader extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  bool shouldRebuild(_PinnedChatSelectionHeader oldDelegate) =>
-      oldDelegate.child != child;
+  bool shouldRebuild(_ChatsTopHeader oldDelegate) => oldDelegate.child != child;
+}
+
+class _ChatsTopPanel extends ConsumerWidget {
+  const _ChatsTopPanel({
+    required this.selected,
+    required this.searching,
+    required this.searchController,
+    required this.searchFocusNode,
+    required this.onSearchChanged,
+    required this.onOpenSearch,
+    required this.onCloseSearch,
+    required this.onWipe,
+    required this.onAddContact,
+    required this.onNewChannel,
+  });
+
+  final List<Chat> selected;
+  final bool searching;
+  final TextEditingController searchController;
+  final FocusNode searchFocusNode;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onOpenSearch;
+  final VoidCallback onCloseSearch;
+  final VoidCallback onWipe;
+  final VoidCallback onAddContact;
+  final VoidCallback onNewChannel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = selected.isNotEmpty
+        ? 'selection'
+        : searching
+            ? 'search'
+            : 'normal';
+    return FloatingGlass(
+      blur: true,
+      borderRadius: 28,
+      child: SizedBox(
+        height: 60,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          reverseDuration: const Duration(milliseconds: 190),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            final enteringSearch = child.key == const ValueKey('search');
+            final offset = Tween<Offset>(
+              begin: Offset(enteringSearch ? 0.10 : -0.06, 0),
+              end: Offset.zero,
+            ).chain(CurveTween(curve: Curves.easeOutCubic));
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: animation.drive(offset),
+                child: child,
+              ),
+            );
+          },
+          child: switch (mode) {
+            'selection' => _ChatSelectionBar(
+                key: const ValueKey('selection'),
+                selected: selected,
+              ),
+            'search' => _ChatsSearchPanel(
+                key: const ValueKey('search'),
+                controller: searchController,
+                focusNode: searchFocusNode,
+                onChanged: onSearchChanged,
+                onClose: onCloseSearch,
+              ),
+            _ => _ChatsTitlePanel(
+                key: const ValueKey('normal'),
+                onSearch: onOpenSearch,
+                onWipe: onWipe,
+                onAddContact: onAddContact,
+                onNewChannel: onNewChannel,
+              ),
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatsTitlePanel extends StatelessWidget {
+  const _ChatsTitlePanel({
+    super.key,
+    required this.onSearch,
+    required this.onWipe,
+    required this.onAddContact,
+    required this.onNewChannel,
+  });
+
+  final VoidCallback onSearch;
+  final VoidCallback onWipe;
+  final VoidCallback onAddContact;
+  final VoidCallback onNewChannel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 14, right: 4),
+      child: Row(
+        children: [
+          TripleTapDetector(
+            onTripleTap: onWipe,
+            child: const CubeLogo(size: 32),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'CubeChat',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.display().copyWith(
+                fontSize: 28,
+                height: 1,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.search_rounded, color: AppColors.textOnGlass),
+            tooltip: AppLocalizations.of(context).chatSearchTitle,
+            onPressed: onSearch,
+          ),
+          _ChatsOverflowMenu(
+            onAddContact: onAddContact,
+            onNewChannel: onNewChannel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatsSearchPanel extends StatelessWidget {
+  const _ChatsSearchPanel({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onClose,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 8),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back_rounded, color: AppColors.textOnGlass),
+            tooltip: t.cancel,
+            onPressed: onClose,
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              cursorColor: AppColors.brandPrimary,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: t.chatsSearchHint,
+                hintStyle: TextStyle(
+                  color: AppColors.textOnGlassFaint,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              if (controller.text.isEmpty) return const SizedBox(width: 8);
+              return IconButton(
+                icon: Icon(Icons.close_rounded, color: AppColors.textOnGlass),
+                tooltip: t.chatsSearchClear,
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                  focusNode.requestFocus();
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// What the title row turns into while chats are picked out.
@@ -828,47 +1031,6 @@ class _SelectionOverflow extends ConsumerWidget {
         }
         ref.read(chatSelectionProvider.notifier).clear();
       },
-    );
-  }
-}
-
-/// The search affordance on the Chats tab: a field to look at, a button to
-/// press. Tapping it opens [ChatSearchScreen] rather than raising a keyboard
-/// here — see the call site.
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.onTap, required this.hint});
-
-  final VoidCallback onTap;
-  final String hint;
-
-  @override
-  Widget build(BuildContext context) {
-    return FloatingGlass(
-      blur: false,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      borderRadius: 14,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Row(
-          children: [
-            Icon(Icons.search_rounded,
-                size: 18, color: AppColors.textOnGlassFaint),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                hint,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.textOnGlassFaint,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

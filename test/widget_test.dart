@@ -30,13 +30,14 @@ void main() {
     }
   });
 
-  testWidgets('CubechatApp boots and shows the chats screen title',
+  testWidgets('CubechatApp boots and shows the CubeChat header',
       (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // English locale is the default — "Chats" should appear as the page title.
+    // The chats screen owns the top panel title; the bottom bar keeps the tab label.
+    expect(find.text('CubeChat'), findsOneWidget);
     expect(find.text('Chats'), findsWidgets);
   });
 
