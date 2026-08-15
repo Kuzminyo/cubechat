@@ -541,6 +541,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     final target =
         me ?? (nodes.isNotEmpty ? nodes.first.point : _fallbackCenter);
     return gm.GoogleMap(
+      key: ValueKey('google-map-${layer.id}'),
       initialCameraPosition: gm.CameraPosition(
         target: _gm(target),
         zoom: _initialZoom,
@@ -1212,6 +1213,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
 gm.LatLng _gm(LatLng point) => gm.LatLng(point.latitude, point.longitude);
 
 gm.MapType _googleMapType(MapLayer layer) => switch (layer) {
+      MapLayer.standard => gm.MapType.normal,
       MapLayer.dark => gm.MapType.normal,
       MapLayer.satellite => gm.MapType.hybrid,
       MapLayer.terrain => gm.MapType.terrain,

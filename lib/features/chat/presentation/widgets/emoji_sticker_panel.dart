@@ -132,66 +132,57 @@ class _EmojiStickerPanelState extends State<EmojiStickerPanel> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final stickers = widget.onSticker != null;
-    // An island, like everything else that floats over the aurora here: margins
-    // on three sides, rounded corners, the pane's own glass. A full-width plate
-    // welded to the bottom edge was the one surface in the app that looked
-    // borrowed from somewhere else.
-    // The margin is *inside* the height, not added to it. The slot is shared
-    // with the keyboard down to the point — see [KeyboardSlotPanel] — and an
-    // island that answered "the keyboard's height plus ten" made the composer
-    // drift by that ten every time the two swapped.
     return SizedBox(
       height: widget.height,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppColors.pane(0.86),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: AppColors.glass(0.14)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.32),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-                spreadRadius: -12,
-              ),
-            ],
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.pane(0.94),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: AppColors.glass(0.16)),
           ),
-          child: Column(
-            children: [
-              if (stickers)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
-                  child: Row(
-                    children: [
-                      _Tab(
-                        label: t.emojiTab,
-                        icon: Icons.emoji_emotions_outlined,
-                        active: !_stickers,
-                        onTap: () => setState(() => _stickers = false),
-                      ),
-                      const SizedBox(width: 8),
-                      _Tab(
-                        label: t.attachStickers,
-                        icon: Icons.auto_awesome_outlined,
-                        active: _stickers,
-                        onTap: () => setState(() => _stickers = true),
-                      ),
-                    ],
-                  ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.26),
+              blurRadius: 18,
+              offset: const Offset(0, -6),
+              spreadRadius: -14,
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            if (stickers)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+                child: Row(
+                  children: [
+                    _Tab(
+                      label: t.emojiTab,
+                      icon: Icons.emoji_emotions_outlined,
+                      active: !_stickers,
+                      onTap: () => setState(() => _stickers = false),
+                    ),
+                    const SizedBox(width: 8),
+                    _Tab(
+                      label: t.attachStickers,
+                      icon: Icons.auto_awesome_outlined,
+                      active: _stickers,
+                      onTap: () => setState(() => _stickers = true),
+                    ),
+                  ],
                 ),
-              Expanded(
-                child: _stickers
-                    ? StickerGrid(
-                        onPick: widget.onSticker!,
-                        onCreate: widget.onCreateSticker,
-                      )
-                    : EmojiPane(onPick: widget.onEmoji),
               ),
-            ],
-          ),
+            Expanded(
+              child: _stickers
+                  ? StickerGrid(
+                      onPick: widget.onSticker!,
+                      onCreate: widget.onCreateSticker,
+                    )
+                  : EmojiPane(onPick: widget.onEmoji),
+            ),
+          ],
         ),
       ),
     );

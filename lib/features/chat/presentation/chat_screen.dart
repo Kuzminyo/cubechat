@@ -63,6 +63,7 @@ import 'widgets/chat_input.dart';
 import 'widgets/emoji_picker_sheet.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
+import 'widgets/sticker_editor_screen.dart';
 import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
 import 'widgets/voice_island.dart';
 import 'widgets/voice_trim_bar.dart';
@@ -850,7 +851,8 @@ class _ChatRouteIndicator extends ConsumerWidget {
     // fallback is opt-in for a good reason (a relay learns both Nostr pubkeys
     // and when you talk), so this does not turn it on; it says which switch is
     // the reason and takes you to it.
-    if (route == ChatRoute.queued && !ref.watch(relaySettingsProvider).isActive) {
+    if (route == ChatRoute.queued &&
+        !ref.watch(relaySettingsProvider).isActive) {
       return GestureDetector(
         onTap: () => context.push('/relays'),
         child: _routeChip(
@@ -2632,14 +2634,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
   }
 
-  static String _stickerMime(Uint8List bytes) =>
-      bytes.length >= 8 &&
-              bytes[0] == 0x89 &&
-              bytes[1] == 0x50 &&
-              bytes[2] == 0x4E &&
-              bytes[3] == 0x47
-          ? 'image/png'
-          : 'image/jpeg';
+  static String _stickerMime(Uint8List bytes) => bytes.length >= 8 &&
+          bytes[0] == 0x89 &&
+          bytes[1] == 0x50 &&
+          bytes[2] == 0x4E &&
+          bytes[3] == 0x47
+      ? 'image/png'
+      : 'image/jpeg';
 
   /// Make a sticker out of a picture on this phone.
   ///
@@ -2681,7 +2682,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     }
     if (source == null || !mounted) return false;
 
-    final cropped = await openImageEditor(context, source);
+    final cropped = await openStickerEditor(context, source);
     if (cropped == null || !mounted) return false;
 
     // What the sticker is *called*. Telegram asks the same question for the
@@ -3280,7 +3281,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // tap, which is where somebody wondering "why is this quiet?" is already
     // looking.
     final blocked = !widget.isChannel &&
-        (ref.watch(knownPeersControllerProvider)[widget.canonicalId]
+        (ref
+                .watch(knownPeersControllerProvider)[widget.canonicalId]
                 ?.isBlocked ??
             false);
 

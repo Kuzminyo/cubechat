@@ -22,6 +22,15 @@ class _MapLayerSheet extends ConsumerWidget {
     final current = ref.watch(mapLayerControllerProvider);
 
     (IconData, String, String) describe(MapLayer layer) => switch (layer) {
+          MapLayer.standard => (
+              Icons.map_rounded,
+              _mapText(context, uk: 'Звичайна', en: 'Standard'),
+              _mapText(
+                context,
+                uk: 'Світла карта вулиць — найстабільніший варіант',
+                en: 'Light street map — the most stable default',
+              ),
+            ),
           MapLayer.dark => (
               Icons.dark_mode_rounded,
               t.mapLayerDark,
@@ -64,8 +73,8 @@ class _MapLayerSheet extends ConsumerWidget {
                     shape: BoxShape.circle,
                     color: AppColors.brandPrimary.withValues(alpha: 0.14),
                   ),
-                  child: Icon(Icons.layers_rounded,
-                      color: AppColors.brandPrimary),
+                  child:
+                      Icon(Icons.layers_rounded, color: AppColors.brandPrimary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -135,4 +144,10 @@ class _MapLayerSheet extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _mapText(BuildContext context,
+    {required String uk, required String en}) {
+  final code = Localizations.localeOf(context).languageCode.toLowerCase();
+  return code == 'uk' ? uk : en;
 }

@@ -21,7 +21,7 @@ import 'features/onboarding/data/onboarding_controller.dart';
 
 /// Build-time marker bumped on every release. Surfaces in Diagnostics so we
 /// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-14-read-receipts-inbound';
+const String _buildStamp = '2026-08-15-sticker-editor-telegram-panel';
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -41,8 +41,10 @@ Future<void> _matchDisplayRefreshRate() async {
   try {
     await FlutterDisplayMode.setHighRefreshRate();
     final active = await FlutterDisplayMode.active;
-    DebugLog.instance.log('DISPLAY', 'mode ${active.width}x${active.height} '
-        '@${active.refreshRate.toStringAsFixed(1)}Hz');
+    DebugLog.instance.log(
+        'DISPLAY',
+        'mode ${active.width}x${active.height} '
+            '@${active.refreshRate.toStringAsFixed(1)}Hz');
   } catch (e) {
     // Plenty of devices expose no mode list at all; the platform default is a
     // perfectly good answer and is not worth failing a launch over.
@@ -74,7 +76,8 @@ Future<void> _bootStep(
     // Only worth a line when it was slow enough to be felt; a healthy boot
     // should not have to push the interesting entries out of the buffer.
     if (watch.elapsedMilliseconds >= 250) {
-      DebugLog.instance.log('BOOT', '$what took ${watch.elapsedMilliseconds}ms');
+      DebugLog.instance
+          .log('BOOT', '$what took ${watch.elapsedMilliseconds}ms');
     }
   } on TimeoutException {
     DebugLog.instance.log(
@@ -82,8 +85,10 @@ Future<void> _bootStep(
       '$what still going after ${limit.inSeconds}s — starting without it',
     );
   } catch (e) {
-    DebugLog.instance.log('BOOT', '$what failed after '
-        '${watch.elapsedMilliseconds}ms: $e');
+    DebugLog.instance.log(
+        'BOOT',
+        '$what failed after '
+            '${watch.elapsedMilliseconds}ms: $e');
   }
 }
 
@@ -93,8 +98,10 @@ Future<void> main() async {
   // First, so that a stall in any step below still leaves a log that says which
   // build was trying to start. This used to sit after Hive and notifications,
   // where a hang meant no boot line at all.
-  DebugLog.instance.log('BOOT', 'cubechat $_buildStamp '
-      'debug=$kDebugMode profile=$kProfileMode release=$kReleaseMode');
+  DebugLog.instance.log(
+      'BOOT',
+      'cubechat $_buildStamp '
+          'debug=$kDebugMode profile=$kProfileMode release=$kReleaseMode');
 
   // Storage genuinely gates the first frame — the tree reads it immediately —
   // so it gets the longest leash. It also goes through the platform keystore,
@@ -126,7 +133,8 @@ Future<void> main() async {
       // plugin's Dart signature but is never applied unless this method is
       // called, so leaving it at the default here would quietly introduce a
       // system "turn Bluetooth on?" popup that the app has never shown.
-      () => FlutterBluePlus.setOptions(showPowerAlert: false, restoreState: true),
+      () =>
+          FlutterBluePlus.setOptions(showPowerAlert: false, restoreState: true),
       limit: const Duration(seconds: 2),
     );
   }

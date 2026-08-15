@@ -4682,7 +4682,10 @@ class MessagingService {
       // chat — and so the blocked-peer, receipt, reaction and edit paths below
       // can identify the sender too, instead of it vanishing into 'nostr:relay'.
       final senderPub = session?.remoteStaticPublicKey ??
-          await _canonicalPubForOrigin(env.originPubkeyHash);
+          await _canonicalPubForVerifiedSender(
+            originPubkeyHash: env.originPubkeyHash,
+            senderEdPub: verifiedSenderEdPub,
+          );
 
       final traversedHops = env.traversedHops;
       final directLegacy =
@@ -6390,6 +6393,41 @@ class MessagingService {
   /// conversation.
   Future<Uint8List?> _canonicalPubForOrigin(Uint8List originPubkeyHash) =>
       _peerForId(originPubkeyHash);
+
+  /// Resolve a relay sender after its inner signature has already verified.
+  ///
+  /// The rotating origin id is the normal route back to the canonical X25519
+  /// key. Some relay control frames can still be authenticated even when that
+  /// origin id no longer maps cleanly (for example after a clock/epoch skew or
+  /// a stale roster index), because the full signed body carries the sender's
+  /// Ed25519 key. In that case use the verified signer as a fallback so read
+  /// receipts, reactions and presence land in the real peer chat instead of
+  /// the invisible `nostr:relay` bucket.
+  Future<Uint8List?> _canonicalPubForVerifiedSender({
+    required Uint8List originPubkeyHash,
+    Uint8List? senderEdPub,
+  }) async {
+    final byOrigin = await _canonicalPubForOrigin(originPubkeyHash);
+    if (byOrigin != null) return byOrigin;
+    if (senderEdPub == null) return null;
+
+    final peer = _knownPeerBySignKey(senderEdPub);
+    if (peer == null) return null;
+    try {
+      final pub = _hexDecodeBytes(peer.pubkeyHex);
+      DebugLog.instance.log(
+        'CRYPTO',
+        'resolved relay sender ${_short(peer.pubkeyHex)} by verified signer',
+      );
+      return pub;
+    } catch (e) {
+      DebugLog.instance.log(
+        'CRYPTO',
+        'drop relay sender with malformed canonical pubkey: $e',
+      );
+      return null;
+    }
+  }
 
   /// Caches a fresh (origin → ed pub) binding learned from a successful
   /// TOFU-verified message. Bootstraps strict-mode verification for subsequent

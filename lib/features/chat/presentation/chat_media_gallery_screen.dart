@@ -21,6 +21,7 @@ import '../data/messages_controller.dart';
 import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../stickers/data/sticker_library.dart';
+import 'widgets/emoji_picker_sheet.dart';
 
 /// Telegram-style media browser: every image in a conversation, full-screen and
 /// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
@@ -141,9 +142,19 @@ class _ChatMediaGalleryScreenState
   Future<void> _keepAsSticker() async {
     final path = _current?.imagePath;
     if (path == null) return;
-    await ref.read(stickerLibraryProvider.notifier).keep(path);
+    final t = AppLocalizations.of(context);
+    final emoji = await showEmojiPicker(context, title: t.stickerEmojiTitle);
     if (!mounted) return;
-    showGlassToast(context, AppLocalizations.of(context).stickerKept);
+    final kept = await ref
+        .read(stickerLibraryProvider.notifier)
+        .keep(path, emoji: emoji);
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      kept ? t.stickerKept : t.stickerFailed,
+      icon: kept ? Icons.auto_awesome_outlined : null,
+      tone: kept ? ToastTone.success : ToastTone.danger,
+    );
   }
 
   Future<void> _save() async {
@@ -229,7 +240,8 @@ class _ChatMediaGalleryScreenState
                           count > 1
                               ? '${formatMessageDetailsTime(context, current.sentAt)}'
                                   '  ·  ${_index + 1}/$count'
-                              : formatMessageDetailsTime(context, current.sentAt),
+                              : formatMessageDetailsTime(
+                                  context, current.sentAt),
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.65),
                             fontSize: 12,
@@ -280,8 +292,8 @@ class _ChatMediaGalleryScreenState
                       ),
                     PopupMenuItem(
                       value: 'chat',
-                      child: _menuRow(
-                          Icons.chat_bubble_outline_rounded, t.chatMediaShowInChat),
+                      child: _menuRow(Icons.chat_bubble_outline_rounded,
+                          t.chatMediaShowInChat),
                     ),
                     // Kept inside the app rather than exported, so this one
                     // stays offered even when sharing is restricted: the
@@ -314,26 +326,26 @@ class _ChatMediaGalleryScreenState
                 child: Transform.scale(
                   scale: 1 - 0.15 * _dragProgress,
                   child: PageView.builder(
-                controller: _controller,
-                itemCount: count,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (_, i) {
-                  final m = _images[i];
-                  return InteractiveViewer(
-                    minScale: 0.8,
-                    maxScale: 8,
-                    child: Center(
-                      child: Hero(
-                        tag: 'image-${m.id}',
-                        child: Image.file(
-                          File(m.imagePath!),
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => _missing(),
+                    controller: _controller,
+                    itemCount: count,
+                    onPageChanged: (i) => setState(() => _index = i),
+                    itemBuilder: (_, i) {
+                      final m = _images[i];
+                      return InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 8,
+                        child: Center(
+                          child: Hero(
+                            tag: 'image-${m.id}',
+                            child: Image.file(
+                              File(m.imagePath!),
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => _missing(),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                },
+                      );
+                    },
                   ),
                 ),
               ),

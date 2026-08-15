@@ -45,7 +45,8 @@ Uint8List? _encodeBytesForMesh(Uint8List src) {
     final resized = decoded.width > rung.size
         ? img.copyResize(decoded, width: rung.size)
         : decoded;
-    final bytes = Uint8List.fromList(img.encodeJpg(resized, quality: rung.quality));
+    final bytes =
+        Uint8List.fromList(img.encodeJpg(resized, quality: rung.quality));
     smallest = bytes;
     if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
   }
@@ -64,7 +65,8 @@ Uint8List? _encodeBytesForMesh(Uint8List src) {
 /// so when 512 px overshoots the budget the only thing left to spend is size.
 /// Returns null when even the smallest rung is too big for the mesh, so the
 /// caller can say so instead of queueing something that will never arrive.
-Future<Uint8List?> encodeStickerPng(Uint8List src) => compute(_encodeSticker, src);
+Future<Uint8List?> encodeStickerPng(Uint8List src) =>
+    compute(_encodeSticker, src);
 
 Uint8List? _encodeSticker(Uint8List src) {
   final decoded = img.decodeImage(src);
@@ -78,11 +80,10 @@ Uint8List? _encodeSticker(Uint8List src) {
   final trimmed = img.trim(decoded, mode: img.TrimMode.transparent);
   final source = trimmed.width > 8 && trimmed.height > 8 ? trimmed : decoded;
 
-  const rungs = <int>[512, 384, 320, 256, 192];
+  const rungs = <int>[512, 384, 320, 256, 192, 160, 128, 96, 72];
   Uint8List? smallest;
   for (final side in rungs) {
-    final longest =
-        source.width > source.height ? source.width : source.height;
+    final longest = source.width > source.height ? source.width : source.height;
     final resized = longest > side
         ? (source.width >= source.height
             ? img.copyResize(source, width: side)
@@ -106,7 +107,8 @@ Uint8List? _encodeSticker(Uint8List src) {
 /// bottoms out far below [encodeBytesForMesh]'s. Returns null when even the
 /// smallest rung overshoots [maxBytes], so the caller can say so rather than
 /// send something that will never arrive.
-Future<Uint8List?> encodeChannelAvatar(Uint8List src, {required int maxBytes}) =>
+Future<Uint8List?> encodeChannelAvatar(Uint8List src,
+        {required int maxBytes}) =>
     compute(
       (({Uint8List src, int maxBytes}) args) =>
           _encodeChannelAvatar(args.src, args.maxBytes),

@@ -106,6 +106,7 @@ PhotoAlbums groupPhotoAlbums(List<Message> messages) {
 
 bool _albumable(Message message) =>
     message.kind == MessageKind.image &&
+    !message.isSticker &&
     !message.viewOnce &&
     message.imagePath != null;
 

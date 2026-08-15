@@ -13,8 +13,13 @@ import '../../../core/storage/hive_init.dart';
 /// what is actually there, and what the ground does — and every extra style is
 /// another tile service to depend on and another set of squares to cache.
 enum MapLayer {
-  /// The default. Dark, label-free, and the reason the app's own text and
-  /// avatars are readable on top of it.
+  /// The regular Google/OpenStreetMap street map. It is deliberately the
+  /// startup default: the dark custom style is useful, but if it stalls while
+  /// the native map view is being recreated the screen looks like it never
+  /// loaded.
+  standard,
+
+  /// Dark, label-free, and quiet under the pins.
   dark,
 
   /// Aerial imagery, for "which building, which yard".
@@ -26,12 +31,14 @@ enum MapLayer {
 
 extension MapLayerTiles on MapLayer {
   String get id => switch (this) {
+        MapLayer.standard => 'standard',
         MapLayer.dark => 'dark',
         MapLayer.satellite => 'satellite',
         MapLayer.terrain => 'terrain',
       };
 
   String get urlTemplate => switch (this) {
+        MapLayer.standard => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         MapLayer.dark =>
           'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
         // Esri's imagery has no subdomains and no retina variant: one host,
@@ -43,6 +50,7 @@ extension MapLayerTiles on MapLayer {
       };
 
   List<String> get subdomains => switch (this) {
+        MapLayer.standard => const [],
         MapLayer.dark => const ['a', 'b', 'c', 'd'],
         MapLayer.satellite => const [],
         MapLayer.terrain => const ['a', 'b', 'c'],
@@ -56,6 +64,7 @@ extension MapLayerTiles on MapLayer {
   /// upscales the last real tile instead of requesting squares that come back
   /// blank — which is what a bare grid at maximum zoom was.
   int get maxNativeZoom => switch (this) {
+        MapLayer.standard => 19,
         MapLayer.dark => 20,
         MapLayer.satellite => 19,
         MapLayer.terrain => 17,
@@ -63,15 +72,27 @@ extension MapLayerTiles on MapLayer {
 
   /// Who has to be credited, as their licence requires.
   List<(String, String)> get attributions => switch (this) {
+        MapLayer.standard => const [
+            (
+              'OpenStreetMap contributors',
+              'https://www.openstreetmap.org/copyright'
+            ),
+          ],
         MapLayer.dark => const [
-            ('OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright'),
+            (
+              'OpenStreetMap contributors',
+              'https://www.openstreetmap.org/copyright'
+            ),
             ('CARTO', 'https://carto.com/attributions'),
           ],
         MapLayer.satellite => const [
             ('Esri, Maxar, Earthstar Geographics', 'https://www.esri.com/'),
           ],
         MapLayer.terrain => const [
-            ('OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright'),
+            (
+              'OpenStreetMap contributors',
+              'https://www.openstreetmap.org/copyright'
+            ),
             ('OpenTopoMap (CC-BY-SA)', 'https://opentopomap.org/'),
           ],
       };
@@ -88,7 +109,7 @@ class MapLayerController extends Notifier<MapLayer> {
   @override
   MapLayer build() {
     unawaited(_loading = _load());
-    return MapLayer.dark;
+    return MapLayer.standard;
   }
 
   Future<void> _load() async {
@@ -101,7 +122,7 @@ class MapLayerController extends Notifier<MapLayer> {
       if (saved == null) return;
       state = MapLayer.values.firstWhere(
         (layer) => layer.id == saved,
-        orElse: () => MapLayer.dark,
+        orElse: () => MapLayer.standard,
       );
     } catch (e) {
       debugPrint('MapLayer load failed: $e');

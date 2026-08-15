@@ -12,11 +12,9 @@ import '../data/sticker_library.dart';
 /// Everything there is to pick from: the ones this person made or kept, and
 /// the pack that is here on a fresh install.
 ///
-/// It used to be the kept ones alone, which on a new phone is an empty
-/// rectangle and a sentence explaining that stickers come from somewhere else.
-/// The starter pack is drawn on the spot — see [BuiltinStickers] — so the
-/// picker has something in it from the first tap, and "make one of your own" is
-/// the first cell rather than a feature nobody could find.
+/// Telegram's sticker picker is not a card grid: the sticker is the control.
+/// The cells here therefore stay mostly transparent, with a small creation
+/// tile and no heavy backgrounds under every image.
 class StickerGrid extends ConsumerWidget {
   const StickerGrid({super.key, required this.onPick, this.onCreate});
 
@@ -26,8 +24,7 @@ class StickerGrid extends ConsumerWidget {
   /// kind it got.
   final void Function(String path, String? emoji) onPick;
 
-  /// Tapped "make one". Null hides the tile — the picker is then read-only,
-  /// which is what a caller that has nowhere to run a gallery picker wants.
+  /// Tapped "make one". Null hides the tile — the picker is then read-only.
   final VoidCallback? onCreate;
 
   static const _columns = 4;
@@ -36,48 +33,51 @@ class StickerGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final mine = ref.watch(stickerLibraryProvider);
+    final mineCount = mine.length + (onCreate == null ? 0 : 1);
 
     return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
       slivers: [
-        if (onCreate != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-              child: _CreateButton(label: t.stickerCreate, onTap: onCreate!),
-            ),
-          ),
-        if (mine.isNotEmpty) ...[
+        if (mineCount > 0) ...[
           _header(t.stickersMine),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: _columns,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
+                mainAxisSpacing: 2,
+                crossAxisSpacing: 2,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, i) => _KeptTile(
-                  path: mine[i],
-                  onTap: () => onPick(
-                    mine[i],
-                    ref.read(stickerLibraryProvider.notifier).emojiFor(mine[i]),
-                  ),
-                  onLongPress: () => _confirmRemoval(context, ref, t, mine[i]),
-                ),
-                childCount: mine.length,
+                (context, i) {
+                  if (onCreate != null && i == 0) {
+                    return _CreateTile(
+                        label: t.stickerCreate, onTap: onCreate!);
+                  }
+                  final stickerIndex = i - (onCreate == null ? 0 : 1);
+                  final path = mine[stickerIndex];
+                  return _KeptTile(
+                    path: path,
+                    onTap: () => onPick(
+                      path,
+                      ref.read(stickerLibraryProvider.notifier).emojiFor(path),
+                    ),
+                    onLongPress: () => _confirmRemoval(context, ref, t, path),
+                  );
+                },
+                childCount: mineCount,
               ),
             ),
           ),
         ],
         _header(t.stickersStarterPack),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 18),
           sliver: SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: _columns,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
             ),
             delegate: SliverChildBuilderDelegate(
               (context, i) {
@@ -96,14 +96,9 @@ class StickerGrid extends ConsumerWidget {
   }
 
   /// Paint the glyph into a file, then hand the caller a path like any other.
-  ///
-  /// Nothing is shown while it happens: it is one canvas and one PNG encode of
-  /// a 320-pixel square, which lands inside a frame or two, and a spinner that
-  /// flashes for 30 ms reads as a fault rather than as progress.
   Future<void> _pickBuiltin(BuildContext context, String glyph) async {
     final path = await BuiltinStickers.materialize(glyph);
     if (path != null) {
-      // A pack sticker *is* its emoji, so that is what it is filed under.
       onPick(path, glyph);
       return;
     }
@@ -117,14 +112,14 @@ class StickerGrid extends ConsumerWidget {
 
   Widget _header(String label) => SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 7),
           child: Text(
             label.toUpperCase(),
             style: TextStyle(
               color: AppColors.textOnGlassDim,
               fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
             ),
           ),
         ),
@@ -156,45 +151,38 @@ class StickerGrid extends ConsumerWidget {
   }
 }
 
-/// The way in to making one, at the top where it is read first.
-class _CreateButton extends StatelessWidget {
-  const _CreateButton({required this.label, required this.onTap});
+class _CreateTile extends StatelessWidget {
+  const _CreateTile({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.brandPrimary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: AppColors.brandPrimary.withValues(alpha: 0.35),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.add_photo_alternate_outlined,
-                  size: 20, color: AppColors.brandPrimary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: AppColors.brandPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Center(
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.brandPrimary.withValues(alpha: 0.14),
+                border: Border.all(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.34),
                 ),
               ),
-            ],
+              child: Icon(
+                Icons.add_rounded,
+                color: AppColors.brandPrimary,
+                size: 34,
+              ),
+            ),
           ),
         ),
       ),
@@ -216,29 +204,18 @@ class _KeptTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      // Removing one is a long press, not a delete button on every tile: the
-      // grid is for choosing, and a row of little crosses turns it into a
-      // management screen you have to be careful in.
       onLongPress: onLongPress,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.glass(0.06),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Image.file(
-            File(path),
-            fit: BoxFit.contain,
-            // Decoded at the size of a cell rather than the size it was kept
-            // at — a grid of them is otherwise a screenful of full-resolution
-            // bitmaps.
-            cacheWidth: (96 * MediaQuery.devicePixelRatioOf(context)).round(),
-            errorBuilder: (_, __, ___) => Icon(
-              Icons.broken_image_outlined,
-              color: AppColors.textOnGlassFaint,
-            ),
+      child: Padding(
+        padding: const EdgeInsets.all(5),
+        child: Image.file(
+          File(path),
+          fit: BoxFit.contain,
+          cacheWidth: (104 * MediaQuery.devicePixelRatioOf(context)).round(),
+          errorBuilder: (_, __, ___) => Icon(
+            Icons.broken_image_outlined,
+            color: AppColors.textOnGlassFaint,
           ),
         ),
       ),
@@ -246,11 +223,6 @@ class _KeptTile extends StatelessWidget {
   }
 }
 
-/// A pack entry, drawn as the character it is until somebody picks it.
-///
-/// Painting all forty-eight to disk to fill a grid would be forty-eight PNG
-/// encodes for a sheet that is usually scrolled past; the text is the same
-/// glyph from the same font, at a fraction of the cost.
 class _GlyphTile extends StatelessWidget {
   const _GlyphTile({required this.glyph, required this.onTap});
 
@@ -260,18 +232,13 @@ class _GlyphTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.glass(0.06),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Text(
-            glyph,
-            style: const TextStyle(fontSize: 34),
-            textScaler: TextScaler.noScaling,
-          ),
+      child: Center(
+        child: Text(
+          glyph,
+          style: const TextStyle(fontSize: 44),
+          textScaler: TextScaler.noScaling,
         ),
       ),
     );

@@ -107,6 +107,15 @@ void main() {
 
     expect(albums.isEmpty, isTrue);
   });
+  test('a sticker never joins a photo grid', () {
+    final albums = groupPhotoAlbums([
+      photo('a', second: 0),
+      photo('sticker', second: 1, caption: Message.stickerMarkerFor('😂')),
+      photo('b', second: 2),
+    ]);
+
+    expect(albums.isEmpty, isTrue);
+  });
 
   test('a lone photo is left alone', () {
     expect(groupPhotoAlbums([photo('a')]).isEmpty, isTrue);
