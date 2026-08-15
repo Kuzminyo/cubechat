@@ -29,7 +29,7 @@ class EmojiGroup {
 abstract final class EmojiCatalog {
   static const smileys = EmojiGroup(
     id: 'smileys',
-    icon: Icons.sentiment_satisfied_alt_outlined,
+    icon: Icons.sentiment_satisfied_alt_rounded,
     emoji: [
       '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', //
       '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙',
@@ -47,7 +47,7 @@ abstract final class EmojiCatalog {
 
   static const people = EmojiGroup(
     id: 'people',
-    icon: Icons.waving_hand_outlined,
+    icon: Icons.waving_hand_rounded,
     emoji: [
       '👋', '🤚', '🖐', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', //
       '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '👍', '👎',
@@ -65,7 +65,7 @@ abstract final class EmojiCatalog {
 
   static const nature = EmojiGroup(
     id: 'nature',
-    icon: Icons.pets_outlined,
+    icon: Icons.pets_rounded,
     emoji: [
       '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', //
       '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔',
@@ -87,7 +87,7 @@ abstract final class EmojiCatalog {
 
   static const food = EmojiGroup(
     id: 'food',
-    icon: Icons.local_pizza_outlined,
+    icon: Icons.local_pizza_rounded,
     emoji: [
       '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🍈', //
       '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦',
@@ -105,7 +105,7 @@ abstract final class EmojiCatalog {
 
   static const activity = EmojiGroup(
     id: 'activity',
-    icon: Icons.sports_soccer_outlined,
+    icon: Icons.sports_soccer_rounded,
     emoji: [
       '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', //
       '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🪁', '🏹',
@@ -120,7 +120,7 @@ abstract final class EmojiCatalog {
 
   static const travel = EmojiGroup(
     id: 'travel',
-    icon: Icons.directions_car_outlined,
+    icon: Icons.directions_car_rounded,
     emoji: [
       '🚗', '🚕', '🚙', '🚌', '🚎', '🏎', '🚓', '🚑', '🚒', '🚐', //
       '🚚', '🚛', '🚜', '🛴', '🚲', '🛵', '🏍', '🚨', '🚔', '🚍',
@@ -139,7 +139,7 @@ abstract final class EmojiCatalog {
 
   static const objects = EmojiGroup(
     id: 'objects',
-    icon: Icons.lightbulb_outline,
+    icon: Icons.lightbulb_rounded,
     emoji: [
       '⌚', '📱', '💻', '⌨', '🖥', '🖨', '🖱', '🕹', '💽', '💾', //
       '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '🎞', '📞', '☎️',
@@ -165,7 +165,7 @@ abstract final class EmojiCatalog {
 
   static const symbols = EmojiGroup(
     id: 'symbols',
-    icon: Icons.favorite_outline,
+    icon: Icons.favorite_rounded,
     emoji: [
       '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', //
       '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️',

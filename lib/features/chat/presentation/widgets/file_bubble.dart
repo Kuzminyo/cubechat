@@ -136,7 +136,8 @@ class FileBubble extends ConsumerWidget {
         _ => null,
       };
       if (extension == null) return null;
-      if (path.toLowerCase().endsWith('.${extension.toLowerCase()}')) return null;
+      if (path.toLowerCase().endsWith('.${extension.toLowerCase()}'))
+        return null;
 
       final dir = Directory('${(await getTemporaryDirectory()).path}'
           '${Platform.pathSeparator}open');
@@ -359,22 +360,22 @@ class FileBubble extends ConsumerWidget {
     final dot = name.lastIndexOf('.');
     final ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
     return switch (ext) {
-      'pdf' => Icons.picture_as_pdf_outlined,
-      'zip' || 'rar' || '7z' || 'tar' || 'gz' => Icons.folder_zip_outlined,
-      'doc' || 'docx' || 'odt' || 'rtf' || 'txt' => Icons.description_outlined,
-      'xls' || 'xlsx' || 'ods' || 'csv' => Icons.table_chart_outlined,
-      'ppt' || 'pptx' || 'odp' => Icons.slideshow_outlined,
-      'mp3' || 'wav' || 'flac' || 'ogg' || 'm4a' => Icons.audiotrack_outlined,
-      'mp4' || 'mov' || 'mkv' || 'avi' || 'webm' => Icons.movie_outlined,
+      'pdf' => Icons.picture_as_pdf_rounded,
+      'zip' || 'rar' || '7z' || 'tar' || 'gz' => Icons.folder_zip_rounded,
+      'doc' || 'docx' || 'odt' || 'rtf' || 'txt' => Icons.description_rounded,
+      'xls' || 'xlsx' || 'ods' || 'csv' => Icons.table_chart_rounded,
+      'ppt' || 'pptx' || 'odp' => Icons.slideshow_rounded,
+      'mp3' || 'wav' || 'flac' || 'ogg' || 'm4a' => Icons.audiotrack_rounded,
+      'mp4' || 'mov' || 'mkv' || 'avi' || 'webm' => Icons.movie_rounded,
       'png' ||
       'jpg' ||
       'jpeg' ||
       'gif' ||
       'webp' ||
       'heic' =>
-        Icons.image_outlined,
-      'apk' => Icons.android_outlined,
-      _ => Icons.insert_drive_file_outlined,
+        Icons.image_rounded,
+      'apk' => Icons.install_mobile_rounded,
+      _ => Icons.insert_drive_file_rounded,
     };
   }
 }

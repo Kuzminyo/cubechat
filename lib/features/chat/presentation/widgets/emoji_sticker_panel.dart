@@ -160,14 +160,14 @@ class _EmojiStickerPanelState extends State<EmojiStickerPanel> {
                   children: [
                     _Tab(
                       label: t.emojiTab,
-                      icon: Icons.emoji_emotions_outlined,
+                      icon: Icons.emoji_emotions_rounded,
                       active: !_stickers,
                       onTap: () => setState(() => _stickers = false),
                     ),
                     const SizedBox(width: 8),
                     _Tab(
                       label: t.attachStickers,
-                      icon: Icons.auto_awesome_outlined,
+                      icon: Icons.auto_awesome_rounded,
                       active: _stickers,
                       onTap: () => setState(() => _stickers = true),
                     ),

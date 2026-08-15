@@ -25,8 +25,8 @@ class AppShell extends StatelessWidget {
     final t = AppLocalizations.of(context);
     final tabs = [
       _TabSpec(
-        icon: Icons.chat_bubble_outline,
-        activeIcon: Icons.chat_bubble,
+        icon: Icons.chat_bubble_outline_rounded,
+        activeIcon: Icons.chat_bubble_rounded,
         label: t.navChats,
         showsUnread: true,
       ),
@@ -35,23 +35,23 @@ class AppShell extends StatelessWidget {
       // new — moves further out. Keep in step with the branch order in
       // app_router.dart; the shell pairs them by index.
       _TabSpec(
-        icon: Icons.contacts_outlined,
-        activeIcon: Icons.contacts,
+        icon: Icons.contacts_rounded,
+        activeIcon: Icons.contacts_rounded,
         label: t.navContacts,
       ),
       _TabSpec(
-        icon: Icons.podcasts,
-        activeIcon: Icons.podcasts,
+        icon: Icons.radar_rounded,
+        activeIcon: Icons.radar_rounded,
         label: t.navPeers,
       ),
       _TabSpec(
-        icon: Icons.map_outlined,
+        icon: Icons.map_rounded,
         activeIcon: Icons.map_rounded,
         label: t.navMap,
       ),
       _TabSpec(
-        icon: Icons.person_outline,
-        activeIcon: Icons.person,
+        icon: Icons.person_outline_rounded,
+        activeIcon: Icons.person_rounded,
         label: t.navProfile,
       ),
     ];

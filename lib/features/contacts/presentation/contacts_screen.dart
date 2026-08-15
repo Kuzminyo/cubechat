@@ -124,7 +124,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       // list. Same dialog the Chats menu opens.
                       IconButton(
                         onPressed: () => showNewChannelDialog(context, ref, t),
-                        icon: const Icon(Icons.campaign_outlined),
+                        icon: const Icon(Icons.campaign_rounded),
                         color: AppColors.brandPrimary,
                         iconSize: 26,
                         tooltip: t.chatsMenuNewChannel,
@@ -231,7 +231,7 @@ Future<void> _showContactMenu(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.person_outline, size: 19, color: AppColors.textOnGlass),
+            Icon(Icons.person_outline_rounded, size: 19, color: AppColors.textOnGlass),
             const SizedBox(width: 12),
             Text(
               t.contactProfileOpen,
@@ -246,7 +246,7 @@ Future<void> _showContactMenu(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.person_remove_outlined,
+            const Icon(Icons.person_remove_rounded,
                 size: 19, color: AppColors.danger),
             const SizedBox(width: 12),
             Text(
@@ -331,7 +331,7 @@ class _AddContactRow extends StatelessWidget {
               ),
             ),
             child: Icon(
-              Icons.person_add_alt,
+              Icons.person_add_alt_rounded,
               color: AppColors.brandPrimary,
               size: 22,
             ),
@@ -384,7 +384,7 @@ class _ContactsSearchField extends StatelessWidget {
         ),
         decoration: InputDecoration(
           icon: Icon(
-            Icons.search,
+            Icons.search_rounded,
             size: 18,
             color: AppColors.textOnGlassFaint,
           ),
@@ -449,7 +449,7 @@ class _ContactTile extends StatelessWidget {
                     if (contact.isVerified) ...[
                       const SizedBox(width: 5),
                       Icon(
-                        Icons.verified,
+                        Icons.verified_rounded,
                         color: AppColors.brandPrimary,
                         size: 15,
                       ),
@@ -493,7 +493,7 @@ class _ContactsEmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.contacts_outlined,
+            Icons.contacts_rounded,
             color: AppColors.textOnGlassFaint,
             size: 46,
           ),

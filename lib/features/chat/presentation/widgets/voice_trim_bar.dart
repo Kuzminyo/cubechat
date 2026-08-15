@@ -145,7 +145,7 @@ class _VoiceTrimBarState extends State<VoiceTrimBar> {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: t.voiceTrimDiscard,
-                  icon: Icon(Icons.delete_outline,
+                  icon: Icon(Icons.delete_outline_rounded,
                       color: AppColors.textOnGlassDim, size: 20),
                   onPressed: widget.onCancel,
                 ),

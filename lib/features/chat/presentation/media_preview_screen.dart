@@ -193,7 +193,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
             child: Row(
               children: [
                 _RoundAction(
-                  icon: Icons.close,
+                  icon: Icons.close_rounded,
                   onTap: () => Navigator.of(context).pop(),
                 ),
                 const Spacer(),
@@ -258,7 +258,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                   // contradiction (the edit would be the one thing that got
                   // re-encoded), so it stands down while "original" is on.
                   if (!_asFile) ...[
-                    _CaptionAction(icon: Icons.brush_outlined, onTap: _edit),
+                    _CaptionAction(icon: Icons.brush_rounded, onTap: _edit),
                     const SizedBox(width: 4),
                   ],
                   // The same smiley the composer and the gallery caption have,
@@ -266,8 +266,8 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                   // where the keyboard was.
                   _CaptionAction(
                     icon: _emojiOpen
-                        ? Icons.keyboard_alt_outlined
-                        : Icons.sentiment_satisfied_alt_outlined,
+                        ? Icons.keyboard_alt_rounded
+                        : Icons.sentiment_satisfied_alt_rounded,
                     onTap: _toggleEmoji,
                   ),
                   const SizedBox(width: 2),
@@ -356,7 +356,7 @@ class _OriginalToggle extends StatelessWidget {
               Icon(
                 active
                     ? Icons.insert_drive_file_rounded
-                    : Icons.insert_drive_file_outlined,
+                    : Icons.insert_drive_file_rounded,
                 size: 17,
                 color: active ? AppColors.bgDeep : Colors.white,
               ),

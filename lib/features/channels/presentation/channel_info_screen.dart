@@ -285,7 +285,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               children: [
                 Expanded(
                   child: _ChannelAction(
-                    icon: Icons.person_add_alt_1_outlined,
+                    icon: Icons.person_add_alt_1_rounded,
                     label: t.channelInviteTitle,
                     onTap: () =>
                         showChannelInviteSheet(context, widget.channelName),
@@ -294,7 +294,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _ChannelAction(
-                    icon: Icons.wallpaper_outlined,
+                    icon: Icons.wallpaper_rounded,
                     label: t.chatWallpaperTitle,
                     // Each member picks their own — nothing about a wallpaper
                     // travels, so there is no admin gate here.
@@ -306,7 +306,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _ChannelAction(
-                    icon: Icons.perm_media_outlined,
+                    icon: Icons.perm_media_rounded,
                     label: t.channelSharedContent,
                     // The channel's own bucket keys the shared-content screen
                     // exactly the way a peer's pubkey does, so the media, files
@@ -508,7 +508,7 @@ class _ChannelAdminOnly extends ConsumerWidget {
         child: Row(
           children: [
             Icon(
-              on ? Icons.campaign_rounded : Icons.forum_outlined,
+              on ? Icons.campaign_rounded : Icons.forum_rounded,
               size: 19,
               color: AppColors.textOnGlassDim,
             ),
@@ -666,7 +666,7 @@ class _ChannelDescription extends StatelessWidget {
           ),
           if (canManage) ...[
             const SizedBox(width: 8),
-            Icon(Icons.edit_outlined, size: 18, color: AppColors.brandPrimary),
+            Icon(Icons.edit_rounded, size: 18, color: AppColors.brandPrimary),
           ],
         ],
       ),
@@ -791,8 +791,8 @@ class _MemberRow extends StatelessWidget {
               onPressed: onToggleAdmin,
               icon: Icon(
                 member.isAdmin
-                    ? Icons.remove_moderator_outlined
-                    : Icons.add_moderator_outlined,
+                    ? Icons.remove_moderator_rounded
+                    : Icons.add_moderator_rounded,
                 color:
                     member.isAdmin ? AppColors.warning : AppColors.brandPrimary,
               ),

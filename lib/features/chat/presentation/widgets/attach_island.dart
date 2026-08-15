@@ -50,39 +50,39 @@ class AttachIsland extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _AttachTab(
-          icon: Icons.photo_library_outlined,
+          icon: Icons.photo_library_rounded,
           label: t.attachGallery,
           active: selected == AttachChoice.gallery,
           onTap: () => onPick(AttachChoice.gallery),
         ),
         _AttachTab(
-          icon: Icons.photo_camera_outlined,
+          icon: Icons.photo_camera_rounded,
           label: t.attachCamera,
           active: selected == AttachChoice.camera,
           onTap: () => onPick(AttachChoice.camera),
         ),
         if (allowFiles)
           _AttachTab(
-            icon: Icons.insert_drive_file_outlined,
+            icon: Icons.insert_drive_file_rounded,
             label: t.attachFile,
             active: selected == AttachChoice.file,
             onTap: () => onPick(AttachChoice.file),
           ),
         if (allowPoll)
           _AttachTab(
-            icon: Icons.how_to_vote_outlined,
+            icon: Icons.how_to_vote_rounded,
             label: t.channelPollTitle,
             active: selected == AttachChoice.poll,
             onTap: () => onPick(AttachChoice.poll),
           ),
         _AttachTab(
-          icon: Icons.place_outlined,
+          icon: Icons.place_rounded,
           label: t.attachLocation,
           active: selected == AttachChoice.location,
           onTap: () => onPick(AttachChoice.location),
         ),
         _AttachTab(
-          icon: Icons.emoji_emotions_outlined,
+          icon: Icons.emoji_emotions_rounded,
           label: t.attachStickers,
           active: selected == AttachChoice.stickers,
           onTap: () => onPick(AttachChoice.stickers),

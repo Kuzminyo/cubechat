@@ -146,7 +146,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
                     : AppColors.glass(0.08),
               ),
               child: Icon(
-                playing ? Icons.pause : Icons.play_arrow,
+                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                 color: hasFile
                     ? AppColors.textOnGlass
                     : AppColors.textOnGlassFaint,

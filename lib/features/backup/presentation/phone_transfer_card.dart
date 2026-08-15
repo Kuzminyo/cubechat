@@ -58,7 +58,7 @@ class PhoneTransferCard extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
     );
 

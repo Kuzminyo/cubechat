@@ -126,7 +126,7 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
               textInputAction: TextInputAction.search,
               style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
               decoration: InputDecoration(
-                icon: Icon(Icons.search,
+                icon: Icon(Icons.search_rounded,
                     size: 18, color: AppColors.textOnGlassFaint),
                 border: InputBorder.none,
                 isCollapsed: true,
@@ -139,7 +139,7 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(Icons.close,
+                        icon: Icon(Icons.close_rounded,
                             size: 18, color: AppColors.textOnGlassDim),
                         onPressed: () {
                           _controller.clear();

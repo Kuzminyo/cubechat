@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -57,6 +57,7 @@ import '../data/pinned_controller.dart';
 import '../data/voice_recorder_controller.dart';
 import '../models/message.dart';
 import '../domain/command_processor.dart';
+import '../domain/message_preview.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
 import 'widgets/chat_input.dart';
@@ -123,16 +124,47 @@ ChatRoute resolveChatRoute({
 }
 
 List<Message> messagesMatchingQuery(List<Message> messages, String query) {
-  final needle = query.trim().toLowerCase();
+  final needle = _normalizeMessageSearchText(query);
   if (needle.isEmpty) return const <Message>[];
+  final terms = needle.split(' ').where((part) => part.isNotEmpty).toList();
   return messages.where((message) {
     final searchable = <String>[
       message.text,
       if (message.fileName != null) message.fileName!,
       if (message.authorName != null) message.authorName!,
     ];
-    return searchable.any((value) => value.toLowerCase().contains(needle));
+    return searchable.any((value) {
+      final haystack = _normalizeMessageSearchText(value);
+      return haystack.contains(needle) ||
+          terms.every((term) => haystack.contains(term));
+    });
   }).toList(growable: false);
+}
+
+String _normalizeMessageSearchText(String value) {
+  final lower = value.toLowerCase();
+  final buffer = StringBuffer();
+  var previousWasSpace = true;
+  for (final rune in lower.runes) {
+    final char = String.fromCharCode(rune);
+    final normalized = switch (char) {
+      'ё' => 'е',
+      'є' => 'е',
+      'і' => 'и',
+      'ї' => 'и',
+      'ґ' => 'г',
+      '’' || '`' || 'ʼ' => "'",
+      _ => char,
+    };
+    if (normalized.trim().isEmpty) {
+      if (!previousWasSpace) buffer.write(' ');
+      previousWasSpace = true;
+    } else {
+      buffer.write(normalized);
+      previousWasSpace = false;
+    }
+  }
+  return buffer.toString().trim();
 }
 
 bool _hasMeshLink(Map<String, ChatSession> sessions, int peripheralLinks) =>
@@ -405,7 +437,7 @@ class ChatScreen extends ConsumerWidget {
                 ),
                 if (showRetry)
                   _PillIconButton(
-                    icon: Icons.refresh,
+                    icon: Icons.refresh_rounded,
                     color: AppColors.brandPrimary,
                     tooltip: t.bleRetry,
                     onPressed: () async {
@@ -770,7 +802,7 @@ class _ChatHeader extends StatelessWidget {
                                   Tooltip(
                                     message: autoDeleteLabel!,
                                     child: Icon(
-                                      Icons.timer_outlined,
+                                      Icons.timer_rounded,
                                       size: 14,
                                       color: AppColors.brandPrimary,
                                     ),
@@ -869,7 +901,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
           AppColors.brandPrimary,
         ),
       ChatRoute.mesh => (
-          Icons.hub_outlined,
+          Icons.hub_rounded,
           t.chatRouteMesh,
           AppColors.brandSecondary,
         ),
@@ -879,7 +911,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
           AppColors.online,
         ),
       ChatRoute.queued => (
-          Icons.schedule_send_outlined,
+          Icons.schedule_send_rounded,
           t.chatRouteQueued,
           AppColors.warning,
         ),
@@ -962,6 +994,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   int _jumpRequest = 0;
   String _searchQuery = '';
   int _searchIndex = 0;
+  final Set<String> _smoothSendIds = <String>{};
+  final Map<String, Timer> _smoothSendTimers = <String, Timer>{};
 
   /// The `wireId` of the pin the bar is currently offering, or null for "the
   /// newest".
@@ -998,6 +1032,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   @override
   void didUpdateWidget(covariant _ConversationView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _trackSmoothSends(oldWidget.messages, widget.messages);
     if (_initialMessageRevealed) return;
     if (oldWidget.initialMessageId != widget.initialMessageId ||
         oldWidget.messages.length != widget.messages.length) {
@@ -1008,10 +1043,35 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   @override
   void dispose() {
+    for (final timer in _smoothSendTimers.values) {
+      timer.cancel();
+    }
+    _smoothSendTimers.clear();
     _highlightTimer?.cancel();
     _scroll.removeListener(_onScrollChanged);
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _trackSmoothSends(List<Message> before, List<Message> after) {
+    final previous = {for (final message in before) message.id};
+    for (final message in after) {
+      if (!previous.contains(message.id) && _isFreshOutgoingText(message)) {
+        _smoothSendIds.add(message.id);
+        _smoothSendTimers[message.id]?.cancel();
+        _smoothSendTimers[message.id] = Timer(const Duration(seconds: 2), () {
+          _smoothSendTimers.remove(message.id)?.cancel();
+          if (!mounted) return;
+          setState(() => _smoothSendIds.remove(message.id));
+        });
+      }
+    }
+  }
+
+  bool _isFreshOutgoingText(Message message) {
+    if (!message.isMine || message.kind != MessageKind.text) return false;
+    final age = DateTime.now().difference(message.sentAt).abs();
+    return age <= const Duration(seconds: 4);
   }
 
   /// True once the newest message is comfortably off screen. The threshold is
@@ -1116,7 +1176,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final matches = messagesMatchingQuery(widget.messages, _searchQuery);
     if (matches.isEmpty) return;
     setState(() {
-      _searchIndex = (_searchIndex + delta) % matches.length;
+      _searchIndex = (_searchIndex + delta + matches.length) % matches.length;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _revealSearchResult());
   }
@@ -1293,9 +1353,81 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     showGlassToast(
       context,
       t.chatForwardSent(target.peerName),
-      icon: Icons.shortcut_outlined,
+      icon: Icons.shortcut_rounded,
       tone: ToastTone.success,
     );
+  }
+
+  List<Message> _selectedMessages(Set<String> ids) => [
+        for (final m in widget.messages)
+          if (ids.contains(m.id)) m,
+      ];
+
+  bool _canCopySelected(Message message, bool restricted) =>
+      message.text.trim().isNotEmpty &&
+      messageCanBeCopied(message, copyingRestricted: restricted);
+
+  bool _canForwardSelected(Message message, bool restricted) =>
+      message.text.trim().isNotEmpty &&
+      messageCanBeForwarded(message, copyingRestricted: restricted);
+
+  bool _canEditSelected(Message message) =>
+      message.isMine &&
+      message.kind == MessageKind.text &&
+      message.wireId != null;
+
+  void _replyToSelection(Message message) {
+    final wireId = message.wireId;
+    if (wireId == null || widget.chatId.startsWith('#')) return;
+    ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
+      chatId: widget.chatId,
+      wireId: wireId,
+      preview: messagePreview(message, AppLocalizations.of(context)),
+      mine: message.isMine,
+      authorName: message.authorName,
+    );
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+  }
+
+  Future<void> _copySelection(Set<String> ids) async {
+    final t = AppLocalizations.of(context);
+    final restricted = ref
+            .read(conversationSettingsControllerProvider)[widget.chatId]
+            ?.copyingRestricted ??
+        false;
+    final text = _selectedMessages(ids)
+        .where((m) => _canCopySelected(m, restricted))
+        .map((m) => m.text.trim())
+        .where((value) => value.isNotEmpty)
+        .join('\n\n');
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+    showCopiedToast(context, t.chatCopied);
+  }
+
+  Future<void> _togglePinSelection(Message message) async {
+    final wireId = message.wireId;
+    if (wireId == null) return;
+    final pins = ref.read(pinnedControllerProvider.notifier);
+    await ref.read(messagingServiceProvider).sendPin(
+          widget.chatId,
+          wireId,
+          pinned: !pins.isPinned(widget.chatId, wireId),
+        );
+    if (!mounted) return;
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+  }
+
+  void _editSelection(Message message) {
+    if (!_canEditSelected(message)) return;
+    ref.read(messageEditTargetProvider.notifier).state = MessageEditTarget(
+      chatId: widget.chatId,
+      wireId: message.wireId!,
+      originalText: message.text,
+    );
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
   }
 
   /// Delete everything ticked.
@@ -1426,6 +1558,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
     final selection = ref.watch(messageSelectionProvider(widget.chatId));
     final selecting = selection.isNotEmpty;
+    final selectedForBar = _selectedMessages(selection);
+    final singleSelected =
+        selectedForBar.length == 1 ? selectedForBar.first : null;
+    final copyingRestricted = ref
+            .watch(conversationSettingsControllerProvider)[widget.chatId]
+            ?.copyingRestricted ??
+        false;
     final matches = messagesMatchingQuery(messages, _searchQuery);
     final selectedIndex = matches.isEmpty
         ? 0
@@ -1481,6 +1620,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     message: m,
                     chatId: widget.chatId,
                     album: album,
+                    animateEntry: _smoothSendIds.contains(m.id),
                   );
                   if (isHere(widget.initialMessageId)) {
                     bubble =
@@ -1525,11 +1665,37 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               child: selecting
                   ? _ChatSelectionBar(
                       key: const ValueKey('selection'),
-                      count: selection.length,
+                      selected: selectedForBar,
+                      pinned: singleSelected?.wireId == null
+                          ? false
+                          : ref
+                              .read(pinnedControllerProvider.notifier)
+                              .isPinned(
+                                widget.chatId,
+                                singleSelected!.wireId!,
+                              ),
+                      canCopy: selectedForBar
+                          .any((m) => _canCopySelected(m, copyingRestricted)),
+                      canForward: selectedForBar.any(
+                          (m) => _canForwardSelected(m, copyingRestricted)),
                       onCancel: () => ref
                           .read(
                               messageSelectionProvider(widget.chatId).notifier)
                           .clear(),
+                      onReply: singleSelected == null ||
+                              singleSelected.wireId == null ||
+                              widget.chatId.startsWith('#')
+                          ? null
+                          : () => _replyToSelection(singleSelected),
+                      onCopy: () => unawaited(_copySelection(selection)),
+                      onPin: singleSelected?.wireId == null
+                          ? null
+                          : () =>
+                              unawaited(_togglePinSelection(singleSelected!)),
+                      onEdit: singleSelected == null ||
+                              !_canEditSelected(singleSelected)
+                          ? null
+                          : () => _editSelection(singleSelected),
                       onForward: () => unawaited(_forwardSelection(selection)),
                       onDelete: () => unawaited(_deleteSelection(selection)),
                     )
@@ -1837,34 +2003,83 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
   }
 }
 
-/// The header while messages are ticked: how many, and the two things you can
-/// do with them.
-///
-/// Sits where the identity pill and the search bar sit, for the same reason —
-/// stacking it under them would push the conversation you are selecting from
-/// off the screen.
+/// The header while messages are ticked: one solid Telegram-style island whose
+/// action strip scrolls horizontally when the screen is too narrow.
 class _ChatSelectionBar extends StatelessWidget {
   const _ChatSelectionBar({
     super.key,
-    required this.count,
+    required this.selected,
+    required this.pinned,
+    required this.canCopy,
+    required this.canForward,
     required this.onCancel,
+    required this.onReply,
+    required this.onCopy,
+    required this.onPin,
+    required this.onEdit,
     required this.onForward,
     required this.onDelete,
   });
 
-  final int count;
+  final List<Message> selected;
+  final bool pinned;
+  final bool canCopy;
+  final bool canForward;
   final VoidCallback onCancel;
-  final VoidCallback onForward;
+  final VoidCallback? onReply;
+  final VoidCallback? onCopy;
+  final VoidCallback? onPin;
+  final VoidCallback? onEdit;
+  final VoidCallback? onForward;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final actions = <Widget>[
+      if (onReply != null)
+        _SelectionActionButton(
+          icon: Icons.reply_rounded,
+          label: t.chatReplyAction,
+          onPressed: onReply,
+        ),
+      if (canCopy)
+        _SelectionActionButton(
+          icon: Icons.content_copy_rounded,
+          label: t.chatCopyAction,
+          onPressed: onCopy,
+        ),
+      if (onPin != null)
+        _SelectionActionButton(
+          icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_rounded,
+          label: pinned ? t.chatUnpinAction : t.chatPinAction,
+          onPressed: onPin,
+        ),
+      if (onEdit != null)
+        _SelectionActionButton(
+          icon: Icons.edit_rounded,
+          label: t.chatEditAction,
+          onPressed: onEdit,
+        ),
+      if (canForward)
+        _SelectionActionButton(
+          icon: Icons.shortcut_rounded,
+          label: t.chatForwardAction,
+          onPressed: onForward,
+        ),
+      _SelectionActionButton(
+        icon: Icons.delete_outline_rounded,
+        label: t.chatDeleteAction,
+        color: AppColors.danger,
+        onPressed: onDelete,
+      ),
+    ];
+
     return Padding(
       padding:
           EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
       child: _HeaderPill(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.only(left: 8, right: 6),
         child: Row(
           children: [
             _SearchIconButton(
@@ -1872,30 +2087,80 @@ class _ChatSelectionBar extends StatelessWidget {
               tooltip: MaterialLocalizations.of(context).cancelButtonLabel,
               onPressed: onCancel,
             ),
-            const SizedBox(width: 6),
-            Expanded(
+            const SizedBox(width: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 28, maxWidth: 106),
               child: Text(
-                t.chatSelectedCount(count),
+                selected.length.toString(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: AppColors.textOnGlass,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            _PillIconButton(
-              icon: Icons.shortcut_outlined,
-              color: AppColors.textOnGlass,
-              tooltip: t.chatForwardAction,
-              onPressed: onForward,
+            Container(
+              width: 1,
+              height: 28,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: AppColors.glass(0.18),
             ),
-            _PillIconButton(
-              icon: Icons.delete_outline,
-              color: AppColors.danger,
-              tooltip: t.chatDeleteAction,
-              onPressed: onDelete,
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(children: actions),
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionActionButton extends StatelessWidget {
+  const _SelectionActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = color ?? AppColors.textOnGlass;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: effectiveColor),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: effectiveColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2039,7 +2304,7 @@ class _PinnedBar extends StatelessWidget {
                 ),
               ),
               _PillIconButton(
-                icon: Icons.push_pin_outlined,
+                icon: Icons.push_pin_rounded,
                 color: AppColors.textOnGlassDim,
                 tooltip: t.chatUnpinAction,
                 onPressed: onUnpin,
@@ -2703,7 +2968,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     showGlassToast(
       context,
       kept ? t.stickerKept : t.stickerFailed,
-      icon: kept ? Icons.auto_awesome_outlined : null,
+      icon: kept ? Icons.auto_awesome_rounded : null,
       tone: kept ? ToastTone.success : ToastTone.danger,
     );
     return kept;
@@ -3444,7 +3709,7 @@ class _ReplyComposeBar extends StatelessWidget {
               ),
             ),
             _PillIconButton(
-              icon: Icons.close,
+              icon: Icons.close_rounded,
               color: AppColors.textOnGlassDim,
               tooltip: t.cancel,
               onPressed: onCancel,
@@ -3471,7 +3736,7 @@ class _EmptyConversationState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              canSend ? Icons.lock_outline : Icons.hourglass_top,
+              canSend ? Icons.lock_rounded : Icons.hourglass_top_rounded,
               color:
                   canSend ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
               size: 36,
@@ -3521,7 +3786,7 @@ class _VerificationMark extends StatelessWidget {
     if (!rotated && !verified) {
       return Tooltip(
         message: t.verifyTitle,
-        child: Icon(Icons.shield_outlined,
+        child: Icon(Icons.shield_rounded,
             size: 13, color: AppColors.textOnGlassFaint),
       );
     }

@@ -1,4 +1,4 @@
-﻿import 'dart:ui' as ui;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -125,7 +125,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         // summary line on each header is what keeps that from becoming four
         // taps instead — coming here to *check* a setting needs none.
         _ExpandableSection(
-          icon: Icons.podcasts_rounded,
+          icon: Icons.radar_rounded,
           title: t.profileGroupConnection,
           summary: _connectionSummary(ref, t),
           children: const [
@@ -138,7 +138,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         const SizedBox(height: 10),
 
         _ExpandableSection(
-          icon: Icons.shield_outlined,
+          icon: Icons.shield_rounded,
           title: t.profileGroupPrivacy,
           summary: _privacySummary(ref, t),
           children: const [
@@ -243,7 +243,7 @@ class _BackgroundModeCard extends ConsumerWidget {
                   border: Border.all(
                       color: AppColors.brandPrimary.withValues(alpha: 0.4)),
                 ),
-                child: Icon(Icons.podcasts,
+                child: Icon(Icons.radar_rounded,
                     color: AppColors.brandPrimary, size: 18),
               ),
               const SizedBox(width: 12),
@@ -278,7 +278,7 @@ class _BackgroundModeCard extends ConsumerWidget {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: () => controller.requestBatteryExemption(),
-                icon: Icon(Icons.battery_saver,
+                icon: Icon(Icons.battery_saver_rounded,
                     size: 16, color: AppColors.brandPrimary),
                 label: Text(
                   t.profileBatteryExempt,
@@ -327,7 +327,7 @@ class _RelayFallbackCard extends ConsumerWidget {
               border: Border.all(color: AppColors.glass(0.18)),
             ),
             child: Icon(
-              on ? Icons.public : Icons.public_off,
+              on ? Icons.public_rounded : Icons.public_off_rounded,
               color: on ? AppColors.brandPrimary : AppColors.textOnGlass,
               size: 18,
             ),
@@ -356,7 +356,7 @@ class _RelayFallbackCard extends ConsumerWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
@@ -390,7 +390,7 @@ class _FileTransfersCard extends ConsumerWidget {
               ),
             ),
             child: Icon(
-              Icons.swap_vert_circle_outlined,
+              Icons.swap_vert_circle_rounded,
               color: AppColors.brandPrimary,
               size: 19,
             ),
@@ -421,7 +421,7 @@ class _FileTransfersCard extends ConsumerWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
@@ -482,7 +482,7 @@ class _BackupCard extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
@@ -552,8 +552,8 @@ class _DiscoverableCard extends ConsumerWidget {
                 ),
                 child: Icon(
                   on
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
                   color: on ? AppColors.textOnGlass : AppColors.brandPrimary,
                   size: 18,
                 ),
@@ -696,8 +696,8 @@ class _PrivacyCard extends ConsumerWidget {
           const SizedBox(height: 12),
           _SettingSwitch(
             icon: s.shareMapLocation
-                ? Icons.location_on_outlined
-                : Icons.location_off_outlined,
+                ? Icons.location_on_rounded
+                : Icons.location_off_rounded,
             title: t.profileMapLocation,
             hint: s.shareMapLocation
                 ? t.profileMapLocationOnHint
@@ -708,8 +708,8 @@ class _PrivacyCard extends ConsumerWidget {
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareLastSeen
-                ? Icons.schedule_outlined
-                : Icons.history_toggle_off_outlined,
+                ? Icons.schedule_rounded
+                : Icons.history_toggle_off_rounded,
             title: t.profileLastSeen,
             hint: s.shareLastSeen
                 ? t.profileLastSeenOnHint
@@ -720,8 +720,8 @@ class _PrivacyCard extends ConsumerWidget {
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareReadReceipts
-                ? Icons.done_all_outlined
-                : Icons.remove_done_outlined,
+                ? Icons.done_all_rounded
+                : Icons.remove_done_rounded,
             title: t.profileReadReceipts,
             hint: s.shareReadReceipts
                 ? t.profileReadReceiptsOnHint
@@ -769,7 +769,7 @@ class _ContactCardRow extends StatelessWidget {
               color: AppColors.glass(0.08),
               border: Border.all(color: AppColors.glass(0.18)),
             ),
-            child: Icon(Icons.person_add_alt,
+            child: Icon(Icons.person_add_alt_rounded,
                 color: AppColors.textOnGlass, size: 18),
           ),
           const SizedBox(width: 12),
@@ -796,7 +796,7 @@ class _ContactCardRow extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
@@ -866,7 +866,7 @@ class _TransportRow extends StatelessWidget {
                   color: AppColors.brandPrimary.withValues(alpha: 0.4)),
             ),
             child:
-                Icon(Icons.bluetooth, color: AppColors.brandPrimary, size: 18),
+                Icon(Icons.bluetooth_rounded, color: AppColors.brandPrimary, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1199,7 +1199,7 @@ class _DiagnosticsRow extends StatelessWidget {
               color: AppColors.glass(0.08),
               border: Border.all(color: AppColors.glass(0.18)),
             ),
-            child: Icon(Icons.bug_report_outlined,
+            child: Icon(Icons.bug_report_rounded,
                 color: AppColors.textOnGlass, size: 18),
           ),
           const SizedBox(width: 12),
@@ -1213,7 +1213,7 @@ class _DiagnosticsRow extends StatelessWidget {
               ),
             ),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),
     );
@@ -1343,7 +1343,7 @@ class _ExpandableSectionState extends State<_ExpandableSection>
                       turns: _open ? 0.5 : 0,
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeOutCubic,
-                      child: Icon(Icons.expand_more,
+                      child: Icon(Icons.expand_more_rounded,
                           color: AppColors.textOnGlassFaint),
                     ),
                   ],
@@ -1423,7 +1423,7 @@ class _FingerprintRow extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 splashRadius: 18,
                 icon:
-                    Icon(Icons.copy, size: 16, color: AppColors.textOnGlassDim),
+                    Icon(Icons.copy_rounded, size: 16, color: AppColors.textOnGlassDim),
                 tooltip: t.copy,
                 onPressed: ready
                     ? () async {
@@ -1879,7 +1879,7 @@ class _CoverBody extends ConsumerWidget {
               children: [
                 Expanded(
                   child: _CoverAction(
-                    icon: Icons.add_a_photo_outlined,
+                    icon: Icons.add_a_photo_rounded,
                     label: photo == null ? tt.avatarSet : tt.avatarChange,
                     // With no photo there is nothing to look at, so go straight
                     // to the picker. With one, open the screen that can also
@@ -1901,7 +1901,7 @@ class _CoverBody extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _CoverAction(
-                    icon: Icons.edit_outlined,
+                    icon: Icons.edit_rounded,
                     label: tt.profileEditName,
                     onTap: () => editNickname(context, ref, tt, nickname),
                   ),
@@ -1909,7 +1909,7 @@ class _CoverBody extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _CoverAction(
-                    icon: Icons.qr_code_2_outlined,
+                    icon: Icons.qr_code_2_rounded,
                     label: tt.profileMyCard,
                     onTap: () => context.push('/contact'),
                   ),

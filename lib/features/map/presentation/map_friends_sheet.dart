@@ -123,7 +123,7 @@ class _MapFriendsSheet extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.person_pin_circle_outlined,
+                          Icons.person_pin_circle_rounded,
                           color: AppColors.textOnGlassFaint,
                           size: 42,
                         ),

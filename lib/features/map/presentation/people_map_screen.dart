@@ -1442,7 +1442,7 @@ class _StatusPill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.location_off_outlined,
+                Icons.location_off_rounded,
                 color: AppColors.warning,
                 size: 18,
               ),

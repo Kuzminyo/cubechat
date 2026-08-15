@@ -111,7 +111,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                 strong: true,
                 child: Row(
                   children: [
-                    Icon(Icons.verified,
+                    Icon(Icons.verified_rounded,
                         color: AppColors.brandPrimary, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
@@ -147,7 +147,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                   showGlassToast(
                     context,
                     t.verifyDoneSnack(widget.peerLabel),
-                    icon: Icons.verified_user_outlined,
+                    icon: Icons.verified_user_rounded,
                     tone: ToastTone.success,
                   );
                 },
@@ -165,8 +165,8 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                         ),
                     icon: Icon(
                       (entry?.isMuted ?? false)
-                          ? Icons.notifications_off
-                          : Icons.notifications_outlined,
+                          ? Icons.notifications_off_rounded
+                          : Icons.notifications_rounded,
                       size: 18,
                       color: AppColors.textOnGlass,
                     ),
@@ -183,7 +183,7 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                           widget.peerPubkeyHex,
                           !(entry?.isBlocked ?? false),
                         ),
-                    icon: const Icon(Icons.block,
+                    icon: const Icon(Icons.block_rounded,
                         size: 18, color: AppColors.danger),
                     label: Text(
                       (entry?.isBlocked ?? false) ? t.peerUnblock : t.peerBlock,
@@ -217,7 +217,7 @@ class _IntroCard extends StatelessWidget {
     return GlassCard(
       child: Row(
         children: [
-          Icon(Icons.shield_outlined,
+          Icon(Icons.shield_rounded,
               color: AppColors.brandPrimary, size: 22),
           const SizedBox(width: 12),
           Expanded(
@@ -293,7 +293,7 @@ class _FingerprintCard extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: IconButton(
               tooltip: t.copy,
-              icon: Icon(Icons.copy, color: AppColors.textOnGlassDim, size: 18),
+              icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlassDim, size: 18),
               onPressed: !ready
                   ? null
                   : () async {
@@ -336,7 +336,7 @@ class _MarkVerifiedButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.verified, color: Colors.white, size: 20),
+            const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
             const SizedBox(width: 8),
             Text(
               label,

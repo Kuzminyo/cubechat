@@ -153,7 +153,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
           ),
           const SizedBox(height: 12),
           _BackupActionCard(
-            icon: Icons.cloud_upload_outlined,
+            icon: Icons.cloud_upload_rounded,
             title: t.backupCreate,
             subtitle: t.backupCreateSubtitle,
             onTap: _busy ? null : _create,
@@ -228,7 +228,7 @@ class _BackupActionCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: AppColors.textOnGlassFaint),
+            Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
           ],
         ),
       );
@@ -292,7 +292,7 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(
-                  _obscure ? Icons.visibility : Icons.visibility_off,
+                  _obscure ? Icons.visibility_rounded : Icons.visibility_off_rounded,
                 ),
               ),
             ),

@@ -86,7 +86,7 @@ class ContactCardScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: _ActionButton(
-                        icon: Icons.copy,
+                        icon: Icons.copy_rounded,
                         label: t.contactCopy,
                         onTap: card.hasValue
                             ? (_) async {
@@ -102,7 +102,7 @@ class ContactCardScreen extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _ActionButton(
-                        icon: Icons.ios_share,
+                        icon: Icons.share_rounded,
                         label: t.contactShare,
                         primary: true,
                         onTap: card.hasValue
@@ -136,7 +136,7 @@ class ContactCardScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  Icons.info_outline,
+                  Icons.info_outline_rounded,
                   size: 16,
                   color: AppColors.textOnGlassFaint,
                 ),
@@ -171,7 +171,7 @@ class _RelayOffBanner extends ConsumerWidget {
     return GlassCard(
       child: Row(
         children: [
-          const Icon(Icons.public_off, size: 18, color: Colors.amber),
+          const Icon(Icons.public_off_rounded, size: 18, color: Colors.amber),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -291,7 +291,7 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
             tooltip: t.contactPaste,
             visualDensity: VisualDensity.compact,
             icon: Icon(
-              Icons.content_paste,
+              Icons.content_paste_rounded,
               size: 18,
               color: AppColors.textOnGlassDim,
             ),
@@ -373,7 +373,7 @@ class _CardPreviewState extends State<_CardPreview> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    _expanded ? Icons.unfold_less : Icons.unfold_more,
+                    _expanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
                     size: 13,
                     color: AppColors.brandPrimary,
                   ),

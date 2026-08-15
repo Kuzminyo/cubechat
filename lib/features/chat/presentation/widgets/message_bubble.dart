@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -148,7 +147,7 @@ Future<Chat?> pickForwardTarget(
                           Icon(
                             c.isChannel
                                 ? Icons.campaign_rounded
-                                : Icons.person_outline,
+                                : Icons.person_outline_rounded,
                             size: 18,
                             color: AppColors.textOnGlassDim,
                           ),
@@ -195,6 +194,7 @@ class MessageBubble extends ConsumerStatefulWidget {
     required this.message,
     required this.chatId,
     this.album,
+    this.animateEntry = false,
   });
 
   final Message message;
@@ -212,6 +212,10 @@ class MessageBubble extends ConsumerStatefulWidget {
   /// grouping itself is `groupPhotoAlbums`, in the chat data layer.
   final List<Message>? album;
 
+  /// True only for a message the local user has just sent. Old rows should not
+  /// replay their entrance every time a virtualized list rebuilds them.
+  final bool animateEntry;
+
   @override
   ConsumerState<MessageBubble> createState() => _MessageBubbleState();
 }
@@ -220,8 +224,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     with TickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 280),
-  )..forward();
+    duration: const Duration(milliseconds: 360),
+    value: widget.animateEntry ? 0 : 1,
+  );
 
   /// Drives the spring back to rest after a swipe-to-reply, whether or not the
   /// gesture crossed the threshold.
@@ -261,14 +266,26 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// exactly once.
   bool _armed = false;
 
-  late final Animation<double> _scale =
-      CurvedAnimation(parent: _c, curve: Curves.easeOutBack);
-  late final Animation<double> _fade =
-      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  late final Animation<double> _scale = Tween<double>(
+    begin: widget.animateEntry ? 0.96 : 1,
+    end: 1,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+  late final Animation<double> _fade = Tween<double>(
+    begin: widget.animateEntry ? 0 : 1,
+    end: 1,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
   late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.15),
+    begin: widget.animateEntry
+        ? Offset(widget.message.isMine ? 0.06 : -0.04, 0.18)
+        : Offset.zero,
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animateEntry) _c.forward();
+  }
 
   @override
   void dispose() {
@@ -485,7 +502,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     child: Padding(
                       padding: const EdgeInsets.all(6),
                       child: Icon(
-                        Icons.add_reaction_outlined,
+                        Icons.add_reaction_rounded,
                         size: 22,
                         color: AppColors.textOnGlassDim,
                       ),
@@ -503,14 +520,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         _menuRow('select', Icons.checklist_rounded, t.chatSelectAction,
             AppColors.textOnGlass),
         if (widget.message.wireId != null)
-          _menuRow(
-              'reply', Icons.reply, t.chatReplyAction, AppColors.textOnGlass),
+          _menuRow('reply', Icons.reply_rounded, t.chatReplyAction,
+              AppColors.textOnGlass),
         // A pin is conversation state, so it needs the shared transport id �
         // and either side may pin either side's message.
         if (widget.message.wireId != null)
           _menuRow(
             pinnedHere ? 'unpin' : 'pin',
-            pinnedHere ? Icons.push_pin : Icons.push_pin_outlined,
+            pinnedHere ? Icons.push_pin_rounded : Icons.push_pin_rounded,
             pinnedHere ? t.chatUnpinAction : t.chatPinAction,
             AppColors.textOnGlass,
           ),
@@ -520,7 +537,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         ))
           if (!_copyingRestricted)
             if (_canCopy)
-              _menuRow('copy', Icons.copy_outlined, t.chatCopyAction,
+              _menuRow('copy', Icons.copy_rounded, t.chatCopyAction,
                   AppColors.textOnGlass),
         if (messageCanBeForwarded(
           widget.message,
@@ -528,12 +545,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         ))
           if (!_copyingRestricted)
             if (_canForward)
-              _menuRow('forward', Icons.shortcut_outlined, t.chatForwardAction,
+              _menuRow('forward', Icons.shortcut_rounded, t.chatForwardAction,
                   AppColors.textOnGlass),
         if (_canEdit)
-          _menuRow('edit', Icons.edit_outlined, t.chatEditAction,
+          _menuRow('edit', Icons.edit_rounded, t.chatEditAction,
               AppColors.textOnGlass),
-        _menuRow('delete', Icons.delete_outline, t.chatDeleteAction,
+        _menuRow('delete', Icons.delete_outline_rounded, t.chatDeleteAction,
             AppColors.danger),
       ],
     );
@@ -749,7 +766,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     showGlassToast(
       context,
       t.chatForwardSent(chosen.peerName),
-      icon: Icons.shortcut_outlined,
+      icon: Icons.shortcut_rounded,
       tone: ToastTone.success,
     );
   }
@@ -913,23 +930,23 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             decoration: sticker
                 ? const BoxDecoration()
                 : mine
-                ? BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.brandPrimary.withValues(alpha: 0.85),
-                        AppColors.brandSecondary.withValues(alpha: 0.85),
-                      ],
-                    ),
-                    borderRadius: radius,
-                    border: Border.all(color: AppColors.glass(0.18)),
-                  )
-                : BoxDecoration(
-                    color: AppColors.glass(0.10),
-                    borderRadius: radius,
-                    border: Border.all(color: AppColors.glass(0.16)),
-                  ),
+                    ? BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.brandPrimary.withValues(alpha: 0.85),
+                            AppColors.brandSecondary.withValues(alpha: 0.85),
+                          ],
+                        ),
+                        borderRadius: radius,
+                        border: Border.all(color: AppColors.glass(0.18)),
+                      )
+                    : BoxDecoration(
+                        color: AppColors.glass(0.10),
+                        borderRadius: radius,
+                        border: Border.all(color: AppColors.glass(0.16)),
+                      ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1016,7 +1033,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     message: message,
                     chatId: widget.chatId,
                   )
-                else if (mapFriendLink != null && !widget.chatId.startsWith('#'))
+                else if (mapFriendLink != null &&
+                    !widget.chatId.startsWith('#'))
                   _MapFriendLinkBubble(
                     link: mapFriendLink,
                     active: activeMapFriends.contains(widget.chatId),
@@ -1096,7 +1114,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       child: SlideTransition(
         position: _slide,
         child: ScaleTransition(
-          scale: Tween<double>(begin: 0.92, end: 1.0).animate(_scale),
+          scale: _scale,
           alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
           // The jump marker is a band across the whole row, edge to edge, the
           // way Telegram does it � not a ring around the bubble. A ring is
@@ -1114,22 +1132,26 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     : Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
             child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
               // Horizontal only: a vertical drag stays with the list, so the
               // conversation scrolls exactly as before and the gesture arena
               // decides between them on direction rather than on timing.
-              // Swiping to reply is off while selecting � the row means one
+              // Swiping to reply is off while selecting - the row means one
               // thing at a time.
-              // Holding a row once selection has started ticks it, rather than
-              // doing nothing at all. The bubble's own long-press � the one
-              // that opens the action menu � is suppressed while selecting, so
-              // without this a hold in that mode was simply dead, and holding
-              // is what people do when they have just been told holding is how
-              // you select.
-              onLongPress: selecting
-                  ? () => ref
-                      .read(messageSelectionProvider(widget.chatId).notifier)
-                      .toggle(message.id)
-                  : null,
+              // Long-press belongs to the whole message row, not only to the
+              // painted bubble. That matches the muscle memory from Telegram:
+              // hold anywhere on the line and the message enters selection.
+              onLongPress: () {
+                final selection = ref.read(
+                  messageSelectionProvider(widget.chatId).notifier,
+                );
+                if (selecting) {
+                  selection.toggle(message.id);
+                } else {
+                  selection.start(message.id);
+                }
+                HapticFeedback.selectionClick();
+              },
               onTap: selecting
                   ? () => ref
                       .read(messageSelectionProvider(widget.chatId).notifier)
@@ -1157,82 +1179,78 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       },
                 child: ValueListenableBuilder<double>(
                   valueListenable: _dragX,
-                // Rebuilt every frame of the gesture: a translate and, past a
-                // pixel of travel, the hint. The bubble itself arrives as
-                // `child` � built once, moved cheaply.
-                builder: (_, dragX, child) => Stack(
-                  children: [
-                    Transform.translate(
-                      offset: Offset(dragX, 0),
-                      child: child,
-                    ),
-                    if (dragX < -1)
-                      Positioned.fill(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _SwipeReplyHint(
-                            progress:
-                                (dragX.abs() / _swipeTrigger).clamp(0, 1),
+                  // Rebuilt every frame of the gesture: a translate and, past a
+                  // pixel of travel, the hint. The bubble itself arrives as
+                  // `child` � built once, moved cheaply.
+                  builder: (_, dragX, child) => Stack(
+                    children: [
+                      Transform.translate(
+                        offset: Offset(dragX, 0),
+                        child: child,
+                      ),
+                      if (dragX < -1)
+                        Positioned.fill(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _SwipeReplyHint(
+                              progress:
+                                  (dragX.abs() / _swipeTrigger).clamp(0, 1),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                child: Row(
-                      mainAxisAlignment: mine
-                          ? MainAxisAlignment.end
-                          : MainAxisAlignment.start,
-                      children: [
-                        if (selecting) ...[
-                          Icon(
-                            selected
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            size: 20,
-                            color: selected
-                                ? AppColors.brandPrimary
-                                : AppColors.textOnGlassFaint,
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.sizeOf(context).width * 0.75),
-                          child: Column(
-                            crossAxisAlignment: mine
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
-                            children: [
-                              // Inert while selecting, so a photo's own tap
-                              // cannot win the arena and open the viewer when
-                              // the row was meant to tick.
-                              IgnorePointer(
-                                ignoring: selecting,
-                                child: GestureDetector(
-                                  onLongPressStart: (d) =>
-                                      _showActions(d.globalPosition),
-                                  onDoubleTap: _canReact ? _quickReact : null,
-                                  child: bubble,
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment:
+                        mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+                    children: [
+                      if (selecting) ...[
+                        Icon(
+                          selected
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 20,
+                          color: selected
+                              ? AppColors.brandPrimary
+                              : AppColors.textOnGlassFaint,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                        child: Column(
+                          crossAxisAlignment: mine
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
+                          children: [
+                            // Inert while selecting, so a photo's own tap
+                            // cannot win the arena and open the viewer when
+                            // the row was meant to tick.
+                            IgnorePointer(
+                              ignoring: selecting,
+                              child: GestureDetector(
+                                onDoubleTap: _canReact ? _quickReact : null,
+                                child: bubble,
+                              ),
+                            ),
+                            // Only under our own: "who has seen mine" is the
+                            // question people ask. On someone else's it would
+                            // put a counter under every line of the channel.
+                            if (message.isMine && message.readBy.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: _ReadByChip(
+                                  label: AppLocalizations.of(context)
+                                      .chatReadByCount(message.readBy.length),
+                                  onTapAt: _showActions,
                                 ),
                               ),
-                              // Only under our own: "who has seen mine" is the
-                              // question people ask. On someone else's it would
-                              // put a counter under every line of the channel.
-                              if (message.isMine && message.readBy.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: _ReadByChip(
-                                    label: AppLocalizations.of(context)
-                                        .chatReadByCount(message.readBy.length),
-                                    onTapAt: _showActions,
-                                  ),
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1273,11 +1291,10 @@ class _SharedLocationBubble extends StatelessWidget {
           Row(
             children: [
               Icon(
-                expired ? Icons.location_off_outlined : Icons.place_rounded,
+                expired ? Icons.location_off_rounded : Icons.place_rounded,
                 size: 20,
-                color: expired
-                    ? AppColors.textOnGlassDim
-                    : AppColors.brandPrimary,
+                color:
+                    expired ? AppColors.textOnGlassDim : AppColors.brandPrimary,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1296,15 +1313,14 @@ class _SharedLocationBubble extends StatelessWidget {
           Text(
             '${location.latitude.toStringAsFixed(5)}, '
             '${location.longitude.toStringAsFixed(5)}',
-            style: AppTypography.mono(
-                size: 11.5, color: AppColors.textOnGlassDim),
+            style:
+                AppTypography.mono(size: 11.5, color: AppColors.textOnGlassDim),
           ),
           if (location.accuracyMetres > 0) ...[
             const SizedBox(height: 2),
             Text(
               t.locationAccuracy(location.accuracyMetres),
-              style:
-                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
             ),
           ],
           const SizedBox(height: 8),
@@ -1313,8 +1329,7 @@ class _SharedLocationBubble extends StatelessWidget {
             // sender plainly remembers sending something.
             Text(
               t.locationExpired,
-              style:
-                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
             )
           else
             GestureDetector(
@@ -1330,7 +1345,7 @@ class _SharedLocationBubble extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.map_outlined,
+                  Icon(Icons.map_rounded,
                       size: 15, color: AppColors.brandPrimary),
                   const SizedBox(width: 6),
                   Text(
@@ -1554,7 +1569,7 @@ class _SwipeReplyHint extends StatelessWidget {
             ),
           ),
           child: Icon(
-            Icons.reply,
+            Icons.reply_rounded,
             size: 17,
             color: AppColors.brandPrimary,
           ),
@@ -1670,7 +1685,7 @@ class _ReadByChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
-              Icons.done_all,
+              Icons.done_all_rounded,
               size: 12,
               color: _BubbleMeta._readColor,
             ),
@@ -1853,8 +1868,8 @@ class _AlbumCell extends StatelessWidget {
     if (path == null || !MediaPaths.exists(path)) {
       return _ImagePlaceholder(
         icon: message.status == MessageStatus.failed
-            ? Icons.broken_image_outlined
-            : Icons.image_outlined,
+            ? Icons.broken_image_rounded
+            : Icons.image_rounded,
         label: '',
         spinning: message.status == MessageStatus.sending,
       );
@@ -1877,10 +1892,9 @@ class _AlbumCell extends StatelessWidget {
         child: Image.file(
           File(path),
           fit: BoxFit.cover,
-          cacheWidth:
-              (width * MediaQuery.devicePixelRatioOf(context)).round(),
+          cacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
           errorBuilder: (_, __, ___) => _ImagePlaceholder(
-            icon: Icons.broken_image_outlined,
+            icon: Icons.broken_image_rounded,
             label: '',
           ),
         ),
@@ -1970,7 +1984,7 @@ class _ImagePayload extends StatelessWidget {
                           MediaQuery.devicePixelRatioOf(context))
                       .round(),
                   errorBuilder: (_, __, ___) => _ImagePlaceholder(
-                    icon: Icons.broken_image_outlined,
+                    icon: Icons.broken_image_rounded,
                     label: message.imageMime ?? 'image',
                   ),
                 ),
@@ -1979,14 +1993,13 @@ class _ImagePayload extends StatelessWidget {
           )
         : _ImagePlaceholder(
             icon: message.status == MessageStatus.failed
-                ? Icons.broken_image_outlined
-                : Icons.image_outlined,
+                ? Icons.broken_image_rounded
+                : Icons.image_rounded,
             label: message.imageMime ?? message.text,
             spinning: message.status == MessageStatus.sending,
           );
 
-    final width =
-        message.isSticker ? kStickerWidth : photoBubbleWidth(context);
+    final width = message.isSticker ? kStickerWidth : photoBubbleWidth(context);
     return ConstrainedBox(
       // Stickers keep a size of their own — see [kStickerWidth]. A photo takes
       // the width it is given and as much height as its own shape asks for,
@@ -2073,12 +2086,13 @@ class _ViewOncePayload extends ConsumerWidget {
           children: [
             Icon(
               spent
-                  ? Icons.visibility_off_outlined
+                  ? Icons.visibility_off_rounded
                   : mine
                       ? Icons.done_rounded
-                      : Icons.local_fire_department_outlined,
+                      : Icons.local_fire_department_rounded,
               size: 20,
-              color: spent ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
+              color:
+                  spent ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
             ),
             const SizedBox(width: 10),
             Flexible(
@@ -2095,8 +2109,9 @@ class _ViewOncePayload extends ConsumerWidget {
                             : t.viewOnceUnavailable,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color:
-                      spent ? AppColors.textOnGlassFaint : AppColors.textOnGlass,
+                  color: spent
+                      ? AppColors.textOnGlassFaint
+                      : AppColors.textOnGlass,
                   fontSize: 13,
                   fontWeight: spent ? FontWeight.w400 : FontWeight.w600,
                 ),
@@ -2191,7 +2206,7 @@ class _BubbleMeta extends StatelessWidget {
       children: [
         if (pinned) ...[
           Icon(
-            Icons.push_pin,
+            Icons.push_pin_rounded,
             size: 11,
             color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: t.chatPinnedTitle,
@@ -2200,7 +2215,7 @@ class _BubbleMeta extends StatelessWidget {
         ],
         if (message.forwardSecret) ...[
           Icon(
-            Icons.lock_clock,
+            Icons.lock_clock_rounded,
             size: 11,
             color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: 'forward secret',
@@ -2229,10 +2244,10 @@ class _BubbleMeta extends StatelessWidget {
           const SizedBox(width: 4),
           Icon(
             switch (message.status) {
-              MessageStatus.sending => Icons.schedule,
-              MessageStatus.delivered => Icons.done,
-              MessageStatus.read => Icons.done_all,
-              MessageStatus.failed => Icons.error_outline,
+              MessageStatus.sending => Icons.schedule_rounded,
+              MessageStatus.delivered => Icons.done_rounded,
+              MessageStatus.read => Icons.done_all_rounded,
+              MessageStatus.failed => Icons.error_outline_rounded,
             },
             size: 12,
             color: switch (message.status) {
@@ -2252,5 +2267,3 @@ class _BubbleMeta extends StatelessWidget {
     );
   }
 }
-
-

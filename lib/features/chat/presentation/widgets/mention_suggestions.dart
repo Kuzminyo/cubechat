@@ -49,7 +49,7 @@ class MentionSuggestions extends ConsumerWidget {
               return ActionChip(
                 avatar: Icon(
                   member.isAdmin
-                      ? Icons.verified_user_outlined
+                      ? Icons.verified_user_rounded
                       : Icons.alternate_email_rounded,
                   size: 15,
                   color: AppColors.brandPrimary,

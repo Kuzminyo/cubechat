@@ -44,6 +44,15 @@ void main() {
     expect(messagesMatchingQuery(messages, '   '), isEmpty);
   });
 
+  test('conversation search normalizes cyrillic variants and split words', () {
+    final messages = [
+      _message(id: 'city', text: 'Привіт, Семён з Києва'),
+      _message(id: 'other', text: 'нічого схожого'),
+    ];
+
+    expect(messagesMatchingQuery(messages, 'привит семен').single.id, 'city');
+    expect(messagesMatchingQuery(messages, 'киева').single.id, 'city');
+  });
   test('route priority follows the actual send order', () {
     expect(
       resolveChatRoute(

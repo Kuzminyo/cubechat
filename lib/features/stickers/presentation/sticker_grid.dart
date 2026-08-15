@@ -136,7 +136,7 @@ class StickerGrid extends ConsumerWidget {
       backgroundColor: AppColors.bgTop,
       builder: (sheet) => SafeArea(
         child: ListTile(
-          leading: Icon(Icons.delete_outline, color: AppColors.danger),
+          leading: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
           title: Text(
             t.stickerForget,
             style: TextStyle(color: AppColors.textOnGlass),
@@ -214,7 +214,7 @@ class _KeptTile extends StatelessWidget {
           fit: BoxFit.contain,
           cacheWidth: (104 * MediaQuery.devicePixelRatioOf(context)).round(),
           errorBuilder: (_, __, ___) => Icon(
-            Icons.broken_image_outlined,
+            Icons.broken_image_rounded,
             color: AppColors.textOnGlassFaint,
           ),
         ),

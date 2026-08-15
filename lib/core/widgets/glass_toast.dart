@@ -266,7 +266,7 @@ void showCopiedToast(BuildContext context, String message) {
   showGlassToast(
     context,
     message,
-    icon: Icons.copy_outlined,
+    icon: Icons.copy_rounded,
     tone: ToastTone.success,
   );
 }

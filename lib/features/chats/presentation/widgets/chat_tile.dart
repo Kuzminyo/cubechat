@@ -110,7 +110,7 @@ class ChatTile extends StatelessWidget {
                       ),
                     ),
                     child: Icon(
-                      Icons.timer_outlined,
+                      Icons.timer_rounded,
                       size: 11,
                       color: AppColors.brandPrimary,
                     ),
@@ -141,7 +141,7 @@ class ChatTile extends StatelessWidget {
                     if (chat.isVerified) ...[
                       const SizedBox(width: 4),
                       Icon(
-                        Icons.verified,
+                        Icons.verified_rounded,
                         color: AppColors.brandPrimary,
                         size: 14,
                       ),
@@ -173,7 +173,7 @@ class ChatTile extends StatelessWidget {
                     ] else if (chat.isReachableViaMesh) ...[
                       const SizedBox(width: 6),
                       _StatusPill(
-                        icon: Icons.hub_outlined,
+                        icon: Icons.hub_rounded,
                         label: t.chatsStatusViaMesh,
                       ),
                     ],
@@ -290,10 +290,10 @@ class _StatusTick extends StatelessWidget {
   Widget build(BuildContext context) {
     return Icon(
       switch (status) {
-        MessageStatus.sending => Icons.schedule,
-        MessageStatus.delivered => Icons.done,
-        MessageStatus.read => Icons.done_all,
-        MessageStatus.failed => Icons.error_outline,
+        MessageStatus.sending => Icons.schedule_rounded,
+        MessageStatus.delivered => Icons.done_rounded,
+        MessageStatus.read => Icons.done_all_rounded,
+        MessageStatus.failed => Icons.error_outline_rounded,
       },
       size: 13,
       color: switch (status) {

@@ -149,9 +149,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   }
 
   IconData get _flashIcon => switch (_flash) {
-        FlashMode.off => Icons.flash_off,
-        FlashMode.auto => Icons.flash_auto,
-        _ => Icons.flash_on,
+        FlashMode.off => Icons.flash_off_rounded,
+        FlashMode.auto => Icons.flash_auto_rounded,
+        _ => Icons.flash_on_rounded,
       };
 
   @override
@@ -170,7 +170,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
                     onPressed: () => Navigator.of(context).maybePop(),
                   ),
                   if (_controller != null && !_unavailable)
@@ -194,7 +194,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.no_photography_outlined,
+            const Icon(Icons.no_photography_rounded,
                 color: Colors.white54, size: 56),
             const SizedBox(height: 12),
             Text('Camera unavailable',
@@ -239,7 +239,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                 width: 56,
                 child: _cameras.length > 1
                     ? IconButton(
-                        icon: const Icon(Icons.cameraswitch,
+                        icon: const Icon(Icons.cameraswitch_rounded,
                             color: Colors.white, size: 28),
                         onPressed: _flip,
                       )

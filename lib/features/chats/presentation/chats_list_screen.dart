@@ -15,7 +15,6 @@ import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
-import '../../../core/widgets/pill_button.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -419,59 +418,24 @@ class ChatsListScreen extends ConsumerWidget {
             // conversation, on the screen that opens the app.
             if (folders.isNotEmpty || userFolders.isNotEmpty)
               SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 56,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                    children: [
-                      PillButton(
-                        label: t.chatsFilterAll,
-                        active: folder == null && userFolder == null,
-                        onTap: () {
-                          ref.read(selectedFolderProvider.notifier).state =
-                              null;
-                          ref.read(selectedUserFolderProvider.notifier).state =
-                              null;
-                        },
-                      ),
-                      for (final f in folders) ...[
-                        const SizedBox(width: 8),
-                        PillButton(
-                          label: folderLabel(t, f),
-                          active: folder == f,
-                          onTap: () {
-                            ref
-                                .read(selectedUserFolderProvider.notifier)
-                                .state = null;
-                            ref.read(selectedFolderProvider.notifier).state = f;
-                          },
-                        ),
-                      ],
-                      for (final f in userFolders) ...[
-                        const SizedBox(width: 8),
-                        PillButton(
-                          label: f.name,
-                          active: userFolder?.id == f.id,
-                          onTap: () {
-                            ref.read(selectedFolderProvider.notifier).state =
-                                null;
-                            ref
-                                .read(selectedUserFolderProvider.notifier)
-                                .state = f.id;
-                          },
-                        ),
-                      ],
-                      const SizedBox(width: 8),
-                      // The way back to the folder screen from the row itself —
-                      // the menu is the other way in, and neither is discoverable
-                      // from the other.
-                      PillButton(
-                        label: '+',
-                        onTap: () => context.push('/folders'),
-                      ),
-                    ],
-                  ),
+                child: _FolderFilterIsland(
+                  folders: folders,
+                  userFolders: userFolders,
+                  selectedFolder: folder,
+                  selectedUserFolder: userFolder,
+                  onAll: () {
+                    ref.read(selectedFolderProvider.notifier).state = null;
+                    ref.read(selectedUserFolderProvider.notifier).state = null;
+                  },
+                  onBuiltIn: (f) {
+                    ref.read(selectedUserFolderProvider.notifier).state = null;
+                    ref.read(selectedFolderProvider.notifier).state = f;
+                  },
+                  onUserFolder: (id) {
+                    ref.read(selectedFolderProvider.notifier).state = null;
+                    ref.read(selectedUserFolderProvider.notifier).state = id;
+                  },
+                  onManage: () => context.push('/folders'),
                 ),
               ),
             if (filtered.isEmpty)
@@ -694,7 +658,7 @@ class _ChatSelectionBar extends ConsumerWidget {
         const Spacer(),
         IconButton(
           icon: Icon(
-            allPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+            allPinned ? Icons.push_pin_rounded : Icons.push_pin_rounded,
             color: AppColors.brandPrimary,
           ),
           tooltip: _chatText(context, uk: 'Закріпити', en: 'Pin'),
@@ -710,8 +674,8 @@ class _ChatSelectionBar extends ConsumerWidget {
           IconButton(
             icon: Icon(
               allMuted
-                  ? Icons.notifications_active_outlined
-                  : Icons.notifications_off_outlined,
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_off_rounded,
               color: AppColors.textOnGlass,
             ),
             tooltip: _chatText(context, uk: 'Без звуку', en: 'Mute'),
@@ -723,7 +687,7 @@ class _ChatSelectionBar extends ConsumerWidget {
             },
           ),
         IconButton(
-          icon: Icon(Icons.delete_outline, color: AppColors.danger),
+          icon: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
           tooltip: t.chatsActionDelete,
           onPressed: () async {
             final chats = [...selected];
@@ -753,7 +717,7 @@ class _SelectionOverflow extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final single = selected.length == 1 ? selected.first : null;
     return IconButton(
-      icon: Icon(Icons.more_vert, color: AppColors.textOnGlass),
+      icon: Icon(Icons.more_vert_rounded, color: AppColors.textOnGlass),
       onPressed: () async {
         final box = context.findRenderObject() as RenderBox?;
         final origin = box == null
@@ -765,12 +729,12 @@ class _SelectionOverflow extends ConsumerWidget {
           items: [
             _chatMenuItem(
               'folder',
-              Icons.folder_outlined,
+              Icons.folder_rounded,
               _chatText(context, uk: 'Додати в папку', en: 'Add to folder'),
             ),
             _chatMenuItem(
               'unread',
-              Icons.mark_chat_unread_outlined,
+              Icons.mark_chat_unread_rounded,
               _chatText(
                 context,
                 uk: 'Позначити як непрочитане',
@@ -779,7 +743,7 @@ class _SelectionOverflow extends ConsumerWidget {
             ),
             _chatMenuItem(
               'clear',
-              Icons.cleaning_services_outlined,
+              Icons.cleaning_services_rounded,
               _chatText(
                 context,
                 uk: 'Очистити історію чату',
@@ -805,7 +769,7 @@ class _SelectionOverflow extends ConsumerWidget {
               ),
             _chatMenuItem(
               'favorite',
-              Icons.star_border,
+              Icons.star_border_rounded,
               t.chatsActionFavorite,
               color: AppColors.brandPrimary,
             ),
@@ -816,7 +780,7 @@ class _SelectionOverflow extends ConsumerWidget {
             if (single != null && !single.isChannel)
               _chatMenuItem(
                 'forget',
-                Icons.person_remove_outlined,
+                Icons.person_remove_rounded,
                 t.contactProfileDelete,
                 color: AppColors.danger,
               ),
@@ -886,7 +850,8 @@ class _SearchField extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
-            Icon(Icons.search, size: 18, color: AppColors.textOnGlassFaint),
+            Icon(Icons.search_rounded,
+                size: 18, color: AppColors.textOnGlassFaint),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -917,12 +882,148 @@ String folderLabel(AppLocalizations t, ChatFolder folder) => switch (folder) {
     };
 
 IconData folderIcon(ChatFolder folder) => switch (folder) {
-      ChatFolder.unread => Icons.mark_chat_unread_outlined,
-      ChatFolder.direct => Icons.person_outline,
+      ChatFolder.unread => Icons.mark_chat_unread_rounded,
+      ChatFolder.direct => Icons.person_outline_rounded,
       ChatFolder.channels => Icons.campaign_rounded,
       ChatFolder.favorites => Icons.star_rounded,
-      ChatFolder.online => Icons.podcasts,
+      ChatFolder.online => Icons.radar_rounded,
     };
+
+class _FolderFilterIsland extends StatelessWidget {
+  const _FolderFilterIsland({
+    required this.folders,
+    required this.userFolders,
+    required this.selectedFolder,
+    required this.selectedUserFolder,
+    required this.onAll,
+    required this.onBuiltIn,
+    required this.onUserFolder,
+    required this.onManage,
+  });
+
+  final List<ChatFolder> folders;
+  final List<UserChatFolder> userFolders;
+  final ChatFolder? selectedFolder;
+  final UserChatFolder? selectedUserFolder;
+  final VoidCallback onAll;
+  final ValueChanged<ChatFolder> onBuiltIn;
+  final ValueChanged<String> onUserFolder;
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final tabs = <Widget>[
+      _FolderIslandTab(
+        label: t.chatsFilterAll,
+        active: selectedFolder == null && selectedUserFolder == null,
+        onTap: onAll,
+      ),
+      for (final folder in folders)
+        _FolderIslandTab(
+          label: folderLabel(t, folder),
+          active: selectedFolder == folder,
+          onTap: () => onBuiltIn(folder),
+        ),
+      for (final folder in userFolders)
+        _FolderIslandTab(
+          label: folder.name,
+          active: selectedUserFolder?.id == folder.id,
+          onTap: () => onUserFolder(folder.id),
+        ),
+      _FolderIslandTab(
+        icon: Icons.add_rounded,
+        label: '',
+        onTap: onManage,
+        compact: true,
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+      child: SizedBox(
+        height: 52,
+        child: FloatingGlass(
+          blur: false,
+          borderRadius: 26,
+          padding: EdgeInsets.zero,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(children: tabs),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FolderIslandTab extends StatelessWidget {
+  const _FolderIslandTab({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.active = false,
+    this.compact = false,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool active;
+  final bool compact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? AppColors.brandPrimary : AppColors.textOnGlassDim;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          constraints: BoxConstraints(minWidth: compact ? 40 : 0),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 15,
+            vertical: 8,
+          ),
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.brandPrimary.withValues(alpha: 0.18)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) Icon(icon, size: 18, color: color),
+              if (label.isNotEmpty) ...[
+                if (icon != null) const SizedBox(width: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.title, required this.hint});
@@ -946,7 +1047,7 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.glassFill,
                 border: Border.all(color: AppColors.glassBorder),
               ),
-              child: Icon(Icons.chat_bubble_outline,
+              child: Icon(Icons.chat_bubble_outline_rounded,
                   color: AppColors.textOnGlassDim, size: 28),
             ),
             const SizedBox(height: 16),
@@ -1075,7 +1176,7 @@ Future<void> _confirmAndForgetContact(
   showGlassToast(
     context,
     t.contactProfileDelete,
-    icon: Icons.person_remove_outlined,
+    icon: Icons.person_remove_rounded,
     tone: ToastTone.success,
   );
 }
@@ -1146,12 +1247,12 @@ Future<void> _showAddToFolderDialog(
         for (final folder in userFolders)
           SimpleDialogOption(
             onPressed: () => Navigator.of(ctx).pop(folder.id),
-            child: _MenuRow(icon: Icons.folder_outlined, label: folder.name),
+            child: _MenuRow(icon: Icons.folder_rounded, label: folder.name),
           ),
         SimpleDialogOption(
           onPressed: () => Navigator.of(ctx).pop(createToken),
           child: _MenuRow(
-            icon: Icons.create_new_folder_outlined,
+            icon: Icons.create_new_folder_rounded,
             label: _chatText(
               context,
               uk: '\u041d\u043e\u0432\u0430 \u043f\u0430\u043f\u043a\u0430',
@@ -1249,7 +1350,7 @@ Future<void> _markChatUnread(
           uk: '\u041d\u0435\u043c\u0430\u0454 \u0432\u0445\u0456\u0434\u043d\u0438\u0445 \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u044c',
           en: 'No incoming messages',
         ),
-        icon: Icons.mark_chat_unread_outlined,
+        icon: Icons.mark_chat_unread_rounded,
         tone: ToastTone.neutral,
       );
     }
@@ -1264,7 +1365,7 @@ Future<void> _markChatUnread(
         uk: '\u041f\u043e\u0437\u043d\u0430\u0447\u0435\u043d\u043e \u044f\u043a \u043d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u0435',
         en: 'Marked as unread',
       ),
-      icon: Icons.mark_chat_unread_outlined,
+      icon: Icons.mark_chat_unread_rounded,
       tone: ToastTone.success,
     );
   }
@@ -1338,7 +1439,7 @@ Future<void> _confirmAndClearHistory(
       uk: '\u0406\u0441\u0442\u043e\u0440\u0456\u044e \u043e\u0447\u0438\u0449\u0435\u043d\u043e',
       en: 'History cleared',
     ),
-    icon: Icons.cleaning_services_outlined,
+    icon: Icons.cleaning_services_rounded,
     tone: ToastTone.success,
   );
 }
@@ -1510,7 +1611,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     return PopupMenuButton<_ChatsMenuAction>(
-      icon: Icon(Icons.more_vert, color: AppColors.brandPrimary),
+      icon: Icon(Icons.more_vert_rounded, color: AppColors.brandPrimary),
       tooltip: t.chatsMenuTooltip,
       color: AppColors.bgTop,
       shape: RoundedRectangleBorder(
@@ -1536,21 +1637,21 @@ class _ChatsOverflowMenu extends StatelessWidget {
         PopupMenuItem(
           value: _ChatsMenuAction.folders,
           child: _MenuRow(
-            icon: Icons.folder_outlined,
+            icon: Icons.folder_rounded,
             label: t.chatsFoldersTitle,
           ),
         ),
         PopupMenuItem(
           value: _ChatsMenuAction.addContact,
           child: _MenuRow(
-            icon: Icons.person_add_alt,
+            icon: Icons.person_add_alt_rounded,
             label: t.chatsMenuAddContact,
           ),
         ),
         PopupMenuItem(
           value: _ChatsMenuAction.newChannel,
           child: _MenuRow(
-            icon: Icons.group_add_outlined,
+            icon: Icons.group_add_rounded,
             label: t.chatsMenuNewChannel,
           ),
         ),

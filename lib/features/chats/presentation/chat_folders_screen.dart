@@ -49,7 +49,7 @@ class ChatFoldersScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Row(
                 children: [
-                  Icon(Icons.create_new_folder_outlined,
+                  Icon(Icons.create_new_folder_rounded,
                       color: AppColors.brandPrimary),
                   const SizedBox(width: 14),
                   Expanded(
@@ -80,7 +80,7 @@ class ChatFoldersScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
                   child: Row(
                     children: [
-                      Icon(Icons.folder_outlined,
+                      Icon(Icons.folder_rounded,
                           color: AppColors.brandPrimary, size: 21),
                       const SizedBox(width: 14),
                       Expanded(
@@ -118,7 +118,7 @@ class ChatFoldersScreen extends ConsumerWidget {
                         tooltip: 'Delete',
                         onPressed: () => _deleteFolder(context, ref, folder),
                         icon:
-                            Icon(Icons.delete_outline, color: AppColors.danger),
+                            Icon(Icons.delete_outline_rounded, color: AppColors.danger),
                       ),
                     ],
                   ),

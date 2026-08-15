@@ -171,7 +171,7 @@ class ContactProfileScreen extends ConsumerWidget {
     showGlassToast(
       context,
       t.contactProfileAutoDeleteUpdated(_autoDeleteLabel(t, chosen)),
-      icon: Icons.auto_delete_outlined,
+      icon: Icons.auto_delete_rounded,
       tone: ToastTone.success,
     );
   }
@@ -367,7 +367,7 @@ class ContactProfileScreen extends ConsumerWidget {
                         ),
                       ),
                       _ActionTile(
-                        icon: Icons.drive_file_rename_outline,
+                        icon: Icons.drive_file_rename_outline_rounded,
                         label: t.contactAliasAction,
                         // The name they broadcast, shown underneath, so it is
                         // clear the rename is yours and theirs is untouched.
@@ -381,7 +381,7 @@ class ContactProfileScreen extends ConsumerWidget {
                         },
                       ),
                       _ActionTile(
-                        icon: Icons.auto_delete_outlined,
+                        icon: Icons.auto_delete_rounded,
                         label: t.contactProfileAutoDelete,
                         subtitle: _autoDeleteLabel(
                           t,
@@ -397,7 +397,7 @@ class ContactProfileScreen extends ConsumerWidget {
                         },
                       ),
                       _ActionTile(
-                        icon: Icons.wallpaper_outlined,
+                        icon: Icons.wallpaper_rounded,
                         label: t.chatWallpaperTitle,
                         onTap: () {
                           close();
@@ -407,7 +407,7 @@ class ContactProfileScreen extends ConsumerWidget {
                         },
                       ),
                       _ActionTile(
-                        icon: Icons.person_add_alt_1_outlined,
+                        icon: Icons.person_add_alt_1_rounded,
                         label: t.contactProfileShare,
                         onTap: () {
                           close();
@@ -468,7 +468,7 @@ class ContactProfileScreen extends ConsumerWidget {
                         },
                       ),
                       _ActionTile(
-                        icon: Icons.person_remove_outlined,
+                        icon: Icons.person_remove_rounded,
                         label: t.contactProfileDelete,
                         onTap: () {
                           close();
@@ -616,7 +616,7 @@ class ContactProfileScreen extends ConsumerWidget {
                                 child: Icon(
                                   peer?.isVerified == true
                                       ? Icons.verified_rounded
-                                      : Icons.shield_outlined,
+                                      : Icons.shield_rounded,
                                   color: AppColors.brandPrimary,
                                 ),
                               ),
@@ -905,12 +905,12 @@ class _ProfileHero extends ConsumerWidget {
                       onTap: onMute,
                     ),
                     _QuickAction(
-                      icon: Icons.verified_user_outlined,
+                      icon: Icons.verified_user_rounded,
                       label: verifyLabel,
                       onTap: onVerify,
                     ),
                     _QuickAction(
-                      icon: blocked ? Icons.lock_open_rounded : Icons.block,
+                      icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
                       label: blockLabel,
                       tone: blocked ? AppColors.brandPrimary : AppColors.danger,
                       onTap: onBlock,
@@ -1066,7 +1066,7 @@ class _SharedContentCard extends StatelessWidget {
         child: Column(
           children: [
             _ContentRow(
-              icon: Icons.photo_library_outlined,
+              icon: Icons.photo_library_rounded,
               label: mediaLabel,
               count: mediaCount,
               onTap: onMedia,
@@ -1080,7 +1080,7 @@ class _SharedContentCard extends StatelessWidget {
             ),
             const Divider(height: 1, color: Color(0x26FFFFFF)),
             _ContentRow(
-              icon: Icons.folder_outlined,
+              icon: Icons.folder_rounded,
               label: fileLabel,
               count: fileCount,
               onTap: onFiles,

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cubechat/app.dart';
 import 'package:cubechat/features/chat/data/message_reply_target.dart';
+import 'package:cubechat/features/chat/data/message_selection.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
@@ -89,6 +90,22 @@ void main() {
     return container;
   }
 
+  testWidgets('long pressing anywhere on the message row starts selection',
+      (tester) async {
+    final container = await openPeerChat(tester);
+    expect(container.read(messageSelectionProvider(peerHex)), isEmpty);
+
+    final messageCenter =
+        tester.getCenter(find.text('ключі під килимком').first);
+    final rowBlankSpace = Offset(
+      tester.view.physicalSize.width / tester.view.devicePixelRatio - 24,
+      messageCenter.dy,
+    );
+    await tester.longPressAt(rowBlankSpace);
+    await beat(tester);
+
+    expect(container.read(messageSelectionProvider(peerHex)), {'m1'});
+  });
   testWidgets('dragging a message left files a reply to it', (tester) async {
     final container = await openPeerChat(tester);
     expect(container.read(messageReplyTargetProvider), isNull);

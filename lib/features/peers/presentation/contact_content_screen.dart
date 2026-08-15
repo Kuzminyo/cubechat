@@ -200,7 +200,7 @@ class _MediaGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     if (images.isEmpty) {
       return _EmptyContent(
-          icon: Icons.photo_library_outlined, label: emptyLabel);
+          icon: Icons.photo_library_rounded, label: emptyLabel);
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 32),
@@ -241,7 +241,7 @@ class _MediaGrid extends StatelessWidget {
                         MediaQuery.devicePixelRatioOf(context))
                     .round(),
                 errorBuilder: (_, __, ___) => const Center(
-                  child: Icon(Icons.broken_image_outlined),
+                  child: Icon(Icons.broken_image_rounded),
                 ),
               ),
             ),
@@ -307,7 +307,7 @@ class _FileList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (files.isEmpty) {
       return _EmptyContent(
-          icon: Icons.insert_drive_file_outlined, label: emptyLabel);
+          icon: Icons.insert_drive_file_rounded, label: emptyLabel);
     }
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -405,7 +405,7 @@ class _PollList extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     if (polls.isEmpty) {
-      return _EmptyContent(icon: Icons.how_to_vote_outlined, label: emptyLabel);
+      return _EmptyContent(icon: Icons.how_to_vote_rounded, label: emptyLabel);
     }
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -432,7 +432,7 @@ class _PollList extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.how_to_vote_outlined,
+              Icon(Icons.how_to_vote_rounded,
                   size: 18, color: AppColors.brandPrimary),
               const SizedBox(width: 12),
               Expanded(

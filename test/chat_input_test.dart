@@ -38,8 +38,8 @@ void main() {
     expect(find.text('Edit message'), findsOneWidget);
     expect(find.text('original text'), findsWidgets);
     // The commit affordance is a check, not the send arrow.
-    expect(find.byIcon(Icons.check), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward), findsNothing);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
   });
 
   testWidgets('sending in edit mode commits, not sends', (tester) async {
@@ -57,7 +57,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'after');
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.check));
+    await tester.tap(find.byIcon(Icons.check_rounded));
     await tester.pump();
 
     expect(committed, 'after');
@@ -76,7 +76,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
     expect(cancelled, isTrue);
   });
@@ -92,10 +92,10 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pump();
-    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
-    expect(find.byIcon(Icons.check), findsNothing);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
     expect(sent, 'hello');
   });
@@ -111,7 +111,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
 
     final field = tester.widget<TextField>(find.byType(TextField));
@@ -131,7 +131,7 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, 'unfinished message');
-    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
   });
 
   testWidgets('typing updates the draft and sending clears it', (tester) async {
@@ -147,7 +147,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'new draft');
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pump();
 
     expect(changes, contains('new draft'));
@@ -166,11 +166,11 @@ void main() {
     await tester.pumpWidget(_host(input()));
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
     await tester.pump();
     expect(find.byType(KeyboardSlotPanel), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
+    await tester.tap(find.byIcon(Icons.keyboard_alt_rounded));
     // The panel holds its space while the keyboard comes up rather than
     // blinking out and leaving a hole; with no keyboard in a test nothing ever
     // fills the slot, so the watchdog is what closes it. Pumped past both.
@@ -178,9 +178,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1200));
 
     expect(find.byType(KeyboardSlotPanel), findsNothing);
-    expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_emotions_rounded), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
     await tester.pump();
 
     expect(find.byType(KeyboardSlotPanel), findsOneWidget);
@@ -207,7 +207,7 @@ void main() {
     )));
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -228,7 +228,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.byType(KeyboardSlotPanel), findsNothing);
-    expect(find.byIcon(Icons.emoji_emotions_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_emotions_rounded), findsOneWidget);
 
     // Let the settle timer that records the keyboard's height run out; it is a
     // static one, so leaving it pending would be flagged against this test.
@@ -255,7 +255,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.byIcon(Icons.emoji_emotions_outlined));
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
     await tester.pump();
 
     // Nothing is drawn yet — the keyboard still has the slot. This is the

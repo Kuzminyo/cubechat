@@ -148,7 +148,7 @@ class ChatWallpaperScreen extends ConsumerWidget {
                   ? ChatWallpaperPaint(wallpaper: wallpaper)
                   : Center(
                       child: Icon(
-                        Icons.add_photo_alternate_outlined,
+                        Icons.add_photo_alternate_rounded,
                         color: AppColors.textOnGlassDim,
                       ),
                     ),
@@ -269,7 +269,7 @@ extension on ChatWallpaperScreen {
               ),
               const SizedBox(height: 14),
               ListTile(
-                leading: Icon(Icons.phone_iphone_rounded,
+                leading: Icon(Icons.smartphone_rounded,
                     color: AppColors.brandPrimary),
                 title: Text(
                   _wallpaperText(

@@ -380,8 +380,8 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                 if (showEmoji) ...[
                   _RoundIconButton(
                     icon: _panelOpen
-                        ? Icons.keyboard_alt_outlined
-                        : Icons.emoji_emotions_outlined,
+                        ? Icons.keyboard_alt_rounded
+                        : Icons.emoji_emotions_rounded,
                     onTap: _togglePanel,
                   ),
                   const SizedBox(width: 4),
@@ -484,7 +484,7 @@ class _EditBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Icon(Icons.edit_outlined, size: 16, color: AppColors.brandPrimary),
+          Icon(Icons.edit_rounded, size: 16, color: AppColors.brandPrimary),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -514,7 +514,7 @@ class _EditBanner extends StatelessWidget {
           IconButton(
             visualDensity: VisualDensity.compact,
             onPressed: onCancel,
-            icon: Icon(Icons.close, size: 18, color: AppColors.textOnGlassDim),
+            icon: Icon(Icons.close_rounded, size: 18, color: AppColors.textOnGlassDim),
           ),
         ],
       ),
@@ -633,7 +633,7 @@ class _VoiceButton extends StatelessWidget {
           },
         ),
       },
-      child: _circle(context, icon: Icons.mic, filled: active),
+      child: _circle(context, icon: Icons.mic_rounded, filled: active),
     );
   }
 
@@ -887,7 +887,7 @@ class _SendButtonState extends State<_SendButton> {
                   : null,
             ),
             child: Icon(
-              widget.isEdit ? Icons.check : Icons.arrow_upward,
+              widget.isEdit ? Icons.check_rounded : Icons.arrow_upward_rounded,
               color: widget.enabled ? Colors.white : AppColors.ink(0.55),
               size: 20,
             ),

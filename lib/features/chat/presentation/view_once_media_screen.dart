@@ -207,7 +207,7 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.local_fire_department_outlined,
+                Icon(Icons.local_fire_department_rounded,
                     size: 16, color: AppColors.brandPrimary),
                 const SizedBox(width: 8),
                 Flexible(

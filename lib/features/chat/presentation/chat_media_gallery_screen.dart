@@ -152,7 +152,7 @@ class _ChatMediaGalleryScreenState
     showGlassToast(
       context,
       kept ? t.stickerKept : t.stickerFailed,
-      icon: kept ? Icons.auto_awesome_outlined : null,
+      icon: kept ? Icons.auto_awesome_rounded : null,
       tone: kept ? ToastTone.success : ToastTone.danger,
     );
   }
@@ -213,7 +213,7 @@ class _ChatMediaGalleryScreenState
               backgroundColor: Colors.black.withValues(alpha: 0.45),
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
               titleSpacing: 0,
@@ -253,7 +253,7 @@ class _ChatMediaGalleryScreenState
                 if (!sharingRestricted)
                   IconButton(
                     key: _shareButtonKey,
-                    icon: const Icon(Icons.ios_share, color: Colors.white),
+                    icon: const Icon(Icons.share_rounded, color: Colors.white),
                     tooltip: t.chatMediaShare,
                     onPressed: current == null ? null : _share,
                   ),
@@ -267,7 +267,7 @@ class _ChatMediaGalleryScreenState
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.more_vert, color: Colors.white),
+                      : const Icon(Icons.more_vert_rounded, color: Colors.white),
                   color: AppColors.bgTop,
                   onSelected: (value) {
                     if (value == 'save') {
@@ -302,7 +302,7 @@ class _ChatMediaGalleryScreenState
                     PopupMenuItem(
                       value: 'sticker',
                       child: _menuRow(
-                          Icons.emoji_emotions_outlined, t.stickerKeep),
+                          Icons.emoji_emotions_rounded, t.stickerKeep),
                     ),
                   ],
                 ),
@@ -392,7 +392,7 @@ class _ChatMediaGalleryScreenState
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.broken_image_outlined,
+              Icons.broken_image_rounded,
               color: AppColors.textOnGlassDim,
               size: 56,
             ),

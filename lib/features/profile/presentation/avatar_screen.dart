@@ -107,7 +107,7 @@ class AvatarScreen extends ConsumerWidget {
                   Expanded(
                     child: PillButton(
                       label: bytes == null ? t.avatarSet : t.avatarChange,
-                      icon: Icons.photo_camera_back_outlined,
+                      icon: Icons.photo_camera_back_rounded,
                       onTap: () => pickProfileAvatar(context, ref),
                     ),
                   ),
@@ -116,7 +116,7 @@ class AvatarScreen extends ConsumerWidget {
                     Expanded(
                       child: PillButton(
                         label: t.avatarRemove,
-                        icon: Icons.delete_outline,
+                        icon: Icons.delete_outline_rounded,
                         onTap: () => _remove(context, ref),
                       ),
                     ),

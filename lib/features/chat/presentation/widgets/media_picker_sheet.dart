@@ -579,8 +579,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                 padding: const EdgeInsets.fromLTRB(4, 11, 4, 11),
                 child: Icon(
                   _emojiOpen
-                      ? Icons.keyboard_alt_outlined
-                      : Icons.sentiment_satisfied_alt_outlined,
+                      ? Icons.keyboard_alt_rounded
+                      : Icons.sentiment_satisfied_alt_rounded,
                   color: AppColors.brandPrimary,
                   size: 23,
                 ),
@@ -711,7 +711,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                   foregroundColor: Colors.black,
                 ),
                 onPressed: onSecondaryAction,
-                icon: const Icon(Icons.photo_camera, size: 18),
+                icon: const Icon(Icons.photo_camera_rounded, size: 18),
                 label: Text(secondaryAction),
               ),
             ],
@@ -752,7 +752,7 @@ class _CameraTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.photo_camera, color: AppColors.brandPrimary, size: 26),
+            Icon(Icons.photo_camera_rounded, color: AppColors.brandPrimary, size: 26),
             const SizedBox(height: 6),
             Text(
               'Camera',

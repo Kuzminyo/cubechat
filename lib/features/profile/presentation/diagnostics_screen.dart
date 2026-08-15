@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -107,12 +107,12 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           IconButton(
             key: _shareButtonKey,
             tooltip: 'Share log file',
-            icon: Icon(Icons.ios_share_rounded, color: AppColors.textOnGlass),
+            icon: Icon(Icons.share_rounded, color: AppColors.textOnGlass),
             onPressed: entries.isEmpty ? null : () => _shareLog(entries),
           ),
           IconButton(
             tooltip: 'Copy all',
-            icon: Icon(Icons.copy, color: AppColors.textOnGlass),
+            icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlass),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: _asText(entries)));
               if (!context.mounted) return;
@@ -121,7 +121,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           ),
           IconButton(
             tooltip: 'Clear',
-            icon: Icon(Icons.delete_outline, color: AppColors.textOnGlass),
+            icon: Icon(Icons.delete_outline_rounded, color: AppColors.textOnGlass),
             onPressed: () => DebugLog.instance.clear(),
           ),
         ],
@@ -146,29 +146,28 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     List<DebugLogEntry> entries,
   ) {
     return entries.isEmpty
-            ? Center(
+        ? Center(
+            child: Text(
+              'No log entries yet.\nTrigger a connection and come back.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+            itemCount: entries.length,
+            itemBuilder: (_, i) {
+              final e = entries[i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text(
-                  'No log entries yet.\nTrigger a connection and come back.',
-                  textAlign: TextAlign.center,
-                  style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+                  '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
+                  style: AppTypography.mono(
+                      size: 11.5, color: AppColors.textOnGlass),
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-                itemCount: entries.length,
-                itemBuilder: (_, i) {
-                  final e = entries[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Text(
-                      '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
-                      style: AppTypography.mono(
-                          size: 11.5, color: AppColors.textOnGlass),
-                    ),
-                  );
-                },
               );
+            },
+          );
   }
 }
 

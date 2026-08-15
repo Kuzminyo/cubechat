@@ -36,7 +36,7 @@ class FileTransferCenterScreen extends ConsumerWidget {
               onPressed: () => ref
                   .read(fileTransferControllerProvider.notifier)
                   .clearFinished(),
-              icon: const Icon(Icons.cleaning_services_outlined),
+              icon: const Icon(Icons.cleaning_services_rounded),
             ),
         ],
       ),
@@ -295,7 +295,7 @@ class _EmptyState extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.swap_vert_circle_outlined,
+                Icons.swap_vert_circle_rounded,
                 size: 54,
                 color: AppColors.textOnGlassFaint,
               ),

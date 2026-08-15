@@ -59,7 +59,7 @@ class RelaysScreen extends ConsumerWidget {
                         ),
                       ),
                       child: Icon(
-                        Icons.public,
+                        Icons.public_rounded,
                         color: AppColors.brandPrimary,
                         size: 18,
                       ),
@@ -130,7 +130,7 @@ class RelaysScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(Icons.copy, size: 16, color: AppColors.textOnGlassFaint),
+                Icon(Icons.copy_rounded, size: 16, color: AppColors.textOnGlassFaint),
               ],
             ),
           ),
@@ -230,7 +230,7 @@ class _RelayRow extends StatelessWidget {
           IconButton(
             tooltip: t.relaysRemove,
             icon: Icon(
-              Icons.close,
+              Icons.close_rounded,
               size: 18,
               color: AppColors.textOnGlassFaint,
             ),

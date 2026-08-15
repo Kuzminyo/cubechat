@@ -104,7 +104,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       case PeerDiscoveryStatus.unsupported:
         return [
           _StatusCard(
-            icon: Icons.bluetooth_disabled,
+            icon: Icons.bluetooth_disabled_rounded,
             tone: _StatusTone.warning,
             title: t.bleUnsupportedTitle,
             hint: t.bleUnsupportedHint,
@@ -117,7 +117,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       case PeerDiscoveryStatus.meshOff:
         return [
           _StatusCard(
-            icon: Icons.bluetooth_disabled,
+            icon: Icons.bluetooth_disabled_rounded,
             tone: _StatusTone.warning,
             title: t.meshOffTitle,
             hint: t.meshOffHint,
@@ -128,7 +128,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       case PeerDiscoveryStatus.permissionsDenied:
         return [
           _StatusCard(
-            icon: Icons.shield_outlined,
+            icon: Icons.shield_rounded,
             tone: _StatusTone.brand,
             title: t.blePermissionTitle,
             hint: state.status == PeerDiscoveryStatus.permissionsDenied
@@ -142,7 +142,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       case PeerDiscoveryStatus.permissionsPermanentlyDenied:
         return [
           _StatusCard(
-            icon: Icons.shield_outlined,
+            icon: Icons.shield_rounded,
             tone: _StatusTone.danger,
             title: t.blePermissionTitle,
             hint: t.blePermissionDeniedHint,
@@ -154,7 +154,7 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
       case PeerDiscoveryStatus.adapterOff:
         return [
           _StatusCard(
-            icon: Icons.bluetooth_disabled,
+            icon: Icons.bluetooth_disabled_rounded,
             tone: _StatusTone.warning,
             title: t.bleAdapterOffTitle,
             hint: t.bleAdapterOffHint,
@@ -267,7 +267,7 @@ class _BroadcastChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.podcasts, color: AppColors.brandPrimary, size: 14),
+          Icon(Icons.radar_rounded, color: AppColors.brandPrimary, size: 14),
           const SizedBox(width: 8),
           Text(
             label,

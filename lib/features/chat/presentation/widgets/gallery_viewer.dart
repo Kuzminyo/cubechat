@@ -95,7 +95,7 @@ class _GalleryViewerState extends State<GalleryViewer> {
                   children: [
                     IconButton(
                       tooltip: t.cancel,
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                     const Spacer(),

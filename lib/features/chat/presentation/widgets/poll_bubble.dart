@@ -33,7 +33,7 @@ class PollBubble extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.poll_outlined,
+              Icon(Icons.poll_rounded,
                   size: 16, color: AppColors.brandPrimary),
               const SizedBox(width: 6),
               Text(

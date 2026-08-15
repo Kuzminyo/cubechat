@@ -10,6 +10,120 @@ const SystemUiOverlayStyle _editorOverlayStyle = SystemUiOverlayStyle(
   statusBarIconBrightness: Brightness.light,
   systemNavigationBarIconBrightness: Brightness.light,
 );
+const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
+  mainEditor: MainEditorConfigs(
+    icons: MainEditorIcons(
+      closeEditor: Icons.close_rounded,
+      doneIcon: Icons.check_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+      undoAction: Icons.undo_rounded,
+      redoAction: Icons.redo_rounded,
+      removeElementZone: Icons.delete_outline_rounded,
+    ),
+  ),
+  paintEditor: PaintEditorConfigs(
+    icons: PaintEditorIcons(
+      bottomNavBar: Icons.brush_rounded,
+      moveAndZoom: Icons.open_with_rounded,
+      changeOpacity: Icons.opacity_rounded,
+      eraser: Icons.cleaning_services_rounded,
+      lineWeight: Icons.line_weight_rounded,
+      freeStyle: Icons.edit_rounded,
+      freeStyleArrowStart: Icons.edit_rounded,
+      freeStyleArrowEnd: Icons.edit_rounded,
+      freeStyleArrowStartEnd: Icons.edit_rounded,
+      arrow: Icons.arrow_right_alt_rounded,
+      line: Icons.horizontal_rule_rounded,
+      fill: Icons.format_color_fill_rounded,
+      noFill: Icons.format_color_reset_rounded,
+      rectangle: Icons.crop_free_rounded,
+      circle: Icons.circle_rounded,
+      dashLine: Icons.power_input_rounded,
+      dashDotLine: Icons.linear_scale_rounded,
+      hexagon: Icons.hexagon_rounded,
+      polygon: Icons.pentagon_rounded,
+      pixelate: Icons.grid_on_rounded,
+      blur: Icons.blur_on_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+      undoAction: Icons.undo_rounded,
+      redoAction: Icons.redo_rounded,
+    ),
+  ),
+  textEditor: TextEditorConfigs(
+    icons: TextEditorIcons(
+      bottomNavBar: Icons.title_rounded,
+      fontScale: Icons.format_size_rounded,
+      resetFontScale: Icons.refresh_rounded,
+      backgroundMode: Icons.layers_rounded,
+      backButton: Icons.arrow_back_rounded,
+      applyChanges: Icons.check_rounded,
+    ),
+  ),
+  cropRotateEditor: CropRotateEditorConfigs(
+    icons: CropRotateEditorIcons(
+      bottomNavBar: Icons.crop_rotate_rounded,
+      rotate: Icons.rotate_90_degrees_ccw_rounded,
+      aspectRatio: Icons.crop_rounded,
+      flip: Icons.flip_rounded,
+      reset: Icons.restore_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+      undoAction: Icons.undo_rounded,
+      redoAction: Icons.redo_rounded,
+    ),
+  ),
+  tuneEditor: TuneEditorConfigs(
+    icons: TuneEditorIcons(
+      bottomNavBar: Icons.tune_rounded,
+      brightness: Icons.brightness_6_rounded,
+      contrast: Icons.contrast_rounded,
+      saturation: Icons.water_drop_rounded,
+      exposure: Icons.exposure_rounded,
+      hue: Icons.palette_rounded,
+      temperature: Icons.thermostat_rounded,
+      sharpness: Icons.shutter_speed_rounded,
+      fade: Icons.blur_off_rounded,
+      luminance: Icons.light_mode_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+      undoAction: Icons.undo_rounded,
+      redoAction: Icons.redo_rounded,
+    ),
+  ),
+  filterEditor: FilterEditorConfigs(
+    icons: FilterEditorIcons(
+      bottomNavBar: Icons.filter_alt_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+    ),
+  ),
+  blurEditor: BlurEditorConfigs(
+    icons: BlurEditorIcons(
+      bottomNavBar: Icons.blur_on_rounded,
+      applyChanges: Icons.check_rounded,
+      backButton: Icons.arrow_back_rounded,
+    ),
+  ),
+  emojiEditor: EmojiEditorConfigs(
+    icons: EmojiEditorIcons(
+      bottomNavBar: Icons.sentiment_satisfied_alt_rounded,
+    ),
+  ),
+  stickerEditor: StickerEditorConfigs(
+    icons: StickerEditorIcons(
+      bottomNavBar: Icons.image_rounded,
+    ),
+  ),
+  layerInteraction: LayerInteractionConfigs(
+    icons: LayerInteractionIcons(
+      remove: Icons.close_rounded,
+      edit: Icons.edit_rounded,
+      rotateScale: Icons.sync_rounded,
+    ),
+  ),
+);
 
 /// Open the full-screen image editor on [source] and return the edited JPEG
 /// bytes, or null if the user backed out without confirming.
@@ -56,6 +170,7 @@ Future<Uint8List?> openImageEditor(
               color: Colors.black,
               child: ProImageEditor.memory(
                 source,
+                configs: _editorConfigs,
                 callbacks: ProImageEditorCallbacks(
                   onImageEditingComplete: (bytes) async {
                     edited = bytes;
