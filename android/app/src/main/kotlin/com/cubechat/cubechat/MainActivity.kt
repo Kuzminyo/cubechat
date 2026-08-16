@@ -5,6 +5,9 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.view.WindowManager
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
+import java.io.File
 import com.crazecoder.openfile.OpenFilePlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -91,7 +94,92 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            OPEN_IN_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openIn" -> result.success(handOffFile(call.argument<String>("path")))
+                "openInText" -> result.success(
+                    handOffText(
+                        call.argument<String>("text"),
+                        call.argument<String>("subject"),
+                    ),
+                )
+                else -> result.notImplemented()
+            }
+        }
     }
+
+    /**
+     * The same, for a line of text — a contact card, a link.
+     *
+     * Same fault, same fix: without the flag the app the user picks opens
+     * inside cubechat's task. There is no file here, so no provider and no
+     * grant; only the text and where it should land.
+     */
+    private fun handOffText(text: String?, subject: String?): Boolean {
+        if (text.isNullOrEmpty()) return false
+        return try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+                if (!subject.isNullOrEmpty()) putExtra(Intent.EXTRA_SUBJECT, subject)
+            }
+            val chooser = Intent.createChooser(send, null).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Hand a file to whichever app the user picks, and *go there*.
+     *
+     * The share sheet already did the first half. What it did not do is the
+     * second: share_plus calls `activity.startActivity(chooser)` with no
+     * FLAG_ACTIVITY_NEW_TASK, and an activity launched that way joins the
+     * *calling* task. So picking Telegram put Telegram's compose screen inside
+     * cubechat's task — a second card in the recents switcher wearing
+     * cubechat's icon and showing somebody else's app, with no way back to the
+     * conversation except through it.
+     *
+     * The flag is the whole fix: with it the chooser's target lands in the task
+     * its own affinity names, which is the app the user chose.
+     *
+     * Answers false when there is nothing to send or nothing installed that
+     * will take it, so the Dart side can fall back to the share sheet rather
+     * than leaving a tap that did nothing.
+     */
+    private fun handOffFile(path: String?): Boolean {
+        if (path.isNullOrEmpty()) return false
+        return try {
+            val file = File(path)
+            if (!file.exists()) return false
+            val uri = FileProvider.getUriForFile(this, "$packageName.openin", file)
+            val extension = file.extension.lowercase()
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+                ?: "*/*"
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(send, null).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(chooser)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
 
     /**
      * Puts the `open_file` method channel back after an Activity has come and
@@ -203,6 +291,7 @@ class MainActivity : FlutterActivity() {
         const val SECURE_CHANNEL = "cubechat/secure_window"
         const val BUILD_INFO_CHANNEL = "cubechat/build_info"
         const val BLUETOOTH_POWER_CHANNEL = "cubechat/bluetooth_power"
+        const val OPEN_IN_CHANNEL = "cubechat/open_in"
         const val REQUEST_ENABLE_BLUETOOTH = 4242
     }
 }

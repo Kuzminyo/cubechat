@@ -109,6 +109,22 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!--
+             Lends a file to the app the user picked, for MainActivity's
+             open_in channel. Its own provider rather than share_plus's: that
+             one's paths cover the plugin's staging cache, and what is handed
+             off here lives in the app's media directories.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.openin"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/openin_paths" />
+        </provider>
+
         <!-- Keeps BLE mesh alive in the background (see MeshForegroundService). -->
         <service
             android:name=".MeshForegroundService"

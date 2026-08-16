@@ -3,11 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The Dart half of the iOS "Open in…" hand-off. The native half — the
-/// `UIDocumentInteractionController` that actually switches apps — only exists
-/// on a device, so what is pinned here is the contract with it: what goes over
-/// the channel, and that every way it can fail lands back on the share sheet
-/// instead of on the user.
+/// The Dart half of the "Open in…" hand-off. The native halves — iOS's
+/// `UIDocumentInteractionController` and Android's chooser with
+/// FLAG_ACTIVITY_NEW_TASK — only exist on a device, so what is pinned here is
+/// the contract with them: what goes over the channel, and that every way it
+/// can fail lands back on the share sheet instead of on the user.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -67,17 +67,29 @@ void main() {
     });
   });
 
-  test('android never asks: a share intent already opens the real app',
-      () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    var called = false;
-    messenger.setMockMethodCallHandler(OpenIn.channel, (_) async {
-      called = true;
-      return true;
+  group('on Android', () {
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+
+    test('asks too, because the sheet lands in the wrong task', () async {
+      // share_plus starts the chosen app without FLAG_ACTIVITY_NEW_TASK, so it
+      // opens *inside* cubechat's task — a recents card wearing cubechat's icon
+      // and showing somebody else's app. MainActivity's handler sets the flag;
+      // this is the call that reaches it.
+      MethodCall? seen;
+      messenger.setMockMethodCallHandler(OpenIn.channel, (call) async {
+        seen = call;
+        return true;
+      });
+
+      expect(OpenIn.isSupported, isTrue);
+      expect(await OpenIn.handOff('/tmp/log.txt', anchor: anchor), isTrue);
+      expect(seen?.method, 'openIn');
+      expect((seen!.arguments as Map)['path'], '/tmp/log.txt');
     });
 
-    expect(OpenIn.isSupported, isFalse);
-    expect(await OpenIn.handOff('/tmp/log.txt', anchor: anchor), isFalse);
-    expect(called, isFalse);
+    test('nothing installed to take it falls back to the sheet', () async {
+      messenger.setMockMethodCallHandler(OpenIn.channel, (_) async => false);
+      expect(await OpenIn.handOff('/tmp/log.txt', anchor: anchor), isFalse);
+    });
   });
 }

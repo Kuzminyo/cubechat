@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/open_in.dart';
 import '../../../core/util/share_anchor.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -106,11 +109,12 @@ class ContactCardScreen extends ConsumerWidget {
                         label: t.contactShare,
                         primary: true,
                         onTap: card.hasValue
-                            ? (buttonContext) => Share.share(
-                                  card.value!,
-                                  subject: t.contactShareSubject,
-                                  sharePositionOrigin:
-                                      shareAnchorFor(buttonContext),
+                            ? (buttonContext) => unawaited(
+                                  _shareCard(
+                                    buttonContext,
+                                    card.value!,
+                                    t.contactShareSubject,
+                                  ),
                                 )
                             : null,
                       ),
@@ -396,6 +400,18 @@ class _CardPreviewState extends State<_CardPreview> {
       ),
     );
   }
+}
+
+/// Give the card to another app, and go there.
+///
+/// The hand-off first for the reason [OpenIn] documents: on Android the share
+/// sheet starts the app the user picked inside *cubechat's* task, so it turns
+/// up in recents wearing this app's icon. The sheet stays as the fallback,
+/// which is also the whole of the iOS path.
+Future<void> _shareCard(BuildContext context, String card, String subject) async {
+  final anchor = shareAnchorFor(context);
+  if (await OpenIn.handOffText(card, subject: subject)) return;
+  await Share.share(card, subject: subject, sharePositionOrigin: anchor);
 }
 
 class _ActionButton extends StatelessWidget {
