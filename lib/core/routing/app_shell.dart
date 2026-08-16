@@ -56,7 +56,22 @@ class AppShell extends StatelessWidget {
       ),
     ];
 
-    return AuroraBackground(
+    // The system back gesture goes to Chats before it leaves the app.
+    //
+    // There was nothing here at all, so a swipe back from Contacts, Nearby, the
+    // map or the profile closed cubechat outright — on a phone where back *is*
+    // a swipe from the edge, that is the gesture people use to mean "out of
+    // this screen", and it was throwing them out of the application instead.
+    // Chats is the first branch and the one the app opens on, so it is where
+    // "back" means; from there the gesture keeps its usual meaning and the app
+    // does close.
+    return PopScope<void>(
+      canPop: shell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || shell.currentIndex == 0) return;
+        shell.goBranch(0);
+      },
+      child: AuroraBackground(
       // The backdrop leans toward whichever tab is open.
       focus: tabs.length < 2 ? 1.0 : shell.currentIndex * 2 / (tabs.length - 1),
       child: Scaffold(
@@ -116,7 +131,8 @@ class AppShell extends StatelessWidget {
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

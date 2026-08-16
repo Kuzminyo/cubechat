@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/util/open_in.dart';
 import '../../../core/util/share_anchor.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../l10n/app_localizations.dart';
@@ -16,6 +17,7 @@ import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/chat_navigation.dart';
 import '../../../core/util/media_storage.dart';
+import '../../../core/util/open_in.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
 import '../models/message.dart';
@@ -122,12 +124,24 @@ class _ChatMediaGalleryScreenState
   Future<void> _share() async {
     final path = _current?.imagePath;
     if (path == null) return;
+    final anchor = shareAnchorFor(context, key: _shareButtonKey);
+    // "Send it to Telegram" means Telegram opens, and on iOS the share sheet
+    // does not do that: it runs the chosen app's *share extension*, a window
+    // belonging to that app drawn over this one, so the phone never leaves
+    // cubechat. The hand-off does leave — it copies the file across and
+    // launches the app — and the file bubble has used it for exactly this
+    // reason since it was written; a photo went out through the sheet only
+    // because nobody had wired it up here.
+    if (OpenIn.isSupported) {
+      if (await OpenIn.handOff(path, anchor: anchor)) return;
+      if (!mounted) return;
+    }
     try {
       await Share.shareXFiles(
         [XFile(path)],
         // Required, not optional: iOS raises without a non-empty anchor, on
         // iPhone as well as iPad. See [shareAnchorFor].
-        sharePositionOrigin: shareAnchorFor(context, key: _shareButtonKey),
+        sharePositionOrigin: anchor,
       );
     } catch (e) {
       _toast('Could not share: $e', ok: false);
@@ -250,6 +264,37 @@ class _ChatMediaGalleryScreenState
                       ],
                     ),
               actions: [
+                // Saving is its own button rather than the third line of an
+                // overflow menu. Keeping a picture is the commonest thing
+                // anybody does in a full-screen viewer, and behind two taps
+                // and a menu nobody found it — the request that produced this
+                // was "let me save photos to the gallery", of a build that
+                // already could.
+                IconButton(
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          Icons.download_rounded,
+                          // Dimmed, not gone: the other side asked that this
+                          // conversation not be copied out of, and a control
+                          // that vanishes reads as a broken app rather than as
+                          // an answer.
+                          color: Colors.white
+                              .withValues(alpha: sharingRestricted ? 0.3 : 1),
+                        ),
+                  tooltip: t.chatMediaSaveToGallery,
+                  onPressed:
+                      current == null || sharingRestricted || _saving
+                          ? null
+                          : () => unawaited(_save()),
+                ),
                 if (!sharingRestricted)
                   IconButton(
                     key: _shareButtonKey,
