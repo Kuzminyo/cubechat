@@ -1363,8 +1363,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           if (ids.contains(m.id)) m,
       ];
 
+  // No text guard of its own: what counts as words is [copyableText]'s answer,
+  // and for a photo that is its caption rather than its mime type.
   bool _canCopySelected(Message message, bool restricted) =>
-      message.text.trim().isNotEmpty &&
       messageCanBeCopied(message, copyingRestricted: restricted);
 
   // No text guard of its own any more: what may be forwarded is
@@ -1398,7 +1399,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         false;
     final text = _selectedMessages(ids)
         .where((m) => _canCopySelected(m, restricted))
-        .map((m) => m.text.trim())
+        .map((m) => copyableText(m) ?? '')
         .where((value) => value.isNotEmpty)
         .join('\n\n');
     if (text.isEmpty) return;
@@ -2044,12 +2045,17 @@ class _ChatSelectionBar extends StatelessWidget {
           label: t.chatReplyAction,
           onPressed: onReply,
         ),
-      if (canCopy)
-        _SelectionActionButton(
-          icon: Icons.content_copy_rounded,
-          label: t.chatCopyAction,
-          onPressed: onCopy,
-        ),
+      // Copy and forward are always on the bar, even when the ticked messages
+      // offer them nothing — a voice note has no words to copy, a view-once
+      // photo may not leave. They dim instead of vanishing: a row of controls
+      // that changes length depending on what is ticked means the bin is under
+      // a different finger every time, and the two commonest actions on a
+      // message were the two that kept disappearing.
+      _SelectionActionButton(
+        icon: Icons.content_copy_rounded,
+        label: t.chatCopyAction,
+        onPressed: canCopy ? onCopy : null,
+      ),
       if (onPin != null)
         _SelectionActionButton(
           icon: pinned ? Icons.push_pin_rounded : Icons.push_pin_rounded,
@@ -2062,12 +2068,11 @@ class _ChatSelectionBar extends StatelessWidget {
           label: t.chatEditAction,
           onPressed: onEdit,
         ),
-      if (canForward)
-        _SelectionActionButton(
-          icon: Icons.shortcut_rounded,
-          label: t.chatForwardAction,
-          onPressed: onForward,
-        ),
+      _SelectionActionButton(
+        icon: Icons.shortcut_rounded,
+        label: t.chatForwardAction,
+        onPressed: canForward ? onForward : null,
+      ),
       _SelectionActionButton(
         icon: Icons.delete_outline_rounded,
         label: t.chatDeleteAction,
@@ -2142,7 +2147,10 @@ class _SelectionActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? AppColors.textOnGlass;
+    // Nothing to act on: still there, still readable, plainly not offered.
+    final effectiveColor = onPressed == null
+        ? (color ?? AppColors.textOnGlass).withValues(alpha: 0.3)
+        : (color ?? AppColors.textOnGlass);
     // The glyph alone. Six actions each carrying their own word is a bar that
     // scrolls sideways to show the last of them, on a strip that has room for
     // all six as icons — and every one of these glyphs (reply, copy, pin,

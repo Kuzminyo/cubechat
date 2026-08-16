@@ -53,15 +53,33 @@ import 'voice_bubble.dart';
 /// The gap between the two is deliberate: the bubble keeps moving a little
 /// after the threshold so there is visible confirmation the gesture took, and
 /// the hint icon has somewhere to finish arriving.
+/// The words in a message, or null when it has none.
+///
+/// Not [Message.text], which is only words for a text message: a photo keeps
+/// its mime type there and a sticker keeps its marker, so "copy" on a picture
+/// put `image/jpeg` on the clipboard. A photo's words are its caption, and most
+/// photos have none.
+String? copyableText(Message message) {
+  final words = switch (message.kind) {
+    MessageKind.image => message.imageCaption,
+    MessageKind.text => message.text,
+    MessageKind.audio || MessageKind.file || MessageKind.poll => null,
+  };
+  final trimmed = words?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
 bool messageCanBeCopied(
   Message message, {
   required bool copyingRestricted,
 }) =>
-    // A view-once photo is excluded even though its *caption* is text and
-    // these two are gated on text. The bytes never leave either way, but
-    // offering Copy and Forward on something the app has just promised to
-    // destroy reads as the promise not being meant.
-    !copyingRestricted && !message.viewOnce && message.text.trim().isNotEmpty;
+    // A view-once photo is excluded even though its *caption* is text. The
+    // bytes never leave either way, but offering Copy and Forward on something
+    // the app has just promised to destroy reads as the promise not being
+    // meant.
+    !copyingRestricted &&
+    !message.viewOnce &&
+    copyableText(message) != null;
 
 /// A picture can be passed on as well as a line of text.
 ///
@@ -606,7 +624,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     } else if (picked == 'reply') {
       _startReply();
     } else if (picked == 'copy') {
-      await Clipboard.setData(ClipboardData(text: widget.message.text));
+      await Clipboard.setData(
+        ClipboardData(text: copyableText(widget.message) ?? ''),
+      );
       if (!mounted) return;
       showCopiedToast(context, t.chatCopied);
     } else if (picked == 'pin' || picked == 'unpin') {
