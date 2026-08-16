@@ -318,6 +318,31 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
     super.dispose();
   }
 
+  /// Send a half-collapsed header the rest of the way.
+  ///
+  /// Only inside the collapse, and only once the list has stopped: snapping a
+  /// scroll that is still running would fight the finger, and snapping past the
+  /// collapse would drag the list back up from wherever it was read to.
+  bool _snapHeader(ScrollEndNotification note) {
+    if (note.metrics.axis != Axis.vertical) return false;
+    if (!_scrollController.hasClients) return false;
+    final offset = _scrollController.offset;
+    const span = _ChatsHeaderDelegate.searchHeight;
+    if (offset <= 0 || offset >= span) return false;
+    final target = offset > span / 2 ? span : 0.0;
+    // After this frame: a scroll-end notification arrives mid-layout, and
+    // animating from inside it re-enters the scroll machinery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    });
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -374,7 +399,16 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
         // is meant to be the top of the screen.
         top: false,
         bottom: false,
-        child: CustomScrollView(
+        child: NotificationListener<ScrollEndNotification>(
+          // The search is either a field or a button, never half of each.
+          //
+          // Left to itself the header keeps whatever fraction of the collapse
+          // the finger stopped on: a scroll of thirty points parks the search
+          // mid-morph, a lozenge sitting across the subtitle. So when the
+          // scroll settles anywhere inside the collapse, it is sent the rest of
+          // the way to whichever end is nearer.
+          onNotification: _snapHeader,
+          child: CustomScrollView(
           controller: _scrollController,
           key: const ValueKey('chats-scroll-layer'),
           slivers: [
@@ -384,196 +418,197 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
             // in the scroll view — rather than stacking it over one — is what
             // keeps the collapse in step with the finger instead of chasing it
             // through a scroll listener.
-            SliverPersistentHeader(
-              // Keyed, both of them. The folder header is dropped from the
-              // list while chats are being picked out, and without a key
-              // Flutter matches the surviving header against the *other* one's
-              // element — the title's 84 points of layout arriving in the
-              // folder row's 64 points of paint, which trips the sliver
-              // geometry assert on the frame the selection starts.
-              key: const ValueKey('chats-title-header'),
-              pinned: true,
-              delegate: _ChatsHeaderDelegate(
-                topInset: MediaQuery.paddingOf(context).top,
-                selecting: selecting,
-                subtitle: t.chatsSubtitle,
-                searchHint: t.chatsSearchHint,
-                onWipe: () => _confirmWipe(context, ref, t),
-                onSearch: () => context.push('/search'),
-                onAddContact: () => context.push('/contact'),
-                onNewChannel: () => showNewChannelDialog(context, ref, t),
-                selectionBar: _ChatSelectionBar(
-                  key: const ValueKey('selection'),
-                  selected: [
-                    for (final chat in filtered)
-                      if (selection.contains(chat.id)) chat,
-                  ],
-                ),
-              ),
-            ),
-            // Only once there is something in it. An empty folder row would be
-            // a permanent strip of chrome between the title and the first
-            // conversation, on the screen that opens the app.
-            if (!selecting && (folders.isNotEmpty || userFolders.isNotEmpty))
               SliverPersistentHeader(
-                key: const ValueKey('chats-folder-header'),
+                // Keyed, both of them. The folder header is dropped from the
+                // list while chats are being picked out, and without a key
+                // Flutter matches the surviving header against the *other* one's
+                // element — the title's 84 points of layout arriving in the
+                // folder row's 64 points of paint, which trips the sliver
+                // geometry assert on the frame the selection starts.
+                key: const ValueKey('chats-title-header'),
                 pinned: true,
-                delegate: _PinnedFolderFilterHeader(
-                  child: _FolderFilterIsland(
-                    folders: folders,
-                    userFolders: userFolders,
-                    selectedFolder: folder,
-                    selectedUserFolder: userFolder,
-                    onAll: () {
-                      ref.read(selectedFolderProvider.notifier).state = null;
-                      ref.read(selectedUserFolderProvider.notifier).state = null;
-                    },
-                    onBuiltIn: (f) {
-                      ref.read(selectedUserFolderProvider.notifier).state = null;
-                      ref.read(selectedFolderProvider.notifier).state = f;
-                    },
-                    onUserFolder: (id) {
-                      ref.read(selectedFolderProvider.notifier).state = null;
-                      ref.read(selectedUserFolderProvider.notifier).state = id;
-                    },
+                delegate: _ChatsHeaderDelegate(
+                  topInset: MediaQuery.paddingOf(context).top,
+                  selecting: selecting,
+                  subtitle: t.chatsSubtitle,
+                  searchHint: t.chatsSearchHint,
+                  onWipe: () => _confirmWipe(context, ref, t),
+                  onSearch: () => context.push('/search'),
+                  onAddContact: () => context.push('/contact'),
+                  onNewChannel: () => showNewChannelDialog(context, ref, t),
+                  selectionBar: _ChatSelectionBar(
+                    key: const ValueKey('selection'),
+                    selected: [
+                      for (final chat in filtered)
+                        if (selection.contains(chat.id)) chat,
+                    ],
                   ),
                 ),
               ),
-            if (filtered.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _EmptyState(
-                  title: t.chatsEmptyTitle,
-                  hint: t.chatsEmptyHint,
+              // Only once there is something in it. An empty folder row would be
+              // a permanent strip of chrome between the title and the first
+              // conversation, on the screen that opens the app.
+              if (!selecting && (folders.isNotEmpty || userFolders.isNotEmpty))
+                SliverPersistentHeader(
+                  key: const ValueKey('chats-folder-header'),
+                  pinned: true,
+                  delegate: _PinnedFolderFilterHeader(
+                    child: _FolderFilterIsland(
+                      folders: folders,
+                      userFolders: userFolders,
+                      selectedFolder: folder,
+                      selectedUserFolder: userFolder,
+                      onAll: () {
+                        ref.read(selectedFolderProvider.notifier).state = null;
+                        ref.read(selectedUserFolderProvider.notifier).state = null;
+                      },
+                      onBuiltIn: (f) {
+                        ref.read(selectedUserFolderProvider.notifier).state = null;
+                        ref.read(selectedFolderProvider.notifier).state = f;
+                      },
+                      onUserFolder: (id) {
+                        ref.read(selectedFolderProvider.notifier).state = null;
+                        ref.read(selectedUserFolderProvider.notifier).state = id;
+                      },
+                    ),
+                  ),
                 ),
-              )
-            else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-              sliver: AppearOnce(
-                builder: (context, animate) => SliverReorderableList(
-                  itemCount: filtered.length,
-                  onReorderStart: (_) =>
-                      HapticFeedback.selectionClick(),
-                  // A click on the way down as well as on the way up: the drop
-                  // is the half that changes something, and without it the row
-                  // simply stops moving.
-                  onReorderEnd: (_) => HapticFeedback.selectionClick(),
-                  // The dragged row lifts instead of gaining the Material
-                  // elevation the default draws, which on these glass cards
-                  // arrives as a grey rectangle under the finger. The shadow
-                  // grows with the lift so the row reads as picked up rather
-                  // than as suddenly larger.
-                  proxyDecorator: (child, index, animation) =>
-                      AnimatedBuilder(
-                    animation: animation,
-                    child: child,
-                    builder: (context, inner) {
-                      final t = Curves.easeOutCubic
-                          .transform(animation.value);
-                      return Transform.scale(
-                        scale: 1 + 0.04 * t,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black
-                                    .withValues(alpha: 0.38 * t),
-                                blurRadius: 24 * t,
-                                offset: Offset(0, 10 * t),
-                                spreadRadius: -8 * t,
-                              ),
-                            ],
+              if (filtered.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmptyState(
+                    title: t.chatsEmptyTitle,
+                    hint: t.chatsEmptyHint,
+                  ),
+                )
+              else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+                sliver: AppearOnce(
+                  builder: (context, animate) => SliverReorderableList(
+                    itemCount: filtered.length,
+                    onReorderStart: (_) =>
+                        HapticFeedback.selectionClick(),
+                    // A click on the way down as well as on the way up: the drop
+                    // is the half that changes something, and without it the row
+                    // simply stops moving.
+                    onReorderEnd: (_) => HapticFeedback.selectionClick(),
+                    // The dragged row lifts instead of gaining the Material
+                    // elevation the default draws, which on these glass cards
+                    // arrives as a grey rectangle under the finger. The shadow
+                    // grows with the lift so the row reads as picked up rather
+                    // than as suddenly larger.
+                    proxyDecorator: (child, index, animation) =>
+                        AnimatedBuilder(
+                      animation: animation,
+                      child: child,
+                      builder: (context, inner) {
+                        final t = Curves.easeOutCubic
+                            .transform(animation.value);
+                        return Transform.scale(
+                          scale: 1 + 0.04 * t,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black
+                                      .withValues(alpha: 0.38 * t),
+                                  blurRadius: 24 * t,
+                                  offset: Offset(0, 10 * t),
+                                  spreadRadius: -8 * t,
+                                ),
+                              ],
+                            ),
+                            child: inner,
                           ),
-                          child: inner,
+                        );
+                      },
+                    ),
+                    // Only the pinned block moves, and only within itself. A pin
+                    // is the one row whose position somebody chose; everything
+                    // below it is sorted by when it was last written in, and a
+                    // list you can drag rows around in that then re-sorts itself
+                    // is a list that ignores you.
+                    onReorder: (oldIndex, newIndex) {
+                      final pins = [
+                        for (final chat in filtered)
+                          if (chat.isPinned) chat.id,
+                      ];
+                      if (oldIndex >= pins.length) return;
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final target = newIndex.clamp(0, pins.length - 1);
+                      if (target == oldIndex) return;
+                      pins.insert(target, pins.removeAt(oldIndex));
+                      ref
+                          .read(pinnedChatsControllerProvider.notifier)
+                          .reorderVisible(pins);
+                    },
+                    itemBuilder: (_, i) {
+                      final chat = filtered[i];
+                      final picked = selection.contains(chat.id);
+                      return Padding(
+                        key: ValueKey(chat.id),
+                        // The gap rides with the row: a reorderable list has no
+                        // separators to keep it out of the way of a drag.
+                        padding: EdgeInsets.only(
+                          bottom: i == filtered.length - 1 ? 0 : 8,
+                        ),
+                        child: AppearAnimation(
+                          enabled: animate,
+                          delay: AppearAnimation.stagger(i),
+                          child: FloatingGlass(
+                            blur: false,
+                            borderRadius: 18,
+                            // While anything is selected, a tap picks rather
+                            // than opens — the same rule every list of this
+                            // shape uses, and the only one that lets somebody
+                            // select a second chat without the first one's chat
+                            // opening on them.
+                            onTap: () {
+                              if (selection.isEmpty) {
+                                context.push(routeForChat(chat));
+                                return;
+                              }
+                              ref
+                                  .read(chatSelectionProvider.notifier)
+                                  .toggle(chat.id);
+                            },
+                            // Holding a row picks it out, and nothing else. A
+                            // menu was tried here and taken back out: the hold is
+                            // what puts the list into the mode where a pinned row
+                            // grows its drag handle, so a popup on top of it took
+                            // away the way to reorder pins. Every action lives in
+                            // the bar the selection opens — including deleting
+                            // the chat and deleting the person.
+                            onLongPressAt: (_) => ref
+                                .read(chatSelectionProvider.notifier)
+                                .toggle(chat.id),
+                            child: ChatTile(
+                              chat: chat,
+                              selected: picked,
+                              // The grip appears when the list is held — the
+                              // same gesture that starts a selection — and only
+                              // on the rows that can move. Permanently visible it
+                              // was a control on every pinned row of a list
+                              // nobody is currently rearranging; and dragging is
+                              // gated on it, so outside that mode a pinned row
+                              // scrolls like any other instead of setting off a
+                              // reorder under a thumb that meant to scroll.
+                              reorderIndex:
+                                  chat.isPinned && selection.isNotEmpty
+                                      ? i
+                                      : null,
+                            ),
+                          ),
                         ),
                       );
                     },
                   ),
-                  // Only the pinned block moves, and only within itself. A pin
-                  // is the one row whose position somebody chose; everything
-                  // below it is sorted by when it was last written in, and a
-                  // list you can drag rows around in that then re-sorts itself
-                  // is a list that ignores you.
-                  onReorder: (oldIndex, newIndex) {
-                    final pins = [
-                      for (final chat in filtered)
-                        if (chat.isPinned) chat.id,
-                    ];
-                    if (oldIndex >= pins.length) return;
-                    if (newIndex > oldIndex) newIndex -= 1;
-                    final target = newIndex.clamp(0, pins.length - 1);
-                    if (target == oldIndex) return;
-                    pins.insert(target, pins.removeAt(oldIndex));
-                    ref
-                        .read(pinnedChatsControllerProvider.notifier)
-                        .reorderVisible(pins);
-                  },
-                  itemBuilder: (_, i) {
-                    final chat = filtered[i];
-                    final picked = selection.contains(chat.id);
-                    return Padding(
-                      key: ValueKey(chat.id),
-                      // The gap rides with the row: a reorderable list has no
-                      // separators to keep it out of the way of a drag.
-                      padding: EdgeInsets.only(
-                        bottom: i == filtered.length - 1 ? 0 : 8,
-                      ),
-                      child: AppearAnimation(
-                        enabled: animate,
-                        delay: AppearAnimation.stagger(i),
-                        child: FloatingGlass(
-                          blur: false,
-                          borderRadius: 18,
-                          // While anything is selected, a tap picks rather
-                          // than opens — the same rule every list of this
-                          // shape uses, and the only one that lets somebody
-                          // select a second chat without the first one's chat
-                          // opening on them.
-                          onTap: () {
-                            if (selection.isEmpty) {
-                              context.push(routeForChat(chat));
-                              return;
-                            }
-                            ref
-                                .read(chatSelectionProvider.notifier)
-                                .toggle(chat.id);
-                          },
-                          // Holding a row picks it out, and nothing else. A
-                          // menu was tried here and taken back out: the hold is
-                          // what puts the list into the mode where a pinned row
-                          // grows its drag handle, so a popup on top of it took
-                          // away the way to reorder pins. Every action lives in
-                          // the bar the selection opens — including deleting
-                          // the chat and deleting the person.
-                          onLongPressAt: (_) => ref
-                              .read(chatSelectionProvider.notifier)
-                              .toggle(chat.id),
-                          child: ChatTile(
-                            chat: chat,
-                            selected: picked,
-                            // The grip appears when the list is held — the
-                            // same gesture that starts a selection — and only
-                            // on the rows that can move. Permanently visible it
-                            // was a control on every pinned row of a list
-                            // nobody is currently rearranging; and dragging is
-                            // gated on it, so outside that mode a pinned row
-                            // scrolls like any other instead of setting off a
-                            // reorder under a thumb that meant to scroll.
-                            reorderIndex:
-                                chat.isPinned && selection.isNotEmpty
-                                    ? i
-                                    : null,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -933,7 +968,29 @@ class _PinnedFolderFilterHeader extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Align(alignment: Alignment.topCenter, child: child);
+    // Carries the header's own colour down behind it, and lets it go at the
+    // bottom edge. Pinned directly under the title, the folder row would
+    // otherwise sit on a strip of bare aurora between two surfaces that are
+    // the palette's — a seam across the top of the screen, which is what
+    // "match the colours" was about.
+    return SizedBox(
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.bgTop.withValues(alpha: 0.88),
+              AppColors.bgTop.withValues(alpha: 0.55),
+              AppColors.bgTop.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.6, 1],
+          ),
+        ),
+        child: Align(alignment: Alignment.topCenter, child: child),
+      ),
+    );
   }
 
   @override
@@ -1234,30 +1291,76 @@ class _FolderFilterIsland extends StatelessWidget {
           padding: EdgeInsets.zero,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(25),
-            // Each tab is as wide as its own name.
-            //
-            // They used to be forced to a common width — every tab stretched to
-            // an equal share when they fitted, and pinned to 92 points when they
-            // did not. Names are not the same length, so that put a wide gap
-            // around "Усі" and squeezed "Мої бляди", which is the unevenness
-            // that was reported: the *pills* were even, and therefore the words
-            // in them were not. Sized to their text with one padding, the gaps
-            // between them are equal instead.
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final tab in tabs) _FolderIslandTab(spec: tab),
-                ],
-              ),
+            child: LayoutBuilder(
+              builder: (context, box) {
+                // A few tabs share the bar; many of them scroll.
+                //
+                // Two names cannot be sized to their text and also fill a bar
+                // — one ends up hugging the left edge with a hand's width of
+                // nothing beside it, which is what "Усі" and one folder looked
+                // like. So: measure what the names actually want, and if the
+                // bar can hold them, hand each an equal share of it. Past that
+                // they keep their own widths and the row scrolls, because
+                // squeezing eight folders into equal slivers spells none of
+                // them.
+                const sidePad = 5.0;
+                final available = box.maxWidth - sidePad * 2;
+                final wanted = [
+                  for (final tab in tabs) _tabWidth(context, tab.label),
+                ];
+                final total = wanted.fold<double>(0, (a, b) => a + b);
+                final share = total <= available;
+
+                final row = Row(
+                  mainAxisSize: share ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < tabs.length; i++)
+                      if (share)
+                        Expanded(child: _FolderIslandTab(spec: tabs[i]))
+                      else
+                        SizedBox(
+                          width: wanted[i],
+                          child: _FolderIslandTab(spec: tabs[i]),
+                        ),
+                  ],
+                );
+
+                if (share) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: sidePad),
+                    child: row,
+                  );
+                }
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: sidePad),
+                  child: row,
+                );
+              },
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// How much room a tab wants: its name, plus the padding either side of it.
+  ///
+  /// Measured rather than guessed, because the guess is what made these uneven
+  /// in the first place — a fixed 92 points is a moat around a short name and a
+  /// squeeze on a long one.
+  static double _tabWidth(BuildContext context, String label) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+      ),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width + 38;
   }
 }
 

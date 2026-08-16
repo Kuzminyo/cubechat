@@ -63,14 +63,30 @@ bool messageCanBeCopied(
     // destroy reads as the promise not being meant.
     !copyingRestricted && !message.viewOnce && message.text.trim().isNotEmpty;
 
+/// A picture can be passed on as well as a line of text.
+///
+/// It could not before, and the reason was an implementation detail wearing the
+/// clothes of a rule: forwarding re-sends under our own identity, the text path
+/// had a re-send and the media path did not, so "forward" quietly meant "if it
+/// is words". Sending a photo on is the commonest forward there is — the bytes
+/// are already on this phone, and [forwardMessageTo] reads them and sends them
+/// the way the gallery does.
+///
+/// View-once is still excluded, for the reason above: the promise is that it
+/// exists once.
 bool messageCanBeForwarded(
   Message message, {
   required bool copyingRestricted,
-}) =>
-    messageCanBeCopied(
-      message,
-      copyingRestricted: copyingRestricted,
-    );
+}) {
+  if (copyingRestricted || message.viewOnce) return false;
+  return switch (message.kind) {
+    MessageKind.image => MediaPaths.existsOrNull(message.imagePath),
+    MessageKind.text => message.text.trim().isNotEmpty,
+    // A voice note, a file and a poll are each their own send with their own
+    // arguments; nothing is stopping them but nobody has asked yet.
+    MessageKind.audio || MessageKind.file || MessageKind.poll => false,
+  };
+}
 
 const double _swipeTrigger = 56;
 const double _swipeMax = 76;
@@ -186,6 +202,33 @@ Future<void> forwardTextTo(WidgetRef ref, Chat target, String text) {
   return target.isChannel
       ? messaging.sendChannelText(target.id, text)
       : messaging.sendText(target.id, text);
+}
+
+/// Pass [message] on to [target], whatever it is made of.
+///
+/// A fresh send under our own identity, not a relay of the original frame:
+/// the original is encrypted to a session the new chat has no key for, so it
+/// could not be passed along even if we wanted it to be. For a picture that
+/// means reading the bytes back off this phone and sending them the way the
+/// gallery does — caption and sticker marker included, so a forwarded sticker
+/// arrives as a sticker rather than as a photo of one.
+Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async {
+  if (message.kind == MessageKind.image) {
+    final path = MediaPaths.repairOrNull(message.imagePath);
+    if (path == null || !MediaPaths.exists(path)) return;
+    final bytes = await File(path).readAsBytes();
+    await ref.read(messagingServiceProvider).sendImage(
+          target.id,
+          bytes: bytes,
+          mime: message.imageMime ?? 'image/jpeg',
+          cachedPath: path,
+          caption: message.isSticker
+              ? Message.stickerMarkerFor(message.stickerEmoji)
+              : message.imageCaption,
+        );
+    return;
+  }
+  await forwardTextTo(ref, target, message.text);
 }
 
 class MessageBubble extends ConsumerStatefulWidget {
@@ -761,7 +804,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final chosen = await pickForwardTarget(context, ref, widget.chatId);
     if (chosen == null || !mounted) return;
     final t = AppLocalizations.of(context);
-    await forwardTextTo(ref, chosen, widget.message.text);
+    await forwardMessageTo(ref, chosen, widget.message);
     if (!mounted) return;
     showGlassToast(
       context,

@@ -1338,7 +1338,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           m,
     ];
     if (picked.isEmpty) {
-      // Everything ticked was a photo, a voice note, or a view-once — say so
+      // Everything ticked was a voice note, a file, or a view-once — say so
       // rather than opening a picker that could only disappoint.
       showGlassToast(context, t.chatForwardNothing, tone: ToastTone.danger);
       return;
@@ -1346,7 +1346,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final target = await pickForwardTarget(context, ref, widget.chatId);
     if (target == null || !mounted) return;
     for (final m in picked) {
-      await forwardTextTo(ref, target, m.text);
+      await forwardMessageTo(ref, target, m);
     }
     if (!mounted) return;
     ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
@@ -1367,8 +1367,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       message.text.trim().isNotEmpty &&
       messageCanBeCopied(message, copyingRestricted: restricted);
 
+  // No text guard of its own any more: what may be forwarded is
+  // [messageCanBeForwarded]'s answer, and it now says yes to a picture.
   bool _canForwardSelected(Message message, bool restricted) =>
-      message.text.trim().isNotEmpty &&
       messageCanBeForwarded(message, copyingRestricted: restricted);
 
   bool _canEditSelected(Message message) =>
@@ -2107,10 +2108,15 @@ class _ChatSelectionBar extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 8),
               color: AppColors.glass(0.18),
             ),
+            // Pushed to the trailing edge. Left-aligned they sat in a huddle
+            // beside the count with the rest of the bar empty, which reads as
+            // a row that ran out rather than as a set of controls; against the
+            // right edge they are also where the thumb already is.
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
+                reverse: true,
                 child: Row(children: actions),
               ),
             ),
