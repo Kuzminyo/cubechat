@@ -2137,29 +2137,22 @@ class _SelectionActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveColor = color ?? AppColors.textOnGlass;
+    // The glyph alone. Six actions each carrying their own word is a bar that
+    // scrolls sideways to show the last of them, on a strip that has room for
+    // all six as icons — and every one of these glyphs (reply, copy, pin,
+    // edit, forward, bin) is the same one every messenger uses. The word is
+    // still there for anyone who holds the button, and for a screen reader.
     return Tooltip(
       message: label,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: effectiveColor),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: effectiveColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+      child: Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Icon(icon, size: 21, color: effectiveColor),
           ),
         ),
       ),

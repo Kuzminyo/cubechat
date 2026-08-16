@@ -92,6 +92,12 @@ void main() {
     expect(find.text('All'), findsOneWidget);
     expect(find.text('Channels'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
+    expect(
+      find.byIcon(Icons.add_rounded),
+      findsNothing,
+      reason:
+          'folder management stays in the overflow menu, not inside the island',
+    );
 
     await tester.tap(find.text('Channels'));
     await beat(tester);
@@ -102,6 +108,68 @@ void main() {
     await tester.tap(find.text('All'));
     await beat(tester);
     expect(find.text('Alice'), findsOneWidget);
+  });
+
+  testWidgets('the title stays put while the search collapses into it',
+      (tester) async {
+    final container = await openChats(tester);
+    final peers = container.read(knownPeersControllerProvider.notifier);
+    for (var i = 0; i < 12; i++) {
+      final byte = (i + 1).toRadixString(16).padLeft(2, '0');
+      peers.upsert(
+        pubkeyHex: List.filled(32, byte).join(),
+        displayName: 'Friend $i',
+        signPublicKey: Uint8List(32),
+      );
+    }
+    await beat(tester);
+
+    await container
+        .read(chatFoldersControllerProvider.notifier)
+        .toggle(ChatFolder.channels);
+    await beat(tester);
+
+    final header = find.byKey(const ValueKey('chats-top-layer'));
+    final searchIcon = find.byKey(const ValueKey('chats-header-search-button'));
+    final folder = find.byKey(const ValueKey('chats-folder-island'));
+    final scroll = find.byKey(const ValueKey('chats-scroll-layer'));
+
+    expect(header, findsOneWidget);
+    expect(searchIcon, findsOneWidget);
+    expect(folder, findsOneWidget);
+    expect(find.text('CubeChat'), findsOneWidget);
+
+    // At rest the search is a field: full width, with its hint showing.
+    final restWidth = tester.getSize(find.ancestor(
+      of: searchIcon,
+      matching: find.byType(InkWell),
+    ).first).width;
+    expect(restWidth, greaterThan(200));
+    expect(find.text('Search chats…'), findsOneWidget);
+
+    final headerTop = tester.getTopLeft(header).dy;
+
+    await tester.drag(scroll, const Offset(0, -120));
+    await beat(tester);
+
+    // The title layer has not moved, and the folder island is pinned directly
+    // under it rather than scrolling away with the rows.
+    expect(tester.getTopLeft(header).dy, headerTop);
+    expect(
+      tester.getTopLeft(folder).dy,
+      closeTo(tester.getBottomLeft(header).dy, 1),
+      reason: 'the folder island pins under the title layer',
+    );
+
+    // And the field has become a button: same widget, a fraction of the width,
+    // with the hint gone.
+    final collapsedWidth = tester.getSize(find.ancestor(
+      of: searchIcon,
+      matching: find.byType(InkWell),
+    ).first).width;
+    expect(collapsedWidth, lessThan(60));
+    expect(searchIcon.hitTestable(), findsOneWidget);
+    expect(find.text('Search chats…'), findsNothing);
   });
 
   testWidgets('switching a folder off releases the list it was filtering',
@@ -130,8 +198,11 @@ void main() {
       (tester) async {
     await openChats(tester);
     expect(find.byType(ChatsListScreen), findsOneWidget);
-    expect(find.byType(ContactsScreen), findsNothing,
-        reason: 'a tab nobody is looking at is parked, not drawn');
+    expect(
+      find.byType(ContactsScreen),
+      findsNothing,
+      reason: 'a tab nobody is looking at is parked, not drawn',
+    );
 
     // Dragging, not flicking: the point of the strip is that the neighbour is
     // on screen *while the finger is down*, at the distance the finger put it.
@@ -160,8 +231,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ContactsScreen), findsOneWidget);
-    expect(find.byType(ChatsListScreen), findsNothing,
-        reason: 'and the one left behind parks again');
+    expect(
+      find.byType(ChatsListScreen),
+      findsNothing,
+      reason: 'and the one left behind parks again',
+    );
   });
 
   testWidgets('a flick sideways decides on its own, and comes back',

@@ -82,7 +82,7 @@ void main() {
 
     // Open the first group — the point of the redesign is that its rows appear
     // inside the same pane rather than as more slabs.
-    await tester.tap(find.byIcon(Icons.podcasts_rounded));
+    await tester.tap(find.byIcon(Icons.radar_rounded).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 

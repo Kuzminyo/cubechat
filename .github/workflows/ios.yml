@@ -1,16 +1,21 @@
-name: iOS build (unsigned IPA for sideloading)
+name: iOS CI
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     name: Analyze and test
+    # Linux, not macOS. Analyze and test touch no Apple toolchain, and a macOS
+    # runner costs ten times a Linux one per minute and starts slower — paid on
+    # every push for nothing.
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +38,7 @@ jobs:
       - name: Analyze
         run: |
           set -o pipefail
-          (flutter analyze lib --no-fatal-infos --no-fatal-warnings | tee analyze.log) || true
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings | tee analyze.log
           if grep -qE '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log; then
             echo "::error::flutter analyze reported errors or warnings"
             grep -E '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log
@@ -47,6 +52,8 @@ jobs:
     name: Build unsigned IPA
     needs: verify
     runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -78,6 +85,13 @@ jobs:
 
       - name: Pre-cache iOS artifacts
         run: flutter precache --ios
+
+      - name: Sanity check iOS project files
+        run: |
+          set -e
+          test -f ios/Runner.xcworkspace/contents.xcworkspacedata
+          test -f ios/Runner.xcodeproj/project.pbxproj
+          test -f ios/Runner/Info.plist
 
       # Without this the IPA ships with no Maps key at all: MapsKeys.xcconfig
       # is gitignored, so the placeholder in Info.plist stays literal,
@@ -154,6 +168,7 @@ jobs:
           ls -lh cubechat-unsigned.ipa
 
       - name: Publish IPA to rolling prerelease
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ipa-latest
@@ -185,10 +200,14 @@ jobs:
             echo ""
             echo "**Commit:** \`${{ github.sha }}\`"
             echo ""
-            echo "**Download:** \`${{ github.server_url }}/${{ github.repository }}/releases/tag/ipa-latest\`"
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              echo "**Download:** \`${{ github.server_url }}/${{ github.repository }}/releases/tag/ipa-latest\`"
+            else
+              echo "**Download:** workflow artifact \`cubechat-ios-unsigned-${{ github.sha }}\`"
+            fi
             echo ""
             echo "### Install on iPhone"
-            echo "1. Download \`cubechat-unsigned.ipa\` from the release above"
+            echo "1. Download \`cubechat-unsigned.ipa\` from the release or workflow artifact above"
             echo "2. Open Sideloadly or AltStore"
             echo "3. Sideload the IPA with your Apple ID"
             echo "4. Trust the profile in iPhone Settings if needed"
