@@ -21,7 +21,9 @@ import '../../../core/util/audio_trimmer.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/location_service.dart';
 import '../../../core/util/media_storage.dart';
+import '../../../core/transport/shared_contact.dart';
 import '../../../core/transport/shared_location.dart';
+import '../../map/data/map_friend_link.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
@@ -123,18 +125,62 @@ ChatRoute resolveChatRoute({
   return (route: fallback, hops: null);
 }
 
+/// The words a search may look inside.
+///
+/// Not [Message.text], which is only words for a text message. A photo keeps
+/// its mime type there, a voice note keeps `audio/aac`, a sticker keeps its
+/// marker, and a shared contact or map pin keeps a base64 blob — so a search
+/// for a single letter matched every photo in the conversation ("image/jpeg"
+/// holds a, e, g, i, m) and every card ever swapped, and landed the reader on
+/// a message the letter is plainly not in. That was the report, and it was
+/// right: those strings are plumbing, not the message.
+///
+/// A sticker answers with the emoji it was filed under, which is the only name
+/// it has and the only thing anybody could search it by.
+String searchableMessageText(Message message) {
+  if (message.isSticker) return message.stickerEmoji ?? '';
+  final parts = <String>[
+    switch (message.kind) {
+      // The caption, never the mime type.
+      MessageKind.image => message.imageCaption ?? '',
+      MessageKind.text => _plainTextOrNothing(message.text),
+      // The question is the message.
+      MessageKind.poll => message.text,
+      MessageKind.audio => '',
+      MessageKind.file => '',
+    },
+    if (message.fileName != null) message.fileName!,
+  ];
+  return parts.where((part) => part.isNotEmpty).join(' ');
+}
+
+/// Text that is a payload rather than a sentence is not searchable either.
+///
+/// A contact card and a map pin travel as text — see [SharedContact] and
+/// [MapFriendLink] — and what they carry is base64, which contains every
+/// letter of the alphabet and belongs to none of them.
+String _plainTextOrNothing(String text) {
+  final trimmed = text.trim();
+  if (trimmed.startsWith('cubechat:')) return '';
+  if (SharedContact.tryParse(trimmed) != null) return '';
+  if (MapFriendLink.tryParse(trimmed) != null) return '';
+  if (SharedLocation.tryParse(trimmed) != null) return '';
+  return text;
+}
+
 List<Message> messagesMatchingQuery(List<Message> messages, String query) {
   final needle = _normalizeMessageSearchText(query);
   if (needle.isEmpty) return const <Message>[];
   final terms = needle.split(' ').where((part) => part.isNotEmpty).toList();
   return messages.where((message) {
     final searchable = <String>[
-      message.text,
-      if (message.fileName != null) message.fileName!,
+      searchableMessageText(message),
       if (message.authorName != null) message.authorName!,
     ];
     return searchable.any((value) {
+      if (value.isEmpty) return false;
       final haystack = _normalizeMessageSearchText(value);
+      if (haystack.isEmpty) return false;
       return haystack.contains(needle) ||
           terms.every((term) => haystack.contains(term));
     });
@@ -1194,7 +1240,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (matches.isEmpty || !mounted) return;
     final index =
         _searchIndex >= matches.length ? matches.length - 1 : _searchIndex;
-    await _jumpToMessageId(matches[index].id, _searchResultKey);
+    // Through [_reachable], the same as a pin. A photo folded into the album
+    // above it draws nothing at all — no height and no key for the scroll to
+    // finish against — so asking the list to land on one sends the walk
+    // estimating its way around the conversation until it gives up wherever it
+    // happens to be. That is the other half of "search shows me the wrong
+    // message", and pins were taught it a while ago.
+    await _jumpToMessageId(_reachable(matches[index].id), _searchResultKey);
   }
 
   /// Scroll until [messageId]'s bubble exists, then land on it precisely.

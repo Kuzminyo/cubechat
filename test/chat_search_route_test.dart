@@ -7,6 +7,7 @@ Message _message({
   required String text,
   String? fileName,
   String? authorName,
+  MessageKind kind = MessageKind.text,
 }) =>
     Message(
       id: id,
@@ -14,6 +15,7 @@ Message _message({
       text: text,
       sentAt: DateTime(2026),
       isMine: false,
+      kind: kind,
       fileName: fileName,
       authorName: authorName,
     );
@@ -53,6 +55,53 @@ void main() {
     expect(messagesMatchingQuery(messages, 'привит семен').single.id, 'city');
     expect(messagesMatchingQuery(messages, 'киева').single.id, 'city');
   });
+  test('conversation search never matches the plumbing inside a message', () {
+    // What "one letter came back with messages it is not in" was made of: a
+    // photo keeps its mime type in `text`, a voice note keeps `audio/aac`, a
+    // sticker keeps its marker, and a shared card keeps base64 — between them
+    // they hold most of the alphabet.
+    final messages = [
+      _message(id: 'photo', text: 'image/jpeg', kind: MessageKind.image),
+      _message(id: 'voice', text: 'audio/aac', kind: MessageKind.audio),
+      _message(
+        id: 'sticker',
+        text: Message.stickerMarkerFor('🔥'),
+        kind: MessageKind.image,
+      ),
+      _message(id: 'card', text: 'cubechat:contact:v1:eyJpZCI6IngifQ'),
+      _message(id: 'words', text: 'a message with words in it'),
+    ];
+
+    for (final letter in ['a', 'e', 'g', 'i', 'm', 'j', 'x', 'v', 'c']) {
+      final ids = messagesMatchingQuery(messages, letter).map((m) => m.id);
+      expect(
+        ids.where((id) => id != 'words'),
+        isEmpty,
+        reason: '"$letter" matched plumbing: ${ids.toList()}',
+      );
+    }
+  });
+
+  test('a caption is searchable, and a sticker by its emoji', () {
+    final messages = [
+      _message(
+        id: 'captioned',
+        text: 'on the roof at sunset',
+        kind: MessageKind.image,
+      ),
+      _message(
+        id: 'sticker',
+        text: Message.stickerMarkerFor('🔥'),
+        kind: MessageKind.image,
+      ),
+      _message(id: 'poll', text: 'Lunch at one?', kind: MessageKind.poll),
+    ];
+
+    expect(messagesMatchingQuery(messages, 'sunset').single.id, 'captioned');
+    expect(messagesMatchingQuery(messages, '🔥').single.id, 'sticker');
+    expect(messagesMatchingQuery(messages, 'lunch').single.id, 'poll');
+  });
+
   test('route priority follows the actual send order', () {
     expect(
       resolveChatRoute(
