@@ -2029,6 +2029,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get customizeSwipeNone => 'Нічого';
 
   @override
+  String get customizeHighRefresh => 'Повна частота оновлення';
+
+  @override
+  String get customizeHighRefreshHint =>
+      'Плавніше, і телефон малює вдвічі більше кадрів. Вимкніть, якщо він гріється — вигляд застосунку не змінюється, лише те, як часто його перемальовують.';
+
+  @override
   String get customizeQuickReaction => 'Реакція подвійним тапом';
 
   @override

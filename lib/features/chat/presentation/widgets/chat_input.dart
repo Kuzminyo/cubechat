@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/theme/glass.dart';
-import '../../../../core/util/ui_activity.dart';
 import 'emoji_sticker_panel.dart';
 
 /// The canonical smoked-glass texture for the message composer island.
@@ -48,20 +47,21 @@ class MessageIslandGlass extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: radius,
-          // Surface beside the content, blur dropped while anything is
-          // scrolling — the same arrangement and the same reason as [BarGlass]
-          // and [FloatingGlass]. The composer is on screen for the whole life
-          // of a conversation and sits directly over the list being dragged
-          // past it, so it re-snapshots and re-blurs on every frame of every
-          // scroll. That is the most-paid-for blur in the app.
+          // Surface beside the content rather than wrapping it, so the tree
+          // does not change shape when anything above it does — that part was
+          // always right.
           //
-          // Beside, not around, so the tree does not change shape mid-gesture
-          // and take the text field's focus and contents down with it.
+          // The blur itself stays on through a scroll. Dropping it was tried
+          // here on 2026-08-17 and reverted the same day: the composer is
+          // permanent and sits directly over the list being dragged past it, so
+          // switching the blur off and back on read as the surface flickering
+          // at each end of every scroll. See [FloatingGlass] for the numbers
+          // and the argument.
           child: Stack(
             children: [
               Positioned.fill(
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: UiActivity.instance.isScrolling,
+                child: BackdropFilter(
+                  filter: AppBlur.pane,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -80,9 +80,6 @@ class MessageIslandGlass extends StatelessWidget {
                       ),
                     ),
                   ),
-                  builder: (context, scrolling, pane) => scrolling
-                      ? pane!
-                      : BackdropFilter(filter: AppBlur.pane, child: pane!),
                 ),
               ),
               Padding(padding: padding, child: child),

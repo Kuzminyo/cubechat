@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../theme/glass.dart';
-import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
 /// nav bar uses, offered as a reusable surface so a list of them reads as a
@@ -136,35 +135,33 @@ class FloatingGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        // The surface sits *beside* the content in a stack rather than around
-        // it — the same arrangement, for the same reason, as [BarGlass].
+        // The blur stays on while scrolling, and that is a decision that has
+        // now been tested rather than reasoned about.
         //
-        // A live BackdropFilter re-snapshots and re-blurs whatever is behind it
-        // on every frame that content moves, which during a scroll is every
-        // frame. Diagnostics on a mid-range Android reads raster p90 11 ms
-        // against build p90 4 ms: the UI thread is idle and the GPU is the
-        // whole bill. Dropping the blur while the finger is moving costs
-        // nothing visible — the tint over it is 52–66% opaque, and a gaussian
-        // of a mostly-hidden backdrop that is also sliding past is not
-        // something anybody can see — and it returns the moment motion stops.
+        // Dropping it during a drag — the trick [BarGlass] uses, and which is
+        // right for the nav bar — was tried here on 2026-08-17 and reverted the
+        // same day. It bought about 13% of raster time (p90 11.0 → 9.6 ms on
+        // the reporter's phone) and cost something plainly visible: the header
+        // and the composer are large, permanent, and directly over the moving
+        // list, so the blur switching off and back on reads as the surfaces
+        // flickering at the start and end of every scroll. "The animations got
+        // worse" was the report, and it was right.
         //
-        // Beside rather than around, because wrapping would change the *shape*
-        // of the tree mid-gesture: the widget at that position would alternate
-        // between `BackdropFilter(child: …)` and the child, and Flutter answers
-        // that by tearing the whole subtree down and rebuilding it. BarGlass
-        // learned that the hard way — it remounted the photo grid on the first
-        // frame of every drag. Nothing above the content changes shape here.
+        // The nav bar gets away with it because it is a small capsule over a
+        // list that is mostly its own tint. These are not that. If the heat is
+        // to come off the GPU it has to come off somewhere that does not change
+        // what the app looks like — the refresh-rate setting is the lever that
+        // does, since drawing half as many frames changes nothing about any one
+        // of them.
+        //
+        // The surface still sits *beside* the content rather than wrapping it:
+        // that part was always correct, and it is what stops the tree changing
+        // shape when anything above it does.
         child: Stack(
           children: [
             Positioned.fill(
               child: blur
-                  ? ValueListenableBuilder<bool>(
-                      valueListenable: UiActivity.instance.isScrolling,
-                      child: tint,
-                      builder: (context, scrolling, pane) => scrolling
-                          ? pane!
-                          : BackdropFilter(filter: AppBlur.pane, child: pane!),
-                    )
+                  ? BackdropFilter(filter: AppBlur.pane, child: tint)
                   : tint,
             ),
             // The one unpositioned child, so the stack sizes itself to it —

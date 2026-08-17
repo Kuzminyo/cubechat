@@ -814,6 +814,8 @@
     "customizeSwipeDelete":  "Видалити",
     "customizeSwipeNone":  "Нічого",
 
+    "customizeHighRefresh":  "Повна частота оновлення",
+    "customizeHighRefreshHint":  "Плавніше, і телефон малює вдвічі більше кадрів. Вимкніть, якщо він гріється — вигляд застосунку не змінюється, лише те, як часто його перемальовують.",
     "customizeQuickReaction":  "Реакція подвійним тапом",
     "customizeQuickReactionHint":  "Що залишає подвійний тап на повідомленні. Якщо скористатися іншою — вона стане тут.",
     "previewReacted":  "на ваше повідомлення",

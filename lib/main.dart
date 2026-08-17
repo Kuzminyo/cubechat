@@ -38,6 +38,14 @@ import 'features/onboarding/data/onboarding_controller.dart';
 /// Android only — deliberately. iOS caps at 60 Hz through
 /// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
 /// ProMotion iPhones down for heat; this must not quietly undo that.
+/// It is now a setting rather than an unconditional request — see
+/// [RefreshRateController], which owns both the stored choice and the call to
+/// the platform, and applies it as soon as the stored value is read.
+///
+/// Asking here as well, before any of that, so the very first frames are paced
+/// correctly on a phone that has never changed the setting: the controller's
+/// own read is asynchronous, and the launch is exactly the moment the uneven
+/// pacing this fixes is most visible.
 Future<void> _matchDisplayRefreshRate() async {
   if (kIsWeb || !Platform.isAndroid) return;
   try {

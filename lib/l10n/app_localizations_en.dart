@@ -2011,6 +2011,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get customizeSwipeNone => 'Nothing';
 
   @override
+  String get customizeHighRefresh => 'Full refresh rate';
+
+  @override
+  String get customizeHighRefreshHint =>
+      'Smoother, and the phone draws twice as many frames. Turn it off if it runs warm — nothing changes how the app looks, only how often it is redrawn.';
+
+  @override
   String get customizeQuickReaction => 'Double-tap reaction';
 
   @override

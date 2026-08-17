@@ -14,6 +14,7 @@ import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/nav_bar_controller.dart';
+import '../data/refresh_rate_controller.dart';
 import '../data/ui_scale_controller.dart';
 
 /// The bits of the app that are the user's to arrange.
@@ -68,6 +69,10 @@ class CustomizeScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             const _QuickReactionCard(),
             const SizedBox(height: 12),
+            if (RefreshRateController.isAdjustable) ...[
+              const _RefreshRateCard(),
+              const SizedBox(height: 12),
+            ],
             _NavBarCard(layout: layout),
           ],
         ),
@@ -250,6 +255,65 @@ class _ScaleCard extends ConsumerWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Smoothness against warmth, with the trade said out loud.
+///
+/// This app is measurably GPU-bound — raster p90 near 10 ms against a build p90
+/// under 5 — so what costs is the painting, and at 120 Hz it is paid twice as
+/// often as at 60. Unlike every other lever tried on the heat, this one changes
+/// nothing about how a single frame *looks*; it changes how many there are.
+///
+/// Default on, because smoothness is the right default and because the
+/// high-rate request exists to fix a real complaint: a phone whose panel runs
+/// at 120 while the app is parked at 60 paces unevenly, and that reads as
+/// stutter even when no frame is missed.
+class _RefreshRateCard extends ConsumerWidget {
+  const _RefreshRateCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final high = ref.watch(refreshRateProvider);
+    return GlassCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  t.customizeHighRefresh,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  t.customizeHighRefreshHint,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Switch(
+            value: high,
+            activeThumbColor: AppColors.brandPrimary,
+            onChanged: (value) =>
+                ref.read(refreshRateProvider.notifier).select(value),
           ),
         ],
       ),

@@ -3608,6 +3608,18 @@ abstract class AppLocalizations {
   /// **'Nothing'**
   String get customizeSwipeNone;
 
+  /// No description provided for @customizeHighRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Full refresh rate'**
+  String get customizeHighRefresh;
+
+  /// No description provided for @customizeHighRefreshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Smoother, and the phone draws twice as many frames. Turn it off if it runs warm — nothing changes how the app looks, only how often it is redrawn.'**
+  String get customizeHighRefreshHint;
+
   /// No description provided for @customizeQuickReaction.
   ///
   /// In en, this message translates to:
