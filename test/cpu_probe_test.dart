@@ -25,8 +25,10 @@ void main() {
         CpuProbe.label('Binder:9312_4', isMain: false),
         CpuProbe.label('Binder:9312_7', isMain: false),
       );
-      expect(CpuProbe.label('Binder:9312_4', isMain: false),
-          'Binder (platform channels)');
+      expect(
+        CpuProbe.label('Binder:9312_4', isMain: false),
+        'Binder (platform channels)',
+      );
       expect(CpuProbe.label('pool-3-thread-2', isMain: false), 'Java pool');
       expect(CpuProbe.label('HeapTaskDaemon', isMain: false), 'Java GC');
     });
@@ -39,6 +41,43 @@ void main() {
 
     test('leaves an unrecognised thread alone', () {
       expect(CpuProbe.label('BluetoothGatt', isMain: false), 'BluetoothGatt');
+    });
+  });
+
+  group('parseStat', () {
+    // A real line, from `/proc/self/task/<tid>/stat` on Android 14. Fields:
+    // pid, (comm), state, ppid, pgrp, session, tty_nr, tpgid, flags, minflt,
+    // cminflt, majflt, cmajflt, utime, stime, ...
+    const utime = 431;
+    const stime = 96;
+    const line = '9312 (1.raster) S 1180 9312 0 0 -1 1077936448 '
+        '48211 0 3 0 $utime $stime 0 0 20 0 62 0 1049237 '
+        '19153444864 41234 18446744073709551615 1 1 0 0 0 0 4612 1 1073775864';
+
+    test('reads utime + stime, not the fields either side of them', () {
+      final s = CpuProbe.parseStat(line);
+      expect(s, isNotNull);
+      expect(s!.comm, '1.raster');
+      expect(s.ticks, utime + stime);
+      // The neighbours, so an off-by-one lands on something this test rejects
+      // rather than on a number that merely looks wrong on a phone.
+      expect(s.ticks, isNot(0)); // cmajflt + utime
+      expect(s.ticks, isNot(stime)); // stime alone
+    });
+
+    test('survives a thread name with spaces and parentheses', () {
+      final s = CpuProbe.parseStat(
+        '9401 (Jit thread pool) S 1180 9312 0 0 -1 1077936448 '
+        '48211 0 3 0 7 2 0 0 20 0 62 0 1049237 19153444864 41234',
+      );
+      expect(s!.comm, 'Jit thread pool');
+      expect(s.ticks, 9);
+    });
+
+    test('a truncated or unexpected line is no reading, not a wrong one', () {
+      expect(CpuProbe.parseStat('9312 (1.ui) S 1180 9312'), isNull);
+      expect(CpuProbe.parseStat('nonsense'), isNull);
+      expect(CpuProbe.parseStat(''), isNull);
     });
   });
 

@@ -135,14 +135,28 @@ class CpuProbe {
   }
 
   /// One thread's name and its utime+stime.
+  static ThreadStat? _readThread(int tid) {
+    try {
+      return parseStat(File('/proc/self/task/$tid/stat').readAsStringSync());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Thread name and utime+stime out of one `stat` line.
   ///
-  /// Parsed from the last `)` rather than by splitting the whole line: the
+  /// Split out because it is worth a test of its own: reading the wrong field
+  /// here does not fail, it returns plausible numbers taken from `majflt` or
+  /// `cutime`, and the only place that would ever show up is a screenshot from
+  /// a phone — a full round trip to discover the measurement was fiction.
+  ///
+  /// Parsed from the *last* `)` rather than by splitting the whole line. The
   /// second field is the thread name in parentheses and may itself contain
   /// spaces and parentheses (`Jit thread pool`, `(unnamed)`), which is the
   /// classic way a naive split of this file goes wrong.
-  static _ThreadStat? _readThread(int tid) {
+  @visibleForTesting
+  static ThreadStat? parseStat(String line) {
     try {
-      final line = File('/proc/self/task/$tid/stat').readAsStringSync();
       final open = line.indexOf('(');
       final close = line.lastIndexOf(')');
       if (open < 0 || close <= open) return null;
@@ -154,7 +168,7 @@ class CpuProbe {
       final utime = int.tryParse(rest[11]);
       final stime = int.tryParse(rest[12]);
       if (utime == null || stime == null) return null;
-      return _ThreadStat(comm, utime + stime);
+      return ThreadStat(comm, utime + stime);
     } catch (_) {
       return null;
     }
@@ -205,8 +219,8 @@ class CpuProbe {
   }
 }
 
-class _ThreadStat {
-  const _ThreadStat(this.comm, this.ticks);
+class ThreadStat {
+  const ThreadStat(this.comm, this.ticks);
   final String comm;
   final int ticks;
 }
