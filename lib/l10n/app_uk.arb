@@ -814,6 +814,8 @@
     "customizeSwipeDelete":  "Видалити",
     "customizeSwipeNone":  "Нічого",
 
+    "customizeQuickReaction":  "Реакція подвійним тапом",
+    "customizeQuickReactionHint":  "Що залишає подвійний тап на повідомленні. Якщо скористатися іншою — вона стане тут.",
     "previewReacted":  "на ваше повідомлення",
     "previewLocation":  "Геолокація",
     "previewMapInvite":  "Запрошення на мапу",

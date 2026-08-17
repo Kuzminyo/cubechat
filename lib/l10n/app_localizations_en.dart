@@ -2011,6 +2011,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get customizeSwipeNone => 'Nothing';
 
   @override
+  String get customizeQuickReaction => 'Double-tap reaction';
+
+  @override
+  String get customizeQuickReactionHint =>
+      'What a double tap on a message leaves. Using another one moves it here.';
+
+  @override
   String get previewReacted => 'to your message';
 
   @override

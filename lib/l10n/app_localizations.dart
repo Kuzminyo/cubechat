@@ -3608,6 +3608,18 @@ abstract class AppLocalizations {
   /// **'Nothing'**
   String get customizeSwipeNone;
 
+  /// No description provided for @customizeQuickReaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Double-tap reaction'**
+  String get customizeQuickReaction;
+
+  /// No description provided for @customizeQuickReactionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What a double tap on a message leaves. Using another one moves it here.'**
+  String get customizeQuickReactionHint;
+
   /// No description provided for @previewReacted.
   ///
   /// In en, this message translates to:

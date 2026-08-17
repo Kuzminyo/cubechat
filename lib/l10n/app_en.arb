@@ -895,6 +895,8 @@
   "customizeSwipeDelete": "Delete",
   "customizeSwipeNone": "Nothing",
 
+  "customizeQuickReaction": "Double-tap reaction",
+  "customizeQuickReactionHint": "What a double tap on a message leaves. Using another one moves it here.",
   "previewReacted": "to your message",
   "previewLocation": "Location",
   "previewMapInvite": "Map invitation",

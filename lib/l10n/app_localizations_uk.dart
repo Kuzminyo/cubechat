@@ -2029,6 +2029,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get customizeSwipeNone => 'Нічого';
 
   @override
+  String get customizeQuickReaction => 'Реакція подвійним тапом';
+
+  @override
+  String get customizeQuickReactionHint =>
+      'Що залишає подвійний тап на повідомленні. Якщо скористатися іншою — вона стане тут.';
+
+  @override
   String get previewReacted => 'на ваше повідомлення';
 
   @override

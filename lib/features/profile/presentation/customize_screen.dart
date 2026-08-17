@@ -9,6 +9,8 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chat/data/reaction_emoji_controller.dart';
+import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/nav_bar_controller.dart';
@@ -63,6 +65,8 @@ class CustomizeScreen extends ConsumerWidget {
             const _ScaleCard(),
             const SizedBox(height: 12),
             const _SwipeCard(),
+            const SizedBox(height: 12),
+            const _QuickReactionCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
@@ -248,6 +252,128 @@ class _ScaleCard extends ConsumerWidget {
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Which emoji a double-tap on a message leaves.
+///
+/// The app already learns this — the strip is the six you reached for most
+/// recently and the quick reaction is whichever is at the front — so a heart
+/// only stays the default until you use something else. That is the right
+/// behaviour and it is also invisible: nothing said the heart could be changed,
+/// or what it currently was. This says both, and setting one is the same act
+/// the learning already performs, so there is no second source of truth.
+class _QuickReactionCard extends ConsumerWidget {
+  const _QuickReactionCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final recent = ref.watch(reactionEmojiControllerProvider);
+    final controller = ref.read(reactionEmojiControllerProvider.notifier);
+    final current = controller.quickReaction;
+
+    // The recent six, plus any stock emoji not among them — so the choice is
+    // never narrower than the list it started as.
+    final offered = <String>[
+      ...recent,
+      ...ReactionEmojiController.defaults.where((e) => !recent.contains(e)),
+    ];
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.customizeQuickReaction,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            t.customizeQuickReactionHint,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final emoji in offered)
+                _EmojiChoice(
+                  emoji: emoji,
+                  active: emoji == current,
+                  // Choosing one is exactly what using one does: move it to the
+                  // front of the recents. One mechanism, so the setting and the
+                  // habit can never disagree.
+                  onTap: () => controller.remember(emoji),
+                ),
+              // The whole keyboard, for anybody whose emoji is not among these.
+              _EmojiChoice(
+                emoji: null,
+                active: false,
+                onTap: () async {
+                  final picked = await showEmojiPicker(context);
+                  if (picked != null) await controller.remember(picked);
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmojiChoice extends StatelessWidget {
+  const _EmojiChoice({
+    required this.emoji,
+    required this.active,
+    required this.onTap,
+  });
+
+  /// Null draws the "open the picker" tile.
+  final String? emoji;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 46,
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.brandPrimary.withValues(alpha: 0.22)
+              : AppColors.glass(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? AppColors.brandPrimary.withValues(alpha: 0.7)
+                : AppColors.glass(0.15),
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: emoji == null
+            ? Icon(
+                Icons.add_reaction_outlined,
+                size: 20,
+                color: AppColors.textOnGlassDim,
+              )
+            : Text(
+                emoji!,
+                textScaler: TextScaler.noScaling,
+                style: const TextStyle(fontSize: 22),
+              ),
       ),
     );
   }

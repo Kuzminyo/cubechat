@@ -16,7 +16,6 @@ import '../../../../core/theme/typography.dart';
 import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
-import '../../../../core/widgets/context_popup.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
@@ -38,6 +37,7 @@ import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
 import 'emoji_picker_sheet.dart';
+import 'message_spotlight.dart';
 import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import '../view_once_media_screen.dart';
@@ -514,9 +514,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     _toggleReaction(emoji);
   }
 
-  /// Telegram-style long-press menu: a small popup anchored at the finger,
-  /// floating above everything. A reaction strip on top (when the message can
-  /// carry reactions), then the per-message actions.
+  /// Hold a message and everything else steps back.
+  ///
+  /// This was a popup menu anchored at the finger, which answered "what can I
+  /// do to this?" while the conversation carried on behind it at full contrast
+  /// — so the message the menu was about was one of thirty similar objects on
+  /// screen, and the reaction strip along the top of it was a row of emoji
+  /// floating over somebody else's sentence. See [showMessageSpotlight]: the
+  /// room blurs, the message stays lit where it already is, and the choices
+  /// arrange themselves around it.
+  ///
+  /// The vocabulary it answers in is unchanged — `r:<emoji>`, `r+`, or an
+  /// action id — so everything below this call is the same code it always was.
   Future<void> _showActions(Offset at) async {
     final t = AppLocalizations.of(context);
     final pinnedHere = widget.message.wireId != null &&
@@ -525,94 +534,89 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             .isPinned(widget.chatId, widget.message.wireId!);
     final strip = ref.read(reactionEmojiControllerProvider);
 
-    final picked = await showContextPopup<String>(
+    // Where this row actually sits, so the lit copy lands exactly on top of the
+    // real one. Falls back to the press point if the render object has gone,
+    // which puts the menu at the finger — the old behaviour, and a reasonable
+    // last resort.
+    final box = context.findRenderObject() as RenderBox?;
+    final anchor = box != null && box.hasSize
+        ? box.localToGlobal(Offset.zero) & box.size
+        : at & const Size(1, 1);
+
+    final picked = await showMessageSpotlight(
       context: context,
-      globalPosition: at,
-      items: [
-        _detailsHeader(t),
-        if (_canReact)
-          PopupMenuItem<String>(
-            enabled: false,
-            padding: EdgeInsets.zero,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // Five, not six: the picker button takes the sixth slot, and
-                // the row is inside a popup menu that stops widening at 280
-                // logical pixels. A seventh cell is where it starts clipping.
-                for (final e in strip.take(5))
-                  // Builder so the pop targets the menu route, not this bubble.
-                  Builder(
-                    builder: (ctx) => InkWell(
-                      borderRadius: BorderRadius.circular(24),
-                      onTap: () => Navigator.of(ctx).pop('r:$e'),
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Text(e, style: const TextStyle(fontSize: 22)),
-                      ),
-                    ),
-                  ),
-                // The way out of the six. Everything the system can draw is
-                // behind it, and whatever is chosen there joins the strip � so
-                // the row in front of you drifts toward the emoji you actually
-                // use rather than staying the set that shipped.
-                Builder(
-                  builder: (ctx) => InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: () => Navigator.of(ctx).pop('r+'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Icon(
-                        Icons.add_reaction_rounded,
-                        size: 22,
-                        color: AppColors.textOnGlassDim,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        // First, under the reactions. Selecting is how you act on more than
-        // one message, so it is the entry to every bulk action in the chat �
-        // and buried between Edit and Delete it read as a rarely-wanted
-        // setting. A tester asked for a way to start selecting by holding a
-        // message, not knowing this was already it.
-        _menuRow('select', Icons.checklist_rounded, t.chatSelectAction,
-            AppColors.textOnGlass),
+      anchor: anchor,
+      mine: widget.message.isMine,
+      // The same widget from the same message, built again and made inert. A
+      // snapshot would be a frame of nothing between the press and the menu,
+      // and a screenful of pixels held for every long press.
+      bubble: MessageBubble(
+        message: widget.message,
+        chatId: widget.chatId,
+        album: widget.album,
+      ),
+      details: _detailsLines(t),
+      // Six here, not five: the strip is its own bar now rather than a row
+      // squeezed into a 280-point menu, so the picker button no longer costs a
+      // slot.
+      reactions: _canReact ? strip.take(6).toList() : const <String>[],
+      actions: [
+        // First. Selecting is how you act on more than one message, so it is
+        // the entry to every bulk action in the chat — and buried between Edit
+        // and Delete it read as a rarely-wanted setting.
+        SpotlightAction(
+          id: 'select',
+          icon: Icons.checklist_rounded,
+          label: t.chatSelectAction,
+        ),
         if (widget.message.wireId != null)
-          _menuRow('reply', Icons.reply_rounded, t.chatReplyAction,
-              AppColors.textOnGlass),
-        // A pin is conversation state, so it needs the shared transport id �
+          SpotlightAction(
+            id: 'reply',
+            icon: Icons.reply_rounded,
+            label: t.chatReplyAction,
+          ),
+        // A pin is conversation state, so it needs the shared transport id —
         // and either side may pin either side's message.
         if (widget.message.wireId != null)
-          _menuRow(
-            pinnedHere ? 'unpin' : 'pin',
-            pinnedHere ? Icons.push_pin_rounded : Icons.push_pin_rounded,
-            pinnedHere ? t.chatUnpinAction : t.chatPinAction,
-            AppColors.textOnGlass,
+          SpotlightAction(
+            id: pinnedHere ? 'unpin' : 'pin',
+            icon: Icons.push_pin_rounded,
+            label: pinnedHere ? t.chatUnpinAction : t.chatPinAction,
           ),
         if (messageCanBeCopied(
-          widget.message,
-          copyingRestricted: _copyingRestricted,
-        ))
-          if (!_copyingRestricted)
-            if (_canCopy)
-              _menuRow('copy', Icons.copy_rounded, t.chatCopyAction,
-                  AppColors.textOnGlass),
+              widget.message,
+              copyingRestricted: _copyingRestricted,
+            ) &&
+            !_copyingRestricted &&
+            _canCopy)
+          SpotlightAction(
+            id: 'copy',
+            icon: Icons.copy_rounded,
+            label: t.chatCopyAction,
+          ),
         if (messageCanBeForwarded(
-          widget.message,
-          copyingRestricted: _copyingRestricted,
-        ))
-          if (!_copyingRestricted)
-            if (_canForward)
-              _menuRow('forward', Icons.shortcut_rounded, t.chatForwardAction,
-                  AppColors.textOnGlass),
+              widget.message,
+              copyingRestricted: _copyingRestricted,
+            ) &&
+            !_copyingRestricted &&
+            _canForward)
+          SpotlightAction(
+            id: 'forward',
+            icon: Icons.shortcut_rounded,
+            label: t.chatForwardAction,
+          ),
         if (_canEdit)
-          _menuRow('edit', Icons.edit_rounded, t.chatEditAction,
-              AppColors.textOnGlass),
-        _menuRow('delete', Icons.delete_outline_rounded, t.chatDeleteAction,
-            AppColors.danger),
+          SpotlightAction(
+            id: 'edit',
+            icon: Icons.edit_rounded,
+            label: t.chatEditAction,
+          ),
+        SpotlightAction(
+          id: 'delete',
+          icon: Icons.delete_outline_rounded,
+          label: t.chatDeleteAction,
+          tone: AppColors.danger,
+        ),
       ],
     );
 
@@ -743,7 +747,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// It works for a photo or a voice note exactly as it does for text � the
   /// long-press covers the whole bubble, and media now carries the wireId a
   /// receipt refers to.
-  PopupMenuItem<String> _detailsHeader(AppLocalizations t) {
+  Widget _detailsLines(AppLocalizations t) {
     final m = widget.message;
     final readAt = m.readAt;
     // In a channel the answer to "who has seen this" is a list, because there
@@ -751,11 +755,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // so the order matches the order they arrived in.
     final readers = m.readBy.entries.toList()
       ..sort((a, b) => a.value.at.compareTo(b.value.at));
-    final lines = 1 + (readAt != null ? 1 : 0) + readers.length;
-    return PopupMenuItem<String>(
-      enabled: false,
-      height: (18.0 * lines + 12).clamp(30.0, 220.0),
-      child: Column(
+    return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -783,34 +783,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _menuRow(
-    String value,
-    IconData icon,
-    String label,
-    Color color,
-  ) {
-    return PopupMenuItem<String>(
-      value: value,
-      height: 44,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 19, color: color),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
   }
 
   /// Pick a chat and re-send this message's text into it.
