@@ -206,7 +206,10 @@ class _FramePanelState extends State<_FramePanel> {
     // for the rest of the process — on every screen, forever, in aid of a
     // panel nobody was looking at any more. Cheap per frame and permanent,
     // which is the shape of a cost that only shows up as warmth.
-    FrameStats.instance.stop();
+    //
+    // Unless a window was deliberately opened to measure somewhere else, which
+    // is the entire point of leaving this screen — that one closes on a timer.
+    if (!FrameStats.instance.isHolding) FrameStats.instance.stop();
     super.dispose();
   }
 
@@ -259,6 +262,17 @@ class _FramePanelState extends State<_FramePanel> {
             'of ${s.totalFrames}',
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
           ),
+          const SizedBox(height: 10),
+          // The one control this panel needed and did not have. Everything
+          // above describes the screen you are looking at, and that is this
+          // one — so the answer to "why does it warm up while I scroll" was
+          // never in here.
+          _HoldButton(
+            holding: s.isHolding,
+            remaining: s.holdRemaining,
+            onArm: () => setState(() => s.hold(const Duration(seconds: 45))),
+            onRelease: () => setState(s.releaseHold),
+          ),
         ],
       ),
     );
@@ -282,4 +296,66 @@ class _FramePanelState extends State<_FramePanel> {
           ),
         ],
       );
+}
+
+/// Arms and disarms the measuring window — see [FrameStats.hold].
+class _HoldButton extends StatelessWidget {
+  const _HoldButton({
+    required this.holding,
+    required this.remaining,
+    required this.onArm,
+    required this.onRelease,
+  });
+
+  final bool holding;
+  final Duration remaining;
+  final VoidCallback onArm;
+  final VoidCallback onRelease;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = holding
+        ? 'measuring everywhere · ${remaining.inSeconds}s left — tap to stop'
+        : 'measure another screen for 45 s';
+    return GestureDetector(
+      onTap: holding ? onRelease : onArm,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: holding
+              ? AppColors.brandPrimary.withValues(alpha: 0.18)
+              : AppColors.glass(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: holding
+                ? AppColors.brandPrimary.withValues(alpha: 0.55)
+                : AppColors.glass(0.14),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              holding ? Icons.stop_circle_outlined : Icons.timer_outlined,
+              size: 14,
+              color: AppColors.brandPrimary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

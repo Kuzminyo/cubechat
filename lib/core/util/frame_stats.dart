@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -74,6 +75,54 @@ class FrameStats {
     if (!_listening) return;
     _listening = false;
     SchedulerBinding.instance.removeTimingsCallback(_onTimings);
+  }
+
+  Timer? _holdTimer;
+  DateTime? _holdEnds;
+
+  /// Keep measuring after the panel that started it has gone away.
+  ///
+  /// The panel measures whatever is on screen, and what is on screen while you
+  /// are reading the panel *is* the panel — a static list, on a phone that has
+  /// just stopped scrolling. So the two screens anybody has ever reported as
+  /// warm, a conversation being scrolled and the list of them, could not be
+  /// measured from here at all. "The phone heats while I scroll" and
+  /// "Diagnostics renders at 3 ms" were both true and about different things.
+  ///
+  /// Arm it, walk to the screen that is warm, use it, come back and read the
+  /// numbers. It closes itself after [duration] whether or not anybody returns,
+  /// because a timings callback left running for the life of the process is
+  /// exactly the permanent cost the panel's own `dispose` was written to avoid.
+  void hold(Duration duration) {
+    reset();
+    stop();
+    start();
+    _holdTimer?.cancel();
+    _holdEnds = DateTime.now().add(duration);
+    _holdTimer = Timer(duration, () {
+      _holdTimer = null;
+      _holdEnds = null;
+      stop();
+    });
+  }
+
+  /// True while a [hold] window is open — the panel reads this to know it must
+  /// not stop collection on its way out.
+  bool get isHolding => _holdTimer != null;
+
+  /// How much of the window is left, for the panel to count down.
+  Duration get holdRemaining {
+    final ends = _holdEnds;
+    if (ends == null) return Duration.zero;
+    final left = ends.difference(DateTime.now());
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// End the window early — the measurement is taken, stop paying for it.
+  void releaseHold() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _holdEnds = null;
   }
 
   void reset() {
