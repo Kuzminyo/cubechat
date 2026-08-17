@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,6 +14,7 @@ import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/theme/typography.dart';
+import '../../../../core/util/debug_log.dart';
 import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
@@ -427,8 +429,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
   }
 
+  /// Logged once per bubble, so a conversation that will not swipe says why in
+  /// the diagnostics log instead of only in the reporter's description.
+  ///
+  /// Reading the code has not been enough: the gate is `wireId != null` and not
+  /// a channel, both look right, and the id is both persisted and restored — so
+  /// the next report needs to carry which half is false rather than another
+  /// round of guessing.
+  bool _swipeRefusalLogged = false;
+
   void _onSwipeUpdate(DragUpdateDetails d) {
-    if (!_canReply) return;
+    if (!_canReply) {
+      if (!_swipeRefusalLogged) {
+        _swipeRefusalLogged = true;
+        DebugLog.instance.log(
+          'REPLY',
+          'swipe ignored: wireId=${widget.message.wireId == null ? 'null' : 'set'}'
+              ' channel=${widget.chatId.startsWith('#')}'
+              ' kind=${widget.message.kind.name}',
+        );
+      }
+      return;
+    }
     _swipe.stop();
     final next = (_dragX.value + d.delta.dx).clamp(-_swipeMax, 0.0);
     final armed = next <= -_swipeTrigger;
@@ -1208,7 +1230,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // way the finger went and then clamps the offset to zero on the
                 // right � winning the arena to do nothing, which is why
                 // swiping back did not work over the conversation.
-                gestures: selecting
+                // Registered only when there is a reply to be made.
+                //
+                // It used to be registered always and refuse inside the
+                // handler, which is the worst of both: the recognizer wins the
+                // arena, everything else in it loses, and then nothing happens.
+                // A bubble that cannot be replied to now lets the drag through
+                // to whatever else wanted it instead of eating it.
+                gestures: selecting || !_canReply
                     ? const <Type, GestureRecognizerFactory>{}
                     : <Type, GestureRecognizerFactory>{
                         LeftwardDragRecognizer:
@@ -1216,6 +1245,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                 LeftwardDragRecognizer>(
                           LeftwardDragRecognizer.new,
                           (r) => r
+                            // From the touch, not from where the arena was won:
+                            // the slop spent deciding is otherwise thrown away
+                            // and the bubble trails the thumb by that much for
+                            // the whole gesture.
+                            ..dragStartBehavior = DragStartBehavior.down
                             ..onUpdate = _onSwipeUpdate
                             ..onEnd = ((_) => _onSwipeEnd())
                             ..onCancel = _onSwipeEnd,
