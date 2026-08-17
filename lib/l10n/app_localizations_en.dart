@@ -2011,6 +2011,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get customizeSwipeNone => 'Nothing';
 
   @override
+  String get previewReacted => 'to your message';
+
+  @override
   String get previewLocation => 'Location';
 
   @override

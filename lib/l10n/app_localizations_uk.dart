@@ -2029,6 +2029,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get customizeSwipeNone => 'Нічого';
 
   @override
+  String get previewReacted => 'на ваше повідомлення';
+
+  @override
   String get previewLocation => 'Геолокація';
 
   @override

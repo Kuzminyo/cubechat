@@ -533,13 +533,22 @@ class _RoundIconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 40,
-        height: 40,
+        // 44, matching the send and voice buttons beside them.
+        //
+        // These were 40 while those were 44, and the composer row is
+        // bottom-aligned — so the two small circles sat with their centres two
+        // points below the big one's. That is exactly enough to read as a
+        // mistake and not enough to read as deliberate, which is what "align
+        // the smiley and the paperclip" was about. Matching the box puts every
+        // icon in the composer on one line.
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppColors.glass(0.08),
         ),
-        child: Icon(icon, color: AppColors.textOnGlass, size: 20),
+        child: Icon(icon, color: AppColors.textOnGlass, size: 21),
       ),
     );
   }

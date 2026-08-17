@@ -17,6 +17,22 @@ import '../models/message.dart';
 /// A sticker is named by the emoji it was filed under, which is the only name
 /// it has; see [Message.stickerMarkerFor].
 String messagePreview(Message message, AppLocalizations t) {
+  // Somebody reacting to what you last said is the newest thing that happened
+  // in that conversation, and the row said nothing about it — it went on
+  // showing your own message, so a chat that had just been answered looked
+  // exactly like one that had not.
+  //
+  // Only on *your* message, and only for somebody else's reaction: your own
+  // reaction to your own line is not news, and a reaction on their message is
+  // something you did, which the row has no reason to report back to you.
+  //
+  // A heuristic, and worth naming as one: nothing records *when* a reaction
+  // arrived, so this cannot know whether it is newer than the message it sits
+  // on. It only knows that it is there. Until something newer is said, saying
+  // so is the more useful of the two answers.
+  final reaction = _theirReactionTo(message);
+  if (reaction != null) return '$reaction ${t.previewReacted}';
+
   if (message.isSticker) {
     final emoji = message.stickerEmoji;
     return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';
@@ -38,6 +54,20 @@ String messagePreview(Message message, AppLocalizations t) {
     case MessageKind.text:
       return _textPreview(message.text, t);
   }
+}
+
+/// Somebody else's reaction to [message], when it is one of ours.
+///
+/// The voter set holds `'me'` for the local user and an id for anybody else, so
+/// "not mine" is the whole test. The first such reaction wins: a row has space
+/// for one glyph, and which of several it shows matters less than that it says
+/// something happened.
+String? _theirReactionTo(Message message) {
+  if (!message.isMine) return null;
+  for (final entry in message.reactions.entries) {
+    if (entry.value.any((voter) => voter != 'me')) return entry.key;
+  }
+  return null;
 }
 
 /// Words, or the name of whatever is riding inside them.

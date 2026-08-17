@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// Container for the tab-shell branches: four screens side by side, and a
@@ -197,16 +198,24 @@ class _BranchContainerState extends State<BranchContainer>
       builder: (context, constraints) {
         _width = constraints.maxWidth;
         final page = _page.value;
-        return GestureDetector(
+        return RawGestureDetector(
           // Horizontal only, so vertical scrolling inside a branch is never in
           // question. An inner horizontal scrollable — the folder pills, the
           // palette swatches — still wins the arena on its own turf, the same
           // way one inside a PageView does.
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragStart: _onDragStart,
-          onHorizontalDragUpdate: _onDragUpdate,
-          onHorizontalDragEnd: _onDragEnd,
-          onHorizontalDragCancel: _onDragCancel,
+          gestures: <Type, GestureRecognizerFactory>{
+            _LazyHorizontalDragRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                    _LazyHorizontalDragRecognizer>(
+              _LazyHorizontalDragRecognizer.new,
+              (r) => r
+                ..onStart = _onDragStart
+                ..onUpdate = _onDragUpdate
+                ..onEnd = _onDragEnd
+                ..onCancel = _onDragCancel,
+            ),
+          },
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -227,6 +236,39 @@ class _BranchContainerState extends State<BranchContainer>
         );
       },
     );
+  }
+}
+
+/// The tab strip's own drag, which waits longer than anything inside it.
+///
+/// It covers every pixel of every branch, so it is in the arena against every
+/// horizontal gesture in the app — a chat row being swiped, a bubble being
+/// pulled for a reply, a voice note being scrubbed. All of them are horizontal
+/// drags, all accept at the ordinary touch slop, and a tie between two
+/// recognizers that both accept on the same pointer move is not resolved in
+/// favour of the inner one in any way worth relying on. What the strip won, the
+/// row lost — and a chat row that will not swipe is exactly how that looks.
+///
+/// So this one holds off until the finger has travelled well past the slop. By
+/// then whatever was under it has claimed the gesture and this recognizer is
+/// already out of the arena; if nothing did, the drag is plainly a tab swipe
+/// and a few extra millimetres is not a cost anybody notices.
+///
+/// The same trick, for the same reason, as the page-level back gesture — see
+/// `EdgeBackGesture` in `back_gesture.dart`, which learned it first.
+class _LazyHorizontalDragRecognizer extends HorizontalDragGestureRecognizer {
+  _LazyHorizontalDragRecognizer({super.debugOwner});
+
+  /// Far enough to be past anything an inner widget wants, short enough that a
+  /// deliberate swipe between tabs still feels immediate.
+  static const double _threshold = 44;
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) {
+    return globalDistanceMoved.abs() > _threshold;
   }
 }
 

@@ -3608,6 +3608,12 @@ abstract class AppLocalizations {
   /// **'Nothing'**
   String get customizeSwipeNone;
 
+  /// No description provided for @previewReacted.
+  ///
+  /// In en, this message translates to:
+  /// **'to your message'**
+  String get previewReacted;
+
   /// No description provided for @previewLocation.
   ///
   /// In en, this message translates to:
