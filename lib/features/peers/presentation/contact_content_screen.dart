@@ -280,7 +280,14 @@ class _VoiceList extends StatelessWidget {
         onLongPress: () => onLongPress(voices[index]),
         child: GlassCard(
           strong: true,
-          child: VoiceBubble(message: voices[index], chatId: chatId),
+          // With the header: stripped of the conversation, a voice note has
+          // nothing left saying who it is from or when — which is most of what
+          // anybody opens this list to find out.
+          child: VoiceBubble(
+            message: voices[index],
+            chatId: chatId,
+            showHeader: true,
+          ),
         ),
       ),
     );

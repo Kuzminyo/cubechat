@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/identity/anon_name.dart';
 import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
+import '../../../../core/utils/time_format.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/util/media_storage.dart';
 import '../../../peers/data/contact_aliases_controller.dart';
@@ -24,6 +25,7 @@ class VoiceBubble extends ConsumerStatefulWidget {
     required this.message,
     this.chatId,
     this.chatTitle,
+    this.showHeader = false,
   });
 
   final Message message;
@@ -42,6 +44,15 @@ class VoiceBubble extends ConsumerStatefulWidget {
   /// bubble works the name out itself (see [_authorName]) and only falls back
   /// to this when nothing else identifies the sender.
   final String? chatTitle;
+
+  /// Draw a line naming the sender and when it was sent, above the player.
+  ///
+  /// Off inside a conversation, where both are already answered by which side
+  /// of the screen the bubble is on and by the clock beneath it. On in the
+  /// media list, where the rows are stripped of every one of those cues: a
+  /// column of identical play buttons and durations, with nothing to say who
+  /// any of them is from or whether it arrived this morning or in March.
+  final bool showHeader;
 
   @override
   ConsumerState<VoiceBubble> createState() => _VoiceBubbleState();
@@ -129,7 +140,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
           knownDuration: declared > Duration.zero ? declared : null,
         );
 
-    return SizedBox(
+    final player = SizedBox(
       width: 200,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -195,6 +206,52 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
           ),
         ],
       ),
+    );
+
+    if (!widget.showHeader) return player;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(
+              widget.message.isMine
+                  ? Icons.north_east_rounded
+                  : Icons.south_west_rounded,
+              size: 13,
+              color: AppColors.textOnGlassFaint,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                _authorName(context),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              // Bare time for today, date and time for anything older — the
+              // same rule the message details use, and the right one here for
+              // the same reason: this list is read to answer "when was that".
+              formatMessageDetailsTime(context, widget.message.sentAt),
+              style: TextStyle(
+                color: AppColors.textOnGlassFaint,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        player,
+      ],
     );
   }
 }
