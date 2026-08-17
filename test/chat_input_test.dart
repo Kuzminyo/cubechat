@@ -235,6 +235,56 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
+  testWidgets('a keyboard shorter than the tallest one still takes the slot',
+      (tester) async {
+    // The reported bug. The panel sizes itself against the tallest keyboard
+    // ever seen; a shorter one — the same keyboard with its suggestion strip
+    // hidden, another language, a one-handed layout — leaves forty-odd points
+    // over. The takeover used to wait for *no* room at all, so it never fired
+    // and the panel drew its top forty points: the Emoji/Stickers tab strip,
+    // stranded between the composer and the keyboard.
+    final view = tester.view;
+    addTearDown(view.reset);
+    addTearDown(KeyboardHeight.debugReset);
+    view.devicePixelRatio = 3;
+    view.viewInsets = FakeViewPadding.zero;
+
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+    )));
+    await tester.pump();
+
+    // A tall keyboard comes up and is remembered, then goes away.
+    view.viewInsets = const FakeViewPadding(bottom: 320 * 3);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    view.viewInsets = FakeViewPadding.zero;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
+
+    // Now a keyboard forty points shorter than the remembered one.
+    view.viewInsets = const FakeViewPadding(bottom: 280 * 3);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.byType(KeyboardSlotPanel),
+      findsNothing,
+      reason: 'the leftover room is less than a panel, so the keyboard has it',
+    );
+
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
   testWidgets('opening on a raised keyboard grows into the space it leaves',
       (tester) async {
     final view = tester.view;

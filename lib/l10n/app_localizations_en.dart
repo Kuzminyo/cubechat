@@ -2009,4 +2009,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get customizeSwipeNone => 'Nothing';
+
+  @override
+  String get previewLocation => 'Location';
+
+  @override
+  String get previewMapInvite => 'Map invitation';
+
+  @override
+  String get previewContact => 'Contact';
+
+  @override
+  String get previewUnsupported => 'Unsupported message';
 }

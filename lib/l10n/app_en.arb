@@ -893,5 +893,10 @@
   "customizeSwipePin": "Pin",
   "customizeSwipeRead": "Mark read",
   "customizeSwipeDelete": "Delete",
-  "customizeSwipeNone": "Nothing"
+  "customizeSwipeNone": "Nothing",
+
+  "previewLocation": "Location",
+  "previewMapInvite": "Map invitation",
+  "previewContact": "Contact",
+  "previewUnsupported": "Unsupported message"
 }

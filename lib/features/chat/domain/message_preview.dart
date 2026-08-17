@@ -1,4 +1,7 @@
+import '../../../core/transport/shared_contact.dart';
+import '../../../core/transport/shared_location.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../map/data/map_friend_link.dart';
 import '../models/message.dart';
 
 /// One line standing in for a message somewhere the message itself cannot be
@@ -33,8 +36,31 @@ String messagePreview(Message message, AppLocalizations t) {
     case MessageKind.poll:
       return '📊 ${message.text}';
     case MessageKind.text:
-      return message.text;
+      return _textPreview(message.text, t);
   }
+}
+
+/// Words, or the name of whatever is riding inside them.
+///
+/// Three kinds of thing travel as text in this app — a position, a contact
+/// card, an invitation to the map — because riding inside a message gets them
+/// encryption, signing, replies and forwarding for free (see [SharedLocation]).
+/// The cost is that anything showing a message *as text* shows the payload, and
+/// a chat row reading `cubechat:loc:v1:NTAuMDQxMDM…` is what that looks like.
+///
+/// Named rather than hidden: the row has to say something happened, and "a
+/// location" is the true and useful thing to say.
+String _textPreview(String text, AppLocalizations t) {
+  final trimmed = text.trim();
+  // Cheap gate first — every one of these starts with the same scheme, and
+  // almost no message does.
+  if (!trimmed.startsWith('cubechat:')) return text;
+  if (SharedLocation.tryParse(trimmed) != null) return '📍 ${t.previewLocation}';
+  if (MapFriendLink.tryParse(trimmed) != null) return '🗺 ${t.previewMapInvite}';
+  if (SharedContact.tryParse(trimmed) != null) return '👤 ${t.previewContact}';
+  // An unknown `cubechat:` payload — a newer build's, most likely. Saying so is
+  // better than showing base64 at somebody.
+  return t.previewUnsupported;
 }
 
 /// The same, for a row that kept only the text of the message.

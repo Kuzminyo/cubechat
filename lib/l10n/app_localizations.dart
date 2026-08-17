@@ -3607,6 +3607,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing'**
   String get customizeSwipeNone;
+
+  /// No description provided for @previewLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get previewLocation;
+
+  /// No description provided for @previewMapInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Map invitation'**
+  String get previewMapInvite;
+
+  /// No description provided for @previewContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact'**
+  String get previewContact;
+
+  /// No description provided for @previewUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported message'**
+  String get previewUnsupported;
 }
 
 class _AppLocalizationsDelegate

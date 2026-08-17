@@ -2027,4 +2027,16 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get customizeSwipeNone => 'Нічого';
+
+  @override
+  String get previewLocation => 'Геолокація';
+
+  @override
+  String get previewMapInvite => 'Запрошення на мапу';
+
+  @override
+  String get previewContact => 'Контакт';
+
+  @override
+  String get previewUnsupported => 'Повідомлення не підтримується';
 }

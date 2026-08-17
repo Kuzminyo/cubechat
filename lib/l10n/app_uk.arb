@@ -812,5 +812,10 @@
     "customizeSwipePin":  "Закріпити",
     "customizeSwipeRead":  "Прочитано",
     "customizeSwipeDelete":  "Видалити",
-    "customizeSwipeNone":  "Нічого"
+    "customizeSwipeNone":  "Нічого",
+
+    "previewLocation":  "Геолокація",
+    "previewMapInvite":  "Запрошення на мапу",
+    "previewContact":  "Контакт",
+    "previewUnsupported":  "Повідомлення не підтримується"
 }

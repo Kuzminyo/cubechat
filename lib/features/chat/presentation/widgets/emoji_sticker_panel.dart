@@ -30,6 +30,9 @@ abstract final class KeyboardHeight {
   /// of one arriving or leaving.
   static const double _floor = 120;
 
+  /// The same number, for deciding whether a keyboard has genuinely arrived.
+  static double get floor => _floor;
+
   /// How long the inset has to hold still before it counts as the keyboard's
   /// real height. Without this the value would be sampled mid-animation and the
   /// panel would size itself against a keyboard that was still on its way up.
@@ -254,6 +257,15 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
   /// already open, so the panel complements it instead of animating in.
   static const double _presence = 8;
 
+  /// Below this the panel is not a panel.
+  ///
+  /// Its top is the Emoji/Stickers tab strip and everything under that is the
+  /// grid; with less room than this there is no grid left, so what remains is a
+  /// strip of tabs with nothing behind them. Deliberately the same number as
+  /// [KeyboardHeight.floor]: less than the smallest thing this app is willing
+  /// to call a keyboard is also less than a panel's worth of space.
+  static const double _minUseful = 120;
+
   @override
   void initState() {
     super.initState();
@@ -306,12 +318,22 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
     if ((next - _inset).abs() < 0.5) return;
     final rising = next > _inset;
     setState(() => _inset = next);
-    // Nothing left to show *and the keyboard is the one arriving*: the swap is
-    // complete. The direction is the whole test. Without it a keyboard on its
-    // way out — which also passes through "the panel has nothing to draw yet" —
-    // was read as a takeover, and the panel the user had just asked for was
-    // taken back out of the tree before it could grow into the space.
-    if (widget.open && !_toldParent && rising && _slack <= 0.5) {
+    // The keyboard is arriving and there is no longer enough room to be a
+    // panel: the swap is complete.
+    //
+    // The direction is half the test — without it a keyboard on its way *out*
+    // also passes through here, and the panel the user had just asked for was
+    // taken back out of the tree before it could grow.
+    //
+    // The other half used to be `_slack <= 0.5`: no room *at all*. That is only
+    // ever reached when the arriving keyboard is at least as tall as the
+    // tallest one ever seen. A shorter one — the same keyboard with its
+    // suggestion strip hidden, another language, a one-handed layout — leaves
+    // forty-odd points behind it, so the takeover never fired and the panel
+    // drew its top forty points: the Emoji/Stickers tab strip, stranded between
+    // the composer and the keyboard. That is what was reported, and it is why
+    // the test is "too small to be a panel" rather than "exactly zero".
+    if (widget.open && !_toldParent && rising && _slack < _minUseful) {
       _toldParent = true;
       widget.onKeyboardTookOver?.call();
     }
@@ -334,8 +356,19 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
         onCreateSticker: widget.onCreateSticker,
       ),
       builder: (context, child) {
+        // Once the keyboard has taken the slot there is nothing of this to
+        // draw, whatever the arithmetic says. The parent unmounts us a frame or
+        // two later; until then, drawing the leftover strip is what left the
+        // tabs hanging over the keyboard.
+        if (_toldParent) return const SizedBox.shrink();
         final shown = _open.value * _slack;
         if (shown <= 0.5) return const SizedBox.shrink();
+        // Opening still animates through the small sizes — that is the entrance
+        // curve — so this only bites once the panel is fully out and the space
+        // is being taken from it.
+        if (_open.isCompleted && shown < _minUseful) {
+          return const SizedBox.shrink();
+        }
         return ClipRect(
           child: Align(
             alignment: Alignment.topCenter,
