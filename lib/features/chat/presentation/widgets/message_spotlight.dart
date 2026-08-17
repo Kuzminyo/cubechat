@@ -137,7 +137,21 @@ class _Spotlight extends StatelessWidget {
       animation: curved,
       builder: (context, _) {
         final t = curved.value;
-        return Stack(
+        // Transparent Material over the whole route, and it is not decoration.
+        //
+        // Text with no Material ancestor gets Flutter's fallback style, which
+        // is black with a yellow double underline — the framework's way of
+        // saying "nothing told me how to draw this". The route is a bare Stack
+        // pushed on the navigator, so the message copy and every label in the
+        // sheet were being drawn that way: the underlines were the framework
+        // complaining, not a style anybody chose.
+        //
+        // Transparency rather than a surface: this route paints its own
+        // blurred backdrop, and a Material canvas underneath would be a second
+        // one.
+        return Material(
+          type: MaterialType.transparency,
+          child: Stack(
           children: [
             // The room, stepping back. Tapping it anywhere is the way out —
             // which is the same gesture as dismissing the menu it replaces, and
@@ -231,6 +245,7 @@ class _Spotlight extends StatelessWidget {
               ),
             ),
           ],
+          ),
         );
       },
     );

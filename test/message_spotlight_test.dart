@@ -74,6 +74,23 @@ void main() {
     expect(find.text('👍'), findsOneWidget);
     expect(find.text('Reply'), findsOneWidget);
   });
+
+  testWidgets('every label has a Material to be styled by', (tester) async {
+    await open(tester);
+
+    // Text with no Material ancestor gets Flutter's fallback style: black with
+    // a yellow double underline. That is the framework saying "nothing told me
+    // how to draw this", and it is what the route looked like — a bare Stack
+    // pushed on the navigator, with the message copy and every action label
+    // underlined in yellow.
+    for (final label in ['the message', 'Reply', '❤️']) {
+      expect(
+        find.ancestor(of: find.text(label), matching: find.byType(Material)),
+        findsWidgets,
+        reason: '"$label" would be drawn with the yellow debug underline',
+      );
+    }
+  });
 }
 
 /// Opens the spotlight without awaiting it — the route stays up for the test to
