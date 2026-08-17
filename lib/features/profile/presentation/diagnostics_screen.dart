@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/cpu_probe.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/util/open_in.dart';
@@ -190,6 +191,10 @@ class _FramePanelState extends State<_FramePanel> {
   void initState() {
     super.initState();
     FrameStats.instance.start();
+    // Same window, different question: the frame numbers only describe frames,
+    // and the thread breakdown is what says whether frames are where the time
+    // is going at all.
+    CpuProbe.instance.begin();
     // The stats update per frame; redrawing them per frame would make this
     // panel part of what it is measuring.
     _tick = Timer.periodic(
@@ -235,7 +240,10 @@ class _FramePanelState extends State<_FramePanel> {
                   style: AppTypography.heading(
                       size: 13, color: AppColors.textOnGlass)),
               GestureDetector(
-                onTap: () => setState(FrameStats.instance.reset),
+                onTap: () => setState(() {
+                  FrameStats.instance.reset();
+                  CpuProbe.instance.begin();
+                }),
                 child: Text('reset',
                     style: TextStyle(
                         color: AppColors.brandPrimary,
@@ -270,9 +278,13 @@ class _FramePanelState extends State<_FramePanel> {
           _HoldButton(
             holding: s.isHolding,
             remaining: s.holdRemaining,
-            onArm: () => setState(() => s.hold(const Duration(seconds: 45))),
+            onArm: () => setState(() {
+              s.hold(const Duration(seconds: 45));
+              CpuProbe.instance.begin();
+            }),
             onRelease: () => setState(s.releaseHold),
           ),
+          const _CpuPanel(),
         ],
       ),
     );
@@ -296,6 +308,98 @@ class _FramePanelState extends State<_FramePanel> {
           ),
         ],
       );
+}
+
+/// Where the process actually spent CPU during the window — see [CpuProbe].
+///
+/// Lives inside the frame panel and shares its window, because the two are one
+/// question asked twice. The frame numbers say how expensive a frame was; this
+/// says whether frames are where the time went at all. A phone that is warm
+/// with both frame numbers healthy has been the report more than once, and
+/// nothing in this app could previously say what it was busy with.
+///
+/// Renders nothing at all off Android, rather than a row of zeroes: `/proc` is
+/// a Linux interface and an empty panel invites the reader to conclude
+/// something from it.
+class _CpuPanel extends StatelessWidget {
+  const _CpuPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    if (!CpuProbe.instance.supported) return const SizedBox.shrink();
+    final r = CpuProbe.instance.report();
+    if (r == null || r.threads.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'CPU by thread',
+                style: AppTypography.heading(
+                  size: 13,
+                  color: AppColors.textOnGlass,
+                ),
+              ),
+              Text(
+                '${r.totalPercentOfOneCore.toStringAsFixed(0)}% of a core',
+                style: AppTypography.mono(
+                  size: 11.5,
+                  color: AppColors.textOnGlass,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Six rows: enough for the engine's threads plus whichever plugin
+          // pool is busy, short enough to fit in a screenshot.
+          for (final t in r.top(6)) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    t.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.mono(
+                      size: 11.5,
+                      color: AppColors.textOnGlass,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${t.cpuMs} ms  ${t.percentOfOneCore.toStringAsFixed(0)}%',
+                  style: AppTypography.mono(
+                    size: 11.5,
+                    color: t.percentOfOneCore >= 25
+                        ? const Color(0xFFFF6B6B)
+                        : AppColors.textOnGlass,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+          ],
+          const SizedBox(height: 5),
+          Text(
+            r.verdict,
+            style: TextStyle(
+              color: AppColors.brandPrimary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            'over ${(r.wallMs / 1000).toStringAsFixed(0)} s',
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Arms and disarms the measuring window — see [FrameStats.hold].
