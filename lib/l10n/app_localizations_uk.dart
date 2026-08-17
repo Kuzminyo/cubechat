@@ -1842,4 +1842,133 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get locationShare1h => '1 година';
+
+  @override
+  String get storageTitle => 'Пам\'ять';
+
+  @override
+  String get storageHeadline => 'Використання пам\'яті';
+
+  @override
+  String storageSubtitle(String size) {
+    return 'cubechat займає $size на цьому пристрої';
+  }
+
+  @override
+  String get storageEmpty => 'Поки нічого не збережено';
+
+  @override
+  String get storageScanning => 'Рахую…';
+
+  @override
+  String get storageCatPhotos => 'Фото';
+
+  @override
+  String get storageCatVoice => 'Голосові';
+
+  @override
+  String get storageCatFiles => 'Отримані файли';
+
+  @override
+  String get storageCatOutbox => 'Надіслані файли';
+
+  @override
+  String get storageCatStickers => 'Наліпки';
+
+  @override
+  String get storageCatSaved => 'Збережене';
+
+  @override
+  String get storageCatWallpapers => 'Шпалери';
+
+  @override
+  String get storageCatHistory => 'Листування та ключі';
+
+  @override
+  String get storageCatCache => 'Кеш';
+
+  @override
+  String storageClear(String size) {
+    return 'Очистити $size';
+  }
+
+  @override
+  String get storageClearNothing => 'Нічого не вибрано';
+
+  @override
+  String storageFreed(String size) {
+    return 'Звільнено $size';
+  }
+
+  @override
+  String get storageNoCloud =>
+      'Тут немає хмари. Усе, що ви очистите, зникне з цього телефона, і єдина інша копія — на телефоні, звідки воно прийшло.';
+
+  @override
+  String get storageWhyHistoryLocked =>
+      'Листування звідси не очищується — для цього є Екстрене стирання.';
+
+  @override
+  String get storageRecoveryFree => 'Безпечно очищати';
+
+  @override
+  String get storageRecoveryGone => 'Копії більше ніде немає';
+
+  @override
+  String get storageRecoveryAskSender => 'Можна запросити у відправника знову';
+
+  @override
+  String get storageRecoveryCostsThem =>
+      'Вони більше не зможуть попросити надіслати повторно';
+
+  @override
+  String storageConfirmTitle(String size) {
+    return 'Очистити $size?';
+  }
+
+  @override
+  String get storageConfirmBody =>
+      'Файли буде видалено з цього телефона. Нікуди нічого не вивантажується, тож відновлювати їх немає звідки.';
+
+  @override
+  String storageFilesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count файла',
+      many: '$count файлів',
+      few: '$count файли',
+      one: '$count файл',
+      zero: 'порожньо',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get profileGroupCustomize => 'Кастомізація';
+
+  @override
+  String get customizeTitle => 'Кастомізація';
+
+  @override
+  String get customizeBarTitle => 'Нижня панель';
+
+  @override
+  String get customizeBarHint =>
+      'Перетягніть, щоб змінити порядок. Чати прибрати не можна.';
+
+  @override
+  String get customizeBarShown => 'Показані';
+
+  @override
+  String get customizeBarHidden => 'Приховані';
+
+  @override
+  String get customizeBarHiddenEmpty => 'Нічого не приховано';
+
+  @override
+  String get customizeBarMinimum => 'Лишіть щонайменше дві вкладки';
+
+  @override
+  String get customizeReset => 'Повернути як було';
 }

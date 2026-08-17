@@ -1828,4 +1828,131 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get locationShare1h => '1 hour';
+
+  @override
+  String get storageTitle => 'Storage';
+
+  @override
+  String get storageHeadline => 'Storage usage';
+
+  @override
+  String storageSubtitle(String size) {
+    return 'cubechat is using $size on this device';
+  }
+
+  @override
+  String get storageEmpty => 'Nothing stored yet';
+
+  @override
+  String get storageScanning => 'Measuring…';
+
+  @override
+  String get storageCatPhotos => 'Photos';
+
+  @override
+  String get storageCatVoice => 'Voice messages';
+
+  @override
+  String get storageCatFiles => 'Files received';
+
+  @override
+  String get storageCatOutbox => 'Files you sent';
+
+  @override
+  String get storageCatStickers => 'Stickers';
+
+  @override
+  String get storageCatSaved => 'Saved messages';
+
+  @override
+  String get storageCatWallpapers => 'Wallpapers';
+
+  @override
+  String get storageCatHistory => 'Conversations and keys';
+
+  @override
+  String get storageCatCache => 'Cache';
+
+  @override
+  String storageClear(String size) {
+    return 'Clear $size';
+  }
+
+  @override
+  String get storageClearNothing => 'Nothing selected';
+
+  @override
+  String storageFreed(String size) {
+    return 'Freed $size';
+  }
+
+  @override
+  String get storageNoCloud =>
+      'There is no cloud behind this. Anything you clear is gone from this phone, and the only other copy is on the phone it came from.';
+
+  @override
+  String get storageWhyHistoryLocked =>
+      'Conversations are not cleared from here — use Emergency Wipe.';
+
+  @override
+  String get storageRecoveryFree => 'Safe to clear';
+
+  @override
+  String get storageRecoveryGone => 'No copy anywhere else';
+
+  @override
+  String get storageRecoveryAskSender =>
+      'Can be requested from the sender again';
+
+  @override
+  String get storageRecoveryCostsThem =>
+      'They could no longer ask you to resend';
+
+  @override
+  String storageConfirmTitle(String size) {
+    return 'Clear $size?';
+  }
+
+  @override
+  String get storageConfirmBody =>
+      'This deletes the files from this phone. Nothing is uploaded anywhere, so there is nothing to restore them from.';
+
+  @override
+  String storageFilesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '$count file',
+      zero: 'empty',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get profileGroupCustomize => 'Customization';
+
+  @override
+  String get customizeTitle => 'Customization';
+
+  @override
+  String get customizeBarTitle => 'Navigation bar';
+
+  @override
+  String get customizeBarHint => 'Drag to reorder. Chats cannot be removed.';
+
+  @override
+  String get customizeBarShown => 'Shown';
+
+  @override
+  String get customizeBarHidden => 'Hidden';
+
+  @override
+  String get customizeBarHiddenEmpty => 'Nothing hidden';
+
+  @override
+  String get customizeBarMinimum => 'Keep at least two tabs';
+
+  @override
+  String get customizeReset => 'Reset to default';
 }

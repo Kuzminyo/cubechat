@@ -24,6 +24,7 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
+import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
@@ -170,11 +171,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           summary: t.profileVersion(_appVersion),
           children: [
             const _ThemeRow(),
-            const _ScaleRow(),
             _LanguageRow(locale: locale),
+            const _StorageRow(),
             const _AboutRow(),
             const _DiagnosticsRow(),
           ],
+        ),
+
+        const SizedBox(height: 10),
+
+        // Its own group rather than another row under App. What lives here is
+        // not a preference picked from a list — it is the shape of the app,
+        // arranged by dragging, and the interface size came with it because it
+        // is the same kind of decision.
+        _ExpandableSection(
+          icon: Icons.dashboard_customize_rounded,
+          title: t.profileGroupCustomize,
+          summary: _customizeSummary(ref, t),
+          children: const [_CustomizeRow()],
         ),
 
         const SizedBox(height: 14),
@@ -997,114 +1011,10 @@ class _ThemeRow extends ConsumerWidget {
   }
 }
 
-/// How big the app draws itself.
-///
-/// The same build lands visibly larger on one phone than on another — Android's
-/// Display size and iOS's Larger Text both feed the text scaler, and neither is
-/// visible from inside the app. Following the phone stays the default, because
-/// someone who made everything bigger meant this too; the other three are for
-/// the phone that was tuned for something else.
-///
-/// A preview of the actual size sits under the row, so the choice can be made
-/// by looking rather than by guessing what "Larger" means here.
-class _ScaleRow extends ConsumerWidget {
-  const _ScaleRow();
-
-  static String _label(AppLocalizations t, UiScale scale) => switch (scale) {
-        UiScale.system => t.profileScaleSystem,
-        UiScale.small => t.profileScaleSmall,
-        UiScale.normal => t.profileScaleNormal,
-        UiScale.large => t.profileScaleLarge,
-      };
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final current = ref.watch(uiScaleControllerProvider);
-    return _frame(
-      false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            t.profileScale,
-            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              for (final scale in UiScale.values) ...[
-                if (scale != UiScale.values.first) const SizedBox(width: 8),
-                Expanded(
-                  child: _ScalePill(
-                    label: _label(t, scale),
-                    active: scale == current,
-                    onTap: () => ref
-                        .read(uiScaleControllerProvider.notifier)
-                        .select(scale),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            t.profileScaleSample,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScalePill extends StatelessWidget {
-  const _ScalePill({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: active ? AppColors.brandGradient : null,
-          color: active ? null : AppColors.glass(0.08),
-          border: Border.all(
-            color: active ? AppColors.glass(0.3) : AppColors.glass(0.15),
-          ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          // Fixed, and deliberately not scaled: this row is how you *change*
-          // the scale, so it has to stay reachable at every setting — including
-          // the one that broke the layout.
-          textScaler: TextScaler.noScaling,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 12.5,
-            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ),
-    );
-  }
-}
+// The interface-size row used to live here, between the theme picker and the
+// language list. It has moved to the Customization screen along with the nav
+// bar — see [CustomizeScreen]; the two are the same kind of decision and this
+// group is for preferences picked from a list.
 
 class _LanguageRow extends ConsumerWidget {
   const _LanguageRow({required this.locale});
@@ -1179,6 +1089,90 @@ class _AboutRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Interface size · 5 tabs" — enough to answer "did I change anything?"
+/// without opening the screen, which is what every summary here is for.
+String _customizeSummary(WidgetRef ref, AppLocalizations t) {
+  final scale = ref.watch(uiScaleControllerProvider);
+  final layout = ref.watch(navBarControllerProvider);
+  final size = switch (scale) {
+    UiScale.system => t.profileScaleSystem,
+    UiScale.small => t.profileScaleSmall,
+    UiScale.normal => t.profileScaleNormal,
+    UiScale.large => t.profileScaleLarge,
+  };
+  return '$size · ${layout.shown.length}/${NavDestination.values.length}';
+}
+
+/// A plain row that opens a screen. The two settings that grew past a row —
+/// storage and customization — both get one.
+class _PushRow extends StatelessWidget {
+  const _PushRow({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
+
+  final IconData icon;
+  final String label;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return _frame(
+      false,
+      onTap: () => context.push(route),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
+            ),
+            child: Icon(icon, color: AppColors.textOnGlass, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+class _StorageRow extends StatelessWidget {
+  const _StorageRow();
+
+  @override
+  Widget build(BuildContext context) => _PushRow(
+        icon: Icons.pie_chart_rounded,
+        label: AppLocalizations.of(context).storageTitle,
+        route: '/storage',
+      );
+}
+
+class _CustomizeRow extends StatelessWidget {
+  const _CustomizeRow();
+
+  @override
+  Widget build(BuildContext context) => _PushRow(
+        icon: Icons.dashboard_customize_rounded,
+        label: AppLocalizations.of(context).customizeTitle,
+        route: '/customize',
+      );
 }
 
 class _DiagnosticsRow extends StatelessWidget {

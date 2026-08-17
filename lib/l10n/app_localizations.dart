@@ -3307,6 +3307,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'1 hour'**
   String get locationShare1h;
+
+  /// No description provided for @storageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage'**
+  String get storageTitle;
+
+  /// No description provided for @storageHeadline.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage usage'**
+  String get storageHeadline;
+
+  /// No description provided for @storageSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'cubechat is using {size} on this device'**
+  String storageSubtitle(String size);
+
+  /// No description provided for @storageEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing stored yet'**
+  String get storageEmpty;
+
+  /// No description provided for @storageScanning.
+  ///
+  /// In en, this message translates to:
+  /// **'Measuring…'**
+  String get storageScanning;
+
+  /// No description provided for @storageCatPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get storageCatPhotos;
+
+  /// No description provided for @storageCatVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice messages'**
+  String get storageCatVoice;
+
+  /// No description provided for @storageCatFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Files received'**
+  String get storageCatFiles;
+
+  /// No description provided for @storageCatOutbox.
+  ///
+  /// In en, this message translates to:
+  /// **'Files you sent'**
+  String get storageCatOutbox;
+
+  /// No description provided for @storageCatStickers.
+  ///
+  /// In en, this message translates to:
+  /// **'Stickers'**
+  String get storageCatStickers;
+
+  /// No description provided for @storageCatSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved messages'**
+  String get storageCatSaved;
+
+  /// No description provided for @storageCatWallpapers.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallpapers'**
+  String get storageCatWallpapers;
+
+  /// No description provided for @storageCatHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations and keys'**
+  String get storageCatHistory;
+
+  /// No description provided for @storageCatCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache'**
+  String get storageCatCache;
+
+  /// No description provided for @storageClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear {size}'**
+  String storageClear(String size);
+
+  /// No description provided for @storageClearNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing selected'**
+  String get storageClearNothing;
+
+  /// No description provided for @storageFreed.
+  ///
+  /// In en, this message translates to:
+  /// **'Freed {size}'**
+  String storageFreed(String size);
+
+  /// No description provided for @storageNoCloud.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no cloud behind this. Anything you clear is gone from this phone, and the only other copy is on the phone it came from.'**
+  String get storageNoCloud;
+
+  /// No description provided for @storageWhyHistoryLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations are not cleared from here — use Emergency Wipe.'**
+  String get storageWhyHistoryLocked;
+
+  /// No description provided for @storageRecoveryFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Safe to clear'**
+  String get storageRecoveryFree;
+
+  /// No description provided for @storageRecoveryGone.
+  ///
+  /// In en, this message translates to:
+  /// **'No copy anywhere else'**
+  String get storageRecoveryGone;
+
+  /// No description provided for @storageRecoveryAskSender.
+  ///
+  /// In en, this message translates to:
+  /// **'Can be requested from the sender again'**
+  String get storageRecoveryAskSender;
+
+  /// No description provided for @storageRecoveryCostsThem.
+  ///
+  /// In en, this message translates to:
+  /// **'They could no longer ask you to resend'**
+  String get storageRecoveryCostsThem;
+
+  /// No description provided for @storageConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear {size}?'**
+  String storageConfirmTitle(String size);
+
+  /// No description provided for @storageConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes the files from this phone. Nothing is uploaded anywhere, so there is nothing to restore them from.'**
+  String get storageConfirmBody;
+
+  /// No description provided for @storageFilesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{empty} one{{count} file} other{{count} files}}'**
+  String storageFilesCount(int count);
+
+  /// No description provided for @profileGroupCustomize.
+  ///
+  /// In en, this message translates to:
+  /// **'Customization'**
+  String get profileGroupCustomize;
+
+  /// No description provided for @customizeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Customization'**
+  String get customizeTitle;
+
+  /// No description provided for @customizeBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Navigation bar'**
+  String get customizeBarTitle;
+
+  /// No description provided for @customizeBarHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Drag to reorder. Chats cannot be removed.'**
+  String get customizeBarHint;
+
+  /// No description provided for @customizeBarShown.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown'**
+  String get customizeBarShown;
+
+  /// No description provided for @customizeBarHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get customizeBarHidden;
+
+  /// No description provided for @customizeBarHiddenEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing hidden'**
+  String get customizeBarHiddenEmpty;
+
+  /// No description provided for @customizeBarMinimum.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep at least two tabs'**
+  String get customizeBarMinimum;
+
+  /// No description provided for @customizeReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to default'**
+  String get customizeReset;
 }
 
 class _AppLocalizationsDelegate

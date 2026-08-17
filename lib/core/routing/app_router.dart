@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/profile/data/nav_bar_controller.dart';
+import '../../features/profile/presentation/customize_screen.dart';
+import '../../features/profile/presentation/storage_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/backup/presentation/backup_screen.dart';
 import '../../features/backup/presentation/phone_transfer_screen.dart';
@@ -86,11 +90,28 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
       StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             AppShell(shell: navigationShell),
+        // The strip follows the user's own tab order, not the router's.
+        //
+        // Both have to, or they contradict each other: the bar would show
+        // Map second while dragging left from Chats landed on Contacts. So
+        // the same list permutes the branches here and the icons in [AppShell],
+        // and a hidden tab is simply not in the strip — there is no way to
+        // swipe onto a screen you have taken off the bar.
         navigatorContainerBuilder: (context, navigationShell, children) =>
-            BranchContainer(
-          currentIndex: navigationShell.currentIndex,
-          branches: children,
-          onSwitch: navigationShell.goBranch,
+            Consumer(
+          builder: (context, ref, _) {
+            final layout = ref.watch(navBarControllerProvider);
+            final order = layout.branches;
+            return BranchContainer(
+              // Hiding the tab you are standing on is allowed, and this is
+              // where it lands: not on the bar, so not in the strip, so first
+              // tab. The alternative — refusing the edit — is a worse answer
+              // to a reasonable thing to try.
+              currentIndex: layout.positionOf(navigationShell.currentIndex) ?? 0,
+              branches: [for (final branch in order) children[branch]],
+              onSwitch: (i) => navigationShell.goBranch(order[i]),
+            );
+          },
         ),
         // Preloaded, all but one. The tabs are a strip you drag between, so the
         // neighbour has to exist before the finger asks for it — a branch
@@ -215,6 +236,22 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/storage',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: StorageScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/customize',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: CustomizeScreen()),
           state: state,
         ),
       ),

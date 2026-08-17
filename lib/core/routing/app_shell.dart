@@ -6,13 +6,55 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/chats/presentation/chats_list_screen.dart';
+import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
 import '../theme/colors.dart';
 import '../widgets/aurora_background.dart';
 import '../widgets/bar_glass.dart';
 import '../widgets/unread_badge.dart';
 
-class AppShell extends StatelessWidget {
+/// Everything the bar needs to draw one destination.
+///
+/// Keyed by [NavDestination] rather than by position, because position is now
+/// the user's to decide — see [NavBarController]. The router's branch order is
+/// still the enum's order and still the contract; this only says how each one
+/// looks.
+///
+/// Contacts before Nearby in that enum, and deliberately: people you already
+/// know sit next to Chats, and the radio-range list — the one you only open
+/// when meeting somebody new — starts further out. That is the default the
+/// user is now free to overrule.
+NavTabSpec tabSpecFor(NavDestination destination, AppLocalizations t) =>
+    switch (destination) {
+      NavDestination.chats => NavTabSpec(
+          icon: Icons.chat_bubble_outline_rounded,
+          activeIcon: Icons.chat_bubble_rounded,
+          label: t.navChats,
+          showsUnread: true,
+        ),
+      NavDestination.contacts => NavTabSpec(
+          icon: Icons.contacts_rounded,
+          activeIcon: Icons.contacts_rounded,
+          label: t.navContacts,
+        ),
+      NavDestination.peers => NavTabSpec(
+          icon: Icons.radar_rounded,
+          activeIcon: Icons.radar_rounded,
+          label: t.navPeers,
+        ),
+      NavDestination.map => NavTabSpec(
+          icon: Icons.map_rounded,
+          activeIcon: Icons.map_rounded,
+          label: t.navMap,
+        ),
+      NavDestination.profile => NavTabSpec(
+          icon: Icons.person_outline_rounded,
+          activeIcon: Icons.person_rounded,
+          label: t.navProfile,
+        ),
+    };
+
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.shell});
 
   /// Owns the per-tab navigators. Switching tabs goes through
@@ -21,40 +63,15 @@ class AppShell extends StatelessWidget {
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final tabs = [
-      _TabSpec(
-        icon: Icons.chat_bubble_outline_rounded,
-        activeIcon: Icons.chat_bubble_rounded,
-        label: t.navChats,
-        showsUnread: true,
-      ),
-      // Contacts before Nearby: people you already know sit next to Chats,
-      // and the radio-range list — the one you only open when meeting someone
-      // new — moves further out. Keep in step with the branch order in
-      // app_router.dart; the shell pairs them by index.
-      _TabSpec(
-        icon: Icons.contacts_rounded,
-        activeIcon: Icons.contacts_rounded,
-        label: t.navContacts,
-      ),
-      _TabSpec(
-        icon: Icons.radar_rounded,
-        activeIcon: Icons.radar_rounded,
-        label: t.navPeers,
-      ),
-      _TabSpec(
-        icon: Icons.map_rounded,
-        activeIcon: Icons.map_rounded,
-        label: t.navMap,
-      ),
-      _TabSpec(
-        icon: Icons.person_outline_rounded,
-        activeIcon: Icons.person_rounded,
-        label: t.navProfile,
-      ),
-    ];
+    final layout = ref.watch(navBarControllerProvider);
+    final tabs = [for (final d in layout.shown) tabSpecFor(d, t)];
+    // Where the branch we are standing on sits on *this* bar. Null when its tab
+    // has been hidden — allowed, and resolved the same way the strip resolves
+    // it (see the container builder in app_router.dart): fall back to the first
+    // tab rather than refuse the edit.
+    final currentIndex = layout.positionOf(shell.currentIndex) ?? 0;
 
     // The system back gesture goes to Chats before it leaves the app.
     //
@@ -72,8 +89,10 @@ class AppShell extends StatelessWidget {
         shell.goBranch(0);
       },
       child: AuroraBackground(
-      // The backdrop leans toward whichever tab is open.
-      focus: tabs.length < 2 ? 1.0 : shell.currentIndex * 2 / (tabs.length - 1),
+      // The backdrop leans toward whichever tab is open — by where it sits on
+      // the bar, not by its branch index, so the light still travels with the
+      // finger once the tabs have been reordered.
+      focus: tabs.length < 2 ? 1.0 : currentIndex * 2 / (tabs.length - 1),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         // The keyboard must cover the bar, not push it.
@@ -119,11 +138,15 @@ class AppShell extends StatelessWidget {
                       constraints: const BoxConstraints(maxWidth: 460),
                       child: _GlassPill(
                         tabs: tabs,
-                        currentIndex: shell.currentIndex,
+                        currentIndex: currentIndex,
+                        // The bar speaks positions and the shell speaks
+                        // branches. This is the one place the two are
+                        // translated, so a reordered bar cannot send a tap to
+                        // somebody else's screen.
                         onTabChanged: (i) => shell.goBranch(
-                          i,
+                          layout.branches[i],
                           // Re-tapping a tab pops that branch to its root.
-                          initialLocation: i == shell.currentIndex,
+                          initialLocation: i == currentIndex,
                         ),
                       ),
                     ),
@@ -139,8 +162,8 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _TabSpec {
-  const _TabSpec({
+class NavTabSpec {
+  const NavTabSpec({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -164,7 +187,7 @@ class _GlassPill extends StatefulWidget {
     required this.onTabChanged,
   });
 
-  final List<_TabSpec> tabs;
+  final List<NavTabSpec> tabs;
   final int currentIndex;
   final ValueChanged<int> onTabChanged;
 
@@ -322,7 +345,7 @@ class _NavItem extends StatelessWidget {
     required this.onTap,
   });
 
-  final _TabSpec spec;
+  final NavTabSpec spec;
   final bool active;
   final double iconBox;
   final double iconSize;
