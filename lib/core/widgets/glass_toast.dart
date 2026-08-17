@@ -166,7 +166,18 @@ class _GlassToastState extends State<_GlassToast>
       bottom: MediaQuery.of(context).viewInsets.bottom +
           MediaQuery.of(context).padding.bottom +
           96,
-      child: IgnorePointer(
+      // Transparent Material around it, and not for the look.
+      //
+      // An OverlayEntry is mounted straight into the overlay, with no Scaffold
+      // and no Material above it — and text with no Material ancestor gets
+      // Flutter's fallback style, which is black with a yellow double
+      // underline. That underline is the framework saying "nothing told me how
+      // to draw this", and it was landing on every toast the app has ever
+      // shown. Transparency rather than a surface: the pane below already
+      // paints its own glass.
+      child: Material(
+        type: MaterialType.transparency,
+        child: IgnorePointer(
         child: FadeTransition(
           opacity: _fade,
           child: SlideTransition(
@@ -241,6 +252,7 @@ class _GlassToastState extends State<_GlassToast>
             ),
           ),
         ),
+      ),
       ),
     );
   }

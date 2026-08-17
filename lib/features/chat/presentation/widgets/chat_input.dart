@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/theme/glass.dart';
+import '../../../../core/util/ui_activity.dart';
 import 'emoji_sticker_panel.dart';
 
 /// The canonical smoked-glass texture for the message composer island.
@@ -47,27 +48,45 @@ class MessageIslandGlass extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
-            filter: AppBlur.pane,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.glass(0.07),
-                    AppColors.pane(0.48),
-                    AppColors.pane(0.60),
-                  ],
-                  stops: const [0, 0.35, 1],
-                ),
-                borderRadius: radius,
-                border: Border.all(
-                  color: AppColors.glass(0.14),
+          // Surface beside the content, blur dropped while anything is
+          // scrolling — the same arrangement and the same reason as [BarGlass]
+          // and [FloatingGlass]. The composer is on screen for the whole life
+          // of a conversation and sits directly over the list being dragged
+          // past it, so it re-snapshots and re-blurs on every frame of every
+          // scroll. That is the most-paid-for blur in the app.
+          //
+          // Beside, not around, so the tree does not change shape mid-gesture
+          // and take the text field's focus and contents down with it.
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: UiActivity.instance.isScrolling,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.glass(0.07),
+                          AppColors.pane(0.48),
+                          AppColors.pane(0.60),
+                        ],
+                        stops: const [0, 0.35, 1],
+                      ),
+                      borderRadius: radius,
+                      border: Border.all(
+                        color: AppColors.glass(0.14),
+                      ),
+                    ),
+                  ),
+                  builder: (context, scrolling, pane) => scrolling
+                      ? pane!
+                      : BackdropFilter(filter: AppBlur.pane, child: pane!),
                 ),
               ),
-              child: Padding(padding: padding, child: child),
-            ),
+              Padding(padding: padding, child: child),
+            ],
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../theme/glass.dart';
+import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
 /// nav bar uses, offered as a reusable surface so a list of them reads as a
@@ -97,7 +98,9 @@ class FloatingGlass extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
 
-    final Widget pane = DecoratedBox(
+    // The tint, on its own. It is what the pane *looks* like; the blur behind
+    // it is what the pane costs.
+    final Widget tint = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -114,14 +117,15 @@ class FloatingGlass extends StatelessWidget {
           color: AppColors.glass(0.16),
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: radius,
-          hoverColor: AppColors.glassHover,
-          child: Padding(padding: padding, child: child),
-        ),
+    );
+
+    final Widget content = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        hoverColor: AppColors.glassHover,
+        child: Padding(padding: padding, child: child),
       ),
     );
 
@@ -132,12 +136,42 @@ class FloatingGlass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        child: blur
-            ? BackdropFilter(
-                filter: AppBlur.pane,
-                child: pane,
-              )
-            : pane,
+        // The surface sits *beside* the content in a stack rather than around
+        // it — the same arrangement, for the same reason, as [BarGlass].
+        //
+        // A live BackdropFilter re-snapshots and re-blurs whatever is behind it
+        // on every frame that content moves, which during a scroll is every
+        // frame. Diagnostics on a mid-range Android reads raster p90 11 ms
+        // against build p90 4 ms: the UI thread is idle and the GPU is the
+        // whole bill. Dropping the blur while the finger is moving costs
+        // nothing visible — the tint over it is 52–66% opaque, and a gaussian
+        // of a mostly-hidden backdrop that is also sliding past is not
+        // something anybody can see — and it returns the moment motion stops.
+        //
+        // Beside rather than around, because wrapping would change the *shape*
+        // of the tree mid-gesture: the widget at that position would alternate
+        // between `BackdropFilter(child: …)` and the child, and Flutter answers
+        // that by tearing the whole subtree down and rebuilding it. BarGlass
+        // learned that the hard way — it remounted the photo grid on the first
+        // frame of every drag. Nothing above the content changes shape here.
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: blur
+                  ? ValueListenableBuilder<bool>(
+                      valueListenable: UiActivity.instance.isScrolling,
+                      child: tint,
+                      builder: (context, scrolling, pane) => scrolling
+                          ? pane!
+                          : BackdropFilter(filter: AppBlur.pane, child: pane!),
+                    )
+                  : tint,
+            ),
+            // The one unpositioned child, so the stack sizes itself to it —
+            // exactly as when it was the decorated box's child.
+            content,
+          ],
+        ),
       ),
     );
 
