@@ -146,11 +146,30 @@ class _Spotlight extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: close,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 14 * t, sigmaY: 14 * t),
-                  child: ColoredBox(
-                    color: AppColors.pane(0.45 * t),
-                    child: const SizedBox.expand(),
+                // Clipped, and that is not decoration.
+                //
+                // A BackdropFilter with no clip around it has unbounded effect
+                // bounds, and several backends answer that by rendering
+                // nothing at all — which is what "there is no blur" was. Every
+                // other blurred surface in this app sits inside a clip already
+                // (FloatingGlass, BarGlass, the toast); this one was the
+                // exception because it covers the whole screen and looked like
+                // it needed no shape. It needs the shape to be drawn, not to be
+                // rounded.
+                child: ClipRect(
+                  child: BackdropFilter(
+                    // Never exactly zero while the route is present: a sigma of
+                    // 0 is a filter that some backends optimise away entirely,
+                    // and the first frame is the one that decides whether the
+                    // layer gets built at all.
+                    filter: ImageFilter.blur(
+                      sigmaX: 0.001 + 14 * t,
+                      sigmaY: 0.001 + 14 * t,
+                    ),
+                    child: ColoredBox(
+                      color: AppColors.pane(0.45 * t),
+                      child: const SizedBox.expand(),
+                    ),
                   ),
                 ),
               ),
