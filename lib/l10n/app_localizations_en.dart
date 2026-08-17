@@ -2021,4 +2021,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get previewUnsupported => 'Unsupported message';
+
+  @override
+  String chatPreparingPhotos(int count) {
+    return 'Preparing $count photos…';
+  }
 }

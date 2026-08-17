@@ -3236,14 +3236,107 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       return;
     }
 
-    for (var i = 0; i < result.bytes.length; i++) {
+    await _encodeAndSendBatch(
+      result.bytes,
+      caption: result.caption,
+      viewOnce: result.viewOnce,
+    );
+  }
+
+  /// Prepare every picture, then send them as one batch.
+  ///
+  /// The order is the point. Sending in a loop meant encode, send, encode,
+  /// send — and a send does not return until the last chunk of that picture has
+  /// crossed the mesh, so the second photo was not even *encoded* until the
+  /// first had entirely arrived. What the sender saw was their pictures
+  /// trickling out one at a time over minutes instead of the batch they picked.
+  ///
+  /// All the encoding happens first, which is the part that can be done ahead;
+  /// then [MessagingService.sendImageBatch] puts every bubble on screen at once
+  /// and moves the pictures one after another behind them. Nothing about the
+  /// wire changed — the transfers are as serialised and as paced as they ever
+  /// were. Only when the user is told.
+  Future<void> _encodeAndSendBatch(
+    List<Uint8List> sources, {
+    String? caption,
+    bool viewOnce = false,
+  }) async {
+    if (sources.isEmpty) return;
+    if (sources.length == 1) {
+      // One picture is not a batch, and the single path already caches, saves
+      // and channels correctly.
       await _encodeAndSend(
-        result.bytes[i],
-        '${assets[i].id}-${DateTime.now().microsecondsSinceEpoch}',
-        caption: i == 0 ? result.caption : null,
-        viewOnce: result.viewOnce,
+        sources.first,
+        'p${DateTime.now().microsecondsSinceEpoch}',
+        caption: caption,
+        viewOnce: viewOnce,
       );
+      return;
+    }
+
+    // Encoding several large photos is seconds of work with nothing on screen
+    // to explain it, and this is the moment the old loop hid inside the first
+    // send.
+    if (mounted) {
+      showGlassToast(
+        context,
+        AppLocalizations.of(context).chatPreparingPhotos(sources.length),
+        icon: Icons.photo_library_rounded,
+      );
+    }
+
+    final encoded = <Uint8List>[];
+    try {
+      for (final source in sources) {
+        final wire = await encodeBytesForMesh(source);
+        // A picture that will not fit is skipped rather than failing the batch:
+        // four good photos out of five is a better answer than none.
+        if (wire != null) encoded.add(wire);
+        if (!mounted) return;
+      }
+    } catch (e) {
       if (!mounted) return;
+      _showAttachmentFailure(e);
+      return;
+    }
+    if (encoded.isEmpty || !mounted) return;
+
+    // The notebook and a room have no batch path of their own; they still get
+    // the half that matters, which is that all the encoding is already done.
+    if (isSavedChat(widget.canonicalId) || widget.isChannel) {
+      for (var i = 0; i < encoded.length; i++) {
+        await _sendImageBytes(
+          encoded[i],
+          'p$i-${DateTime.now().microsecondsSinceEpoch}',
+          caption: i == 0 ? caption : null,
+          viewOnce: viewOnce,
+        );
+        if (!mounted) return;
+      }
+      return;
+    }
+
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final cached = <String?>[];
+    for (var i = 0; i < encoded.length; i++) {
+      // A view-once photo is never written to this phone — see
+      // [_sendImageBytes] for the whole argument.
+      cached.add(viewOnce ? null : await _cacheOutgoingImage(encoded[i], 'p$i-$stamp'));
+    }
+    if (!mounted) return;
+
+    try {
+      await ref.read(messagingServiceProvider).sendImageBatch(
+            widget.peerId,
+            images: encoded,
+            mime: 'image/jpeg',
+            cachedPaths: cached,
+            caption: caption,
+            viewOnce: viewOnce,
+          );
+    } catch (e) {
+      if (!mounted) return;
+      _showAttachmentFailure(e);
     }
   }
 

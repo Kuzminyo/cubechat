@@ -126,6 +126,44 @@ class MediaRouteUnavailable implements Exception {
   const MediaRouteUnavailable();
 }
 
+/// A photo that is already on screen and waiting for its turn on the wire.
+///
+/// Everything the transfer needs, worked out once when the bubble was minted —
+/// except the session, which [MessagingService.transferImage] resolves for
+/// itself. By the time a batch reaches its last picture the link may be a
+/// different one, or a new one, and the tail of the batch has to use whatever
+/// is there rather than what was there when the user pressed send.
+class PendingImageSend {
+  const PendingImageSend({
+    required this.chatId,
+    required this.canonicalId,
+    required this.peerPub,
+    required this.imageId,
+    required this.bytes,
+    required this.mime,
+    required this.caption,
+    required this.viewOnce,
+    required this.message,
+  });
+
+  /// What the caller addressed — a transport id, possibly, rather than the
+  /// pubkey.
+  final String chatId;
+
+  /// The pubkey-hex bucket the message was actually filed under.
+  final String canonicalId;
+
+  final Uint8List peerPub;
+  final Uint8List imageId;
+  final Uint8List bytes;
+  final String mime;
+  final String? caption;
+  final bool viewOnce;
+
+  /// The bubble, already appended to the store.
+  final Message message;
+}
+
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
 ///
@@ -1571,6 +1609,42 @@ class MessagingService {
     String? caption,
     bool viewOnce = false,
   }) async {
+    final pending = prepareImage(
+      chatId,
+      bytes: bytes,
+      mime: mime,
+      cachedPath: cachedPath,
+      caption: caption,
+      viewOnce: viewOnce,
+    );
+    await transferImage(pending);
+    return pending.message;
+  }
+
+  /// Mint an outgoing photo and put it on screen, without sending anything yet.
+  ///
+  /// The split exists for batches. [sendImage] does not return until the last
+  /// chunk of the picture has crossed the mesh, and the bubble is created at the
+  /// top of it — so sending five photos in a loop created the second bubble only
+  /// once the first photo had entirely arrived. Over Bluetooth that is minutes,
+  /// and what the sender saw was their pictures trickling out one at a time
+  /// rather than the batch they picked.
+  ///
+  /// Preparing them all first puts the whole set on screen at once — which is
+  /// also what makes them fold into one album — and the transfers then run one
+  /// after another behind them, unchanged and still serialised. Nothing about
+  /// the wire is different; only when the user is told.
+  ///
+  /// Throws before creating anything when there is no route or no recipient, so
+  /// a hopeless batch fails as a batch instead of leaving five bubbles behind.
+  PendingImageSend prepareImage(
+    String chatId, {
+    required Uint8List bytes,
+    required String mime,
+    String? cachedPath,
+    String? caption,
+    bool viewOnce = false,
+  }) {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
     session ??= _findSessionByPubkeyHex(chatId);
@@ -1623,6 +1697,43 @@ class MessagingService {
     if (chatId != canonicalId) {
       messages.append(chatId, msg);
     }
+
+    return PendingImageSend(
+      chatId: chatId,
+      canonicalId: canonicalId,
+      peerPub: peerPub,
+      imageId: imageId,
+      bytes: bytes,
+      mime: mime,
+      caption: caption0,
+      viewOnce: viewOnce,
+      message: msg,
+    );
+  }
+
+  /// Put a photo prepared by [prepareImage] on the wire.
+  ///
+  /// The session is resolved **here**, not at prepare time. In a batch the last
+  /// picture's turn comes minutes after it was minted, and a link that dropped
+  /// or came back in between has to be the one that is used — holding the
+  /// session captured at prepare would send the tail of a batch down a route
+  /// that no longer exists.
+  Future<void> transferImage(PendingImageSend pending) async {
+    final chatId = pending.chatId;
+    final canonicalId = pending.canonicalId;
+    final peerPub = pending.peerPub;
+    final imageId = pending.imageId;
+    final bytes = pending.bytes;
+    final mime = pending.mime;
+    final caption0 = pending.caption;
+    final viewOnce = pending.viewOnce;
+    final msg = pending.message;
+
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    ChatSession? session = manager.sessionFor(chatId);
+    session ??= _findSessionByPubkeyHex(chatId);
+
+    final messages = _ref.read(messagesControllerProvider.notifier);
 
     try {
       // Size chunks to the link's real MTU so a full chunk-frame fits one BLE
@@ -1746,7 +1857,67 @@ class MessagingService {
       // user with a broken bubble and no idea the link had dropped.
       rethrow;
     }
-    return msg;
+  }
+
+  /// Send a set of photos as one batch.
+  ///
+  /// Every bubble appears first, then the pictures go one after another. That
+  /// order is the whole point — see [prepareImage] — and it is also what makes
+  /// them fold into a single album rather than arriving as separate bubbles
+  /// minutes apart.
+  ///
+  /// The caption belongs to the *set*, so it rides on the first picture, which
+  /// is where the album draws it.
+  ///
+  /// A failure part-way stops the batch: the pictures already sent stay sent,
+  /// the rest are marked failed rather than being retried down a route that has
+  /// just proved itself dead. The error reaches the caller, which is what puts
+  /// the reason on screen.
+  Future<void> sendImageBatch(
+    String chatId, {
+    required List<Uint8List> images,
+    required String mime,
+    List<String?> cachedPaths = const [],
+    String? caption,
+    bool viewOnce = false,
+  }) async {
+    if (images.isEmpty) return;
+    final pending = <PendingImageSend>[];
+    for (var i = 0; i < images.length; i++) {
+      pending.add(prepareImage(
+        chatId,
+        bytes: images[i],
+        mime: mime,
+        cachedPath: i < cachedPaths.length ? cachedPaths[i] : null,
+        caption: i == 0 ? caption : null,
+        viewOnce: viewOnce,
+      ));
+    }
+    for (var i = 0; i < pending.length; i++) {
+      try {
+        await transferImage(pending[i]);
+      } catch (e) {
+        // Whatever is left has not been attempted and will not be. Say so on
+        // each of them rather than leaving a row of bubbles stuck on "sending"
+        // forever.
+        final messages = _ref.read(messagesControllerProvider.notifier);
+        for (final abandoned in pending.skip(i + 1)) {
+          messages.updateStatus(
+            abandoned.canonicalId,
+            abandoned.message.id,
+            MessageStatus.failed,
+          );
+          if (abandoned.chatId != abandoned.canonicalId) {
+            messages.updateStatus(
+              abandoned.chatId,
+              abandoned.message.id,
+              MessageStatus.failed,
+            );
+          }
+        }
+        rethrow;
+      }
+    }
   }
 
   /// Send a voice message as a series of SealedBox-encrypted audio chunks.

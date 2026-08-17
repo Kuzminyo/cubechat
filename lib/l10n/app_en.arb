@@ -898,5 +898,12 @@
   "previewLocation": "Location",
   "previewMapInvite": "Map invitation",
   "previewContact": "Contact",
-  "previewUnsupported": "Unsupported message"
+  "previewUnsupported": "Unsupported message",
+
+  "chatPreparingPhotos": "Preparing {count} photos…",
+  "@chatPreparingPhotos": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  }
 }

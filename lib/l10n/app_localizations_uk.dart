@@ -2039,4 +2039,9 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get previewUnsupported => 'Повідомлення не підтримується';
+
+  @override
+  String chatPreparingPhotos(int count) {
+    return 'Готую $count фото…';
+  }
 }

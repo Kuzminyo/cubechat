@@ -817,5 +817,7 @@
     "previewLocation":  "Геолокація",
     "previewMapInvite":  "Запрошення на мапу",
     "previewContact":  "Контакт",
-    "previewUnsupported":  "Повідомлення не підтримується"
+    "previewUnsupported":  "Повідомлення не підтримується",
+
+    "chatPreparingPhotos":  "Готую {count} фото…"
 }

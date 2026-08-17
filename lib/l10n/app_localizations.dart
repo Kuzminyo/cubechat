@@ -3631,6 +3631,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unsupported message'**
   String get previewUnsupported;
+
+  /// No description provided for @chatPreparingPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing {count} photos…'**
+  String chatPreparingPhotos(int count);
 }
 
 class _AppLocalizationsDelegate
