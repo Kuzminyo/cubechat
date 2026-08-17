@@ -1689,7 +1689,30 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       child: _SearchResultHighlight(child: bubble),
                     );
                   }
-                  return bubble;
+
+                  // The day this message opens, if it opens one.
+                  //
+                  // Drawn above the bubble, which in a reversed list means
+                  // first in this item's own column — the reversal is of the
+                  // *list*, not of what a single item lays out. Compared
+                  // against the message before it in conversation order, so
+                  // the separator sits between the last message of one day and
+                  // the first of the next, and nowhere else.
+                  //
+                  // A photo folded into somebody else's album has already
+                  // returned above, so a batch carries at most one separator
+                  // and it belongs to the album's anchor — the oldest picture
+                  // in it, which is where the batch began.
+                  final index = messages.length - 1 - i;
+                  final previous = index > 0 ? messages[index - 1] : null;
+                  if (!startsNewDay(m.sentAt, previous?.sentAt)) return bubble;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _DaySeparator(day: m.sentAt),
+                      bubble,
+                    ],
+                  );
                 },
               ),
         composer: widget.composer,
@@ -1830,6 +1853,43 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             // but a reflow.
             ChatVoiceBar(chatId: widget.chatId),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Today", "Yesterday", "14 August" — the line between two days of talking.
+///
+/// A pill rather than a bare line of text, and centred, because it has to read
+/// as belonging to the conversation rather than to either side of it. The same
+/// smoked pane as everything else that floats here, at a size that is legible
+/// without competing with a message.
+class _DaySeparator extends StatelessWidget {
+  const _DaySeparator({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 6),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.pane(0.55),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glass(0.12)),
+          ),
+          child: Text(
+            formatDayHeader(context, day),
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
