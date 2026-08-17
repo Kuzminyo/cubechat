@@ -856,13 +856,25 @@ class MessagingService {
   ///    address, so between attempts we ask [refreshId] to re-scan for the
   ///    one it is using now.
   ///
-  /// A peer that *does* connect but doesn't expose the cubechat service is a
-  /// permanent failure, not a transient one, so it is never retried.
+  ///  * both phones connect to each other in the same instant — which is the
+  ///    normal case when two people open the same chat — and the platform
+  ///    hands one of the two clients an empty service list. That reads as "not
+  ///    a cubechat device" and is nothing of the sort; see [BleDiscoveryFailed]
+  ///    and the `on StateError` arm below, which is where a single field report
+  ///    of "connected on the fifth try" was actually coming from.
+  ///
+  /// A peer that connects, enumerates, and genuinely does not expose the
+  /// cubechat service is a permanent failure and is never retried.
+  ///
+  /// Four attempts rather than three, and each wait a little longer than the
+  /// last: the collision above resolves as soon as one side's link settles, and
+  /// the extra attempt costs nothing when there is nobody there — that case
+  /// fails on the connect itself, in milliseconds.
   Future<void> connectAsInitiatorWithRetry({
     required String deviceId,
     required String displayName,
     Future<String?> Function()? refreshId,
-    int attempts = 3,
+    int attempts = 4,
   }) async {
     var id = deviceId;
     Object lastError = StateError('connect was never attempted');
@@ -875,7 +887,16 @@ class MessagingService {
         );
         return;
       } on StateError {
-        rethrow; // answered, but not a cubechat node — retrying is futile
+        // Answered, enumerated, and genuinely is not one of ours. Retrying a
+        // stranger's phone achieves nothing.
+        //
+        // Note what this deliberately no longer catches: an *empty* service
+        // list, which used to arrive here as the same StateError and was
+        // therefore given up on at once. That is a race in the platform, not a
+        // verdict about the peer — see [BleDiscoveryFailed] — and it now falls
+        // through to the retry below, which is where a person was standing in
+        // for the code and pressing the button five times.
+        rethrow;
       } catch (e) {
         lastError = e;
         DebugLog.instance.log('BLE-CENTRAL',

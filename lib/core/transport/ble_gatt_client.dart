@@ -7,6 +7,36 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../ble/ble_constants.dart';
 import '../util/debug_log.dart';
 
+/// Service discovery came back with nothing, which is a fault in the stack
+/// rather than an answer about the peer.
+///
+/// The distinction is the whole point of this class existing. A device that
+/// answers a GATT connection *always* exposes something — the successful
+/// attempts in the field logs discover four services, of which two are the
+/// standard GAP and GATT ones every peripheral has. An empty list therefore
+/// cannot mean "this is not a cubechat node"; it means the discovery did not
+/// happen. On Android it is a known race: both phones connect to each other in
+/// the same instant (each one's log shows the other's central connecting a
+/// millisecond before its own connect returns), the platform shares one
+/// physical link per address, and the client attached to the wrong side of it
+/// gets an empty service list back within ten milliseconds.
+///
+/// It was being reported as [StateError] alongside the genuine "answered, but
+/// is not one of ours" case, and the retry loop very deliberately does not
+/// retry that one — so a transient stack race became a permanent failure that
+/// only a human pressing Retry could clear. Five times, in the report that
+/// prompted this.
+class BleDiscoveryFailed implements Exception {
+  const BleDiscoveryFailed(this.deviceId);
+
+  final String deviceId;
+
+  @override
+  String toString() =>
+      'service discovery returned nothing for $deviceId — the link is up but '
+      'the platform did not enumerate it';
+}
+
 /// Central-side wrapper around a single [BluetoothDevice] that speaks the
 /// cubechat GATT protocol.
 ///
@@ -108,6 +138,34 @@ class BleGattClient {
     }
   }
 
+  /// How long to let the platform settle before asking a second time.
+  ///
+  /// The empty answer comes back in about ten milliseconds — far too fast to be
+  /// a real enumeration, which takes long enough to see in a log. Waiting a
+  /// beat and asking again is what a human pressing Retry was doing, only
+  /// without the human, and it costs nothing on the overwhelmingly common path
+  /// where the first answer is good.
+  static const Duration _rediscoverAfter = Duration(milliseconds: 350);
+
+  /// Enumerate the peer's services, asking twice if the first answer is empty.
+  Future<List<BluetoothService>> _discoverServices(DebugLog log) async {
+    log.log('BLE-CENTRAL', 'discoverServices…');
+    var services = await _device.discoverServices();
+    log.log('BLE-CENTRAL', 'discovered ${services.length} services');
+    if (services.isNotEmpty) return services;
+
+    // Still connected? A peer that dropped the link has nothing to enumerate
+    // and asking again only delays the failure the caller has to handle.
+    if (!_device.isConnected) return services;
+
+    log.log('BLE-CENTRAL', 'empty service list — settling and asking again');
+    await Future<void>.delayed(_rediscoverAfter);
+    if (!_device.isConnected) return const <BluetoothService>[];
+    services = await _device.discoverServices();
+    log.log('BLE-CENTRAL', 'second discovery: ${services.length} services');
+    return services;
+  }
+
   Future<void> _connect(Duration timeout) async {
     final log = DebugLog.instance;
     log.log('BLE-CENTRAL', 'connect → ${_device.remoteId.str}');
@@ -147,9 +205,16 @@ class BleGattClient {
       await _awaitPlatformMtu();
     }
 
-    log.log('BLE-CENTRAL', 'discoverServices…');
-    final services = await _device.discoverServices();
-    log.log('BLE-CENTRAL', 'discovered ${services.length} services');
+    final services = await _discoverServices(log);
+
+    // Nothing at all is the stack failing, not the peer answering. See
+    // [BleDiscoveryFailed] — this must stay a *different* exception from the
+    // one below, because one of them is worth retrying and the other never is.
+    if (services.isEmpty) {
+      await disconnect();
+      throw BleDiscoveryFailed(_device.remoteId.str);
+    }
+
     BluetoothService? cubechatService;
     for (final s in services) {
       if (s.uuid.str.toLowerCase() == BleConstants.serviceUuid.toLowerCase()) {
@@ -158,7 +223,8 @@ class BleGattClient {
       }
     }
     if (cubechatService == null) {
-      DebugLog.instance.log('BLE-CENTRAL', 'cubechat service NOT FOUND on peer');
+      DebugLog.instance.log('BLE-CENTRAL',
+          'cubechat service NOT FOUND among ${services.length} services');
       await disconnect();
       throw StateError('peer does not expose the cubechat service');
     }
