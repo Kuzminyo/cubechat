@@ -3691,9 +3691,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
                 .read(messagingServiceProvider)
                 .sendChannelText(widget.peerId, text);
           } else {
-            await ref
-                .read(messagingServiceProvider)
-                .sendText(widget.peerId, text, replyToWireId: replyWireId);
+            await ref.read(messagingServiceProvider).sendText(
+                  widget.peerId,
+                  text,
+                  replyToWireId: replyWireId,
+                  // The snippet the reply bar was showing, kept with the
+                  // message so the quote box never depends on finding the
+                  // original again — see [Message.replyPreview].
+                  replyPreview: activeReply?.preview,
+                );
           }
         } catch (e) {
           if (!mounted) return;

@@ -1000,6 +1000,13 @@ class MessagingService {
     String chatId,
     String text, {
     String? replyToWireId,
+
+    /// What the quoted message said, captured when the reply was composed.
+    ///
+    /// Stored on our own copy so the quote box never has to find the original
+    /// again — see [Message.replyPreview]. Nothing carries it over the wire;
+    /// the far side still resolves the quote by id.
+    String? replyPreview,
     bool transient = false,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
@@ -1055,6 +1062,7 @@ class MessagingService {
       status: MessageStatus.sending,
       wireId: TransportEnvelope.hashHex(msgId),
       replyToWireId: replyTarget != null ? replyToWireId : null,
+      replyPreview: replyTarget != null ? replyPreview : null,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     if (!transient) {

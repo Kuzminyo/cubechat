@@ -67,6 +67,7 @@ class Message {
     this.reactions = const <String, Set<String>>{},
     this.readBy = const <String, ChannelRead>{},
     this.replyToWireId,
+    this.replyPreview,
     this.route,
     this.routeHops,
     this.pollOptions = const <String>[],
@@ -141,9 +142,26 @@ class Message {
   /// wide and two ways of storing the same fact.
   final Map<String, ChannelRead> readBy;
 
-  /// [wireId] of the message this one quotes (a reply), or null. The UI looks
-  /// the quoted message up in the store to render its snippet.
+  /// [wireId] of the message this one quotes (a reply), or null.
   final String? replyToWireId;
+
+  /// What the quoted message looked like when the reply was written.
+  ///
+  /// The quote box used to be rendered entirely by looking the target up in the
+  /// store, and drew a bare "…" whenever the lookup missed — which is not a
+  /// rare case: the history may have been cleared, the two messages may be
+  /// filed under different ids, or the quoted one may simply not have arrived
+  /// yet. Replying to a sticker showed "…" every time, which is what prompted
+  /// this.
+  ///
+  /// Kept alongside the id rather than instead of it: the id is what a tap on
+  /// the quote jumps to, and the text is what the quote *says*. One is
+  /// navigation and the other is content, and only the second of them has to
+  /// survive the message it points at.
+  ///
+  /// Null on a reply that arrived over the wire — nothing carries it there —
+  /// so the lookup remains the fallback rather than the other way round.
+  final String? replyPreview;
 
   // Image payload (M5.4).
   final String? imagePath;
@@ -283,6 +301,7 @@ class Message {
       reactions: reactions ?? this.reactions,
       readBy: readBy ?? this.readBy,
       replyToWireId: replyToWireId,
+      replyPreview: replyPreview,
       route: route ?? this.route,
       routeHops: routeHops ?? this.routeHops,
       pollOptions: pollOptions ?? this.pollOptions,

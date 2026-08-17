@@ -653,6 +653,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
               },
           },
         if (m.replyToWireId != null) 'replyTo': m.replyToWireId,
+        if (m.replyPreview != null) 'replyPreview': m.replyPreview,
         if (m.route != null) 'route': m.route!.name,
         if (m.routeHops != null) 'routeHops': m.routeHops,
         if (m.pollOptions.isNotEmpty) 'pollOptions': m.pollOptions,
@@ -729,6 +730,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       reactions: reactions,
       readBy: readBy,
       replyToWireId: m['replyTo'] as String?,
+      replyPreview: m['replyPreview'] as String?,
       route: (m['route'] as String?) == null
           ? null
           : MessageRoute.values.firstWhere(

@@ -672,9 +672,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// The quote box shown at the top of a reply bubble.
   Widget _quotedBox(String wireId) {
     final quoted = _resolveQuoted(wireId);
-    final preview = quoted == null
-        ? '…'
-        : _replyPreview(quoted, AppLocalizations.of(context));
+    // What the reply was written against, if we wrote it: kept on the message
+    // so the box says something even when the original cannot be found. It
+    // could not be found rather often — a cleared history, a message filed
+    // under a different id, one that has not arrived yet — and every one of
+    // those drew a bare "…". Replying to a sticker drew it every time.
+    //
+    // The lookup still comes first, because it is live: an edited message
+    // should quote as it reads now, not as it read when it was answered.
+    final preview = quoted != null
+        ? _replyPreview(quoted, AppLocalizations.of(context))
+        : (widget.message.replyPreview ?? '…');
     // Tappable: a quote names a message, and the thing anyone wants from it is
     // to see the message. Nothing to go to when the original is gone, so the
     // tap is withheld rather than bouncing off a toast.
