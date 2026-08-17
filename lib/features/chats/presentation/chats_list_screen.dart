@@ -36,6 +36,7 @@ import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/archived_chats_controller.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/swipe_action_controller.dart';
@@ -751,6 +752,15 @@ class _ArchiveEntry extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final unread = ref.watch(archivedUnreadProvider);
 
+    // The newest archived conversation, which is what the row talks about.
+    // Telegram's archive row says what is *in* there rather than how much —
+    // "Roma: on my way" tells you whether it is worth opening, and "3 chats"
+    // does not.
+    final newest = archived.first;
+    final preview = newest.isChannel || newest.peerName.isEmpty
+        ? newest.lastMessage
+        : '${newest.peerName}: ${newest.lastMessage}';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: FloatingGlass(
@@ -758,59 +768,112 @@ class _ArchiveEntry extends ConsumerWidget {
         borderRadius: 18,
         onTap: () => context.push('/archive'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.glass(0.08),
-                  border: Border.all(color: AppColors.glass(0.16)),
-                ),
-                child: Icon(
-                  Icons.archive_rounded,
-                  size: 19,
-                  color: AppColors.textOnGlassDim,
-                ),
-              ),
+              // The faces of what is inside, stacked — the same thing a folder
+              // of photographs does, and the reason you can tell at a glance
+              // whose conversations you put away.
+              _ArchiveFaces(chats: archived),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      t.chatsArchiveTitle,
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.archive_rounded,
+                          size: 14,
+                          color: AppColors.textOnGlassDim,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          t.chatsArchiveTitle,
+                          style: TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${archived.length}',
+                          style: TextStyle(
+                            color: AppColors.textOnGlassFaint,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      t.chatsArchiveCount(archived.length),
+                      preview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: AppColors.textOnGlassDim,
+                        color: unread > 0
+                            ? AppColors.textOnGlass
+                            : AppColors.textOnGlassDim,
                         fontSize: 12.5,
+                        fontWeight:
+                            unread > 0 ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (unread > 0) ...[
-                UnreadBadge(count: unread),
-                const SizedBox(width: 6),
-              ],
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textOnGlassFaint,
-              ),
+              const SizedBox(width: 8),
+              UnreadBadge(count: unread),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Up to three faces from the archive, overlapped.
+///
+/// Small and slightly tucked behind each other, so the group reads as a stack
+/// of conversations rather than as three separate people. Newest first, because
+/// that is the one the preview line beside it is quoting.
+class _ArchiveFaces extends StatelessWidget {
+  const _ArchiveFaces({required this.chats});
+
+  final List<Chat> chats;
+
+  static const double _size = 30;
+  static const double _step = 19;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = chats.take(3).toList();
+    return SizedBox(
+      width: _size + _step * (shown.length - 1),
+      height: _size,
+      child: Stack(
+        children: [
+          // Drawn back to front, so the newest ends up on top.
+          for (var i = shown.length - 1; i >= 0; i--)
+            Positioned(
+              left: i * _step,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // A ring of the background separates one face from the next;
+                  // without it three avatars of similar colour are one blob.
+                  border: Border.all(color: AppColors.bgDeep, width: 1.5),
+                ),
+                child: PeerAvatar(
+                  peerId: shown[i].peerId,
+                  label: shown[i].peerName,
+                  size: _size - 3,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2421,6 +2484,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
       popUpAnimationStyle: glassMenuMotion,
       onSelected: (action) => switch (action) {
         _ChatsMenuAction.saved => context.push('/saved'),
+        _ChatsMenuAction.archive => context.push('/archive'),
         _ChatsMenuAction.folders => context.push('/folders'),
         _ChatsMenuAction.addContact => onAddContact(),
         _ChatsMenuAction.newChannel => onNewChannel(),
@@ -2431,6 +2495,17 @@ class _ChatsOverflowMenu extends StatelessWidget {
           child: _MenuRow(
             icon: Icons.bookmark_border_rounded,
             label: t.savedTitle,
+          ),
+        ),
+        // Here as well as at the top of the list, because the row up there only
+        // exists once something is in the archive — and somebody looking for
+        // the archive is often looking for the way to put the first thing in
+        // it. A menu entry is always there to be found.
+        PopupMenuItem(
+          value: _ChatsMenuAction.archive,
+          child: _MenuRow(
+            icon: Icons.archive_outlined,
+            label: t.chatsArchiveTitle,
           ),
         ),
         PopupMenuItem(
@@ -2459,7 +2534,7 @@ class _ChatsOverflowMenu extends StatelessWidget {
   }
 }
 
-enum _ChatsMenuAction { saved, folders, addContact, newChannel }
+enum _ChatsMenuAction { saved, archive, folders, addContact, newChannel }
 
 class _MenuRow extends StatelessWidget {
   const _MenuRow({required this.icon, required this.label});
