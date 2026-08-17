@@ -25,6 +25,41 @@ import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
 import 'l10n/app_localizations.dart';
 
+/// What opening a conversation from a notification should do to the stack.
+enum ChatOpenAction {
+  /// It is already the screen you are looking at.
+  alreadyThere,
+
+  /// Some other conversation is open — swap it for this one.
+  replace,
+
+  /// Nothing conversational is open — push on top of whatever is.
+  push,
+}
+
+/// Decide it from where the router is and where it is being sent.
+///
+/// Pulled out as a function of two strings because the bug it fixes is a
+/// three-line rule that was not written down anywhere: the handler pushed,
+/// always, and pushing the conversation you are *already reading* puts a second
+/// copy of it on the stack. Back then popped one copy and left you exactly
+/// where you were, which reads as the button not working.
+///
+/// Compared by **path only**. The name rides in the query string and is
+/// re-resolved from the roster on every call, so a contact who has since been
+/// renamed would otherwise look like a different destination and get stacked on
+/// top of itself.
+ChatOpenAction notificationOpenAction({
+  required Uri current,
+  required String target,
+}) {
+  final wanted = Uri.parse(target).path;
+  if (current.path == wanted) return ChatOpenAction.alreadyThere;
+  final onAConversation =
+      current.path.startsWith('/chat/') || current.path.startsWith('/channel/');
+  return onAConversation ? ChatOpenAction.replace : ChatOpenAction.push;
+}
+
 class CubechatApp extends ConsumerStatefulWidget {
   const CubechatApp({super.key, this.seenOnboarding = true});
 
@@ -92,17 +127,34 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void _openChat(String chatId) {
     // A channel's id starts with '#', which is the URL fragment delimiter and
     // cannot travel in a path. It has its own route.
+    final String target;
     if (chatId.startsWith('#')) {
-      _router.push(channelRoute(chatId));
-      return;
+      target = channelRoute(chatId);
+    } else {
+      final known = ref.read(knownPeersControllerProvider)[chatId];
+      final name =
+          (known?.displayName.isNotEmpty ?? false) ? known!.displayName : 'Peer';
+      target = '/chat/${Uri.encodeComponent(chatId)}'
+          '?name=${Uri.encodeQueryComponent(name)}';
     }
-    final known = ref.read(knownPeersControllerProvider)[chatId];
-    final name =
-        (known?.displayName.isNotEmpty ?? false) ? known!.displayName : 'Peer';
-    _router.push(
-      '/chat/${Uri.encodeComponent(chatId)}'
-      '?name=${Uri.encodeQueryComponent(name)}',
-    );
+
+    final current = _router.routerDelegate.currentConfiguration.uri;
+    switch (notificationOpenAction(current: current, target: target)) {
+      case ChatOpenAction.alreadyThere:
+        // Nothing to do. This is the case that was reported: minimise while
+        // reading somebody, they write, tap the notification — and the same
+        // conversation was pushed a second time on top of itself, so Back
+        // landed you in the chat you were trying to leave.
+        return;
+      case ChatOpenAction.replace:
+        // A *different* conversation, with one already on screen. Swapping
+        // rather than stacking is what makes Back mean "the list of chats"
+        // instead of walking you through everybody who happened to write while
+        // the app was in your pocket.
+        _router.pushReplacement(target);
+      case ChatOpenAction.push:
+        _router.push(target);
+    }
   }
 
   /// Send the text of an inline notification reply to [chatId] — a `#channel`
