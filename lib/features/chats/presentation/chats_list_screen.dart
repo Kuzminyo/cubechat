@@ -19,6 +19,7 @@ import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/triple_tap_detector.dart';
+import '../../../core/widgets/unread_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../chat/data/conversation_settings_controller.dart';
@@ -34,7 +35,10 @@ import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../data/archived_chats_controller.dart';
 import '../data/chat_folders_controller.dart';
+import '../data/swipe_action_controller.dart';
+import 'widgets/swipe_action_row.dart';
 import '../data/chat_selection_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/hidden_chats_controller.dart';
@@ -296,6 +300,39 @@ final chatsProvider = Provider<List<Chat>>((ref) {
       .toList();
 });
 
+/// The conversations the list actually shows: everything, minus the drawer.
+///
+/// Kept apart from [chatsProvider] deliberately, because that one is also what
+/// Contacts, the forward sheet and the unread badge read — putting a chat away
+/// must not make it unforwardable, and it must not hide its unread count from
+/// the tab badge either. Out of sight is not out of the app.
+final visibleChatsProvider = Provider<List<Chat>>((ref) {
+  final chats = ref.watch(chatsProvider);
+  final archived = ref.watch(archivedChatsControllerProvider);
+  if (archived.isEmpty) return chats;
+  return [
+    for (final chat in chats)
+      if (!archived.contains(chat.id)) chat,
+  ];
+});
+
+/// What is in the drawer, newest first — the same order the main list uses.
+final archivedChatsProvider = Provider<List<Chat>>((ref) {
+  final archived = ref.watch(archivedChatsControllerProvider);
+  if (archived.isEmpty) return const <Chat>[];
+  final chats = [
+    for (final chat in ref.watch(chatsProvider))
+      if (archived.contains(chat.id)) chat,
+  ];
+  chats.sort(compareChatRows);
+  return chats;
+});
+
+/// Unread waiting inside the drawer, for the count on the Archive row.
+final archivedUnreadProvider = Provider<int>((ref) => ref
+    .watch(archivedChatsProvider)
+    .fold<int>(0, (sum, chat) => sum + chat.unreadCount));
+
 class ChatsListScreen extends ConsumerStatefulWidget {
   const ChatsListScreen({super.key});
 
@@ -347,7 +384,13 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final query = ref.watch(chatsQueryProvider).toLowerCase();
-    final all = ref.watch(chatsProvider);
+    // The drawer's contents are out of this list by construction — see
+    // [visibleChatsProvider]. Searching still reaches them, though: a search
+    // that cannot find an archived chat makes the archive a place things get
+    // lost in, which is the one thing it must not be.
+    final all = query.isEmpty
+        ? ref.watch(visibleChatsProvider)
+        : ref.watch(chatsProvider);
     final folders = ref.watch(chatFoldersControllerProvider);
     final userFolders = ref.watch(userChatFoldersControllerProvider);
     final selected = ref.watch(selectedFolderProvider);
@@ -473,6 +516,14 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                     ),
                   ),
                 ),
+              // Above the list and outside the reorderable one, because that
+              // list's indices are the pin order — a header inside it would
+              // shift every one of them by one and a drag would land a row
+              // somewhere nobody asked for. Hidden while searching or filtered
+              // to a folder: it is a door out of *this* list, and in those
+              // states this list is not the whole list anyway.
+              if (query.isEmpty && folder == null && userFolder == null)
+                const SliverToBoxAdapter(child: _ArchiveEntry()),
               if (filtered.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -557,7 +608,19 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                         child: AppearAnimation(
                           enabled: animate,
                           delay: AppearAnimation.stagger(i),
-                          child: FloatingGlass(
+                          child: SwipeActionRow(
+                            // Off while picking chats out: in that mode a row
+                            // means one thing, and it is the tick.
+                            action: selection.isEmpty
+                                ? ref.watch(chatSwipeActionProvider)
+                                : ChatSwipeAction.none,
+                            onFire: () => _fireSwipeAction(
+                              context,
+                              ref,
+                              chat,
+                              ref.read(chatSwipeActionProvider),
+                            ),
+                            child: FloatingGlass(
                             blur: false,
                             borderRadius: 18,
                             // While anything is selected, a tap picks rather
@@ -601,6 +664,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                                       : null,
                             ),
                           ),
+                          ),
                         ),
                       );
                     },
@@ -612,6 +676,142 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The way into the drawer, at the top of the list.
+///
+/// Draws nothing at all while the archive is empty, rather than sitting there
+/// as a permanent row leading to a permanent "nothing here" — the archive only
+/// exists once somebody has put something in it, and until then the row is one
+/// more thing between them and their conversations.
+class _ArchiveEntry extends ConsumerWidget {
+  const _ArchiveEntry();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final archived = ref.watch(archivedChatsProvider);
+    if (archived.isEmpty) return const SizedBox.shrink();
+    final t = AppLocalizations.of(context);
+    final unread = ref.watch(archivedUnreadProvider);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: FloatingGlass(
+        blur: false,
+        borderRadius: 18,
+        onTap: () => context.push('/archive'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.glass(0.08),
+                  border: Border.all(color: AppColors.glass(0.16)),
+                ),
+                child: Icon(
+                  Icons.archive_rounded,
+                  size: 19,
+                  color: AppColors.textOnGlassDim,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      t.chatsArchiveTitle,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t.chatsArchiveCount(archived.length),
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (unread > 0) ...[
+                UnreadBadge(count: unread),
+                const SizedBox(width: 6),
+              ],
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textOnGlassFaint,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Carry out the swipe action on [chat]. Answers false when it was declined.
+///
+/// Every one of these is undone by the same gesture again — except the delete,
+/// which is why that one asks first and is the only one that does. A toast
+/// says what happened for the two that make the row leave the list, because
+/// otherwise a chat simply vanishes under the finger.
+Future<bool> _fireSwipeAction(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat,
+  ChatSwipeAction action,
+) async {
+  final t = AppLocalizations.of(context);
+  switch (action) {
+    case ChatSwipeAction.none:
+      return false;
+
+    case ChatSwipeAction.archive:
+      final archived = await ref
+          .read(archivedChatsControllerProvider.notifier)
+          .toggle(chat.id);
+      if (!context.mounted) return true;
+      showGlassToast(
+        context,
+        archived ? t.chatsArchivedToast : t.chatsUnarchivedToast,
+        icon: archived ? Icons.archive_rounded : Icons.unarchive_rounded,
+      );
+      return true;
+
+    case ChatSwipeAction.mute:
+      // Channels have no roster entry to carry the flag, so there is nothing
+      // to mute — say so rather than doing nothing.
+      if (chat.isChannel) {
+        showGlassToast(context, t.chatsSwipeNotHere);
+        return false;
+      }
+      await ref
+          .read(knownPeersControllerProvider.notifier)
+          .setMuted(chat.id, !chat.isMuted);
+      return true;
+
+    case ChatSwipeAction.pin:
+      await ref.read(pinnedChatsControllerProvider.notifier).toggle(chat.id);
+      return true;
+
+    case ChatSwipeAction.markRead:
+      await ref.read(readMarkersControllerProvider.notifier).markRead(chat.id);
+      return true;
+
+    case ChatSwipeAction.delete:
+      await _confirmAndDeleteChat(context, ref, chat, t);
+      return true;
   }
 }
 

@@ -1955,4 +1955,58 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get customizeReset => 'Reset to default';
+
+  @override
+  String get chatsArchiveTitle => 'Archive';
+
+  @override
+  String get chatsArchiveEmpty => 'Nothing archived';
+
+  @override
+  String get chatsArchiveHint =>
+      'Archived chats keep working — they are only out of the list.';
+
+  @override
+  String get chatsArchivedToast => 'Archived';
+
+  @override
+  String get chatsUnarchivedToast => 'Back in the list';
+
+  @override
+  String chatsArchiveCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chats',
+      one: '$count chat',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatsSwipeNotHere => 'Not available for this chat';
+
+  @override
+  String get customizeSwipeTitle => 'Swipe a chat to the right';
+
+  @override
+  String get customizeSwipeHint => 'Swiping left still moves between tabs.';
+
+  @override
+  String get customizeSwipeArchive => 'Archive';
+
+  @override
+  String get customizeSwipeMute => 'Mute';
+
+  @override
+  String get customizeSwipePin => 'Pin';
+
+  @override
+  String get customizeSwipeRead => 'Mark read';
+
+  @override
+  String get customizeSwipeDelete => 'Delete';
+
+  @override
+  String get customizeSwipeNone => 'Nothing';
 }

@@ -795,5 +795,22 @@
     "customizeBarHidden":  "Приховані",
     "customizeBarHiddenEmpty":  "Нічого не приховано",
     "customizeBarMinimum":  "Лишіть щонайменше дві вкладки",
-    "customizeReset":  "Повернути як було"
+    "customizeReset":  "Повернути як було",
+
+    "chatsArchiveTitle":  "Архів",
+    "chatsArchiveEmpty":  "Архів порожній",
+    "chatsArchiveHint":  "Архівні чати працюють як звичайні — вони просто не в списку.",
+    "chatsArchivedToast":  "В архіві",
+    "chatsUnarchivedToast":  "Повернуто до списку",
+    "chatsArchiveCount":  "{count, plural, one{{count} чат} few{{count} чати} many{{count} чатів} other{{count} чату}}",
+    "chatsSwipeNotHere":  "Для цього чату недоступно",
+
+    "customizeSwipeTitle":  "Свайп чату вправо",
+    "customizeSwipeHint":  "Свайп вліво так само гортає вкладки.",
+    "customizeSwipeArchive":  "В архів",
+    "customizeSwipeMute":  "Без звуку",
+    "customizeSwipePin":  "Закріпити",
+    "customizeSwipeRead":  "Прочитано",
+    "customizeSwipeDelete":  "Видалити",
+    "customizeSwipeNone":  "Нічого"
 }

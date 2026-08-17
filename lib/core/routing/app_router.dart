@@ -12,6 +12,7 @@ import '../../features/channels/presentation/channel_info_screen.dart';
 import '../../features/chat/presentation/chat_wallpaper_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/chats/presentation/chat_folders_screen.dart';
+import '../../features/chats/presentation/archive_screen.dart';
 import '../../features/chats/presentation/chat_search_screen.dart';
 import '../../features/chats/data/saved_messages.dart';
 import '../../l10n/app_localizations.dart';
@@ -236,6 +237,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: DiagnosticsScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/archive',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: ArchiveScreen()),
           state: state,
         ),
       ),

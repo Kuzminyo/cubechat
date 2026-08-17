@@ -3517,6 +3517,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reset to default'**
   String get customizeReset;
+
+  /// No description provided for @chatsArchiveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get chatsArchiveTitle;
+
+  /// No description provided for @chatsArchiveEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing archived'**
+  String get chatsArchiveEmpty;
+
+  /// No description provided for @chatsArchiveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived chats keep working — they are only out of the list.'**
+  String get chatsArchiveHint;
+
+  /// No description provided for @chatsArchivedToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived'**
+  String get chatsArchivedToast;
+
+  /// No description provided for @chatsUnarchivedToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Back in the list'**
+  String get chatsUnarchivedToast;
+
+  /// No description provided for @chatsArchiveCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} chat} other{{count} chats}}'**
+  String chatsArchiveCount(int count);
+
+  /// No description provided for @chatsSwipeNotHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available for this chat'**
+  String get chatsSwipeNotHere;
+
+  /// No description provided for @customizeSwipeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Swipe a chat to the right'**
+  String get customizeSwipeTitle;
+
+  /// No description provided for @customizeSwipeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Swiping left still moves between tabs.'**
+  String get customizeSwipeHint;
+
+  /// No description provided for @customizeSwipeArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get customizeSwipeArchive;
+
+  /// No description provided for @customizeSwipeMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute'**
+  String get customizeSwipeMute;
+
+  /// No description provided for @customizeSwipePin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get customizeSwipePin;
+
+  /// No description provided for @customizeSwipeRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark read'**
+  String get customizeSwipeRead;
+
+  /// No description provided for @customizeSwipeDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get customizeSwipeDelete;
+
+  /// No description provided for @customizeSwipeNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing'**
+  String get customizeSwipeNone;
 }
 
 class _AppLocalizationsDelegate

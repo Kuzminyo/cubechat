@@ -871,5 +871,27 @@
   "customizeBarHidden": "Hidden",
   "customizeBarHiddenEmpty": "Nothing hidden",
   "customizeBarMinimum": "Keep at least two tabs",
-  "customizeReset": "Reset to default"
+  "customizeReset": "Reset to default",
+
+  "chatsArchiveTitle": "Archive",
+  "chatsArchiveEmpty": "Nothing archived",
+  "chatsArchiveHint": "Archived chats keep working — they are only out of the list.",
+  "chatsArchivedToast": "Archived",
+  "chatsUnarchivedToast": "Back in the list",
+  "chatsArchiveCount": "{count, plural, one{{count} chat} other{{count} chats}}",
+  "@chatsArchiveCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "chatsSwipeNotHere": "Not available for this chat",
+
+  "customizeSwipeTitle": "Swipe a chat to the right",
+  "customizeSwipeHint": "Swiping left still moves between tabs.",
+  "customizeSwipeArchive": "Archive",
+  "customizeSwipeMute": "Mute",
+  "customizeSwipePin": "Pin",
+  "customizeSwipeRead": "Mark read",
+  "customizeSwipeDelete": "Delete",
+  "customizeSwipeNone": "Nothing"
 }

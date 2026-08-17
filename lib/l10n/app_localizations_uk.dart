@@ -1971,4 +1971,60 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get customizeReset => 'Повернути як було';
+
+  @override
+  String get chatsArchiveTitle => 'Архів';
+
+  @override
+  String get chatsArchiveEmpty => 'Архів порожній';
+
+  @override
+  String get chatsArchiveHint =>
+      'Архівні чати працюють як звичайні — вони просто не в списку.';
+
+  @override
+  String get chatsArchivedToast => 'В архіві';
+
+  @override
+  String get chatsUnarchivedToast => 'Повернуто до списку';
+
+  @override
+  String chatsArchiveCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count чату',
+      many: '$count чатів',
+      few: '$count чати',
+      one: '$count чат',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatsSwipeNotHere => 'Для цього чату недоступно';
+
+  @override
+  String get customizeSwipeTitle => 'Свайп чату вправо';
+
+  @override
+  String get customizeSwipeHint => 'Свайп вліво так само гортає вкладки.';
+
+  @override
+  String get customizeSwipeArchive => 'В архів';
+
+  @override
+  String get customizeSwipeMute => 'Без звуку';
+
+  @override
+  String get customizeSwipePin => 'Закріпити';
+
+  @override
+  String get customizeSwipeRead => 'Прочитано';
+
+  @override
+  String get customizeSwipeDelete => 'Видалити';
+
+  @override
+  String get customizeSwipeNone => 'Нічого';
 }

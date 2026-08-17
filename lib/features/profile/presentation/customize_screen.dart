@@ -9,6 +9,8 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chats/data/swipe_action_controller.dart';
+import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
 
@@ -59,6 +61,8 @@ class CustomizeScreen extends ConsumerWidget {
             const _ThemeCard(),
             const SizedBox(height: 12),
             const _ScaleCard(),
+            const SizedBox(height: 12),
+            const _SwipeCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
@@ -244,6 +248,124 @@ class _ScaleCard extends ConsumerWidget {
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// What a swipe on a chat row does.
+///
+/// One choice rather than a configurable tray, and rightward only — see
+/// [SwipeActionRow] for why the direction is the whole reason this can exist
+/// alongside the sideways drag between tabs. The hint under the title says so,
+/// because somebody who has just given the right swipe a job will reasonably
+/// wonder what happened to the gesture they had.
+class _SwipeCard extends ConsumerWidget {
+  const _SwipeCard();
+
+  static String label(AppLocalizations t, ChatSwipeAction a) => switch (a) {
+        ChatSwipeAction.archive => t.customizeSwipeArchive,
+        ChatSwipeAction.mute => t.customizeSwipeMute,
+        ChatSwipeAction.pin => t.customizeSwipePin,
+        ChatSwipeAction.markRead => t.customizeSwipeRead,
+        ChatSwipeAction.delete => t.customizeSwipeDelete,
+        ChatSwipeAction.none => t.customizeSwipeNone,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(chatSwipeActionProvider);
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.customizeSwipeTitle,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            t.customizeSwipeHint,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final action in ChatSwipeAction.values)
+                _SwipeChip(
+                  action: action,
+                  label: label(t, action),
+                  active: action == current,
+                  onTap: () =>
+                      ref.read(chatSwipeActionProvider.notifier).select(action),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SwipeChip extends StatelessWidget {
+  const _SwipeChip({
+    required this.action,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final ChatSwipeAction action;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // Each chip wears the colour of the panel its action reveals, so the choice
+    // here and the thing that appears under the finger are recognisably the
+    // same. Only when chosen: six coloured chips at rest is a paint chart.
+    final color = active ? action.color : AppColors.textOnGlassDim;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: active
+              ? action.color.withValues(alpha: 0.20)
+              : AppColors.glass(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? action.color.withValues(alpha: 0.6)
+                : AppColors.glass(0.15),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(action.icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              textScaler: TextScaler.noScaling,
+              style: TextStyle(
+                color: active ? AppColors.textOnGlass : color,
+                fontSize: 12.5,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

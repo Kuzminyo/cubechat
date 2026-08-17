@@ -7,6 +7,7 @@ import '../../features/chat/data/drafts_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
+import '../../features/chats/data/archived_chats_controller.dart';
 import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/pinned_chats_controller.dart';
@@ -71,6 +72,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(pinnedChatsControllerProvider.notifier).clear();
   await ref.read(hiddenChatsControllerProvider.notifier).clear();
+  // Which conversations you put out of the way is a list of who you are avoiding
+  // — as much of a trace as the pins are.
+  await ref.read(archivedChatsControllerProvider.notifier).clear();
   // Who you went looking for is its own trace, and it lives in its own list.
   await ref.read(recentSearchesControllerProvider.notifier).clear();
   // Which cuts of the chat list you keep above it says something about who you
@@ -154,6 +158,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
     favoritesControllerProvider,
     pinnedChatsControllerProvider,
     hiddenChatsControllerProvider,
+    archivedChatsControllerProvider,
     recentSearchesControllerProvider,
     chatFoldersControllerProvider,
     userChatFoldersControllerProvider,

@@ -330,8 +330,37 @@ class EdgeBackGestureController {
 ///
 /// Rejecting the direction it cannot use hands those drags back to the arena,
 /// where the page's own recognizer is waiting.
-class LeftwardDragRecognizer extends HorizontalDragGestureRecognizer {
-  LeftwardDragRecognizer({super.debugOwner});
+class LeftwardDragRecognizer extends _OneWayDragRecognizer {
+  LeftwardDragRecognizer({super.debugOwner}) : super(wantedSign: -1);
+}
+
+/// The same thing pointing the other way, for the swipe action on a chat row.
+///
+/// A row lives inside the strip of tab branches, whose own horizontal drag
+/// covers the whole screen. Claiming only the direction the action uses is what
+/// lets the two share the gesture: swiping right on a chat opens its action,
+/// swiping left still walks to the next tab. Nothing had to be taken away from
+/// the strip to add the row's gesture.
+class RightwardDragRecognizer extends _OneWayDragRecognizer {
+  RightwardDragRecognizer({super.debugOwner}) : super(wantedSign: 1);
+}
+
+/// A horizontal drag that gives up the direction it cannot use.
+///
+/// A plain `onHorizontalDragUpdate` accepts at the ordinary touch slop whichever
+/// way the finger went, so a widget that only means one direction claimed the
+/// other too — and then did nothing with it, because its offset is clamped on
+/// that side. The visible result was the back gesture working everywhere except
+/// over a conversation, which is most of the screen and the place people most
+/// want to swipe out of.
+///
+/// Rejecting the wrong direction hands those drags back to the arena, where
+/// whatever else wanted them is waiting.
+abstract class _OneWayDragRecognizer extends HorizontalDragGestureRecognizer {
+  _OneWayDragRecognizer({super.debugOwner, required this.wantedSign});
+
+  /// 1 for rightward, -1 for leftward.
+  final int wantedSign;
 
   Offset? _origin;
   bool _decided = false;
@@ -353,7 +382,7 @@ class LeftwardDragRecognizer extends HorizontalDragGestureRecognizer {
       final dx = event.position.dx - origin.dx;
       if (dx.abs() >= computeHitSlop(event.kind, gestureSettings)) {
         _decided = true;
-        if (dx > 0) {
+        if (dx.sign != wantedSign) {
           _gaveUp = true;
           resolve(GestureDisposition.rejected);
           // Nothing after this — see the note in [_RightwardDragRecognizer],
