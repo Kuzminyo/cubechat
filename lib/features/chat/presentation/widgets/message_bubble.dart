@@ -1205,18 +1205,35 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               // Swiping to reply is off while selecting - the row means one
               // thing at a time.
               // Long-press belongs to the whole message row, not only to the
-              // painted bubble. That matches the muscle memory from Telegram:
-              // hold anywhere on the line and the message enters selection.
-              onLongPress: () {
-                final selection = ref.read(
-                  messageSelectionProvider(widget.chatId).notifier,
-                );
+              // painted bubble — hold anywhere on the line and it answers.
+              //
+              // What it answers *with* is the spotlight: the room blurs, this
+              // message stays lit where it is, and the reactions and actions
+              // arrange themselves around it.
+              //
+              // It used to go straight into selection mode, and that left the
+              // menu with no way in at all — reactions, reply, copy, pin,
+              // forward, delete were all behind `_showActions`, which was
+              // reachable only from the read-by chip: a control that appears on
+              // your own messages in a channel and nowhere else. The blurred
+              // menu was built and then could not be opened, which is exactly
+              // what "I hold it and there is still no blur" was.
+              //
+              // Selecting has not gone anywhere. It is the first action in the
+              // sheet, among the other things you can do to a message rather
+              // than in front of all of them. While a selection is already
+              // running the hold keeps its old meaning — tick another one —
+              // because in that mode the row means one thing.
+              onLongPressStart: (details) {
                 if (selecting) {
-                  selection.toggle(message.id);
-                } else {
-                  selection.start(message.id);
+                  ref
+                      .read(messageSelectionProvider(widget.chatId).notifier)
+                      .toggle(message.id);
+                  HapticFeedback.selectionClick();
+                  return;
                 }
-                HapticFeedback.selectionClick();
+                HapticFeedback.mediumImpact();
+                unawaited(_showActions(details.globalPosition));
               },
               onTap: selecting
                   ? () => ref

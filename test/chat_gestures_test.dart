@@ -90,8 +90,13 @@ void main() {
     return container;
   }
 
-  testWidgets('long pressing anywhere on the message row starts selection',
+  testWidgets('long pressing anywhere on the row opens the spotlight',
       (tester) async {
+    // It used to go straight into selection mode, and that left the whole menu
+    // — reactions, reply, copy, pin, forward — with no way in: it hung off a
+    // control that only exists on your own messages in a channel. Holding a
+    // message now blurs the room and offers all of it, and selecting is the
+    // first thing in the list rather than the only thing the gesture does.
     final container = await openPeerChat(tester);
     expect(container.read(messageSelectionProvider(peerHex)), isEmpty);
 
@@ -102,8 +107,24 @@ void main() {
       messageCenter.dy,
     );
     await tester.longPressAt(rowBlankSpace);
+    // beat, not pumpAndSettle: the conversation has always-running decoration
+    // behind it, so settling never finishes.
     await beat(tester);
 
+    expect(
+      find.byType(BackdropFilter),
+      findsWidgets,
+      reason: 'the room should be blurred behind the lit message',
+    );
+    expect(
+      container.read(messageSelectionProvider(peerHex)),
+      isEmpty,
+      reason: 'holding offers the choices; it does not make one',
+    );
+
+    // And selection is one of them.
+    await tester.tap(find.byIcon(Icons.checklist_rounded));
+    await beat(tester);
     expect(container.read(messageSelectionProvider(peerHex)), {'m1'});
   });
   testWidgets('dragging a message left files a reply to it', (tester) async {
