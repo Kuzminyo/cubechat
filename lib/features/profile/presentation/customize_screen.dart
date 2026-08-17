@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/routing/app_shell.dart' show tabSpecFor;
 import '../../../core/theme/colors.dart';
+import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -53,11 +54,130 @@ class CustomizeScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
           children: [
+            // Colour first. It is the change you see from across the room, and
+            // the one people come here for.
+            const _ThemeCard(),
+            const SizedBox(height: 12),
             const _ScaleCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Palette swatches. A row of the actual colours rather than a list of names:
+/// the thing being chosen is how the app looks, so it should be shown, not
+/// described.
+class _ThemeCard extends ConsumerWidget {
+  const _ThemeCard();
+
+  static String _label(AppLocalizations t, String id) => switch (id) {
+        'indigo' => t.profileThemeIndigo,
+        'amber' => t.profileThemeAmber,
+        'rose' => t.profileThemeRose,
+        'fuchsia' => t.profileThemeFuchsia,
+        'violet' => t.profileThemeViolet,
+        'ocean' => t.profileThemeOcean,
+        'slate' => t.profileThemeSlate,
+        _ => t.profileThemeEmerald,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(themeControllerProvider);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.profileTheme,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 62,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: AppPalette.all.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) {
+                final palette = AppPalette.all[i];
+                final selected = palette.id == current.id;
+                return GestureDetector(
+                  onTap: () => ref
+                      .read(themeControllerProvider.notifier)
+                      .select(palette),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // The swatch is the palette in miniature, not just its
+                      // accent: the disc is the background the app will
+                      // actually wear, the crescent inside it the brand over
+                      // that background. A palette recolours the whole
+                      // interface, so a swatch showing only the accent would
+                      // be advertising the smaller half of the change.
+                      Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [palette.bgTop, palette.bgDeep],
+                          ),
+                          border: Border.all(
+                            color:
+                                selected ? Colors.white : AppColors.glass(0.22),
+                            width: selected ? 2.5 : 1,
+                          ),
+                        ),
+                        child: Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                palette.brandPrimary,
+                                palette.brandSecondary,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        _label(t, palette.id),
+                        // Never scaled: the labels sit under 36-point discs in
+                        // a horizontal strip, and at the largest interface size
+                        // they would collide with their neighbours.
+                        textScaler: TextScaler.noScaling,
+                        style: TextStyle(
+                          color: selected
+                              ? AppColors.textOnGlass
+                              : AppColors.textOnGlassDim,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

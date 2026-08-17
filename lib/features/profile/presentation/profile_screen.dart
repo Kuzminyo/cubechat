@@ -14,8 +14,8 @@ import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
-import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/app_build.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../files/data/file_transfer_controller.dart';
@@ -33,7 +33,10 @@ import '../../../core/widgets/glass_toast.dart';
 import 'dart:async';
 import '../../peers/data/peer_discovery_controller.dart';
 
-const _appVersion = '0.1.0';
+// The version was a `const '0.1.0'` here, written on the first day and never
+// touched — so this screen, the one place a tester checks what they are
+// running, was the one place that said the wrong thing. It comes from
+// [appVersion] now, which the build script checks against pubspec.
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -168,28 +171,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         _ExpandableSection(
           icon: Icons.tune_rounded,
           title: t.profileGroupApp,
-          summary: t.profileVersion(_appVersion),
+          summary: t.profileVersion(appVersion),
           children: [
-            const _ThemeRow(),
             _LanguageRow(locale: locale),
             const _StorageRow(),
-            const _AboutRow(),
+            // Diagnostics above the signature, not below it. The name-and-
+            // version block reads as the end of a screen — everything under it
+            // looks like small print — and Diagnostics is a door, not a
+            // footer.
             const _DiagnosticsRow(),
+            const _AboutRow(),
           ],
         ),
 
         const SizedBox(height: 10),
 
-        // Its own group rather than another row under App. What lives here is
-        // not a preference picked from a list — it is the shape of the app,
-        // arranged by dragging, and the interface size came with it because it
-        // is the same kind of decision.
-        _ExpandableSection(
-          icon: Icons.dashboard_customize_rounded,
-          title: t.profileGroupCustomize,
-          summary: _customizeSummary(ref, t),
-          children: const [_CustomizeRow()],
-        ),
+        // One row, not a group with a single row in it named the same thing.
+        // The colours, the interface size and the nav bar all live behind it —
+        // none of them is a preference picked from a list, they are the shape
+        // of the app, and they are arranged on a screen with room to do it.
+        _CustomizeRow(summary: _customizeSummary(ref, t)),
 
         const SizedBox(height: 14),
 
@@ -903,118 +904,11 @@ class _TransportRow extends StatelessWidget {
   }
 }
 
-/// Palette swatches. A row of the actual colours rather than a list of names:
-/// the thing being chosen is how the app looks, so it should be shown, not
-/// described.
-class _ThemeRow extends ConsumerWidget {
-  const _ThemeRow();
-
-  static String _label(AppLocalizations t, String id) => switch (id) {
-        'indigo' => t.profileThemeIndigo,
-        'amber' => t.profileThemeAmber,
-        'rose' => t.profileThemeRose,
-        'fuchsia' => t.profileThemeFuchsia,
-        'violet' => t.profileThemeViolet,
-        'ocean' => t.profileThemeOcean,
-        'slate' => t.profileThemeSlate,
-        _ => t.profileThemeEmerald,
-      };
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final current = ref.watch(themeControllerProvider);
-    return _frame(
-      false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            t.profileTheme,
-            style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 58,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: AppPalette.all.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                final palette = AppPalette.all[i];
-                final selected = palette.id == current.id;
-                return GestureDetector(
-                  onTap: () => ref
-                      .read(themeControllerProvider.notifier)
-                      .select(palette),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // The swatch is the palette in miniature, not just its
-                      // accent: the disc is the background the app will
-                      // actually wear, the crescent inside it the brand over
-                      // that background. A palette now recolours the whole
-                      // interface, so a swatch showing only the accent would
-                      // be advertising the smaller half of the change.
-                      Container(
-                        width: 34,
-                        height: 34,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [palette.bgTop, palette.bgDeep],
-                          ),
-                          border: Border.all(
-                            color:
-                                selected ? Colors.white : AppColors.glass(0.22),
-                            width: selected ? 2.5 : 1,
-                          ),
-                        ),
-                        child: Container(
-                          width: 17,
-                          height: 17,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                palette.brandPrimary,
-                                palette.brandSecondary,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _label(t, palette.id),
-                        style: TextStyle(
-                          color: selected
-                              ? AppColors.textOnGlass
-                              : AppColors.textOnGlassDim,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// The interface-size row used to live here, between the theme picker and the
-// language list. It has moved to the Customization screen along with the nav
-// bar — see [CustomizeScreen]; the two are the same kind of decision and this
-// group is for preferences picked from a list.
+// The palette swatches and the interface-size pills both used to live here,
+// either side of the language list. Both have moved to the Customization
+// screen — see [CustomizeScreen]. What is left in this group are the
+// preferences you pick from a fixed list; how the app *looks* is arranged
+// somewhere with room for it.
 
 class _LanguageRow extends ConsumerWidget {
   const _LanguageRow({required this.locale});
@@ -1078,7 +972,7 @@ class _AboutRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  t.profileVersion(_appVersion),
+                  t.profileVersion(appVersion),
                   style:
                       TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
@@ -1105,23 +999,34 @@ String _customizeSummary(WidgetRef ref, AppLocalizations t) {
   return '$size · ${layout.shown.length}/${NavDestination.values.length}';
 }
 
-/// A plain row that opens a screen. The two settings that grew past a row —
-/// storage and customization — both get one.
+/// A row that opens a screen — the shape a setting takes once it has outgrown
+/// a switch.
+///
+/// [framed] is the same distinction every card here draws: inside a group the
+/// group supplies the pane, and standing on its own it needs one of its own.
+/// [summary] is what a group header would have said, so a top-level row can
+/// still answer "did I change anything?" without being opened.
 class _PushRow extends StatelessWidget {
   const _PushRow({
     required this.icon,
     required this.label,
     required this.route,
+    this.summary,
+    this.framed = false,
   });
 
   final IconData icon;
   final String label;
   final String route;
+  final String? summary;
+  final bool framed;
 
   @override
   Widget build(BuildContext context) {
+    final accent = framed ? AppColors.brandPrimary : AppColors.textOnGlass;
     return _frame(
-      false,
+      framed,
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
       onTap: () => context.push(route),
       child: Row(
         children: [
@@ -1130,20 +1035,44 @@ class _PushRow extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.glass(0.08),
-              border: Border.all(color: AppColors.glass(0.18)),
+              color: framed
+                  ? AppColors.brandPrimary.withValues(alpha: 0.16)
+                  : AppColors.glass(0.08),
+              border: Border.all(
+                color: framed
+                    ? AppColors.brandPrimary.withValues(alpha: 0.36)
+                    : AppColors.glass(0.18),
+              ),
             ),
-            child: Icon(icon, color: AppColors.textOnGlass, size: 18),
+            child: Icon(icon, color: accent, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: AppColors.textOnGlass,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: framed ? 15 : 14,
+                    fontWeight: framed ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+                if (summary != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    summary!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
@@ -1165,13 +1094,17 @@ class _StorageRow extends StatelessWidget {
 }
 
 class _CustomizeRow extends StatelessWidget {
-  const _CustomizeRow();
+  const _CustomizeRow({this.summary});
+
+  final String? summary;
 
   @override
   Widget build(BuildContext context) => _PushRow(
         icon: Icons.dashboard_customize_rounded,
         label: AppLocalizations.of(context).customizeTitle,
         route: '/customize',
+        summary: summary,
+        framed: true,
       );
 }
 

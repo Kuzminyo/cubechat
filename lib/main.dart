@@ -12,6 +12,7 @@ import 'app.dart';
 import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
+import 'core/util/app_build.dart';
 import 'core/util/build_probe.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/platform_info.dart';
@@ -19,9 +20,10 @@ import 'core/util/media_storage.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 
-/// Build-time marker bumped on every release. Surfaces in Diagnostics so we
-/// can tell at a glance whether a phone is running the latest APK.
-const String _buildStamp = '2026-08-17-storage-and-bar';
+// The build stamp used to live here as a private constant, which meant the
+// boot log was the only thing that could see it. It is in
+// `core/util/app_build.dart` now, next to the version, so the profile screen
+// can show both — see [appBuildStamp].
 
 /// Ask Android for the panel's real refresh rate.
 ///
@@ -100,7 +102,7 @@ Future<void> main() async {
   // where a hang meant no boot line at all.
   DebugLog.instance.log(
       'BOOT',
-      'cubechat $_buildStamp '
+      'cubechat $appVersion $appBuildStamp '
           'debug=$kDebugMode profile=$kProfileMode release=$kReleaseMode');
 
   // Storage genuinely gates the first frame — the tree reads it immediately —

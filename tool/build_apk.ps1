@@ -90,11 +90,23 @@ if ($versionLine.Matches[0].Groups[1].Value -notmatch '^([0-9]+\.[0-9]+\.[0-9]+)
 $versionName = $matches[1]
 $versionCode = $matches[2]
 
-$mainDart = Get-Content (Join-Path $root 'lib\main.dart') -Raw
-if ($mainDart -notmatch "const\s+String\s+_buildStamp\s*=\s*'([^']*)'") {
-    throw "Could not find _buildStamp in lib\main.dart."
+# Both live in lib\core\util\app_build.dart now, so the profile screen can show
+# them. That screen used to carry its own hardcoded '0.1.0', which had been
+# wrong for forty releases because nothing ever compared it to anything - hence
+# the version check below, which is the whole reason the constant moved.
+$buildDart = Get-Content (Join-Path $root 'lib\core\util\app_build.dart') -Raw
+if ($buildDart -notmatch "const\s+String\s+appBuildStamp\s*=\s*'([^']*)'") {
+    throw "Could not find appBuildStamp in lib\core\util\app_build.dart."
 }
 $stamp = $matches[1]
+if ($buildDart -notmatch "const\s+String\s+appVersion\s*=\s*'([^']*)'") {
+    throw "Could not find appVersion in lib\core\util\app_build.dart."
+}
+$declaredVersion = $matches[1]
+if ($declaredVersion -ne $versionName) {
+    throw "appVersion is '$declaredVersion' but pubspec says '$versionName'. " +
+          "The profile screen would show the wrong number - bump both."
+}
 Step "Building cubechat $versionName+$versionCode  ($stamp)"
 
 # A stamp reading like the last one is the single most common way a tester ends
