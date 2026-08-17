@@ -38,18 +38,39 @@ import 'features/onboarding/data/onboarding_controller.dart';
 /// Android only — deliberately. iOS caps at 60 Hz through
 /// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
 /// ProMotion iPhones down for heat; this must not quietly undo that.
-/// It is now a setting rather than an unconditional request — see
-/// [RefreshRateController], which owns both the stored choice and the call to
-/// the platform, and applies it as soon as the stored value is read.
+/// State a refresh rate, and state the low one.
 ///
-/// Asking here as well, before any of that, so the very first frames are paced
-/// correctly on a phone that has never changed the setting: the controller's
-/// own read is asynchronous, and the launch is exactly the moment the uneven
-/// pacing this fixes is most visible.
+/// Stating *a* rate is what the original fix was about, and it stands: a phone
+/// whose panel runs at 90 or 120 while the app has expressed no preference gets
+/// parked at 60 by MIUI, and a 60 Hz animation presented on a 90 Hz panel paces
+/// unevenly — which reads as stutter even though no frame is being missed. The
+/// cure was never "draw more"; it was "say something".
+///
+/// Which rate to say is the part that has now been measured. Diagnostics on a
+/// mid-range Android, scrolling a conversation:
+///
+///     build  (CPU / Dart)   p90  4.7 ms
+///     raster (GPU)          p90  9.6 ms   — 3 frames of 98 over 16.7 ms
+///
+/// The phone is not dropping frames; it is drawing a lot of them. Raster sits
+/// comfortably inside a 60 Hz budget and past a 120 Hz one, so at the high rate
+/// the GPU is asked for twice as many frames as it can comfortably make — and
+/// warmth is the sum of frames, not the cost of any one of them. Everything
+/// tried on the per-frame side either bought little (dropping the pane blur:
+/// 13%) or was visible enough to be rejected (the same change: "the animations
+/// got worse"). Halving the count changes nothing about any single frame.
+///
+/// This is a decision, not a preference. It was briefly a switch in
+/// Customization and that was the wrong shape: a person holding a warm phone
+/// should not have to be told which of two numbers their GPU prefers.
+///
+/// Android only. iOS is held at 60 through
+/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, set for this same
+/// reason and by this same reasoning.
 Future<void> _matchDisplayRefreshRate() async {
   if (kIsWeb || !Platform.isAndroid) return;
   try {
-    await FlutterDisplayMode.setHighRefreshRate();
+    await FlutterDisplayMode.setLowRefreshRate();
     final active = await FlutterDisplayMode.active;
     DebugLog.instance.log(
         'DISPLAY',

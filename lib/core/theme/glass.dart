@@ -21,12 +21,19 @@ import 'dart:ui' show ImageFilter;
 /// frame. It is identical work on both platforms, which is exactly why the heat
 /// was identical on both platforms.
 ///
-/// [sigma] is 14 rather than 30 because of what sits *over* the blur. These
+/// [sigma] is 9 rather than 30 because of what sits *over* the blur. These
 /// panes are filled at 52–66% opacity; the blurred backdrop is looked at
 /// through that, and past roughly a dozen pixels of radius a gaussian of a
 /// mostly-hidden backdrop stops being distinguishable — the highlights have
-/// already smeared into flat colour. The frost reads the same and the cost is
-/// roughly halved.
+/// already smeared into flat colour. The frost reads the same and the cost
+/// falls with it.
+///
+/// It went 30 → 14 on that argument and 14 → 9 on the same one, after a round
+/// of heat work in which every *visible* saving was rejected: dropping the pane
+/// blur while scrolling bought 13% of raster time and was reverted the same day
+/// because the surfaces flickered at each end of a scroll. Radius is the part
+/// of a blur nobody can see through two thirds of an opaque tint, so it is the
+/// part that can go.
 ///
 /// This is a knob, deliberately. If a surface ever needs more, give that
 /// surface its own number and say why; do not raise this one, or the cost
@@ -35,7 +42,7 @@ class AppBlur {
   const AppBlur._();
 
   /// Standard pane blur.
-  static const double sigma = 14;
+  static const double sigma = 9;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.
