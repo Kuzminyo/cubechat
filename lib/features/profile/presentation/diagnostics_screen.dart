@@ -194,7 +194,12 @@ class _FramePanelState extends State<_FramePanel> {
     // Same window, different question: the frame numbers only describe frames,
     // and the thread breakdown is what says whether frames are where the time
     // is going at all.
-    CpuProbe.instance.begin();
+    //
+    // Not while a hold is open. Coming back to read the numbers rebuilds this
+    // screen, and a fresh baseline here would zero the measurement at the exact
+    // moment it is being collected — the walk to the warm screen and back is
+    // the whole experiment, and this is the last line of it.
+    if (!FrameStats.instance.isHolding) CpuProbe.instance.begin();
     // The stats update per frame; redrawing them per frame would make this
     // panel part of what it is measuring.
     _tick = Timer.periodic(
