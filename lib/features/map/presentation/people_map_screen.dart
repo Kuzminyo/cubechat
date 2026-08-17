@@ -563,10 +563,23 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       buildingsEnabled: _tilted,
       trafficEnabled: false,
       indoorViewEnabled: false,
-      padding: EdgeInsets.only(
-        top: MediaQuery.paddingOf(context).top + 184,
-        bottom: MediaQuery.paddingOf(context).bottom + 160,
-        right: 84,
+      // Symmetric, and that is the whole point of it.
+      //
+      // Map padding does two things at once: it keeps Google's own furniture
+      // (the logo, bottom left) clear of the chrome floating over the map, and
+      // it decides where the *camera target* lands. Only the asymmetry does the
+      // second — a box with 184 above and 160 below puts the target twelve
+      // points low, and 84 on the right put it forty-two points left. So
+      // focusing on somebody dropped them noticeably off-centre, which is what
+      // "put profiles dead centre" was about.
+      //
+      // Equal top and bottom means the target is the middle of the screen
+      // whatever the number is, and the number is chosen for the logo: enough
+      // to lift it clear of the floating nav bar. Nothing needs padding on the
+      // right — the controls there are ours and they float over the map rather
+      // than belonging to it.
+      padding: EdgeInsets.symmetric(
+        vertical: MediaQuery.paddingOf(context).bottom + 160,
       ),
       markers: _googleMarkers(nodes, me, nickname, ownPhoto),
       polylines: _googleLines(nodes, me).toSet(),
@@ -850,7 +863,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     final photoStamp = photo == null
         ? 0
         : Object.hash(photo.length, photo.firstOrNull, photo.lastOrNull);
-    final key = '$seed:$photoStamp:$mine:$selected:${clusterCount ?? 0}';
+    // The screen's own scale is part of the key: the bitmap is rendered for
+    // this device's pixels, and a cached one from another ratio would be the
+    // wrong size. Constant in practice — it only ever changes if the app moves
+    // to another display.
+    final ratio = _markerPixelRatio(context);
+    final key =
+        '$seed:$photoStamp:$mine:$selected:${clusterCount ?? 0}:$ratio';
     final cached = _markerIcons[key];
     if (cached != null) return cached;
 
@@ -862,6 +881,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
           mine: mine,
           selected: selected,
           clusterCount: clusterCount,
+          ratio: ratio,
         ).then((icon) {
           if (!mounted) return;
           setState(() {
@@ -879,12 +899,26 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     );
   }
 
+  /// How many pixels of bitmap to draw per logical point of marker.
+  ///
+  /// The marker used to be a fixed 168-pixel bitmap shown at 84 points — two
+  /// pixels per point, on phones that have three. So every face on the map was
+  /// upscaled by half again and came out soft, which is what "make the avatars
+  /// full quality" was about.
+  ///
+  /// Clamped at four: past that the gain is invisible and a map full of people
+  /// is a lot of bitmaps to hold. Floored at two so a hypothetical 1x display
+  /// does not get a marker rendered smaller than the one it replaced.
+  static double _markerPixelRatio(BuildContext context) =>
+      MediaQuery.devicePixelRatioOf(context).clamp(2.0, 4.0);
+
   Future<gm.BitmapDescriptor> _createMarkerIcon({
     required String name,
     Uint8List? photo,
     bool mine = false,
     bool selected = false,
     int? clusterCount,
+    double ratio = 2,
   }) async {
     // A circle, which is what a face wants to be.
     //
@@ -897,6 +931,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     // What does not come back is the clutter the circle used to carry: a
     // neon glow, a gradient band and a green dot in the corner that meant
     // nothing. Ring, face, shadow.
+    // The space the drawing below is written in, and it stays 168 whatever the
+    // screen is: every radius, offset and font size here is in these units, and
+    // the canvas is scaled once rather than each of them being multiplied.
     const size = 168.0;
     // The circle fills about seven tenths of the bitmap, the rest being the
     // room the shadow and the selected glow need. So the drawn box has to be
@@ -904,8 +941,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     // around forty points across, visibly smaller than the widget markers it
     // replaced.
     const logicalSize = 84.0;
+    // What actually gets rasterised: the marker's size on screen times the
+    // screen's own scale. 168 pixels for 84 points was two per point on phones
+    // that have three, so every face was upscaled by half again.
+    final pixels = (logicalSize * ratio).round();
+    final scale = pixels / size;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
+    canvas.scale(scale);
     const centre = Offset(size / 2, size / 2);
     final head = selected ? 62.0 : 58.0;
 
@@ -960,10 +1003,15 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       );
     } else if (photo != null && photo.isNotEmpty) {
       try {
+        // Decoded at the size it will actually occupy in pixels, not at a
+        // fixed 128. On a 3x screen the face is drawn into roughly 150 pixels,
+        // and handing it a 128-pixel decode is the second place the sharpness
+        // was being thrown away.
+        final facePixels = (avatarRadius * 2 * scale).ceil();
         final codec = await ui.instantiateImageCodec(
           photo,
-          targetWidth: 128,
-          targetHeight: 128,
+          targetWidth: facePixels,
+          targetHeight: facePixels,
         );
         final frame = await codec.getNextFrame();
         canvas.save();
@@ -983,13 +1031,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
       _drawMarkerText(canvas, _initials(name), centre, fontSize: 40);
     }
 
-    final image =
-        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final image = await recorder.endRecording().toImage(pixels, pixels);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     return gm.BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
-      imagePixelRatio: size / logicalSize,
+      // The bitmap is this many pixels per point, so the plugin draws it at
+      // logicalSize and one bitmap pixel lands on one screen pixel.
+      imagePixelRatio: ratio,
       width: logicalSize,
       height: logicalSize,
     );
