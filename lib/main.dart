@@ -38,39 +38,34 @@ import 'features/onboarding/data/onboarding_controller.dart';
 /// Android only — deliberately. iOS caps at 60 Hz through
 /// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
 /// ProMotion iPhones down for heat; this must not quietly undo that.
-/// State a refresh rate, and state the low one.
+/// Ask Android for the panel's real refresh rate.
 ///
-/// Stating *a* rate is what the original fix was about, and it stands: a phone
-/// whose panel runs at 90 or 120 while the app has expressed no preference gets
-/// parked at 60 by MIUI, and a 60 Hz animation presented on a 90 Hz panel paces
-/// unevenly — which reads as stutter even though no frame is being missed. The
-/// cure was never "draw more"; it was "say something".
+/// On a 90/120 Hz Xiaomi the app looked *worse* than on a 60 Hz phone: MIUI
+/// leaves an app that never states a preference on the 60 Hz mode while the
+/// system UI around it runs at 90, so every scroll is a 60 Hz animation on a
+/// 90 Hz panel — uneven frame pacing, which reads as stutter even though no
+/// frame is being missed. Stating the preference is what fixes it; it isn't a
+/// request to draw *more*, and the idle cost is unchanged because the aurora
+/// and the dots park when nothing is moving either way.
 ///
-/// Which rate to say is the part that has now been measured. Diagnostics on a
-/// mid-range Android, scrolling a conversation:
+/// **Do not "save heat" by asking for the low mode instead.** Tried on
+/// 2026-08-17 and reverted within the hour. The arithmetic looked sound —
+/// raster p90 was 9.6 ms, comfortably inside a 60 Hz budget and past a 120 Hz
+/// one, so half the frames should have been half the work for no visible
+/// difference. On the phone it was the opposite: build p90 went 4.7 → 7.8 and
+/// raster 9.6 → 14.8, and the app was reported as barely usable. Whatever
+/// `setLowRefreshRate` does on that device — a mode with a different
+/// resolution, a panel that keeps switching, a compositor scaling the surface —
+/// it is not "the same frames, fewer of them". The paragraph above was already
+/// the warning, and it was read as being about something else.
 ///
-///     build  (CPU / Dart)   p90  4.7 ms
-///     raster (GPU)          p90  9.6 ms   — 3 frames of 98 over 16.7 ms
-///
-/// The phone is not dropping frames; it is drawing a lot of them. Raster sits
-/// comfortably inside a 60 Hz budget and past a 120 Hz one, so at the high rate
-/// the GPU is asked for twice as many frames as it can comfortably make — and
-/// warmth is the sum of frames, not the cost of any one of them. Everything
-/// tried on the per-frame side either bought little (dropping the pane blur:
-/// 13%) or was visible enough to be rejected (the same change: "the animations
-/// got worse"). Halving the count changes nothing about any single frame.
-///
-/// This is a decision, not a preference. It was briefly a switch in
-/// Customization and that was the wrong shape: a person holding a warm phone
-/// should not have to be told which of two numbers their GPU prefers.
-///
-/// Android only. iOS is held at 60 through
-/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, set for this same
-/// reason and by this same reasoning.
+/// Android only — deliberately. iOS caps at 60 Hz through
+/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
+/// ProMotion iPhones down for heat; this must not quietly undo that.
 Future<void> _matchDisplayRefreshRate() async {
   if (kIsWeb || !Platform.isAndroid) return;
   try {
-    await FlutterDisplayMode.setLowRefreshRate();
+    await FlutterDisplayMode.setHighRefreshRate();
     final active = await FlutterDisplayMode.active;
     DebugLog.instance.log(
         'DISPLAY',

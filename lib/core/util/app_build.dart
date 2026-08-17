@@ -16,11 +16,11 @@ library;
 ///
 /// Bumped by hand alongside pubspec, and `tool/build_apk.ps1` verifies the two
 /// agree before it will build.
-const String appVersion = '0.46.0';
+const String appVersion = '0.46.1';
 
 /// Which build, in words. Bumped for every APK that leaves this machine so a
 /// tester can say what they are running without reading a number.
 ///
 /// Verified inside `libapp.so` after every build — see `tool/build_apk.ps1`,
 /// which is what catches a build that silently reused an old snapshot.
-const String appBuildStamp = '2026-08-17-half-the-frames';
+const String appBuildStamp = '2026-08-17-revert-the-frames';
