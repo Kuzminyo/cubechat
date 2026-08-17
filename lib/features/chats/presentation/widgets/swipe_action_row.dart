@@ -132,6 +132,11 @@ class _SwipeActionRowState extends State<SwipeActionRow>
             GestureRecognizerFactoryWithHandlers<RightwardDragRecognizer>(
           RightwardDragRecognizer.new,
           (r) => r
+            // From where the finger went down, not from where the arena was
+            // won. The default throws away the travel spent deciding, so the
+            // row starts a slop's worth behind the thumb and never catches up —
+            // which reads as the gesture being sluggish or not working at all.
+            ..dragStartBehavior = DragStartBehavior.down
             ..onUpdate = _onUpdate
             ..onEnd = ((_) => _onEnd())
             ..onCancel = _onEnd,

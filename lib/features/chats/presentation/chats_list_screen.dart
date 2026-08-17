@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'dart:ui' show lerpDouble;
 
@@ -340,17 +341,36 @@ class ChatsListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatsListScreen> createState() => _ChatsListScreenState();
 }
 
-class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
+class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
+    with SingleTickerProviderStateMixin {
   late final ScrollController _scrollController;
+
+  /// How far the header is into its selection state, 0..1.
+  ///
+  /// A bool would do everything this does except take any time over it, which
+  /// is exactly what was wrong: picking a chat swapped the whole top of the
+  /// screen between two frames — the search field gone, the title replaced, the
+  /// header 58 points shorter and the folder bar dropped — and the overflow
+  /// button, which lerps its position from that same number, jumped with it.
+  ///
+  /// Driving it as a number means the search field morphs into its bubble on
+  /// the way in, exactly as it already does under a scrolling thumb, and the
+  /// header's height changes over the same 220 ms instead of in one frame.
+  late final AnimationController _select;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _select = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
   }
 
   @override
   void dispose() {
+    _select.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -406,6 +426,27 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
             .byId(selectedUserFolderId);
 
     final selection = ref.watch(chatSelectionProvider);
+    // Outside build, so nothing is started while the tree is being built.
+    ref.listen<Set<String>>(chatSelectionProvider, (previous, next) {
+      final wasSelecting = previous?.isNotEmpty ?? false;
+      final nowSelecting = next.isNotEmpty;
+      if (wasSelecting == nowSelecting) return;
+      // animateTo, not forward/reverse: tapping the last tick off while the bar
+      // is still arriving has to turn round from wherever it got to, not
+      // restart from the end.
+      _select.animateTo(
+        nowSelecting ? 1 : 0,
+        curve: Curves.easeOutCubic,
+      );
+    });
+    // Read here, in this widget's own build, and handed down.
+    //
+    // It was being watched from inside the list's `itemBuilder`, which runs
+    // during a *descendant's* build — outside the window where `ref.watch` is
+    // legal. Riverpod asserts on that in debug and simply does not subscribe in
+    // release, which is why the swipe did nothing on a release APK and
+    // everything looked fine in the tests.
+    final swipeAction = ref.watch(chatSwipeActionProvider);
     // The system back gesture means "undo the mode I am in" before it means
     // "leave the screen". Picking chats out is a mode, and on a phone where
     // back *is* a swipe there was no other way to say "never mind" without
@@ -461,18 +502,23 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
             // in the scroll view — rather than stacking it over one — is what
             // keeps the collapse in step with the finger instead of chasing it
             // through a scroll listener.
-              SliverPersistentHeader(
-                // Keyed, both of them. The folder header is dropped from the
-                // list while chats are being picked out, and without a key
-                // Flutter matches the surviving header against the *other* one's
-                // element — the title's 84 points of layout arriving in the
-                // folder row's 64 points of paint, which trips the sliver
-                // geometry assert on the frame the selection starts.
+              // Rebuilt per frame of the selection animation, and *only* this
+              // sliver: an AnimatedBuilder around the whole CustomScrollView
+              // would rebuild every visible chat row sixty times a second to
+              // move one header.
+              AnimatedBuilder(
+                animation: _select,
+                builder: (context, _) => SliverPersistentHeader(
+                // Keyed, both of them. The folder header shrinks to nothing
+                // while chats are being picked out, and without a key Flutter
+                // matches one header against the other one's element — the
+                // title's 84 points of layout arriving in the folder row's
+                // paint, which trips the sliver geometry assert.
                 key: const ValueKey('chats-title-header'),
                 pinned: true,
                 delegate: _ChatsHeaderDelegate(
                   topInset: MediaQuery.paddingOf(context).top,
-                  selecting: selecting,
+                  select: _select.value,
                   subtitle: t.chatsSubtitle,
                   searchHint: t.chatsSearchHint,
                   onWipe: () => _confirmWipe(context, ref, t),
@@ -487,15 +533,24 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                     ],
                   ),
                 ),
+                ),
               ),
               // Only once there is something in it. An empty folder row would be
               // a permanent strip of chrome between the title and the first
               // conversation, on the screen that opens the app.
-              if (!selecting && (folders.isNotEmpty || userFolders.isNotEmpty))
-                SliverPersistentHeader(
+              //
+              // Kept in the list while the selection animates and given a
+              // height factor instead of being dropped: removing a pinned
+              // sliver outright is a second jump on the same frame as the
+              // first, and it is the one that makes the list lurch.
+              if (folders.isNotEmpty || userFolders.isNotEmpty)
+                AnimatedBuilder(
+                  animation: _select,
+                  builder: (context, _) => SliverPersistentHeader(
                   key: const ValueKey('chats-folder-header'),
                   pinned: true,
                   delegate: _PinnedFolderFilterHeader(
+                    visible: 1 - _select.value,
                     child: _FolderFilterIsland(
                       folders: folders,
                       userFolders: userFolders,
@@ -514,6 +569,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                         ref.read(selectedUserFolderProvider.notifier).state = id;
                       },
                     ),
+                  ),
                   ),
                 ),
               // Above the list and outside the reorderable one, because that
@@ -612,13 +668,13 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                             // Off while picking chats out: in that mode a row
                             // means one thing, and it is the tick.
                             action: selection.isEmpty
-                                ? ref.watch(chatSwipeActionProvider)
+                                ? swipeAction
                                 : ChatSwipeAction.none,
                             onFire: () => _fireSwipeAction(
                               context,
                               ref,
                               chat,
-                              ref.read(chatSwipeActionProvider),
+                              swipeAction,
                             ),
                             child: FloatingGlass(
                             blur: false,
@@ -836,7 +892,7 @@ const String kAppTitle = 'CubeChat';
 class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
   const _ChatsHeaderDelegate({
     required this.topInset,
-    required this.selecting,
+    required this.select,
     required this.subtitle,
     required this.searchHint,
     required this.onWipe,
@@ -854,7 +910,12 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   /// The status bar's height, added to the header rather than kept out of it.
   final double topInset;
-  final bool selecting;
+
+  /// How far into the selection state, 0..1. A number rather than a flag so the
+  /// swap takes time — see the controller that drives it in
+  /// [_ChatsListScreenState].
+  final double select;
+
   final String subtitle;
   final String searchHint;
   final VoidCallback onWipe;
@@ -863,43 +924,82 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onNewChannel;
   final Widget selectionBar;
 
+  /// The search row's remaining height. It is what the selection takes away,
+  /// and taking it away over 220 ms rather than in one frame is the whole
+  /// point of [select].
+  double get _searchRoom => searchHeight * (1 - select);
+
   @override
-  double get maxExtent =>
-      topInset + (selecting ? titleHeight : titleHeight + searchHeight);
+  double get maxExtent => topInset + titleHeight + _searchRoom;
 
   @override
   double get minExtent => topInset + titleHeight;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
-    final collapse =
-        selecting ? 1.0 : (shrinkOffset / searchHeight).clamp(0.0, 1.0);
+    // Whichever is further along: a header already scrolled into its bubble
+    // must not un-collapse on the way into selection, and one at rest has to
+    // travel the whole way. Reusing the scroll collapse is what makes the
+    // search field morph into its bubble here too, instead of vanishing —
+    // and it is what stops the overflow button jumping, since that button's
+    // position is lerped from this same number.
+    final scrolled = (shrinkOffset / searchHeight).clamp(0.0, 1.0);
+    final collapse = math.max(scrolled, select);
+
     // Sized to exactly what the delegate promised. A persistent header hands
     // its child loose constraints, so a child that measures shorter than
-    // [maxExtent] — the selection bar is 64 points against the title's 84 —
-    // paints less than it laid out, and the sliver geometry assert catches it
-    // on the frame the selection starts.
+    // [maxExtent] paints less than it laid out, and the sliver geometry assert
+    // catches it on the frame the selection starts.
     return SizedBox(
       height: (maxExtent - shrinkOffset).clamp(minExtent, maxExtent),
       child: _HeaderSurface(
         topInset: topInset,
-        child: selecting
-            ? Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: selectionBar,
+        // Both rows, stacked and cross-faded. Laying only one out at a time is
+        // what made this a swap rather than a transition, and it is also what
+        // made the height change land in a single frame.
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (select < 1)
+              IgnorePointer(
+                ignoring: select > 0.5,
+                child: Opacity(
+                  opacity: (1 - select * 1.6).clamp(0.0, 1.0),
+                  child: _TitleRowWithSearch(
+                    collapse: collapse,
+                    subtitle: subtitle,
+                    searchHint: searchHint,
+                    onWipe: onWipe,
+                    onSearch: onSearch,
+                    onAddContact: onAddContact,
+                    onNewChannel: onNewChannel,
+                  ),
                 ),
-              )
-            : _TitleRowWithSearch(
-                collapse: collapse,
-                subtitle: subtitle,
-                searchHint: searchHint,
-                onWipe: onWipe,
-                onSearch: onSearch,
-                onAddContact: onAddContact,
-                onNewChannel: onNewChannel,
               ),
+            if (select > 0)
+              IgnorePointer(
+                ignoring: select < 0.5,
+                child: Opacity(
+                  // Arrives in the back half, so the two are never both at
+                  // full strength on top of each other.
+                  opacity: ((select - 0.35) / 0.65).clamp(0.0, 1.0),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      height: titleHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: selectionBar,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -907,7 +1007,7 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_ChatsHeaderDelegate old) =>
       old.topInset != topInset ||
-      old.selecting != selecting ||
+      old.select != select ||
       old.subtitle != subtitle ||
       old.searchHint != searchHint ||
       old.selectionBar != selectionBar;
@@ -1150,17 +1250,29 @@ class _MorphingSearch extends StatelessWidget {
 }
 
 class _PinnedFolderFilterHeader extends SliverPersistentHeaderDelegate {
-  const _PinnedFolderFilterHeader({required this.child});
+  const _PinnedFolderFilterHeader({required this.child, this.visible = 1});
 
-  static const double height = 64;
+  /// The capsule plus the padding around it — see [_FolderFilterIsland]. Was
+  /// 64, which put a strip of empty header between the title and the filter
+  /// wide enough to read as a mistake.
+  static const double height = _FolderFilterIsland.barHeight + 6;
 
   final Widget child;
 
-  @override
-  double get minExtent => height;
+  /// 1 normally, falling to 0 as the header goes into its selection state.
+  ///
+  /// A factor rather than the sliver being taken out of the list: dropping a
+  /// pinned sliver is instantaneous, and it landed on the same frame as the
+  /// title's own 58-point change, so the list lurched twice at once.
+  final double visible;
+
+  double get _extent => height * visible;
 
   @override
-  double get maxExtent => height;
+  double get minExtent => _extent;
+
+  @override
+  double get maxExtent => _extent;
 
   @override
   Widget build(
@@ -1173,29 +1285,39 @@ class _PinnedFolderFilterHeader extends SliverPersistentHeaderDelegate {
     // otherwise sit on a strip of bare aurora between two surfaces that are
     // the palette's — a seam across the top of the screen, which is what
     // "match the colours" was about.
+    if (_extent <= 0.5) return const SizedBox.shrink();
     return SizedBox(
-      height: height,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.bgTop.withValues(alpha: 0.88),
-              AppColors.bgTop.withValues(alpha: 0.55),
-              AppColors.bgTop.withValues(alpha: 0),
-            ],
-            stops: const [0, 0.6, 1],
+      height: _extent,
+      child: ClipRect(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.bgTop.withValues(alpha: 0.88),
+                AppColors.bgTop.withValues(alpha: 0.55),
+                AppColors.bgTop.withValues(alpha: 0),
+              ],
+              stops: const [0, 0.6, 1],
+            ),
+          ),
+          // Anchored to the top and clipped, so the capsule slides up out of
+          // sight rather than being squashed into a lozenge on the way.
+          child: OverflowBox(
+            alignment: Alignment.topCenter,
+            minHeight: height,
+            maxHeight: height,
+            child: Opacity(opacity: visible, child: child),
           ),
         ),
-        child: Align(alignment: Alignment.topCenter, child: child),
       ),
     );
   }
 
   @override
   bool shouldRebuild(_PinnedFolderFilterHeader oldDelegate) =>
-      oldDelegate.child != child;
+      oldDelegate.child != child || oldDelegate.visible != visible;
 }
 
 /// What the title row turns into while chats are picked out.
@@ -1300,6 +1422,12 @@ class _SelectionOverflow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final single = selected.length == 1 ? selected.first : null;
+    // Mixed selections archive rather than un-archive, the same rule the pin
+    // above follows: the answer that leaves the set in a state somebody asked
+    // for rather than half of one.
+    final archivedIds = ref.watch(archivedChatsControllerProvider);
+    final anyArchived =
+        selected.isNotEmpty && selected.every((c) => archivedIds.contains(c.id));
     return IconButton(
       icon: Icon(Icons.more_vert_rounded, color: AppColors.textOnGlass),
       onPressed: () async {
@@ -1311,6 +1439,18 @@ class _SelectionOverflow extends ConsumerWidget {
           context: context,
           globalPosition: origin,
           items: [
+            // First, and the only entry here that has a gesture as well.
+            // Somebody who has just been told the swipe archives a chat and
+            // cannot make the swipe work will look here next — and did.
+            _chatMenuItem(
+              'archive',
+              anyArchived
+                  ? Icons.unarchive_rounded
+                  : Icons.archive_rounded,
+              anyArchived
+                  ? _chatText(context, uk: 'Повернути з архіву', en: 'Unarchive')
+                  : t.chatsArchiveTitle,
+            ),
             _chatMenuItem(
               'folder',
               Icons.folder_rounded,
@@ -1373,6 +1513,26 @@ class _SelectionOverflow extends ConsumerWidget {
         if (action == null || !context.mounted) return;
         final chats = [...selected];
         switch (action) {
+          case 'archive':
+            final archive =
+                ref.read(archivedChatsControllerProvider.notifier);
+            for (final chat in chats) {
+              if (anyArchived) {
+                await archive.unarchive(chat.id);
+              } else {
+                await archive.archive(chat.id);
+              }
+            }
+            ref.read(chatSelectionProvider.notifier).clear();
+            if (context.mounted) {
+              showGlassToast(
+                context,
+                anyArchived ? t.chatsUnarchivedToast : t.chatsArchivedToast,
+                icon: anyArchived
+                    ? Icons.unarchive_rounded
+                    : Icons.archive_rounded,
+              );
+            }
           case 'folder':
             for (final chat in chats) {
               if (!context.mounted) return;
@@ -1454,6 +1614,15 @@ class _FolderFilterIsland extends StatelessWidget {
   final ValueChanged<ChatFolder> onBuiltIn;
   final ValueChanged<String> onUserFolder;
 
+  /// The capsule itself. The pinned header adds the padding around it — see
+  /// [_PinnedFolderFilterHeader.height], which has to agree with this or the
+  /// bar is clipped or floats.
+  static const double barHeight = 40;
+
+  /// The name on a tab. Small on purpose: these are labels on a filter, and at
+  /// the size of a heading they competed with the chat names underneath.
+  static const double labelSize = 12.5;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -1480,17 +1649,22 @@ class _FolderFilterIsland extends StatelessWidget {
     // Edge to edge, the way the nav bar is: this is the second bar of the app,
     // and an island inset from both margins on top of a header that is not
     // inset reads as a card that happens to be sitting there.
+    // Deliberately tight. This bar is a filter on the list below it, not a
+    // second navigation bar, and at 50 points with 6 above and 8 below it was
+    // taking a fifth of the screen above the fold to say "All" — the gap to
+    // the title was the first thing anybody noticed on the screen.
     return Padding(
       key: const ValueKey('chats-folder-island'),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
       child: SizedBox(
         width: double.infinity,
-        height: 50,
+        height: _FolderFilterIsland.barHeight,
         child: BarGlass(
-          radius: 25,
+          radius: _FolderFilterIsland.barHeight / 2,
           padding: EdgeInsets.zero,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(25),
+            borderRadius:
+                BorderRadius.circular(_FolderFilterIsland.barHeight / 2),
             child: LayoutBuilder(
               builder: (context, box) {
                 // A few tabs share the bar; many of them scroll.
@@ -1554,13 +1728,18 @@ class _FolderFilterIsland extends StatelessWidget {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          fontSize: labelSize,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       textDirection: Directionality.of(context),
       maxLines: 1,
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
-    return painter.width + 38;
+    // Must match the horizontal padding in [_FolderIslandTab] plus its margin,
+    // or the measurement decides "they fit" for a row that then overflows.
+    return painter.width + 30;
   }
 }
 
@@ -1586,30 +1765,34 @@ class _FolderIslandTab extends StatelessWidget {
     final color =
         spec.active ? AppColors.brandPrimary : AppColors.textOnGlassDim;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           onTap: spec.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 13),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: spec.active
                   ? AppColors.brandPrimary.withValues(alpha: 0.18)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
               spec.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              // Not scaled: the bar is a fixed 40 points and the tabs are
+              // measured to decide whether they fit, so a text scaler would
+              // both overflow the capsule and invalidate the measurement.
+              textScaler: TextScaler.noScaling,
               style: TextStyle(
                 color: color,
-                fontSize: 13.5,
+                fontSize: _FolderFilterIsland.labelSize,
                 fontWeight: spec.active ? FontWeight.w700 : FontWeight.w600,
               ),
             ),
