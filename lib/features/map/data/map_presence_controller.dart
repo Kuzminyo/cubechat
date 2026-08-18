@@ -12,6 +12,7 @@ import '../../../core/util/location_service.dart';
 import '../../../core/util/platform_info.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import 'map_friends_controller.dart';
+import '../../../core/util/debug_log.dart';
 
 /// A position, and the moment it was taken.
 ///
@@ -64,6 +65,28 @@ class MapPresenceController extends Notifier<int> {
   StreamSubscription<LocationFix>? _watch;
   bool _watchStarting = false;
   bool _sending = false;
+
+  /// Consecutive beacon rounds that reached nobody at all.
+  ///
+  /// The GPS subscription used to be gated on `_shouldShare`, which asks only
+  /// whether the switch is on and the map-friend list is non-empty. Neither of
+  /// those means anybody is *receiving* anything, and the difference is not
+  /// theoretical: a friend entry whose pubkey no longer resolves fails every
+  /// single send — `cannot send: no recipient pubkey for …` in the log — while
+  /// the list stays non-empty and the position stream runs on.
+  ///
+  /// An Android battery report made the cost concrete: 1 h 47 min of GPS
+  /// against 7 min of CPU over the same 6½ hours, almost all of it with the
+  /// app in the background. Three rounds of talking to nobody now parks the
+  /// radio; a single successful send starts it again.
+  int _deadRounds = 0;
+
+  /// About two minutes at [_tick]. Long enough to ride out a transport that is
+  /// still coming up after a launch, which is the ordinary reason a beacon
+  /// fails, and short enough that a dead friend list does not cost an evening.
+  static const _deadRoundsBeforeIdle = 3;
+
+  bool get _beaconIsLanding => _deadRounds < _deadRoundsBeforeIdle;
   DateTime? _lastSentAt;
   String? _lastCell;
 
@@ -191,6 +214,11 @@ class MapPresenceController extends Notifier<int> {
       await _publish(known, force: force);
       return;
     }
+    // Parked: keep trying to *send*, never to locate. Asking the phone to find
+    // itself so the answer can fail to reach anybody is the whole cost this
+    // guard exists to avoid — and a send that succeeds from a stale fix is
+    // what un-parks it.
+    if (!_beaconIsLanding) return;
     final (fix, _) = await const LocationService().current();
     if (fix == null) return;
     _noteFix(fix);
@@ -250,6 +278,24 @@ class MapPresenceController extends Notifier<int> {
       if (sent > 0) {
         _lastCell = cell;
         _lastSentAt = now;
+        // Somebody is listening again: pick the radio back up if it was parked.
+        final wasIdle = !_beaconIsLanding;
+        _deadRounds = 0;
+        if (wasIdle) {
+          DebugLog.instance
+              .log('MAP', 'beacon landed again — resuming location updates');
+          unawaited(_startWatching());
+        }
+      } else {
+        _deadRounds++;
+        if (!_beaconIsLanding && _watch != null) {
+          DebugLog.instance.log(
+            'MAP',
+            'no map friend reachable for $_deadRounds rounds — '
+                'parking location updates',
+          );
+          unawaited(_stopWatching());
+        }
       }
     } finally {
       _sending = false;

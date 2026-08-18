@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/util/media_storage.dart';
 import 'package:record/record.dart';
 
+import '../../../core/util/audio_session.dart';
+
 /// In-flight voice-message recording state. The UI watches this to show the
 /// red dot + elapsed-time readout while the user holds the mic button.
 @immutable
@@ -120,6 +122,10 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       _currentPath = path;
       await _recorder.start(
         const RecordConfig(
+          // Bluetooth stays on A2DP: see [AudioSession.iosRecord]. Without
+          // this, starting a recording drags the listener's headphones down to
+          // mono HFP and cuts whatever they were playing in half.
+          iosConfig: AudioSession.iosRecord,
           // AAC inside an MP4 container — universally playable, ~16-32kbps
           // suffices for voice. Default bit rate is plenty for clarity.
           encoder: AudioEncoder.aacLc,

@@ -5,6 +5,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/util/audio_session.dart';
+
 /// What is playing, if anything.
 @immutable
 class VoicePlayback {
@@ -104,6 +106,10 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     final existing = _player;
     if (existing != null) return existing;
 
+    // Before the first player exists, so the session it creates is the mixing
+    // one. A `playback` session without mixWithOthers stops whatever else the
+    // phone was playing — see [AudioSession.playback].
+    unawaited(AudioSession.applyPlaybackPolicy());
     final player = AudioPlayer();
     _posSub = player.onPositionChanged.listen((d) {
       state = state.copyWith(position: d);
