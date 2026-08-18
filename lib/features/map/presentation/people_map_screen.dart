@@ -193,21 +193,39 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   ///
   /// Android only. The report is Android-only, recreating a platform view is
   /// not free, and iOS has not shown this.
+  /// Whether the Activity actually stopped since the last rebuild.
+  ///
+  /// Only a real `paused` kills the platform view's surface. Android emits
+  /// `resumed` in bursts — a field log caught four inside three seconds, from
+  /// the notification shade and the transitions around backgrounding — and the
+  /// first version rebuilt the native GoogleMap on every one of them. Recreating
+  /// that view is expensive (native init, a fresh GL surface, tiles reloaded),
+  /// so four times in three seconds was a real heat source I had just added.
+  /// Gating on a preceding `paused` collapses that to one rebuild per genuine
+  /// background→foreground trip.
+  bool _stoppedSinceRebuild = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
     if (!PlatformInfo.isAndroid || !mounted) return;
-    // Deliberately *not* gated on this tab being the visible one, which is
-    // what the first attempt did and is exactly why it half-worked. The
-    // report pinned it precisely: leaving the app from the map and coming
-    // back drew fine, leaving it from another tab and then walking over to
-    // the map did not. In the second case the guard returned, nothing was
-    // rebuilt, and the tab shell handed back the same dead view.
-    //
-    // Bumping regardless costs nothing when the map is not on screen: the
-    // key is only read when the widget is next built, so an unwatched map
-    // simply comes back new the first time it is looked at.
-    DebugLog.instance.log('MAP', 'resumed — rebuilding the map surface');
+    // `paused` is the one that means the Activity stopped and the surface with
+    // it. `inactive` is the transient step through the shade or the recents
+    // switcher and leaves the surface alone, so it must not arm a rebuild.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _stoppedSinceRebuild = true;
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+    // A resume with no real stop behind it is one of the burst — the surface
+    // never died, so rebuilding it would throw a live map away for nothing.
+    if (!_stoppedSinceRebuild) return;
+    _stoppedSinceRebuild = false;
+    // Not gated on this tab being visible: the report was leaving from another
+    // tab and walking to the map, where a visibility guard returned and the
+    // shell handed back the dead view. The key is only read when the widget is
+    // next built, so an unwatched map simply comes back new when looked at.
+    DebugLog.instance.log('MAP', 'resumed after stop — rebuilding the map');
     setState(() => _mapGeneration++);
   }
 
