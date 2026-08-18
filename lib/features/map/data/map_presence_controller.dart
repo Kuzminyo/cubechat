@@ -61,6 +61,26 @@ class MapPresenceController extends Notifier<int> {
   static const _tick = Duration(seconds: 45);
   static const _ttl = Duration(minutes: 2);
 
+  /// How long the same position may go unrepeated.
+  ///
+  /// A beacon carries [_ttl], so a pin that stops being refreshed disappears
+  /// after two minutes; re-sending is only ever about staying inside that. The
+  /// figure was 35 s against a 45 s tick, which meant a phone lying still on a
+  /// desk re-published an identical position on *every* tick — a full X3DH
+  /// derivation and Schnorr signature per map friend, every 45 seconds,
+  /// carrying no news whatsoever.
+  ///
+  /// A shared log showed exactly that: sends to four peers at 16:47:57,
+  /// 16:48:42, 16:49:27, 16:50:10, 16:50:57 — the tick, unbroken, from a
+  /// stationary phone. It is also the shape of "CPU иногда 3 а иногда 16": the
+  /// bursts are these fan-outs, and the gaps between them are idle.
+  ///
+  /// Seventy seconds skips every other tick, so an unmoved position now goes
+  /// out about every 90 s and still has 30 s of margin before the pin it is
+  /// refreshing would have expired. A phone that is actually *moving* is
+  /// unaffected — the cell changes, and a changed cell was never throttled.
+  static const _repeatSameCellAfter = Duration(seconds: 70);
+
   Timer? _timer;
   StreamSubscription<LocationFix>? _watch;
   bool _watchStarting = false;
@@ -249,7 +269,7 @@ class MapPresenceController extends Notifier<int> {
       if (!force &&
           _lastCell == cell &&
           _lastSentAt != null &&
-          now.difference(_lastSentAt!) < const Duration(seconds: 35)) {
+          now.difference(_lastSentAt!) < _repeatSameCellAfter) {
         return;
       }
 
