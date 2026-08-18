@@ -37,6 +37,7 @@ import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
+import '../data/archive_visibility_controller.dart';
 import '../data/archived_chats_controller.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/swipe_action_controller.dart';
@@ -749,6 +750,9 @@ class _ArchiveEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final archived = ref.watch(archivedChatsProvider);
     if (archived.isEmpty) return const SizedBox.shrink();
+    // Put away on purpose — see [ArchiveVisibilityController]. The archived
+    // conversations go on receiving; only the row about them is gone.
+    if (!ref.watch(archiveVisibleProvider)) return const SizedBox.shrink();
     final t = AppLocalizations.of(context);
     final unread = ref.watch(archivedUnreadProvider);
 
@@ -767,6 +771,22 @@ class _ArchiveEntry extends ConsumerWidget {
         blur: false,
         borderRadius: 18,
         onTap: () => context.push('/archive'),
+        // Holding the row puts it away, which is the gesture Telegram uses and
+        // the one anybody annoyed by the row will try. The toast names the way
+        // back, because a control that vanishes without saying where it went is
+        // worse than the row it removed.
+        onLongPressAt: (_) {
+          ref.read(archiveVisibleProvider.notifier).set(false);
+          showGlassToast(
+            context,
+            _chatText(
+              context,
+              uk: 'Архів приховано. Повернути — у Кастомізації.',
+              en: 'Archive hidden. Bring it back in Customisation.',
+            ),
+            icon: Icons.visibility_off_rounded,
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(

@@ -11,6 +11,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/reaction_emoji_controller.dart';
 import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
+import '../../chats/data/archive_visibility_controller.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/nav_bar_controller.dart';
@@ -65,6 +66,10 @@ class CustomizeScreen extends ConsumerWidget {
             const _ScaleCard(),
             const SizedBox(height: 12),
             const _SwipeCard(),
+            const SizedBox(height: 12),
+            // Next to the swipe, because archiving is what the swipe does by
+            // default and this decides whether the result is visible.
+            const _ArchiveRowCard(),
             const SizedBox(height: 12),
             const _QuickReactionCard(),
             const SizedBox(height: 12),
@@ -439,6 +444,70 @@ class _SwipeCard extends ConsumerWidget {
                       ref.read(chatSwipeActionProvider.notifier).select(action),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bring the archive row back, or put it away from here.
+///
+/// The row can also be hidden by holding it, which is the gesture anybody
+/// annoyed by it will reach for. This is the other half of that: a control
+/// that only disappears has no way back, and "hold the row" is no use once
+/// there is no row to hold.
+class _ArchiveRowCard extends ConsumerWidget {
+  const _ArchiveRowCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visible = ref.watch(archiveVisibleProvider);
+    final uk = Localizations.localeOf(context).languageCode == 'uk';
+
+    return GlassCard(
+      child: Row(
+        children: [
+          Icon(
+            visible ? Icons.inventory_2_rounded : Icons.visibility_off_rounded,
+            size: 20,
+            color: AppColors.textOnGlass,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  uk ? 'Рядок архіву' : 'Archive row',
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  uk
+                      ? 'Показувати згори списку чатів. Приховані чати далі '
+                          'отримують повідомлення.'
+                      : 'Show it above the chat list. Archived conversations '
+                          'keep receiving either way.',
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: visible,
+            activeColor: AppColors.brandPrimary,
+            onChanged: (next) =>
+                ref.read(archiveVisibleProvider.notifier).set(next),
           ),
         ],
       ),
