@@ -1704,6 +1704,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       (m.id == id ||
                           (album?.any((photo) => photo.id == id) ?? false));
                   Widget bubble = MessageBubble(
+                    // Keyed by the message, so a bubble's element follows its
+                    // message rather than its slot. Without this the reversed
+                    // list matched elements by position: a new message landing
+                    // at the top reused the element that was there, its State
+                    // was not rebuilt from scratch, and `initState` — the only
+                    // place the entry animation is armed — never ran. That is
+                    // the "анимация отправки работает через раз": it fired only
+                    // when the framework happened to build a fresh element.
+                    // Keying also stops a half-swiped bubble's offset showing up
+                    // on whatever message slid into its place.
+                    key: ValueKey(m.id),
                     message: m,
                     chatId: widget.chatId,
                     album: album,
