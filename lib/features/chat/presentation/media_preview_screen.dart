@@ -218,6 +218,8 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (widget.allowViewOnce && !_asFile) ...[
                   _OriginalToggle(
                     label: t.viewOnceSendLabel,
+                    // A "1": opened once and gone, which is the whole promise.
+                    icon: Icons.looks_one_rounded,
                     active: _viewOnce,
                     onTap: () => setState(() => _viewOnce = !_viewOnce),
                   ),
@@ -226,6 +228,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (widget.allowOriginal && !_viewOnce)
                   _OriginalToggle(
                     label: t.mediaSendOriginal,
+                    icon: Icons.insert_drive_file_rounded,
                     active: _asFile,
                     onTap: () => setState(() => _asFile = !_asFile),
                   ),
@@ -330,11 +333,20 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 class _OriginalToggle extends StatelessWidget {
   const _OriginalToggle({
     required this.label,
+    required this.icon,
     required this.active,
     required this.onTap,
   });
 
   final String label;
+
+  /// What this toggle is *about*.
+  ///
+  /// It used to be a file sheet, hardcoded, for both of the chips that use
+  /// this widget — so "send once" offered a document icon, which is the one
+  /// thing it is not. The chip that really is about a file kept it, and the
+  /// other one now says what it does.
+  final IconData icon;
   final bool active;
   final VoidCallback onTap;
 
@@ -354,9 +366,10 @@ class _OriginalToggle extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                active
-                    ? Icons.insert_drive_file_rounded
-                    : Icons.insert_drive_file_rounded,
+                // One icon, not a ternary between two identical ones — which
+                // is what stood here, so the on and off states looked the same.
+                // The chip's own fill and colour are what say which it is.
+                icon,
                 size: 17,
                 color: active ? AppColors.bgDeep : Colors.white,
               ),
