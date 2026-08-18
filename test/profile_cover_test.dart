@@ -72,6 +72,16 @@ void main() {
     // uppercase section labels this used to look for are gone with the layout
     // that needed them.
     expect(find.text(t.profileGroupConnection), findsOneWidget);
+    // Scrolled to rather than expected on screen: Customisation now sits above
+    // this group, which pushed it past the fold of a test viewport, and a
+    // sliver does not build what is not visible. Reaching it by scrolling is
+    // also the stronger check — it proves the group is in the sliver at all,
+    // which is what this test is about.
+    await tester.scrollUntilVisible(
+      find.text(t.profileGroupApp),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text(t.profileGroupApp), findsOneWidget);
   });
 

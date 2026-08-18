@@ -1685,7 +1685,13 @@ class _FolderFilterIsland extends StatelessWidget {
   /// The capsule itself. The pinned header adds the padding around it — see
   /// [_PinnedFolderFilterHeader.height], which has to agree with this or the
   /// bar is clipped or floats.
-  static const double barHeight = 40;
+  ///
+  /// Thirty-four, down from forty. This is a filter above the list, not a
+  /// second header, and at forty it read as a slab across the top of the
+  /// screen — "остров сильно большой". The labels were already small; what
+  /// made it large was the space around them, so that is what came off, here
+  /// and in the tab padding below.
+  static const double barHeight = 34;
 
   /// The name on a tab. Small on purpose: these are labels on a filter, and at
   /// the size of a heading they competed with the chat names underneath.
@@ -1833,28 +1839,30 @@ class _FolderIslandTab extends StatelessWidget {
     final color =
         spec.active ? AppColors.brandPrimary : AppColors.textOnGlassDim;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           onTap: spec.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
+            // Tighter than it was, for the reason in [barHeight]: the labels
+            // were never the size problem, the padding was.
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: spec.active
                   ? AppColors.brandPrimary.withValues(alpha: 0.18)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
               spec.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              // Not scaled: the bar is a fixed 40 points and the tabs are
+              // Not scaled: the bar is a fixed height and the tabs are
               // measured to decide whether they fit, so a text scaler would
               // both overflow the capsule and invalidate the measurement.
               textScaler: TextScaler.noScaling,

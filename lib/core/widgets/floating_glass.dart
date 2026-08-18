@@ -71,27 +71,23 @@ class FloatingGlass extends StatelessWidget {
   /// still belong to the InkWell.
   final void Function(Offset globalPosition)? onLongPressAt;
 
-  /// The pair of shadows that makes a pane hover: a close contact shadow and a
-  /// slightly wider ambient one, both pulled in with negative spread.
+  /// What sits behind an island: nothing.
   ///
-  /// Exposed because not every island can be a [FloatingGlass]. A chat bubble
-  /// has to keep its own sender colour, so it builds its own surface — but it
-  /// must levitate *identically*, and two hand-tuned shadow lists would drift
-  /// apart the first time either is touched.
-  static List<BoxShadow> get shadows => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.50),
-          blurRadius: 10,
-          offset: const Offset(0, 4),
-          spreadRadius: -4,
-        ),
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.30),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
-          spreadRadius: -14,
-        ),
-      ];
+  /// It used to be a pair of drop shadows — a close contact one and a wider
+  /// ambient one, both pulled in with negative spread — so every pane appeared
+  /// to hover. On a dark backdrop that reads less as height and more as grime:
+  /// each island carries a soft black halo, they overlap wherever two panes sit
+  /// near each other, and the folder row in particular ends up ringed. Asked
+  /// for and removed; the panes are separated by their fill and their border,
+  /// which is enough on a background this dark.
+  ///
+  /// Kept as a named, shared, empty list rather than deleted, because it is the
+  /// only reason every surface agrees. Not every island can be a
+  /// [FloatingGlass] — a chat bubble keeps its own sender colour and builds its
+  /// own surface — and the last time this was duplicated by hand the copy in
+  /// `bar_glass.dart` drifted out of sight of this comment saying not to. Put
+  /// shadows back *here* if they ever return.
+  static const List<BoxShadow> shadows = <BoxShadow>[];
 
   @override
   Widget build(BuildContext context) {

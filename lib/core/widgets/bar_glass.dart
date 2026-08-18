@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../theme/glass.dart';
 import '../util/ui_activity.dart';
+import 'floating_glass.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
 /// like the bar can *be* the bar rather than an approximation of it.
@@ -45,20 +46,10 @@ class BarGlass extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.50),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-            spreadRadius: -4,
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.30),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: -14,
-          ),
-        ],
+        // Shared, not a second hand-tuned copy — which is what this was, and
+        // it is why the pair outlived the comment in FloatingGlass telling
+        // anyone editing them to keep the two in step.
+        boxShadow: FloatingGlass.shadows,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),

@@ -168,6 +168,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
         const SizedBox(height: 10),
 
+        // Customisation above the app group, not below it. What is behind
+        // this row — the colours, the interface size, the nav bar — is what
+        // somebody opening this screen is usually looking for; the group under
+        // it is language, storage and the version, which are things you go to
+        // once. Asked for directly, and the order now matches how often each
+        // is wanted.
+        //
+        // One row, not a group with a single row in it named the same thing.
+        // None of what it holds is a preference picked from a list; they are
+        // the shape of the app, arranged on a screen with room to do it.
+        _CustomizeRow(summary: _customizeSummary(ref, t)),
+
+        const SizedBox(height: 10),
+
         _ExpandableSection(
           icon: Icons.tune_rounded,
           title: t.profileGroupApp,
@@ -183,14 +197,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             const _AboutRow(),
           ],
         ),
-
-        const SizedBox(height: 10),
-
-        // One row, not a group with a single row in it named the same thing.
-        // The colours, the interface size and the nav bar all live behind it —
-        // none of them is a preference picked from a list, they are the shape
-        // of the app, and they are arranged on a screen with room to do it.
-        _CustomizeRow(summary: _customizeSummary(ref, t)),
 
         const SizedBox(height: 14),
 
