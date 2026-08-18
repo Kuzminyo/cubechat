@@ -33,6 +33,27 @@ void main() {
       expect(CpuProbe.label('HeapTaskDaemon', isMain: false), 'Java GC');
     });
 
+    test('the merged main thread says so, and counts as drawing', () {
+      // Recent Flutter runs Dart on the platform thread, so there is no `1.ui`
+      // and every rebuild lands in the main thread's row. Calling that row
+      // "platform" made the panel's first real measurement conclude "not
+      // rendering" about a phone whose whole cost was rebuilds.
+      expect(
+        CpuProbe.label('m.cubechat.app', isMain: true, mergedUi: true),
+        'platform + Dart UI',
+      );
+      final r = CpuReport(
+        threads: const [
+          CpuThread('platform + Dart UI', 1110, 4),
+          CpuThread('GPU raster', 400, 2),
+        ],
+        totalCpuMs: 1510,
+        wallMs: 25000,
+      );
+      expect(r.verdict, contains('rendering'));
+      expect(r.verdict, isNot(contains('not rendering')));
+    });
+
     test('the main thread is named by its id, not by its comm', () {
       // It is named after the truncated package, which differs per flavour and
       // is unrecognisable in a screenshot.

@@ -108,7 +108,7 @@ class CpuProbe {
     } catch (_) {
       return null;
     }
-    final out = <String, int>{};
+    final threads = <int, ThreadStat>{};
     try {
       for (final entry in _taskDir.listSync(followLinks: false)) {
         // Each entry is `/proc/self/task/<tid>`; the directory name is the id.
@@ -117,14 +117,41 @@ class CpuProbe {
         if (tid == null) continue;
         final parsed = _readThread(tid);
         if (parsed == null) continue;
-        final label = _label(parsed.comm, isMain: tid == mainTid);
-        out[label] = (out[label] ?? 0) + parsed.ticks;
+        threads[tid] = parsed;
       }
     } catch (_) {
       // Threads come and go while we walk the directory; a vanished one is not
       // a failed measurement.
     }
-    return out.isEmpty ? null : out;
+    if (threads.isEmpty) return null;
+
+    // Recent Flutter runs Dart on the platform thread rather than on a thread
+    // of its own, so there is no `1.ui` at all and every rebuild, layout and
+    // decode lands in the main thread's row. Labelling that row "platform" and
+    // then concluding "not rendering, drawing is only 22%" was exactly wrong on
+    // the first real measurement this panel produced — the arithmetic gave it
+    // away: 157 frames at 5.3 ms of build is ~830 ms, and the main thread had
+    // burned 1110 ms.
+    final merged = !threads.values.any(_isEngineUiThread);
+
+    final out = <String, int>{};
+    threads.forEach((tid, stat) {
+      final label = _label(
+        stat.comm,
+        isMain: tid == mainTid,
+        mergedUi: merged,
+      );
+      out[label] = (out[label] ?? 0) + stat.ticks;
+    });
+    return out;
+  }
+
+  /// Whether this is the engine's own UI thread, i.e. `<engine id>.ui`.
+  static bool _isEngineUiThread(ThreadStat stat) {
+    final dot = stat.comm.indexOf('.');
+    return dot > 0 &&
+        int.tryParse(stat.comm.substring(0, dot)) != null &&
+        stat.comm.substring(dot + 1) == 'ui';
   }
 
   static int _pidOfSelf() {
@@ -183,11 +210,19 @@ class CpuProbe {
   /// them, each individually near zero and collectively the whole story — split
   /// out they sort below the noise and say nothing.
   @visibleForTesting
-  static String label(String comm, {required bool isMain}) =>
-      _label(comm, isMain: isMain);
+  static String label(
+    String comm, {
+    required bool isMain,
+    bool mergedUi = false,
+  }) =>
+      _label(comm, isMain: isMain, mergedUi: mergedUi);
 
-  static String _label(String comm, {required bool isMain}) {
-    if (isMain) return 'platform (main)';
+  static String _label(
+    String comm, {
+    required bool isMain,
+    required bool mergedUi,
+  }) {
+    if (isMain) return mergedUi ? 'platform + Dart UI' : 'platform (main)';
     // The engine prefixes its threads with the engine id, so `1.ui` on the
     // first engine and `2.ui` on a second one.
     final dot = comm.indexOf('.');
@@ -263,7 +298,16 @@ class CpuReport {
   String get verdict {
     if (threads.isEmpty) return 'no CPU measured';
     final busiest = threads.first;
-    final drawing = {'Dart UI', 'GPU raster', 'image decode'};
+    // `platform + Dart UI` is the merged-thread name, and on that build it is
+    // where every rebuild and layout runs — so it counts as drawing. Its
+    // unmerged twin, `platform (main)`, deliberately does not: there, Dart has
+    // a thread of its own and the main thread is carrying plugin traffic.
+    final drawing = {
+      'Dart UI',
+      'platform + Dart UI',
+      'GPU raster',
+      'image decode',
+    };
     final drawingMs = threads
         .where((t) => drawing.contains(t.name))
         .fold<int>(0, (a, t) => a + t.cpuMs);

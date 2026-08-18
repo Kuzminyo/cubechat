@@ -177,16 +177,128 @@ class Secp256k1 {
     return _Point(x3 % p, y3 % p);
   }
 
+  /// Scalar multiplication, in Jacobian coordinates.
+  ///
+  /// This is the hot spot of the whole file and it used to be the slowest
+  /// possible shape of it. In affine coordinates every doubling and every
+  /// addition needs a modular inverse, so one 256-bit scalar multiplication ran
+  /// roughly 384 extended-Euclid inversions on 256-bit `BigInt`s — and a
+  /// signature does four multiplications (two to sign, two more for the
+  /// self-verify below), so about 1500 of them per Nostr event.
+  ///
+  /// Measured on 2026-08-18, before and after, on the same desktop:
+  ///
+  ///     sign    27.9 ms  →  9.7 ms
+  ///     verify  13.9 ms  →  4.1 ms
+  ///
+  /// Signing is still four multiplications, not two: it verifies its own
+  /// output before returning. That check is left in — it is the thing that
+  /// catches a broken implementation before a bad signature leaves the phone —
+  /// but it is where the next halving is, if this ever needs one. The one after
+  /// that is a precomputed comb for G, which most of these multiplications use.
+  ///
+  /// On the phone that reported it, the app was signing an event per recipient
+  /// plus read receipts and presence beacons — bursts of fifteen publishes
+  /// inside a second — synchronously on the UI thread. Diagnostics read
+  /// `build p90 18.6 ms` against `raster 3.5 ms`, with the merged platform/UI
+  /// thread leading every other thread in the process by a factor of three.
+  ///
+  /// A Jacobian point (X, Y, Z) stands for the affine (X/Z², Y/Z³), with Z = 0
+  /// as the point at infinity. Nothing in the loop divides; the single inverse
+  /// left is the conversion back to affine at the end. The curve has a = 0,
+  /// which is what makes the doubling formula this short.
+  ///
+  /// Left-to-right over the bits so the addend is always the *affine* base
+  /// point, which allows the cheaper mixed addition. Correctness is unchanged
+  /// and still pinned to the BIP-340 vectors — see the note at the top of the
+  /// file; this is arithmetic, not protocol.
+  ///
+  /// Still not constant-time, and the security note above still applies: the
+  /// branch below is taken on the bits of the scalar. It was not constant-time
+  /// before either.
   static _Point? _mul(BigInt k, _Point point) {
-    _Point? result;
-    _Point? addend = point;
-    var kk = k % n;
-    while (kk > BigInt.zero) {
-      if (kk.isOdd) result = _add(result, addend);
-      addend = _double(addend!);
-      kk = kk >> 1;
+    final kk = k % n;
+    if (kk == BigInt.zero) return null;
+
+    // The accumulator, at infinity.
+    var x = BigInt.zero;
+    var y = BigInt.one;
+    var z = BigInt.zero;
+
+    for (var i = kk.bitLength - 1; i >= 0; i--) {
+      if (z != BigInt.zero) {
+        (x, y, z) = _jacobianDouble(x, y, z);
+      }
+
+      if (!((kk >> i) & BigInt.one).isEven) {
+        if (z == BigInt.zero) {
+          x = point.x;
+          y = point.y;
+          z = BigInt.one;
+        } else {
+          // madd-2007-bl: Jacobian + affine.
+          final z1z1 = (z * z) % p;
+          final u2 = (point.x * z1z1) % p;
+          final s2 = (point.y * z * z1z1) % p;
+          final h = (u2 - x) % p;
+          final r = (BigInt.two * ((s2 - y) % p)) % p;
+          if (h == BigInt.zero) {
+            if (r == BigInt.zero) {
+              // The accumulator *is* the base point, so this add is a double.
+              // Rare, but reachable, and the mixed formula would divide by
+              // zero here and hand back a wrong point rather than fail.
+              (x, y, z) = _jacobianDouble(x, y, z);
+            } else {
+              // P + (−P): back to infinity.
+              x = BigInt.zero;
+              y = BigInt.one;
+              z = BigInt.zero;
+            }
+            continue;
+          }
+          final hh = (h * h) % p;
+          final i4 = (BigInt.from(4) * hh) % p;
+          final j = (h * i4) % p;
+          final v = (x * i4) % p;
+          final x3 = (r * r - j - BigInt.two * v) % p;
+          final y3 = (r * (v - x3) - BigInt.two * y * j) % p;
+          final zh = (z + h) % p;
+          final z3 = (zh * zh - z1z1 - hh) % p;
+          x = x3 % p;
+          y = y3 % p;
+          z = z3 % p;
+        }
+      }
     }
-    return result;
+
+    if (z == BigInt.zero) return null;
+    final zInv = _inv(z);
+    final zInv2 = (zInv * zInv) % p;
+    final zInv3 = (zInv2 * zInv) % p;
+    return _Point((x * zInv2) % p, (y * zInv3) % p);
+  }
+
+  /// One Jacobian doubling, `dbl-2009-l`, valid because this curve has a = 0.
+  ///
+  /// Its own function, and not inlined twice, because `z3` is built from the
+  /// *old* `y` — written out in two places, the second copy computed it from
+  /// the new one and produced a plausible, wrong point.
+  static (BigInt, BigInt, BigInt) _jacobianDouble(
+    BigInt x,
+    BigInt y,
+    BigInt z,
+  ) {
+    final a = (x * x) % p;
+    final b = (y * y) % p;
+    final c = (b * b) % p;
+    final xb = (x + b) % p;
+    final d = (BigInt.two * ((xb * xb - a - c) % p)) % p;
+    final e = (BigInt.from(3) * a) % p;
+    final f = (e * e) % p;
+    final x3 = (f - BigInt.two * d) % p;
+    final y3 = (e * (d - x3) - BigInt.from(8) * c) % p;
+    final z3 = (BigInt.two * y * z) % p;
+    return (x3 % p, y3 % p, z3);
   }
 
   static _Point? _negate(_Point? a) => a == null ? null : _Point(a.x, (p - a.y) % p);
