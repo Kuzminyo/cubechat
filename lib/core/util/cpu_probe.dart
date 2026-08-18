@@ -102,7 +102,12 @@ class CpuProbe {
     if (snap == null) return null;
 
     final elapsedMs = DateTime.now().difference(since).inMilliseconds;
-    if (elapsedMs <= 0) return null;
+    // A second, not a millisecond. Ticks are 10 ms wide, so one landing inside
+    // a window three milliseconds long reads as 333% of a core — the shape of
+    // the nonsense this panel has printed before ("30 ms, 214% of a core, over
+    // 0 s"). Reading nothing for the first second of a window is the honest
+    // answer: there is nothing measured yet.
+    if (elapsedMs < 1000) return null;
 
     final rows = <CpuThread>[];
     var totalMs = 0;
