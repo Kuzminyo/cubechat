@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 0.48.0+215
+version: 0.48.1+216
 
 environment:
   sdk: ^3.6.0
@@ -113,20 +113,6 @@ flutter:
     - assets/logo/
     - .codex/fonts/
 
-  # Bundled so every phone draws the same emoji.
-  #
-  # The system set is whatever the vendor shipped — Xiaomi, Samsung and an
-  # iPhone each draw the same character differently, and a reaction picked on
-  # one arrives looking like something else on another. Noto Color Emoji is
-  # Google's reference set, Apache-2.0, and is the one Android itself is based
-  # on, so nothing looks foreign there either.
-  #
-  # ~10 MB, which is real; it buys the same picture on both ends of every
-  # conversation, which is the whole point of a reaction.
-  fonts:
-    - family: NotoColorEmoji
-      fonts:
-        - asset: .codex/fonts/NotoColorEmoji.ttf
 
 flutter_launcher_icons:
   android: true
