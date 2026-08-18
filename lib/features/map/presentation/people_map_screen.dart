@@ -38,6 +38,7 @@ import '../data/shared_map_locations_provider.dart';
 import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
 import 'map_layer_sheet.dart';
+import '../../../core/util/debug_log.dart';
 
 // Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
 // the production screen ignores it and mounts native Google Maps instead.
@@ -75,7 +76,8 @@ class PeopleMapScreen extends ConsumerStatefulWidget {
   ConsumerState<PeopleMapScreen> createState() => _PeopleMapScreenState();
 }
 
-class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
+class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
+    with WidgetsBindingObserver {
   static const _fallbackCenter = LatLng(50.4501, 30.5234);
   static const _initialZoom = 15.0;
   static const _focusZoom = 17.2;
@@ -162,6 +164,45 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
     if (platform is GoogleMapsFlutterAndroid) {
       platform.useAndroidViewSurface = false;
     }
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Wake the map's texture after a spell in the background.
+  ///
+  /// The fast path above renders the native map into a texture layer rather
+  /// than a view synchronised with the Flutter scene, which is what makes it
+  /// affordable — and also what makes it fragile across a trip to the
+  /// background. Android is free to drop the texture behind a stopped app, and
+  /// nothing asks for a new one on the way back: the Flutter side still holds a
+  /// live controller and a valid camera, so it has no reason to think anything
+  /// is wrong. What the user sees is the map drawing fine, going away, and
+  /// coming back as an empty pane with the Google logo in the corner.
+  ///
+  /// Two camera moves that cancel out are enough to force a fresh frame. A
+  /// pixel each way is below anything anyone can see and leaves the camera
+  /// exactly where it was, which matters — a resume must not move somebody's
+  /// map out from under them.
+  ///
+  /// Only when this screen is the one being looked at. The map tab keeps its
+  /// state while other tabs are on screen, and nudging a map nobody is
+  /// watching would spend a frame to fix nothing.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (!_watching) return;
+    final map = _googleMap;
+    if (map == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_watching) return;
+      try {
+        await map.moveCamera(gm.CameraUpdate.scrollBy(1, 0));
+        await map.moveCamera(gm.CameraUpdate.scrollBy(-1, 0));
+      } catch (e) {
+        // A controller that died with the surface is exactly the case this is
+        // for, and there is nothing further to do about it here.
+        DebugLog.instance.log('MAP', 'resume nudge failed: $e');
+      }
+    });
   }
 
   @override
@@ -278,6 +319,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AppLifecycle.instance.isWatchingMap = false;
     _refresh?.cancel();
     _addressDebounce?.cancel();
