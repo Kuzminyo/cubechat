@@ -573,7 +573,15 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                     ),
                   ),
                   ),
-                ),
+                )
+              else
+                // No folders, so nothing carries the header's colour down and
+                // lets it go — the surface ends at bgTop@0.88 and that
+                // near-opaque band met the aurora in a hard line, "переход
+                // цветів дуже помітний". This is the folder header's own fade
+                // with the capsule taken out: the same 0.88 → 0 it always used
+                // to hand off to the aurora, just on its own.
+                const SliverToBoxAdapter(child: _HeaderColourFade()),
               // Above the list and outside the reorderable one, because that
               // list's indices are the pin order — a header inside it would
               // shift every one of them by one and a drag would land a row
@@ -1098,6 +1106,38 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
 
 /// What the header is drawn on.
 ///
+/// The soft tail below the header when there is no folder row to be one.
+///
+/// The header surface stops at `bgTop@0.88`, and the folder header — when it
+/// exists — is what fades that last 0.88 down to nothing so rows dissolve into
+/// the aurora instead of crossing a line. With no folders there was no fade and
+/// the line showed. This is that fade, alone: the same colours and stops, no
+/// capsule, a short strip that reads as softening rather than as chrome.
+class _HeaderColourFade extends StatelessWidget {
+  const _HeaderColourFade();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 22,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.bgTop.withValues(alpha: 0.88),
+              AppColors.bgTop.withValues(alpha: 0.55),
+              AppColors.bgTop.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.6, 1],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A gradient in the palette's own colours rather than a flat fill or a pane of
 /// glass: the screen behind it is an aurora, and a header that ignores the
 /// palette reads as a strip cut out of a different app. It runs from the
