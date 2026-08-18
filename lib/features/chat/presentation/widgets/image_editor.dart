@@ -27,6 +27,9 @@ const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
       bottomNavBar: Icons.brush_rounded,
       moveAndZoom: Icons.open_with_rounded,
       changeOpacity: Icons.opacity_rounded,
+      // A mop, which is odd, but this Flutter has no eraser glyph — neither
+      // `ink_eraser` nor its rounded twin exist here — and "wipe it away" is
+      // at least the right verb.
       eraser: Icons.cleaning_services_rounded,
       lineWeight: Icons.line_weight_rounded,
       freeStyle: Icons.edit_rounded,
@@ -38,7 +41,10 @@ const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
       fill: Icons.format_color_fill_rounded,
       noFill: Icons.format_color_reset_rounded,
       rectangle: Icons.crop_free_rounded,
-      circle: Icons.circle_rounded,
+      // Outline, not a filled disc: these are shapes you draw, and every other
+      // one in this row — rectangle, hexagon, polygon — is drawn as an outline.
+      // A solid circle among them looked like a colour swatch.
+      circle: Icons.circle_outlined,
       dashLine: Icons.power_input_rounded,
       dashDotLine: Icons.linear_scale_rounded,
       hexagon: Icons.hexagon_rounded,
@@ -79,7 +85,10 @@ const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
       bottomNavBar: Icons.tune_rounded,
       brightness: Icons.brightness_6_rounded,
       contrast: Icons.contrast_rounded,
-      saturation: Icons.water_drop_rounded,
+      // A water drop reads as "blur" or "opacity" everywhere else in this same
+      // editor. Not a palette either — `hue` below already is one, and two
+      // identical glyphs side by side is worse than one imprecise glyph.
+      saturation: Icons.invert_colors_rounded,
       exposure: Icons.exposure_rounded,
       hue: Icons.palette_rounded,
       temperature: Icons.thermostat_rounded,
@@ -94,7 +103,11 @@ const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
   ),
   filterEditor: FilterEditorConfigs(
     icons: FilterEditorIcons(
-      bottomNavBar: Icons.filter_alt_rounded,
+      // Not `filter_alt`, which is a funnel — the icon every list in every app
+      // uses for narrowing rows down. Here "filter" means the other thing
+      // entirely, and `photo_filter` is Material's own glyph for it: a frame
+      // with a sparkle, the same shape Instagram and Telegram settled on.
+      bottomNavBar: Icons.photo_filter_rounded,
       applyChanges: Icons.check_rounded,
       backButton: Icons.arrow_back_rounded,
     ),
