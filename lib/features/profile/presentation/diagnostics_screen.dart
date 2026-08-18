@@ -154,18 +154,31 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
               style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
           )
-        : ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-            itemCount: entries.length,
-            itemBuilder: (_, i) {
-              final e = entries[i];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Text(
-                  '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
-                  style: AppTypography.mono(
-                      size: 11.5, color: AppColors.textOnGlass),
-                ),
+        : Builder(
+            builder: (context) {
+              // Built once per rebuild, not once per row. `AppTypography.mono`
+              // goes through google_fonts, which does a registry lookup and
+              // builds a fresh TextStyle on every call — cheap on its own and
+              // not cheap a dozen times a row on a slow phone, four times a
+              // second, for a screen whose whole job is to report how slow
+              // things are. This panel kept reporting its own cost.
+              final style = AppTypography.mono(
+                size: 11.5,
+                color: AppColors.textOnGlass,
+              );
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+                itemCount: entries.length,
+                itemBuilder: (_, i) {
+                  final e = entries[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Text(
+                      '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
+                      style: style,
+                    ),
+                  );
+                },
               );
             },
           );
