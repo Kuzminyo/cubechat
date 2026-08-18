@@ -16,11 +16,11 @@ library;
 ///
 /// Bumped by hand alongside pubspec, and `tool/build_apk.ps1` verifies the two
 /// agree before it will build.
-const String appVersion = '0.49.4';
+const String appVersion = '0.49.5';
 
 /// Which build, in words. Bumped for every APK that leaves this machine so a
 /// tester can say what they are running without reading a number.
 ///
 /// Verified inside `libapp.so` after every build — see `tool/build_apk.ps1`,
 /// which is what catches a build that silently reused an old snapshot.
-const String appBuildStamp = '2026-08-18-no-seam-without-folders';
+const String appBuildStamp = '2026-08-18-seam-gone-no-gap';

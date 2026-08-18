@@ -534,6 +534,9 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                         if (selection.contains(chat.id)) chat,
                     ],
                   ),
+                  // No folder row to fade the header into the aurora, so the
+                  // surface does its own soft landing.
+                  softBottom: folders.isEmpty && userFolders.isEmpty,
                 ),
                 ),
               ),
@@ -573,15 +576,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                     ),
                   ),
                   ),
-                )
-              else
-                // No folders, so nothing carries the header's colour down and
-                // lets it go — the surface ends at bgTop@0.88 and that
-                // near-opaque band met the aurora in a hard line, "переход
-                // цветів дуже помітний". This is the folder header's own fade
-                // with the capsule taken out: the same 0.88 → 0 it always used
-                // to hand off to the aurora, just on its own.
-                const SliverToBoxAdapter(child: _HeaderColourFade()),
+                ),
               // Above the list and outside the reorderable one, because that
               // list's indices are the pin order — a header inside it would
               // shift every one of them by one and a drag would land a row
@@ -991,7 +986,17 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onAddContact,
     required this.onNewChannel,
     required this.selectionBar,
+    required this.softBottom,
   });
+
+  /// Whether the header's bottom edge fades to the aurora on its own.
+  ///
+  /// True when no folder row follows it. With a folder row, the surface hands
+  /// its colour off at bgTop@0.88 and the row fades that to nothing; alone, the
+  /// same 0.88 met the aurora in a line, and softening it here — in the
+  /// surface's own gradient — is what removes the seam without a strip below it
+  /// that would push the first chat down.
+  final bool softBottom;
 
   /// The title row: logo, name over subtitle, and the two controls.
   static const double titleHeight = 84;
@@ -1045,6 +1050,7 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
       height: (maxExtent - shrinkOffset).clamp(minExtent, maxExtent),
       child: _HeaderSurface(
         topInset: topInset,
+        softBottom: softBottom,
         // Both rows, stacked and cross-faded. Laying only one out at a time is
         // what made this a swap rather than a transition, and it is also what
         // made the height change land in a single frame.
@@ -1106,48 +1112,26 @@ class _ChatsHeaderDelegate extends SliverPersistentHeaderDelegate {
 
 /// What the header is drawn on.
 ///
-/// The soft tail below the header when there is no folder row to be one.
-///
-/// The header surface stops at `bgTop@0.88`, and the folder header — when it
-/// exists — is what fades that last 0.88 down to nothing so rows dissolve into
-/// the aurora instead of crossing a line. With no folders there was no fade and
-/// the line showed. This is that fade, alone: the same colours and stops, no
-/// capsule, a short strip that reads as softening rather than as chrome.
-class _HeaderColourFade extends StatelessWidget {
-  const _HeaderColourFade();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 22,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.bgTop.withValues(alpha: 0.88),
-              AppColors.bgTop.withValues(alpha: 0.55),
-              AppColors.bgTop.withValues(alpha: 0),
-            ],
-            stops: const [0, 0.6, 1],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// A gradient in the palette's own colours rather than a flat fill or a pane of
 /// glass: the screen behind it is an aurora, and a header that ignores the
 /// palette reads as a strip cut out of a different app. It runs from the
 /// palette's deepest tone at the status bar to its mid tone at the bottom edge,
 /// so rows scrolling under it fade out rather than sliding under a lid.
 class _HeaderSurface extends StatelessWidget {
-  const _HeaderSurface({required this.topInset, required this.child});
+  const _HeaderSurface({
+    required this.topInset,
+    required this.child,
+    this.softBottom = false,
+  });
 
   final double topInset;
   final Widget child;
+
+  /// When true, the surface fades to nearly transparent at its bottom edge
+  /// rather than ending at bgTop@0.88 — the soft landing for when no folder
+  /// row follows it to do the fade. Costs no height, so the first chat does
+  /// not move; only the colour of the last few pixels changes.
+  final bool softBottom;
 
   @override
   Widget build(BuildContext context) {
@@ -1160,7 +1144,7 @@ class _HeaderSurface extends StatelessWidget {
           colors: [
             AppColors.bgDeep,
             AppColors.bgTop,
-            AppColors.bgTop.withValues(alpha: 0.88),
+            AppColors.bgTop.withValues(alpha: softBottom ? 0.30 : 0.88),
           ],
           stops: const [0, 0.62, 1],
         ),
