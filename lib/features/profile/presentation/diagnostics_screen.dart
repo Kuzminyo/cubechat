@@ -258,6 +258,17 @@ class _FramePanelState extends State<_FramePanel> {
             ],
           ),
           const SizedBox(height: 8),
+          // Which window each number covers, said out loud. The two lines
+          // below are a rolling window of the last few seconds; the counts
+          // under them are the whole session. Printed together with no labels,
+          // "p90 18.6 ms" was read as a verdict on 3013 frames when it
+          // described the ~180 most recent ones — which, while the panel is on
+          // screen, are the panel.
+          Text(
+            'last ${s.sampleCount} frames',
+            style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 10),
+          ),
+          const SizedBox(height: 4),
           _line('build (CPU / Dart)', s.avgBuildMs, s.p90BuildMs),
           const SizedBox(height: 3),
           _line('raster (GPU)', s.avgRasterMs, s.p90RasterMs),
@@ -271,8 +282,8 @@ class _FramePanelState extends State<_FramePanel> {
           ),
           const SizedBox(height: 2),
           Text(
-            '${s.sampleCount} frames sampled · ${s.jankyFrames} over 16.7 ms '
-            'of ${s.totalFrames}',
+            'whole session: ${s.jankyFrames} of ${s.totalFrames} frames '
+            'over 16.7 ms',
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
           ),
           const SizedBox(height: 10),

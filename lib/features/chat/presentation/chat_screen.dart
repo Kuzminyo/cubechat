@@ -54,6 +54,7 @@ import '../data/chat_navigation.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/drafts_controller.dart';
 import '../data/messages_controller.dart';
+import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
 import '../data/voice_recorder_controller.dart';
@@ -1026,6 +1027,11 @@ class _ConversationView extends ConsumerStatefulWidget {
 class _ConversationViewState extends ConsumerState<_ConversationView> {
   final _scroll = ScrollController();
 
+  /// Where [FloatingDayChip] starts looking for the list's sliver. It needs the
+  /// render object, and the list is built inside a callback that has no context
+  /// of its own to hand over.
+  final _listKey = GlobalKey();
+
   /// Attached to the pinned message's bubble (and only to that one) so a jump
   /// can finish with [Scrollable.ensureVisible] once it is actually built.
   final _initialMessageKey = GlobalKey();
@@ -1640,7 +1646,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             : null,
         listBuilder: (padding) => messages.isEmpty
             ? _EmptyConversationState(canSend: widget.canSend)
-            : ListView.builder(
+            : Stack(
+                children: [
+                  ListView.builder(
+                key: _listKey,
                 reverse: true,
                 controller: _scroll,
                 padding: padding,
@@ -1714,6 +1723,18 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     ],
                   );
                 },
+                  ),
+                  // The date of whatever is at the top, following the scroll.
+                  // The separators below stay exactly where they were; this is
+                  // the one that keeps up, because scrolling back through a
+                  // long day leaves its separator far off the top.
+                  FloatingDayChip(
+                    controller: _scroll,
+                    messages: messages,
+                    listContext: () => _listKey.currentContext ?? context,
+                    topPadding: padding.top,
+                  ),
+                ],
               ),
         composer: widget.composer,
         // Header and pinned island are siblings of the list inside the Stack, so
