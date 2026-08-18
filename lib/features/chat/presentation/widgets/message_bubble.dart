@@ -39,6 +39,8 @@ import '../../../channels/data/channel_roster_controller.dart';
 import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
+import '../../../chats/data/saved_messages.dart';
+import '../../../chats/data/saved_tags_controller.dart';
 import 'emoji_picker_sheet.dart';
 import 'message_spotlight.dart';
 import '../../models/message.dart';
@@ -634,6 +636,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.edit_rounded,
             label: t.chatEditAction,
           ),
+        // Saved-chat only: a tag is a way back to a note in a growing pile,
+        // and there is no pile to file in a real conversation. Says "remove"
+        // when one is already on, so the same entry both sets and clears.
+        if (isSavedChat(widget.chatId))
+          SpotlightAction(
+            id: 'tag',
+            icon: Icons.sell_rounded,
+            label: ref.read(savedTagsProvider)[widget.message.id] == null
+                ? _savedTagText(uk: 'Тег', en: 'Tag')
+                : _savedTagText(uk: 'Прибрати тег', en: 'Remove tag'),
+          ),
         SpotlightAction(
           id: 'delete',
           icon: Icons.delete_outline_rounded,
@@ -676,10 +689,31 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ref
           .read(messageSelectionProvider(widget.chatId).notifier)
           .start(widget.message.id);
+    } else if (picked == 'tag') {
+      await _tagSavedMessage();
     } else if (picked == 'delete') {
       await _promptDelete();
     }
   }
+
+  /// Put an emoji tag on this saved note, or clear the one it has.
+  ///
+  /// Already tagged: one tap here takes it off, no picker — removing a tag is
+  /// the common half of managing them and should not cost a sheet. Untagged:
+  /// the same emoji picker the quick-reaction setting uses.
+  Future<void> _tagSavedMessage() async {
+    final tags = ref.read(savedTagsProvider.notifier);
+    if (tags.tagFor(widget.message.id) != null) {
+      await tags.setTag(widget.message.id, null);
+      return;
+    }
+    final emoji = await showEmojiPicker(context);
+    if (emoji == null || !mounted) return;
+    await tags.setTag(widget.message.id, emoji);
+  }
+
+  String _savedTagText({required String uk, required String en}) =>
+      Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
 
   /// The message [wireId] quotes, resolved from this chat's list, or null if
   /// it's not in memory (e.g. cleared history or arrived out of order).
@@ -886,6 +920,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ref
           .read(messagesControllerProvider.notifier)
           .deleteLocal(widget.chatId, m.id);
+      // Its tag goes with it, so a deleted note leaves no orphan in the filter
+      // bar matching nothing.
+      if (isSavedChat(widget.chatId)) {
+        unawaited(ref.read(savedTagsProvider.notifier).forget(m.id));
+      }
     } else if (choice == 'everyone') {
       await ref
           .read(messagingServiceProvider)
@@ -972,6 +1011,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       message: message,
       pinned: pinned,
       onMedia: metaOnMedia,
+      // Only in the saved chat does a tag exist, so only there is the map read.
+      tag: isSavedChat(widget.chatId)
+          ? ref.watch(savedTagsProvider)[message.id]
+          : null,
     );
 
     final bubble = RepaintBoundary(
@@ -2352,9 +2395,15 @@ class _BubbleMeta extends StatelessWidget {
     required this.message,
     this.pinned = false,
     this.onMedia = false,
+    this.tag,
   });
 
   final Message message;
+
+  /// The saved-note tag on this message, or null. Shown at the head of the
+  /// meta line so a tagged note reads as tagged without opening it — the same
+  /// place a pin or a shield sits, for the same reason.
+  final String? tag;
 
   /// True when this is the chat's pinned message.
   final bool pinned;
@@ -2380,6 +2429,10 @@ class _BubbleMeta extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (tag != null) ...[
+          Text(tag!, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+        ],
         if (pinned) ...[
           Icon(
             Icons.push_pin_rounded,

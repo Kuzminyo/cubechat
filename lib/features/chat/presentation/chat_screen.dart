@@ -35,6 +35,7 @@ import '../../channels/data/channel_roster_controller.dart';
 import '../../channels/presentation/channel_poll_composer.dart';
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
+import '../../chats/data/saved_tags_controller.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -1579,6 +1580,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // stored: nothing on the wire says which pictures went together, and the
     // conversation itself says it plainly enough.
     final albums = groupPhotoAlbums(messages);
+    // Saved-chat tag filter. Watched so the list restyles when it changes, and
+    // both are read here so the itemBuilder does not touch a provider per row.
+    final saved = isSavedChat(widget.chatId);
+    final tagFilter = saved ? ref.watch(savedTagFilterProvider) : null;
+    final tags = saved ? ref.watch(savedTagsProvider) : const <String, String>{};
     ref.watch(pinnedControllerProvider);
     final pins =
         ref.read(pinnedControllerProvider.notifier).pinnedAllIn(widget.chatId);
@@ -1677,6 +1683,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   // on this screen — the jump anchors, the search highlight,
                   // _noteBuilt — addressing the same messages it always did.
                   if (albums.isFolded(m.id)) return const SizedBox.shrink();
+                  // A tag filter hides non-matching notes the same way — by
+                  // giving up their height, not by leaving the list — so every
+                  // index above stays pointing at the message it always did.
+                  if (tagFilter != null && tags[m.id] != tagFilter) {
+                    return const SizedBox.shrink();
+                  }
                   final album = albums.albumAt(m.id);
                   // An album answers to the ids of every photo in it.
                   //
@@ -1885,7 +1897,72 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             // measures, so appearing and vanishing costs the conversation nothing
             // but a reflow.
             ChatVoiceBar(chatId: widget.chatId),
+            // Saved-chat only, and only once something is tagged: a row of the
+            // tags in use, tap one to narrow the notes to it. Draws nothing
+            // until there is a second way to sort the pile than scrolling it.
+            if (saved) _SavedTagFilterBar(tags: tags, active: tagFilter),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The row of tags across the top of the saved chat.
+///
+/// Nothing while no note is tagged — a filter over one bucket is furniture. The
+/// active tag is lit; tapping it again clears the filter, the same toggle the
+/// controller does, so there is no separate "all" chip to reach for.
+class _SavedTagFilterBar extends ConsumerWidget {
+  const _SavedTagFilterBar({required this.tags, required this.active});
+
+  final Map<String, String> tags;
+  final String? active;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final inUse = ref.read(savedTagsProvider.notifier).tagsInUse;
+    if (inUse.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      child: SizedBox(
+        height: 38,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: inUse.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) {
+            final tag = inUse[i];
+            final on = tag == active;
+            final count = tags.values.where((t) => t == tag).length;
+            return GestureDetector(
+              onTap: () =>
+                  ref.read(savedTagFilterProvider.notifier).toggle(tag),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: on
+                      ? AppColors.brandPrimary.withValues(alpha: 0.20)
+                      : AppColors.glass(0.10),
+                  borderRadius: BorderRadius.circular(19),
+                  border: Border.all(
+                    color: on
+                        ? AppColors.brandPrimary.withValues(alpha: 0.55)
+                        : AppColors.glass(0.16),
+                  ),
+                ),
+                child: Text(
+                  '$tag  $count',
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 13,
+                    fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
