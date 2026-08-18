@@ -500,11 +500,25 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// This is the storage-side primitive used by per-chat auto-delete. It is
   /// intentionally idempotent so the periodic privacy sweep can call it even
   /// when nothing has expired.
-  Future<int> deleteBefore(String chatId, DateTime cutoff) async {
+  ///
+  /// [since] bounds it from below: anything sent before that instant is left
+  /// alone however old it is. Auto-delete passes the moment it was switched on,
+  /// so the history that was already there when the user turned it on is not
+  /// swept away by a setting they understood as "from now on". Null means no
+  /// lower bound, which is the old behaviour and what a `/clear`-style caller
+  /// wants.
+  Future<int> deleteBefore(
+    String chatId,
+    DateTime cutoff, {
+    DateTime? since,
+  }) async {
     final current = state[chatId];
     if (current == null || current.isEmpty) return 0;
-    final next =
-        current.where((message) => !message.sentAt.isBefore(cutoff)).toList();
+    final next = current
+        .where((message) =>
+            !message.sentAt.isBefore(cutoff) ||
+            (since != null && message.sentAt.isBefore(since)))
+        .toList();
     final removed = current.length - next.length;
     if (removed == 0) return 0;
     if (next.isEmpty) {

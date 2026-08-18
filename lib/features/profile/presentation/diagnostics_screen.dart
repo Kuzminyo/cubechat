@@ -289,7 +289,15 @@ class _FramePanelState extends State<_FramePanel> {
             }),
             onRelease: () => setState(s.releaseHold),
           ),
-          const _CpuPanel(),
+          // Deliberately not `const`. A const child is the *same* canonicalised
+          // instance every time the parent rebuilds, so `Element.updateChild`
+          // short-circuits on `child.widget == newWidget` and the subtree is
+          // never rebuilt at all. This panel has no inputs — everything it
+          // shows it reads from a singleton at build time — so const made it
+          // render once, ~14 ms after the baseline was taken, and then freeze.
+          // On a phone that reads as a plausible measurement ("30 ms, 214% of
+          // a core, over 0 s") of nothing.
+          _CpuPanel(),
         ],
       ),
     );
@@ -327,7 +335,10 @@ class _FramePanelState extends State<_FramePanel> {
 /// a Linux interface and an empty panel invites the reader to conclude
 /// something from it.
 class _CpuPanel extends StatelessWidget {
-  const _CpuPanel();
+  // No `const` constructor: see the call site. A const one invites the
+  // analyzer (and the next reader) to put `const` back and silently freeze
+  // the panel again.
+  _CpuPanel();
 
   @override
   Widget build(BuildContext context) {

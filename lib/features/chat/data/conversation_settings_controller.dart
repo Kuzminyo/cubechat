@@ -127,6 +127,7 @@ class ChatWallpaper {
 class ConversationSettings {
   const ConversationSettings({
     this.autoDelete = ChatAutoDelete.off,
+    this.autoDeleteFrom,
     this.restrictCopying = false,
     this.peerRestrictsCopying = false,
     this.wallpaper = ChatWallpaper.none,
@@ -135,6 +136,22 @@ class ConversationSettings {
   static const initial = ConversationSettings();
 
   final ChatAutoDelete autoDelete;
+
+  /// When [autoDelete] was switched on, and therefore the oldest message it is
+  /// allowed to touch.
+  ///
+  /// Without it, turning on "delete after an hour" deleted the last year of
+  /// the conversation on the spot — every message already older than an hour
+  /// was past its cutoff the instant the setting existed. That is a defensible
+  /// reading of the words and a terrible reading of the intent: the switch is
+  /// understood as "from now on", and its most likely use is right after
+  /// saying something you would rather not leave lying around, in a chat you
+  /// otherwise want to keep.
+  ///
+  /// Set on off→on only. Changing the period while it is already on keeps the
+  /// original anchor, so shortening the timer cannot suddenly reach further
+  /// back than the switch itself ever did.
+  final DateTime? autoDeleteFrom;
 
   /// What *we* asked for in this conversation.
   final bool restrictCopying;
@@ -156,12 +173,16 @@ class ConversationSettings {
 
   ConversationSettings copyWith({
     ChatAutoDelete? autoDelete,
+    DateTime? autoDeleteFrom,
+    bool clearAutoDeleteFrom = false,
     bool? restrictCopying,
     bool? peerRestrictsCopying,
     ChatWallpaper? wallpaper,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
+        autoDeleteFrom:
+            clearAutoDeleteFrom ? null : (autoDeleteFrom ?? this.autoDeleteFrom),
         restrictCopying: restrictCopying ?? this.restrictCopying,
         peerRestrictsCopying: peerRestrictsCopying ?? this.peerRestrictsCopying,
         wallpaper: wallpaper ?? this.wallpaper,
@@ -174,6 +195,7 @@ class ConversationSettings {
   bool operator ==(Object other) =>
       other is ConversationSettings &&
       other.autoDelete == autoDelete &&
+      other.autoDeleteFrom == autoDeleteFrom &&
       other.restrictCopying == restrictCopying &&
       other.peerRestrictsCopying == peerRestrictsCopying &&
       other.wallpaper == wallpaper;
@@ -181,6 +203,7 @@ class ConversationSettings {
   @override
   int get hashCode => Object.hash(
         autoDelete,
+        autoDeleteFrom,
         restrictCopying,
         peerRestrictsCopying,
         wallpaper,
@@ -225,8 +248,22 @@ class ConversationSettingsController
     String chatId,
     ChatAutoDelete period,
   ) async {
-    await _put(chatId, forChat(chatId).copyWith(autoDelete: period));
-    await _pruneChat(chatId, period);
+    final before = forChat(chatId);
+    // The anchor moves only on off→on. Turning it off drops it, so switching
+    // back on later starts a fresh window rather than resurrecting the reach of
+    // a setting that was cancelled; changing the period while it is on keeps
+    // it, so a shorter timer still cannot bite into anything older than the
+    // moment the user first said yes.
+    final next = period.isOn
+        ? before.copyWith(
+            autoDelete: period,
+            autoDeleteFrom: before.autoDelete.isOn
+                ? (before.autoDeleteFrom ?? DateTime.now())
+                : DateTime.now(),
+          )
+        : before.copyWith(autoDelete: period, clearAutoDeleteFrom: true);
+    await _put(chatId, next);
+    await _pruneChat(chatId, period, next.autoDeleteFrom);
   }
 
   Future<void> setRestrictCopying(String chatId, bool restricted) =>
@@ -258,20 +295,25 @@ class ConversationSettingsController
 
   Future<void> pruneExpired() async {
     for (final entry in state.entries) {
-      await _pruneChat(entry.key, entry.value.autoDelete);
+      await _pruneChat(
+        entry.key,
+        entry.value.autoDelete,
+        entry.value.autoDeleteFrom,
+      );
     }
   }
 
   Future<void> _pruneChat(
     String chatId,
     ChatAutoDelete period,
+    DateTime? from,
   ) async {
     final lifetime = period.duration;
     if (lifetime == null) return;
     final cutoff = DateTime.now().subtract(lifetime);
     await ref
         .read(messagesControllerProvider.notifier)
-        .deleteBefore(chatId, cutoff);
+        .deleteBefore(chatId, cutoff, since: from);
   }
 
   Future<void> _put(String chatId, ConversationSettings value) async {
@@ -303,8 +345,16 @@ class ConversationSettingsController
           final period = rawSeconds is int
               ? ChatAutoDelete(rawSeconds.clamp(0, ChatAutoDelete.maxSeconds))
               : ChatAutoDelete.fromLegacyName(value['autoDelete'] as String?);
+          // Absent for a setting saved before the anchor existed. Left null,
+          // which reads as "no lower bound" and keeps those installs behaving
+          // exactly as they did — the alternative, stamping them with `now`,
+          // would spare messages the old build had already been deleting.
+          final rawFrom = value['autoDeleteFromMs'];
           final settings = ConversationSettings(
             autoDelete: period,
+            autoDeleteFrom: rawFrom is int
+                ? DateTime.fromMillisecondsSinceEpoch(rawFrom)
+                : null,
             restrictCopying: value['restrictCopying'] == true,
             peerRestrictsCopying: value['peerRestrictsCopying'] == true,
             wallpaper: ChatWallpaper(
@@ -334,6 +384,9 @@ class ConversationSettingsController
         for (final entry in state.entries)
           entry.key: {
             'autoDeleteSeconds': entry.value.autoDelete.seconds,
+            if (entry.value.autoDeleteFrom != null)
+              'autoDeleteFromMs':
+                  entry.value.autoDeleteFrom!.millisecondsSinceEpoch,
             'restrictCopying': entry.value.restrictCopying,
             'peerRestrictsCopying': entry.value.peerRestrictsCopying,
             if (entry.value.wallpaper.presetIndex != null)

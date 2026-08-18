@@ -167,6 +167,27 @@ jobs:
           zip -qr cubechat-unsigned.ipa Payload
           ls -lh cubechat-unsigned.ipa
 
+      # Before the release publish, deliberately. The IPA exists by this point
+      # and the only thing left is handing it over; the publish talks to an API
+      # that returns 5xx often enough to have thrown away a finished six-minute
+      # build (2026-08-17: "No server is currently available to service your
+      # request", on the release fetch). Whichever of the two hand-over paths is
+      # working, the build should not be wasted — and the artifact is the one
+      # that does not depend on the releases API.
+      - name: Upload IPA as workflow artifact
+        continue-on-error: true
+        uses: actions/upload-artifact@v5
+        with:
+          name: cubechat-ios-unsigned-${{ github.sha }}
+          path: build/ios/iphoneos/cubechat-unsigned.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      # Left as a hard failure on purpose. `continue-on-error` here would turn a
+      # GitHub outage into a green run whose `ipa-latest` release still points
+      # at an older build — someone downloads a stale IPA and has no way to
+      # know. A red run that says "the release was not updated" is the honest
+      # outcome, and the artifact above is how you get this build meanwhile.
       - name: Publish IPA to rolling prerelease
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v3
@@ -183,14 +204,22 @@ jobs:
             Download `cubechat-unsigned.ipa` below and sideload it with Sideloadly or AltStore.
           files: build/ios/iphoneos/cubechat-unsigned.ipa
 
-      - name: Upload IPA as workflow artifact
-        continue-on-error: true
-        uses: actions/upload-artifact@v5
-        with:
-          name: cubechat-ios-unsigned-${{ github.sha }}
-          path: build/ios/iphoneos/cubechat-unsigned.ipa
-          retention-days: 7
-          if-no-files-found: error
+      # The success summary below is `if: success()`, so a failed publish used
+      # to end the job with no summary at all — nothing anywhere said the IPA
+      # had in fact been built and was sitting in the run's artifacts.
+      - name: Say where the IPA is when publishing failed
+        if: failure()
+        run: |
+          {
+            echo "## ⚠️ iOS build finished, publishing did not"
+            echo ""
+            echo "If the failing step is **Publish IPA to rolling prerelease**,"
+            echo "the app itself built fine. Download it from the **Artifacts**"
+            echo "section at the bottom of this run's summary page:"
+            echo "\`cubechat-ios-unsigned-${{ github.sha }}\`."
+            echo ""
+            echo "The \`ipa-latest\` release still points at an older build."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summary
         if: success()

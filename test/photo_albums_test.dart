@@ -78,6 +78,63 @@ void main() {
     expect(albums.albumAt('c')?.map((m) => m.id), ['c', 'd']);
   });
 
+  // The reported bug, 2026-08-17: five photos each way at the same time, and
+  // one phone drew a tidy grid while the other drew a column of singles. Our
+  // own batch mints every bubble before a byte is sent, so it is always
+  // adjacent; the incoming five are stamped as each last chunk lands, with our
+  // own sitting in the middle of them.
+  test('two batches at once interleave without shredding each other', () {
+    final albums = groupPhotoAlbums([
+      photo('them1', second: 0, isMine: false),
+      photo('them2', second: 2, isMine: false),
+      photo('mine1', second: 3),
+      photo('mine2', second: 3),
+      photo('mine3', second: 3),
+      photo('them3', second: 5, isMine: false),
+      photo('them4', second: 8, isMine: false),
+    ]);
+
+    expect(
+      albums.albumAt('them1')?.map((m) => m.id),
+      ['them1', 'them2', 'them3', 'them4'],
+    );
+    expect(
+      albums.albumAt('mine1')?.map((m) => m.id),
+      ['mine1', 'mine2', 'mine3'],
+    );
+    // Each album still hangs at its own first photo, so the two batches keep
+    // their order relative to each other.
+    expect(albums.isFolded('them1'), isFalse);
+    expect(albums.isFolded('mine1'), isFalse);
+    expect(albums.isFolded('them3'), isTrue);
+  });
+
+  test('a word between two photos breaks both runs, not just the speaker\'s',
+      () {
+    final albums = groupPhotoAlbums([
+      photo('them1', second: 0, isMine: false),
+      photo('mine1', second: 1),
+      words('said', second: 2),
+      photo('them2', second: 3, isMine: false),
+      photo('mine2', second: 4),
+    ]);
+
+    // One photo each side of the sentence, so nothing is an album at all.
+    expect(albums.isEmpty, isTrue);
+  });
+
+  test('interleaved channel authors each keep their own album', () {
+    final albums = groupPhotoAlbums([
+      photo('a1', second: 0, isMine: false, authorId: 'anna'),
+      photo('b1', second: 1, isMine: false, authorId: 'boris'),
+      photo('a2', second: 2, isMine: false, authorId: 'anna'),
+      photo('b2', second: 3, isMine: false, authorId: 'boris'),
+    ]);
+
+    expect(albums.albumAt('a1')?.map((m) => m.id), ['a1', 'a2']);
+    expect(albums.albumAt('b1')?.map((m) => m.id), ['b1', 'b2']);
+  });
+
   test('two people posting at once are not one album', () {
     final albums = groupPhotoAlbums([
       photo('mine', second: 0),

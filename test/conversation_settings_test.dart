@@ -37,7 +37,8 @@ void main() {
     }
   });
 
-  test('auto-delete removes expired messages and keeps recent ones', () async {
+  test('switching auto-delete on leaves the history that was already there',
+      () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final messages = container.read(messagesControllerProvider.notifier);
@@ -70,10 +71,110 @@ void main() {
 
     await settings.setAutoDelete(chatId, const ChatAutoDelete(24 * 60 * 60));
 
+    // Both survive. This used to assert that 'old' was gone the instant the
+    // setting was made, which is the literal reading of "delete after a day"
+    // and not what anybody means by it: the switch is understood as "from now
+    // on", and turning it on wiped the conversation you were still having.
     expect(
       container.read(messagesControllerProvider)[chatId]!.map((m) => m.id),
-      ['recent'],
+      ['old', 'recent'],
     );
+  });
+
+  // The sweep itself, driven directly. Going through setAutoDelete cannot
+  // express this case: the anchor is stamped `now`, so a message both *after*
+  // the switch and already past its hour would need the clock moved, and a test
+  // that waits an hour is no test. The rule lives in deleteBefore, so that is
+  // what is checked — and the test above pins the anchor setAutoDelete records.
+  test('the sweep skips what predates the switch and takes what follows it',
+      () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final messages = container.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+
+    const chatId = 'chat';
+    final now = DateTime.now();
+    final switchedOn = now.subtract(const Duration(days: 1));
+
+    for (final (id, sentAt) in <(String, DateTime)>[
+      ('history', now.subtract(const Duration(days: 7))),
+      ('expired', now.subtract(const Duration(hours: 5))),
+      ('fresh', now.subtract(const Duration(minutes: 10))),
+    ]) {
+      messages.append(
+        chatId,
+        Message(
+          id: id,
+          chatId: chatId,
+          text: id,
+          sentAt: sentAt,
+          isMine: false,
+        ),
+      );
+    }
+
+    // A one-hour timer, switched on yesterday.
+    await messages.deleteBefore(
+      chatId,
+      now.subtract(const Duration(hours: 1)),
+      since: switchedOn,
+    );
+
+    expect(
+      container.read(messagesControllerProvider)[chatId]!.map((m) => m.id),
+      ['history', 'fresh'],
+    );
+  });
+
+  test('without an anchor the sweep still clears everything expired', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final messages = container.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+
+    const chatId = 'chat';
+    final now = DateTime.now();
+    messages.append(
+      chatId,
+      Message(
+        id: 'history',
+        chatId: chatId,
+        text: 'history',
+        sentAt: now.subtract(const Duration(days: 7)),
+        isMine: false,
+      ),
+    );
+
+    // Null `since` is the old behaviour, and what an install that predates the
+    // anchor loads. It must not start sparing messages it was already deleting.
+    await messages.deleteBefore(chatId, now.subtract(const Duration(hours: 1)));
+
+    expect(container.read(messagesControllerProvider)[chatId], isNull);
+  });
+
+  test('turning auto-delete off and on again starts a new window', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final settings =
+        container.read(conversationSettingsControllerProvider.notifier);
+    await settings.loaded;
+
+    const chatId = 'chat';
+    await settings.setAutoDelete(chatId, const ChatAutoDelete(60 * 60));
+    final first = settings.forChat(chatId).autoDeleteFrom;
+    expect(first, isNotNull);
+
+    // Changing the period keeps the original anchor — a shorter timer must not
+    // reach further back than the switch itself ever did.
+    await settings.setAutoDelete(chatId, const ChatAutoDelete(60));
+    expect(settings.forChat(chatId).autoDeleteFrom, first);
+
+    await settings.setAutoDelete(chatId, ChatAutoDelete.off);
+    expect(settings.forChat(chatId).autoDeleteFrom, isNull);
+
+    await settings.setAutoDelete(chatId, const ChatAutoDelete(60 * 60));
+    expect(settings.forChat(chatId).autoDeleteFrom, isNot(first));
   });
 
   test('copy restriction is stored per conversation', () async {

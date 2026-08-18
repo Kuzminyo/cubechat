@@ -526,7 +526,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                   onSearch: () => context.push('/search'),
                   onAddContact: () => context.push('/contact'),
                   onNewChannel: () => showNewChannelDialog(context, ref, t),
-                  selectionBar: _ChatSelectionBar(
+                  selectionBar: ChatSelectionBar(
                     key: const ValueKey('selection'),
                     selected: [
                       for (final chat in filtered)
@@ -1389,8 +1389,13 @@ class _PinnedFolderFilterHeader extends SliverPersistentHeaderDelegate {
 /// delete — and everything else lives behind the overflow, which is the same
 /// list a single row used to open on a long press. Nothing here is destructive
 /// without a confirmation of its own.
-class _ChatSelectionBar extends ConsumerWidget {
-  const _ChatSelectionBar({super.key, required this.selected});
+///
+/// Public because the archive shows the same bar. Reaching for it from there
+/// rather than writing a second one is the point: a chat in the drawer is still
+/// a chat, and pin/mute/delete had no business being things you must first
+/// un-archive a conversation to do.
+class ChatSelectionBar extends ConsumerWidget {
+  const ChatSelectionBar({super.key, required this.selected});
 
   final List<Chat> selected;
 

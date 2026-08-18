@@ -3013,8 +3013,15 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     } catch (e) {
       DebugLog.instance.log('STICKER', 'send failed: $e');
       if (!mounted) return;
-      showGlassToast(context, AppLocalizations.of(context).stickerFailed,
-          tone: ToastTone.danger);
+      // The same reporter every other attachment failure uses, and not
+      // `stickerFailed`, which says "that picture could not be made into a
+      // sticker". The sticker was made; it is sitting in the library and the
+      // *send* failed. Reported as a creation error it sent people back to the
+      // editor to re-cut a picture that was never the problem — "стики по
+      // блютузке не идут, пишет что не вдалося зробити стікер" is that
+      // sentence being believed. This one names the reason instead, and says
+      // "no route" in words when there is no link and no relay.
+      _showAttachmentFailure(e);
     }
   }
 
