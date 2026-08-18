@@ -994,6 +994,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             padding: photo
                 ? EdgeInsets.zero
                 : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            // And no border on a photo bubble, which is why its corners looked
+            // broken. `Border.all` paints its stroke *inside* the container, so
+            // the picture sits a pixel in from it and is then clipped by the
+            // ClipRRect at the outer radius: the stroke reads cleanly along the
+            // straight edges and comes apart in every corner. That is the
+            // "обводка плохо сделано, углов нету" in the report.
+            //
+            // Telegram draws no frame around a photo at all, and the reason
+            // carries over — a border exists to give a pane of glass an edge,
+            // and a picture already has one. Everything that is not a photo
+            // keeps its border.
             decoration: sticker
                 ? const BoxDecoration()
                 : mine
@@ -1007,12 +1018,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           ],
                         ),
                         borderRadius: radius,
-                        border: Border.all(color: AppColors.glass(0.18)),
+                        // No frame around a photo — see the note by `padding`.
+                        border: photo
+                            ? null
+                            : Border.all(color: AppColors.glass(0.18)),
                       )
                     : BoxDecoration(
                         color: AppColors.glass(0.10),
                         borderRadius: radius,
-                        border: Border.all(color: AppColors.glass(0.16)),
+                        border: photo
+                            ? null
+                            : Border.all(color: AppColors.glass(0.16)),
                       ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -196,8 +196,17 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    if (!_watching || !PlatformInfo.isAndroid) return;
-    if (!mounted) return;
+    if (!PlatformInfo.isAndroid || !mounted) return;
+    // Deliberately *not* gated on this tab being the visible one, which is
+    // what the first attempt did and is exactly why it half-worked. The
+    // report pinned it precisely: leaving the app from the map and coming
+    // back drew fine, leaving it from another tab and then walking over to
+    // the map did not. In the second case the guard returned, nothing was
+    // rebuilt, and the tab shell handed back the same dead view.
+    //
+    // Bumping regardless costs nothing when the map is not on screen: the
+    // key is only read when the widget is next built, so an unwatched map
+    // simply comes back new the first time it is looked at.
     DebugLog.instance.log('MAP', 'resumed — rebuilding the map surface');
     setState(() => _mapGeneration++);
   }
