@@ -2526,67 +2526,69 @@ class _ChatsOverflowMenu extends StatelessWidget {
   final VoidCallback onAddContact;
   final VoidCallback onNewChannel;
 
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return PopupMenuButton<_ChatsMenuAction>(
-      icon: Icon(Icons.more_vert_rounded, color: AppColors.brandPrimary),
-      tooltip: t.chatsMenuTooltip,
-      color: AppColors.bgTop,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.glass(0.15)),
-      ),
-      position: PopupMenuPosition.under,
-      popUpAnimationStyle: glassMenuMotion,
-      onSelected: (action) => switch (action) {
-        _ChatsMenuAction.saved => context.push('/saved'),
-        _ChatsMenuAction.archive => context.push('/archive'),
-        _ChatsMenuAction.folders => context.push('/folders'),
-        _ChatsMenuAction.addContact => onAddContact(),
-        _ChatsMenuAction.newChannel => onNewChannel(),
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem(
+  Future<void> _open(BuildContext context, AppLocalizations t) async {
+    // The button's own rect, so the menu grows from under it.
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final topLeft = box.localToGlobal(Offset.zero);
+    final anchor = topLeft & box.size;
+    final action = await showAnimatedMenu<_ChatsMenuAction>(
+      context: context,
+      anchor: anchor,
+      items: [
+        AnimatedMenuItem(
           value: _ChatsMenuAction.saved,
-          child: _MenuRow(
-            icon: Icons.bookmark_border_rounded,
-            label: t.savedTitle,
-          ),
+          icon: Icons.bookmark_border_rounded,
+          label: t.savedTitle,
         ),
         // Here as well as at the top of the list, because the row up there only
         // exists once something is in the archive — and somebody looking for
         // the archive is often looking for the way to put the first thing in
         // it. A menu entry is always there to be found.
-        PopupMenuItem(
+        AnimatedMenuItem(
           value: _ChatsMenuAction.archive,
-          child: _MenuRow(
-            icon: Icons.archive_outlined,
-            label: t.chatsArchiveTitle,
-          ),
+          icon: Icons.archive_outlined,
+          label: t.chatsArchiveTitle,
         ),
-        PopupMenuItem(
+        AnimatedMenuItem(
           value: _ChatsMenuAction.folders,
-          child: _MenuRow(
-            icon: Icons.folder_rounded,
-            label: t.chatsFoldersTitle,
-          ),
+          icon: Icons.folder_rounded,
+          label: t.chatsFoldersTitle,
         ),
-        PopupMenuItem(
+        AnimatedMenuItem(
           value: _ChatsMenuAction.addContact,
-          child: _MenuRow(
-            icon: Icons.person_add_alt_rounded,
-            label: t.chatsMenuAddContact,
-          ),
+          icon: Icons.person_add_alt_rounded,
+          label: t.chatsMenuAddContact,
         ),
-        PopupMenuItem(
+        AnimatedMenuItem(
           value: _ChatsMenuAction.newChannel,
-          child: _MenuRow(
-            icon: Icons.group_add_rounded,
-            label: t.chatsMenuNewChannel,
-          ),
+          icon: Icons.group_add_rounded,
+          label: t.chatsMenuNewChannel,
         ),
       ],
+    );
+    if (action == null || !context.mounted) return;
+    switch (action) {
+      case _ChatsMenuAction.saved:
+        context.push('/saved');
+      case _ChatsMenuAction.archive:
+        context.push('/archive');
+      case _ChatsMenuAction.folders:
+        context.push('/folders');
+      case _ChatsMenuAction.addContact:
+        onAddContact();
+      case _ChatsMenuAction.newChannel:
+        onNewChannel();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return IconButton(
+      icon: Icon(Icons.more_vert_rounded, color: AppColors.brandPrimary),
+      tooltip: t.chatsMenuTooltip,
+      onPressed: () => _open(context, t),
     );
   }
 }
