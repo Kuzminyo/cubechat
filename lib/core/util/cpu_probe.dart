@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 
 /// What the process spends CPU on, broken down by thread.
 ///
@@ -15,10 +15,16 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// Linux already keeps the answer. `/proc/self/task/<tid>/stat` holds the
 /// user and system time each thread has burned since it started, in USER_HZ
 /// ticks, and the thread names are the ones the engine and the plugins chose:
-/// `1.ui`, `1.raster`, `1.io`, `Binder:…` for every platform channel,
+/// `1.ui`, `1.raster`, `1.io`, `binder:…` for every platform channel,
 /// `DartWorker` for isolates. Two samples and a subtraction turn that into "this
 /// thread used N ms of CPU during the window you were scrolling", which is the
 /// sentence nothing in this app could previously produce.
+///
+/// Every read here is asynchronous, deliberately. A sample opens fifty-odd
+/// small files, and the first version did it with `readAsStringSync` from
+/// inside a `build()` — on the UI thread, on a screen that rebuilds on every
+/// log line. The panel was then reporting a build cost it had itself created,
+/// which is the one measurement error a diagnostic must not make.
 ///
 /// Android only. `/proc` is not readable on iOS, [supported] says so, and the
 /// panel hides itself rather than showing zeroes.
@@ -31,7 +37,24 @@ class CpuProbe {
   /// kernel's own tick rate, so one tick is 10 ms of CPU.
   static const int _msPerTick = 10;
 
+  /// The platform thread's row when it is only the platform thread.
+  static const String mainLabel = 'platform (main)';
+
+  /// The platform thread's row when the engine is running Dart on it too —
+  /// see [CpuReport.mergedUiThread].
+  static const String mergedMainLabel = 'platform + Dart UI';
+
+  static const String dartUiLabel = 'Dart UI';
+
+  /// Impeller's own worker threads — part of drawing, see [_label].
+  static const String impellerLabel = 'Impeller (GPU)';
+
   static final Directory _taskDir = Directory('/proc/self/task');
+
+  /// Bumped every time the measuring window is restarted, so a panel showing
+  /// the previous window's numbers can drop them instead of displaying a
+  /// 25-second total under a window that is one second old.
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   /// Whether this platform exposes the counters at all.
   ///
@@ -49,12 +72,18 @@ class CpuProbe {
 
   Map<String, int>? _baseline;
   DateTime? _baselineAt;
+  bool _baselineMerged = false;
 
   /// Start (or restart) a measuring window. Cheap — one pass over a directory
-  /// of a few dozen small files, nothing left running afterwards.
-  void begin() {
-    _baseline = _sample();
+  /// of a few dozen small files, all of it off the UI thread, nothing left
+  /// running afterwards.
+  Future<void> begin() async {
+    final snap = await _sample();
+    if (snap == null) return;
+    _baseline = snap.ticks;
     _baselineAt = DateTime.now();
+    _baselineMerged = snap.merged;
+    revision.value++;
   }
 
   /// True once [begin] has taken a usable baseline.
@@ -65,19 +94,19 @@ class CpuProbe {
   /// Empty when unsupported, when no baseline was taken, or when nothing has
   /// used a measurable amount yet — all three are "nothing to show", and the
   /// panel treats them the same.
-  CpuReport? report() {
+  Future<CpuReport?> report() async {
     final base = _baseline;
     final since = _baselineAt;
     if (base == null || since == null) return null;
-    final now = _sample();
-    if (now == null) return null;
+    final snap = await _sample();
+    if (snap == null) return null;
 
     final elapsedMs = DateTime.now().difference(since).inMilliseconds;
     if (elapsedMs <= 0) return null;
 
     final rows = <CpuThread>[];
     var totalMs = 0;
-    now.forEach((name, ticks) {
+    snap.ticks.forEach((name, ticks) {
       // A thread that did not exist at baseline counts from zero, which is
       // exactly right: it did all of its work inside the window.
       final delta = ticks - (base[name] ?? 0);
@@ -91,53 +120,82 @@ class CpuProbe {
       threads: rows,
       totalCpuMs: totalMs,
       wallMs: elapsedMs,
+      mergedUiThread: snap.merged || _baselineMerged,
     );
   }
 
   void reset() {
     _baseline = null;
     _baselineAt = null;
+    _baselineMerged = false;
+    revision.value++;
   }
 
   /// Ticks per thread, grouped by [_label]. Null when `/proc` is unreadable.
-  Map<String, int>? _sample() {
+  Future<_Snapshot?> _sample() async {
     if (!Platform.isAndroid) return null;
     final int mainTid;
     try {
-      mainTid = _pidOfSelf();
+      mainTid = await _pidOfSelf();
     } catch (_) {
       return null;
     }
-    final out = <String, int>{};
+
+    final tids = <int>[];
     try {
-      for (final entry in _taskDir.listSync(followLinks: false)) {
+      await for (final entry in _taskDir.list(followLinks: false)) {
         // Each entry is `/proc/self/task/<tid>`; the directory name is the id.
         final slash = entry.path.lastIndexOf('/');
         final tid = int.tryParse(entry.path.substring(slash + 1));
-        if (tid == null) continue;
-        final parsed = _readThread(tid);
-        if (parsed == null) continue;
-        final label = _label(parsed.comm, isMain: tid == mainTid);
-        out[label] = (out[label] ?? 0) + parsed.ticks;
+        if (tid != null) tids.add(tid);
       }
     } catch (_) {
       // Threads come and go while we walk the directory; a vanished one is not
       // a failed measurement.
     }
-    return out.isEmpty ? null : out;
+    if (tids.isEmpty) return null;
+
+    // Read them together rather than one after another. Fifty sequential
+    // awaits stretch a "snapshot" over long enough for the busy threads to
+    // move on, and the subtraction is only honest if both samples are taken
+    // at something close to one instant.
+    final stats = await Future.wait(tids.map(_readThread));
+
+    final raw = <({String comm, bool isMain, int ticks})>[];
+    var sawDartUi = false;
+    for (var i = 0; i < stats.length; i++) {
+      final parsed = stats[i];
+      if (parsed == null) continue;
+      final isMain = tids[i] == mainTid;
+      if (!isMain && _engineRole(parsed.comm) == 'ui') sawDartUi = true;
+      raw.add((comm: parsed.comm, isMain: isMain, ticks: parsed.ticks));
+    }
+    if (raw.isEmpty) return null;
+
+    // No `<n>.ui` thread anywhere means the engine merged it into the platform
+    // thread, which current Flutter does on Android — see [CpuReport.
+    // mergedUiThread]. Detected rather than assumed, because the same build of
+    // this app runs on engines that do it both ways.
+    final merged = !sawDartUi;
+    final out = <String, int>{};
+    for (final t in raw) {
+      final label = _label(t.comm, isMain: t.isMain, merged: merged);
+      out[label] = (out[label] ?? 0) + t.ticks;
+    }
+    return _Snapshot(out, merged);
   }
 
-  static int _pidOfSelf() {
+  static Future<int> _pidOfSelf() async {
     // `/proc/self/stat` opens as the calling process, so its first field is the
     // pid — which is also the tid of the platform (main) thread.
-    final line = File('/proc/self/stat').readAsStringSync();
+    final line = await File('/proc/self/stat').readAsString();
     return int.parse(line.substring(0, line.indexOf(' ')));
   }
 
   /// One thread's name and its utime+stime.
-  static ThreadStat? _readThread(int tid) {
+  static Future<ThreadStat?> _readThread(int tid) async {
     try {
-      return parseStat(File('/proc/self/task/$tid/stat').readAsStringSync());
+      return parseStat(await File('/proc/self/task/$tid/stat').readAsString());
     } catch (_) {
       return null;
     }
@@ -179,32 +237,50 @@ class CpuProbe {
   /// Two jobs. One is naming the engine's threads after what they do, because
   /// `1.raster` means nothing to the person sending the screenshot and "GPU
   /// raster" lines up with the panel above. The other is collapsing pools:
-  /// platform channels arrive on `Binder:12345_3` and there are a dozen of
+  /// platform channels arrive on `binder:12345_3` and there are a dozen of
   /// them, each individually near zero and collectively the whole story — split
   /// out they sort below the noise and say nothing.
+  ///
+  /// [merged] renames the main thread when the engine is running Dart on it;
+  /// the caller decides that by looking for a `<n>.ui` thread.
   @visibleForTesting
-  static String label(String comm, {required bool isMain}) =>
-      _label(comm, isMain: isMain);
+  static String label(
+    String comm, {
+    required bool isMain,
+    bool merged = false,
+  }) =>
+      _label(comm, isMain: isMain, merged: merged);
 
-  static String _label(String comm, {required bool isMain}) {
-    if (isMain) return 'platform (main)';
-    // The engine prefixes its threads with the engine id, so `1.ui` on the
-    // first engine and `2.ui` on a second one.
-    final dot = comm.indexOf('.');
-    if (dot > 0 && int.tryParse(comm.substring(0, dot)) != null) {
-      switch (comm.substring(dot + 1)) {
-        case 'ui':
-          return 'Dart UI';
-        case 'raster':
-        case 'gpu':
-          return 'GPU raster';
-        case 'io':
-          return 'image decode';
-        case 'profiler':
-          return 'profiler';
-      }
+  static String _label(
+    String comm, {
+    required bool isMain,
+    required bool merged,
+  }) {
+    if (isMain) return merged ? mergedMainLabel : mainLabel;
+    switch (_engineRole(comm)) {
+      case 'ui':
+        return dartUiLabel;
+      case 'raster':
+      case 'gpu':
+        return 'GPU raster';
+      case 'io':
+        return 'image decode';
+      case 'profiler':
+        return 'profiler';
     }
-    if (comm.startsWith('Binder:')) return 'Binder (platform channels)';
+    // Impeller's own threads. `IplrVkResMgr` reclaims Vulkan resources and
+    // exists for exactly one reason — something is being drawn — so it belongs
+    // with the drawing rows rather than sitting at the bottom of the list under
+    // a name that reads like a driver nobody can place.
+    if (comm.startsWith('Iplr')) return impellerLabel;
+    // Case-insensitively: this is `Binder:` on some Android builds and
+    // `binder:` on others, and the difference used to be one collapsed row
+    // versus a dozen near-zero ones crowding the panel out.
+    final lower = comm.toLowerCase();
+    if (lower.startsWith('binder:')) return 'Binder (platform channels)';
+    // Truncated by the kernel at 15 characters, so the real name
+    // (`dart:io EventHandler`) never arrives intact.
+    if (lower.startsWith('dart:io')) return 'dart:io';
     if (comm.startsWith('DartWorker')) return 'Dart workers';
     if (comm.startsWith('pool-')) return 'Java pool';
     if (comm.startsWith('hwuiTask')) return 'hwui';
@@ -217,6 +293,24 @@ class CpuProbe {
     }
     return comm;
   }
+
+  /// `1.ui` -> `ui`. The engine prefixes its threads with the engine id, so
+  /// `1.ui` on the first engine and `2.ui` on a second one. Null for anything
+  /// that is not one of them.
+  static String? _engineRole(String comm) {
+    final dot = comm.indexOf('.');
+    if (dot <= 0) return null;
+    if (int.tryParse(comm.substring(0, dot)) == null) return null;
+    return comm.substring(dot + 1);
+  }
+}
+
+/// One pass over `/proc/self/task`: ticks per label, plus whether the engine
+/// was found running Dart on the platform thread.
+class _Snapshot {
+  const _Snapshot(this.ticks, this.merged);
+  final Map<String, int> ticks;
+  final bool merged;
 }
 
 class ThreadStat {
@@ -242,11 +336,24 @@ class CpuReport {
     required this.threads,
     required this.totalCpuMs,
     required this.wallMs,
+    this.mergedUiThread = false,
   });
 
   final List<CpuThread> threads;
   final int totalCpuMs;
   final int wallMs;
+
+  /// Whether the engine ran Dart on the platform thread during the window.
+  ///
+  /// Current Flutter merges the UI task runner into the platform thread on
+  /// Android, and the kernel has one row for one thread — so `platform (main)`
+  /// holds widget builds, layout and every platform channel callback at once,
+  /// and no amount of reading `/proc` will separate them. This flag exists so
+  /// the verdict says that instead of pretending the missing `Dart UI` row is
+  /// a thread that did no work, which is how the panel came to print "not
+  /// rendering, drawing is only 22%" directly underneath a frame panel
+  /// reporting an 18 ms build.
+  final bool mergedUiThread;
 
   /// Whole-process CPU as a percentage of one core.
   double get totalPercentOfOneCore => wallMs == 0 ? 0 : totalCpuMs * 100 / wallMs;
@@ -255,19 +362,38 @@ class CpuReport {
   /// what the panel shows.
   List<CpuThread> top(int n) => threads.take(n).toList();
 
+  static const Set<String> _drawing = {
+    CpuProbe.dartUiLabel,
+    'GPU raster',
+    'image decode',
+    CpuProbe.impellerLabel,
+  };
+
   /// The sentence the panel exists to print.
   ///
   /// Deliberately about *where*, not about *how much*: the absolute number
   /// depends on the phone, but "the thread doing the work is not one that draws
   /// anything" is a conclusion that holds on any of them.
   String get verdict {
-    if (threads.isEmpty) return 'no CPU measured';
+    if (threads.isEmpty || totalCpuMs == 0) return 'no CPU measured';
     final busiest = threads.first;
-    final drawing = {'Dart UI', 'GPU raster', 'image decode'};
     final drawingMs = threads
-        .where((t) => drawing.contains(t.name))
+        .where((t) => _drawing.contains(t.name))
         .fold<int>(0, (a, t) => a + t.cpuMs);
-    if (totalCpuMs == 0) return 'no CPU measured';
+
+    if (mergedUiThread) {
+      // The drawing share cannot be computed at all here: the thread that
+      // builds frames is the same row as the thread that answers Bluetooth.
+      // What still survives is the comparison between that row and the others,
+      // which is what the panel was built to ask.
+      if (busiest.name != CpuProbe.mergedMainLabel) {
+        return '${busiest.name} leads — more CPU than the UI thread itself';
+      }
+      final share = (busiest.cpuMs * 100 / totalCpuMs).round();
+      return 'UI thread leads with $share% — it also runs the platform side, '
+          'so read the build/raster split above';
+    }
+
     final drawingShare = drawingMs * 100 / totalCpuMs;
     if (drawingShare >= 60) {
       return 'rendering — ${drawingShare.round()}% of CPU is drawing';

@@ -33,6 +33,37 @@ void main() {
       expect(CpuProbe.label('HeapTaskDaemon', isMain: false), 'Java GC');
     });
 
+    test('the binder pool collapses whichever case the device spells it in', () {
+      // Android 15 names them `binder:20054_9`; older builds capitalise it.
+      // Matching only the capital B left a dozen near-zero rows that pushed
+      // everything worth reading off a six-row panel.
+      expect(
+        CpuProbe.label('binder:20054_9', isMain: false),
+        'Binder (platform channels)',
+      );
+      expect(
+        CpuProbe.label('binder:20054_9', isMain: false),
+        CpuProbe.label('Binder:20054_2', isMain: false),
+      );
+    });
+
+    test('names the threads a modern engine actually creates', () {
+      // Impeller's Vulkan resource manager. Drawing work under a name that
+      // reads like a graphics driver, which is precisely how it sorted to the
+      // bottom of the panel and told nobody anything.
+      expect(CpuProbe.label('IplrVkResMgr', isMain: false), 'Impeller (GPU)');
+      // The kernel truncates `comm` at 15 characters, so `dart:io
+      // EventHandler` never arrives whole.
+      expect(CpuProbe.label('dart:io EventHa', isMain: false), 'dart:io');
+    });
+
+    test('the main thread says so when it is also running Dart', () {
+      expect(
+        CpuProbe.label('m.cubechat.app', isMain: true, merged: true),
+        'platform + Dart UI',
+      );
+    });
+
     test('the main thread is named by its id, not by its comm', () {
       // It is named after the truncated package, which differs per flavour and
       // is unrecognisable in a screenshot.
@@ -82,9 +113,18 @@ void main() {
   });
 
   group('verdict', () {
-    CpuReport report(List<CpuThread> threads, {int wallMs = 10000}) {
+    CpuReport report(
+      List<CpuThread> threads, {
+      int wallMs = 10000,
+      bool merged = false,
+    }) {
       final total = threads.fold<int>(0, (a, t) => a + t.cpuMs);
-      return CpuReport(threads: threads, totalCpuMs: total, wallMs: wallMs);
+      return CpuReport(
+        threads: threads,
+        totalCpuMs: total,
+        wallMs: wallMs,
+        mergedUiThread: merged,
+      );
     }
 
     test('calls it rendering when the drawing threads dominate', () {
@@ -115,6 +155,51 @@ void main() {
 
     test('an empty window concludes nothing', () {
       expect(report(const []).verdict, 'no CPU measured');
+    });
+
+    test('Impeller counts as drawing', () {
+      // Without this the raster work of an Impeller build sits outside the
+      // drawing set and the panel concludes the opposite of the truth.
+      final r = report([
+        const CpuThread('GPU raster', 3000, 30),
+        const CpuThread('Impeller (GPU)', 3000, 30),
+        const CpuThread('Binder (platform channels)', 500, 5),
+      ]);
+      expect(r.verdict, contains('rendering'));
+      expect(r.verdict, isNot(contains('not rendering')));
+    });
+
+    group('when the engine runs Dart on the platform thread', () {
+      // The state every current Android build is in: there is no `1.ui`
+      // thread, its work is inside `platform (main)`, and computing a drawing
+      // share from what is left is how the panel came to print "not rendering,
+      // drawing is only 22%" under a frame panel reporting an 18 ms build.
+      test('does not call a busy UI thread "not rendering"', () {
+        final r = report(
+          [
+            const CpuThread('platform + Dart UI', 1110, 4),
+            const CpuThread('GPU raster', 400, 2),
+            const CpuThread('Dart workers', 190, 1),
+          ],
+          wallMs: 25000,
+          merged: true,
+        );
+        expect(r.verdict, isNot(contains('not rendering')));
+        expect(r.verdict, contains('UI thread leads'));
+      });
+
+      test('still names a thread that outruns the UI thread', () {
+        // The report the panel exists for, and the one thing that survives the
+        // merge: something that draws nothing is busier than the frames.
+        final r = report(
+          [
+            const CpuThread('Binder (platform channels)', 5000, 50),
+            const CpuThread('platform + Dart UI', 400, 4),
+          ],
+          merged: true,
+        );
+        expect(r.verdict, contains('Binder'));
+      });
     });
 
     test('top() is a ceiling, not a requirement', () {
