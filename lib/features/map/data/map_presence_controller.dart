@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,7 +80,7 @@ class MapPresenceController extends Notifier<int> {
   /// out about every 90 s and still has 30 s of margin before the pin it is
   /// refreshing would have expired. A phone that is actually *moving* is
   /// unaffected — the cell changes, and a changed cell was never throttled.
-  static const _repeatSameCellAfter = Duration(seconds: 70);
+  static const _repeatSamePlaceAfter = Duration(seconds: 70);
 
   Timer? _timer;
   StreamSubscription<LocationFix>? _watch;
@@ -108,7 +109,17 @@ class MapPresenceController extends Notifier<int> {
 
   bool get _beaconIsLanding => _deadRounds < _deadRoundsBeforeIdle;
   DateTime? _lastSentAt;
-  String? _lastCell;
+  /// Where the last beacon that actually went out said we were.
+  ///
+  /// Coordinates, not a rounded key. This was a string of both values cut to
+  /// four decimals — about eleven metres — and compared for equality, which
+  /// sounds like "same place" and is not: a fix indoors wanders further than
+  /// that between readings, so almost every tick produced a different key and
+  /// the repeat suppression never once fired. A log four minutes long showed
+  /// the beacon going out at 45-second intervals without a single gap, from a
+  /// phone on a desk.
+  double? _lastSentLat;
+  double? _lastSentLon;
 
   @override
   int build() {
@@ -139,7 +150,8 @@ class MapPresenceController extends Notifier<int> {
   /// protocol surface, and an older build sees a position that expired before
   /// it arrived and lets the pin lapse as it always did.
   Future<void> withdraw() async {
-    _lastCell = null;
+    _lastSentLat = null;
+    _lastSentLon = null;
     _lastSentAt = null;
     final peers = ref.read(mapFriendsControllerProvider).toList(growable: false);
     if (peers.isEmpty) return;
@@ -245,6 +257,27 @@ class MapPresenceController extends Notifier<int> {
     await _publish(fix, force: force);
   }
 
+  /// How far the pin may drift and still count as not having moved.
+  ///
+  /// Matched to the position stream's own `distanceFilter`, which is what
+  /// decides when a *new* fix is even delivered — anything under it is noise
+  /// the map would not draw differently anyway.
+  static const double _samePlaceMetres = 40;
+
+  bool _isNearLastSent(LocationFix fix) {
+    final lat = _lastSentLat;
+    final lon = _lastSentLon;
+    if (lat == null || lon == null) return false;
+    // Equirectangular approximation. Exact enough by a wide margin at forty
+    // metres, and it costs two multiplications instead of a haversine.
+    const metresPerDegree = 111320.0;
+    final dLat = (fix.latitude - lat) * metresPerDegree;
+    final dLon = (fix.longitude - lon) *
+        metresPerDegree *
+        math.cos(lat * math.pi / 180);
+    return dLat * dLat + dLon * dLon <= _samePlaceMetres * _samePlaceMetres;
+  }
+
   void _noteFix(LocationFix fix) => ref
       .read(lastLocationFixProvider.notifier)
       .state = StampedLocationFix(fix, DateTime.now());
@@ -264,12 +297,10 @@ class MapPresenceController extends Notifier<int> {
     _sending = true;
     try {
       final now = DateTime.now();
-      final cell =
-          '${fix.latitude.toStringAsFixed(4)}:${fix.longitude.toStringAsFixed(4)}';
       if (!force &&
-          _lastCell == cell &&
           _lastSentAt != null &&
-          now.difference(_lastSentAt!) < _repeatSameCellAfter) {
+          now.difference(_lastSentAt!) < _repeatSamePlaceAfter &&
+          _isNearLastSent(fix)) {
         return;
       }
 
@@ -296,7 +327,8 @@ class MapPresenceController extends Notifier<int> {
       // most often — bought thirty-five seconds of deliberate silence on top
       // of it.
       if (sent > 0) {
-        _lastCell = cell;
+        _lastSentLat = fix.latitude;
+        _lastSentLon = fix.longitude;
         _lastSentAt = now;
         // Somebody is listening again: pick the radio back up if it was parked.
         final wasIdle = !_beaconIsLanding;
