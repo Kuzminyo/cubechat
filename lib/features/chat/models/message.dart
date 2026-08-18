@@ -74,7 +74,23 @@ class Message {
     this.pollVotes = const <String, int>{},
     this.viewOnce = false,
     this.viewOnceConsumedAt,
+    this.albumId,
   });
+
+  /// The set of photos this one was sent with, for the ones we sent ourselves.
+  ///
+  /// Local only — it is never encoded onto the wire, and a received photo
+  /// therefore has none. Grouping falls back to "same sender, close together"
+  /// for those, which is a guess, and this exists because the guess was wrong
+  /// in the obvious case: five photos, then five more a minute later, are two
+  /// batches to the person who sent them and one uninterrupted run of ten to a
+  /// rule that only looks at gaps. They came out as a grid of nine — the grid's
+  /// own limit — and a tenth photo on its own underneath.
+  ///
+  /// `sendImageBatch` stamps one id across everything it was handed, so the
+  /// boundary is recorded at the only moment anything actually knows where it
+  /// is, rather than re-derived afterwards from timestamps that no longer say.
+  final String? albumId;
 
   final String id;
   final String chatId;
@@ -272,6 +288,7 @@ class Message {
     List<String>? pollOptions,
     Map<String, int>? pollVotes,
     DateTime? viewOnceConsumedAt,
+    String? albumId,
     /// Every other nullable here is "leave it alone when null", which gives no
     /// way to *un*set a path. Consuming a view-once photo needs exactly that.
     bool clearImagePath = false,
@@ -308,6 +325,7 @@ class Message {
       pollVotes: pollVotes ?? this.pollVotes,
       viewOnce: viewOnce,
       viewOnceConsumedAt: viewOnceConsumedAt ?? this.viewOnceConsumedAt,
+      albumId: albumId ?? this.albumId,
     );
   }
 }

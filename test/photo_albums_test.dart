@@ -12,6 +12,7 @@ void main() {
     bool viewOnce = false,
     String? caption,
     String? authorId,
+    String? albumId,
   }) =>
       Message(
         id: id,
@@ -23,6 +24,7 @@ void main() {
         imagePath: '/tmp/$id.jpg',
         viewOnce: viewOnce,
         authorId: authorId,
+        albumId: albumId,
       );
 
   Message words(String id, {int second = 0, bool isMine = true}) => Message(
@@ -133,6 +135,33 @@ void main() {
 
     expect(albums.albumAt('a1')?.map((m) => m.id), ['a1', 'a2']);
     expect(albums.albumAt('b1')?.map((m) => m.id), ['b1', 'b2']);
+  });
+
+  // Reported 2026-08-18: five photos, then five more, came out as a grid of
+  // nine — the grid's own ceiling — with a tenth underneath. Both batches were
+  // inside the gap window, which is all the old rule looked at.
+  test('two batches from one sender stay two albums', () {
+    final albums = groupPhotoAlbums([
+      for (var i = 0; i < 5; i++) photo('first$i', second: i, albumId: 'A'),
+      for (var i = 0; i < 5; i++) photo('second$i', second: 60 + i, albumId: 'B'),
+    ]);
+
+    expect(albums.albumAt('first0'), hasLength(5));
+    expect(albums.albumAt('second0'), hasLength(5));
+    expect(albums.isFolded('second0'), isFalse);
+  });
+
+  test('a photo with a batch id never joins one without', () {
+    // A single photo sent on its own carries no id, and must not be swallowed
+    // by the batch that happens to sit next to it.
+    final albums = groupPhotoAlbums([
+      photo('batch0', second: 0, albumId: 'A'),
+      photo('batch1', second: 1, albumId: 'A'),
+      photo('lone', second: 2),
+    ]);
+
+    expect(albums.albumAt('batch0')?.map((m) => m.id), ['batch0', 'batch1']);
+    expect(albums.isFolded('lone'), isFalse);
   });
 
   test('two people posting at once are not one album', () {

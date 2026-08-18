@@ -33,11 +33,11 @@ void main() {
       expect(CpuProbe.label('HeapTaskDaemon', isMain: false), 'Java GC');
     });
 
-    test('the merged main thread says so, and counts as drawing', () {
-      // Recent Flutter runs Dart on the platform thread, so there is no `1.ui`
-      // and every rebuild lands in the main thread's row. Calling that row
-      // "platform" made the panel's first real measurement conclude "not
-      // rendering" about a phone whose whole cost was rebuilds.
+    test('the merged main thread is named for the Dart that runs on it', () {
+      // Recent Flutter runs Dart on the platform thread, so every rebuild
+      // lands in the main thread's row and the row should say so — reading
+      // `platform (main)` while build time accounted for all of it sent the
+      // first two readings of this panel to the wrong conclusion.
       expect(
         CpuProbe.label('m.cubechat.app', isMain: true, mergedUi: true),
         'platform + Dart UI',
@@ -50,8 +50,7 @@ void main() {
         totalCpuMs: 1510,
         wallMs: 25000,
       );
-      expect(r.verdict, contains('rendering'));
-      expect(r.verdict, isNot(contains('not rendering')));
+      expect(r.verdict, contains('platform + Dart UI'));
     });
 
     test('the main thread is named by its id, not by its comm', () {
@@ -108,25 +107,26 @@ void main() {
       return CpuReport(threads: threads, totalCpuMs: total, wallMs: wallMs);
     }
 
-    test('calls it rendering when the drawing threads dominate', () {
+    test('names the busiest thread and its share', () {
       final r = report([
         const CpuThread('GPU raster', 4000, 40),
         const CpuThread('Dart UI', 2000, 20),
         const CpuThread('Binder (platform channels)', 500, 5),
       ]);
-      expect(r.verdict, contains('rendering'));
-      expect(r.verdict, isNot(contains('not rendering')));
+      expect(r.verdict, contains('GPU raster'));
+      expect(r.verdict, contains('62%'));
     });
 
-    test('says so when the busiest thread does not draw anything', () {
-      // The case the panel exists for: healthy frames, warm phone.
+    test('does not claim to know whether the work was drawing', () {
+      // It cannot: whether Dart runs on the platform thread is not knowable
+      // from here, and guessing produced "not rendering" about a phone whose
+      // entire cost was rebuilds. The frame panel answers that question.
       final r = report([
-        const CpuThread('Binder (platform channels)', 5000, 50),
-        const CpuThread('Dart UI', 300, 3),
-        const CpuThread('GPU raster', 200, 2),
+        const CpuThread('platform (main)', 8500, 17),
+        const CpuThread('GPU raster', 1680, 3),
       ]);
-      expect(r.verdict, contains('not rendering'));
-      expect(r.verdict, contains('Binder'));
+      expect(r.verdict, contains('platform (main)'));
+      expect(r.verdict, isNot(contains('rendering')));
     });
 
     test('percent of a core is CPU time over wall time', () {

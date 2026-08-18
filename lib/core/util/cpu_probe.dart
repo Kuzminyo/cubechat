@@ -126,13 +126,17 @@ class CpuProbe {
     if (threads.isEmpty) return null;
 
     // Recent Flutter runs Dart on the platform thread rather than on a thread
-    // of its own, so there is no `1.ui` at all and every rebuild, layout and
-    // decode lands in the main thread's row. Labelling that row "platform" and
-    // then concluding "not rendering, drawing is only 22%" was exactly wrong on
-    // the first real measurement this panel produced — the arithmetic gave it
-    // away: 157 frames at 5.3 ms of build is ~830 ms, and the main thread had
-    // burned 1110 ms.
-    final merged = !threads.values.any(_isEngineUiThread);
+    // of its own, so rebuilds land in the main thread's row and the row is
+    // worth naming for it. Detected by CPU, not by presence: looking for an
+    // `<n>.ui` thread and calling it "not merged" was wrong on a phone that
+    // runs a second engine for the map — that engine's idle ui thread existed
+    // while Dart was plainly on the main one. A ui thread that has burned
+    // essentially nothing is not where the work is.
+    final uiMs = threads.values
+        .where(_isEngineUiThread)
+        .fold<int>(0, (a, t) => a + t.ticks);
+    final mainTicks = threads[mainTid]?.ticks ?? 0;
+    final merged = uiMs * 4 < mainTicks;
 
     final out = <String, int>{};
     threads.forEach((tid, stat) {
@@ -290,36 +294,26 @@ class CpuReport {
   /// what the panel shows.
   List<CpuThread> top(int n) => threads.take(n).toList();
 
-  /// The sentence the panel exists to print.
+  /// The sentence the panel prints: which thread led, and by how much.
   ///
-  /// Deliberately about *where*, not about *how much*: the absolute number
-  /// depends on the phone, but "the thread doing the work is not one that draws
-  /// anything" is a conclusion that holds on any of them.
+  /// It used to answer "rendering or not", by splitting the rows into ones that
+  /// draw and ones that do not. That needs to know whether Dart is running on
+  /// the platform thread, and there is no reliable way to tell from here — the
+  /// first attempt looked for the engine's `<n>.ui` thread and treated its
+  /// presence as "not merged", which a second engine (the map's platform view
+  /// keeps one) makes false: a phone reported `platform (main)` leading with
+  /// 8500 ms while build time over the same window came to 8520 ms, so Dart was
+  /// plainly on it, and the panel said "not rendering, drawing is only 15%".
+  ///
+  /// So it no longer claims that. The panel above it already splits build from
+  /// raster off the engine's own timings, which is the CPU-or-GPU answer and is
+  /// not a guess; this one adds the part that panel cannot see — *which thread*
+  /// — and stops there.
   String get verdict {
-    if (threads.isEmpty) return 'no CPU measured';
+    if (threads.isEmpty || totalCpuMs == 0) return 'no CPU measured';
     final busiest = threads.first;
-    // `platform + Dart UI` is the merged-thread name, and on that build it is
-    // where every rebuild and layout runs — so it counts as drawing. Its
-    // unmerged twin, `platform (main)`, deliberately does not: there, Dart has
-    // a thread of its own and the main thread is carrying plugin traffic.
-    final drawing = {
-      'Dart UI',
-      'platform + Dart UI',
-      'GPU raster',
-      'image decode',
-    };
-    final drawingMs = threads
-        .where((t) => drawing.contains(t.name))
-        .fold<int>(0, (a, t) => a + t.cpuMs);
-    if (totalCpuMs == 0) return 'no CPU measured';
-    final drawingShare = drawingMs * 100 / totalCpuMs;
-    if (drawingShare >= 60) {
-      return 'rendering — ${drawingShare.round()}% of CPU is drawing';
-    }
-    if (drawingShare <= 30) {
-      return 'not rendering — ${busiest.name} leads, drawing is only '
-          '${drawingShare.round()}%';
-    }
-    return 'mixed — drawing is ${drawingShare.round()}% of CPU';
+    final share = (busiest.cpuMs * 100 / totalCpuMs).round();
+    if (threads.length == 1) return '${busiest.name} is all of it';
+    return '${busiest.name} leads — $share% of the process';
   }
 }

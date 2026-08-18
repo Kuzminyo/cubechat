@@ -677,6 +677,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         // would show an opened photo as unopened again, minus its file.
         if (m.viewOnceConsumedAt != null)
           'viewOnceAtIso': m.viewOnceConsumedAt!.toIso8601String(),
+        if (m.albumId != null) 'albumId': m.albumId,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -764,6 +765,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       viewOnceConsumedAt: (m['viewOnceAtIso'] as String?) == null
           ? null
           : DateTime.tryParse(m['viewOnceAtIso'] as String),
+      albumId: m['albumId'] as String?,
     );
   }
 }

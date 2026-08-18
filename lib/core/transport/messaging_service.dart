@@ -77,6 +77,7 @@ import 'nostr/nostr_transport.dart';
 import 'nostr/relay_watermark_store.dart';
 import 'nostr/websocket_relay_client.dart';
 import '../crypto/media_fs_cipher.dart';
+import '../../features/chat/data/media_send_progress.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -1652,6 +1653,7 @@ class MessagingService {
     String? cachedPath,
     String? caption,
     bool viewOnce = false,
+    String? albumId,
   }) {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -1699,6 +1701,7 @@ class MessagingService {
       imageMime: mime,
       wireId: TransportEnvelope.hashHex(imageId),
       viewOnce: viewOnce,
+      albumId: albumId,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -1840,6 +1843,12 @@ class MessagingService {
         if (!delivery.sent) {
           throw const MediaRouteUnavailable();
         }
+        // One number for the ring on the bubble. Quantised inside the
+        // controller, so calling it on every chunk of a 300-chunk BLE transfer
+        // still only writes state a hundred times.
+        _ref
+            .read(mediaSendProgressProvider.notifier)
+            .report(msg.id, sent: i + 1, total: total);
         // Tiny pacing gap. Some Android BLE stacks lose notify packets when
         // a fast sender outpaces the receiver's read loop. 15ms is below
         // human perception in aggregate (~5s for a 300-chunk image) and
@@ -1851,12 +1860,14 @@ class MessagingService {
           if (pause > Duration.zero) await Future<void>.delayed(pause);
         }
       }
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
     } catch (e, st) {
       debugPrint('sendImage failed: $e\n$st');
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
@@ -1890,6 +1901,13 @@ class MessagingService {
     bool viewOnce = false,
   }) async {
     if (images.isEmpty) return;
+    // One id across the whole batch, minted here because this is the only
+    // moment anything knows where the batch begins and ends. Grouping used to
+    // re-derive that from timestamps afterwards, and two batches a minute apart
+    // are indistinguishable from one long one that way — see [Message.albumId].
+    final albumId = images.length > 1
+        ? 'a${DateTime.now().microsecondsSinceEpoch}'
+        : null;
     final pending = <PendingImageSend>[];
     for (var i = 0; i < images.length; i++) {
       pending.add(prepareImage(
@@ -1899,6 +1917,7 @@ class MessagingService {
         cachedPath: i < cachedPaths.length ? cachedPaths[i] : null,
         caption: i == 0 ? caption : null,
         viewOnce: viewOnce,
+        albumId: albumId,
       ));
     }
     for (var i = 0; i < pending.length; i++) {

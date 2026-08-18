@@ -25,6 +25,7 @@ import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
 import '../../data/chat_navigation.dart';
+import '../../data/media_send_progress.dart';
 import '../../data/message_selection.dart';
 import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
@@ -1059,6 +1060,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           // opens the photo underneath it.
                           child: IgnorePointer(child: _MetaPill(child: meta)),
                         ),
+                      // How far the upload has got. Only on our own pictures
+                      // and only while they are still going: a photo over
+                      // Bluetooth is a few hundred chunks and minutes of them,
+                      // and "sending" for all of it could not be told apart
+                      // from a transfer that had stalled.
+                      if (message.isMine &&
+                          message.status == MessageStatus.sending)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: _SendProgressRing(messageId: message.id),
+                          ),
+                        ),
                     ],
                   ),
                   // The caption, which used to go missing entirely. It rides in
@@ -1240,6 +1253,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       .read(messageSelectionProvider(widget.chatId).notifier)
                       .toggle(message.id)
                   : null,
+              // Double-tap belongs to the row for the same reason the hold
+              // does. It was wired only to the painted surfaces — the photo,
+              // the sticker, the bubble — so on a short message it meant
+              // hitting a target a few characters wide, and the empty half of
+              // the line beside it did nothing. Anywhere on the line now
+              // answers, which is what "не обязательно на смс самой" asked for.
+              //
+              // Off while selecting: there the row means one thing, and it is
+              // the tick.
+              onDoubleTap: selecting || !_canReact ? null : _quickReact,
               child: RawGestureDetector(
                 // Leftward only, so a drag the other way reaches the page's
                 // back gesture instead of being swallowed here. A plain
@@ -2261,6 +2284,48 @@ class _ImagePlaceholder extends StatelessWidget {
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The filling circle over a picture that is still on its way out.
+///
+/// Reads [mediaSendProgressProvider], which the send loop reports chunks to. A
+/// transfer that has not reported yet — the manifest is still going, or this is
+/// a build that predates the reporting — shows an indeterminate spinner rather
+/// than an empty ring sitting at zero, because those two look identical and
+/// mean opposite things.
+class _SendProgressRing extends ConsumerWidget {
+  const _SendProgressRing({required this.messageId});
+
+  final String messageId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(mediaSendProgressProvider)[messageId];
+    return Center(
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.42),
+          shape: BoxShape.circle,
+        ),
+        padding: const EdgeInsets.all(9),
+        child: TweenAnimationBuilder<double>(
+          // Chunk reports arrive in visible steps; the ring should sweep
+          // between them rather than tick.
+          tween: Tween<double>(begin: 0, end: value ?? 0),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+          builder: (context, animated, _) => CircularProgressIndicator(
+            value: value == null ? null : animated,
+            strokeWidth: 2.4,
+            backgroundColor: Colors.white.withValues(alpha: 0.28),
+            color: AppColors.brandPrimary,
+          ),
+        ),
       ),
     );
   }

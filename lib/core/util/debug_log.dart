@@ -61,11 +61,44 @@ class DebugLog extends ChangeNotifier {
         _entries.removeRange(0, _entries.length - _capacity);
       }
     }
-    notifyListeners();
+    _scheduleNotify();
+  }
+
+  Timer? _notifyTimer;
+
+  /// At most one rebuild per [_notifyEvery], however chatty the subsystem.
+  ///
+  /// The one listener is the Diagnostics screen, and it rebuilds *itself* —
+  /// panels, log list and all — for each notification. A relay writes several
+  /// lines a second and a media transfer writes dozens, so the screen was
+  /// rebuilding at the rate the log was written.
+  ///
+  /// That is not free anywhere and it is dreadful on a slow phone: one reported
+  /// `build avg 35.5, p90 103.6 ms` with 149 of 240 frames over budget while
+  /// sitting on this screen doing nothing — about five frames a second, which
+  /// is exactly the log's line rate. The panel was measuring the cost of
+  /// watching the panel.
+  ///
+  /// A quarter of a second is still faster than anyone reads, and it is the
+  /// difference between one rebuild and twenty.
+  static const Duration _notifyEvery = Duration(milliseconds: 250);
+
+  void _scheduleNotify() {
+    // One-shot rather than periodic: a quiet app costs no timer at all, which
+    // matters because this object exists for the whole life of the process.
+    _notifyTimer ??= Timer(_notifyEvery, () {
+      _notifyTimer = null;
+      notifyListeners();
+    });
   }
 
   void clear() {
     _entries.clear();
+    // Straight through, not coalesced: this one is a tap, and a list that keeps
+    // its contents for another quarter second reads as a button that did not
+    // work.
+    _notifyTimer?.cancel();
+    _notifyTimer = null;
     notifyListeners();
   }
 }
