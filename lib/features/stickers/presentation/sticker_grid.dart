@@ -62,7 +62,7 @@ class StickerGrid extends ConsumerWidget {
                       path,
                       ref.read(stickerLibraryProvider.notifier).emojiFor(path),
                     ),
-                    onLongPress: () => _confirmRemoval(context, ref, t, path),
+                    onRemove: () => _confirmRemoval(context, ref, t, path),
                   );
                 },
                 childCount: mineCount,
@@ -194,30 +194,62 @@ class _KeptTile extends StatelessWidget {
   const _KeptTile({
     required this.path,
     required this.onTap,
-    required this.onLongPress,
+    required this.onRemove,
   });
 
   final String path;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.all(5),
-        child: Image.file(
-          File(path),
-          fit: BoxFit.contain,
-          cacheWidth: (104 * MediaQuery.devicePixelRatioOf(context)).round(),
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.broken_image_rounded,
-            color: AppColors.textOnGlassFaint,
+      // Long-press still removes, for the muscle memory it already built; the
+      // corner button is the visible version of the same thing, for everyone
+      // who never learned the gesture.
+      onLongPress: onRemove,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(5),
+            child: Image.file(
+              File(path),
+              fit: BoxFit.contain,
+              cacheWidth:
+                  (104 * MediaQuery.devicePixelRatioOf(context)).round(),
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.broken_image_rounded,
+                color: AppColors.textOnGlassFaint,
+              ),
+            ),
           ),
-        ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: GestureDetector(
+              // Its own tap target, so removing one does not send it: without
+              // this the badge would sit under the tile's onTap and deleting a
+              // sticker would fire it into the chat on the way out.
+              behavior: HitTestBehavior.opaque,
+              onTap: onRemove,
+              child: Container(
+                margin: const EdgeInsets.all(2),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

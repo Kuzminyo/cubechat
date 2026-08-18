@@ -1108,7 +1108,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   void _trackSmoothSends(List<Message> before, List<Message> after) {
     final previous = {for (final message in before) message.id};
     for (final message in after) {
-      if (!previous.contains(message.id) && _isFreshOutgoingText(message)) {
+      if (!previous.contains(message.id) && _isFreshOutgoing(message)) {
         _smoothSendIds.add(message.id);
         _smoothSendTimers[message.id]?.cancel();
         _smoothSendTimers[message.id] = Timer(const Duration(seconds: 2), () {
@@ -1120,8 +1120,20 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
-  bool _isFreshOutgoingText(Message message) {
-    if (!message.isMine || message.kind != MessageKind.text) return false;
+  bool _isFreshOutgoing(Message message) {
+    if (!message.isMine) return false;
+    // Text and photos, the two things you send straight from the composer.
+    // Extended from text-only: a photo now slides up on send the same way a
+    // message does, which is what "плавную анимацию отправки смс и фото"
+    // asked for. Audio and files are left out — they appear from a picker or
+    // a recorder, not from the keyboard, so the send is not the gesture the
+    // eye is following.
+    if (message.kind != MessageKind.text &&
+        message.kind != MessageKind.image) {
+      return false;
+    }
+    // The age guard is what keeps a chat's whole history from animating when
+    // it opens: only something actually sent in the last few seconds is fresh.
     final age = DateTime.now().difference(message.sentAt).abs();
     return age <= const Duration(seconds: 4);
   }
@@ -2695,6 +2707,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   /// same request can arrive twice and both times mean "open it now".
   final ValueNotifier<int> _stickerPanelRequests = ValueNotifier<int>(0);
 
+  /// Same idea as [_stickerPanelRequests], for the keyboard: bumped when a
+  /// reply target appears, so the composer takes focus and the keyboard rises
+  /// the instant you pick "reply" — you were going to type, and it was two
+  /// taps (start the reply, then tap the field) to get there. See
+  /// [ChatInput.focusInput].
+  final ValueNotifier<int> _focusComposerRequests = ValueNotifier<int>(0);
+
+  /// The reply target the last build saw, so a *new* one can be told from the
+  /// same one still sitting there — only the transition into a reply should
+  /// raise the keyboard, not every rebuild while one is open.
+  String? _lastReplyWireId;
+
   void _showAttachmentFailure(Object error) {
     final t = AppLocalizations.of(context);
     // Also into the log, not just the toast. A toast is gone in three seconds
@@ -2814,6 +2838,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   void dispose() {
     _tick?.cancel();
     _stickerPanelRequests.dispose();
+    _focusComposerRequests.dispose();
     // Only clear if we're still the active chat — guards against the
     // next chat's initState having already set itself during a transition.
     if (AppLifecycle.instance.activeChatId == widget.canonicalId) {
@@ -3644,6 +3669,19 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             ? replyTargetRaw
             : null;
 
+    // A reply that was not there last frame is a reply just chosen: put the
+    // cursor in the field so the keyboard rises with the quote. Guarded on the
+    // wireId changing so this fires once per reply, not on every rebuild that
+    // happens while the quote sits above the composer.
+    if (activeReply?.wireId != _lastReplyWireId) {
+      _lastReplyWireId = activeReply?.wireId;
+      if (activeReply != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _focusComposerRequests.value++;
+        });
+      }
+    }
+
     final composer = ChatInput(
       hint: t.chatInputHint,
       sendTooltip: t.chatSend,
@@ -3679,6 +3717,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       onSticker: photosEnabled && widget.canSend ? _sendSticker : null,
       onCreateSticker: photosEnabled ? _createSticker : null,
       openStickerPanel: _stickerPanelRequests,
+      focusInput: _focusComposerRequests,
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,

@@ -114,10 +114,16 @@ class ChatInput extends StatefulWidget {
     this.onSticker,
     this.onCreateSticker,
     this.openStickerPanel,
+    this.focusInput,
   });
 
   /// Bumped by the screen around this one to say "open the panel on stickers".
   final ValueListenable<int>? openStickerPanel;
+
+  /// Bumped to say "put the cursor in the field now" — used when a reply is
+  /// started, so the keyboard rises with the quote instead of waiting for a
+  /// second tap on the field.
+  final ValueListenable<int>? focusInput;
 
   final String hint;
   final String sendTooltip;
@@ -173,6 +179,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     // The composer is alive for as long as the conversation is.
     WidgetsBinding.instance.addObserver(this);
     widget.openStickerPanel?.addListener(_openStickersFromOutside);
+    widget.focusInput?.addListener(_focusFromOutside);
     _focus.addListener(_closePanelWhenFieldFocused);
     _controller = TextEditingController(text: widget.initialText ?? '');
     _hasText = _controller.text.trim().isNotEmpty;
@@ -188,6 +195,10 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     if (old.openStickerPanel != widget.openStickerPanel) {
       old.openStickerPanel?.removeListener(_openStickersFromOutside);
       widget.openStickerPanel?.addListener(_openStickersFromOutside);
+    }
+    if (old.focusInput != widget.focusInput) {
+      old.focusInput?.removeListener(_focusFromOutside);
+      widget.focusInput?.addListener(_focusFromOutside);
     }
     if (widget.editingText != old.editingText) {
       if (widget.editingText != null) {
@@ -225,11 +236,21 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     if (mounted && widget.onSticker != null) _togglePanel(stickers: true);
   }
 
+  /// Take focus when the screen asks — a reply was just started. Closes the
+  /// sticker/emoji panel first if it is open, because the point is the
+  /// keyboard, and the two share the slot below the composer.
+  void _focusFromOutside() {
+    if (!mounted) return;
+    if (_panelOpen) closePanel();
+    _focus.requestFocus();
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _keyboardWatchdog?.cancel();
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
+    widget.focusInput?.removeListener(_focusFromOutside);
     _focus.removeListener(_closePanelWhenFieldFocused);
     _controller.dispose();
     _focus.dispose();
