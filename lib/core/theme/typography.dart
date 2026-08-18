@@ -14,26 +14,26 @@ abstract final class AppTypography {
         fontSize: 34,
         letterSpacing: -0.8,
         height: 1.05,
-      ),
+      ).copyWith(fontFamilyFallback: _emojiFallback),
       displayMedium: GoogleFonts.spaceGrotesk(
         color: AppColors.textPrimary,
         fontWeight: FontWeight.w600,
         fontSize: 28,
         letterSpacing: -0.5,
         height: 1.1,
-      ),
+      ).copyWith(fontFamilyFallback: _emojiFallback),
       headlineMedium: GoogleFonts.spaceGrotesk(
         color: AppColors.textPrimary,
         fontWeight: FontWeight.w600,
         fontSize: 22,
         letterSpacing: -0.3,
-      ),
+      ).copyWith(fontFamilyFallback: _emojiFallback),
       titleLarge: GoogleFonts.spaceGrotesk(
         color: AppColors.textPrimary,
         fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
-      ),
+      ).copyWith(fontFamilyFallback: _emojiFallback),
 
       // Body uses Inter (better at small sizes).
       titleMedium: base.titleMedium?.copyWith(
@@ -62,6 +62,15 @@ abstract final class AppTypography {
   }
 
   /// Big page-title style (Space Grotesk). Use this for the top of every screen.
+  /// Bundled Noto Color Emoji, behind every family this app uses.
+  ///
+  /// Emoji are not in Space Grotesk or JetBrains Mono, so without a stated
+  /// fallback each phone reaches for whatever its vendor shipped — and a
+  /// reaction picked on a Xiaomi arrives on a Samsung looking like a different
+  /// feeling. Naming the fallback is what makes both ends of a conversation
+  /// draw the same picture.
+  static const List<String> _emojiFallback = <String>['NotoColorEmoji'];
+
   static TextStyle display({
     double size = 32,
     FontWeight weight = FontWeight.w700,
@@ -73,7 +82,7 @@ abstract final class AppTypography {
       color: color ?? AppColors.textPrimary,
       letterSpacing: -0.8,
       height: 1.05,
-    );
+    ).copyWith(fontFamilyFallback: _emojiFallback);
   }
 
   /// Mid-weight heading (Space Grotesk). Use for sub-titles, peer names in chat header.
@@ -87,7 +96,7 @@ abstract final class AppTypography {
       fontWeight: weight,
       color: color ?? AppColors.textPrimary,
       letterSpacing: -0.3,
-    );
+    ).copyWith(fontFamilyFallback: _emojiFallback);
   }
 
   /// Fingerprints, contact ids — anything read character by character.
@@ -109,6 +118,6 @@ abstract final class AppTypography {
       fontSize: size,
       fontWeight: weight,
       color: color ?? AppColors.textOnGlassDim,
-    );
+    ).copyWith(fontFamilyFallback: _emojiFallback);
   }
 }
