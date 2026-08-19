@@ -16,6 +16,7 @@ import '../../../../core/utils/file_mime.dart';
 import '../../../../core/utils/file_signature.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../files/data/file_transfer_controller.dart';
 import '../../models/message.dart';
 
 /// A file attachment in the conversation: icon, name, size.
@@ -43,6 +44,20 @@ class FileBubble extends ConsumerWidget {
   /// withheld, because that is the step that takes it out of here.
   final bool sharingRestricted;
 
+  /// How far this file has got, or null when it is not being transferred.
+  ///
+  /// Reads the transfer queue the file path already goes through, matched on
+  /// the message it belongs to. Null — rather than zero — for anything settled,
+  /// so a delivered file draws no ring at all instead of an empty one.
+  double? _sendProgress(WidgetRef ref) {
+    final tasks = ref.watch(fileTransferControllerProvider);
+    for (final task in tasks.values) {
+      if (task.messageId != message.id) continue;
+      return task.active ? task.progress : null;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
@@ -58,20 +73,39 @@ class FileBubble extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            // The icon disc doubles as the progress ring while the file is on
+            // its way. A transfer this app runs can take minutes over
+            // Bluetooth, and the row said only "sending" for all of it — the
+            // same gap the photo bubble had. Drawn around the disc rather than
+            // over it, so nothing moves when it appears or goes.
+            SizedBox(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.brandPrimary.withValues(alpha: 0.16),
-                border: Border.all(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.38),
-                ),
-              ),
-              child: Icon(
-                _iconFor(name),
-                size: 19,
-                color: AppColors.brandPrimary,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.brandPrimary.withValues(alpha: 0.16),
+                      border: Border.all(
+                        color: AppColors.brandPrimary.withValues(alpha: 0.38),
+                      ),
+                    ),
+                    child: Icon(
+                      _iconFor(name),
+                      size: 19,
+                      color: AppColors.brandPrimary,
+                    ),
+                  ),
+                  if (_sendProgress(ref) case final progress?)
+                    CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2.2,
+                      backgroundColor: Colors.transparent,
+                      color: AppColors.brandPrimary,
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 10),

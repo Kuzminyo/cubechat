@@ -1154,7 +1154,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ),
                     ),
                 ] else if (message.kind == MessageKind.audio)
-                  VoiceBubble(message: message, chatId: widget.chatId)
+                  // A voice note over Bluetooth is as long a wait as a photo,
+                  // and said as little about itself. Beside the bubble rather
+                  // than over it: the waveform is the thing being read, and a
+                  // disc in the middle of it would cover exactly that.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child:
+                            VoiceBubble(message: message, chatId: widget.chatId),
+                      ),
+                      if (message.isMine &&
+                          message.status == MessageStatus.sending) ...[
+                        const SizedBox(width: 8),
+                        _SendProgressRing(
+                          messageId: message.id,
+                          diameter: 26,
+                          onSurface: true,
+                        ),
+                      ],
+                    ],
+                  )
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a
@@ -2356,22 +2377,34 @@ class _ImagePlaceholder extends StatelessWidget {
 /// than an empty ring sitting at zero, because those two look identical and
 /// mean opposite things.
 class _SendProgressRing extends ConsumerWidget {
-  const _SendProgressRing({required this.messageId});
+  const _SendProgressRing({
+    required this.messageId,
+    this.diameter = 46,
+    this.onSurface = false,
+  });
 
   final String messageId;
+  final double diameter;
+
+  /// True when the ring sits on the bubble beside its content rather than over
+  /// a photograph. There is no picture to lift it off, so it drops the dark
+  /// disc that exists purely for contrast against one.
+  final bool onSurface;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(mediaSendProgressProvider)[messageId];
     return Center(
       child: Container(
-        width: 46,
-        height: 46,
+        width: diameter,
+        height: diameter,
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.42),
+          color: onSurface
+              ? Colors.transparent
+              : Colors.black.withValues(alpha: 0.42),
           shape: BoxShape.circle,
         ),
-        padding: const EdgeInsets.all(9),
+        padding: EdgeInsets.all(onSurface ? 2 : 9),
         child: TweenAnimationBuilder<double>(
           // Chunk reports arrive in visible steps; the ring should sweep
           // between them rather than tick.

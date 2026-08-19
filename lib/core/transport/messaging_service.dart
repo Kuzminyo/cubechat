@@ -2093,6 +2093,11 @@ class MessagingService {
         if (!delivery.sent) {
           throw const MediaRouteUnavailable();
         }
+        // Same ring the photo bubble draws — a voice note over Bluetooth is
+        // just as long a wait and said just as little about itself.
+        _ref
+            .read(mediaSendProgressProvider.notifier)
+            .report(msg.id, sent: i + 1, total: total);
         // BLE notify pacing; see sendImage. Over the relay the only gap is
         // backpressure returned by the relay path.
         if (i + 1 < total) {
@@ -2101,12 +2106,14 @@ class MessagingService {
           if (pause > Duration.zero) await Future<void>.delayed(pause);
         }
       }
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       messages.updateStatus(canonicalId, msg.id, MessageStatus.delivered);
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
     } catch (e, st) {
       debugPrint('sendAudio failed: $e\n$st');
+      _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);

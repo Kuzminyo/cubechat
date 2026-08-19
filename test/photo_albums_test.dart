@@ -151,6 +151,36 @@ void main() {
     expect(albums.isFolded('second0'), isFalse);
   });
 
+  // Reported 2026-08-19, from the receiving phone: five photos, a sentence,
+  // five more — and all ten came out as one grid. Nothing carries a batch id
+  // over the wire, and the sentence cannot separate them either: it is tiny and
+  // arrives while the photos are still transferring, so it is stamped *before*
+  // them and never lands between the two runs. Only the pace tells them apart.
+  test('a second batch does not glue itself onto the first', () {
+    final albums = groupPhotoAlbums([
+      // One batch, arriving about a second apart the way a relay delivers.
+      for (var i = 0; i < 5; i++) photo('first$i', second: i, isMine: false),
+      // The next lot, after the sender did something else.
+      for (var i = 0; i < 5; i++)
+        photo('second$i', second: 120 + i, isMine: false),
+    ]);
+
+    expect(albums.albumAt('first0'), hasLength(5));
+    expect(albums.albumAt('second0'), hasLength(5));
+    expect(albums.isFolded('second0'), isFalse);
+  });
+
+  test('a slow batch is still one batch', () {
+    // Over Bluetooth a photo can take a minute, and an even minute-apart run is
+    // one send — the adaptive limit has to scale with the link, not fight it.
+    final albums = groupPhotoAlbums([
+      for (var i = 0; i < 4; i++)
+        photo('slow$i', second: i * 60, isMine: false),
+    ]);
+
+    expect(albums.albumAt('slow0'), hasLength(4));
+  });
+
   test('a photo with a batch id never joins one without', () {
     // A single photo sent on its own carries no id, and must not be swallowed
     // by the batch that happens to sit next to it.
