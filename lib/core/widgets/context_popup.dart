@@ -30,36 +30,16 @@ Future<T?> showContextPopup<T>({
   required List<PopupMenuEntry<T>> items,
 }) {
   final rootNav = Navigator.of(context, rootNavigator: true);
-  final overlay = rootNav.overlay!.context.findRenderObject() as RenderBox;
-  // A 1x1 anchor rect at the press point; showMenu grows the menu from here and
-  // keeps it on screen. Coordinates are global, which is exactly the root
-  // overlay's coordinate space.
-  final position = RelativeRect.fromRect(
-    globalPosition & const Size(1, 1),
-    Offset.zero & overlay.size,
-  );
-  return showMenu<T>(
-    context: rootNav.context,
-    position: position,
-    // Translucent rather than the flat opaque fill this used to have. Every
-    // other surface in the app is smoked glass over the aurora, and an opaque
-    // slab dropped into the middle of that reads as borrowed from another
-    // application.
-    //
-    // Not a true frosted pane: showMenu owns its own surface, so there is
-    // nowhere to hang a BackdropFilter without replacing the route wholesale —
-    // and with it showMenu's anchoring and on-screen clamping, which is
-    // fiddly work that wants checking on a real screen. Translucency plus the
-    // hairline gets most of the way there and risks nothing.
-    color: AppColors.bgTop.withValues(alpha: 0.92),
-    elevation: 16,
-    shadowColor: Colors.black,
-    popUpAnimationStyle: glassMenuMotion,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(18),
-      side: BorderSide(color: AppColors.glass(0.16)),
+  final overlaySize =
+      (rootNav.overlay!.context.findRenderObject() as RenderBox).size;
+  // Anchored on the press point rather than a button's rect: this one is opened
+  // by a long press, so a 1x1 rect at the finger is the whole anchor there is.
+  return rootNav.push(
+    _AnimatedMenuRoute<T>(
+      anchor: globalPosition & const Size(1, 1),
+      overlaySize: overlaySize,
+      entries: items,
     ),
-    items: items,
   );
 }
 
@@ -113,12 +93,22 @@ class _AnimatedMenuRoute<T> extends PopupRoute<T> {
   _AnimatedMenuRoute({
     required this.anchor,
     required this.overlaySize,
-    required this.items,
-  });
+    this.items,
+    this.entries,
+  }) : assert(items != null || entries != null);
 
   final Rect anchor;
   final Size overlaySize;
-  final List<AnimatedMenuItem<T>> items;
+
+  /// Rows described declaratively — the shape new call sites use.
+  final List<AnimatedMenuItem<T>>? items;
+
+  /// Ready-made Material entries, for the call sites that already build them.
+  /// Rendered as-is inside our own card so those menus animate without every
+  /// one of them being rewritten.
+  final List<PopupMenuEntry<T>>? entries;
+
+  int get _rowCount => items?.length ?? entries!.length;
 
   @override
   Color? get barrierColor => null;
@@ -148,14 +138,14 @@ class _AnimatedMenuRoute<T> extends PopupRoute<T> {
     // pulled back onto the screen if the button sits near an edge.
     final left = (anchor.right - _width).clamp(_pad, overlaySize.width - _width - _pad);
     final top = (anchor.bottom + 4)
-        .clamp(_pad, overlaySize.height - _pad - items.length * 48.0 - 12);
+        .clamp(_pad, overlaySize.height - _pad - _rowCount * 48.0 - 12);
     return Stack(
       children: [
         Positioned(
           left: left.toDouble(),
           top: top.toDouble(),
           width: _width,
-          child: _AnimatedMenuCard<T>(items: items),
+          child: _AnimatedMenuCard<T>(items: items, entries: entries),
         ),
       ],
     );
@@ -186,9 +176,10 @@ class _AnimatedMenuRoute<T> extends PopupRoute<T> {
 }
 
 class _AnimatedMenuCard<T> extends StatelessWidget {
-  const _AnimatedMenuCard({required this.items});
+  const _AnimatedMenuCard({this.items, this.entries});
 
-  final List<AnimatedMenuItem<T>> items;
+  final List<AnimatedMenuItem<T>>? items;
+  final List<PopupMenuEntry<T>>? entries;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +202,24 @@ class _AnimatedMenuCard<T> extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final item in items)
+            // Material entries carry their own padding and their own tap
+            // handling is bypassed, so each is wrapped to report its value.
+            if (entries != null)
+              for (final entry in entries!)
+                if (entry is PopupMenuItem<T>)
+                  InkWell(
+                    onTap: () => Navigator.of(context).pop(entry.value),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      child: entry.child ?? const SizedBox.shrink(),
+                    ),
+                  )
+                else
+                  entry,
+            for (final item in items ?? const <AnimatedMenuItem<Never>>[])
               InkWell(
                 onTap: () => Navigator.of(context).pop(item.value),
                 child: Padding(
