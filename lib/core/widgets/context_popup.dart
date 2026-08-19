@@ -134,9 +134,14 @@ class _AnimatedMenuRoute<T> extends PopupRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    // Right edge under the button's right edge, top under its bottom, both
-    // pulled back onto the screen if the button sits near an edge.
-    final left = (anchor.right - _width).clamp(_pad, overlaySize.width - _width - _pad);
+    // A button hangs its menu from its right edge; a press point opens it at
+    // the finger. Told apart by the anchor's width — a real control has one, a
+    // long press is a 1x1 rect at the touch. Using the button rule for both is
+    // what put a long-press menu in the middle of the screen instead of under
+    // the row that was held.
+    final fromButton = anchor.width > 2;
+    final wanted = fromButton ? anchor.right - _width : anchor.left - 24;
+    final left = wanted.clamp(_pad, overlaySize.width - _width - _pad);
     final top = (anchor.bottom + 4)
         .clamp(_pad, overlaySize.height - _pad - _rowCount * 48.0 - 12);
     return Stack(
@@ -201,6 +206,13 @@ class _AnimatedMenuCard<T> extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          // Stretch, not the default centre. Every row here is a Row with
+          // `mainAxisSize.min`, so under a centring Column each one shrank to
+          // its content and floated to the middle — icons and labels down the
+          // centre line instead of a left-aligned list. Stretching makes each
+          // row fill the card, which is what puts the icons back in a column
+          // at the leading edge.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Material entries carry their own padding and their own tap
             // handling is bypassed, so each is wrapped to report its value.

@@ -2225,8 +2225,14 @@ class MessagingService {
             '(fanout $fanout)',
           );
         } else {
+          // Stop the whole sweep at the first slice that finds no route, and
+          // do not log the rest. Nothing has changed between one slice and the
+          // next — there is still no route — so continuing only produces the
+          // storm this line was drowning in, and the next attempt happens when
+          // a route actually appears.
           DebugLog.instance.log('RECEIPT',
               'no route for ${slice.length} read ack(s) — will retry');
+          return;
         }
       } catch (e) {
         DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
@@ -2239,9 +2245,39 @@ class MessagingService {
   /// Cheap enough to run on a relay coming up: [sendReadReceipts] filters to
   /// messages it has not already acknowledged this run, so a chat with nothing
   /// outstanding costs one map lookup and returns.
+  /// Guards against the sweep re-entering itself and against it running back
+  /// to back. Both were happening: a field log from an iPhone that had just
+  /// connected showed `no route for 2 read ack(s) — will retry ×172` inside a
+  /// single millisecond, and the phone was unusable while it did that.
+  ///
+  /// Nothing here retries on a timer — the sweep is called when a route
+  /// appears — so a failed pass costs nothing by waiting. What it must not do
+  /// is run again the instant it finishes, over every chat, while the route
+  /// that failed it is still missing.
+  bool _flushingReadReceipts = false;
+  DateTime? _lastReadReceiptFlush;
+  static const Duration _readReceiptFlushGap = Duration(seconds: 5);
+
   Future<void> _flushPendingReadReceipts() async {
     if (_disposed) return;
     if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
+    if (_flushingReadReceipts) return;
+    final since = _lastReadReceiptFlush;
+    if (since != null &&
+        DateTime.now().difference(since) < _readReceiptFlushGap) {
+      return;
+    }
+    _flushingReadReceipts = true;
+    _lastReadReceiptFlush = DateTime.now();
+    try {
+      await _flushPendingReadReceiptsInner();
+    } finally {
+      _flushingReadReceipts = false;
+    }
+  }
+
+  Future<void> _flushPendingReadReceiptsInner() async {
+    if (_disposed) return;
     for (final chatId in _ref.read(messagesControllerProvider).keys.toList()) {
       if (_disposed) return;
       try {
