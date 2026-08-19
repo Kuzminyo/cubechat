@@ -299,6 +299,26 @@ class _FramePanelState extends State<_FramePanel> {
             'over 16.7 ms',
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 10.5),
           ),
+          const SizedBox(height: 2),
+          // The freeze line. A stall is a frame long enough to be seen as the
+          // app stopping, and neither the average nor the p90 of a rolling
+          // window shows one — which is why "подфризує" kept arriving next to
+          // healthy numbers.
+          Text(
+            s.stallFrames == 0
+                ? 'no stalls · worst frame '
+                    '${s.worstBuildMs.toStringAsFixed(0)} ms build / '
+                    '${s.worstRasterMs.toStringAsFixed(0)} ms raster'
+                : '${s.stallFrames} stalls over 100 ms · worst '
+                    '${s.worstBuildMs.toStringAsFixed(0)} ms build / '
+                    '${s.worstRasterMs.toStringAsFixed(0)} ms raster',
+            style: TextStyle(
+              color: s.stallFrames == 0
+                  ? AppColors.textOnGlassDim
+                  : const Color(0xFFFF6B6B),
+              fontSize: 10.5,
+            ),
+          ),
           const SizedBox(height: 10),
           // The one control this panel needed and did not have. Everything
           // above describes the screen you are looking at, and that is this

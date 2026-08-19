@@ -45,6 +45,23 @@ class FrameStats {
   /// Frames whose raster or build overran a 60 Hz budget.
   int _janky = 0;
 
+  /// Frames long enough to be *seen* as a stop rather than a stutter.
+  ///
+  /// The counts above answer "how often is a frame late", which is the wrong
+  /// question for "подфризує". A hundred frames at 20 ms is a soft, even
+  /// slowness nobody names; one frame at 250 ms is a freeze, and it moves
+  /// neither the average nor the p90 of a 180-frame window at all. Reported
+  /// separately, with the worst frame beside it, so the two failures can be
+  /// told apart instead of both hiding behind a healthy percentile.
+  int _stalls = 0;
+  int _worstBuildUs = 0;
+  int _worstRasterUs = 0;
+
+  /// Where a late frame stops being a stutter and starts being a stop. 100 ms
+  /// is roughly the threshold at which a pause reads as the app having hung
+  /// rather than having slowed.
+  static const int _stallUs = 100000;
+
   /// Frames before this are dropped on the floor: they are the ones spent
   /// arriving.
   DateTime? _collectFrom;
@@ -130,6 +147,9 @@ class FrameStats {
     _rasterUs.clear();
     _total = 0;
     _janky = 0;
+    _stalls = 0;
+    _worstBuildUs = 0;
+    _worstRasterUs = 0;
   }
 
   /// Feed timings in as if the engine had reported them. The engine's own
@@ -153,6 +173,9 @@ class FrameStats {
       _rasterUs.add(raster);
       _total++;
       if (build > 16700 || raster > 16700) _janky++;
+      if (build > _stallUs || raster > _stallUs) _stalls++;
+      if (build > _worstBuildUs) _worstBuildUs = build;
+      if (raster > _worstRasterUs) _worstRasterUs = raster;
       if (_buildUs.length > _window) _buildUs.removeAt(0);
       if (_rasterUs.length > _window) _rasterUs.removeAt(0);
     }
@@ -162,6 +185,16 @@ class FrameStats {
   int get sampleCount => _buildUs.length;
   int get totalFrames => _total;
   int get jankyFrames => _janky;
+
+  /// Frames past [_stallUs] — the ones felt as a freeze. Cumulative for the
+  /// session, like [jankyFrames], because a stall three minutes ago is exactly
+  /// the thing being reported.
+  int get stallFrames => _stalls;
+
+  /// The single worst frame of the session, per thread. One number, and the
+  /// one that says whether a "freeze" is real.
+  double get worstBuildMs => _worstBuildUs / 1000;
+  double get worstRasterMs => _worstRasterUs / 1000;
 
   double get avgBuildMs => _avg(_buildUs);
   double get avgRasterMs => _avg(_rasterUs);

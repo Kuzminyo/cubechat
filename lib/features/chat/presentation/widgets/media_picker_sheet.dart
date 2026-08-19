@@ -488,7 +488,12 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
           parent: BouncingScrollPhysics(),
         ),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        cacheExtent: 900,
+        // Half a screen of thumbnails held ready, not a whole extra one. Every
+        // cached tile is a live decoded bitmap, so this number is memory and
+        // decode work as much as it is smoothness — and 900 was buying a
+        // screenful nobody was about to reach on a phone that could least
+        // afford it.
+        cacheExtent: 400,
         padding: EdgeInsets.fromLTRB(
           8,
           0,
@@ -791,6 +796,18 @@ class _Thumb extends StatefulWidget {
   State<_Thumb> createState() => _ThumbState();
 }
 
+/// Pixels one grid cell is worth on this screen.
+///
+/// Three columns across the width, times the device ratio, capped at the 240
+/// the thumbnail was fetched at — asking to decode *larger* than the source
+/// would only waste the work again.
+int _decodeWidthFor(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  final ratio = MediaQuery.devicePixelRatioOf(context);
+  final cell = ((width - 22) / 3) * ratio;
+  return cell.clamp(80, 240).round();
+}
+
 class _ThumbState extends State<_Thumb> {
   /// Started once and held, rather than created in build(): selecting a photo
   /// setStates the whole sheet, and a future built inline would re-decode every
@@ -827,6 +844,13 @@ class _ThumbState extends State<_Thumb> {
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.low,
+                // Decoded at the size the cell actually is, not at the size the
+                // JPEG happens to be. Without this every thumbnail is expanded
+                // to a full 240×240 bitmap and *kept* that way in the image
+                // cache — three columns means a cell around 120 points, so it
+                // was four times the pixels per tile, on the screen that scrolls
+                // hundreds of them. That is the gallery scroll on a slow phone.
+                cacheWidth: _decodeWidthFor(context),
               );
             },
           ),
