@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'app_build.dart';
+
 /// In-app ring buffer of debug events.
 ///
 /// We chain into [debugPrint] in [install], so every `debugPrint(...)` call
@@ -90,6 +92,79 @@ class DebugLog extends ChangeNotifier {
       _notifyTimer = null;
       notifyListeners();
     });
+  }
+
+  /// A few lines to put at the top of a shared log, answering the two
+  /// questions a shared log has repeatedly failed to answer on its own.
+  ///
+  /// **Which phone is this?** Every "Bluetooth takes seven seconds" log so far
+  /// came from a phone that only ever *accepted* a connection — not one
+  /// `[BLE-CENTRAL]` line anywhere in it. The delay being reported happens on
+  /// the phone doing the dialling, so those logs could not show it, and
+  /// finding that out cost a round trip with the reporter every time. The
+  /// header says which side this phone was on, in one line, before anyone
+  /// scrolls.
+  ///
+  /// **Is this the whole window?** The buffer holds [_capacity] lines. A
+  /// read-receipt storm once evicted every Bluetooth line in seconds and the
+  /// result read as a quiet log rather than a truncated one. A full buffer now
+  /// says it is full, and the span says how little time it covers.
+  ///
+  /// Derived entirely from the lines already in the buffer — nothing new is
+  /// recorded to produce it, so it costs nothing until somebody shares a log.
+  String summarize() {
+    final head = 'cubechat $appVersion $appBuildStamp';
+    if (_entries.isEmpty) return '$head\nlog empty';
+
+    final counts = <String, int>{};
+    for (final e in _entries) {
+      final tag = _tagOf(e.line);
+      if (tag != null) counts[tag] = (counts[tag] ?? 0) + e.repeats;
+    }
+    final central = counts['BLE-CENTRAL'] ?? 0;
+    final periph = counts['BLE-PERIPH'] ?? 0;
+    final String role;
+    if (central == 0 && periph == 0) {
+      role = 'no Bluetooth line in this window';
+    } else if (central == 0) {
+      role = 'only accepted connections ($periph peripheral lines) — a connect '
+          'delay would be on the phone that dials, not this one';
+    } else if (periph == 0) {
+      role = 'only dialled out ($central central lines)';
+    } else {
+      role = 'both: $central central, $periph peripheral';
+    }
+
+    final span = _entries.last.at.difference(_entries.first.at);
+    final full = _entries.length >= _capacity;
+    final window = '${_entries.length} lines over ${_seconds(span)}'
+        '${full ? ' — buffer full, older lines already evicted' : ''}';
+
+    final loudest = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final top = loudest
+        .take(3)
+        .map((e) => '${e.key} ${e.value}')
+        .join(', ');
+
+    return '$head\n'
+        'BLE role: $role\n'
+        'window: $window\n'
+        'loudest: ${top.isEmpty ? 'untagged' : top}';
+  }
+
+  /// The `[TAG]` a line opens with, or null for a line that carries none
+  /// (anything Flutter itself printed).
+  static String? _tagOf(String line) {
+    if (!line.startsWith('[')) return null;
+    final end = line.indexOf(']');
+    if (end < 2) return null;
+    return line.substring(1, end);
+  }
+
+  static String _seconds(Duration d) {
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    return '${d.inMinutes}m ${d.inSeconds % 60}s';
   }
 
   void clear() {
