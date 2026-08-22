@@ -34,12 +34,27 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   @override
   void dispose() {
+    _repaint?.cancel();
     DebugLog.instance.removeListener(_onChange);
     super.dispose();
   }
 
+  Timer? _repaint;
+
+  /// Coalesced, not immediate.
+  ///
+  /// A chatty subsystem writes several lines a second — the relay alone
+  /// manages one per publish — and each one used to rebuild this whole screen,
+  /// list and panels included. That is the screen the frame panel then measures
+  /// and reports as an expensive build, so the log traffic was showing up as
+  /// the app's own cost. A log is read by eye: a fifth of a second of latency
+  /// on a line is invisible, and the frames it saves are not.
   void _onChange() {
-    if (mounted) setState(() {});
+    if (_repaint != null || !mounted) return;
+    _repaint = Timer(const Duration(milliseconds: 200), () {
+      _repaint = null;
+      if (mounted) setState(() {});
+    });
   }
 
   String _asText(List<DebugLogEntry> entries) => entries
@@ -146,6 +161,12 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     AppLocalizations t,
     List<DebugLogEntry> entries,
   ) {
+    // Resolved once per build rather than once per visible row. Every
+    // `AppTypography.mono` call goes through google_fonts' registry, and a
+    // screen full of log lines asked it thirty-odd times for the same answer.
+    final line =
+        AppTypography.mono(size: 11.5, color: AppColors.textOnGlass);
+
     return entries.isEmpty
         ? Center(
             child: Text(
@@ -154,31 +175,17 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
               style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
           )
-        : Builder(
-            builder: (context) {
-              // Built once per rebuild, not once per row. `AppTypography.mono`
-              // goes through google_fonts, which does a registry lookup and
-              // builds a fresh TextStyle on every call — cheap on its own and
-              // not cheap a dozen times a row on a slow phone, four times a
-              // second, for a screen whose whole job is to report how slow
-              // things are. This panel kept reporting its own cost.
-              final style = AppTypography.mono(
-                size: 11.5,
-                color: AppColors.textOnGlass,
-              );
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-                itemCount: entries.length,
-                itemBuilder: (_, i) {
-                  final e = entries[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Text(
-                      '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
-                      style: style,
-                    ),
-                  );
-                },
+        : ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+            itemCount: entries.length,
+            itemBuilder: (_, i) {
+              final e = entries[i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
+                  style: line,
+                ),
               );
             },
           );
@@ -212,7 +219,7 @@ class _FramePanelState extends State<_FramePanel> {
     // screen, and a fresh baseline here would zero the measurement at the exact
     // moment it is being collected — the walk to the warm screen and back is
     // the whole experiment, and this is the last line of it.
-    if (!FrameStats.instance.isHolding) CpuProbe.instance.begin();
+    if (!FrameStats.instance.isHolding) unawaited(CpuProbe.instance.begin());
     // The stats update per frame; redrawing them per frame would make this
     // panel part of what it is measuring.
     _tick = Timer.periodic(
@@ -260,7 +267,7 @@ class _FramePanelState extends State<_FramePanel> {
               GestureDetector(
                 onTap: () => setState(() {
                   FrameStats.instance.reset();
-                  CpuProbe.instance.begin();
+                  unawaited(CpuProbe.instance.begin());
                 }),
                 child: Text('reset',
                     style: TextStyle(
@@ -329,19 +336,18 @@ class _FramePanelState extends State<_FramePanel> {
             remaining: s.holdRemaining,
             onArm: () => setState(() {
               s.hold(const Duration(seconds: 45));
-              CpuProbe.instance.begin();
+              unawaited(CpuProbe.instance.begin());
             }),
             onRelease: () => setState(s.releaseHold),
           ),
-          // Deliberately not `const`. A const child is the *same* canonicalised
-          // instance every time the parent rebuilds, so `Element.updateChild`
-          // short-circuits on `child.widget == newWidget` and the subtree is
-          // never rebuilt at all. This panel has no inputs — everything it
-          // shows it reads from a singleton at build time — so const made it
-          // render once, ~14 ms after the baseline was taken, and then freeze.
-          // On a phone that reads as a plausible measurement ("30 ms, 214% of
-          // a core, over 0 s") of nothing.
-          _CpuPanel(),
+          // `const` is correct again, and now it has to be. A const child is
+          // the same canonicalised instance every time the parent rebuilds, so
+          // the subtree is never rebuilt from here — which used to freeze this
+          // panel, because it read the probe during its own build. It now
+          // samples on a timer of its own and rebuilds itself, so being cut out
+          // of the parent's rebuilds is exactly what it wants: the panel must
+          // not re-render on every log line.
+          const _CpuPanel(),
         ],
       ),
     );
@@ -375,19 +381,72 @@ class _FramePanelState extends State<_FramePanel> {
 /// with both frame numbers healthy has been the report more than once, and
 /// nothing in this app could previously say what it was busy with.
 ///
+/// Samples on a timer of its own and never inside `build`. Reading `/proc`
+/// means opening a file per thread, and doing that synchronously from a build
+/// method — on a screen that rebuilds on every log line — put the whole walk on
+/// the UI thread, once per line, inside the very frames the panel above was
+/// timing. The 18 ms build it then reported was in large part this panel
+/// measuring itself.
+///
 /// Renders nothing at all off Android, rather than a row of zeroes: `/proc` is
 /// a Linux interface and an empty panel invites the reader to conclude
 /// something from it.
-class _CpuPanel extends StatelessWidget {
-  // No `const` constructor: see the call site. A const one invites the
-  // analyzer (and the next reader) to put `const` back and silently freeze
-  // the panel again.
-  _CpuPanel();
+class _CpuPanel extends StatefulWidget {
+  const _CpuPanel();
+
+  @override
+  State<_CpuPanel> createState() => _CpuPanelState();
+}
+
+class _CpuPanelState extends State<_CpuPanel> {
+  Timer? _tick;
+  CpuReport? _report;
+
+  /// One walk at a time. The timer is faster than a slow sample is guaranteed
+  /// to be, and two overlapping walks would compete for the same io threads to
+  /// produce two answers to the same question.
+  bool _reading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!CpuProbe.instance.supported) return;
+    CpuProbe.instance.revision.addListener(_onWindowRestarted);
+    unawaited(_refresh());
+    _tick = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    CpuProbe.instance.revision.removeListener(_onWindowRestarted);
+    super.dispose();
+  }
+
+  /// A reset or a newly armed hold starts the window again, and the numbers on
+  /// screen belong to the old one — a 25-second total sitting above "over 0 s".
+  /// Drop them and take a fresh reading rather than waiting out the timer.
+  void _onWindowRestarted() {
+    if (!mounted) return;
+    setState(() => _report = null);
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    if (_reading) return;
+    _reading = true;
+    try {
+      final r = await CpuProbe.instance.report();
+      if (!mounted || r == null) return;
+      setState(() => _report = r);
+    } finally {
+      _reading = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (!CpuProbe.instance.supported) return const SizedBox.shrink();
-    final r = CpuProbe.instance.report();
+    final r = _report;
     if (r == null || r.threads.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 12),
