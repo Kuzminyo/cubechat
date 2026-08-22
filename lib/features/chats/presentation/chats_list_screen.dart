@@ -134,12 +134,52 @@ final _neverSpoken = DateTime.fromMillisecondsSinceEpoch(0);
 /// inbound message is unread — opening the chat sets the marker and clears it.
 /// Public so the counting rule can be unit-tested without a Hive-backed store.
 int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
+  if (msgs.isEmpty) return 0;
+  final cached = _unreadCache[msgs];
+  if (cached != null && cached.lastReadAt == lastReadAt) return cached.count;
+
   // Map beacons are excluded: nobody wrote them, nobody can read them, and a
   // badge counting them told the user there were forty new messages waiting in
   // a chat where nothing had been said all day.
   bool counts(Message m) => !m.isMine && !isMapBeaconMessage(m);
-  if (lastReadAt == null) return msgs.where(counts).length;
-  return msgs.where((m) => counts(m) && m.sentAt.isAfter(lastReadAt)).length;
+  var total = 0;
+  for (final m in msgs) {
+    if (!counts(m)) continue;
+    if (lastReadAt != null && !m.sentAt.isAfter(lastReadAt)) continue;
+    total++;
+  }
+  _unreadCache[msgs] = _UnreadCount(lastReadAt, total);
+  return total;
+}
+
+/// Last answer per message-list *instance*, which is exactly as often as the
+/// answer can change.
+///
+/// [allChatsProvider] runs this once per conversation, over every message in
+/// it, and it recomputes whenever any of the twelve providers it watches
+/// changes. One of those is drafts, and `DraftsController.update` publishes on
+/// every keystroke — only the write to disk is debounced — so typing one
+/// sentence into a composer walked every message in every conversation once
+/// per character, on the frame the composer was trying to draw.
+///
+/// Nothing else about it changed. [MessagesController] never mutates a list in
+/// place; every write replaces it, so a list this has already counted cannot
+/// have gained a message. A keystroke leaves every list identical, every
+/// lookup hits, and the recompute costs one entry per conversation instead of
+/// one per message. The conversation that *did* change brings a new list and
+/// is counted again.
+///
+/// An [Expando] rather than a map so there is nothing to evict: the entry dies
+/// with the list it describes.
+final Expando<_UnreadCount> _unreadCache = Expando<_UnreadCount>('unread');
+
+class _UnreadCount {
+  const _UnreadCount(this.lastReadAt, this.count);
+
+  /// Part of the key, not the value. Opening a chat moves the read marker
+  /// without touching the messages, and the count has to follow it.
+  final DateTime? lastReadAt;
+  final int count;
 }
 
 /// Every conversation the app knows of, including ones whose history the user
