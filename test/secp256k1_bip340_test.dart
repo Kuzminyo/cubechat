@@ -108,6 +108,20 @@ void main() {
           );
           expect(_hexOf(sig), v.sig);
         });
+
+        // The path a repeat signer takes: the public point is derived once and
+        // carried, instead of being recomputed per signature. Run against the
+        // official vector rather than against sign()'s output, so this pins the
+        // bytes themselves and not merely that the two agree with each other.
+        test('vector $i — signWith produces the same signature', () async {
+          final key = Secp256k1.prepareSigningKey(_hex(v.sk!));
+          final sig = await Secp256k1.signWith(
+            key: key,
+            message: _hex(v.msg),
+            auxRand: _hex(v.aux!),
+          );
+          expect(_hexOf(sig), v.sig);
+        });
       }
 
       test('vector $i — verify returns ${v.ok}', () async {
@@ -135,6 +149,37 @@ void main() {
       expect(
         await Secp256k1.verify(publicKey: pk, message: msg, signature: sig),
         isTrue,
+      );
+    });
+
+    test('a prepared key carries the same pubkey xonlyPubkey returns', () {
+      final sk = _hex(
+        '00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF',
+      );
+      expect(
+        _hexOf(Secp256k1.prepareSigningKey(sk).publicKeyX),
+        _hexOf(Secp256k1.xonlyPubkey(sk)),
+      );
+    });
+
+    test('preparing a key rejects a scalar outside [1, n-1]', () {
+      Uint8List bytes32(BigInt v) {
+        final out = Uint8List(32);
+        var x = v;
+        for (var i = 31; i >= 0; i--) {
+          out[i] = (x & BigInt.from(0xff)).toInt();
+          x = x >> 8;
+        }
+        return out;
+      }
+
+      expect(
+        () => Secp256k1.prepareSigningKey(Uint8List(32)),
+        throwsArgumentError,
+      );
+      expect(
+        () => Secp256k1.prepareSigningKey(bytes32(Secp256k1.n)),
+        throwsArgumentError,
       );
     });
 
