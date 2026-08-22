@@ -364,7 +364,14 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     return PopScope<void>(
       canPop: !_panelOpen,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) closePanel();
+        // `_panelOpen` as well: a blocked pop is reported to every scope on
+        // the route, not only the one that blocked it, so without this the
+        // back that cancels a message selection also reaches in here.
+        // [closePanel] happens to no-op when there is no panel, so this has
+        // been harmless — it is stated rather than relied on, because the two
+        // scopes in chat_screen.dart both carry the same guard and the next
+        // thing added here will not be a no-op.
+        if (!didPop && _panelOpen) closePanel();
       },
       child: SafeArea(
         top: false,
