@@ -56,8 +56,15 @@ class PeerAvatar extends ConsumerWidget {
     // face smiling out of a list you blocked them from is the opposite of what
     // was asked for. The generated gradient takes its place — the same one a
     // stranger gets, which is what they now are.
+    //
+    // The roster next to it is a different case, and is selected: it changes
+    // on a nickname, a last-seen write, a verification or a key rotation, none
+    // of which this widget reads. Only the one flag it does read is watched.
     final blocked = !isChannel &&
-        (ref.watch(knownPeersControllerProvider)[peerId]?.isBlocked ?? false);
+        (ref.watch(
+              knownPeersControllerProvider.select((r) => r[peerId]?.isBlocked),
+            ) ??
+            false);
     final bytes = blocked
         ? null
         : isChannel

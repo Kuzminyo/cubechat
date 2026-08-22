@@ -718,7 +718,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// The message [wireId] quotes, resolved from this chat's list, or null if
   /// it's not in memory (e.g. cleared history or arrived out of order).
   Message? _resolveQuoted(String wireId) {
-    final list = ref.watch(messagesControllerProvider)[widget.chatId];
+    // This runs inside a bubble, and a bubble is on screen a dozen times over.
+    // Watching the whole map made every visible reply bubble rebuild whenever
+    // any chat changed anywhere — a status tick on a photo still sending, a
+    // receipt, a message in a conversation nobody has open. Selecting this
+    // chat's list hands back the same List instance for all of those, so they
+    // compare equal and nothing rebuilds.
+    final list = ref.watch(
+      messagesControllerProvider.select((m) => m[widget.chatId]),
+    );
     if (list == null) return null;
     for (final m in list) {
       if (m.wireId == wireId) return m;
@@ -1013,7 +1021,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       onMedia: metaOnMedia,
       // Only in the saved chat does a tag exist, so only there is the map read.
       tag: isSavedChat(widget.chatId)
-          ? ref.watch(savedTagsProvider)[message.id]
+          ? ref.watch(savedTagsProvider.select((t) => t[message.id]))
           : null,
     );
 
@@ -2393,7 +2401,12 @@ class _SendProgressRing extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(mediaSendProgressProvider)[messageId];
+    // One message's progress, not the map. A batch of photos writes progress
+    // for whichever one is transferring, several times a second; watching the
+    // map rebuilt the ring on every *other* sending bubble at that rate too.
+    final value = ref.watch(
+      mediaSendProgressProvider.select((p) => p[messageId]),
+    );
     return Center(
       child: Container(
         width: diameter,

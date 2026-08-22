@@ -308,7 +308,6 @@ class ChatScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final messagesMap = ref.watch(messagesControllerProvider);
 
     // Group channel (`#name`): no Noise session, no presence — membership is
     // just holding the shared key. Send is enabled while we're a member.
@@ -340,18 +339,41 @@ class ChatScreen extends ConsumerWidget {
     // Beacons filed by an older build are hidden rather than deleted: they are
     // still the peer's signed messages, and a conversation is not something to
     // quietly rewrite. See [isMapBeaconMessage].
+    // `select`, not the whole map. The controller replaces its map on every
+    // change to any chat — a status tick on a sending photo, a receipt, a
+    // message in a conversation nobody is looking at — and watching the map
+    // rebuilt this screen, message list included, for all of them. Selecting
+    // this chat's list hands back the *same* List instance when some other
+    // chat changed, so Riverpod compares equal and there is no rebuild.
+    //
+    // It also has to be read after `canonicalId`, which needs the session, so
+    // this cannot sit at the top of build the way the map did — and putting it
+    // here takes it off the channel path, which watches its own list below.
     final messages = visibleMessages(
-      messagesMap[canonicalId] ?? messagesMap[peerId] ?? const [],
+      ref.watch(
+        messagesControllerProvider.select(
+          (m) => m[canonicalId] ?? m[peerId] ?? const <Message>[],
+        ),
+      ),
     );
     // A prior announcement gives us the peer's pubkey (and, when present, their
     // Nostr npub) even with no live BLE session — enough for sendText to carry
     // a frame over the mesh, the Nostr internet fallback, or store-and-forward.
-    final known = ref.watch(knownPeersControllerProvider)[canonicalId];
+    // One peer out of the roster: a nickname or a block landing on somebody
+    // else is not a reason to rebuild this conversation.
+    final known = ref.watch(
+      knownPeersControllerProvider.select((r) => r[canonicalId]),
+    );
     final availableRoute = resolveChatRoute(
       directBluetooth: session?.isEstablished ?? false,
       meshAvailable: _hasMeshLink(
         sessions,
-        ref.watch(peripheralControllerProvider).connectedCount,
+        // The count alone. The controller's state also carries advertising
+        // flags and per-central detail that change without the count changing,
+        // and only the count reaches this screen.
+        ref.watch(
+          peripheralControllerProvider.select((p) => p.connectedCount),
+        ),
       ),
       relayAvailable: known?.nostrPubkey != null &&
           _hasRelay(ref.watch(relayStatusProvider)),
@@ -397,7 +419,9 @@ class ChatScreen extends ConsumerWidget {
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
-    final beacon = ref.watch(presenceControllerProvider)[canonicalId];
+    final beacon = ref.watch(
+      presenceControllerProvider.select((b) => b[canonicalId]),
+    );
     final isOnline = peerIsOnline(
       hasLiveSession: session?.isEstablished ?? false,
       beacon: beacon,
@@ -569,13 +593,20 @@ class ChatScreen extends ConsumerWidget {
                     (self.isAdmin ||
                         (rosterVersion[peerId]?[self.id]?.isAdmin ?? false)))));
     final messages = visibleMessages(
-        ref.watch(messagesControllerProvider)[peerId] ?? const []);
+      ref.watch(
+        messagesControllerProvider.select(
+          (m) => m[peerId] ?? const <Message>[],
+        ),
+      ),
+    );
     final sessions = ref.watch(chatSessionManagerProvider);
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
       meshAvailable: _hasMeshLink(
         sessions,
-        ref.watch(peripheralControllerProvider).connectedCount,
+        ref.watch(
+          peripheralControllerProvider.select((p) => p.connectedCount),
+        ),
       ),
       relayAvailable: _hasRelay(ref.watch(relayStatusProvider)),
     );
@@ -3902,7 +3933,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     } else if (isSavedChat(widget.canonicalId)) {
       composerWithMentions = composer;
     } else {
-      final peer = ref.watch(knownPeersControllerProvider)[widget.canonicalId];
+      final peer = ref.watch(
+        knownPeersControllerProvider.select((r) => r[widget.canonicalId]),
+      );
       final aliases = ref.watch(contactAliasesControllerProvider);
       composerWithMentions = DirectMentionHint(
         peerName: peer == null
@@ -4171,7 +4204,9 @@ class _VerificationMark extends StatelessWidget {
     final pubkeyHex = session?.remotePubkeyHex;
     if (pubkeyHex == null) return const SizedBox.shrink();
 
-    final entry = ref.watch(knownPeersControllerProvider)[pubkeyHex];
+    final entry = ref.watch(
+      knownPeersControllerProvider.select((r) => r[pubkeyHex]),
+    );
     if (entry == null) return const SizedBox.shrink();
 
     final rotated = entry.hasUnacknowledgedRotation;
