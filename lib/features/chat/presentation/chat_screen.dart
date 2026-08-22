@@ -2543,6 +2543,16 @@ class _PinnedBar extends StatelessWidget {
               width: _thumb,
               height: _thumb,
               fit: BoxFit.cover,
+              // Decoded at the 34 points it is drawn at, not at whatever the
+              // photo is. The mesh encoder tops out around 1600 px, so without
+              // this the pinned-message header holds a 1600x1600 bitmap --
+              // about ten megabytes -- to fill a square the size of a
+              // fingernail, and holds it for as long as the message stays
+              // pinned. Same reasoning as the bubble thumbnails and the
+              // gallery cells; this one was missed because it is not in a
+              // grid, which is where the cost was being looked for.
+              cacheWidth: (_thumb * MediaQuery.devicePixelRatioOf(context))
+                  .round(),
               // A pinned photo whose cache file went missing must not take the
               // whole header down with it.
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
