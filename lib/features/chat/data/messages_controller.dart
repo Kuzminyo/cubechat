@@ -437,6 +437,33 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Stamp [albumId] on the received photos in [peerId] whose [Message.wireId]
+  /// is in [wireIds]. Returns how many were changed.
+  ///
+  /// This is the retroactive half of album hints: the sender says which photos
+  /// were one batch, and that usually arrives before the photos do, but a
+  /// relay can hand them over in the other order. Only photos we did not send
+  /// are touched — ours were stamped by `sendImageBatch`, which knew the
+  /// boundary first-hand and does not need telling.
+  int applyAlbum(String peerId, Set<String> wireIds, String albumId) {
+    final current = state[peerId];
+    if (current == null) return 0;
+    var changed = 0;
+    final list = [...current];
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      if (m.isMine || m.albumId == albumId) continue;
+      final wireId = m.wireId;
+      if (wireId == null || !wireIds.contains(wireId)) continue;
+      list[i] = m.copyWith(albumId: albumId);
+      changed++;
+    }
+    if (changed == 0) return 0;
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return changed;
+  }
+
   /// Fills in [imagePath] (and bumps the status) on an existing in-flight
   /// image message once all chunks have been reassembled. The message id
   /// must already exist in the per-peer list — callers should append the

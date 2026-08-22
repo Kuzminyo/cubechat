@@ -346,6 +346,26 @@ class MessagingService {
   /// the [_cipherX3dhMedia] chunk-decrypt path. GC'd with the other buffers.
   final Map<String, SecretKey> _mediaKeys = {};
 
+  /// Album ids from an [AlbumHint] whose photos have not finished arriving,
+  /// keyed by the wireId the finished photo will carry.
+  ///
+  /// The hint is sent first and a batch takes seconds to minutes to transfer,
+  /// so in practice this is always populated before there is anything to
+  /// apply it to. It is a buffer rather than a lookup because the reverse can
+  /// happen — a relay can hand over the photos and the hint in either order —
+  /// and [_ingestAlbumHint] stamps whatever already landed as well as leaving
+  /// this behind for whatever has not.
+  ///
+  /// An entry is taken, not read, when its photo finishes — so this empties
+  /// itself as a batch lands. The cap is for the rest: a hint whose photos
+  /// never arrive is dead weight nothing acknowledges, and insertion order is
+  /// what decides which of those goes first.
+  final Map<String, String> _pendingAlbums = {};
+
+  /// Enough for several batches in flight at once. Past that the oldest goes,
+  /// which costs the grouping on a batch old enough to have been abandoned.
+  static const int _maxPendingAlbums = 256;
+
   /// FS media chunks that arrived before their manifest (so before we could
   /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
   final Map<String, List<_PendingFsChunk>> _pendingFsChunks = {};
@@ -1920,6 +1940,17 @@ class MessagingService {
         albumId: albumId,
       ));
     }
+    // Before the photos rather than after. transferImage runs them one at a
+    // time and a batch is seconds on the relay, minutes on Bluetooth, so this
+    // reaches the other side while the first photo is still moving — it is
+    // waiting when the first bubble appears, instead of regrouping bubbles
+    // somebody is already looking at.
+    //
+    // Not for view-once, which never joins an album on either side
+    // (`_albumable` in photo_albums.dart excludes it), so a hint for one would
+    // be airtime spent on something the receiver would ignore.
+    if (!viewOnce) await _announceAlbum(pending);
+
     for (var i = 0; i < pending.length; i++) {
       try {
         await transferImage(pending[i]);
@@ -4372,6 +4403,7 @@ class MessagingService {
         case InnerPayloadType.mediaRequest:
         case InnerPayloadType.viewOnceConsumed:
         case InnerPayloadType.typing:
+        case InnerPayloadType.albumHint:
         case InnerPayloadType.conversationClear:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
@@ -5167,6 +5199,13 @@ class MessagingService {
             body: unpacked.body,
           );
 
+        case InnerPayloadType.albumHint:
+          _ingestAlbumHint(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
         case InnerPayloadType.conversationClear:
           await _ingestConversationClear(
             peerId: peerId,
@@ -5750,6 +5789,7 @@ class MessagingService {
             bytes: bytes,
             mime: manifest.mime,
           );
+          final imageWireId = TransportEnvelope.hashHex(manifest.mediaId);
           message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
@@ -5762,10 +5802,20 @@ class MessagingService {
             // The sender's media id, stable across every path and replay that
             // can deliver this photo — the handle that keeps a re-delivered
             // manifest from adding a second copy to the chat.
-            wireId: TransportEnvelope.hashHex(manifest.mediaId),
+            wireId: imageWireId,
             authorName: authorName,
             authorId: authorId,
             viewOnce: manifest.viewOnce,
+            // The batch this photo was sent in, when its sender said so. Null
+            // when they did not, or when they run a build with nothing to say
+            // it with — then grouping falls back to the gap rule in
+            // photo_albums.dart, which is where it was before.
+            //
+            // Taken rather than read: the hint has done its job for this
+            // photo, and a re-delivery does not need it again — the bubble it
+            // belongs to is already in the chat, already stamped, and dedup
+            // stops a second one being made.
+            albumId: _pendingAlbums.remove(imageWireId),
           );
 
         case MediaKind.audio:
@@ -5838,6 +5888,98 @@ class MessagingService {
           'evict signed media manifest $oldestKey under buffer pressure');
       _pendingManifests.remove(oldestKey);
     }
+  }
+
+  /// Tell the recipient which photos are one batch, so their copy groups the
+  /// way ours does.
+  ///
+  /// Best-effort on purpose. A hint that does not go out costs the grouping on
+  /// their side and nothing else — the photos are unaffected and still arrive
+  /// — so nothing in here is allowed to throw into the batch send.
+  Future<void> _announceAlbum(List<PendingImageSend> pending) async {
+    // One photo is not an album. More than the format holds is not sent at
+    // all rather than truncated: a hint naming half a batch would draw a
+    // boundary in the wrong place, which is worse than drawing none and
+    // letting the gap rule have it.
+    if (pending.length < AlbumHint.minPhotos) return;
+    if (pending.length > AlbumHint.maxPhotos) {
+      DebugLog.instance.log('PHOTO',
+          'batch of ${pending.length} exceeds the album hint format — not sent');
+      return;
+    }
+    final first = pending.first;
+    try {
+      await _sendControlToPeer(
+        canonicalId: first.canonicalId,
+        peerPub: first.peerPub,
+        type: InnerPayloadType.albumHint,
+        innerBody:
+            AlbumHint(mediaIds: [for (final p in pending) p.imageId]).encode(),
+      );
+      DebugLog.instance.log(
+          'PHOTO', 'album hint: ${pending.length} photos to ${first.canonicalId}');
+    } catch (e) {
+      DebugLog.instance
+          .log('PHOTO', 'album hint did not go out (photos unaffected): $e');
+    }
+  }
+
+  /// A batch boundary from the other side: stamp the photos of it that have
+  /// already landed, and leave the id behind for the ones that have not.
+  void _ingestAlbumHint({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final AlbumHint hint;
+    try {
+      hint = AlbumHint.decode(body);
+    } catch (e) {
+      DebugLog.instance
+          .log('PHOTO', 'drop malformed album hint from $peerId: $e');
+      return;
+    }
+    final wireIds = <String>[
+      for (final id in hint.mediaIds) TransportEnvelope.hashHex(id),
+    ];
+    // Derived from the batch, not minted here. The same hint can arrive twice
+    // — a relay re-delivery, a store-and-forward drain — and a fresh id each
+    // time would split one batch into two albums, which is the exact failure
+    // this whole path exists to remove.
+    final albumId = 'w${wireIds.first}';
+
+    for (final wireId in wireIds) {
+      _pendingAlbums[wireId] = albumId;
+    }
+    while (_pendingAlbums.length > _maxPendingAlbums) {
+      _pendingAlbums.remove(_pendingAlbums.keys.first);
+    }
+
+    // Scoped to this peer's own buckets. A hint only ever names media ids, and
+    // ids are the sender's to mint, so applying one chat-wide would let a peer
+    // regroup photos somebody else sent. Cosmetic if it happened, and there is
+    // no reason to allow it.
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final targets = <String>{peerId};
+    if (senderPub != null) {
+      targets.add(_hexOf(senderPub));
+      final sessions = _ref.read(chatSessionManagerProvider);
+      for (final entry in sessions.entries) {
+        final other = entry.value.remoteStaticPublicKey;
+        if (other != null && _pubkeyEquals(other, senderPub)) {
+          targets.add(entry.key);
+        }
+      }
+    }
+    final wanted = wireIds.toSet();
+    var stamped = 0;
+    for (final bucket in targets) {
+      stamped += messages.applyAlbum(bucket, wanted, albumId);
+    }
+    DebugLog.instance.log(
+        'PHOTO',
+        'album hint from $peerId: ${wireIds.length} photos, '
+            '$stamped already here');
   }
 
   /// Build a [MediaManifest] over the about-to-be-sent [bytes], wrap it in
