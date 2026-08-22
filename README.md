@@ -366,6 +366,24 @@ overhead drops under 3%, and both the bytes on air and the number of writes
 roughly halve. `bleMediaChunkData` steps the target down on narrow links so the
 frame can never need more fragments than the 255 the header can count.
 
+**An album is grouped by what the sender said, not by when photos arrived.**
+A batch of photos used to be reassembled into a grid on the receiving side by
+a heuristic — same sender, close together, at the batch's own pace — because
+nothing on the wire said where a batch began or ended. That reads five photos,
+a pause, five more as one run of ten. `sendImageBatch` now announces the batch
+first, as an `albumHint` inner payload naming the media ids in it, and the
+receiver stamps those photos as one album when they land (or retroactively, if
+the relay hands them over in the other order).
+
+It is a payload type rather than a field on the media manifest for a
+compatibility reason that runs the other way from the usual one. An unknown
+*manifest version* is refused, and refusing a manifest drops the chunks behind
+it — a build that predates this would lose every photo in an album rather than
+merely fail to group them. An unknown *inner-payload type* is dropped by
+itself: the photos arrive, ungrouped, which is exactly what happens today. The
+hint is the only thing that can be lost, and losing it costs the grouping and
+nothing else.
+
 **MTU-aware framing.** Real iOS↔Android links often negotiate an ATT MTU well
 below the ~247 the code once assumed, and a frame larger than the link's usable
 payload is silently truncated on the wire (the AEAD open then fails). Media

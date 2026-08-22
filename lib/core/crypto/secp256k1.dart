@@ -50,41 +50,65 @@ class Secp256k1 {
 
   /// x-only (32-byte) public key for a 32-byte secret scalar, per BIP-340
   /// `pubkey(sk)`. Throws [ArgumentError] if the scalar is out of `[1, n-1]`.
-  static Uint8List xonlyPubkey(Uint8List secretKey) {
-    final d = _intFromBytes(secretKey);
-    if (d < BigInt.one || d >= n) {
-      throw ArgumentError('secret key out of range');
-    }
-    final pPoint = _mul(d, _g)!;
-    return _bytes32(pPoint.x);
-  }
+  static Uint8List xonlyPubkey(Uint8List secretKey) =>
+      prepareSigningKey(secretKey)._publicKeyX;
 
-  /// BIP-340 Schnorr signature over the 32-byte [message] with [secretKey]
-  /// (32 bytes) and 32-byte [auxRand]. Returns the 64-byte `r || s` signature.
-  static Future<Uint8List> sign({
-    required Uint8List secretKey,
-    required Uint8List message,
-    required Uint8List auxRand,
-  }) async {
-    if (message.length != 32) {
-      throw ArgumentError('message must be 32 bytes');
-    }
-    if (auxRand.length != 32) {
-      throw ArgumentError('auxRand must be 32 bytes');
-    }
+  /// Run the one scalar multiplication that turns a raw secret into the pair
+  /// [signWith] needs, so a signer with a fixed key can pay for it once
+  /// instead of once per signature. See [Secp256k1SigningKey].
+  ///
+  /// Throws [ArgumentError] if the scalar is out of `[1, n-1]`.
+  static Secp256k1SigningKey prepareSigningKey(Uint8List secretKey) {
     final dPrime = _intFromBytes(secretKey);
     if (dPrime < BigInt.one || dPrime >= n) {
       throw ArgumentError('secret key out of range');
     }
     final pPoint = _mul(dPrime, _g)!;
-    final d = pPoint.y.isEven ? dPrime : n - dPrime;
+    return Secp256k1SigningKey._(
+      pPoint.y.isEven ? dPrime : n - dPrime,
+      _bytes32(pPoint.x),
+    );
+  }
+
+  /// BIP-340 Schnorr signature over the 32-byte [message] with [secretKey]
+  /// (32 bytes) and 32-byte [auxRand]. Returns the 64-byte `r || s` signature.
+  ///
+  /// Derives the public point on every call. A caller that signs repeatedly
+  /// under one key should hold a [Secp256k1SigningKey] and use [signWith]
+  /// instead — same bytes out, one scalar multiplication fewer in.
+  static Future<Uint8List> sign({
+    required Uint8List secretKey,
+    required Uint8List message,
+    required Uint8List auxRand,
+  }) async {
+    // Checked here as well as in [signWith] only to keep the order of the
+    // three ArgumentErrors what it was before this delegated. `async` for the
+    // same reason: this used to report a bad argument as a rejected Future,
+    // and dropping it would turn that into a synchronous throw.
+    _checkSignInputs(message, auxRand);
+    return signWith(
+      key: prepareSigningKey(secretKey),
+      message: message,
+      auxRand: auxRand,
+    );
+  }
+
+  /// [sign] with the per-key work already done — see [Secp256k1SigningKey].
+  static Future<Uint8List> signWith({
+    required Secp256k1SigningKey key,
+    required Uint8List message,
+    required Uint8List auxRand,
+  }) async {
+    _checkSignInputs(message, auxRand);
+    final d = key._d;
+    final pubX = key._publicKeyX;
 
     final auxHash = await _taggedHash('BIP0340/aux', auxRand);
     final t = _xor(_bytes32(d), auxHash);
 
     final rand = await _taggedHash(
       'BIP0340/nonce',
-      _concat([t, _bytes32(pPoint.x), message]),
+      _concat([t, pubX, message]),
     );
     final kPrime = _intFromBytes(rand) % n;
     if (kPrime == BigInt.zero) {
@@ -95,18 +119,31 @@ class Secp256k1 {
 
     final challenge = await _taggedHash(
       'BIP0340/challenge',
-      _concat([_bytes32(rPoint.x), _bytes32(pPoint.x), message]),
+      _concat([_bytes32(rPoint.x), pubX, message]),
     );
     final e = _intFromBytes(challenge) % n;
 
     final s = (k + e * d) % n;
     final sig = _concat([_bytes32(rPoint.x), _bytes32(s)]);
 
-    // Cheap self-check — a bad signature never leaves this function.
-    if (!await verify(publicKey: _bytes32(pPoint.x), message: message, signature: sig)) {
+    // Cheap self-check — a bad signature never leaves this function. Note it
+    // is not what guards the cached key: [Secp256k1SigningKey] has a private
+    // constructor, so a scalar and a public point that do not belong together
+    // cannot be built in the first place. This catches a broken
+    // implementation, which is what it was always for.
+    if (!await verify(publicKey: pubX, message: message, signature: sig)) {
       throw StateError('produced signature failed self-verification');
     }
     return sig;
+  }
+
+  static void _checkSignInputs(Uint8List message, Uint8List auxRand) {
+    if (message.length != 32) {
+      throw ArgumentError('message must be 32 bytes');
+    }
+    if (auxRand.length != 32) {
+      throw ArgumentError('auxRand must be 32 bytes');
+    }
   }
 
   /// BIP-340 verify: true iff [signature] (64 bytes) is valid for the 32-byte
@@ -193,9 +230,20 @@ class Secp256k1 {
   ///
   /// Signing is still four multiplications, not two: it verifies its own
   /// output before returning. That check is left in — it is the thing that
-  /// catches a broken implementation before a bad signature leaves the phone —
-  /// but it is where the next halving is, if this ever needs one. The one after
-  /// that is a precomputed comb for G, which most of these multiplications use.
+  /// catches a broken implementation before a bad signature leaves the phone.
+  ///
+  /// One of the four is now avoidable. Deriving the public point from the
+  /// secret does not depend on the message, so a caller signing repeatedly
+  /// under one key was recomputing the same point every event; a
+  /// [Secp256k1SigningKey] holds it and [signWith] skips straight to the
+  /// nonce, leaving three. `Secp256k1NostrSigner` takes that path, and it is
+  /// the only caller in the app that signs more than once. Not measured on a
+  /// phone yet — from the numbers above a multiplication is roughly 2 ms of
+  /// the 9.7, so expect ~7-8 ms, and replace this sentence with the reading.
+  ///
+  /// The remaining levers, in order: drop the self-verify (another 2×, but it
+  /// is a security self-check — ask first), a precomputed comb for G, which
+  /// most of these multiplications use, then moving signing off the UI isolate.
   ///
   /// On the phone that reported it, the app was signing an event per recipient
   /// plus read receipts and presence beacons — bursts of fifteen publishes
@@ -355,6 +403,42 @@ class Secp256k1 {
     final h = await _sha256.hash(data);
     return Uint8List.fromList(h.bytes);
   }
+}
+
+/// A BIP-340 secret key with the two values [Secp256k1.signWith] would
+/// otherwise recompute on every signature: the scalar already normalised so
+/// that `d·G` has an even y (the spec's `d`, not the caller's `d'`), and that
+/// point's x coordinate (the spec's `bytes(P)`).
+///
+/// Building one costs a scalar multiplication — **one of the four a signature
+/// runs**: two to sign, two more for the self-verify at the end of
+/// [Secp256k1.signWith]. Every other one of the four depends on the message
+/// and cannot be hoisted anywhere; this one does not depend on the message at
+/// all, and a signer whose key never changes was paying for it once per event.
+/// See [Secp256k1NostrSigner], whose scalar is derived from the identity seed
+/// at construction and then fixed for the life of the process.
+///
+/// The two values are exactly what `sign` computed inline before, so a
+/// signature made through [Secp256k1.signWith] is byte-identical to one made
+/// through [Secp256k1.sign] — `secp256k1_bip340_test.dart` runs the official
+/// vectors through both paths to hold that.
+class Secp256k1SigningKey {
+  Secp256k1SigningKey._(this._d, this._publicKeyX);
+
+  /// BIP-340's `d`: the secret scalar, negated modulo `n` when `d'·G` came out
+  /// with an odd y.
+  final BigInt _d;
+
+  final Uint8List _publicKeyX;
+
+  /// BIP-340's `bytes(P)`: the 32-byte x-only public key.
+  ///
+  /// A copy. The stored bytes outlive every signature made with this key, and
+  /// a caller that reached in and edited them would silently break signing
+  /// from then on — the one failure mode the old recompute-per-call shape did
+  /// not have. Signing inside this library reads [_publicKeyX] directly, so
+  /// the copy is not on the hot path.
+  Uint8List get publicKeyX => Uint8List.fromList(_publicKeyX);
 }
 
 class _Point {

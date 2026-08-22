@@ -268,7 +268,12 @@ class ChatScreen extends ConsumerWidget {
   /// the case it exists for — a chat opened straight from a notification, with
   /// an empty stack underneath — and leaves an ordinary push popping the
   /// ordinary way, by button or by thumb.
-  Widget _withBackHandling(BuildContext context, Widget child) {
+  Widget _withBackHandling(
+    BuildContext context,
+    WidgetRef ref,
+    String chatId,
+    Widget child,
+  ) {
     if (!returnToChats) return child;
     // The navigator that owns this route, not the router: that is the one being
     // asked to pop, and it answers from the stack it actually has. go_router's
@@ -276,6 +281,10 @@ class ChatScreen extends ConsumerWidget {
     // above it during the first build of a page it has nothing to read yet and
     // says no — which is how this became a permanent "may not pop".
     final canPop = Navigator.of(context).canPop();
+    // Picking messages out is a mode, and it answers the back gesture before
+    // the conversation does — see the [PopScope] around the composer, which
+    // blocks the pop while anything is ticked.
+    final selecting = ref.watch(messageSelectionProvider(chatId)).isNotEmpty;
     return PopScope<void>(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
@@ -283,7 +292,14 @@ class ChatScreen extends ConsumerWidget {
         // told about a blocked pop — including the ones that blocked it for
         // their own reasons (an open emoji panel, a running selection). Without
         // this, closing the panel with the back gesture also left the chat.
-        if (!didPop && !canPop) context.go('/chats');
+        //
+        // `!selecting` because `!canPop` stops discriminating in exactly the
+        // case this redirect exists for. On a chat opened from search with
+        // nothing underneath it, `canPop` is already false because of *us*, so
+        // it no longer says anything about who blocked this pop — and a back
+        // press aimed at a selection cleared the selection *and* left the
+        // chat. The selection is asked directly instead.
+        if (!didPop && !canPop && !selecting) context.go('/chats');
       },
       child: child,
     );
@@ -438,6 +454,8 @@ class ChatScreen extends ConsumerWidget {
 
     return _withBackHandling(
         context,
+        ref,
+        canonicalId,
         Scaffold(
           backgroundColor: Colors.transparent,
           // No AppBar: the header is an island floating over the conversation (see
@@ -564,6 +582,8 @@ class ChatScreen extends ConsumerWidget {
     final route = displayedChatRoute(messages, availableRoute);
     return _withBackHandling(
         context,
+        ref,
+        peerId,
         Scaffold(
           backgroundColor: Colors.transparent,
           body: _ConversationView(

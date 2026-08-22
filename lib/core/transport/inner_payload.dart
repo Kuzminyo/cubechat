@@ -193,7 +193,26 @@ enum InnerPayloadType {
   /// frame over BLE/mesh/relay. Custom photo wallpapers need the media
   /// manifest/chunk path so they do not become a huge control packet that
   /// freezes older phones while somebody is scrolling.
-  conversationWallpaper(0xF9);
+  conversationWallpaper(0xF9),
+
+  /// Says which photos were sent as one batch, so the receiver groups them
+  /// into the same album instead of guessing from arrival times. Body is an
+  /// [AlbumHint]. 1:1 only — channels have no batch send to describe.
+  ///
+  /// It is a payload type rather than a field on [MediaManifest] because of
+  /// what an old build does with each. A manifest carries a version byte and
+  /// an unknown version is refused, which takes the chunks behind it down too
+  /// — a build that predates this would drop every photo in an album rather
+  /// than merely fail to group them. An unknown inner-payload type is dropped
+  /// on its own: the photos still arrive, still ungrouped, which is exactly
+  /// what happens today. Losing the hint costs the grouping and nothing else,
+  /// and that is the one degradation this feature is allowed to have.
+  ///
+  /// It is not a `cubechat:` text URI either, the other way small things
+  /// travel here. Those are for objects a person sent and an old build should
+  /// still show something for; this one has nothing to show, and a build that
+  /// did not understand it would print the raw marker into the conversation.
+  albumHint(0xFA);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -1181,6 +1200,94 @@ enum ReceiptStatus {
       if (v.tag == b) return v;
     }
     return null;
+  }
+}
+
+/// The photos one `sendImageBatch` sent, named by their media ids, so the
+/// receiver can group them exactly instead of inferring the boundary from
+/// when they turned up.
+///
+/// The receiving side already prefers an exact answer when it has one:
+/// `Message.albumId` wins outright in `photo_albums.dart`, and until now only
+/// photos we sent ourselves carried it. A received photo fell back to "same
+/// sender, close together", which is a guess, and the guess is wrong in the
+/// case that matters — a batch, a pause, another batch reads as one long run.
+/// This is that boundary, put on the wire at the only moment anything knows
+/// where it is.
+///
+/// Wire layout (inside an [InnerPayloadType.albumHint] body):
+///
+/// ```
+///   [version : 1 byte]             ← always 0x01 today
+///   [count   : 1 byte]             ← number of photos, 2..64
+///   [ids     : count * 16 bytes]   ← MediaManifest.mediaId, batch order
+/// ```
+///
+/// A hint describes a batch that has not finished arriving, may never finish,
+/// and may arrive in either order relative to the photos — so it names ids
+/// rather than pointing at messages, and the receiver keeps it until the
+/// photos show up or it falls out of the buffer.
+class AlbumHint {
+  AlbumHint({required this.mediaIds})
+      : assert(mediaIds.length >= minPhotos && mediaIds.length <= maxPhotos,
+            'an album hint describes $minPhotos..$maxPhotos photos'),
+        assert(mediaIds.every((id) => id.length == idLen),
+            'every mediaId must be $idLen B');
+
+  /// The batch, in the order it was sent.
+  final List<Uint8List> mediaIds;
+
+  static const int version1 = 0x01;
+  static const int idLen = MediaManifest.idLen;
+
+  /// A frame bound, not the grid's. The album *grid* stops at nine and folds
+  /// the rest, but the boundary this records is the batch's, and a batch of
+  /// twelve is still one batch — clamping here would report a lie about where
+  /// it ended. Sixty-four ids is 1026 bytes, which the fragmenter splits and
+  /// rejoins without anyone noticing; a batch larger than that is not a batch
+  /// anyone assembled by hand.
+  static const int maxPhotos = 64;
+
+  /// One id is not an album, and zero is not anything. The sender never mints
+  /// either — this is here so a decoder does not have to be trusted to have
+  /// been talking to one that behaves.
+  static const int minPhotos = 2;
+
+  Uint8List encode() {
+    final out = Uint8List(2 + mediaIds.length * idLen);
+    out[0] = version1;
+    out[1] = mediaIds.length;
+    var c = 2;
+    for (final id in mediaIds) {
+      out.setRange(c, c += idLen, id);
+    }
+    return out;
+  }
+
+  static AlbumHint decode(Uint8List bytes) {
+    if (bytes.length < 2) {
+      throw const FormatException('album hint truncated');
+    }
+    if (bytes[0] != version1) {
+      throw FormatException(
+          'unknown album hint version 0x${bytes[0].toRadixString(16)}');
+    }
+    final count = bytes[1];
+    if (count < minPhotos || count > maxPhotos) {
+      throw FormatException('album hint count $count out of range');
+    }
+    // Exactly, not at least: a hint is a fixed size once the count is read, so
+    // trailing bytes mean something upstream is padding it and the frame is
+    // not the one that was signed.
+    if (bytes.length != 2 + count * idLen) {
+      throw const FormatException('album hint length does not match its count');
+    }
+    final ids = <Uint8List>[];
+    var c = 2;
+    for (var i = 0; i < count; i++) {
+      ids.add(Uint8List.fromList(bytes.sublist(c, c += idLen)));
+    }
+    return AlbumHint(mediaIds: ids);
   }
 }
 

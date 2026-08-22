@@ -57,9 +57,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     });
   }
 
-  String _asText(List<DebugLogEntry> entries) => entries
-      .map((e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.text}')
-      .join('\n');
+  /// The shared log, with [DebugLog.summarize] on top.
+  ///
+  /// The header is there because the lines alone kept failing to say which
+  /// phone they came from and whether the window was already truncated — the
+  /// two things that decided whether a shared log could answer anything. It
+  /// goes on the file and on the clipboard copy alike: whichever way the log
+  /// leaves the phone, it should arrive able to identify itself.
+  String _asText(List<DebugLogEntry> entries) => [
+        DebugLog.instance.summarize(),
+        '',
+        ...entries.map(
+          (e) => '${e.at.toIso8601String().substring(11, 23)}  ${e.text}',
+        ),
+      ].join('\n');
 
   /// The share control lives in the AppBar, so the handler has no context of
   /// its own to measure — hence the key.

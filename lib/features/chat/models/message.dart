@@ -79,17 +79,22 @@ class Message {
 
   /// The set of photos this one was sent with, for the ones we sent ourselves.
   ///
-  /// Local only — it is never encoded onto the wire, and a received photo
-  /// therefore has none. Grouping falls back to "same sender, close together"
-  /// for those, which is a guess, and this exists because the guess was wrong
-  /// in the obvious case: five photos, then five more a minute later, are two
-  /// batches to the person who sent them and one uninterrupted run of ten to a
-  /// rule that only looks at gaps. They came out as a grid of nine — the grid's
-  /// own limit — and a tenth photo on its own underneath.
-  ///
   /// `sendImageBatch` stamps one id across everything it was handed, so the
   /// boundary is recorded at the only moment anything actually knows where it
   /// is, rather than re-derived afterwards from timestamps that no longer say.
+  /// Without it, grouping falls back to "same sender, close together", which
+  /// is a guess, and the guess was wrong in the obvious case: five photos,
+  /// then five more a minute later, are two batches to the person who sent
+  /// them and one uninterrupted run of ten to a rule that only looks at gaps.
+  /// They came out as a grid of nine — the grid's own limit — and a tenth
+  /// photo on its own underneath.
+  ///
+  /// The id itself never travels. A received photo gets one when its sender
+  /// sent an [AlbumHint] naming the batch — the hint carries media ids, and
+  /// the receiver mints its own id for the set — so the two sides agree on
+  /// where the batch ended without agreeing on what to call it. A photo from
+  /// a build that predates the hint still has none, and still falls back to
+  /// the gap rule.
   final String? albumId;
 
   final String id;

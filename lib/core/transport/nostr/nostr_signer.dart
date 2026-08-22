@@ -26,9 +26,15 @@ import 'nostr_transport.dart';
 /// derived scalar is always a valid BIP-340 secret key (the tiny modular bias
 /// is ~2^-128 and irrelevant here).
 class Secp256k1NostrSigner implements NostrEventSigner {
-  Secp256k1NostrSigner._(this._secretKey, this.npubHex);
+  Secp256k1NostrSigner._(this._signingKey, this.npubHex);
 
-  final Uint8List _secretKey;
+  /// The scalar with its public point already derived. This key is fixed for
+  /// the life of the process — it comes from the identity seed and nothing
+  /// rotates it — so the derivation is one scalar multiplication paid at
+  /// construction rather than one per event. Signing was doing it again on
+  /// every publish, and a publish happens per recipient, per read receipt and
+  /// per presence beacon. See [Secp256k1SigningKey].
+  final Secp256k1SigningKey _signingKey;
 
   @override
   final String npubHex;
@@ -45,8 +51,8 @@ class Secp256k1NostrSigner implements NostrEventSigner {
   /// ([IdentityKeys.signPrivateKey]).
   static Future<Secp256k1NostrSigner> deriveFromSeed(Uint8List ed25519Seed) async {
     final scalar = await _deriveScalar(ed25519Seed);
-    final pub = Secp256k1.xonlyPubkey(scalar);
-    return Secp256k1NostrSigner._(scalar, _hex(pub));
+    final key = Secp256k1.prepareSigningKey(scalar);
+    return Secp256k1NostrSigner._(key, _hex(key.publicKeyX));
   }
 
   @override
@@ -54,8 +60,8 @@ class Secp256k1NostrSigner implements NostrEventSigner {
     final withId = await event.withId();
     final idBytes = _unhex(withId.id!);
     final aux = _randomBytes(32);
-    final sig = await Secp256k1.sign(
-      secretKey: _secretKey,
+    final sig = await Secp256k1.signWith(
+      key: _signingKey,
       message: idBytes,
       auxRand: aux,
     );

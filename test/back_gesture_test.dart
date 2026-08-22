@@ -119,4 +119,110 @@ void main() {
     expect(find.text('second'), findsNothing);
     expect(find.text('open'), findsOneWidget);
   });
+
+  /// Two scopes on one route, which is what the chat screen actually has: one
+  /// that redirects to the chats list because there is nothing underneath it,
+  /// and one around the composer that cancels a message selection.
+  ///
+  /// Flutter reports a blocked pop to *every* scope on the route, not only to
+  /// whichever one blocked it. So the redirect cannot tell "back was pressed
+  /// with nothing to pop" from "back was pressed at a mode that consumed it" —
+  /// and on a chat opened from search, where the redirect's own `canPop` is
+  /// already false, a back press aimed at a selection cleared the selection
+  /// *and* left the chat.
+  group('a route carrying two pop scopes', () {
+    /// The chat screen's shape, with nothing under the route so that
+    /// `Navigator.canPop()` is false the way it is for a chat opened from
+    /// search onto an empty stack.
+    Future<({List<String> events, ValueGetter<bool> selecting})> pumpChat(
+      WidgetTester tester, {
+      required bool startSelecting,
+      required bool guarded,
+    }) async {
+      final events = <String>[];
+      var selecting = startSelecting;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              final canPop = Navigator.of(context).canPop();
+              return PopScope<void>(
+                canPop: canPop,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (didPop || canPop) return;
+                  // The guard under test. Without it the redirect fires for a
+                  // back press somebody else blocked.
+                  if (guarded && selecting) return;
+                  events.add('redirect');
+                },
+                child: PopScope<void>(
+                  canPop: !selecting,
+                  onPopInvokedWithResult: (didPop, _) {
+                    if (didPop || !selecting) return;
+                    events.add('clear-selection');
+                    setState(() => selecting = false);
+                  },
+                  child: const Scaffold(
+                    body: Center(child: Text('chat')),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return (events: events, selecting: () => selecting);
+    }
+
+    testWidgets('reports one blocked pop to both of them', (tester) async {
+      // The behaviour the guard exists because of. If this ever stops being
+      // true the guard is merely redundant, not wrong — but it is true, and it
+      // is the whole reason the redirect needs to ask about the selection.
+      final chat = await pumpChat(
+        tester,
+        startSelecting: true,
+        guarded: false,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(chat.events, containsAll(<String>['clear-selection', 'redirect']),
+          reason: 'a blocked pop reaches every scope registered on the route');
+    });
+
+    testWidgets('back at a selection cancels it and stays in the chat',
+        (tester) async {
+      final chat = await pumpChat(
+        tester,
+        startSelecting: true,
+        guarded: true,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(chat.selecting(), isFalse,
+          reason: 'the back press was meant for the selection');
+      expect(chat.events, isNot(contains('redirect')),
+          reason: 'and cancelling a selection is not a reason to leave');
+      expect(find.text('chat'), findsOneWidget);
+    });
+
+    testWidgets('back with nothing selected still redirects', (tester) async {
+      final chat = await pumpChat(
+        tester,
+        startSelecting: false,
+        guarded: true,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(chat.events, contains('redirect'),
+          reason: 'with no mode to consume it, back leaves for the chats list');
+    });
+  });
 }
