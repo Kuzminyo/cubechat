@@ -15,6 +15,10 @@ import importlib.util
 import os
 import sys
 
+# Importing guard.py would otherwise leave a __pycache__ beside the hooks --
+# an artifact in a directory that holds nothing but source.
+sys.dont_write_bytecode = True
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("guard", os.path.join(HERE, "guard.py"))
 guard = importlib.util.module_from_spec(spec)
