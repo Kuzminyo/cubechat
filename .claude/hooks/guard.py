@@ -9,6 +9,9 @@ Contract: hook input JSON on stdin, decision JSON on stdout, exit 0. A deny is
 expressed as hookSpecificOutput.permissionDecision so the reason reaches the
 model as an explanation rather than as a crashed hook.
 
+Editing a pattern below means running `python .claude/hooks/guard_test.py`,
+which pins both what must be denied and what must not.
+
 Deliberately ASCII-only: this prints through a Windows console codepage, and a
 non-ASCII reason can come back mangled -- which is, fittingly, the third rule.
 """
