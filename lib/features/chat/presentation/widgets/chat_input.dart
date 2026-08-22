@@ -566,33 +566,56 @@ class _EditBanner extends StatelessWidget {
   }
 }
 
-class _RoundIconButton extends StatelessWidget {
+/// The smiley and the paperclip: the two composer buttons that are not send.
+///
+/// They press like it does — same scale, same curve, same duration — because
+/// they sit in the same row and are the same 44-point circle, and one of three
+/// buttons not answering a finger reads as the tap having missed. This is the
+/// cheapest kind of animation there is: it runs while a finger is down and
+/// schedules nothing at all the rest of the time, which is the distinction
+/// [UiActivity] exists to enforce for the decorative ones.
+class _RoundIconButton extends StatefulWidget {
   const _RoundIconButton({required this.icon, required this.onTap});
 
   final IconData icon;
   final VoidCallback onTap;
 
   @override
+  State<_RoundIconButton> createState() => _RoundIconButtonState();
+}
+
+class _RoundIconButtonState extends State<_RoundIconButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        // 44, matching the send and voice buttons beside them.
-        //
-        // These were 40 while those were 44, and the composer row is
-        // bottom-aligned — so the two small circles sat with their centres two
-        // points below the big one's. That is exactly enough to read as a
-        // mistake and not enough to read as deliberate, which is what "align
-        // the smiley and the paperclip" was about. Matching the box puts every
-        // icon in the composer on one line.
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppColors.glass(0.08),
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.90 : 1.0,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          // 44, matching the send and voice buttons beside them.
+          //
+          // These were 40 while those were 44, and the composer row is
+          // bottom-aligned — so the two small circles sat with their centres
+          // two points below the big one's. That is exactly enough to read as
+          // a mistake and not enough to read as deliberate, which is what
+          // "align the smiley and the paperclip" was about. Matching the box
+          // puts every icon in the composer on one line.
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.glass(0.08),
+          ),
+          child: Icon(widget.icon, color: AppColors.textOnGlass, size: 21),
         ),
-        child: Icon(icon, color: AppColors.textOnGlass, size: 21),
       ),
     );
   }
