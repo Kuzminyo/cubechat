@@ -338,4 +338,119 @@ void main() {
     // Drain the static settle timer — see the test above.
     await tester.pump(const Duration(milliseconds: 300));
   });
+
+  testWidgets('an open panel is announced, so the route can answer for it',
+      (tester) async {
+    // Whether the panel is open is this widget's own state, and the back press
+    // that closes it is reported to every PopScope on the route — including
+    // the redirect at the top of a chat opened from search, which read it as
+    // "nothing underneath, leave for the chats list" and did both at once.
+    // The redirect can only decline if it is told the panel took that press.
+    final reports = <bool>[];
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+      onPanelOpenChanged: reports.add,
+    )));
+    await tester.pump();
+    expect(reports, isEmpty, reason: 'nothing has happened yet');
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
+    await tester.pump();
+    expect(find.byType(KeyboardSlotPanel), findsOneWidget);
+    expect(reports, <bool>[true]);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    // The panel folds before it leaves the tree, and the flag drops with it.
+    await tester.pump(KeyboardSlotPanel.motion + const Duration(seconds: 1));
+
+    expect(find.byType(KeyboardSlotPanel), findsNothing);
+    expect(reports, <bool>[true, false],
+        reason: 'a flag nobody lowers is worse than no flag at all');
+  });
+
+  testWidgets('a composer that goes away lowers the flag on its way out',
+      (tester) async {
+    // The regression this exists for. The composer is remounted whenever the
+    // row above it appears — a reply bar, the unblock island — because that
+    // moves it from being the bar to being a child of a Column, and Flutter
+    // rebuilds the subtree rather than reparenting it. Open the panel, tap
+    // Reply, and the old State was disposed still holding `_panelOpen: true`
+    // with nothing to lower the copy the route reads. The chat's back
+    // handling then declined every press, believing a panel was open that was
+    // no longer even in the tree.
+    final reports = <bool>[];
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+      onPanelOpenChanged: reports.add,
+    )));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
+    await tester.pump();
+    expect(reports, <bool>[true]);
+
+    // The remount: the same widget, one level deeper. Flutter disposes the
+    // State rather than moving it.
+    await tester.pumpWidget(_host(Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('reply bar'),
+        ChatInput(
+          hint: 'Message',
+          sendTooltip: 'Send',
+          onSend: (_) {},
+          onSticker: (_, __) {},
+          onPanelOpenChanged: reports.add,
+        ),
+      ],
+    )));
+    await tester.pump();
+
+    expect(reports, <bool>[true, false],
+        reason: 'a flag outlives the widget that raised it unless it is '
+            'lowered where the widget ends');
+  });
+
+  testWidgets('a panel taken over by the keyboard is announced too',
+      (tester) async {
+    // The other way out of the panel, and the one that does not go through
+    // [closePanel]: the keyboard rises into the slot and the panel leaves.
+    final view = tester.view;
+    addTearDown(view.reset);
+    addTearDown(KeyboardHeight.debugReset);
+    view.devicePixelRatio = 3;
+    view.viewInsets = FakeViewPadding.zero;
+
+    final reports = <bool>[];
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+      onPanelOpenChanged: reports.add,
+    )));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(reports, <bool>[true]);
+
+    view.viewInsets = const FakeViewPadding(bottom: 300 * 3);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(KeyboardSlotPanel), findsNothing);
+    expect(reports, <bool>[true, false]);
+
+    // Drain the static settle timer — see the tests above.
+    await tester.pump(const Duration(milliseconds: 300));
+  });
 }

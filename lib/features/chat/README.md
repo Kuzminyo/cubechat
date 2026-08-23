@@ -93,6 +93,15 @@ rather than a flag, because the same request can arrive twice and both times
 mean "now". `focusInput` is bumped when a reply target appears, which is what
 raises the keyboard with the quote.
 
+One flag goes the other way. An open panel blocks the back gesture from in here,
+and Flutter announces a blocked pop to *every* `PopScope` on the route — so the
+chat's redirect, which cannot see a private `_panelOpen`, used to read that press
+as "nothing underneath, leave for the chats list" and close the chat behind the
+panel. `onPanelOpenChanged` mirrors the flag into `composerPanelOpenProvider` for
+it. Inside the composer that flag has exactly one writer, `_setPanelOpen` — the
+panel has three ways out (the button, back, the keyboard taking the slot) and a
+published copy that only some of them lower is worse than none.
+
 The composer knows nothing about replies; the quote bar above it is the screen's.
 
 ## Media out

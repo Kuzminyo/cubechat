@@ -46,6 +46,7 @@ import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../../stickers/data/sticker_library.dart';
+import '../data/composer_panel.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
 import '../data/message_selection.dart';
@@ -285,6 +286,12 @@ class ChatScreen extends ConsumerWidget {
     // the conversation does — see the [PopScope] around the composer, which
     // blocks the pop while anything is ticked.
     final selecting = ref.watch(messageSelectionProvider(chatId)).isNotEmpty;
+    // The emoji/sticker panel is the other mode on this route that answers
+    // back, and it lives in the composer's own State — this is the copy it
+    // publishes for exactly this. Watched rather than read in the callback:
+    // the provider auto-disposes, and this listener is what holds it open
+    // between the composer writing the flag and the back press reading it.
+    final panelOpen = ref.watch(composerPanelOpenProvider(chatId));
     return PopScope<void>(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
@@ -293,13 +300,15 @@ class ChatScreen extends ConsumerWidget {
         // their own reasons (an open emoji panel, a running selection). Without
         // this, closing the panel with the back gesture also left the chat.
         //
-        // `!selecting` because `!canPop` stops discriminating in exactly the
-        // case this redirect exists for. On a chat opened from search with
-        // nothing underneath it, `canPop` is already false because of *us*, so
-        // it no longer says anything about who blocked this pop — and a back
-        // press aimed at a selection cleared the selection *and* left the
-        // chat. The selection is asked directly instead.
-        if (!didPop && !canPop && !selecting) context.go('/chats');
+        // `!selecting` and `!panelOpen` because `!canPop` stops discriminating
+        // in exactly the case this redirect exists for. On a chat opened from
+        // search with nothing underneath it, `canPop` is already false because
+        // of *us*, so it no longer says anything about who blocked this pop —
+        // and a back press aimed at a mode cancelled the mode *and* left the
+        // chat. Both modes are asked directly instead.
+        if (!didPop && !canPop && !selecting && !panelOpen) {
+          context.go('/chats');
+        }
       },
       child: child,
     );
@@ -3867,6 +3876,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       onCreateSticker: photosEnabled ? _createSticker : null,
       openStickerPanel: _stickerPanelRequests,
       focusInput: _focusComposerRequests,
+      // Published so the back handling at the top of the route can tell a
+      // press the panel took from one that means "leave this chat".
+      //
+      // The `mounted` check is for the last of these calls: the composer
+      // lowers the flag as it is disposed, and on the way out of the chat that
+      // happens while this bar is being taken apart too.
+      onPanelOpenChanged: (open) {
+        if (!mounted) return;
+        ref
+            .read(composerPanelOpenProvider(widget.canonicalId).notifier)
+            .setOpen(open);
+      },
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,

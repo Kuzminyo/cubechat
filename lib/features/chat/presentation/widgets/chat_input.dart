@@ -115,6 +115,7 @@ class ChatInput extends StatefulWidget {
     this.onCreateSticker,
     this.openStickerPanel,
     this.focusInput,
+    this.onPanelOpenChanged,
   });
 
   /// Bumped by the screen around this one to say "open the panel on stickers".
@@ -124,6 +125,16 @@ class ChatInput extends StatefulWidget {
   /// started, so the keyboard rises with the quote instead of waiting for a
   /// second tap on the field.
   final ValueListenable<int>? focusInput;
+
+  /// Called whenever the emoji/sticker panel opens or closes.
+  ///
+  /// The panel blocks the back gesture from inside this widget, and Flutter
+  /// announces a blocked pop to every [PopScope] on the route — so the chat's
+  /// own back handling, several floors up, has to be able to tell "back was
+  /// pressed with nothing underneath this chat" from "back was pressed at an
+  /// open panel". It cannot see a flag that lives in this State, which is why
+  /// the flag is passed out rather than read.
+  final ValueChanged<bool>? onPanelOpenChanged;
 
   final String hint;
   final String sendTooltip;
@@ -225,11 +236,25 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     setState(() => _closingPanel = true);
     Future<void>.delayed(KeyboardSlotPanel.motion, () {
       if (!mounted) return;
-      setState(() {
-        _panelOpen = false;
-        _closingPanel = false;
-      });
+      _setPanelOpen(false);
     });
+  }
+
+  /// The one place [_panelOpen] changes.
+  ///
+  /// It is also read from outside this widget now (see [onPanelOpenChanged]),
+  /// and a copy that only some of the paths keep up to date is worse than no
+  /// copy at all: the panel has three ways out — the button, the back gesture
+  /// and the keyboard taking the slot — and each of them used to write the
+  /// flag itself.
+  void _setPanelOpen(bool open, {bool? stickers}) {
+    final was = _panelOpen;
+    setState(() {
+      if (stickers != null) _panelOnStickers = stickers;
+      _panelOpen = open;
+      _closingPanel = false;
+    });
+    if (open != was) widget.onPanelOpenChanged?.call(open);
   }
 
   void _openStickersFromOutside() {
@@ -247,6 +272,17 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // The panel dies with this widget, so the copy anybody else reads has to
+    // die with it as well.
+    //
+    // This composer is remounted, not merely rebuilt, whenever the row above
+    // it appears — a reply bar, the unblock island — because that moves it
+    // from being the bar to being a child of a Column, and Flutter disposes
+    // the subtree rather than carrying the State across. Opening the panel and
+    // then tapping Reply used to leave the flag standing: the panel was gone
+    // from the tree, and the chat's back handling went on declining every
+    // press because something told it a panel was open.
+    if (_panelOpen) widget.onPanelOpenChanged?.call(false);
     WidgetsBinding.instance.removeObserver(this);
     _keyboardWatchdog?.cancel();
     widget.openStickerPanel?.removeListener(_openStickersFromOutside);
@@ -293,10 +329,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     _keyboardWatchdog?.cancel();
     _keyboardWatchdog = null;
     if (!_panelOpen) return;
-    setState(() {
-      _panelOpen = false;
-      _closingPanel = false;
-    });
+    _setPanelOpen(false);
   }
 
   void _insertEmoji(String emoji) {
@@ -325,11 +358,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     // Dropping focus starts the keyboard on its way out; the panel grows into
     // the space behind it rather than on top of it.
     _focus.unfocus();
-    setState(() {
-      _panelOnStickers = stickers;
-      _closingPanel = false;
-      _panelOpen = true;
-    });
+    _setPanelOpen(true, stickers: stickers);
   }
 
   Future<void> _createStickerThenReopen() async {

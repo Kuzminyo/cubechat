@@ -134,13 +134,20 @@ void main() {
     /// The chat screen's shape, with nothing under the route so that
     /// `Navigator.canPop()` is false the way it is for a chat opened from
     /// search onto an empty stack.
-    Future<({List<String> events, ValueGetter<bool> selecting})> pumpChat(
+    Future<
+        ({
+          List<String> events,
+          ValueGetter<bool> selecting,
+          ValueGetter<bool> panelOpen,
+        })> pumpChat(
       WidgetTester tester, {
       required bool startSelecting,
       required bool guarded,
+      bool startPanelOpen = false,
     }) async {
       final events = <String>[];
       var selecting = startSelecting;
+      var panelOpen = startPanelOpen;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -153,7 +160,7 @@ void main() {
                   if (didPop || canPop) return;
                   // The guard under test. Without it the redirect fires for a
                   // back press somebody else blocked.
-                  if (guarded && selecting) return;
+                  if (guarded && (selecting || panelOpen)) return;
                   events.add('redirect');
                 },
                 child: PopScope<void>(
@@ -163,8 +170,20 @@ void main() {
                     events.add('clear-selection');
                     setState(() => selecting = false);
                   },
-                  child: const Scaffold(
-                    body: Center(child: Text('chat')),
+                  child: PopScope<void>(
+                    // The composer's own scope. It sits at the bottom of the
+                    // tree and its flag is private to `_ChatInputState`, which
+                    // is why the redirect reads a copy of it from a provider
+                    // rather than from anything it can see from up there.
+                    canPop: !panelOpen,
+                    onPopInvokedWithResult: (didPop, _) {
+                      if (didPop || !panelOpen) return;
+                      events.add('close-panel');
+                      setState(() => panelOpen = false);
+                    },
+                    child: const Scaffold(
+                      body: Center(child: Text('chat')),
+                    ),
                   ),
                 ),
               );
@@ -173,7 +192,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      return (events: events, selecting: () => selecting);
+      return (
+        events: events,
+        selecting: () => selecting,
+        panelOpen: () => panelOpen,
+      );
     }
 
     testWidgets('reports one blocked pop to both of them', (tester) async {
@@ -208,6 +231,30 @@ void main() {
           reason: 'the back press was meant for the selection');
       expect(chat.events, isNot(contains('redirect')),
           reason: 'and cancelling a selection is not a reason to leave');
+      expect(find.text('chat'), findsOneWidget);
+    });
+
+    testWidgets('back with the emoji panel open closes it and stays',
+        (tester) async {
+      // The same shape one floor further down. The panel blocks the pop from
+      // inside the composer, the blocked pop is announced to the redirect as
+      // well, and the redirect used to read it as "nothing to go back to" —
+      // so the panel closed and the chat closed behind it, in one press.
+      final chat = await pumpChat(
+        tester,
+        startSelecting: false,
+        guarded: true,
+        startPanelOpen: true,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(chat.panelOpen(), isFalse,
+          reason: 'the back press was meant for the panel');
+      expect(chat.events, contains('close-panel'));
+      expect(chat.events, isNot(contains('redirect')),
+          reason: 'and closing a panel is not a reason to leave the chat');
       expect(find.text('chat'), findsOneWidget);
     });
 
