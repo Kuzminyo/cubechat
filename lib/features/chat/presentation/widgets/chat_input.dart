@@ -471,14 +471,45 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                   const SizedBox(width: 4),
                 ],
                 Expanded(
-                  child: widget.recording
+                  // The strip and the field used to cut straight to each
+                  // other, which made the most physical gesture in the app —
+                  // hold, speak, let go — end in a blink.
+                  //
+                  // The strip arrives from the right, where the microphone is,
+                  // and leaves the same way, towards where the bubble is about
+                  // to appear. The field only fades: it is not going anywhere,
+                  // it is being uncovered, and sliding it as well reads as two
+                  // things shoving each other.
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    reverseDuration: const Duration(milliseconds: 160),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final strip = child.key == _recordingKey;
+                      return FadeTransition(
+                        opacity: animation,
+                        child: strip
+                            ? SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0.18, 0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              )
+                            : child,
+                      );
+                    },
+                    child: widget.recording
                       ? _RecordingIndicator(
+                          key: _recordingKey,
                           elapsed: widget.recordElapsed,
                           levels: widget.recordLevels,
                           locked: widget.recordLocked,
                           onCancel: widget.onRecordCancel,
                         )
                       : Padding(
+                          key: _fieldKey,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: TextField(
                             controller: _controller,
@@ -510,6 +541,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
+                  ),
                 ),
                 if (showAttach) ...[
                   const SizedBox(width: 2),
@@ -738,7 +770,12 @@ class _VoiceButton extends StatelessWidget {
                 HapticFeedback.mediumImpact();
                 onStart();
               })
-              ..onLongPressEnd = ((_) => onStop())
+              // Letting go sends it, so it gets the same light tick a typed
+              // message does — the two are the same act.
+              ..onLongPressEnd = ((_) {
+                HapticFeedback.lightImpact();
+                onStop();
+              })
               ..onLongPressCancel = onCancel
               ..onLongPressMoveUpdate = (LongPressMoveUpdateDetails d) {
                 if (!active) return;
@@ -802,8 +839,15 @@ class _VoiceButton extends StatelessWidget {
 
 /// Telegram-style recording strip: a pulsing red dot, the elapsed timer, and a
 /// live waveform that grows from the right as you speak.
+/// Which of the two the composer's middle is showing. Constant keys rather
+/// than types, because [AnimatedSwitcher] tells its outgoing child from its
+/// incoming one by key, and the transition differs between them.
+const ValueKey<String> _recordingKey = ValueKey<String>('recording');
+const ValueKey<String> _fieldKey = ValueKey<String>('field');
+
 class _RecordingIndicator extends StatefulWidget {
   const _RecordingIndicator({
+    super.key,
     required this.elapsed,
     required this.levels,
     this.locked = false,

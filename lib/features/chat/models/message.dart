@@ -55,6 +55,8 @@ class Message {
     this.audioPath,
     this.audioMime,
     this.audioDurationMs,
+    this.audioLevels,
+    this.voicePlayed = false,
     this.filePath,
     this.fileName,
     this.fileBytes,
@@ -193,6 +195,22 @@ class Message {
   final String? audioMime;
   final int? audioDurationMs;
 
+  /// Whether this voice note has been listened to on this device.
+  ///
+  /// Local and never on the wire: it answers "have *I* heard this yet", which
+  /// is a different question from the read receipt the sender gets. A note
+  /// opened on one phone is still unplayed on another, and that is correct.
+  final bool voicePlayed;
+
+  /// Loudness per bar, 0..255, or null when the sender did not say.
+  ///
+  /// Null is the ordinary case for anything recorded before this existed and
+  /// for anything sent by a build that predates it, so the bubble has to be
+  /// able to draw a voice note without it — see [VoiceLevels], which travels
+  /// as its own payload precisely so an old build loses this and keeps the
+  /// audio.
+  final List<int>? audioLevels;
+
   // Arbitrary-file payload. Unlike images and voice notes, a file keeps the
   // name it was sent under — it is the only thing that says what the bubble is
   // and what it saves as. [fileBytes] is the size on disk, shown next to the
@@ -283,6 +301,8 @@ class Message {
     String? audioPath,
     String? filePath,
     int? audioDurationMs,
+    List<int>? audioLevels,
+    bool? voicePlayed,
     bool? forwardSecret,
     Map<String, Set<String>>? reactions,
     Map<String, ChannelRead>? readBy,
@@ -314,6 +334,8 @@ class Message {
       fileBytes: fileBytes,
       audioMime: audioMime,
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
+      audioLevels: audioLevels ?? this.audioLevels,
+      voicePlayed: voicePlayed ?? this.voicePlayed,
       forwardSecret: forwardSecret ?? this.forwardSecret,
       wireId: wireId,
       authorName: authorName,

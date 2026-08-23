@@ -173,6 +173,12 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
               children: [
                 _ScrubBar(
                   progress: _scrubbing ?? progress,
+                  // The shape of what was said, when the sender's build had
+                  // something to say it with. Null falls back to the bar this
+                  // has always drawn — every note recorded before the levels
+                  // travelled is null, and so is every note from an older
+                  // build.
+                  levels: widget.message.audioLevels,
                   enabled: hasFile && total > Duration.zero,
                   onSeekStart: (frac) => setState(() => _scrubbing = frac),
                   onSeekUpdate: (frac) => setState(() => _scrubbing = frac),
@@ -187,19 +193,44 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
                   },
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  _fmt(playing
-                      ? position
-                      : (_scrubbing == null
-                          ? total
-                          : Duration(
-                              milliseconds:
-                                  (total.inMilliseconds * _scrubbing!).round(),
-                            ))),
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 11,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _fmt(playing
+                          ? position
+                          : (_scrubbing == null
+                              ? total
+                              : Duration(
+                                  milliseconds:
+                                      (total.inMilliseconds * _scrubbing!)
+                                          .round(),
+                                ))),
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 11,
+                      ),
+                    ),
+                    // Not yet listened to, on this phone.
+                    //
+                    // Only on somebody else's note: our own is one we recorded,
+                    // and a dot saying we have not heard ourselves speak would
+                    // be a strange thing to be told. It goes the moment
+                    // playback starts, not when it ends — a note listened to
+                    // halfway is not new any more.
+                    if (!widget.message.isMine && !widget.message.voicePlayed)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.brandPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -267,9 +298,15 @@ class _ScrubBar extends StatelessWidget {
     required this.onSeekStart,
     required this.onSeekUpdate,
     required this.onSeekCommit,
+    this.levels,
   });
 
   final double progress;
+
+  /// Loudness per bar, 0..255, or null for a note that arrived without a
+  /// shape — see [Message.audioLevels].
+  final List<int>? levels;
+
   final bool enabled;
   final ValueChanged<double> onSeekStart;
   final ValueChanged<double> onSeekUpdate;
@@ -302,47 +339,131 @@ class _ScrubBar extends StatelessWidget {
               ? (d) => onSeekCommit(_fracFor(d.localPosition.dx, width))
               : null,
           // Hit area is taller than the visual bar so it's easy to grab.
-          child: SizedBox(
-            height: 16,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.glass(0.12),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: progress.clamp(0.0, 1.0),
-                  child: Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.brandPrimary,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: (width * progress.clamp(0.0, 1.0)) - 6,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: enabled
+          child: levels != null
+              ? SizedBox(
+                  height: 24,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: _VoiceWavePainter(
+                      levels: levels!,
+                      progress: progress.clamp(0.0, 1.0),
+                      played: enabled
                           ? AppColors.brandPrimary
                           : AppColors.textOnGlassFaint,
-                      border: Border.all(color: AppColors.ink(0.4)),
+                      rest: AppColors.glass(0.22),
                     ),
                   ),
+                )
+              : SizedBox(
+                  height: 16,
+                  child: Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.glass(0.12),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: progress.clamp(0.0, 1.0),
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.brandPrimary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: (width * progress.clamp(0.0, 1.0)) - 6,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: enabled
+                                ? AppColors.brandPrimary
+                                : AppColors.textOnGlassFaint,
+                            border: Border.all(color: AppColors.ink(0.4)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
         );
       },
     );
   }
+}
+
+/// The shape of a voice note, played part lit.
+///
+/// One `CustomPainter` and no widgets per bar: a conversation can hold dozens
+/// of these and each one would otherwise be fifty boxes in the tree, laid out
+/// and composited on every frame of playback.
+class _VoiceWavePainter extends CustomPainter {
+  _VoiceWavePainter({
+    required this.levels,
+    required this.progress,
+    required this.played,
+    required this.rest,
+  });
+
+  final List<int> levels;
+  final double progress;
+  final Color played;
+  final Color rest;
+
+  static const double _barWidth = 2.5;
+  static const double _gap = 1.5;
+
+  /// Silence still gets a mark. A row of bars with gaps in it reads as a
+  /// broken recording rather than a quiet moment, and the pause between two
+  /// words is a real part of the shape.
+  static const double _minBar = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (levels.isEmpty || size.width <= 0) return;
+    final slot = _barWidth + _gap;
+    // Never more bars than fit: a sub-pixel bar is a grey smear, and the
+    // sender's count is chosen for a wire budget, not for this phone's width.
+    final count = (size.width / slot).floor().clamp(1, levels.length);
+    final paint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = _barWidth;
+    final mid = size.height / 2;
+
+    for (var i = 0; i < count; i++) {
+      // The loudest reading in the slice this bar stands for. Max rather than
+      // mean, because the wire has already averaged once — averaging again
+      // flattens the peaks into a hedge.
+      final from = (i * levels.length / count).floor();
+      final to = ((i + 1) * levels.length / count)
+          .ceil()
+          .clamp(from + 1, levels.length);
+      var peak = 0;
+      for (var j = from; j < to; j++) {
+        if (levels[j] > peak) peak = levels[j];
+      }
+      final h = _minBar + (peak / 255) * (size.height - _minBar);
+      final x = i * slot + _barWidth / 2;
+      paint.color = (i + 0.5) / count <= progress ? played : rest;
+      canvas.drawLine(
+        Offset(x, mid - h / 2),
+        Offset(x, mid + h / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _VoiceWavePainter old) =>
+      old.progress != progress ||
+      old.levels != levels ||
+      old.played != played ||
+      old.rest != rest;
 }

@@ -464,6 +464,49 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     return changed;
   }
 
+  /// Give a voice note its shape, when the levels arrive after the audio did.
+  ///
+  /// The two travel as separate payloads and there is no ordering between
+  /// them, so this is one half of the answer and `_pendingVoiceLevels` on the
+  /// service is the other: whichever lands second finds the first waiting.
+  ///
+  /// Returns true when a bubble was actually stamped.
+  bool applyVoiceLevels(String peerId, String wireId, List<int> levels) {
+    final current = state[peerId];
+    if (current == null) return false;
+    final list = [...current];
+    var changed = false;
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      if (m.wireId != wireId || m.kind != MessageKind.audio) continue;
+      // Already drawn from a first delivery. A relay re-delivery carries the
+      // same levels, and rewriting the whole conversation to store bytes it
+      // already holds is the sort of thing that shows up on a battery screen.
+      if (m.audioLevels != null) continue;
+      list[i] = m.copyWith(audioLevels: levels);
+      changed = true;
+    }
+    if (!changed) return false;
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return true;
+  }
+
+  /// Mark a voice note as heard on this device.
+  ///
+  /// Idempotent and silent when there is nothing to change: playback starts
+  /// this, and starting the same note twice must not rewrite a conversation.
+  void markVoicePlayed(String peerId, String messageId) {
+    final current = state[peerId];
+    if (current == null) return;
+    final i = current.indexWhere((m) => m.id == messageId);
+    if (i < 0 || current[i].voicePlayed) return;
+    final list = [...current];
+    list[i] = list[i].copyWith(voicePlayed: true);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   /// Fills in [imagePath] (and bumps the status) on an existing in-flight
   /// image message once all chunks have been reassembled. The message id
   /// must already exist in the per-peer list — callers should append the
@@ -672,6 +715,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioPath != null) 'audioPath': m.audioPath,
         if (m.audioMime != null) 'audioMime': m.audioMime,
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
+        if (m.audioLevels != null) 'audioLevels': m.audioLevels,
+        if (m.voicePlayed) 'voicePlayed': true,
         if (m.filePath != null) 'filePath': m.filePath,
         if (m.fileName != null) 'fileName': m.fileName,
         if (m.fileBytes != null) 'fileBytes': m.fileBytes,
@@ -756,6 +801,12 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       audioPath: MediaPaths.repairOrNull(m['audioPath'] as String?),
       audioMime: m['audioMime'] as String?,
       audioDurationMs: m['audioDurationMs'] as int?,
+      // Hive hands back a `List<dynamic>` whatever went in, and a stored
+      // history predates this key entirely — both read as "no shape to draw".
+      audioLevels: (m['audioLevels'] as List<dynamic>?)
+          ?.map((dynamic v) => (v as num).toInt())
+          .toList(growable: false),
+      voicePlayed: m['voicePlayed'] as bool? ?? false,
       filePath: MediaPaths.repairOrNull(m['filePath'] as String?),
       fileName: m['fileName'] as String?,
       fileBytes: m['fileBytes'] as int?,

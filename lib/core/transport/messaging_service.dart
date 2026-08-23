@@ -366,6 +366,19 @@ class MessagingService {
   /// which costs the grouping on a batch old enough to have been abandoned.
   static const int _maxPendingAlbums = 256;
 
+  /// The shape of a voice note whose audio has not finished arriving.
+  ///
+  /// Same two-sided arrangement as [_pendingAlbums] and for the same reason:
+  /// the levels and the chunks are separate payloads with no ordering between
+  /// them. Keyed by the wire id the audio will be filed under, so whichever
+  /// lands second finds the first waiting.
+  final Map<String, List<int>> _pendingVoiceLevels = {};
+
+  /// Smaller than the album cap: a voice note is one media id, not a batch of
+  /// sixty-four, and levels whose audio never arrives are worth even less than
+  /// a hint whose photos never arrive.
+  static const int _maxPendingVoiceLevels = 64;
+
   /// FS media chunks that arrived before their manifest (so before we could
   /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
   final Map<String, List<_PendingFsChunk>> _pendingFsChunks = {};
@@ -1987,6 +2000,7 @@ class MessagingService {
     required String mime,
     required int durationMs,
     String? cachedPath,
+    List<double>? levels,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
     ChatSession? session = manager.sessionFor(chatId);
@@ -2017,6 +2031,12 @@ class MessagingService {
     // Media id up front, so the bubble's wireId matches what the receiver files
     // this voice note under (see sendImage).
     final audioId = AudioChunk.newAudioId();
+    // Folded here rather than at the microphone: the recorder collects a
+    // reading per frame and how many bars are worth drawing is a wire
+    // question, not a recording one.
+    final bars = levels == null || levels.isEmpty
+        ? null
+        : VoiceLevels.resample(levels);
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -2028,6 +2048,10 @@ class MessagingService {
       audioPath: cachedPath,
       audioMime: mime,
       audioDurationMs: durationMs,
+      // Our own copy gets the shape too, from the same numbers that go out —
+      // otherwise the sender is the one person in the conversation who cannot
+      // see what they just sent.
+      audioLevels: bars,
       wireId: TransportEnvelope.hashHex(audioId),
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
@@ -2072,6 +2096,18 @@ class MessagingService {
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
+      // After the manifest, so a receiver handed both in one burst already has
+      // somewhere to put them. Best-effort: a voice note whose shape did not
+      // go out is still a voice note, and a throw here would fail a send that
+      // is already on its way.
+      if (bars != null) {
+        unawaited(_announceVoiceLevels(
+          canonicalId: canonicalId,
+          peerPub: peerPub,
+          mediaId: audioId,
+          bars: bars,
+        ));
+      }
       if (fs != null) {
         DebugLog.instance.log(
             'CRYPTO', 'sendAudio: forward-secret (X3DH) media to $canonicalId');
@@ -2172,7 +2208,12 @@ class MessagingService {
   Future<void> sendReadReceipts(String canonicalId) async {
     // Opted out of read receipts: say nothing. The messages are still marked
     // read locally — this only withholds telling anyone else about it.
-    if (!_ref.read(privacySettingsProvider).shareReadReceipts) {
+    // The global switch and this contact's exception at once — see
+    // [ConversationSettingsController.sharesReadReceiptsWith], which is where
+    // "only ever more private" lives.
+    if (!_ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .sharesReadReceiptsWith(canonicalId)) {
       // Both halves of the switch are silent by design — see the ingest side —
       // so without this the setting looks exactly like a broken feature.
       DebugLog.instance.log('RECEIPT', 'not sending: read receipts are off');
@@ -2396,7 +2437,14 @@ class MessagingService {
   /// stop seeing other people's typing too (see [_ingestTyping]).
   Future<void> announceTyping(String canonicalId, {bool typing = true}) async {
     if (_disposed) return;
-    if (!_ref.read(privacySettingsProvider).shareLastSeen) return;
+    // Global switch and this contact's exception together: somebody who is not
+    // shown our times is not shown our typing either, which is the same
+    // question asked a second apart.
+    if (!_ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .sharesLastSeenWith(canonicalId)) {
+      return;
+    }
     if (!AppLifecycle.instance.isForeground) return;
     if (canonicalId.startsWith('#')) return; // 1:1 only
 
@@ -4404,6 +4452,7 @@ class MessagingService {
         case InnerPayloadType.viewOnceConsumed:
         case InnerPayloadType.typing:
         case InnerPayloadType.albumHint:
+        case InnerPayloadType.voiceLevels:
         case InnerPayloadType.conversationClear:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
@@ -5206,6 +5255,13 @@ class MessagingService {
             body: unpacked.body,
           );
 
+        case InnerPayloadType.voiceLevels:
+          _ingestVoiceLevels(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
         case InnerPayloadType.conversationClear:
           await _ingestConversationClear(
             peerId: peerId,
@@ -5824,6 +5880,7 @@ class MessagingService {
             bytes: bytes,
             mime: manifest.mime,
           );
+          final audioWireId = TransportEnvelope.hashHex(manifest.mediaId);
           message = Message(
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
@@ -5834,7 +5891,11 @@ class MessagingService {
             audioPath: path,
             audioMime: manifest.mime,
             audioDurationMs: manifest.durationMs,
-            wireId: TransportEnvelope.hashHex(manifest.mediaId),
+            wireId: audioWireId,
+            // The shape of it, if the levels got here first. Taken rather than
+            // read, for the same reason an album id is: this bubble now holds
+            // them, and a re-delivery has nothing left to stamp.
+            audioLevels: _pendingVoiceLevels.remove(audioWireId),
           );
       }
       // A channel photo has no 1:1 session to fan out to and no peer key to
@@ -5980,6 +6041,76 @@ class MessagingService {
         'PHOTO',
         'album hint from $peerId: ${wireIds.length} photos, '
             '$stamped already here');
+  }
+
+  /// Send the shape of a voice note that has just gone out.
+  ///
+  /// Best-effort on purpose, the same way an album hint is: losing this costs
+  /// the drawing on their side and nothing else — the audio is a separate
+  /// payload and is unaffected — so nothing in here may throw into a send.
+  Future<void> _announceVoiceLevels({
+    required String canonicalId,
+    required Uint8List peerPub,
+    required Uint8List mediaId,
+    required Uint8List bars,
+  }) async {
+    try {
+      await _sendControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.voiceLevels,
+        innerBody:
+            VoiceLevels(mediaId: mediaId, levels: bars).encode(),
+      );
+    } catch (e) {
+      DebugLog.instance
+          .log('VOICE', 'voice levels did not go out (audio unaffected): $e');
+    }
+  }
+
+  /// The shape of a voice note from the other side: draw it on the bubble if
+  /// the audio is already here, and leave it waiting if it is not.
+  void _ingestVoiceLevels({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final VoiceLevels levels;
+    try {
+      levels = VoiceLevels.decode(body);
+    } catch (e) {
+      DebugLog.instance
+          .log('VOICE', 'drop malformed voice levels from $peerId: $e');
+      return;
+    }
+    final wireId = TransportEnvelope.hashHex(levels.mediaId);
+    final bars = List<int>.unmodifiable(levels.levels);
+
+    // Scoped to this peer's buckets, exactly as an album hint is: media ids
+    // are the sender's to mint, and nobody gets to redraw a voice note
+    // somebody else sent.
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final targets = <String>{peerId};
+    if (senderPub != null) {
+      targets.add(_hexOf(senderPub));
+      final sessions = _ref.read(chatSessionManagerProvider);
+      for (final entry in sessions.entries) {
+        final other = entry.value.remoteStaticPublicKey;
+        if (other != null && _pubkeyEquals(other, senderPub)) {
+          targets.add(entry.key);
+        }
+      }
+    }
+    var stamped = false;
+    for (final bucket in targets) {
+      stamped |= messages.applyVoiceLevels(bucket, wireId, bars);
+    }
+    if (stamped) return;
+
+    _pendingVoiceLevels[wireId] = bars;
+    while (_pendingVoiceLevels.length > _maxPendingVoiceLevels) {
+      _pendingVoiceLevels.remove(_pendingVoiceLevels.keys.first);
+    }
   }
 
   /// Build a [MediaManifest] over the about-to-be-sent [bytes], wrap it in
@@ -6172,6 +6303,19 @@ class MessagingService {
   /// [AvatarPayload] frame, which is one write and understood by every build.
   /// Anything larger is chunked like a photo — see [MediaKind.avatar].
   Future<void> _sendAvatarTo(String pubkeyHex) async {
+    // Hidden from this one contact. Answering nothing is the whole mechanism:
+    // their build falls back to the generated gradient, which is what it draws
+    // for anybody who has not set a picture, so there is nothing to notice and
+    // nothing to explain.
+    if (!_ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .sharesAvatarWith(pubkeyHex)) {
+      DebugLog.instance.log(
+        'AVATAR',
+        'not sending to ${pubkeyHex.substring(0, 8)} — hidden for this contact',
+      );
+      return;
+    }
     final share = await _ref.read(avatarProvider.notifier).shareable();
     if (share == null) return;
     final peerPub = _resolvePeerPub(pubkeyHex);
@@ -7043,6 +7187,11 @@ class MessagingService {
       online: online,
       hideLastSeen: !_ref.read(privacySettingsProvider).shareLastSeen,
     ).encode();
+    // The same beacon with the flag set, minted once and only if somebody
+    // needs it. A beacon is a signed frame per recipient either way; what is
+    // saved here is the encoding, not the sending.
+    Uint8List? hiddenBody;
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
     var sent = 0;
     final targets = peers.take(_presenceFanoutCap).toList();
     for (var i = 0; i < targets.length; i++) {
@@ -7053,12 +7202,20 @@ class MessagingService {
       } catch (_) {
         continue;
       }
+      // Hidden from this one contact: the beacon still goes — being reachable
+      // is not the secret — but it carries the request that the clock beside
+      // the status is not shown, which is exactly what the global switch says
+      // to everybody.
+      final hiddenHere = !settings.sharesLastSeenWith(peer.pubkeyHex);
+      if (hiddenHere && hiddenBody == null) {
+        hiddenBody = PresenceBeacon(online: online, hideLastSeen: true).encode();
+      }
       try {
         final n = await _sendControlToPeer(
           canonicalId: peer.pubkeyHex,
           peerPub: peerPub,
           type: InnerPayloadType.presence,
-          innerBody: body,
+          innerBody: hiddenHere ? hiddenBody! : body,
           relayOnly: true,
         );
         if (n > 0) sent++;

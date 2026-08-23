@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/util/audio_session.dart';
+import 'messages_controller.dart';
 
 /// What is playing, if anything.
 @immutable
@@ -153,6 +154,14 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
       }
       return;
     }
+
+    // Heard, from this moment on. Recorded when playback *starts* rather than
+    // when it finishes: the dot answers "have I opened this", and a note
+    // someone listened to half of is not new to them any more.
+    ref.read(messagesControllerProvider.notifier).markVoicePlayed(
+          chatId,
+          messageId,
+        );
 
     // A different message: replace rather than layer.
     await player.stop();

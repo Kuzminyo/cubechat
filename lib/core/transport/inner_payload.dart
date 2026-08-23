@@ -212,7 +212,25 @@ enum InnerPayloadType {
   /// travel here. Those are for objects a person sent and an old build should
   /// still show something for; this one has nothing to show, and a build that
   /// did not understand it would print the raw marker into the conversation.
-  albumHint(0xFA);
+  albumHint(0xFA),
+
+  /// How loud a voice note was, sample by sample, so the bubble can draw the
+  /// shape of what was said instead of a bar that only fills. Body is a
+  /// [VoiceLevels]. 1:1 only, which is what voice notes are.
+  ///
+  /// Sent rather than derived: the levels exist while the microphone is open
+  /// and nowhere afterwards. Recovering them on the far side would mean
+  /// decoding the compressed audio of every voice note that arrives, which is
+  /// real work on the receiving phone for something the sending phone already
+  /// had in its hand.
+  ///
+  /// A payload of its own for the same reason as [albumHint], and the stakes
+  /// are higher here: an unknown manifest version is refused and takes its
+  /// chunks with it, so putting the levels in the manifest would cost an older
+  /// build the *audio*, not the drawing. An unknown inner-payload type is
+  /// dropped on its own, and a voice note with no levels is exactly what every
+  /// build shows today.
+  voiceLevels(0xFB);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -1288,6 +1306,105 @@ class AlbumHint {
       ids.add(Uint8List.fromList(bytes.sublist(c, c += idLen)));
     }
     return AlbumHint(mediaIds: ids);
+  }
+}
+
+/// The shape of a voice note: one loudness sample per bar the bubble draws.
+///
+/// Wire layout (inside an [InnerPayloadType.voiceLevels] body):
+///
+/// ```
+/// [version:1][mediaId:16][count:1][level:1 x count]
+/// ```
+///
+/// A level is 0..255 — a byte per bar, which is finer than any bar drawn a few
+/// points wide can show. The sender resamples whatever the recorder collected
+/// down to [maxSamples] before it gets here, so the frame is the same size for
+/// a four-second note and a four-minute one: 146 bytes at the cap, small enough
+/// that it never fragments and cheap enough to send even when the drawing is
+/// the only thing riding on it.
+class VoiceLevels {
+  VoiceLevels({required this.mediaId, required this.levels})
+      : assert(mediaId.length == idLen, 'mediaId must be $idLen B'),
+        assert(levels.isNotEmpty && levels.length <= maxSamples,
+            'a voice note has 1..$maxSamples samples');
+
+  /// The media id of the voice note these belong to — the same id its
+  /// [MediaManifest] carries, which is how the two are matched up on arrival
+  /// whichever order they land in.
+  final Uint8List mediaId;
+
+  /// Loudness per bar, oldest first, 0..255.
+  final Uint8List levels;
+
+  static const int version1 = 0x01;
+  static const int idLen = MediaManifest.idLen;
+
+  /// More bars than a phone can draw legibly, and a byte's worth of count.
+  ///
+  /// The bubble is around 200 points wide with a play button in it; at a bar
+  /// and a gap per sample that is fifty-odd bars on the widest phone. 128
+  /// leaves room for a wider bubble to be drawn from the same data later
+  /// without another wire change, and it keeps the whole payload inside a
+  /// single fragment.
+  static const int maxSamples = 128;
+
+  Uint8List encode() {
+    final out = Uint8List(2 + idLen + levels.length);
+    out[0] = version1;
+    out.setRange(1, 1 + idLen, mediaId);
+    out[1 + idLen] = levels.length;
+    out.setRange(2 + idLen, 2 + idLen + levels.length, levels);
+    return out;
+  }
+
+  static VoiceLevels decode(Uint8List bytes) {
+    if (bytes.length < 2 + idLen) {
+      throw const FormatException('voice levels truncated');
+    }
+    if (bytes[0] != version1) {
+      throw FormatException(
+          'unknown voice levels version 0x${bytes[0].toRadixString(16)}');
+    }
+    final count = bytes[1 + idLen];
+    if (count < 1 || count > maxSamples) {
+      throw FormatException('voice levels count $count out of range');
+    }
+    // Exactly, not at least — see [AlbumHint.decode]. Trailing bytes mean the
+    // frame is not the one that was signed.
+    if (bytes.length != 2 + idLen + count) {
+      throw const FormatException(
+          'voice levels length does not match its count');
+    }
+    return VoiceLevels(
+      mediaId: Uint8List.fromList(bytes.sublist(1, 1 + idLen)),
+      levels: Uint8List.fromList(
+        bytes.sublist(2 + idLen, 2 + idLen + count),
+      ),
+    );
+  }
+
+  /// Take whatever the recorder collected and make [maxSamples] or fewer bars
+  /// of it.
+  ///
+  /// The recorder appends a reading every animation frame while the microphone
+  /// is open, so a minute of speech is hundreds of readings and a two-second
+  /// note is a handful. Averaging into buckets rather than picking every nth
+  /// keeps a short loud syllable from disappearing between two samples.
+  static Uint8List resample(List<double> raw, {int cap = maxSamples}) {
+    if (raw.isEmpty) return Uint8List.fromList(const [0]);
+    final count = raw.length <= cap ? raw.length : cap;
+    final out = Uint8List(count);
+    for (var i = 0; i < count; i++) {
+      final from = (i * raw.length / count).floor();
+      final to = ((i + 1) * raw.length / count).ceil().clamp(from + 1, raw.length);
+      var sum = 0.0;
+      for (var j = from; j < to; j++) {
+        sum += raw[j].clamp(0.0, 1.0);
+      }
+      out[i] = ((sum / (to - from)) * 255).round().clamp(0, 255);
+    }
+    return out;
   }
 }
 
