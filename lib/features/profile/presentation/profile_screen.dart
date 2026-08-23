@@ -16,8 +16,13 @@ import '../../../core/locale/locale_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/app_build.dart';
+import 'package:saver_gallery/saver_gallery.dart';
+
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
@@ -1756,7 +1761,9 @@ class _CoverBody extends ConsumerWidget {
           Positioned(
             left: nameLeft,
             top: nameTop,
-            right: 16,
+            // 56 rather than 16: the overflow button sits in that corner at
+            // rest, and a long nickname ran under it.
+            right: 56,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1804,6 +1811,24 @@ class _CoverBody extends ConsumerWidget {
           ),
 
           Positioned(
+            top: topInset + 20,
+            right: 6,
+            child: _CoverMenuButton(
+              // The scrim follows the cover: over a photo the icon needs
+              // something to sit on, and at rest — where the background is the
+              // app's own — a black disc would be a hole in it.
+              scrim: t,
+              onPick: (anchor) => unawaited(_showProfileMenu(
+                context,
+                ref,
+                anchor,
+                fingerprint: fingerprint,
+                nickname: nickname,
+              )),
+            ),
+          ),
+
+          Positioned(
             left: 12,
             right: 12,
             bottom: 10,
@@ -1814,21 +1839,17 @@ class _CoverBody extends ConsumerWidget {
                   child: _CoverAction(
                     icon: Icons.add_a_photo_rounded,
                     label: photo == null ? tt.avatarSet : tt.avatarChange,
-                    // With no photo there is nothing to look at, so go straight
-                    // to the picker. With one, open the screen that can also
-                    // remove it — otherwise there is no way to take an avatar
-                    // back off, which is where this ended up before.
-                    onTap: () => photo == null
-                        ? pickProfileAvatar(context, ref)
-                        : Navigator.of(context, rootNavigator: true).push<void>(
-                            mediaRoute<void>(
-                              (_) => AvatarScreen(
-                                seed: fingerprint,
-                                label: nickname,
-                                heroTag: 'cover-avatar',
-                              ),
-                            ),
-                          ),
+                    // Straight to the gallery, with a photo or without one.
+                    //
+                    // It used to open a preview first when there was already a
+                    // photo, because that screen was the only place that could
+                    // also remove one. So the pill meant "choose a picture" on
+                    // a fresh install and "here is a screen, decide what you
+                    // wanted" ever after — a question in the way of the answer.
+                    // Removing, saving and looking at it live in the three-dot
+                    // menu now, which is where anyone coming from another
+                    // messenger looks for them anyway.
+                    onTap: () => pickProfileAvatar(context, ref),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1854,6 +1875,166 @@ class _CoverBody extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// The three dots themselves.
+///
+/// It reports its own rectangle rather than a touch point: [showAnimatedMenu]
+/// hangs a menu from a control's right edge and opens it at the finger when
+/// there is no control, and it tells the two apart by whether the anchor has a
+/// width.
+class _CoverMenuButton extends StatelessWidget {
+  const _CoverMenuButton({required this.scrim, required this.onPick});
+
+  /// 0 at rest, 1 when the cover is a full-bleed photo.
+  final double scrim;
+  final void Function(Rect anchor) onPick;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.black.withValues(alpha: 0.34 * scrim),
+        shape: const CircleBorder(),
+        child: IconButton(
+          onPressed: () {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box == null) return;
+            onPick(box.localToGlobal(Offset.zero) & box.size);
+          },
+          icon: Icon(
+            Icons.more_vert_rounded,
+            color: AppColors.textOnGlass,
+            size: 22,
+          ),
+        ),
+      );
+}
+
+/// What the profile's overflow menu can do.
+enum _ProfileMenuAction { view, photo, save, colour, copyLink, remove }
+
+/// The three dots on the cover.
+///
+/// Everything that can be done *to the picture* used to live on a screen you
+/// reached by tapping the picture — which meant the one pill people press to
+/// put a photo on for the first time and the one they press to take it off
+/// were the same pill, and it opened a preview to ask which. The pill goes
+/// straight to the gallery now; the rest of it is here, where a menu is what
+/// anybody coming from another messenger reaches for.
+Future<void> _showProfileMenu(
+  BuildContext context,
+  WidgetRef ref,
+  Rect anchor, {
+  required String fingerprint,
+  required String nickname,
+}) async {
+  final t = AppLocalizations.of(context);
+  final photo = ref.read(avatarProvider);
+  final choice = await showAnimatedMenu<_ProfileMenuAction>(
+    context: context,
+    anchor: anchor,
+    items: [
+      if (photo != null)
+        AnimatedMenuItem(
+          value: _ProfileMenuAction.view,
+          icon: Icons.visibility_outlined,
+          label: t.avatarView,
+        ),
+      AnimatedMenuItem(
+        value: _ProfileMenuAction.photo,
+        icon: Icons.add_a_photo_rounded,
+        label: photo == null ? t.avatarSet : t.avatarChange,
+      ),
+      if (photo != null)
+        AnimatedMenuItem(
+          value: _ProfileMenuAction.save,
+          icon: Icons.download_rounded,
+          label: t.chatMediaSaveToGallery,
+        ),
+      AnimatedMenuItem(
+        value: _ProfileMenuAction.colour,
+        icon: Icons.palette_outlined,
+        label: t.customizeTitle,
+      ),
+      AnimatedMenuItem(
+        value: _ProfileMenuAction.copyLink,
+        icon: Icons.link_rounded,
+        label: t.contactCopy,
+      ),
+      if (photo != null)
+        AnimatedMenuItem(
+          value: _ProfileMenuAction.remove,
+          icon: Icons.delete_outline_rounded,
+          label: t.avatarRemove,
+          tone: AppColors.danger,
+        ),
+    ],
+  );
+  if (choice == null || !context.mounted) return;
+
+  switch (choice) {
+    case _ProfileMenuAction.view:
+      await Navigator.of(context, rootNavigator: true).push<void>(
+        mediaRoute<void>(
+          (_) => AvatarScreen(
+            seed: fingerprint,
+            label: nickname,
+            heroTag: 'cover-avatar',
+          ),
+        ),
+      );
+    case _ProfileMenuAction.photo:
+      await pickProfileAvatar(context, ref);
+    case _ProfileMenuAction.save:
+      await _saveAvatarToGallery(context, photo!);
+    case _ProfileMenuAction.colour:
+      context.push('/customize');
+    case _ProfileMenuAction.copyLink:
+      await _copyMyLink(context, ref);
+    case _ProfileMenuAction.remove:
+      final yes = await confirmAction(
+        context,
+        title: t.avatarRemove,
+        message: t.avatarRemoveConfirm,
+        confirmLabel: t.avatarRemove,
+      );
+      if (!yes) return;
+      await ref.read(avatarProvider.notifier).clear();
+  }
+}
+
+/// The avatar is held as bytes, not as a file, so there is nothing to copy —
+/// it is written out under a name that says where it came from.
+Future<void> _saveAvatarToGallery(BuildContext context, Uint8List bytes) async {
+  final t = AppLocalizations.of(context);
+  try {
+    final result = await SaverGallery.saveImage(
+      bytes,
+      fileName: 'cubechat_avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      skipIfExists: false,
+    );
+    if (!context.mounted) return;
+    showGlassToast(
+      context,
+      result.isSuccess ? t.avatarSaved : t.avatarFailed,
+      tone: result.isSuccess ? ToastTone.success : ToastTone.danger,
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    showGlassToast(context, t.avatarFailed, tone: ToastTone.danger);
+  }
+}
+
+Future<void> _copyMyLink(BuildContext context, WidgetRef ref) async {
+  final t = AppLocalizations.of(context);
+  // The same card the QR pill shows, in text form. Read rather than watched:
+  // this runs once, from a menu row, and the card is a future that is already
+  // resolved by the time the profile has been on screen long enough to open
+  // one.
+  final card = await ref.read(myContactCardProvider.future);
+  if (!context.mounted) return;
+  await Clipboard.setData(ClipboardData(text: card));
+  if (!context.mounted) return;
+  showCopiedToast(context, t.contactCopied);
 }
 
 /// One of the three pills sitting on the cover photo.

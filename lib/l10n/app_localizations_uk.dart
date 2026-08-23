@@ -918,6 +918,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get avatarChange => 'Змінити фото';
 
   @override
+  String get avatarView => 'Переглянути фото';
+
+  @override
+  String get avatarSaved => 'Збережено до галереї';
+
+  @override
   String get avatarRemove => 'Прибрати фото';
 
   @override

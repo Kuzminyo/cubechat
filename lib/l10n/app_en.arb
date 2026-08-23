@@ -407,6 +407,8 @@
   "profilePrivacyExplainer": "Last seen cuts both ways: hide your own status and you stop seeing everyone else's. Read receipts only control what you send. Message delivery is untouched.",
   "avatarSet": "Choose a photo",
   "avatarChange": "Change photo",
+  "avatarView": "View photo",
+  "avatarSaved": "Saved to gallery",
   "avatarRemove": "Remove photo",
   "avatarRemoveConfirm": "The avatar will be deleted from this device. The generated gradient comes back in its place.",
   "avatarFailed": "Could not read that image",

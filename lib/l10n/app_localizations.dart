@@ -1718,6 +1718,18 @@ abstract class AppLocalizations {
   /// **'Change photo'**
   String get avatarChange;
 
+  /// No description provided for @avatarView.
+  ///
+  /// In en, this message translates to:
+  /// **'View photo'**
+  String get avatarView;
+
+  /// No description provided for @avatarSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to gallery'**
+  String get avatarSaved;
+
   /// No description provided for @avatarRemove.
   ///
   /// In en, this message translates to:

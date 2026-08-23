@@ -4,10 +4,8 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/widgets/glass_sheet.dart';
-import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
-import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/presentation/widgets/image_editor.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
@@ -53,14 +51,15 @@ Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
   if (!ok && context.mounted) showGlassToast(context, t.avatarFailed);
 }
 
-/// The avatar, opened. Tapping the circle in the profile lands here through a
+/// The avatar, opened. Reached from the profile's three-dot menu through a
 /// Hero, so the small circle grows into the big one rather than cutting to a
 /// new screen.
 ///
-/// Doubles as the place to change or remove the picture: the profile circle
-/// stays a plain tap target with no badges or long-press secrets hanging off
-/// it, and every avatar action lives in the one screen that is about the
-/// avatar.
+/// It used to carry the buttons as well — change the picture, remove it — and
+/// that made it a question standing in front of an answer: the pill that says
+/// "change photo" opened a screen to ask which of two things you meant, on the
+/// way to a gallery you were always going to. The actions live in the menu on
+/// the cover now, and this is what it says on the tin: the photo, large.
 class AvatarScreen extends ConsumerWidget {
   const AvatarScreen({
     super.key,
@@ -75,7 +74,6 @@ class AvatarScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
     final bytes = ref.watch(avatarProvider);
     final side = MediaQuery.sizeOf(context).width * 0.7;
 
@@ -87,58 +85,16 @@ class AvatarScreen extends ConsumerWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: IdentityAvatar(
-                  seed: seed,
-                  label: label,
-                  size: side,
-                  heroTag: heroTag,
-                  imageBytes: bytes,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: PillButton(
-                      label: bytes == null ? t.avatarSet : t.avatarChange,
-                      icon: Icons.photo_camera_back_rounded,
-                      onTap: () => pickProfileAvatar(context, ref),
-                    ),
-                  ),
-                  if (bytes != null) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: PillButton(
-                        label: t.avatarRemove,
-                        icon: Icons.delete_outline_rounded,
-                        onTap: () => _remove(context, ref),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+        child: Center(
+          child: IdentityAvatar(
+            seed: seed,
+            label: label,
+            size: side,
+            heroTag: heroTag,
+            imageBytes: bytes,
+          ),
         ),
       ),
     );
-  }
-
-  Future<void> _remove(BuildContext context, WidgetRef ref) async {
-    final t = AppLocalizations.of(context);
-    final yes = await confirmAction(
-      context,
-      title: t.avatarRemove,
-      message: t.avatarRemoveConfirm,
-      confirmLabel: t.avatarRemove,
-    );
-    if (!yes) return;
-    await ref.read(avatarProvider.notifier).clear();
   }
 }
