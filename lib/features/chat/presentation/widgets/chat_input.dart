@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
@@ -370,6 +371,16 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    // The most repeated touch in the app, and the only one that had no answer
+    // in the hand. A message leaves over a radio: the transport is not going
+    // to confirm anything inside the same second, so the tick is the app
+    // saying "taken" at the moment the finger commits, which is the whole of
+    // what makes a send feel immediate rather than hopeful.
+    //
+    // Light, not medium: the row already spends `mediumImpact` on a long press
+    // opening the spotlight, and a send that hits harder than opening a menu
+    // gets the ranking backwards.
+    HapticFeedback.lightImpact();
     if (_editing) {
       widget.onEditCommit?.call(text);
     } else {
@@ -719,7 +730,14 @@ class _VoiceButton extends StatelessWidget {
           () => LongPressGestureRecognizer(duration: _voiceArmDelay),
           (recognizer) {
             recognizer
-              ..onLongPressStart = ((_) => onStart())
+              // A hold that has become a recording, a drag that has reached
+              // the lock, a drag that has reached the bin: three moments the
+              // finger cannot see, because it is on the button and the change
+              // is elsewhere on the screen. They are the ones worth a tick.
+              ..onLongPressStart = ((_) {
+                HapticFeedback.mediumImpact();
+                onStart();
+              })
               ..onLongPressEnd = ((_) => onStop())
               ..onLongPressCancel = onCancel
               ..onLongPressMoveUpdate = (LongPressMoveUpdateDetails d) {
@@ -730,8 +748,10 @@ class _VoiceButton extends StatelessWidget {
                 // safe reading of an ambiguous gesture is the one that doesn't
                 // send.
                 if (offset.dx <= -_voiceCancelTravel) {
+                  HapticFeedback.mediumImpact();
                   onCancel();
                 } else if (offset.dy <= -_voiceLockTravel) {
+                  HapticFeedback.selectionClick();
                   onLock();
                 }
               };

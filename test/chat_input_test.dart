@@ -2,6 +2,7 @@ import 'package:cubechat/features/chat/presentation/widgets/chat_input.dart';
 import 'package:cubechat/features/chat/presentation/widgets/emoji_sticker_panel.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -370,6 +371,45 @@ void main() {
     expect(find.byType(KeyboardSlotPanel), findsNothing);
     expect(reports, <bool>[true, false],
         reason: 'a flag nobody lowers is worse than no flag at all');
+  });
+
+  testWidgets('sending answers the finger before the radio can', (tester) async {
+    // The most repeated touch in the app, and the only one that had nothing to
+    // say in the hand. A message leaves over a radio, so nothing is going to
+    // confirm anything inside the same second; the tick is the app saying
+    // "taken" at the moment the finger commits.
+    final taps = <String?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          taps.add(call.arguments as String?);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+    )));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    expect(taps, isEmpty, reason: 'typing is not a commitment');
+
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pump();
+
+    expect(taps, ['HapticFeedbackType.lightImpact'],
+        reason: 'light, because a long press opening the spotlight is the '
+            'heavier one and a send must not outrank it');
   });
 
   testWidgets('a composer that goes away lowers the flag on its way out',
