@@ -71,6 +71,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   /// scrolls as it always did.
   static const double _dragToOpen = 48;
 
+  /// How far past the top the list has to be pulled to do the same thing.
+  /// Higher than the face's, because the bounce at the end of a flick lives
+  /// here and must not count as a decision.
+  static const double _pullToOpen = 64;
+
   @override
   void dispose() {
     _open.dispose();
@@ -86,7 +91,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // an ordinary update with a negative offset and no overscroll is ever
     // reported. Watching for one meant the gesture did nothing at all.
     final px = n.metrics.pixels;
-    if (px > 24) {
+    // Two ways in, on purpose. The swipe up the face is the one that reads as
+    // being about the picture; pulling the list past its top is the one every
+    // other messenger has, and it is what a thumb already at the top of a list
+    // does without thinking. Neither costs the other anything: the face claims
+    // only drags that start on it.
+    if (px <= -_pullToOpen) {
+      if (_open.value < 1 && !_open.isAnimating) _open.forward();
+    } else if (px > 24) {
       // Scrolling into the content puts the photo away again; left open it
       // would sit under the settings and eat the screen.
       if (_open.value > 0 && !_open.isAnimating) _open.reverse();

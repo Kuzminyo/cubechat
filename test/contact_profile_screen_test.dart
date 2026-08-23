@@ -207,5 +207,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(face).width, closeTo(restingWidth, 0.5),
         reason: 'and swiping back down should put it away');
+
+    // The other way in, which is what a thumb already at the top of the list
+    // does without thinking. It is a separate listener on a separate screen,
+    // so it is worth its own assertion: an unwrapped scroll view would leave
+    // the gesture doing nothing here while it still worked on your own
+    // profile.
+    await tester.drag(
+      find.byType(CustomScrollView),
+      const Offset(0, 260),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(face).width, greaterThan(restingWidth),
+        reason: 'pulling the list past its top should open it too');
   });
 }

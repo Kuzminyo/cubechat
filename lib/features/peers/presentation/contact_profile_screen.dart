@@ -69,6 +69,27 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
   /// number as the profile's, because it is the same gesture.
   static const double _dragToOpen = 48;
 
+  /// How far past the top the list has to be pulled to do the same thing.
+  /// Higher than the face's, because the bounce at the end of a flick lives
+  /// here and must not count as a decision.
+  static const double _pullToOpen = 64;
+
+  /// The list's half of the gesture, so a thumb already at the top of the
+  /// screen opens the picture the way it does in every other messenger.
+  bool _onScroll(ScrollNotification n) {
+    if (n is! ScrollUpdateNotification) return false;
+    if (n.metrics.axis != Axis.vertical) return false;
+    final px = n.metrics.pixels;
+    if (px <= -_pullToOpen) {
+      if (_open.value < 1 && !_open.isAnimating) _open.forward();
+    } else if (px > 24) {
+      // Reading the settings puts the picture away; left open it would sit
+      // under them and eat the screen.
+      if (_open.value > 0 && !_open.isAnimating) _open.reverse();
+    }
+    return false;
+  }
+
   double _dragOnFace = 0;
 
   @override
@@ -691,8 +712,16 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
           backgroundColor: Colors.transparent,
           body: Stack(
             children: [
-              CustomScrollView(
-                physics: const BouncingScrollPhysics(),
+              NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: CustomScrollView(
+                // Bouncing on both platforms: Android's clamping physics never
+                // lets `pixels` go below zero, so "pulled past the top" would
+                // have nothing to measure and the gesture would only exist on
+                // an iPhone.
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
                 slivers: [
                   SliverToBoxAdapter(
                     child: AnimatedBuilder(
@@ -839,6 +868,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                     ),
                   ),
                 ],
+                ),
               ),
               Positioned.fill(
                 child: _ActionsOverlay(

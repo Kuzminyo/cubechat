@@ -65,6 +65,26 @@ void main() {
     expect(tester.getSize(disc).width, closeTo(92, 0.5));
   });
 
+  testWidgets('pulling the list past the top opens it as well', (tester) async {
+    // Two ways in, on purpose: the swipe up the face is the one that reads as
+    // being about the picture, and the pull is what a thumb already at the top
+    // of a list does without thinking. Neither costs the other anything — the
+    // face claims only drags that start on it.
+    await pumpProfile(tester);
+    final t = await AppLocalizations.delegate.load(const Locale('en'));
+
+    final before = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
+    await tester.drag(
+      find.byType(CustomScrollView),
+      const Offset(0, 260),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(find.text(t.profileFingerprint)).dy,
+        greaterThan(before));
+  });
+
   testWidgets('the cover offers the three actions it advertises',
       (tester) async {
     await pumpProfile(tester);
