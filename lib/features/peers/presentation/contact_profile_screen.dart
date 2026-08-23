@@ -14,6 +14,7 @@ import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../core/widgets/hue_strip.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -338,9 +339,16 @@ class ContactProfileScreen extends ConsumerWidget {
                   // there is real detail behind the panel worth softening.
                   blur: true,
                   padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                  // Scrolls, because the list of things you can do to a
+                  // contact has outgrown a short phone: the privacy exceptions
+                  // took it 307 points past the bottom of a 360x800 screen,
+                  // which a widget test caught before a phone did. A panel
+                  // that is shorter than the screen still sizes to its
+                  // contents — a scroll view takes the smaller of the two.
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
                         child: Row(
@@ -405,6 +413,97 @@ class ContactProfileScreen extends ConsumerWidget {
                         onTap: () {
                           close();
                           _shareContact(context, ref);
+                        },
+                      ),
+                      // A colour for this person's profile. Local, and that is
+                      // the point of it: it is a mark you put on them, so the
+                      // few people you talk to most are a few colours at a
+                      // glance rather than a column of identical headers.
+                      _ActionTile(
+                        icon: Icons.color_lens_outlined,
+                        label: t.profileTheme,
+                        onTap: () async {
+                          close();
+                          await showHueSheet(
+                            context: context,
+                            title: t.profileTheme,
+                            resetLabel: t.customizeReset,
+                            hue: conversationSettings.profileHue,
+                            onPick: (h) => unawaited(
+                              ref
+                                  .read(conversationSettingsControllerProvider
+                                      .notifier)
+                                  .setProfileHue(peerPubkeyHex, h),
+                            ),
+                          );
+                        },
+                      ),
+                      // Three exceptions to the global privacy switches, for
+                      // this one person. Nothing here goes on the wire — each
+                      // is a decision not to send something they have no other
+                      // way of learning, so the row that turns it on is the
+                      // whole of the mechanism.
+                      _ActionTile(
+                        icon: conversationSettings.hideAvatar
+                            ? Icons.visibility_off_rounded
+                            : Icons.account_circle_rounded,
+                        label: conversationSettings.hideAvatar
+                            ? t.contactShowAvatar
+                            : t.contactHideAvatar,
+                        subtitle: conversationSettings.hideAvatar
+                            ? t.contactHiddenFromThem
+                            : null,
+                        onTap: () async {
+                          close();
+                          await ref
+                              .read(conversationSettingsControllerProvider
+                                  .notifier)
+                              .setHideAvatar(
+                                peerPubkeyHex,
+                                !conversationSettings.hideAvatar,
+                              );
+                        },
+                      ),
+                      _ActionTile(
+                        icon: conversationSettings.hideLastSeen
+                            ? Icons.visibility_off_rounded
+                            : Icons.schedule_rounded,
+                        label: conversationSettings.hideLastSeen
+                            ? t.contactShowLastSeen
+                            : t.contactHideLastSeen,
+                        subtitle: conversationSettings.hideLastSeen
+                            ? t.contactHiddenFromThem
+                            : null,
+                        onTap: () async {
+                          close();
+                          await ref
+                              .read(conversationSettingsControllerProvider
+                                  .notifier)
+                              .setHideLastSeen(
+                                peerPubkeyHex,
+                                !conversationSettings.hideLastSeen,
+                              );
+                        },
+                      ),
+                      _ActionTile(
+                        icon: conversationSettings.hideReadReceipts
+                            ? Icons.visibility_off_rounded
+                            : Icons.done_all_rounded,
+                        label: conversationSettings.hideReadReceipts
+                            ? t.contactShowReadReceipts
+                            : t.contactHideReadReceipts,
+                        subtitle: conversationSettings.hideReadReceipts
+                            ? t.contactHiddenFromThem
+                            : null,
+                        onTap: () async {
+                          close();
+                          await ref
+                              .read(conversationSettingsControllerProvider
+                                  .notifier)
+                              .setHideReadReceipts(
+                                peerPubkeyHex,
+                                !conversationSettings.hideReadReceipts,
+                              );
                         },
                       ),
                       _ActionTile(
@@ -480,7 +579,8 @@ class ContactProfileScreen extends ConsumerWidget {
                           _setBlocked(ref, peer);
                         },
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -873,7 +973,12 @@ class _ProfileHero extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = IdentityAvatar.paletteFor(peerId);
+    final palette = IdentityAvatar.gradientFor(
+      peerId,
+      hue: ref
+          .watch(conversationSettingsControllerProvider)[peerId]
+          ?.profileHue,
+    );
     final avatarSize =
         (MediaQuery.sizeOf(context).width * 0.42).clamp(132.0, 176.0);
     // Their picture, full-bleed across the header — the same thing your own
@@ -972,12 +1077,19 @@ class _ProfileHero extends ConsumerWidget {
             right: 20,
             bottom: 108,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // Centred, so a contact's header reads the way your own does at
+              // rest: the face, the name under it, the status under that, all
+              // on one axis. The photograph itself stays full-bleed — that was
+              // a deliberate change away from a round portrait floating on a
+              // gradient, which was the one place in this app where somebody's
+              // face was shown as a token rather than as a picture.
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: AppTypography.display(size: 31),
                 ),
                 const SizedBox(height: 7),
@@ -985,6 +1097,7 @@ class _ProfileHero extends ConsumerWidget {
                   status,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: statusColor,
                     fontSize: 14,

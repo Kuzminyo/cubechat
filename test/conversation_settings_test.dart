@@ -37,6 +37,65 @@ void main() {
     }
   });
 
+  group('per-contact privacy exceptions', () {
+    test('an entry that only hides something is worth keeping', () {
+      // `isDefault` decides whether an entry is written at all and whether a
+      // stored one is loaded back. Not counting the hidings would drop the
+      // whole of this setting on the next launch — the contact would quietly
+      // start seeing the thing again, which is the one failure a privacy
+      // switch is not allowed to have.
+      const hidden = ConversationSettings(hideAvatar: true);
+      expect(hidden.isDefault, isFalse);
+      expect(const ConversationSettings(hideLastSeen: true).isDefault, isFalse);
+      expect(
+        const ConversationSettings(hideReadReceipts: true).isDefault,
+        isFalse,
+      );
+      expect(ConversationSettings.initial.isDefault, isTrue);
+    });
+
+    test('the three are independent of each other', () {
+      final one = ConversationSettings.initial.copyWith(hideLastSeen: true);
+      expect(one.hideLastSeen, isTrue);
+      expect(one.hideAvatar, isFalse);
+      expect(one.hideReadReceipts, isFalse);
+      final two = one.copyWith(hideAvatar: true);
+      expect(two.hideLastSeen, isTrue, reason: 'copyWith must not clear it');
+      expect(two.hideAvatar, isTrue);
+    });
+
+    test('a hiding survives being written and read back', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      await settings.setHideAvatar('alice', true);
+      await settings.setHideReadReceipts('alice', true);
+
+      expect(settings.forChat('alice').hideAvatar, isTrue);
+      expect(settings.forChat('alice').hideReadReceipts, isTrue);
+      expect(settings.forChat('alice').hideLastSeen, isFalse);
+      expect(settings.forChat('bob').hideAvatar, isFalse,
+          reason: 'an exception is about one person, not the roster');
+    });
+
+    test('an exception withholds, and can never hand out what the global '
+        'switch refused', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+
+      // Global switches default to sharing, so the exception is what decides.
+      expect(settings.sharesAvatarWith('alice'), isTrue);
+      await settings.setHideAvatar('alice', true);
+      expect(settings.sharesAvatarWith('alice'), isFalse);
+      expect(settings.sharesAvatarWith('bob'), isTrue);
+    });
+  });
+
   test('switching auto-delete on leaves the history that was already there',
       () async {
     final container = ProviderContainer();

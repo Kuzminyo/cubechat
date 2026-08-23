@@ -1040,6 +1040,27 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileAllowCopying => 'Дозволити копіювання';
 
   @override
+  String get contactHideAvatar => 'Приховати моє фото';
+
+  @override
+  String get contactShowAvatar => 'Показувати моє фото';
+
+  @override
+  String get contactHideLastSeen => 'Приховати мій час візиту';
+
+  @override
+  String get contactShowLastSeen => 'Показувати мій час візиту';
+
+  @override
+  String get contactHideReadReceipts => 'Приховати мій час прочитання';
+
+  @override
+  String get contactShowReadReceipts => 'Показувати мій час прочитання';
+
+  @override
+  String get contactHiddenFromThem => 'Приховано від цього контакту';
+
+  @override
   String get contactProfileCopyingRestricted =>
       'Копіювання і пересилання вимкнено';
 

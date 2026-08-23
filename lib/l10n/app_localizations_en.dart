@@ -1038,6 +1038,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileAllowCopying => 'Allow copying';
 
   @override
+  String get contactHideAvatar => 'Hide my photo';
+
+  @override
+  String get contactShowAvatar => 'Show my photo';
+
+  @override
+  String get contactHideLastSeen => 'Hide my last seen';
+
+  @override
+  String get contactShowLastSeen => 'Show my last seen';
+
+  @override
+  String get contactHideReadReceipts => 'Hide my read times';
+
+  @override
+  String get contactShowReadReceipts => 'Show my read times';
+
+  @override
+  String get contactHiddenFromThem => 'Hidden from this contact';
+
+  @override
   String get contactProfileCopyingRestricted =>
       'Copying and forwarding are disabled';
 

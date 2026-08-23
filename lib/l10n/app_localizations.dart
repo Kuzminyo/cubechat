@@ -1940,6 +1940,48 @@ abstract class AppLocalizations {
   /// **'Allow copying'**
   String get contactProfileAllowCopying;
 
+  /// No description provided for @contactHideAvatar.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide my photo'**
+  String get contactHideAvatar;
+
+  /// No description provided for @contactShowAvatar.
+  ///
+  /// In en, this message translates to:
+  /// **'Show my photo'**
+  String get contactShowAvatar;
+
+  /// No description provided for @contactHideLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide my last seen'**
+  String get contactHideLastSeen;
+
+  /// No description provided for @contactShowLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Show my last seen'**
+  String get contactShowLastSeen;
+
+  /// No description provided for @contactHideReadReceipts.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide my read times'**
+  String get contactHideReadReceipts;
+
+  /// No description provided for @contactShowReadReceipts.
+  ///
+  /// In en, this message translates to:
+  /// **'Show my read times'**
+  String get contactShowReadReceipts;
+
+  /// No description provided for @contactHiddenFromThem.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden from this contact'**
+  String get contactHiddenFromThem;
+
   /// No description provided for @contactProfileCopyingRestricted.
   ///
   /// In en, this message translates to:

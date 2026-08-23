@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import 'messages_controller.dart';
 
 /// How long a message survives in one conversation, as a plain duration.
@@ -131,6 +132,10 @@ class ConversationSettings {
     this.restrictCopying = false,
     this.peerRestrictsCopying = false,
     this.wallpaper = ChatWallpaper.none,
+    this.hideAvatar = false,
+    this.hideLastSeen = false,
+    this.hideReadReceipts = false,
+    this.profileHue,
   });
 
   static const initial = ConversationSettings();
@@ -166,6 +171,46 @@ class ConversationSettings {
 
   final ChatWallpaper wallpaper;
 
+  /// Three exceptions to the global privacy switches, for one person.
+  ///
+  /// The switches in Privacy answer "who may see this" with *everyone or
+  /// nobody*, which is the wrong shape for the ordinary case: there is usually
+  /// one contact you would rather not show a photo to, or not have your times
+  /// read by, while everybody else is fine. These say "not this one".
+  ///
+  /// None of them touches the wire. Each is a decision not to *send* something
+  /// the other side has no other way of learning:
+  ///
+  ///  * [hideAvatar] — their build asks for our picture and this one is not
+  ///    answered. They see the generated gradient, which is what everybody
+  ///    sees before an avatar is set.
+  ///  * [hideLastSeen] — the presence beacon minted for them carries the
+  ///    `hideLastSeen` flag it already has a field for, and typing is not
+  ///    announced to them. They see us without a clock beside the status.
+  ///  * [hideReadReceipts] — no receipt is composed for them, so their ticks
+  ///    stop at one. Their own receipts still arrive here: this withholds, it
+  ///    does not retaliate.
+  ///
+  /// Only ever more private than the global switch, never less — see
+  /// [ConversationSettingsController.hidesAvatarFrom] and its neighbours,
+  /// which is where the two are combined.
+  final bool hideAvatar;
+  final bool hideLastSeen;
+  final bool hideReadReceipts;
+
+  /// The colour this contact's profile is painted in, or null for the one
+  /// derived from their identity.
+  ///
+  /// Local, and deliberately so. A colour somebody chose for themselves would
+  /// have to travel, be versioned, and be trusted — and the useful half of the
+  /// feature is the other one: this is a mark *you* put on a person, so the
+  /// three people you talk to most are three different colours at a glance.
+  /// Nobody else sees it and nobody else can set it.
+  ///
+  /// A hue in degrees; everything else about the colour is derived from it —
+  /// see [AppPalette.hue].
+  final double? profileHue;
+
   /// Whether copying, forwarding and sharing are off in this conversation —
   /// the question every message surface actually asks. Either side saying so
   /// is enough; it is a request about the conversation, not about one device.
@@ -178,6 +223,11 @@ class ConversationSettings {
     bool? restrictCopying,
     bool? peerRestrictsCopying,
     ChatWallpaper? wallpaper,
+    bool? hideAvatar,
+    bool? hideLastSeen,
+    bool? hideReadReceipts,
+    double? profileHue,
+    bool clearProfileHue = false,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
@@ -186,10 +236,25 @@ class ConversationSettings {
         restrictCopying: restrictCopying ?? this.restrictCopying,
         peerRestrictsCopying: peerRestrictsCopying ?? this.peerRestrictsCopying,
         wallpaper: wallpaper ?? this.wallpaper,
+        hideAvatar: hideAvatar ?? this.hideAvatar,
+        hideLastSeen: hideLastSeen ?? this.hideLastSeen,
+        hideReadReceipts: hideReadReceipts ?? this.hideReadReceipts,
+        profileHue:
+            clearProfileHue ? null : (profileHue ?? this.profileHue),
       );
 
+  /// True when there is nothing here worth storing. The hidings count: an
+  /// entry that only says "not this person" is the whole of what that setting
+  /// is, and dropping it as "default" would quietly un-hide them on the next
+  /// launch.
   bool get isDefault =>
-      !autoDelete.isOn && !copyingRestricted && !wallpaper.isSet;
+      !autoDelete.isOn &&
+      !copyingRestricted &&
+      !wallpaper.isSet &&
+      !hideAvatar &&
+      !hideLastSeen &&
+      !hideReadReceipts &&
+      profileHue == null;
 
   @override
   bool operator ==(Object other) =>
@@ -198,7 +263,11 @@ class ConversationSettings {
       other.autoDeleteFrom == autoDeleteFrom &&
       other.restrictCopying == restrictCopying &&
       other.peerRestrictsCopying == peerRestrictsCopying &&
-      other.wallpaper == wallpaper;
+      other.wallpaper == wallpaper &&
+      other.hideAvatar == hideAvatar &&
+      other.hideLastSeen == hideLastSeen &&
+      other.hideReadReceipts == hideReadReceipts &&
+      other.profileHue == profileHue;
 
   @override
   int get hashCode => Object.hash(
@@ -207,6 +276,10 @@ class ConversationSettings {
         restrictCopying,
         peerRestrictsCopying,
         wallpaper,
+        hideAvatar,
+        hideLastSeen,
+        hideReadReceipts,
+        profileHue,
       );
 }
 
@@ -277,6 +350,42 @@ class ConversationSettingsController
 
   Future<void> setWallpaper(String chatId, ChatWallpaper wallpaper) =>
       _put(chatId, forChat(chatId).copyWith(wallpaper: wallpaper));
+
+  Future<void> setHideAvatar(String chatId, bool hidden) =>
+      _put(chatId, forChat(chatId).copyWith(hideAvatar: hidden));
+
+  Future<void> setHideLastSeen(String chatId, bool hidden) =>
+      _put(chatId, forChat(chatId).copyWith(hideLastSeen: hidden));
+
+  Future<void> setHideReadReceipts(String chatId, bool hidden) =>
+      _put(chatId, forChat(chatId).copyWith(hideReadReceipts: hidden));
+
+  /// Paint this contact's profile a colour of your choosing, or null to put it
+  /// back to the one their identity gives them.
+  Future<void> setProfileHue(String chatId, double? hue) => _put(
+        chatId,
+        forChat(chatId).copyWith(
+          profileHue: hue,
+          clearProfileHue: hue == null,
+        ),
+      );
+
+  /// The three questions the transport asks before it sends something about
+  /// us, answered by the global switch and this contact's exception together.
+  ///
+  /// Always the more private of the two, and only ever in that direction: an
+  /// exception can withhold from one person what everybody else gets, and can
+  /// never hand out what the global switch has already refused. Combined here
+  /// rather than at each call site so that rule has one home.
+  bool sharesAvatarWith(String chatId) => !forChat(chatId).hideAvatar;
+
+  bool sharesLastSeenWith(String chatId) =>
+      ref.read(privacySettingsProvider).shareLastSeen &&
+      !forChat(chatId).hideLastSeen;
+
+  bool sharesReadReceiptsWith(String chatId) =>
+      ref.read(privacySettingsProvider).shareReadReceipts &&
+      !forChat(chatId).hideReadReceipts;
 
   Future<void> forget(String chatId) async {
     if (!state.containsKey(chatId)) return;
@@ -365,6 +474,10 @@ class ConversationSettingsController
               imagePath: value['wallpaperImage'] as String?,
               dim: (value['wallpaperDim'] as num?)?.toDouble() ?? 0.35,
             ),
+            hideAvatar: value['hideAvatar'] == true,
+            hideLastSeen: value['hideLastSeen'] == true,
+            hideReadReceipts: value['hideReadReceipts'] == true,
+            profileHue: (value['profileHue'] as num?)?.toDouble(),
           );
           if (!settings.isDefault) loaded[entry.key as String] = settings;
         }
@@ -395,6 +508,11 @@ class ConversationSettingsController
               'wallpaperImage': entry.value.wallpaper.imagePath,
             if (entry.value.wallpaper.isSet)
               'wallpaperDim': entry.value.wallpaper.dim,
+            if (entry.value.hideAvatar) 'hideAvatar': true,
+            if (entry.value.hideLastSeen) 'hideLastSeen': true,
+            if (entry.value.hideReadReceipts) 'hideReadReceipts': true,
+            if (entry.value.profileHue != null)
+              'profileHue': entry.value.profileHue,
           },
       });
     } catch (e) {
