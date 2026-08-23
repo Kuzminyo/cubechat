@@ -6510,6 +6510,11 @@ class MessagingService {
     _drainingFileQueue = true;
     try {
       await _ref.read(fileTransferControllerProvider.notifier).loaded;
+      // The await above is a real gap and this runs from a timer, so the
+      // container can be torn down inside it. Reading a disposed one throws
+      // into the surrounding zone with nobody listening; nothing below is
+      // worth doing for a service that has been disposed anyway.
+      if (_disposed) return;
       final queued = _ref
           .read(fileTransferControllerProvider)
           .values

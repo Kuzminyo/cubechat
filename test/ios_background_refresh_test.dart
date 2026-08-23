@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cubechat/core/notifications/ios_background_refresh.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
+import 'package:cubechat/core/util/location_service.dart';
 import 'package:cubechat/features/map/data/map_presence_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,13 +13,15 @@ import 'support/hive_settle.dart';
 
 class _FakeMapPresenceController extends MapPresenceController {
   static bool poked = false;
+  static StampedLocationFix? offered;
 
   @override
   int build() => 0;
 
   @override
-  Future<void> pokeNow() async {
+  Future<void> pokeNow({StampedLocationFix? offered}) async {
     poked = true;
+    _FakeMapPresenceController.offered = offered;
   }
 }
 
@@ -70,7 +74,15 @@ void main() {
       overrides: [
         messagingServiceProvider.overrideWith((ref) {
           built = true;
-          return MessagingService(ref);
+          final service = MessagingService(ref);
+          // The real provider registers this, and an override replaces the
+          // whole body — so without it this service is never disposed, and its
+          // file-queue timer goes on reading a container that is gone. That
+          // lands as "this test failed after it had already completed" on
+          // whichever case is running when the timer next fires, which is
+          // usually not this one.
+          ref.onDispose(() => unawaited(service.dispose()));
+          return service;
         }),
       ],
     );
@@ -102,6 +114,83 @@ void main() {
     );
 
     expect(_FakeMapPresenceController.poked, isTrue);
+    expect(_FakeMapPresenceController.offered, isNull,
+        reason: 'a scheduled window brings no position of its own');
+  });
+
+  test("a doorbell's own position is carried through to the pin", () async {
+    // The significant-change wake-up arrives holding the coarse fix that
+    // decided the phone had moved. Handing it on is what lets the pin be
+    // republished without asking CoreLocation for a cold one — background GPS
+    // being the largest measured expense this app has.
+    _FakeMapPresenceController.poked = false;
+    _FakeMapPresenceController.offered = null;
+    final container = ProviderContainer(
+      overrides: [
+        mapPresenceControllerProvider.overrideWith(
+          _FakeMapPresenceController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    IosBackgroundRefresh.instance.install(container);
+
+    final woke = StampedLocationFix(
+      const LocationFix(latitude: 50.0, longitude: 36.2, accuracyMetres: 480),
+      DateTime.now(),
+    );
+    await IosBackgroundRefresh.instance.refreshNow(
+      window: const Duration(milliseconds: 1100),
+      offered: woke,
+    );
+
+    expect(_FakeMapPresenceController.offered, same(woke));
+  });
+
+  group('the position a wake-up arrives with', () {
+    Map<String, Object> wake({
+      Object lat = 50.0,
+      Object lon = 36.2,
+      Object accuracy = 480.0,
+      Object at = 1_755_000_000_000,
+    }) =>
+        {'lat': lat, 'lon': lon, 'accuracy': accuracy, 'at': at};
+
+    test('is read with its own stamp, not the moment it was read', () {
+      final fix = IosBackgroundRefresh.fixFromWake(wake());
+      expect(fix, isNotNull);
+      expect(fix!.fix.latitude, 50.0);
+      expect(fix.fix.longitude, 36.2);
+      expect(fix.fix.accuracyMetres, 480);
+      // A relaunch spends seconds booting Dart before this runs. Re-dating the
+      // fix here would hide the age the next reader is checking for.
+      expect(fix.at.millisecondsSinceEpoch, 1_755_000_000_000);
+    });
+
+    test('is refused when the platform says the coordinate is invalid', () {
+      // CoreLocation spells "I do not actually know where this is" as a
+      // negative horizontal accuracy, and it is a real value to receive.
+      expect(IosBackgroundRefresh.fixFromWake(wake(accuracy: -1.0)), isNull);
+    });
+
+    test('is refused when it could not be a place', () {
+      expect(IosBackgroundRefresh.fixFromWake(wake(lat: 91.0)), isNull);
+      expect(IosBackgroundRefresh.fixFromWake(wake(lon: -181.0)), isNull);
+      expect(IosBackgroundRefresh.fixFromWake(wake(at: 0)), isNull);
+    });
+
+    test('is refused when it is not there at all', () {
+      // The scheduled BGAppRefreshTask path, which carries no arguments — and
+      // anything malformed, since a wrong number here is a pin somewhere the
+      // user has never been.
+      expect(IosBackgroundRefresh.fixFromWake(null), isNull);
+      expect(IosBackgroundRefresh.fixFromWake('nonsense'), isNull);
+      expect(
+        IosBackgroundRefresh.fixFromWake(<String, Object>{'lat': 50.0}),
+        isNull,
+      );
+      expect(IosBackgroundRefresh.fixFromWake(wake(lat: 'north')), isNull);
+    });
   });
   test('the window is bounded — it returns rather than running until killed',
       () async {

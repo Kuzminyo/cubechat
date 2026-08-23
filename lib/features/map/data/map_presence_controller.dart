@@ -232,11 +232,31 @@ class MapPresenceController extends Notifier<int> {
     await watch?.cancel();
   }
 
-  Future<void> pokeNow() => _sendUpdate(force: true);
+  /// Publish now, out of turn — a background window asking for the pin.
+  ///
+  /// [offered] is a position the caller already has and did not pay for: the
+  /// coarse fix iOS hands over when a significant-change event relaunches the
+  /// app. Preferring it is the whole point of accepting it — the alternative
+  /// is a cold `getCurrentPosition` in the background, and background GPS is
+  /// the largest single expense this app has ever been measured making. Stale
+  /// or absent, the ordinary route runs unchanged.
+  Future<void> pokeNow({StampedLocationFix? offered}) =>
+      _sendUpdate(force: true, offered: offered);
 
   /// Take a fix and publish it. The timer's half of the job.
-  Future<void> _sendUpdate({bool force = false}) async {
+  Future<void> _sendUpdate({
+    bool force = false,
+    StampedLocationFix? offered,
+  }) async {
     if (_sending || !_shouldShare) return;
+    // A position handed in from outside beats one this has to go and find, and
+    // it is judged by the same clock as any other — see [pokeNow].
+    final given = offered?.fresh;
+    if (given != null) {
+      _noteStamped(offered!);
+      await _publish(given, force: force);
+      return;
+    }
     // What the subscription last delivered, if it is recent. Asking the phone
     // to find itself again forty-five seconds after it just said where it was
     // is two radios' worth of work for one pin — and on the map screen it was
@@ -278,9 +298,17 @@ class MapPresenceController extends Notifier<int> {
     return dLat * dLat + dLon * dLon <= _samePlaceMetres * _samePlaceMetres;
   }
 
-  void _noteFix(LocationFix fix) => ref
-      .read(lastLocationFixProvider.notifier)
-      .state = StampedLocationFix(fix, DateTime.now());
+  void _noteFix(LocationFix fix) =>
+      _noteStamped(StampedLocationFix(fix, DateTime.now()));
+
+  /// Publish a fix to everything else that wants to know where this phone is.
+  ///
+  /// Stamped by whoever took it, not by the moment it was filed: a position
+  /// that arrived with a background wake-up is already several seconds old by
+  /// the time Dart has booted enough to look at it, and re-dating it here
+  /// would hide exactly the staleness the next reader is checking for.
+  void _noteStamped(StampedLocationFix stamped) =>
+      ref.read(lastLocationFixProvider.notifier).state = stamped;
 
   /// Hand one position to every map friend.
   ///

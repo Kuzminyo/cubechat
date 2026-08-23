@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/map/data/map_presence_controller.dart';
 import '../transport/messaging_service.dart';
 import '../util/debug_log.dart';
+import '../util/location_service.dart';
 
 /// iOS-only catch-up window, driven by `BGAppRefreshTask` on the native side.
 ///
@@ -42,7 +44,9 @@ import '../util/debug_log.dart';
 /// since our persisted watermark, and each frame walks the same path a
 /// foreground message does — dedup, signature check, store, notify. The same
 /// short window also pokes map presence, so a significant-location wake can
-/// publish the user's current pin instead of only draining chat messages.
+/// publish the user's current pin instead of only draining chat messages — and
+/// when the wake-up *is* the location doorbell, the coarse fix it rang with
+/// travels with it, so that pin costs no radio at all. See [fixFromWake].
 class IosBackgroundRefresh {
   IosBackgroundRefresh._();
 
@@ -84,14 +88,53 @@ class IosBackgroundRefresh {
     if (call.method != runMethod) {
       throw MissingPluginException('unknown method ${call.method}');
     }
-    await refreshNow();
+    await refreshNow(offered: fixFromWake(call.arguments));
     return true;
+  }
+
+  /// The position a significant-location wake-up arrived with, or null.
+  ///
+  /// A scheduled window carries no arguments at all; a doorbell carries the
+  /// coarse fix the baseband already had. Taking it is the difference between
+  /// republishing the pin for free and asking CoreLocation for a cold fix in
+  /// the background, which is radio time on the one path where nobody is
+  /// watching the screen to see it spent.
+  ///
+  /// Everything is checked, because this is a platform boundary and a wrong
+  /// number here becomes a pin somewhere the user has never been. The stamp is
+  /// the fix's own, not the moment it arrived: a relaunch spends seconds
+  /// booting Dart before this runs, and [StampedLocationFix.fresh] is what
+  /// decides whether the position survived that.
+  @visibleForTesting
+  static StampedLocationFix? fixFromWake(Object? arguments) {
+    if (arguments is! Map) return null;
+    final lat = arguments['lat'];
+    final lon = arguments['lon'];
+    final accuracy = arguments['accuracy'];
+    final at = arguments['at'];
+    if (lat is! num || lon is! num || accuracy is! num || at is! num) {
+      return null;
+    }
+    if (lat.isNaN || lon.isNaN || accuracy.isNaN) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    if (accuracy < 0 || at <= 0) return null;
+    return StampedLocationFix(
+      LocationFix(
+        latitude: lat.toDouble(),
+        longitude: lon.toDouble(),
+        accuracyMetres: accuracy.round(),
+      ),
+      DateTime.fromMillisecondsSinceEpoch(at.toInt()),
+    );
   }
 
   /// Spend one background window pulling relay traffic. Returns when the window
   /// closes; never throws, since the native side is waiting to complete its
   /// task either way.
-  Future<void> refreshNow({Duration? window}) async {
+  Future<void> refreshNow({
+    Duration? window,
+    StampedLocationFix? offered,
+  }) async {
     final container = _container;
     if (container == null) {
       DebugLog.instance
@@ -112,7 +155,7 @@ class IosBackgroundRefresh {
       final effectiveWindow = window ?? IosBackgroundRefresh.window;
       container.read(messagingServiceProvider).wakeRelays();
       if (effectiveWindow >= mapPresenceMinimumWindow) {
-        unawaited(_pokeMapPresence(container));
+        unawaited(_pokeMapPresence(container, offered));
       }
       DebugLog.instance.log('BGFETCH', 'window open');
       await Future<void>.delayed(effectiveWindow);
@@ -125,11 +168,14 @@ class IosBackgroundRefresh {
     }
   }
 
-  Future<void> _pokeMapPresence(ProviderContainer container) async {
+  Future<void> _pokeMapPresence(
+    ProviderContainer container,
+    StampedLocationFix? offered,
+  ) async {
     try {
       await container
           .read(mapPresenceControllerProvider.notifier)
-          .pokeNow()
+          .pokeNow(offered: offered)
           .timeout(
         const Duration(seconds: 8),
         onTimeout: () {

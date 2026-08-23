@@ -90,8 +90,8 @@ import UserNotifications
     // so an app that only builds one when asked would be relaunched and then
     // sit there having thrown the event away. The watcher itself decides
     // whether monitoring is actually on, from what Dart last asked for.
-    let watcher = SignificantLocationWatcher { [weak self] in
-      self?.runCatchUp(reason: "significant location change")
+    let watcher = SignificantLocationWatcher { [weak self] location in
+      self?.runCatchUp(reason: "significant location change", location: location)
     }
     locationWatcher = watcher
     watcher.restoreIfArmed()
@@ -171,7 +171,13 @@ import UserNotifications
   /// Held open with a background-task assertion because the ten seconds iOS
   /// grants a relaunched app is not enough to open a socket and finish a
   /// round trip, and dropped exactly once however it ends.
-  private func runCatchUp(reason: String) {
+  ///
+  /// [location] is the fix that came with the doorbell, when there was one. It
+  /// travels to Dart because the alternative is Dart asking the platform where
+  /// the phone is — and a cold fix in the background is radio time, which is
+  /// the single most expensive thing this app does. Coarse by construction and
+  /// carrying its own timestamp, so the far side can decline it.
+  private func runCatchUp(reason: String, location: CLLocation?) {
     NSLog("cubechat: background catch-up (\(reason))")
 
     var taskId = UIBackgroundTaskIdentifier.invalid
@@ -190,7 +196,28 @@ import UserNotifications
       finish()
     }
 
-    attemptCatchUp(remaining: AppDelegate.catchUpRetries, finish: finish)
+    attemptCatchUp(
+      remaining: AppDelegate.catchUpRetries,
+      arguments: AppDelegate.wakeArguments(location),
+      finish: finish
+    )
+  }
+
+  /// The doorbell's own fix, in the shape Dart reads, or nil when there is
+  /// nothing worth sending.
+  ///
+  /// A negative `horizontalAccuracy` is CoreLocation's way of saying the
+  /// coordinate is invalid, and the timestamp is the location's own rather than
+  /// now: a relaunch spends seconds booting Dart before anybody looks at this,
+  /// and a fix has to be able to be judged stale on arrival.
+  private static func wakeArguments(_ location: CLLocation?) -> [String: Any]? {
+    guard let location, location.horizontalAccuracy >= 0 else { return nil }
+    return [
+      "lat": location.coordinate.latitude,
+      "lon": location.coordinate.longitude,
+      "accuracy": location.horizontalAccuracy,
+      "at": Int(location.timestamp.timeIntervalSince1970 * 1000),
+    ]
   }
 
   /// One try at reaching Dart, retried while the engine is still booting.
@@ -198,7 +225,11 @@ import UserNotifications
   /// A relaunch runs `main()` from scratch, so for the first second or two
   /// there is no handler on the refresh channel and the reply comes back as
   /// not-implemented. That is not a failure to report, it is "ask again".
-  private func attemptCatchUp(remaining: Int, finish: @escaping () -> Void) {
+  private func attemptCatchUp(
+    remaining: Int,
+    arguments: [String: Any]?,
+    finish: @escaping () -> Void
+  ) {
     guard remaining > 0 else {
       finish()
       return
@@ -207,11 +238,15 @@ import UserNotifications
       // No engine yet. Same answer as no handler yet: wait and ask again.
       DispatchQueue.main.asyncAfter(deadline: .now() + AppDelegate.catchUpRetryDelay) {
         [weak self] in
-        self?.attemptCatchUp(remaining: remaining - 1, finish: finish)
+        self?.attemptCatchUp(
+          remaining: remaining - 1,
+          arguments: arguments,
+          finish: finish
+        )
       }
       return
     }
-    channel.invokeMethod(AppDelegate.refreshMethod, arguments: nil) { [weak self] reply in
+    channel.invokeMethod(AppDelegate.refreshMethod, arguments: arguments) { [weak self] reply in
       if (reply as? Bool) == true {
         finish()
         return
@@ -221,7 +256,11 @@ import UserNotifications
         return
       }
       DispatchQueue.main.asyncAfter(deadline: .now() + AppDelegate.catchUpRetryDelay) {
-        self.attemptCatchUp(remaining: remaining - 1, finish: finish)
+        self.attemptCatchUp(
+          remaining: remaining - 1,
+          arguments: arguments,
+          finish: finish
+        )
       }
     }
   }
@@ -301,9 +340,17 @@ import UserNotifications
 /// when the phone changes neighbourhood — a cell tower hand-off, roughly half a
 /// kilometre, minutes apart — and never because a message arrived. What it does
 /// do, and nothing else free does, is relaunch a *terminated* app into the
-/// background. So it is used here purely as an excuse to run: the position is
-/// thrown away, and the wake-up is spent draining the relays, which is how a
-/// message that arrived hours ago finally raises its notification.
+/// background. So it is mostly an excuse to run: the wake-up is spent draining
+/// the relays, which is how a message that arrived hours ago finally raises its
+/// notification.
+///
+/// The position it rings with is handed over rather than dropped. It is coarse
+/// — the same half-kilometre that decided the phone had moved — but it is a
+/// position the baseband already had, so republishing the live-map pin from it
+/// costs nothing, where asking CoreLocation for a fresh fix in the background
+/// costs the one thing an Android battery report named as this app's largest
+/// single expense. The far side judges it and can decline; see
+/// `IosBackgroundRefresh.fixFromWake`.
 ///
 /// Costs almost nothing to leave on: no GPS is started, the data is what the
 /// baseband already knows. Requires Always authorisation, and is armed only
@@ -315,10 +362,10 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
   private static let armedKey = "cubechat.significantLocation.armed"
 
   private let manager = CLLocationManager()
-  private let onWake: () -> Void
+  private let onWake: (CLLocation?) -> Void
   private var monitoring = false
 
-  init(onWake: @escaping () -> Void) {
+  init(onWake: @escaping (CLLocation?) -> Void) {
     self.onWake = onWake
     super.init()
     manager.delegate = self
@@ -366,10 +413,10 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
   func locationManager(
     _ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]
   ) {
-    // The position is deliberately unused. It is coarse by construction, and
-    // the live map has its own, precise subscription for the times the app is
-    // actually running.
-    onWake()
+    // The newest of the batch. CoreLocation can deliver several at once after
+    // a relaunch, and the pin wants the one that is true now, not the one that
+    // rang the doorbell first.
+    onWake(locations.last)
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
