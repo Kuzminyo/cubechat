@@ -422,6 +422,42 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
   /// Only inside the collapse, and only once the list has stopped: snapping a
   /// scroll that is still running would fight the finger, and snapping past the
   /// collapse would drag the list back up from wherever it was read to.
+  /// How far past the top the finger has to pull before a hidden archive comes
+  /// back.
+  ///
+  /// Far enough that the bounce at the end of an ordinary flick does not do
+  /// it — that overshoot is thirty-odd points on a fast scroll — and near
+  /// enough that it happens while pulling rather than after deciding to.
+  static const double _archiveRevealPull = 72;
+
+  /// True while one pull is still being paid attention to, so a single gesture
+  /// reveals once rather than on every frame past the threshold.
+  bool _archivePullSpent = false;
+
+  /// Bring a put-away archive back by pulling down at the top of the list.
+  ///
+  /// The row is hidden by holding it, which is discoverable enough — but the
+  /// way back was a switch two screens away in Customisation, and a control
+  /// that hides itself and points at a settings screen is one people simply
+  /// lose. Pulling at the top is where every messenger keeps its archive, so
+  /// it is the gesture somebody annoyed by the row will try first when they
+  /// want it back.
+  bool _revealArchiveOnPull(ScrollNotification note) {
+    if (note.metrics.axis != Axis.vertical) return false;
+    if (note.metrics.pixels >= -_archiveRevealPull) {
+      // Back inside the ordinary range: the next pull is a new one.
+      if (note.metrics.pixels >= 0) _archivePullSpent = false;
+      return false;
+    }
+    if (_archivePullSpent) return false;
+    _archivePullSpent = true;
+    if (ref.read(archiveVisibleProvider)) return false;
+    if (ref.read(archivedChatsProvider).isEmpty) return false;
+    HapticFeedback.selectionClick();
+    ref.read(archiveVisibleProvider.notifier).set(true);
+    return false;
+  }
+
   bool _snapHeader(ScrollEndNotification note) {
     if (note.metrics.axis != Axis.vertical) return false;
     if (!_scrollController.hasClients) return false;
@@ -525,7 +561,13 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
         // is meant to be the top of the screen.
         top: false,
         bottom: false,
-        child: NotificationListener<ScrollEndNotification>(
+        child: NotificationListener<ScrollNotification>(
+          // Watched while the finger is still moving, unlike the snap below,
+          // which waits for the scroll to stop: pulling the archive back is
+          // something you feel happen at the top of the pull, not something
+          // that lands after you let go.
+          onNotification: _revealArchiveOnPull,
+          child: NotificationListener<ScrollEndNotification>(
           // The search is either a field or a button, never half of each.
           //
           // Left to itself the header keeps whatever fraction of the collapse
@@ -774,6 +816,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
               ),
             ],
           ),
+        ),
         ),
       ),
     );
