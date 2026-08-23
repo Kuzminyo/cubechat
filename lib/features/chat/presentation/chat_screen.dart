@@ -2847,7 +2847,8 @@ class _ChatBottomBar extends ConsumerStatefulWidget {
   ConsumerState<_ChatBottomBar> createState() => _ChatBottomBarState();
 }
 
-class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
+class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
+    with WidgetsBindingObserver {
   Timer? _tick;
   Duration _elapsed = Duration.zero;
 
@@ -2897,6 +2898,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     // for it don't pop a (redundant) notification. Clears any banner too.
     AppLifecycle.instance.activeChatId = widget.canonicalId;
     NotificationService.instance.clearForChat(widget.canonicalId);
+    // Reading is something a person does, so it has to be able to start again
+    // when they come back — see [_markChatRead], which refuses while the app
+    // is away.
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markChatRead();
       _maybeSendReadReceipts();
@@ -2946,11 +2951,40 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
   /// Advance this chat's local read marker so its unread badge clears on the
   /// main Chats list.
+  ///
+  /// Only while somebody is actually looking at it. This is called from
+  /// `build`, and a chat left open behind a locked screen goes on rebuilding —
+  /// every message that arrives changes the list it is watching. So a phone
+  /// in a pocket marked each one read as it landed, and the marker is what
+  /// [MessagingService.sendReadReceipts] reports from: the sender watched
+  /// their ticks turn over for messages nobody had seen. Which is worse than a
+  /// missing feature — it is the app telling a small lie on the user's behalf.
+  ///
+  /// Reading resumes when they do; see the lifecycle handler below.
   void _markChatRead() {
     if (!mounted) return;
+    if (!AppLifecycle.instance.isViewingChat(widget.canonicalId)) return;
     ref
         .read(readMarkersControllerProvider.notifier)
         .markRead(widget.canonicalId);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    // Back on screen with this chat still open: everything that arrived while
+    // it was away has now genuinely been seen, so the marker catches up and
+    // the receipts follow it.
+    //
+    // Deferred by a frame because the flag this reads is set by another
+    // observer, and the framework makes no promise about which of us it calls
+    // first.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _markChatRead();
+      _maybeSendReadReceipts();
+    });
   }
 
   @override
@@ -2994,6 +3028,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     _stickerPanelRequests.dispose();
     _focusComposerRequests.dispose();
@@ -3059,6 +3094,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
     await _sendVoice(
       path: result.path,
       durationMs: result.durationMs,
+      envelope: result.envelope,
     );
   }
 
@@ -3078,6 +3114,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
   Future<void> _sendVoice({
     required String path,
     required int durationMs,
+    List<double> envelope = const <double>[],
   }) async {
     try {
       // Notes to yourself have no other end, so nothing goes on the wire —
@@ -3109,6 +3146,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
             mime: 'audio/aac',
             durationMs: durationMs,
             cachedPath: path,
+            // What the microphone heard, so the bubble on both phones can draw
+            // the shape of it rather than a bar that only fills.
+            levels: envelope,
           );
     } catch (e) {
       if (!mounted) return;
@@ -3129,9 +3169,38 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar> {
       fullDurationMs: pending.durationMs,
     );
     // Only claim the trimmed length when the cut actually happened.
-    final durationMs =
-        path == pending.path ? pending.durationMs : endMs - startMs;
-    await _sendVoice(path: path, durationMs: durationMs);
+    final cut = path != pending.path;
+    final durationMs = cut ? endMs - startMs : pending.durationMs;
+    await _sendVoice(
+      path: path,
+      durationMs: durationMs,
+      // The envelope was captured over the whole recording, so a cut clip has
+      // to be given the slice of it that survived — sending the lot would draw
+      // a shape that includes the part the user has just thrown away.
+      envelope: cut
+          ? _sliceEnvelope(pending.envelope, pending.durationMs, startMs, endMs)
+          : pending.envelope,
+    );
+  }
+
+  /// The part of a recording's loudness that falls inside a trim.
+  ///
+  /// The envelope is evenly spaced across the whole clip, so where a sample
+  /// sits in it is where it sits in time — no timestamps needed, only the
+  /// proportion.
+  static List<double> _sliceEnvelope(
+    List<double> envelope,
+    int fullMs,
+    int startMs,
+    int endMs,
+  ) {
+    if (envelope.isEmpty || fullMs <= 0) return envelope;
+    final from = (envelope.length * startMs / fullMs)
+        .floor()
+        .clamp(0, envelope.length - 1);
+    final to =
+        (envelope.length * endMs / fullMs).ceil().clamp(from + 1, envelope.length);
+    return envelope.sublist(from, to);
   }
 
   /// Throw the reviewed recording away.
