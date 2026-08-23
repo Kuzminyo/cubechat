@@ -40,10 +40,24 @@ void main() {
   });
 
   test('an unknown stored value falls back to following the phone', () {
-    expect(UiScale.byName('enormous'), UiScale.system);
-    expect(UiScale.byName(null), UiScale.system);
-    expect(UiScale.byName('large'), UiScale.large);
+    expect(UiScale.fromStored('enormous'), UiScale.system);
+    expect(UiScale.fromStored(null), UiScale.system);
     expect(UiScale.system.factor, isNull, reason: 'null means "use theirs"');
+  });
+
+  test('the three old named steps still mean what they meant', () {
+    // Phones in the field hold the enum names this setting used to be stored
+    // as. Somebody who chose "larger" gets larger on the next launch, not a
+    // silent reset to whatever the phone asks for.
+    expect(UiScale.fromStored('small').factor, 0.9);
+    expect(UiScale.fromStored('normal').factor, 1.0);
+    expect(UiScale.fromStored('large').factor, 1.15);
+  });
+
+  test('a stored number comes back as itself, held inside the range', () {
+    expect(UiScale.fromStored(1.1).factor, closeTo(1.1, 1e-9));
+    expect(UiScale.fromStored(4.0).factor, UiScale.maxFactor);
+    expect(UiScale.fromStored(0.1).factor, UiScale.minFactor);
   });
 
   testWidgets('an override replaces the platform scale, and is clamped',
@@ -69,7 +83,7 @@ void main() {
     expect(MediaQuery.textScalerOf(element).scale(10), 13);
 
     await container.read(uiScaleControllerProvider.notifier).select(
-          UiScale.small,
+          UiScale.of(0.9),
         );
     await tester.pump();
     expect(
