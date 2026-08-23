@@ -13,11 +13,19 @@ class SpotlightAction {
     required this.icon,
     required this.label,
     this.tone,
+    this.separated = false,
   });
 
   final String id;
   final IconData icon;
   final String label;
+
+  /// Draw a line above this one.
+  ///
+  /// For the entry that is not about *this* message but about the mode the
+  /// chat goes into — picking several out. Sitting flush against Delete it
+  /// read as one more thing you could do to the message in front of you.
+  final bool separated;
 
   /// Null for the ordinary ink; a colour for the one or two that destroy
   /// something.
@@ -107,7 +115,10 @@ class _Spotlight extends StatelessWidget {
     final safeTop = media.padding.top + 8;
     final safeBottom = screen.height - media.padding.bottom - 8;
 
-    final menuHeight = actions.length * 46.0 + 12 + (details == null ? 0 : 46);
+    final menuHeight = actions.length * 46.0 +
+        actions.where((a) => a.separated).length +
+        12 +
+        (details == null ? 0 : 46);
     final wanted = _stripHeight + _gap + anchor.height + _gap + menuHeight;
 
     // Where the message sits once everything around it has been given room.
@@ -385,7 +396,9 @@ class _ActionSheet extends StatelessWidget {
                   ),
                   Divider(height: 1, color: AppColors.glass(0.12)),
                 ],
-                for (final action in actions)
+                for (final action in actions) ...[
+                  if (action.separated)
+                    Divider(height: 1, color: AppColors.glass(0.12)),
                   InkWell(
                     onTap: () => onPick(action.id),
                     child: Padding(
@@ -414,6 +427,7 @@ class _ActionSheet extends StatelessWidget {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           ),

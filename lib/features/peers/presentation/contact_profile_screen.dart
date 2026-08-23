@@ -26,6 +26,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import '../../chats/presentation/widgets/chat_picker_sheet.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/contact_aliases_controller.dart';
 import '../data/contact_removal.dart';
@@ -257,92 +258,36 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
 
   Future<void> _shareContact(BuildContext context, WidgetRef ref) async {
     final t = AppLocalizations.of(context);
-    final targets = ref
-        .read(chatsProvider)
-        .where((chat) => chat.id != peerPubkeyHex)
-        .toList();
-    final chosen = await showDialog<Chat>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: AppColors.glass(0.15)),
-        ),
-        title: Text(
-          t.contactProfileShareTitle,
-          style: TextStyle(color: AppColors.textOnGlass),
-        ),
-        children: [
-          if (targets.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-              child: Text(
-                t.contactProfileShareEmpty,
-                style: TextStyle(color: AppColors.textOnGlassDim),
-              ),
-            )
-          else
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.42,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final chat in targets)
-                      SimpleDialogOption(
-                        onPressed: () => Navigator.of(dialogContext).pop(chat),
-                        child: Row(
-                          children: [
-                            Icon(
-                              chat.isChannel
-                                  ? Icons.campaign_rounded
-                                  : Icons.person_outline_rounded,
-                              color: AppColors.textOnGlassDim,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                chat.peerName,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: AppColors.textOnGlass),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(
-              t.cancel,
-              style: TextStyle(color: AppColors.textOnGlassDim),
-            ),
-          ),
-        ],
-      ),
+    // The same chooser forwarding uses: a list of conversations you tick, not
+    // a dialog that can be answered once. Sending somebody's card to two
+    // people is the ordinary case, and it used to mean opening this twice.
+    final chosen = await showChatPicker(
+      context,
+      title: t.contactProfileShareTitle,
+      exceptChatId: peerPubkeyHex,
     );
-    if (chosen == null) return;
+    if (chosen.isEmpty || !context.mounted) return;
+
+    final peer = ref.read(knownPeersControllerProvider)[peerPubkeyHex];
     final payload = SharedContact(
       pubkeyHex: peerPubkeyHex,
-      displayName: peerLabel,
+      displayName: peer?.displayName ?? peerLabel,
     ).encode();
     final messaging = ref.read(messagingServiceProvider);
-    if (chosen.isChannel) {
-      await messaging.sendChannelText(chosen.id, payload);
-    } else {
-      await messaging.sendText(chosen.id, payload);
+    for (final chat in chosen) {
+      if (chat.isChannel) {
+        await messaging.sendChannelText(chat.id, payload);
+      } else {
+        await messaging.sendText(chat.id, payload);
+      }
     }
     if (!context.mounted) return;
     showGlassToast(
       context,
-      t.contactProfileShareSent(chosen.peerName),
-      icon: Icons.person_add_alt_1_rounded,
+      chosen.length == 1
+          ? t.contactProfileShareSent(chosen.first.peerName)
+          : t.chatForwardSentCount(chosen.length),
+      icon: Icons.send_rounded,
       tone: ToastTone.success,
     );
   }

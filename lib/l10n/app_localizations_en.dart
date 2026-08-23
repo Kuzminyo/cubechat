@@ -667,6 +667,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatForwardEmpty => 'No other chats yet';
 
   @override
+  String chatForwardSendCount(int count) {
+    return 'Send ($count)';
+  }
+
+  @override
+  String chatForwardSentCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Forwarded to $count chats',
+      one: 'Forwarded to one chat',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String chatForwardSent(String name) {
     return 'Forwarded to $name';
   }

@@ -670,6 +670,23 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatForwardEmpty => 'Інших чатів поки немає';
 
   @override
+  String chatForwardSendCount(int count) {
+    return 'Надіслати ($count)';
+  }
+
+  @override
+  String chatForwardSentCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Переслано в $count чатів',
+      few: 'Переслано в $count чати',
+      one: 'Переслано в один чат',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String chatForwardSent(String name) {
     return 'Переслано в $name';
   }

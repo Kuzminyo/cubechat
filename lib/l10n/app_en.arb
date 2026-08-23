@@ -297,6 +297,22 @@
   "chatForwardAction": "Forward",
   "chatForwardTitle": "Forward to",
   "chatForwardEmpty": "No other chats yet",
+  "chatForwardSendCount": "Send ({count})",
+  "@chatForwardSendCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatForwardSentCount": "{count, plural, one{Forwarded to one chat} other{Forwarded to {count} chats}}",
+  "@chatForwardSentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "chatForwardSent": "Forwarded to {name}",
   "@chatForwardSent": {
     "placeholders": {

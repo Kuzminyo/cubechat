@@ -91,6 +91,24 @@ abstract final class AppColors {
   /// switching themes changed everything except the one thing standing in for
   /// a person. Same seed still lands on the same variant, so an identity's
   /// colour is as stable as it ever was — it just belongs to the theme now.
+  /// The colour one person's name is written in inside a room.
+  ///
+  /// A room mixes senders, and a single accent for all of them answers "this
+  /// is not you" without answering "this is who". Telegram gives each person a
+  /// hue; so does this, with the restraint the palette is built on — the hue
+  /// turns, and saturation and lightness stay where the brand colour holds
+  /// them, so six people are six colours of the same weight rather than a
+  /// rainbow dropped onto the interface.
+  ///
+  /// Deterministic from the author's id, so the same person is the same colour
+  /// on every phone and across restarts.
+  static Color authorTint(String seed) {
+    final base = HSLColor.fromColor(brandPrimary);
+    const steps = 6;
+    final turn = (seed.hashCode.abs() % steps) * (300 / steps);
+    return base.withHue((base.hue + turn) % 360).toColor();
+  }
+
   static List<Color> identityGradient(String seed) {
     final a = brandPrimary;
     final b = brandSecondary;

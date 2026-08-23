@@ -1268,6 +1268,18 @@ abstract class AppLocalizations {
   /// **'No other chats yet'**
   String get chatForwardEmpty;
 
+  /// No description provided for @chatForwardSendCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Send ({count})'**
+  String chatForwardSendCount(int count);
+
+  /// No description provided for @chatForwardSentCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{Forwarded to one chat} other{Forwarded to {count} chats}}'**
+  String chatForwardSentCount(int count);
+
   /// No description provided for @chatForwardSent.
   ///
   /// In en, this message translates to:

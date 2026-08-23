@@ -23,7 +23,7 @@ import '../../../../core/widgets/glass_toast.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
-import '../../../chats/presentation/chats_list_screen.dart' show chatsProvider;
+import '../../../chats/presentation/widgets/chat_picker_sheet.dart';
 import '../../data/chat_navigation.dart';
 import '../../data/media_send_progress.dart';
 import '../../data/message_selection.dart';
@@ -129,92 +129,27 @@ double photoBubbleWidth(BuildContext context) =>
 /// larger one stops being an aside and starts being an announcement.
 const double kStickerWidth = 158;
 
-/// Ask which chat to forward into. Null when the dialog was dismissed.
+/// Ask which chats to forward into. Empty when the picker was dismissed.
 ///
-/// Shared by the single-message menu and the multi-select bar so the two
+
+/// Ask which chats to forward into. Empty when the picker was dismissed.
+///
+/// Used by the single-message menu and by the multi-select bar, so the two
 /// cannot drift into offering different target lists.
-Future<Chat?> pickForwardTarget(
+///
+/// It was a dialog that could only be answered once: sending the same message
+/// to three people meant opening it three times, and its list stood four rows
+/// tall on a phone with room for twelve. See [showChatPicker].
+Future<List<Chat>> pickForwardTargets(
   BuildContext context,
   WidgetRef ref,
   String fromChatId,
-) {
-  final t = AppLocalizations.of(context);
-  // Every chat except the one we're standing in.
-  final targets =
-      ref.read(chatsProvider).where((c) => c.id != fromChatId).toList();
-
-  return showDialog<Chat>(
-    context: context,
-    builder: (ctx) => SimpleDialog(
-      backgroundColor: AppColors.bgTop,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: AppColors.glass(0.15)),
-      ),
-      title: Text(
-        t.chatForwardTitle,
-        style: TextStyle(
-          color: AppColors.textOnGlass,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      children: [
-        if (targets.isEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
-            child: Text(
-              t.chatForwardEmpty,
-              style: TextStyle(color: AppColors.textOnGlassDim),
-            ),
-          )
-        else
-          // Bounded so a long chat list scrolls inside the dialog instead of
-          // overflowing it.
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.4,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final c in targets)
-                    SimpleDialogOption(
-                      onPressed: () => Navigator.of(ctx).pop(c),
-                      child: Row(
-                        children: [
-                          Icon(
-                            c.isChannel
-                                ? Icons.campaign_rounded
-                                : Icons.person_outline_rounded,
-                            size: 18,
-                            color: AppColors.textOnGlassDim,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              c.peerName,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: AppColors.textOnGlass),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        SimpleDialogOption(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child:
-              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
-        ),
-      ],
-    ),
-  );
-}
+) =>
+    showChatPicker(
+      context,
+      title: AppLocalizations.of(context).chatForwardTitle,
+      exceptChatId: fromChatId,
+    );
 
 /// Re-send [text] into [target] under our own identity.
 ///
@@ -587,14 +522,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       // slot.
       reactions: _canReact ? strip.take(6).toList() : const <String>[],
       actions: [
-        // First. Selecting is how you act on more than one message, so it is
-        // the entry to every bulk action in the chat — and buried between Edit
-        // and Delete it read as a rarely-wanted setting.
-        SpotlightAction(
-          id: 'select',
-          icon: Icons.checklist_rounded,
-          label: t.chatSelectAction,
-        ),
         if (widget.message.wireId != null)
           SpotlightAction(
             id: 'reply',
@@ -653,6 +580,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           icon: Icons.delete_outline_rounded,
           label: t.chatDeleteAction,
           tone: AppColors.danger,
+        ),
+        // Last, and behind a line. Everything above acts on the message being
+        // held; this one leaves it alone and puts the whole chat into picking
+        // mode. It was first for a while, on the grounds that it is the way in
+        // to every bulk action — but at the top it sat where the thing people
+        // actually reached for should be, and flush against Delete it read as
+        // one more thing that could happen to the message.
+        SpotlightAction(
+          id: 'select',
+          icon: Icons.checklist_rounded,
+          label: t.chatSelectAction,
+          separated: true,
         ),
       ],
     );
@@ -868,14 +807,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// session the new chat has no key for, so it could not be passed along even
   /// if we wanted to.
   Future<void> _promptForward() async {
-    final chosen = await pickForwardTarget(context, ref, widget.chatId);
-    if (chosen == null || !mounted) return;
+    final chosen = await pickForwardTargets(context, ref, widget.chatId);
+    if (chosen.isEmpty || !mounted) return;
     final t = AppLocalizations.of(context);
-    await forwardMessageTo(ref, chosen, widget.message);
+    for (final chat in chosen) {
+      await forwardMessageTo(ref, chat, widget.message);
+    }
     if (!mounted) return;
     showGlassToast(
       context,
-      t.chatForwardSent(chosen.peerName),
+      chosen.length == 1
+          ? t.chatForwardSent(chosen.first.peerName)
+          : t.chatForwardSentCount(chosen.length),
       icon: Icons.shortcut_rounded,
       tone: ToastTone.success,
     );
@@ -1090,13 +1033,38 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // since a channel mixes many senders in one conversation.
                 if (!mine && message.authorName != null) ...[
                   inBubble(
-                    Text(
-                      message.authorName!,
-                      style: TextStyle(
-                        color: AppColors.brandPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Their face, small, beside their name. A room mixes
+                        // senders and a name alone is a line of text to read;
+                        // the picture is recognised before it is read, which
+                        // is the whole job of the line.
+                        if (message.authorId case final id?) ...[
+                          PeerAvatar(
+                            peerId: id,
+                            label: message.authorName!,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Flexible(
+                          child: Text(
+                            message.authorName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              // One hue per person rather than the brand for
+                              // everybody — see [AppColors.authorTint].
+                              color: AppColors.authorTint(
+                                message.authorId ?? message.authorName!,
+                              ),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (!photo) const SizedBox(height: 2),

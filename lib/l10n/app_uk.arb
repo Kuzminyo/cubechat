@@ -286,6 +286,18 @@
     "chatForwardAction":  "Переслати",
     "chatForwardTitle":  "Переслати в",
     "chatForwardEmpty":  "Інших чатів поки немає",
+    "chatForwardSendCount":  "Надіслати ({count})",
+    "@chatForwardSendCount":  {
+      "placeholders":  {
+        "count":  { "type":  "int" }
+      }
+    },
+    "chatForwardSentCount":  "{count, plural, one{Переслано в один чат} few{Переслано в {count} чати} other{Переслано в {count} чатів}}",
+    "@chatForwardSentCount":  {
+      "placeholders":  {
+        "count":  { "type":  "int" }
+      }
+    },
     "chatForwardSent":  "Переслано в {name}",
     "chatSentAt":  "Надіслано {time}",
     "chatReadAt":  "Прочитано {time}",
