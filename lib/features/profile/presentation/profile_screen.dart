@@ -22,6 +22,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/hue_strip.dart';
 import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -30,6 +31,7 @@ import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/nav_bar_controller.dart';
+import '../data/profile_hue_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
@@ -1001,12 +1003,13 @@ class _AboutRow extends StatelessWidget {
 String _customizeSummary(WidgetRef ref, AppLocalizations t) {
   final scale = ref.watch(uiScaleControllerProvider);
   final layout = ref.watch(navBarControllerProvider);
-  final size = switch (scale) {
-    UiScale.system => t.profileScaleSystem,
-    UiScale.small => t.profileScaleSmall,
-    UiScale.normal => t.profileScaleNormal,
-    UiScale.large => t.profileScaleLarge,
-  };
+  // The number itself, now that the size is a slider rather than three named
+  // steps. "115%" answers "did I change anything?" better than a word that has
+  // to be mapped back onto a size.
+  final factor = scale.factor;
+  final size = factor == null
+      ? t.profileScaleSystem
+      : '${(factor * 100).round()}%';
   return '$size · ${layout.shown.length}/${NavDestination.values.length}';
 }
 
@@ -1548,7 +1551,19 @@ class _ProfileCover extends ConsumerWidget {
   /// Height of the action row, shared by both states so the buttons do not
   /// jump as the header grows.
   static const double actionsHeight = 58;
-  static const double avatarSize = 64;
+
+  /// The circle at rest.
+  ///
+  /// Grew with the centring. A 64-point disc in the corner beside a line of
+  /// text is a bullet point; the same disc alone in the middle of the screen
+  /// with the name under it is a photograph, and it has to be big enough to
+  /// look like one.
+  static const double avatarSize = 92;
+
+  /// Room under the circle for the name and the line beneath it, before the
+  /// action row. Measured against the largest interface size, since that is
+  /// the one that overflows.
+  static const double nameBlockRoom = 62;
 
   /// How tall the cover goes when it is pulled open.
   ///
@@ -1561,8 +1576,12 @@ class _ProfileCover extends ConsumerWidget {
   static double expandedHeightFor(BuildContext context) =>
       (MediaQuery.sizeOf(context).height * 0.52).clamp(400.0, 470.0);
 
+  /// The circle now sits above the name rather than beside it, so the compact
+  /// header is as tall as that stack: inset, disc, the two lines under it, the
+  /// actions. The list's top padding is measured off this — see the header
+  /// delegate — so it moves with the layout instead of being guessed at.
   static double compactHeightFor(double topInset) =>
-      topInset + 12 + avatarSize + 14 + actionsHeight + 12;
+      topInset + 12 + avatarSize + 10 + nameBlockRoom + actionsHeight + 12;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1665,19 +1684,50 @@ class _CoverBody extends ConsumerWidget {
     final tt = AppLocalizations.of(context);
     final photo = ref.watch(avatarProvider);
     final discoverable = ref.watch(discoverySettingsProvider).discoverable;
-    final width = MediaQuery.sizeOf(context).width;
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _build(context, ref, tt, photo, discoverable, constraints.maxWidth),
+    );
+  }
+
+  /// The header, given the width it is actually being drawn at.
+  ///
+  /// Taken from the layout rather than from `MediaQuery`, which is the same
+  /// number on a phone and is not the same number anywhere else: under the
+  /// capture harness the cover is drawn into a 360-point boundary while the
+  /// media query still reports 800, and a disc centred on the latter lands
+  /// half off the edge of the former. Centring is a fact about the box this
+  /// widget was given.
+  Widget _build(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations tt,
+    Uint8List? photo,
+    bool discoverable,
+    double width,
+  ) {
 
     // The circle and the cover are the same rectangle at two sizes; lerping it
     // (and the corner radius with it) is what makes one grow into the other.
+    // Centred at rest, full-bleed open. It used to sit in the left corner with
+    // the name beside it, which is a list row rather than a profile: the photo
+    // is the subject of this screen and the middle is where a subject goes.
     final rect = Rect.lerp(
-      Rect.fromLTWH(16, topInset + 12, _ProfileCover.avatarSize,
-          _ProfileCover.avatarSize),
+      Rect.fromLTWH(
+        (width - _ProfileCover.avatarSize) / 2,
+        topInset + 12,
+        _ProfileCover.avatarSize,
+        _ProfileCover.avatarSize,
+      ),
       Rect.fromLTWH(0, 0, width, height),
       t,
     )!;
     final radius = ui.lerpDouble(_ProfileCover.avatarSize / 2, 0, t)!;
 
-    final nameLeft = ui.lerpDouble(16 + _ProfileCover.avatarSize + 14, 16, t)!;
+    /// How far the name block leans from centred towards the left edge: 0 at
+    /// rest, -1 open. The photo takes the whole width when it is open, and
+    /// text centred over a photograph reads as a caption rather than a name.
+    final nameAlign = ui.lerpDouble(0, -1, t)!;
 
     // Measured, not guessed. Open, the name block sits directly above the
     // action row, and where its *top* goes therefore depends on how tall it is
@@ -1691,7 +1741,8 @@ class _CoverBody extends ConsumerWidget {
         3 +
         scaler.scale(_coverStatusSize) * 1.4;
     final nameTop = ui.lerpDouble(
-      topInset + 16,
+      // Under the circle now, not beside it.
+      topInset + 12 + _ProfileCover.avatarSize + 10,
       height - _ProfileCover.actionsHeight - _coverActionsGap - nameBlockHeight,
       t,
     )!;
@@ -1705,13 +1756,20 @@ class _CoverBody extends ConsumerWidget {
             child: GestureDetector(
               onTap: onToggle,
               child: Container(
+                // Keyed for the test that checks it is where it should be:
+                // "centred" is a number, and a golden can show it but cannot
+                // check it.
+                key: const ValueKey('profile-cover-face'),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(radius),
                   gradient: photo == null
                       ? LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: IdentityAvatar.paletteFor(fingerprint),
+                          colors: IdentityAvatar.gradientFor(
+                            fingerprint,
+                            hue: ref.watch(profileHueControllerProvider),
+                          ),
                         )
                       : null,
                   image: photo == null
@@ -1759,13 +1817,23 @@ class _CoverBody extends ConsumerWidget {
             ),
 
           Positioned(
-            left: nameLeft,
+            // 56 on the right rather than 16: the overflow button sits in that
+            // corner, and a long nickname ran under it. The same on the left
+            // so a centred block is centred on the screen rather than on the
+            // space left over beside the button.
+            left: 56,
             top: nameTop,
-            // 56 rather than 16: the overflow button sits in that corner at
-            // rest, and a long nickname ran under it.
             right: 56,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Align(
+              alignment: Alignment(nameAlign, 0),
+              child: Column(
+              // Each line centred under the disc at rest, ranged left over the
+              // photo once it is open. The switch happens at the halfway point
+              // of a drag where every part of the header is already moving,
+              // which is the one moment it cannot be noticed — there is no
+              // lerp between two cross-axis alignments to be had.
+              crossAxisAlignment:
+                  t < 0.5 ? CrossAxisAlignment.center : CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
@@ -1807,6 +1875,7 @@ class _CoverBody extends ConsumerWidget {
                   ],
                 ),
               ],
+              ),
             ),
           ),
 
@@ -1910,7 +1979,15 @@ class _CoverMenuButton extends StatelessWidget {
 }
 
 /// What the profile's overflow menu can do.
-enum _ProfileMenuAction { view, photo, save, colour, copyLink, remove }
+enum _ProfileMenuAction {
+  view,
+  photo,
+  save,
+  colour,
+  profileColour,
+  copyLink,
+  remove,
+}
 
 /// The three dots on the cover.
 ///
@@ -1951,6 +2028,11 @@ Future<void> _showProfileMenu(
           label: t.chatMediaSaveToGallery,
         ),
       AnimatedMenuItem(
+        value: _ProfileMenuAction.profileColour,
+        icon: Icons.color_lens_outlined,
+        label: t.profileTheme,
+      ),
+      AnimatedMenuItem(
         value: _ProfileMenuAction.colour,
         icon: Icons.palette_outlined,
         label: t.customizeTitle,
@@ -1986,6 +2068,16 @@ Future<void> _showProfileMenu(
       await pickProfileAvatar(context, ref);
     case _ProfileMenuAction.save:
       await _saveAvatarToGallery(context, photo!);
+    case _ProfileMenuAction.profileColour:
+      await showHueSheet(
+        context: context,
+        title: t.profileTheme,
+        resetLabel: t.customizeReset,
+        hue: ref.read(profileHueControllerProvider),
+        onPick: (h) => unawaited(
+          ref.read(profileHueControllerProvider.notifier).select(h),
+        ),
+      );
     case _ProfileMenuAction.colour:
       context.push('/customize');
     case _ProfileMenuAction.copyLink:

@@ -47,6 +47,24 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('the face sits in the middle of the header at rest',
+      (tester) async {
+    // The header used to be a list row: a small disc in the left corner with
+    // the name beside it. The photo is the subject of this screen, so at rest
+    // it is centred with the name under it — and "centred" is a number, which
+    // a golden can only show and cannot check.
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpProfile(tester);
+
+    final disc = find.byKey(const ValueKey('profile-cover-face'));
+    expect(disc, findsOneWidget);
+    final centre = tester.getCenter(disc);
+    expect(centre.dx, closeTo(180, 1),
+        reason: 'the disc is off the middle of a 360-point screen');
+    expect(tester.getSize(disc).width, closeTo(92, 0.5));
+  });
+
   testWidgets('the cover offers the three actions it advertises',
       (tester) async {
     await pumpProfile(tester);
