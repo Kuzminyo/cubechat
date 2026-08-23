@@ -28,6 +28,7 @@ import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
+import '../../features/profile/data/app_lock_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -108,6 +109,9 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(reactionEmojiControllerProvider.notifier).reset();
   // Same for how big you like the interface: a fresh install follows the phone.
   await ref.read(uiScaleControllerProvider.notifier).reset();
+  // A wiped install is indistinguishable from a fresh one, and a fresh one
+  // does not ask for a code somebody set on the identity that just went.
+  await ref.read(appLockControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

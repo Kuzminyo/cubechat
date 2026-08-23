@@ -24,6 +24,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -31,6 +32,7 @@ import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
+import '../data/app_lock_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
@@ -734,6 +736,98 @@ class _SettingSwitch extends StatelessWidget {
 
 /// Last seen and read receipts — the two things the app says about *you*
 /// rather than about your messages. Both symmetric; see [PrivacySettings].
+/// Turn the lock on with a new code, or off with the current one.
+///
+/// Both directions ask, and for the same reason: a lock somebody else can
+/// switch off from the settings screen is a suggestion, not a lock.
+Future<void> _toggleAppLock(
+  BuildContext context,
+  WidgetRef ref,
+  bool on,
+) async {
+  final t = AppLocalizations.of(context);
+  final lock = ref.read(appLockControllerProvider.notifier);
+  final code = await _askForCode(
+    context,
+    title: on ? t.appLockSetTitle : t.appLockOffTitle,
+    hint: on ? t.appLockSetHint : t.appLockOffHint,
+  );
+  if (code == null || code.isEmpty || !context.mounted) return;
+  final ok = on ? await lock.enable(code) : await lock.disable(code);
+  if (!context.mounted) return;
+  showGlassToast(
+    context,
+    ok ? (on ? t.appLockOn : t.appLockOff) : t.appLockWrong,
+    icon: ok ? Icons.lock_rounded : null,
+    tone: ok ? ToastTone.success : ToastTone.danger,
+  );
+}
+
+Future<String?> _askForCode(
+  BuildContext context, {
+  required String title,
+  required String hint,
+}) {
+  final controller = TextEditingController();
+  return showGlassSheet<String>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: AppTypography.heading(size: AppMenu.title)),
+            const SizedBox(height: 6),
+            Text(
+              hint,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 20,
+                letterSpacing: 6,
+              ),
+              onSubmitted: (v) => Navigator.of(sheetContext).pop(v),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppColors.glassFill,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.brandPrimary,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () =>
+                  Navigator.of(sheetContext).pop(controller.text),
+              child: Text(AppLocalizations.of(context).profileNicknameSave),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ).whenComplete(controller.dispose);
+}
+
 class _PrivacyCard extends ConsumerWidget {
   const _PrivacyCard({this.framed = true});
 
@@ -745,6 +839,7 @@ class _PrivacyCard extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final s = ref.watch(privacySettingsProvider);
     final n = ref.read(privacySettingsProvider.notifier);
+    final lock = ref.watch(appLockControllerProvider);
     return _frame(
       framed,
       child: Column(
@@ -759,6 +854,17 @@ class _PrivacyCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
+          // First, and the odd one out: every other switch here decides what
+          // other people are told about you. This one decides whether the
+          // person holding the phone is you.
+          _SettingSwitch(
+            icon: lock.enabled ? Icons.lock_rounded : Icons.lock_open_rounded,
+            title: t.appLockTitle,
+            hint: lock.enabled ? t.appLockOn : t.appLockHint,
+            value: lock.enabled,
+            onChanged: (on) => unawaited(_toggleAppLock(context, ref, on)),
+          ),
+          const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareMapLocation
                 ? Icons.location_on_rounded

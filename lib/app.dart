@@ -10,6 +10,8 @@ import 'core/notifications/notification_service.dart';
 import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
+import 'features/profile/data/app_lock_controller.dart';
+import 'features/profile/presentation/app_lock_gate.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
@@ -266,6 +268,16 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
+    // The lock, when there is one. Leaving is remembered rather than acted on
+    // — a glance at the notification shade is not leaving the app — and coming
+    // back asks again only if the grace has run out.
+    final lock = ref.read(appLockControllerProvider.notifier);
+    if (state == AppLifecycleState.resumed) {
+      lock.noteReturned();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      lock.noteLeft();
+    }
     // Only the two states that mean something — the same filter the presence
     // beacon below already uses, and for the same reason.
     //
@@ -414,6 +426,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // push into a profile, a search, or another chat — which is the whole
       // point of playback outliving the bubble that started it.
       builder: (context, child) => _ClampedTextScale(
+        // Outside the pointer listener and the voice bar: while the app is
+        // locked nothing behind it should be touchable, and the bar is one of
+        // the things being covered.
+        child: AppLockGate(
         child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) {
@@ -429,6 +445,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           onOpenChat: (chatId, _) => _openChat(chatId),
           child: child ?? const SizedBox.shrink(),
         ),
+      ),
       ),
       ),
       ),

@@ -926,6 +926,40 @@ class AppLocalizationsEn extends AppLocalizations {
       'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.';
 
   @override
+  String get appLockTitle => 'App lock';
+
+  @override
+  String get appLockHint => 'Ask for a code when the app is opened';
+
+  @override
+  String get appLockPrompt => 'Enter your code';
+
+  @override
+  String get appLockUnlock => 'Unlock';
+
+  @override
+  String get appLockWrong => 'Wrong code';
+
+  @override
+  String get appLockSetTitle => 'Set a code';
+
+  @override
+  String get appLockSetHint =>
+      'Four digits or more. There is no way to recover it.';
+
+  @override
+  String get appLockOffTitle => 'Turn the lock off';
+
+  @override
+  String get appLockOffHint => 'Enter your current code';
+
+  @override
+  String get appLockOn => 'App lock is on';
+
+  @override
+  String get appLockOff => 'App lock is off';
+
+  @override
   String get avatarSet => 'Choose a photo';
 
   @override

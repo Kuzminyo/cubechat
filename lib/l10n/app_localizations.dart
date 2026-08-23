@@ -1718,6 +1718,72 @@ abstract class AppLocalizations {
   /// **'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.'**
   String get profilePrivacyExplainer;
 
+  /// No description provided for @appLockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'App lock'**
+  String get appLockTitle;
+
+  /// No description provided for @appLockHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for a code when the app is opened'**
+  String get appLockHint;
+
+  /// No description provided for @appLockPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your code'**
+  String get appLockPrompt;
+
+  /// No description provided for @appLockUnlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get appLockUnlock;
+
+  /// No description provided for @appLockWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong code'**
+  String get appLockWrong;
+
+  /// No description provided for @appLockSetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a code'**
+  String get appLockSetTitle;
+
+  /// No description provided for @appLockSetHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Four digits or more. There is no way to recover it.'**
+  String get appLockSetHint;
+
+  /// No description provided for @appLockOffTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn the lock off'**
+  String get appLockOffTitle;
+
+  /// No description provided for @appLockOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your current code'**
+  String get appLockOffHint;
+
+  /// No description provided for @appLockOn.
+  ///
+  /// In en, this message translates to:
+  /// **'App lock is on'**
+  String get appLockOn;
+
+  /// No description provided for @appLockOff.
+  ///
+  /// In en, this message translates to:
+  /// **'App lock is off'**
+  String get appLockOff;
+
   /// No description provided for @avatarSet.
   ///
   /// In en, this message translates to:

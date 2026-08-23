@@ -929,6 +929,40 @@ class AppLocalizationsUk extends AppLocalizations {
       'Останній візит працює в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Час прочитання керує лише тим, що надсилаєте ви. На доставку повідомлень це не впливає — вони йдуть так само.';
 
   @override
+  String get appLockTitle => 'Замок застосунку';
+
+  @override
+  String get appLockHint => 'Питати код під час відкриття';
+
+  @override
+  String get appLockPrompt => 'Введіть код';
+
+  @override
+  String get appLockUnlock => 'Розблокувати';
+
+  @override
+  String get appLockWrong => 'Невірний код';
+
+  @override
+  String get appLockSetTitle => 'Встановити код';
+
+  @override
+  String get appLockSetHint =>
+      'Чотири цифри або більше. Відновити його неможливо.';
+
+  @override
+  String get appLockOffTitle => 'Вимкнути замок';
+
+  @override
+  String get appLockOffHint => 'Введіть поточний код';
+
+  @override
+  String get appLockOn => 'Замок увімкнено';
+
+  @override
+  String get appLockOff => 'Замок вимкнено';
+
+  @override
   String get avatarSet => 'Обрати фото';
 
   @override
