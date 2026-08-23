@@ -100,10 +100,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
 
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    // The panel animates in, and the first frame after a ticker starts is its
+    // zero point rather than a step of it — capturing on that frame would
+    // photograph an empty screen.
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     await _capture(tester, boundaryKey, 'implementation-actions-new-360x800.png');
 
     await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.drag(
       find.byType(CustomScrollView),

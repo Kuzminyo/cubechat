@@ -310,6 +310,8 @@ class ContactProfileScreen extends ConsumerWidget {
     if (context.mounted) Navigator.of(context).maybePop();
   }
 
+  /// The panel itself — the dimmed backdrop behind it belongs to
+  /// [_ActionsOverlay], which fades it while the card grows.
   Widget _actionsPanel(
     BuildContext context,
     WidgetRef ref,
@@ -322,15 +324,6 @@ class ContactProfileScreen extends ConsumerWidget {
             ConversationSettings.initial;
     return Stack(
       children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: close,
-            child: ColoredBox(
-              color: Colors.black.withValues(alpha: 0.46),
-            ),
-          ),
-        ),
         SafeArea(
           child: Align(
             alignment: Alignment.topRight,
@@ -702,10 +695,131 @@ class ContactProfileScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              if (actionsOpen)
-                Positioned.fill(
-                  child: _actionsPanel(context, ref, peer, closeActions),
+              Positioned.fill(
+                child: _ActionsOverlay(
+                  open: actionsOpen,
+                  onDismiss: closeActions,
+                  builder: (context) =>
+                      _actionsPanel(context, ref, peer, closeActions),
                 ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The actions panel's way in and out.
+///
+/// It used to appear and vanish on a boolean, which is the same "deleted
+/// rather than dismissed" every menu in the app was fixed of earlier — see
+/// `glassMenuMotion` in `core/widgets/context_popup.dart`. This is that motion,
+/// spelled out locally because this
+/// panel is an overlay inside the screen rather than a route: the same 210 ms
+/// in and 170 ms out, eased both ways, with the card growing from the top
+/// right corner where the button that opened it sits.
+///
+/// Closed and settled, it is a `SizedBox` — the panel is not built, so its
+/// blur is not in the tree and nothing behind it is snapshotted.
+class _ActionsOverlay extends StatefulWidget {
+  const _ActionsOverlay({
+    required this.open,
+    required this.onDismiss,
+    required this.builder,
+  });
+
+  final bool open;
+  final VoidCallback onDismiss;
+  final WidgetBuilder builder;
+
+  @override
+  State<_ActionsOverlay> createState() => _ActionsOverlayState();
+}
+
+class _ActionsOverlayState extends State<_ActionsOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 210),
+    reverseDuration: const Duration(milliseconds: 170),
+    value: widget.open ? 1 : 0,
+  );
+
+  late final Animation<double> _curved = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
+
+  @override
+  void didUpdateWidget(covariant _ActionsOverlay old) {
+    super.didUpdateWidget(old);
+    if (widget.open == old.open) return;
+    if (widget.open) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// True while there is nothing to show: closed, and finished closing.
+  ///
+  /// `widget.open` is half of it and not a formality — on the frame the panel
+  /// is first asked for, the controller has not ticked yet and still reads
+  /// dismissed. Testing the controller alone there returns nothing, nothing
+  /// schedules a frame, and the panel never opens at all.
+  bool get _gone => !widget.open && _controller.isDismissed;
+
+  @override
+  Widget build(BuildContext context) {
+    // Built here rather than inside the animated builder so the panel is made
+    // once per rebuild instead of once per frame — and not at all while the
+    // menu is closed, which is what keeps its blur out of the tree.
+    final panel = _gone ? null : Builder(builder: widget.builder);
+    return AnimatedBuilder(
+      animation: _controller,
+      child: panel,
+      // Rebuilding the shape here, rather than off a status listener, is what
+      // takes the panel out of the tree on the *same* frame the animation
+      // ends. A listener calling setState leaves it standing one frame longer
+      // — invisible, but still findable, which is a difference a test can see
+      // and a stray tap can land on.
+      builder: (context, child) {
+        if (child == null || _gone) return const SizedBox.shrink();
+        return IgnorePointer(
+          // On the way out the panel is still painted, and a card that goes on
+          // eating taps while it fades swallows whatever was reached for next.
+          ignoring: !widget.open,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: FadeTransition(
+                  opacity: _curved,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onDismiss,
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.46),
+                    ),
+                  ),
+                ),
+              ),
+              FadeTransition(
+                opacity: _curved,
+                child: ScaleTransition(
+                  alignment: Alignment.topRight,
+                  scale: Tween<double>(begin: 0.88, end: 1).animate(_curved),
+                  child: child,
+                ),
+              ),
             ],
           ),
         );

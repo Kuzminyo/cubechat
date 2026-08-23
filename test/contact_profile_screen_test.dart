@@ -85,6 +85,10 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    // Two pumps, not one: the panel animates in now, and the first frame after
+    // a ticker starts is its zero point — it schedules the animation rather
+    // than advancing it. A single pump would find the panel at opacity zero.
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(
@@ -134,6 +138,9 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byIcon(Icons.close_rounded));
+    // And the same on the way out — the panel is still in the tree until the
+    // closing animation has actually run.
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(
       find.text(
