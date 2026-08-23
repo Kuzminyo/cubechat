@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/routing/back_gesture.dart';
 import '../../../core/routing/page_transitions.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1801,9 +1802,10 @@ class _CoverBody extends ConsumerWidget {
               // travel is what takes it off the scrollable, and only over the
               // picture: everywhere else on the screen still scrolls.
               gestures: <Type, GestureRecognizerFactory>{
-                _FaceDragRecognizer:
-                    GestureRecognizerFactoryWithHandlers<_FaceDragRecognizer>(
-                  _FaceDragRecognizer.new,
+                EagerVerticalDragRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                        EagerVerticalDragRecognizer>(
+                  EagerVerticalDragRecognizer.new,
                   (r) => r
                     ..onStart = ((_) => onFaceDragStart())
                     ..onUpdate = onFaceDrag,
@@ -2012,40 +2014,6 @@ class _CoverBody extends ConsumerWidget {
         ],
       ),
     );
-  }
-}
-
-/// A vertical drag that takes itself off the list.
-///
-/// The profile is a scroll view, and a scroll view claims vertical drags. An
-/// ordinary detector on the picture therefore saw nothing: both recognizers
-/// wait for the same slop and the scrollable's is the one the arena hands it
-/// to. Accepting after two points of travel wins it instead — deliberately
-/// small, because this only ever runs over the picture and the alternative is
-/// a gesture that does not exist.
-class _FaceDragRecognizer extends VerticalDragGestureRecognizer {
-  _FaceDragRecognizer({super.debugOwner});
-
-  Offset? _origin;
-  bool _claimed = false;
-
-  @override
-  void addAllowedPointer(PointerDownEvent event) {
-    _origin = event.position;
-    _claimed = false;
-    super.addAllowedPointer(event);
-  }
-
-  @override
-  void handleEvent(PointerEvent event) {
-    final origin = _origin;
-    if (!_claimed && origin != null && event is PointerMoveEvent) {
-      if ((event.position.dy - origin.dy).abs() >= 2) {
-        _claimed = true;
-        resolve(GestureDisposition.accepted);
-      }
-    }
-    super.handleEvent(event);
   }
 }
 

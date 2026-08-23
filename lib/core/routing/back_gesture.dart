@@ -395,3 +395,40 @@ abstract class _OneWayDragRecognizer extends HorizontalDragGestureRecognizer {
     super.handleEvent(event);
   }
 }
+
+/// A vertical drag that takes itself off the list underneath.
+///
+/// A scroll view claims vertical drags, so an ordinary detector on something
+/// inside one never sees them: both recognizers wait for the same slop and the
+/// scrollable's is the one the arena hands it to. This accepts after two points
+/// of travel and therefore wins.
+///
+/// Used by the profile headers, where the gesture is about the picture rather
+/// than about the list: swiping up the face opens it. Deliberately small,
+/// because it only ever covers the picture and the alternative is a gesture
+/// that does not exist at all.
+class EagerVerticalDragRecognizer extends VerticalDragGestureRecognizer {
+  EagerVerticalDragRecognizer({super.debugOwner});
+
+  Offset? _origin;
+  bool _claimed = false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _origin = event.position;
+    _claimed = false;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    final origin = _origin;
+    if (!_claimed && origin != null && event is PointerMoveEvent) {
+      if ((event.position.dy - origin.dy).abs() >= 2) {
+        _claimed = true;
+        resolve(GestureDisposition.accepted);
+      }
+    }
+    super.handleEvent(event);
+  }
+}

@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
+import '../../../core/routing/back_gesture.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -31,7 +34,7 @@ import '../data/peer_avatars_controller.dart';
 import '../data/presence_controller.dart';
 import '../models/known_peer.dart';
 
-class ContactProfileScreen extends ConsumerWidget {
+class ContactProfileScreen extends ConsumerStatefulWidget {
   const ContactProfileScreen({
     super.key,
     required this.peerPubkeyHex,
@@ -40,6 +43,61 @@ class ContactProfileScreen extends ConsumerWidget {
 
   final String peerPubkeyHex;
   final String peerLabel;
+
+  @override
+  ConsumerState<ContactProfileScreen> createState() =>
+      _ContactProfileScreenState();
+}
+
+/// The same header mechanic as your own profile: a face in the middle at rest,
+/// swiped up into a full-bleed photograph.
+///
+/// Written here rather than shared with the profile cover because the two
+/// headers hold different things — this one carries a back button, four quick
+/// actions and somebody else's status — and a widget parameterised over both
+/// would be a worse explanation of either.
+class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
+    with SingleTickerProviderStateMixin {
+  /// 0 = the face is a circle, 1 = it fills the header.
+  late final AnimationController _open = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
+
+  /// How far the finger travels up the picture before it opens. The same
+  /// number as the profile's, because it is the same gesture.
+  static const double _dragToOpen = 48;
+
+  double _dragOnFace = 0;
+
+  @override
+  void dispose() {
+    _open.dispose();
+    super.dispose();
+  }
+
+  void _faceDragStart() => _dragOnFace = 0;
+
+  void _faceDrag(DragUpdateDetails d) {
+    _dragOnFace += d.delta.dy;
+    if (_open.isAnimating) return;
+    if (_dragOnFace <= -_dragToOpen && _open.value < 1) {
+      _dragOnFace = 0;
+      _open.forward();
+    } else if (_dragOnFace >= _dragToOpen && _open.value > 0) {
+      _dragOnFace = 0;
+      _open.reverse();
+    }
+  }
+
+  void _toggleFace() =>
+      _open.status == AnimationStatus.completed || _open.value > 0.5
+          ? _open.reverse()
+          : _open.forward();
+
+  String get peerPubkeyHex => widget.peerPubkeyHex;
+  String get peerLabel => widget.peerLabel;
 
   String _chatRoute() =>
       '/chat/' +
@@ -568,7 +626,7 @@ class ContactProfileScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final peer = ref.watch(knownPeersControllerProvider)[peerPubkeyHex];
     final messages = ref.watch(messagesControllerProvider)[peerPubkeyHex] ??
@@ -616,8 +674,11 @@ class ContactProfileScreen extends ConsumerWidget {
         formatChatListTime(context, peer.lastSeen),
       ].join(' \u00B7 ');
     }
-    final heroHeight =
+    final heroExpanded =
         (MediaQuery.sizeOf(context).height * 0.61).clamp(430.0, 560.0);
+    final heroCompact = _ProfileHero.compactHeightFor(
+      MediaQuery.paddingOf(context).top,
+    );
 
     var actionsOpen = false;
     return StatefulBuilder(
@@ -634,8 +695,15 @@ class ContactProfileScreen extends ConsumerWidget {
                 physics: const BouncingScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _ProfileHero(
-                      height: heroHeight,
+                    child: AnimatedBuilder(
+                      animation: _open,
+                      builder: (context, _) => _ProfileHero(
+                      t: _open.value,
+                      compact: heroCompact,
+                      expanded: heroExpanded,
+                      onFaceTap: _toggleFace,
+                      onFaceDragStart: _faceDragStart,
+                      onFaceDrag: _faceDrag,
                       peerId: peerPubkeyHex,
                       label: peerLabel,
                       status: status,
@@ -657,6 +725,7 @@ class ContactProfileScreen extends ConsumerWidget {
                       blockLabel:
                           peer?.isBlocked == true ? t.peerUnblock : t.peerBlock,
                       moreTooltip: t.contactProfileActions,
+                      ),
                     ),
                   ),
                   SliverPadding(
@@ -906,7 +975,12 @@ class _ActionsOverlayState extends State<_ActionsOverlay>
 
 class _ProfileHero extends ConsumerWidget {
   const _ProfileHero({
-    required this.height,
+    required this.t,
+    required this.compact,
+    required this.expanded,
+    required this.onFaceTap,
+    required this.onFaceDragStart,
+    required this.onFaceDrag,
     required this.peerId,
     required this.label,
     required this.status,
@@ -927,7 +1001,31 @@ class _ProfileHero extends ConsumerWidget {
     required this.moreTooltip,
   });
 
-  final double height;
+  /// 0 = a circle in the middle, 1 = the picture filling the header.
+  final double t;
+
+  /// The two heights it lerps between.
+  final double compact;
+  final double expanded;
+
+  final VoidCallback onFaceTap;
+  final VoidCallback onFaceDragStart;
+  final ValueChanged<DragUpdateDetails> onFaceDrag;
+
+  /// The circle at rest, matched to the profile's own so the two headers are
+  /// the same size when they are showing the same thing.
+  static const double faceSize = 92;
+
+  /// Room under the circle for the name and the line beneath it.
+  static const double nameBlockRoom = 62;
+
+  /// The quick-action card and the gap under it.
+  static const double actionsHeight = 84;
+
+  /// Inset, face, the two lines, the actions card. The list's own padding
+  /// follows this rather than a fixed number.
+  static double compactHeightFor(double topInset) =>
+      topInset + 12 + faceSize + 10 + nameBlockRoom + 12 + actionsHeight + 12;
   final String peerId;
   final String label;
   final String status;
@@ -950,76 +1048,151 @@ class _ProfileHero extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = IdentityAvatar.paletteFor(peerId);
-    final avatarSize =
-        (MediaQuery.sizeOf(context).width * 0.42).clamp(132.0, 176.0);
     // Their picture, full-bleed across the header — the same thing your own
     // profile does with yours. A round portrait floating on a gradient was the
     // one place in the app where somebody's face was shown as a token rather
     // than as a photograph, and the round one below it is still there for the
     // identity it carries (the online dot, the letters when there is no photo).
     final photo = ref.watch(peerAvatarsControllerProvider)[peerId];
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _body(context, ref, photo, palette, constraints.maxWidth),
+    );
+  }
+
+  /// The header, given the width it is actually being drawn at.
+  ///
+  /// From the layout rather than from `MediaQuery`: they are the same number
+  /// on a phone and are not the same number under a capture harness, where a
+  /// face centred on the media query lands half off the edge of the boundary
+  /// it is drawn into.
+  Widget _body(
+    BuildContext context,
+    WidgetRef ref,
+    Uint8List? photo,
+    List<Color> palette,
+    double width,
+  ) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    final height = ui.lerpDouble(compact, expanded, t)!;
+
+    // The face and the header are the same rectangle at two sizes: a circle in
+    // the middle at rest, the whole width once it is opened. Lerping the rect
+    // and its corner radius together is what makes one grow into the other,
+    // the same way your own profile does.
+    final rect = Rect.lerp(
+      Rect.fromLTWH((width - faceSize) / 2, topInset + 12, faceSize, faceSize),
+      Rect.fromLTWH(0, 0, width, height),
+      t,
+    )!;
+    final radius = ui.lerpDouble(faceSize / 2, 0, t)!;
+
+    // Under the circle at rest; above the actions once the picture is open.
+    final nameTop = ui.lerpDouble(
+      topInset + 12 + faceSize + 10,
+      height - actionsHeight - 12 - nameBlockRoom - 8,
+      t,
+    )!;
+
     return SizedBox(
       height: height,
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          if (photo != null)
-            Image.memory(
-              photo,
-              fit: BoxFit.cover,
-              // The bytes are full HD so the header stays sharp; decoding them
-              // at the size actually drawn keeps the cache honest.
-              cacheWidth: (MediaQuery.sizeOf(context).width *
-                      MediaQuery.devicePixelRatioOf(context))
-                  .round(),
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            )
-          else
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    palette.first.withValues(alpha: 0.78),
-                    AppColors.bgBottom,
-                    AppColors.bgDeep,
-                  ],
-                  stops: const [0, 0.58, 1],
+          Positioned.fromRect(
+            rect: rect,
+            // Keyed for the test that measures where it sits: "centred" is a
+            // number, and a golden can show it but cannot check it.
+            key: const ValueKey('contact-hero-face'),
+            child: RawGestureDetector(
+              // The picture answers the gesture that is about the picture: up
+              // opens it, down closes it, a tap does either. Raw and eager,
+              // because the list is listening for a vertical drag too and an
+              // ordinary detector loses that arena outright.
+              gestures: <Type, GestureRecognizerFactory>{
+                EagerVerticalDragRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                        EagerVerticalDragRecognizer>(
+                  EagerVerticalDragRecognizer.new,
+                  (r) => r
+                    ..onStart = ((_) => onFaceDragStart())
+                    ..onUpdate = onFaceDrag,
                 ),
-              ),
-            ),
-          // Only when there is no photograph. With one, the header *is* their
-          // picture — a circle holding the same image on top of it is the same
-          // face twice, at two sizes, which is what it looked like.
-          if (photo == null)
-            Align(
-              alignment: const Alignment(0, -0.34),
-              child: PeerAvatar(
-                peerId: peerId,
-                label: label,
-                size: avatarSize,
-                online: online,
-                heroTag: 'contact-avatar-' + peerId,
-              ),
-            ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0x00000000),
-                  const Color(0x33000000),
-                  // The same frozen emerald the profile header carried: this
-                  // one darkened a contact's photo to a green that belonged to
-                  // no palette in use.
-                  AppColors.bgDeep.withValues(alpha: 0.90),
-                ],
-                stops: const [0.30, 0.62, 1],
+                TapGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                  TapGestureRecognizer.new,
+                  (r) => r.onTap = onFaceTap,
+                ),
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: photo != null
+                    ? Image.memory(
+                        photo,
+                        fit: BoxFit.cover,
+                        // Full HD bytes so the open header stays sharp;
+                        // decoded at the size actually drawn.
+                        cacheWidth:
+                            (width * MediaQuery.devicePixelRatioOf(context))
+                                .round(),
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      )
+                    : DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              palette.first.withValues(alpha: 0.78),
+                              AppColors.bgBottom,
+                              AppColors.bgDeep,
+                            ],
+                            stops: const [0, 0.58, 1],
+                          ),
+                        ),
+                        // With no photograph the circle carries the identity —
+                        // the letters, the online dot. Open, the gradient is
+                        // the whole header and a disc on top of it would be
+                        // the same colours twice.
+                        child: t < 0.5
+                            ? Center(
+                                child: PeerAvatar(
+                                  peerId: peerId,
+                                  label: label,
+                                  size: faceSize,
+                                  online: online,
+                                ),
+                              )
+                            : null,
+                      ),
               ),
             ),
           ),
+          // Only over the photograph: at rest the header is the app's own
+          // background and a scrim on that is a smudge.
+          if (t > 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: height * 0.55,
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: t,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0x00000000),
+                          AppColors.bgDeep.withValues(alpha: 0.90),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           SafeArea(
             bottom: false,
             child: Padding(
@@ -1044,38 +1217,43 @@ class _ProfileHero extends ConsumerWidget {
             ),
           ),
           Positioned(
-            left: 20,
-            right: 20,
-            bottom: 108,
-            child: Column(
-              // Centred, so a contact's header reads the way your own does at
-              // rest: the face, the name under it, the status under that, all
-              // on one axis. The photograph itself stays full-bleed — that was
-              // a deliberate change away from a round portrait floating on a
-              // gradient, which was the one place in this app where somebody's
-              // face was shown as a token rather than as a picture.
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.display(size: 31),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  status,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+            // Clear of the two round buttons at rest so a long name cannot run
+            // under them; back to 20 once the picture is open and the buttons
+            // are far above the text.
+            left: ui.lerpDouble(56, 20, t)!,
+            top: nameTop,
+            right: ui.lerpDouble(56, 20, t)!,
+            child: Align(
+              alignment: Alignment(ui.lerpDouble(0, -1, t)!, 0),
+              child: Column(
+                crossAxisAlignment: t < 0.5
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: t < 0.5 ? TextAlign.center : TextAlign.start,
+                    style: AppTypography.display(
+                      size: ui.lerpDouble(24, 31, t)!,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 7),
+                  Text(
+                    status,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: t < 0.5 ? TextAlign.center : TextAlign.start,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           Positioned(

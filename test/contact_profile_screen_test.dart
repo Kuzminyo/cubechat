@@ -157,4 +157,55 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a contact header rests as a centred face and opens on a swipe up',
+      (tester) async {
+    // The same mechanic as your own profile, and for the same reason: a
+    // photograph filling the top of every visit is the wrong default, and the
+    // gesture that enlarges it belongs on the picture rather than on the list.
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          knownPeersControllerProvider.overrideWith(
+            _TestKnownPeersController.new,
+          ),
+          chatsProvider.overrideWithValue(const []),
+        ],
+        child: MaterialApp(
+          locale: const Locale('uk'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData.dark(useMaterial3: true),
+          home: const AuroraBackground(
+            child: ContactProfileScreen(
+              peerPubkeyHex: _pubkey,
+              peerLabel: 'Alice',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final face = find.byKey(const ValueKey('contact-hero-face'));
+    expect(face, findsOneWidget);
+    expect(tester.getCenter(face).dx, closeTo(180, 1),
+        reason: 'the face is off the middle of a 360-point screen');
+    final restingWidth = tester.getSize(face).width;
+    expect(restingWidth, closeTo(92, 0.5));
+
+    await tester.drag(face, const Offset(0, -120), touchSlopY: 0);
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(face).width, greaterThan(restingWidth),
+        reason: 'swiping up the picture should open it');
+
+    await tester.drag(face, const Offset(0, 120), touchSlopY: 0);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(face).width, closeTo(restingWidth, 0.5),
+        reason: 'and swiping back down should put it away');
+  });
 }
