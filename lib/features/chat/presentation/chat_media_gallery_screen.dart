@@ -23,6 +23,7 @@ import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../stickers/data/sticker_library.dart';
 import 'widgets/emoji_picker_sheet.dart';
+import 'widgets/photo_flight.dart';
 
 /// Telegram-style media browser: every image in a conversation, full-screen and
 /// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
@@ -94,6 +95,11 @@ class _ChatMediaGalleryScreenState
               // into it from a neighbouring photo. This screen can share and
               // save what it shows.
               !m.viewOnce &&
+              // Nor a sticker. It carries an image, but it is a gesture rather
+              // than a picture — it no longer opens when tapped, and paging
+              // into one from the photo beside it would put it back where it
+              // was taken out of.
+              !m.isSticker &&
               MediaPaths.existsOrNull(m.imagePath),
         )
         .toList();
@@ -381,6 +387,11 @@ class _ChatMediaGalleryScreenState
                         child: Center(
                           child: Hero(
                             tag: 'image-${m.id}',
+                            // The destination's builder is the one Flutter
+                            // asks for on a push, so the crossing has to be
+                            // named here as well as on the bubble.
+                            flightShuttleBuilder:
+                                photoFlightShuttle(m.imagePath!),
                             child: Image.file(
                               File(m.imagePath!),
                               fit: BoxFit.contain,

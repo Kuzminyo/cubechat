@@ -48,6 +48,7 @@ import '../chat_media_gallery_screen.dart';
 import '../view_once_media_screen.dart';
 import '../../../../core/util/media_storage.dart';
 import 'file_bubble.dart';
+import 'photo_flight.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
 import 'voice_bubble.dart';
@@ -2095,6 +2096,7 @@ class _AlbumCell extends StatelessWidget {
       ),
       child: Hero(
         tag: 'image-${message.id}',
+        flightShuttleBuilder: photoFlightShuttle(path),
         child: Image.file(
           File(path),
           fit: BoxFit.cover,
@@ -2149,53 +2151,70 @@ class _ImagePayload extends StatelessWidget {
     }
 
     final heroTag = 'image-${message.id}';
+    // A sticker does not open, and it has no flight either.
+    //
+    // It is a gesture, not a document: there is nothing inside one to look at
+    // closer, so a full-screen viewer for it is a dead end somebody has to
+    // back out of — and it is the easiest thing in a conversation to hit by
+    // accident, being a large target with no text on it. Holding it still
+    // lights it in the spotlight with everything that can be done to it, which
+    // is where a sticker's actions belong and where Telegram keeps them too.
+    final opens = fileExists && !message.isSticker;
+    final picture = Image.file(
+      // Only ever drawn on the `fileExists` side of the branch below, which is
+      // where the null check lives.
+      File(path!),
+      // A sticker is drawn whole, not cropped to a square: it has a shape,
+      // usually with transparency around it, and cover would trim exactly the
+      // part that gives it one.
+      fit: message.isSticker ? BoxFit.contain : BoxFit.cover,
+      // Decoded at the size it is drawn, not the size it was sent.
+      //
+      // Without this the bubble decodes the whole photo — the mesh encoder
+      // tops out around 1600 px, so that is a 1600×1600 bitmap, ten megabytes
+      // of it, to fill a box 220 points wide. Every photo in the conversation,
+      // held in the image cache. Scrolling a chat with pictures in it then
+      // costs a full-resolution decode per photo and a texture upload to
+      // match, which is most of why such a chat warms the phone. At the drawn
+      // size it is a twenty-fifth of the pixels.
+      cacheWidth: ((message.isSticker
+                  ? kStickerWidth
+                  : photoBubbleWidth(context)) *
+              MediaQuery.devicePixelRatioOf(context))
+          .round(),
+      errorBuilder: (_, __, ___) => _ImagePlaceholder(
+        icon: Icons.broken_image_rounded,
+        label: message.imageMime ?? 'image',
+      ),
+    );
     final body = fileExists
         ? GestureDetector(
             onDoubleTap: onDoubleTap,
-            onTap: () => Navigator.of(context).push(
-              mediaRoute<void>(
-                (_) => ChatMediaGalleryScreen(
-                  chatId: chatId,
-                  initialMessageId: message.id,
-                ),
-              ),
-            ),
-            child: Hero(
-              tag: heroTag,
-              // No rounding of its own any more: the bubble clips to its own
-              // corners now that the photo reaches them, and a second, tighter
-              // radius inside that one drew a visible sliver of bubble in each
-              // corner — the frame this change exists to remove, only thinner.
-              child: ClipRRect(
-                borderRadius: BorderRadius.zero,
-                child: Image.file(
-                  File(path),
-                  // A sticker is drawn whole, not cropped to a square: it has a
-                  // shape, usually with transparency around it, and cover would
-                  // trim exactly the part that gives it one.
-                  fit: message.isSticker ? BoxFit.contain : BoxFit.cover,
-                  // Decoded at the size it is drawn, not the size it was sent.
-                  //
-                  // Without this the bubble decodes the whole photo — the mesh
-                  // encoder tops out around 1600 px, so that is a 1600×1600
-                  // bitmap, ten megabytes of it, to fill a box 220 points
-                  // wide. Every photo in the conversation, held in the image
-                  // cache. Scrolling a chat with pictures in it then costs a
-                  // full-resolution decode per photo and a texture upload to
-                  // match, which is most of why such a chat warms the phone.
-                  // At the drawn size it is a twenty-fifth of the pixels.
-                  cacheWidth: ((message.isSticker
-                              ? kStickerWidth
-                              : photoBubbleWidth(context)) *
-                          MediaQuery.devicePixelRatioOf(context))
-                      .round(),
-                  errorBuilder: (_, __, ___) => _ImagePlaceholder(
-                    icon: Icons.broken_image_rounded,
-                    label: message.imageMime ?? 'image',
-                  ),
-                ),
-              ),
-            ),
+            onTap: opens
+                ? () => Navigator.of(context).push(
+                      mediaRoute<void>(
+                        (_) => ChatMediaGalleryScreen(
+                          chatId: chatId,
+                          initialMessageId: message.id,
+                        ),
+                      ),
+                    )
+                : null,
+            child: opens
+                // No rounding of its own any more: the bubble clips to its own
+                // corners now that the photo reaches them, and a second,
+                // tighter radius inside that one drew a visible sliver of
+                // bubble in each corner — the frame this change exists to
+                // remove, only thinner.
+                ? Hero(
+                    tag: heroTag,
+                    flightShuttleBuilder: photoFlightShuttle(path),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.zero,
+                      child: picture,
+                    ),
+                  )
+                : picture,
           )
         : _ImagePlaceholder(
             icon: message.status == MessageStatus.failed
