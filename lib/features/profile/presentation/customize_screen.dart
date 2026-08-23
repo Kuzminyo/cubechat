@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../core/widgets/hue_strip.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/reaction_emoji_controller.dart';
 import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
@@ -190,6 +193,24 @@ class _ThemeCard extends ConsumerWidget {
               },
             ),
           ),
+          const SizedBox(height: 14),
+          // A hue of one's own, for a colour that is not among the eight.
+          //
+          // The wheel picks the *hue* and nothing else: saturation and
+          // lightness stay at the values the hand-made palettes converged on,
+          // because those five colours are tuned against each other and a
+          // free-floating pick lands as unreadable text about as often as not
+          // — see the note at the top of `theme_controller.dart`, which is
+          // where this restraint is explained and where the ratios live.
+          HueStrip(
+            selected: current.isCustom,
+            hue: current.hue ?? 210,
+            onPick: (h) => unawaited(
+              ref.read(themeControllerProvider.notifier).select(
+                    AppPalette.hue(h),
+                  ),
+            ),
+          ),
         ],
       ),
     );
@@ -209,45 +230,72 @@ class _ThemeCard extends ConsumerWidget {
 class _ScaleCard extends ConsumerWidget {
   const _ScaleCard();
 
-  static String _label(AppLocalizations t, UiScale scale) => switch (scale) {
-        UiScale.system => t.profileScaleSystem,
-        UiScale.small => t.profileScaleSmall,
-        UiScale.normal => t.profileScaleNormal,
-        UiScale.large => t.profileScaleLarge,
-      };
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final current = ref.watch(uiScaleControllerProvider);
+    final notifier = ref.read(uiScaleControllerProvider.notifier);
+    // Where the thumb sits while following the phone. Not a value being used —
+    // the slider is switched off then — but a slider whose thumb is parked at
+    // one end looks broken, and this is where dragging it will start.
+    final shown = current.factor ?? 1.0;
+    final divisions =
+        ((UiScale.maxFactor - UiScale.minFactor) / UiScale.step).round();
     return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            t.profileScale,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
-              for (final scale in UiScale.values) ...[
-                if (scale != UiScale.values.first) const SizedBox(width: 8),
-                Expanded(
-                  child: _Pill(
-                    label: _label(t, scale),
-                    active: scale == current,
-                    onTap: () => ref
-                        .read(uiScaleControllerProvider.notifier)
-                        .select(scale),
+              Expanded(
+                child: Text(
+                  t.profileScale,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
+              ),
+              Text(
+                // A percentage, which needs no translating and says exactly
+                // what the number means.
+                current.followsSystem
+                    ? t.profileScaleSystem
+                    : '${(shown * 100).round()}%',
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              activeTrackColor: AppColors.brandPrimary,
+              inactiveTrackColor: AppColors.glass(0.18),
+              thumbColor: current.followsSystem
+                  ? AppColors.textOnGlassFaint
+                  : AppColors.brandPrimary,
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+            ),
+            child: Slider(
+              value: shown.clamp(UiScale.minFactor, UiScale.maxFactor),
+              min: UiScale.minFactor,
+              max: UiScale.maxFactor,
+              divisions: divisions,
+              // Dragging is itself the decision to stop following the phone —
+              // asking somebody to turn the override on first, and only then
+              // to choose a size, is a step that exists for the code's benefit.
+              onChanged: (v) => unawaited(notifier.select(UiScale.of(v))),
+            ),
+          ),
+          _Pill(
+            label: t.profileScaleSystem,
+            active: current.followsSystem,
+            onTap: () => unawaited(notifier.select(UiScale.system)),
           ),
           const SizedBox(height: 12),
           Text(

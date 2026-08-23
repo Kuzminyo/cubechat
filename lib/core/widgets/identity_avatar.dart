@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../identity/avatar_controller.dart';
 import '../theme/colors.dart';
+import '../theme/theme_controller.dart';
 import '../util/ui_activity.dart';
 
 /// Deterministic gradient avatar from a stable seed (e.g. peer pubkey).
@@ -46,6 +47,22 @@ class IdentityAvatar extends StatelessWidget {
   /// renderer uses so the face in a banner matches the one in the app.
   static List<Color> paletteFor(String seed) =>
       AppColors.identityGradient(seed);
+
+  /// The two colours a profile header is painted with.
+  ///
+  /// Normally the identity's own, so everybody has a colour they did not
+  /// choose and cannot be mistaken for someone else by. [hue] overrides it:
+  /// yours because you picked it, theirs because you did — a mark you put on a
+  /// person so the three you talk to most are three colours at a glance. Held
+  /// on this device and never sent.
+  ///
+  /// Derived from the hue the same way a custom theme is, so a profile cannot
+  /// be painted a colour that swallows the text on it.
+  static List<Color> gradientFor(String seed, {double? hue}) {
+    if (hue == null) return paletteFor(seed);
+    final palette = AppPalette.hue(hue);
+    return [palette.brandPrimary, palette.bgBottom];
+  }
 
   @override
   Widget build(BuildContext context) {

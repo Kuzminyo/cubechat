@@ -147,8 +147,50 @@ class AppPalette {
     slate,
   ];
 
-  static AppPalette byId(String? id) =>
-      all.firstWhere((p) => p.id == id, orElse: () => emerald);
+  /// A palette built from one hue, for somebody who wants a colour that is not
+  /// among the eight.
+  ///
+  /// Derived, not picked. The warning at the top of this file is the reason:
+  /// the five colours are tuned *against each other*, and a hue dropped into
+  /// them from a wheel lands as unreadable text about as often as not. So the
+  /// wheel chooses the hue and these ratios choose everything else —
+  /// saturation and lightness are held at the values the hand-made palettes
+  /// converged on, which is what keeps a label readable at any angle of the
+  /// wheel. Emerald measures 0.78/0.52 at the brand and 0.55/0.055 at the
+  /// deepest background; the numbers below are that shape, softened slightly
+  /// so a yellow does not glare.
+  factory AppPalette.hue(double hue) {
+    final h = hue % 360;
+    Color at(double saturation, double lightness) =>
+        HSLColor.fromAHSL(1, h, saturation, lightness).toColor();
+    return AppPalette(
+      id: '$customPrefix${h.round()}',
+      brandPrimary: at(0.70, 0.52),
+      brandSecondary: at(0.52, 0.70),
+      bgDeep: at(0.48, 0.055),
+      bgTop: at(0.46, 0.105),
+      bgBottom: at(0.52, 0.145),
+    );
+  }
+
+  /// What a derived palette's id starts with. The id is the whole of what is
+  /// stored, so a custom choice survives a restart without a second setting.
+  static const String customPrefix = 'hue:';
+
+  bool get isCustom => id.startsWith(customPrefix);
+
+  /// The angle a derived palette was built from, or null for one of the eight.
+  double? get hue => isCustom
+      ? double.tryParse(id.substring(customPrefix.length))
+      : null;
+
+  static AppPalette byId(String? id) {
+    if (id != null && id.startsWith(customPrefix)) {
+      final h = double.tryParse(id.substring(customPrefix.length));
+      if (h != null) return AppPalette.hue(h);
+    }
+    return all.firstWhere((p) => p.id == id, orElse: () => emerald);
+  }
 }
 
 /// Applies a palette and remembers the choice.

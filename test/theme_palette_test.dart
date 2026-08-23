@@ -84,4 +84,49 @@ void main() {
       expect(AppPalette.byId(id).id, id);
     }
   });
+
+  group('a hue of one\'s own', () {
+    test('survives being stored as an id and read back', () {
+      // The id is the whole of what is persisted, so a custom choice has to be
+      // reconstructable from it — otherwise it lasts until the next launch.
+      final picked = AppPalette.hue(287);
+      expect(picked.isCustom, isTrue);
+      expect(picked.hue, 287);
+      expect(AppPalette.byId(picked.id).brandPrimary, picked.brandPrimary);
+    });
+
+    test('a nonsense custom id falls back rather than throwing', () {
+      expect(AppPalette.byId('hue:').id, AppPalette.emerald.id);
+      expect(AppPalette.byId('hue:banana').id, AppPalette.emerald.id);
+    });
+
+    test('the wheel wraps rather than running off either end', () {
+      expect(AppPalette.hue(360).brandPrimary, AppPalette.hue(0).brandPrimary);
+      expect(AppPalette.hue(-90).hue, 270);
+    });
+
+    test('every angle keeps the background dark and the brand bright', () {
+      // The whole reason the wheel picks only a hue: text is read against the
+      // background, and a palette that drifts light at some angle is a screen
+      // nobody can use. Walked in tens rather than at a few chosen points,
+      // because the failure this guards against is angle-dependent.
+      for (var h = 0; h < 360; h += 10) {
+        final p = AppPalette.hue(h.toDouble());
+        expect(HSLColor.fromColor(p.bgDeep).lightness, lessThan(0.12),
+            reason: 'the deepest background at $h is not dark');
+        expect(HSLColor.fromColor(p.bgBottom).lightness, lessThan(0.22),
+            reason: 'the lightest background at $h is not dark');
+        expect(HSLColor.fromColor(p.brandPrimary).lightness, greaterThan(0.4),
+            reason: 'the brand at $h would not stand out on it');
+      }
+    });
+
+    test('applying one recolours the interface like any other', () async {
+      await container
+          .read(themeControllerProvider.notifier)
+          .select(AppPalette.hue(30));
+      expect(AppColors.brandPrimary, AppPalette.hue(30).brandPrimary);
+      expect(AppColors.bgDeep, AppPalette.hue(30).bgDeep);
+    });
+  });
 }
