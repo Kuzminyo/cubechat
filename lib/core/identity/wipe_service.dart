@@ -31,7 +31,6 @@ import '../theme/theme_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
-import '../../features/profile/data/profile_hue_controller.dart';
 import '../../features/profile/data/ui_scale_controller.dart';
 import '../crypto/identity_service.dart';
 import '../crypto/prekey_service.dart';
@@ -109,9 +108,6 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(reactionEmojiControllerProvider.notifier).reset();
   // Same for how big you like the interface: a fresh install follows the phone.
   await ref.read(uiScaleControllerProvider.notifier).reset();
-  // The colour is a mark on an identity, and the identity is what a wipe
-  // replaces — keeping it would paint a new person in the old one's colour.
-  await ref.read(profileHueControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

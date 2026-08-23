@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/typography.dart';
 
 /// A small rounded popup menu anchored at [globalPosition], the way a long-press
 /// menu behaves in Telegram.
@@ -240,7 +241,7 @@ class _AnimatedMenuCard<T> extends StatelessWidget {
                   child: Row(
                     children: [
                       Icon(item.icon,
-                          size: 18,
+                          size: AppMenu.rowIcon,
                           color: item.tone ?? AppColors.brandPrimary),
                       const SizedBox(width: 12),
                       Expanded(
@@ -248,7 +249,7 @@ class _AnimatedMenuCard<T> extends StatelessWidget {
                           item.label,
                           style: TextStyle(
                             color: item.tone ?? AppColors.textOnGlass,
-                            fontSize: 14,
+                            fontSize: AppMenu.rowLabel,
                           ),
                         ),
                       ),

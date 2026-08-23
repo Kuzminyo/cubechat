@@ -135,7 +135,6 @@ class ConversationSettings {
     this.hideAvatar = false,
     this.hideLastSeen = false,
     this.hideReadReceipts = false,
-    this.profileHue,
   });
 
   static const initial = ConversationSettings();
@@ -198,19 +197,6 @@ class ConversationSettings {
   final bool hideLastSeen;
   final bool hideReadReceipts;
 
-  /// The colour this contact's profile is painted in, or null for the one
-  /// derived from their identity.
-  ///
-  /// Local, and deliberately so. A colour somebody chose for themselves would
-  /// have to travel, be versioned, and be trusted — and the useful half of the
-  /// feature is the other one: this is a mark *you* put on a person, so the
-  /// three people you talk to most are three different colours at a glance.
-  /// Nobody else sees it and nobody else can set it.
-  ///
-  /// A hue in degrees; everything else about the colour is derived from it —
-  /// see [AppPalette.hue].
-  final double? profileHue;
-
   /// Whether copying, forwarding and sharing are off in this conversation —
   /// the question every message surface actually asks. Either side saying so
   /// is enough; it is a request about the conversation, not about one device.
@@ -226,8 +212,6 @@ class ConversationSettings {
     bool? hideAvatar,
     bool? hideLastSeen,
     bool? hideReadReceipts,
-    double? profileHue,
-    bool clearProfileHue = false,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
@@ -239,8 +223,6 @@ class ConversationSettings {
         hideAvatar: hideAvatar ?? this.hideAvatar,
         hideLastSeen: hideLastSeen ?? this.hideLastSeen,
         hideReadReceipts: hideReadReceipts ?? this.hideReadReceipts,
-        profileHue:
-            clearProfileHue ? null : (profileHue ?? this.profileHue),
       );
 
   /// True when there is nothing here worth storing. The hidings count: an
@@ -253,8 +235,7 @@ class ConversationSettings {
       !wallpaper.isSet &&
       !hideAvatar &&
       !hideLastSeen &&
-      !hideReadReceipts &&
-      profileHue == null;
+      !hideReadReceipts;
 
   @override
   bool operator ==(Object other) =>
@@ -266,8 +247,7 @@ class ConversationSettings {
       other.wallpaper == wallpaper &&
       other.hideAvatar == hideAvatar &&
       other.hideLastSeen == hideLastSeen &&
-      other.hideReadReceipts == hideReadReceipts &&
-      other.profileHue == profileHue;
+      other.hideReadReceipts == hideReadReceipts;
 
   @override
   int get hashCode => Object.hash(
@@ -279,7 +259,6 @@ class ConversationSettings {
         hideAvatar,
         hideLastSeen,
         hideReadReceipts,
-        profileHue,
       );
 }
 
@@ -359,16 +338,6 @@ class ConversationSettingsController
 
   Future<void> setHideReadReceipts(String chatId, bool hidden) =>
       _put(chatId, forChat(chatId).copyWith(hideReadReceipts: hidden));
-
-  /// Paint this contact's profile a colour of your choosing, or null to put it
-  /// back to the one their identity gives them.
-  Future<void> setProfileHue(String chatId, double? hue) => _put(
-        chatId,
-        forChat(chatId).copyWith(
-          profileHue: hue,
-          clearProfileHue: hue == null,
-        ),
-      );
 
   /// The three questions the transport asks before it sends something about
   /// us, answered by the global switch and this contact's exception together.
@@ -477,7 +446,6 @@ class ConversationSettingsController
             hideAvatar: value['hideAvatar'] == true,
             hideLastSeen: value['hideLastSeen'] == true,
             hideReadReceipts: value['hideReadReceipts'] == true,
-            profileHue: (value['profileHue'] as num?)?.toDouble(),
           );
           if (!settings.isDefault) loaded[entry.key as String] = settings;
         }
@@ -511,8 +479,6 @@ class ConversationSettingsController
             if (entry.value.hideAvatar) 'hideAvatar': true,
             if (entry.value.hideLastSeen) 'hideLastSeen': true,
             if (entry.value.hideReadReceipts) 'hideReadReceipts': true,
-            if (entry.value.profileHue != null)
-              'profileHue': entry.value.profileHue,
           },
       });
     } catch (e) {

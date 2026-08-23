@@ -119,26 +119,42 @@ void main() {
     expect(find.text(t.profileTransportMesh), findsOneWidget);
   });
 
-  testWidgets('the header rests compact and opens when pulled', (tester) async {
+  testWidgets('the header rests compact and opens on a swipe up the face',
+      (tester) async {
     // The whole point of the rework: a photo filling the top of every visit is
     // the wrong default, so the cover starts as a circle and only opens when
     // asked. Measured through the content below it — if the header grows, the
     // settings move down with it.
+    //
+    // The gesture is on the picture, not on the list. It used to be a pull on
+    // the list, which put "see the photo" and "read the settings" on the same
+    // axis pulling opposite ways.
     await pumpProfile(tester);
     final t = await AppLocalizations.delegate.load(const Locale('en'));
 
     final before = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
 
     await tester.drag(
-      find.byType(CustomScrollView),
-      const Offset(0, 260),
+      find.byKey(const ValueKey('profile-cover-face')),
+      const Offset(0, -120),
       touchSlopY: 0,
     );
     await tester.pumpAndSettle();
 
     final after = tester.getTopLeft(find.text(t.profileFingerprint)).dy;
     expect(after, greaterThan(before),
-        reason: 'pulling down past the top should open the cover');
+        reason: 'swiping up the picture should open the cover');
+
+    // And back down again closes it, so the gesture is reversible where it
+    // was made rather than only by scrolling away.
+    await tester.drag(
+      find.byKey(const ValueKey('profile-cover-face')),
+      const Offset(0, 120),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text(t.profileFingerprint)).dy,
+        closeTo(before, 1));
   });
 
   testWidgets('nothing in the header overlaps once it is scrolled', (tester) async {

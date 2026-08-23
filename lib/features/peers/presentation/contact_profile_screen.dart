@@ -14,7 +14,6 @@ import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
-import '../../../core/widgets/hue_strip.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
@@ -356,7 +355,7 @@ class ContactProfileScreen extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 t.contactProfileActions,
-                                style: AppTypography.heading(size: 20),
+                                style: AppTypography.heading(size: AppMenu.title),
                               ),
                             ),
                             IconButton(
@@ -413,29 +412,6 @@ class ContactProfileScreen extends ConsumerWidget {
                         onTap: () {
                           close();
                           _shareContact(context, ref);
-                        },
-                      ),
-                      // A colour for this person's profile. Local, and that is
-                      // the point of it: it is a mark you put on them, so the
-                      // few people you talk to most are a few colours at a
-                      // glance rather than a column of identical headers.
-                      _ActionTile(
-                        icon: Icons.color_lens_outlined,
-                        label: t.profileTheme,
-                        onTap: () async {
-                          close();
-                          await showHueSheet(
-                            context: context,
-                            title: t.profileTheme,
-                            resetLabel: t.customizeReset,
-                            hue: conversationSettings.profileHue,
-                            onPick: (h) => unawaited(
-                              ref
-                                  .read(conversationSettingsControllerProvider
-                                      .notifier)
-                                  .setProfileHue(peerPubkeyHex, h),
-                            ),
-                          );
                         },
                       ),
                       // Three exceptions to the global privacy switches, for
@@ -973,12 +949,7 @@ class _ProfileHero extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = IdentityAvatar.gradientFor(
-      peerId,
-      hue: ref
-          .watch(conversationSettingsControllerProvider)[peerId]
-          ?.profileHue,
-    );
+    final palette = IdentityAvatar.paletteFor(peerId);
     final avatarSize =
         (MediaQuery.sizeOf(context).width * 0.42).clamp(132.0, 176.0);
     // Their picture, full-bleed across the header — the same thing your own
@@ -1171,7 +1142,7 @@ class _RoundButton extends StatelessWidget {
         child: IconButton(
           onPressed: onTap,
           tooltip: tooltip,
-          icon: Icon(icon, color: AppColors.textOnGlass, size: 25),
+          icon: Icon(icon, color: AppColors.textOnGlass, size: AppMenu.buttonIcon),
         ),
       );
 }
@@ -1236,12 +1207,12 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
         minLeadingWidth: 32,
-        leading: Icon(icon, color: tone, size: 24),
+        leading: Icon(icon, color: tone, size: AppMenu.rowIcon),
         title: Text(
           label,
           style: TextStyle(
             color: tone,
-            fontSize: 16,
+            fontSize: AppMenu.rowLabel,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -1251,7 +1222,7 @@ class _ActionTile extends StatelessWidget {
                 subtitle!,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 11,
+                  fontSize: AppMenu.rowSubtitle,
                 ),
               ),
         trailing: Icon(

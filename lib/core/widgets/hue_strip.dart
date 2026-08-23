@@ -33,7 +33,7 @@ Future<void> showHueSheet({
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: AppTypography.heading(size: 18)),
+            Text(title, style: AppTypography.heading(size: AppMenu.title)),
             const SizedBox(height: 16),
             HueStrip(
               selected: chosen,

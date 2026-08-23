@@ -112,3 +112,31 @@ abstract final class AppTypography {
     );
   }
 }
+
+/// One scale for every overflow menu in the app.
+///
+/// The same idea — three dots, a list of things you can do — was drawn at three
+/// different scales: the shared popup at an 18-point icon over a 14-point
+/// label, the contact panel at 24 over 16, and the buttons that open them at 22
+/// and 25. Nothing was wrong with any single number; what read as unfinished
+/// was that they disagreed, screen to screen, about how big a menu is.
+///
+/// Tokens rather than literals for the reason every design system gives: the
+/// next menu added will reach for a name, and a name cannot drift the way a
+/// number copied from a neighbouring file does.
+abstract final class AppMenu {
+  /// The glyph beside a row.
+  static const double rowIcon = 18;
+
+  /// The row's label.
+  static const double rowLabel = 14;
+
+  /// The line under it, when a row explains itself.
+  static const double rowSubtitle = 11;
+
+  /// The three dots themselves, and any other control that opens a menu.
+  static const double buttonIcon = 22;
+
+  /// A panel or sheet's own title, matched to the app bar's.
+  static const double title = 18;
+}

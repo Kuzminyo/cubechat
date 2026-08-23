@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/routing/page_transitions.dart';
@@ -22,7 +23,6 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../../core/widgets/hue_strip.dart';
 import '../../peers/presentation/contact_card_screen.dart';
 import '../../files/data/file_transfer_controller.dart';
 import '../../../core/widgets/identity_avatar.dart';
@@ -31,7 +31,6 @@ import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/nav_bar_controller.dart';
-import '../data/profile_hue_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
@@ -61,10 +60,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     reverseDuration: const Duration(milliseconds: 260),
   );
 
-  /// How far past the top the finger has to pull before the photo opens. Low
-  /// enough to feel like the header answers the gesture, high enough that the
-  /// ordinary bounce at the top of a list does not trip it.
-  static const double _pullToOpen = 64;
+  /// How far the finger has to travel up the picture before it opens.
+  ///
+  /// The gesture is on the photograph, not on the list. Pulling the *list*
+  /// down used to open it, which put the two things a person wants at the top
+  /// of this screen — see the picture, read the settings — on the same axis
+  /// fighting each other. Swiping up on the face is a gesture about the face:
+  /// it starts on the thing it affects, and everywhere else on the screen
+  /// scrolls as it always did.
+  static const double _dragToOpen = 48;
 
   @override
   void dispose() {
@@ -81,9 +85,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     // an ordinary update with a negative offset and no overscroll is ever
     // reported. Watching for one meant the gesture did nothing at all.
     final px = n.metrics.pixels;
-    if (px <= -_pullToOpen) {
-      if (_open.value < 1 && !_open.isAnimating) _open.forward();
-    } else if (px > 24) {
+    if (px > 24) {
       // Scrolling into the content puts the photo away again; left open it
       // would sit under the settings and eat the screen.
       if (_open.value > 0 && !_open.isAnimating) _open.reverse();
@@ -95,6 +97,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       _open.status == AnimationStatus.completed || _open.value > 0.5
           ? _open.reverse()
           : _open.forward();
+
+  /// How far this drag has travelled, so a flick and a slow pull both need the
+  /// same distance rather than the same speed.
+  double _dragOnFace = 0;
+
+  void _faceDragStart() => _dragOnFace = 0;
+
+  void _faceDrag(DragUpdateDetails d) {
+    _dragOnFace += d.delta.dy;
+    if (_open.isAnimating) return;
+    // Up opens, down closes — the picture follows the finger's direction, and
+    // the accumulator resets so the same drag cannot toggle twice.
+    if (_dragOnFace <= -_dragToOpen && _open.value < 1) {
+      _dragOnFace = 0;
+      _open.forward();
+    } else if (_dragOnFace >= _dragToOpen && _open.value > 0) {
+      _dragOnFace = 0;
+      _open.reverse();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,6 +257,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               fingerprint: fingerprint,
               open: _open.value,
               onToggle: _toggle,
+              onFaceDragStart: _faceDragStart,
+              onFaceDrag: _faceDrag,
             ),
             child!,
           ],
@@ -1536,6 +1560,8 @@ class _ProfileCover extends ConsumerWidget {
     required this.fingerprint,
     required this.open,
     required this.onToggle,
+    required this.onFaceDragStart,
+    required this.onFaceDrag,
   });
 
   final String nickname;
@@ -1547,6 +1573,11 @@ class _ProfileCover extends ConsumerWidget {
   final double open;
 
   final VoidCallback onToggle;
+
+  /// A vertical drag that started on the picture. Up opens it, down closes it
+  /// — see [_ProfileScreenState._faceDrag].
+  final VoidCallback onFaceDragStart;
+  final ValueChanged<DragUpdateDetails> onFaceDrag;
 
   /// Height of the action row, shared by both states so the buttons do not
   /// jump as the header grows.
@@ -1606,6 +1637,8 @@ class _ProfileCover extends ConsumerWidget {
           t: t,
           topInset: topInset,
           onToggle: onToggle,
+          onFaceDragStart: onFaceDragStart,
+          onFaceDrag: onFaceDrag,
         ),
       ),
     );
@@ -1666,6 +1699,8 @@ class _CoverBody extends ConsumerWidget {
     required this.fingerprint,
     required this.height,
     required this.t,
+    required this.onFaceDragStart,
+    required this.onFaceDrag,
     required this.topInset,
     required this.onToggle,
   });
@@ -1678,6 +1713,8 @@ class _CoverBody extends ConsumerWidget {
   final double t;
   final double topInset;
   final VoidCallback onToggle;
+  final VoidCallback onFaceDragStart;
+  final ValueChanged<DragUpdateDetails> onFaceDrag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1753,8 +1790,30 @@ class _CoverBody extends ConsumerWidget {
         children: [
           Positioned.fromRect(
             rect: rect,
-            child: GestureDetector(
-              onTap: onToggle,
+            child: RawGestureDetector(
+              // The drag lives on the picture rather than on the list: it is a
+              // gesture about the picture, and putting it on the scroll axis
+              // made "see the photo" and "read the settings" fight each other.
+              //
+              // Raw, and eager, because the list is also listening for a
+              // vertical drag and an ordinary detector loses that arena — the
+              // gesture never arrived at all. Claiming it after two points of
+              // travel is what takes it off the scrollable, and only over the
+              // picture: everywhere else on the screen still scrolls.
+              gestures: <Type, GestureRecognizerFactory>{
+                _FaceDragRecognizer:
+                    GestureRecognizerFactoryWithHandlers<_FaceDragRecognizer>(
+                  _FaceDragRecognizer.new,
+                  (r) => r
+                    ..onStart = ((_) => onFaceDragStart())
+                    ..onUpdate = onFaceDrag,
+                ),
+                TapGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                  TapGestureRecognizer.new,
+                  (r) => r.onTap = onToggle,
+                ),
+              },
               child: Container(
                 // Keyed for the test that checks it is where it should be:
                 // "centred" is a number, and a golden can show it but cannot
@@ -1766,10 +1825,7 @@ class _CoverBody extends ConsumerWidget {
                       ? LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: IdentityAvatar.gradientFor(
-                            fingerprint,
-                            hue: ref.watch(profileHueControllerProvider),
-                          ),
+                          colors: IdentityAvatar.paletteFor(fingerprint),
                         )
                       : null,
                   image: photo == null
@@ -1817,13 +1873,17 @@ class _CoverBody extends ConsumerWidget {
             ),
 
           Positioned(
-            // 56 on the right rather than 16: the overflow button sits in that
-            // corner, and a long nickname ran under it. The same on the left
-            // so a centred block is centred on the screen rather than on the
-            // space left over beside the button.
-            left: 56,
+            // At rest the block keeps 56 clear on both sides: the overflow
+            // button sits in that corner and a long nickname ran under it, and
+            // matching insets are what make a centred block centred on the
+            // screen rather than on the space left over beside the button.
+            //
+            // Open, it goes back to 16 and ranges left, which is where it sat
+            // before any of this — the picture fills the width by then and the
+            // button is far above the text.
+            left: ui.lerpDouble(56, 16, t)!,
             top: nameTop,
-            right: 56,
+            right: ui.lerpDouble(56, 16, t)!,
             child: Align(
               alignment: Alignment(nameAlign, 0),
               child: Column(
@@ -1847,6 +1907,15 @@ class _CoverBody extends ConsumerWidget {
                 ),
                 const SizedBox(height: 3),
                 Row(
+                  // Shrink-wrapped, so the dot and the line it belongs to are
+                  // centred *together* under the name. Left to fill the width
+                  // the row stayed put while the text inside it moved, which
+                  // is what put the status a few points off the axis
+                  // everything else on this header sits on.
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: t < 0.5
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
                   children: [
                     Container(
                       width: 7,
@@ -1946,6 +2015,40 @@ class _CoverBody extends ConsumerWidget {
   }
 }
 
+/// A vertical drag that takes itself off the list.
+///
+/// The profile is a scroll view, and a scroll view claims vertical drags. An
+/// ordinary detector on the picture therefore saw nothing: both recognizers
+/// wait for the same slop and the scrollable's is the one the arena hands it
+/// to. Accepting after two points of travel wins it instead — deliberately
+/// small, because this only ever runs over the picture and the alternative is
+/// a gesture that does not exist.
+class _FaceDragRecognizer extends VerticalDragGestureRecognizer {
+  _FaceDragRecognizer({super.debugOwner});
+
+  Offset? _origin;
+  bool _claimed = false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _origin = event.position;
+    _claimed = false;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    final origin = _origin;
+    if (!_claimed && origin != null && event is PointerMoveEvent) {
+      if ((event.position.dy - origin.dy).abs() >= 2) {
+        _claimed = true;
+        resolve(GestureDisposition.accepted);
+      }
+    }
+    super.handleEvent(event);
+  }
+}
+
 /// The three dots themselves.
 ///
 /// It reports its own rectangle rather than a touch point: [showAnimatedMenu]
@@ -1972,22 +2075,14 @@ class _CoverMenuButton extends StatelessWidget {
           icon: Icon(
             Icons.more_vert_rounded,
             color: AppColors.textOnGlass,
-            size: 22,
+            size: AppMenu.buttonIcon,
           ),
         ),
       );
 }
 
 /// What the profile's overflow menu can do.
-enum _ProfileMenuAction {
-  view,
-  photo,
-  save,
-  colour,
-  profileColour,
-  copyLink,
-  remove,
-}
+enum _ProfileMenuAction { view, photo, save, colour, copyLink, remove }
 
 /// The three dots on the cover.
 ///
@@ -2028,11 +2123,6 @@ Future<void> _showProfileMenu(
           label: t.chatMediaSaveToGallery,
         ),
       AnimatedMenuItem(
-        value: _ProfileMenuAction.profileColour,
-        icon: Icons.color_lens_outlined,
-        label: t.profileTheme,
-      ),
-      AnimatedMenuItem(
         value: _ProfileMenuAction.colour,
         icon: Icons.palette_outlined,
         label: t.customizeTitle,
@@ -2068,16 +2158,6 @@ Future<void> _showProfileMenu(
       await pickProfileAvatar(context, ref);
     case _ProfileMenuAction.save:
       await _saveAvatarToGallery(context, photo!);
-    case _ProfileMenuAction.profileColour:
-      await showHueSheet(
-        context: context,
-        title: t.profileTheme,
-        resetLabel: t.customizeReset,
-        hue: ref.read(profileHueControllerProvider),
-        onPick: (h) => unawaited(
-          ref.read(profileHueControllerProvider.notifier).select(h),
-        ),
-      );
     case _ProfileMenuAction.colour:
       context.push('/customize');
     case _ProfileMenuAction.copyLink:
