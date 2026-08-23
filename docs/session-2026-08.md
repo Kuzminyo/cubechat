@@ -39,6 +39,16 @@ The GPS itself was two bugs and one intrinsic cost:
 - **Intrinsic.** A live location shared to reachable friends needs a continuous
   fix with a foreground service; Android throttles background one-shots. The
   remaining lever is the share switch.
+- **Free, on iOS only, added 2026-08-22.** The significant-change doorbell was
+  already relaunching a terminated app and spending the wake-up draining
+  relays; it threw away the position it rang with, and the same window then
+  poked map presence, which went and asked CoreLocation for a fix of its own.
+  The doorbell's fix now travels to Dart with the wake-up
+  (`IosBackgroundRefresh.fixFromWake`) and the pin is republished from it, so
+  that pin costs no radio at all. Coarse — roughly the half-kilometre that
+  decided the phone had moved — and stamped with its own time, so a fix that
+  went stale while Dart booted falls through to the old route rather than
+  standing in for a fresh one.
 
 ## Signing was 4 scalar multiplications of pure-Dart BigInt
 
@@ -169,11 +179,19 @@ from the characters the picker offers, applied only where emoji are drawn.
   on a route, so the redirect's own `canPop` stops telling it who blocked this
   one. It asks the selection directly now (`back_gesture_test.dart`).
 
-  Still open in the same shape: the emoji panel. Back with the panel open, on
-  that same chat, closes the panel *and* leaves. The redirect cannot see the
-  panel — `_panelOpen` is private to `_ChatInputState` — so closing it means
-  lifting that flag into a provider the way the selection and reply targets
-  already are.
+  The second defect of that same shape is fixed as well, later the same day:
+  back with the emoji panel open closed the panel *and* left the chat.
+  `_panelOpen` is private to `_ChatInputState`, so the composer publishes it
+  now — `onPanelOpenChanged` into `composerPanelOpenProvider`, per chat and
+  auto-disposing like the selection — and the redirect asks that too. Inside
+  the composer the flag has a single writer (`_setPanelOpen`): the panel has
+  three ways out — the button, the back gesture, the keyboard taking the slot —
+  and each of them used to lower the flag itself, which is how a published copy
+  goes stale.
+
+  Neither fix is established to be the report. Both change what a back press
+  *does* on a chat with nothing under it, which is the shape people describe;
+  the question above is still what would settle it.
 - **BLE connect latency** ("seven seconds"). Every log so far shows Bluetooth
   *working*: `central connected` → Noise handshake in ~100 ms → ~9 KB/s. But in
   all of them this phone only ever *accepted* a connection; there is no
