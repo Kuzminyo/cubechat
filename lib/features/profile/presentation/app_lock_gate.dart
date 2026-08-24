@@ -9,6 +9,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/app_lock_controller.dart';
+import 'widgets/code_pad.dart';
 
 /// Stands in front of the app while the lock is asking.
 ///
@@ -72,24 +73,19 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
     return m > 0 ? '$m:$ss' : '${total}s';
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit(String code) async {
     if (_checking) return;
     setState(() => _checking = true);
-    final ok =
-        await ref.read(appLockControllerProvider.notifier).unlock(_controller.text);
+    final ok = await ref.read(appLockControllerProvider.notifier).unlock(code);
     if (!mounted) return;
     setState(() {
       _checking = false;
       _wrong = !ok;
     });
-    if (ok) {
-      _controller.clear();
-    } else {
+    if (!ok) {
       // The only feedback a wrong code gets. Deliberately quiet: a count of
       // attempts tells whoever is holding the phone how much room they have.
       HapticFeedback.mediumImpact();
-      _controller.clear();
-      _focus.requestFocus();
     }
   }
 
@@ -126,47 +122,19 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
                     color: AppColors.textOnGlass,
                   ),
                 ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: _controller,
-                  focusNode: _focus,
-                  autofocus: true,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  onSubmitted: (_) => unawaited(_submit()),
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 22,
-                    letterSpacing: 8,
-                  ),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.glassFill,
-                    // The wait, when there is one, outranks the wrong-code
-                    // line: it is the thing that decides whether trying again
-                    // is even possible, and a bare "wrong code" while nothing
-                    // is being accepted reads as the app being broken.
-                    errorText: penalty > Duration.zero
-                        ? t.appLockWait(_mmss(penalty))
-                        : (_wrong ? t.appLockWrong : null),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.brandPrimary,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: _checking ? null : () => unawaited(_submit()),
-                    child: Text(t.appLockUnlock),
-                  ),
+                const SizedBox(height: 8),
+                // The same keypad the code was set on, for the same reasons: a
+                // PIN is not text, and a system keyboard on this screen can
+                // autocorrect it, suggest it, or offer to remember it.
+                CodePad(
+                  title: '',
+                  hint: '',
+                  actionLabel: t.appLockUnlock,
+                  enabled: !_checking && penalty == Duration.zero,
+                  errorText: penalty > Duration.zero
+                      ? t.appLockWait(_mmss(penalty))
+                      : (_wrong ? t.appLockWrong : null),
+                  onSubmit: (code) => unawaited(_submit(code)),
                 ),
               ],
             ),

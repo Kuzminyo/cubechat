@@ -386,7 +386,19 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       what: 'suspend advertising',
     );
     _disposeSubscriptions();
-    state = state.copyWith(status: PeerDiscoveryStatus.idle, peers: const []);
+    // Say *why* it stopped, not merely that it did.
+    //
+    // This answered `idle`, and the Nearby screen draws `idle` with the very
+    // same searching radar it draws `scanning` with — so switching the mesh
+    // off left the screen announcing that it was looking for people while the
+    // radio was demonstrably off. The status is all that screen has to go on,
+    // and it was being handed the one word that cannot tell "between scan
+    // windows" from "switched off".
+    final meshOff = !ref.read(discoverySettingsProvider).meshEnabled;
+    state = state.copyWith(
+      status: meshOff ? PeerDiscoveryStatus.meshOff : PeerDiscoveryStatus.idle,
+      peers: const [],
+    );
   }
 
   Future<void> _wireStreams() async {
