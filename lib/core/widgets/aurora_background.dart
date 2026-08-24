@@ -144,6 +144,18 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   /// and for [_idleAfter] after each touch, and is stopped outright while
   /// scrolling — which is exactly the "janky until you scroll, smooth once you
   /// do" the report described.
+  ///
+  /// Measured on the reporter's 120 Hz Android after the change: raster p90
+  /// 3.4 ms (avg 2.9) against 5.9 ms on 0.50.4, build p90 1.5 ms (avg 0.6),
+  /// and 31 frames over 16.7 ms out of 4677 for the whole session — no stalls.
+  /// The reported stutter went with it. Note what did *not* change: repaints
+  /// are still ~30 a second and each still builds its four shaders, so this
+  /// bought pacing, not work. GPU raster remains the busiest thread at 8% of a
+  /// core against the UI thread's 5%, which is what this backdrop costs and is
+  /// the number to beat if it is ever worth beating.
+  ///
+  /// The one outlier left is a 36 ms build frame, which is a cold start doing
+  /// cold-start things and is not this ticker's.
   void _startTicker() {
     if (_ticker != null) return;
     _clock.start();
