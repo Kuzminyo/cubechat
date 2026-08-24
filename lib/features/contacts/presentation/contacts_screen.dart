@@ -12,6 +12,7 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../peers/data/contact_removal.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../peers/data/contact_tags_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chats/data/hidden_chats_controller.dart';
 import '../../chats/models/chat.dart';
@@ -80,16 +81,29 @@ class ContactsScreen extends ConsumerStatefulWidget {
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   String _query = '';
 
+  /// The label being filtered by, or null for everybody.
+  String? _tag;
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final all = ref.watch(contactChatsProvider);
+    final tags = ref.watch(contactTagsControllerProvider);
+    final inUse = ref.read(contactTagsControllerProvider.notifier).tagsInUse;
     final query = _query.trim().toLowerCase();
-    final contacts = query.isEmpty
-        ? all
-        : all
-            .where((contact) => contact.peerName.toLowerCase().contains(query))
-            .toList();
+    // Name first, then label. Both are filters over the same list rather than
+    // two lists — a search inside a label is the ordinary way somebody looks
+    // for "the one from work whose name starts with M".
+    final contacts = all
+        .where((c) => query.isEmpty || c.peerName.toLowerCase().contains(query))
+        .where((c) => _tag == null || tags[c.peerId] == _tag)
+        .toList(growable: false);
+    // A label that no longer exists cannot go on filtering the list.
+    if (_tag != null && !inUse.contains(_tag)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _tag = null);
+      });
+    }
 
     return SafeArea(
       child: CustomScrollView(
@@ -167,6 +181,33 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               ),
             ),
           ),
+          // The labels in use, as a row of filters. Only when there are any:
+          // an empty bar is a control that explains nothing and costs a line.
+          if (inUse.isNotEmpty)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    _TagChip(
+                      label: AppLocalizations.of(context).contactTagAll,
+                      selected: _tag == null,
+                      onTap: () => setState(() => _tag = null),
+                    ),
+                    for (final tag in inUse)
+                      _TagChip(
+                        label: tag,
+                        selected: _tag == tag,
+                        onTap: () => setState(
+                          () => _tag = _tag == tag ? null : tag,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           if (contacts.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -200,7 +241,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         onLongPressAt: (at) => unawaited(
                           _showContactMenu(context, ref, contact, at),
                         ),
-                        child: _ContactTile(contact: contact),
+                        child: _ContactTile(
+                          contact: contact,
+                          tag: tags[contact.peerId],
+                        ),
                       ),
                     );
                   },
@@ -403,9 +447,13 @@ class _ContactsSearchField extends StatelessWidget {
 }
 
 class _ContactTile extends StatelessWidget {
-  const _ContactTile({required this.contact});
+  const _ContactTile({required this.contact, this.tag});
 
   final Chat contact;
+
+  /// The label put on this person, or null. Passed in rather than read here so
+  /// one row cannot start watching a whole map on its own.
+  final String? tag;
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +501,13 @@ class _ContactTile extends StatelessWidget {
                         color: AppColors.brandPrimary,
                         size: 15,
                       ),
+                    ],
+                    // The label, if this person has one. After the name and
+                    // the verification tick, because it is yours rather than
+                    // theirs — a note in the margin, not part of who they are.
+                    if (tag case final label?) ...[
+                      const SizedBox(width: 6),
+                      Text(label, style: const TextStyle(fontSize: 14)),
                     ],
                   ],
                 ),
@@ -521,4 +576,52 @@ class _ContactsEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One label in the filter row.
+class _TagChip extends StatelessWidget {
+  const _TagChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppColors.brandPrimary.withValues(alpha: 0.22)
+                  : AppColors.glassFill,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected
+                    ? AppColors.brandPrimary.withValues(alpha: 0.55)
+                    : AppColors.glass(0.14),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? AppColors.textOnGlass
+                      : AppColors.textOnGlassDim,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }

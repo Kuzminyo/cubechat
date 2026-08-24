@@ -22,6 +22,7 @@ import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../../chat/presentation/widgets/auto_delete_picker.dart';
+import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../chats/models/chat.dart';
@@ -29,6 +30,7 @@ import '../../chats/presentation/chats_list_screen.dart';
 import '../../chats/presentation/widgets/chat_picker_sheet.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/contact_aliases_controller.dart';
+import '../data/contact_tags_controller.dart';
 import '../data/contact_removal.dart';
 import '../data/known_peers_controller.dart';
 import '../data/peer_avatars_controller.dart';
@@ -346,6 +348,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     final conversationSettings =
         ref.watch(conversationSettingsControllerProvider)[peerPubkeyHex] ??
             ConversationSettings.initial;
+    final tag = ref.watch(contactTagsControllerProvider)[peerPubkeyHex];
     return Stack(
       children: [
         SafeArea(
@@ -436,6 +439,32 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                         onTap: () {
                           close();
                           _shareContact(context, ref);
+                        },
+                      ),
+                      // A label of your own for this person. Local, like the
+                      // alias beside it: what you have decided to call
+                      // somebody is your business, and telling them would turn
+                      // a private note into a message.
+                      _ActionTile(
+                        icon: Icons.sell_rounded,
+                        label: tag == null
+                            ? t.contactTagAction
+                            : t.contactTagRemove,
+                        subtitle: tag,
+                        onTap: () async {
+                          close();
+                          final tags =
+                              ref.read(contactTagsControllerProvider.notifier);
+                          if (tag != null) {
+                            await tags.setTag(peerPubkeyHex, null);
+                            return;
+                          }
+                          final picked = await showEmojiPicker(
+                            context,
+                            title: t.contactTagTitle,
+                          );
+                          if (picked == null) return;
+                          await tags.setTag(peerPubkeyHex, picked);
                         },
                       ),
                       // Three exceptions to the global privacy switches, for
