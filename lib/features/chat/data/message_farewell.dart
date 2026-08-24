@@ -37,15 +37,22 @@ class MessageFarewell extends FamilyNotifier<Set<String>, String> {
     }
     state = {...state, ...ids};
     await Future<void>.delayed(duration);
-    // The deletion happens whatever became of this screen in the meantime.
-    // Leaving the conversation mid-animation must not leave the message
-    // undeleted — the user asked for it to go.
-    remove();
     try {
-      state = state.difference(ids);
-    } catch (_) {
-      // The notifier was disposed while the animation played, which only means
-      // nobody is looking at the set any more.
+      // The deletion happens whatever became of this screen in the meantime.
+      // Leaving the conversation mid-animation must not leave the message
+      // undeleted — the user asked for it to go.
+      remove();
+    } finally {
+      // Unmarked even if the removal threw. A mark that outlives its animation
+      // is worse than a failed delete: the row stays collapsed to nothing, so
+      // the message looks deleted, is still there, and comes back at the next
+      // launch with no way to tell what happened.
+      try {
+        state = state.difference(ids);
+      } catch (_) {
+        // The notifier was disposed while the animation played, which only
+        // means nobody is looking at the set any more.
+      }
     }
   }
 }

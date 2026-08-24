@@ -910,12 +910,22 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
 
     if (choice == 'me') {
+      // Both read *now*, before the farewell's delay. The callback runs 220 ms
+      // later, by which time this bubble may not exist: the row it lives in
+      // shrinks to nothing on its way out and a `ListView.builder` disposes
+      // what leaves the viewport. `ref` then throws, the throw is swallowed by
+      // the un-awaited future, and the delete silently never happens — which
+      // is exactly the "deleting does nothing" this caused.
+      //
+      // The notifiers themselves outlive any widget, so holding them across
+      // the wait is safe; holding `ref` is not.
+      final farewell =
+          ref.read(messageFarewellProvider(widget.chatId).notifier);
+      final messages = ref.read(messagesControllerProvider.notifier);
       unawaited(
-        ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+        farewell.dismiss(
           {m.id},
-          () => ref
-              .read(messagesControllerProvider.notifier)
-              .deleteLocal(widget.chatId, m.id),
+          () => messages.deleteLocal(widget.chatId, m.id),
         ),
       );
       // Its tag goes with it, so a deleted note leaves no orphan in the filter
@@ -925,13 +935,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       }
     } else if (choice == 'everyone') {
       // Marked here, where the message id is known: the service works in wire
-      // ids and would have to look this one up to say the same thing.
-      await ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+      // ids and would have to look this one up to say the same thing. Read
+      // before the wait for the same reason as above.
+      final farewell =
+          ref.read(messageFarewellProvider(widget.chatId).notifier);
+      final messaging = ref.read(messagingServiceProvider);
+      final wireId = m.wireId!;
+      await farewell.dismiss(
         {m.id},
         () => unawaited(
-          ref
-              .read(messagingServiceProvider)
-              .sendDeleteForEveryone(widget.chatId, m.wireId!),
+          messaging.sendDeleteForEveryone(widget.chatId, wireId),
         ),
       );
     }

@@ -46,6 +46,17 @@ void main() {
     expect(leaving('anna'), isEmpty);
   });
 
+  test('a removal that throws still clears the mark', () async {
+    // A mark that outlives its animation is worse than a failed delete: the
+    // row stays collapsed to nothing, so the message looks deleted, is still
+    // there, and comes back at the next launch with nothing to explain it.
+    await expectLater(
+      notifier('anna').dismiss({'m1'}, () => throw StateError('gone')),
+      throwsStateError,
+    );
+    expect(leaving('anna'), isEmpty);
+  });
+
   test('one conversation does not mark another', () async {
     final done = notifier('anna').dismiss({'m1'}, () {});
     expect(leaving('petro'), isEmpty);

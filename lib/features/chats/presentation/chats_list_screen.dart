@@ -2570,20 +2570,39 @@ Future<void> _confirmAndDeleteChat(
     }
   }
 
-  await ref.read(messagesControllerProvider.notifier).clearForChat(chat.id);
-  await ref.read(favoritesControllerProvider.notifier).forget(chat.id);
-  await ref.read(pinnedChatsControllerProvider.notifier).forget(chat.id);
-  await ref
-      .read(userChatFoldersControllerProvider.notifier)
-      .forgetChat(chat.id);
-  await ref.read(readMarkersControllerProvider.notifier).forget(chat.id);
-  await ref.read(pinnedControllerProvider.notifier).forget(chat.id);
-  await ref.read(draftsControllerProvider.notifier).clear(chat.id);
+  // Every notifier is resolved before the first await of the wipe, and none is
+  // reached for through `ref` afterwards.
+  //
+  // `ref` here belongs to a widget in the chat list — the row being deleted.
+  // The very first step empties the conversation, which rebuilds that list;
+  // the row can be gone before the second step runs, and `ref` then throws.
+  // The throw lands in the middle of a nine-step sequence, so the chat was
+  // cleared but never hidden, and a cleared-but-visible chat is precisely
+  // "deleting a chat does nothing". The notifiers outlive any widget, so the
+  // sequence finishes whatever the list does underneath it.
+  final messages = ref.read(messagesControllerProvider.notifier);
+  final favorites = ref.read(favoritesControllerProvider.notifier);
+  final pinnedChats = ref.read(pinnedChatsControllerProvider.notifier);
+  final folders = ref.read(userChatFoldersControllerProvider.notifier);
+  final readMarkers = ref.read(readMarkersControllerProvider.notifier);
+  final pinned = ref.read(pinnedControllerProvider.notifier);
+  final drafts = ref.read(draftsControllerProvider.notifier);
+  final channels = ref.read(channelControllerProvider.notifier);
+  final roster = ref.read(channelRosterControllerProvider.notifier);
+  final hidden = ref.read(hiddenChatsControllerProvider.notifier);
+
+  await messages.clearForChat(chat.id);
+  await favorites.forget(chat.id);
+  await pinnedChats.forget(chat.id);
+  await folders.forgetChat(chat.id);
+  await readMarkers.forget(chat.id);
+  await pinned.forget(chat.id);
+  await drafts.clear(chat.id);
   if (chat.isChannel) {
     // Leaving forgets the key; without it the channel's broadcasts become
     // unreadable noise we simply relay.
-    await ref.read(channelControllerProvider.notifier).leave(chat.id);
-    await ref.read(channelRosterControllerProvider.notifier).forget(chat.id);
+    await channels.leave(chat.id);
+    await roster.forget(chat.id);
   } else {
     // The contact stays. Forgetting the roster entry is what used to make the
     // person disappear from Contacts along with their keys, their prekey and
@@ -2591,7 +2610,7 @@ Future<void> _confirmAndDeleteChat(
     // time, for the crime of clearing a conversation. Hiding suppresses the
     // tile for exactly as long as the chat is empty; the next message either
     // way brings it back on its own.
-    await ref.read(hiddenChatsControllerProvider.notifier).hide(chat.id);
+    await hidden.hide(chat.id);
   }
 }
 

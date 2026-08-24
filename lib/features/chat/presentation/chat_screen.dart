@@ -109,23 +109,36 @@ ChatRoute resolveChatRoute({
   return ChatRoute.queued;
 }
 
+/// What the header says about this conversation's connection.
+///
+/// [available] is how a message sent *now* would travel; the messages supply
+/// the hop count, which availability alone cannot know.
+///
+/// This used to answer with the route of the last message that carried one,
+/// and fall back to availability only for a history that predates the field.
+/// The idea was that how a message actually travelled beats a guess about how
+/// one might — true of a *message*, and wrong for the line at the top of the
+/// screen, which people read as "how am I connected". So a phone that had been
+/// writing over the internet and then met the other person on Bluetooth went
+/// on claiming the internet until something else was sent — reported as the
+/// header lying, and it was.
+///
+/// Hops still come from the conversation, and only while the live route is the
+/// mesh: "3 hops" is a fact about a delivery, and the mesh is the only route
+/// where it means anything. The newest mesh message is the one asked, because
+/// a route that has been the same for an hour is described by its most recent
+/// use, not its first.
 ({ChatRoute route, int? hops}) displayedChatRoute(
   List<Message> messages,
-  ChatRoute fallback,
+  ChatRoute available,
 ) {
+  if (available != ChatRoute.mesh) return (route: available, hops: null);
   for (var index = messages.length - 1; index >= 0; index--) {
     final message = messages[index];
-    final stored = message.route;
-    if (stored == null) continue;
-    final route = switch (stored) {
-      MessageRoute.bluetooth => ChatRoute.bluetooth,
-      MessageRoute.mesh => ChatRoute.mesh,
-      MessageRoute.internet => ChatRoute.internet,
-      MessageRoute.queued => ChatRoute.queued,
-    };
-    return (route: route, hops: message.routeHops);
+    if (message.route != MessageRoute.mesh) continue;
+    return (route: available, hops: message.routeHops);
   }
-  return (route: fallback, hops: null);
+  return (route: available, hops: null);
 }
 
 bool _hasMeshLink(Map<String, ChatSession> sessions, int peripheralLinks) =>
@@ -1558,13 +1571,16 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     } else {
       // Played out before it is written away — thirty rows disappearing
       // between two frames is the case this matters most for.
+      //
+      // The controller is read now rather than inside the callback, which runs
+      // after the animation: `ref` belongs to a widget and the callback must
+      // not depend on that widget still being there. See the same note in
+      // `message_bubble.dart`.
+      final messages = ref.read(messagesControllerProvider.notifier);
       unawaited(
-        ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
-              ids,
-              () => ref
-                  .read(messagesControllerProvider.notifier)
-                  .deleteManyLocal(widget.chatId, ids),
-            ),
+        ref
+            .read(messageFarewellProvider(widget.chatId).notifier)
+            .dismiss(ids, () => messages.deleteManyLocal(widget.chatId, ids)),
       );
     }
     if (!mounted) return;
