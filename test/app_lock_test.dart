@@ -133,4 +133,103 @@ void main() {
     expect(await l.verify('4821'), isFalse,
         reason: 'the stored hash has to go with it');
   });
+
+  test('three wrong codes are free, the fourth costs', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    // Three is how often a person mistypes a code they know.
+    for (var i = 0; i < 3; i++) {
+      expect(await l.unlock('0000'), isFalse);
+      expect(container.read(appLockControllerProvider).isPenalised, isFalse);
+    }
+
+    expect(await l.unlock('0000'), isFalse);
+    final state = container.read(appLockControllerProvider);
+    expect(state.isPenalised, isTrue);
+    expect(state.penaltyLeft.inSeconds, greaterThan(25));
+  });
+
+  test('the right code is refused while the wait is running', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    for (var i = 0; i < 4; i++) {
+      await l.unlock('0000');
+    }
+
+    // Checking the code first would make the wait a rate limit somebody can
+    // sit out while still learning, one guess per window, whether they were
+    // right.
+    expect(await l.unlock('4821'), isFalse);
+    expect(container.read(appLockControllerProvider).isPenalised, isTrue);
+  });
+
+  test('hammering during the wait does not lengthen it', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    for (var i = 0; i < 4; i++) {
+      await l.unlock('0000');
+    }
+    final first = container.read(appLockControllerProvider).penaltyLeft;
+    final attempts = container.read(appLockControllerProvider).wrongAttempts;
+
+    // A refused try is not a try. Counting them would let anything tapping in
+    // a loop drive the wait to its maximum in a second, which punishes the
+    // owner who came back and typed once while the wait was still on.
+    for (var i = 0; i < 5; i++) {
+      await l.unlock('0000');
+    }
+    final after = container.read(appLockControllerProvider);
+    expect(after.wrongAttempts, attempts);
+    expect(after.penaltyLeft, lessThanOrEqualTo(first));
+  });
+
+  test('the waits get longer, in order', () {
+    // The escalation itself: each wrong code past the free three costs more
+    // than the one before, and it stops growing rather than running away.
+    final waits = AppLockController.penalties;
+    for (var i = 1; i < waits.length; i++) {
+      expect(waits[i], greaterThan(waits[i - 1]));
+    }
+    expect(waits.first, const Duration(seconds: 30));
+  });
+
+  test('a right code clears the count', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    await l.unlock('0000');
+    await l.unlock('0000');
+    expect(await l.unlock('4821'), isTrue);
+    expect(container.read(appLockControllerProvider).wrongAttempts, 0);
+  });
+
+  test('the grace decides whether coming back asks', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    // A minute of grace: stepping out and back does not ask.
+    await l.setGraceSeconds(60);
+    l.noteLeft();
+    l.noteReturned();
+    expect(container.read(appLockControllerProvider).locked, isFalse);
+
+    // Back to every time.
+    await l.setGraceSeconds(0);
+    l.noteLeft();
+    l.noteReturned();
+    expect(container.read(appLockControllerProvider).locked, isTrue);
+  });
 }

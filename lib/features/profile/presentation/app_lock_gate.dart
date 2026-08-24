@@ -64,6 +64,14 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
     super.dispose();
   }
 
+  /// The wait as m:ss, which is how a countdown is read.
+  static String _mmss(Duration left) {
+    final total = left.inSeconds;
+    final m = total ~/ 60;
+    final ss = (total % 60).toString().padLeft(2, '0');
+    return m > 0 ? '$m:$ss' : '${total}s';
+  }
+
   Future<void> _submit() async {
     if (_checking) return;
     setState(() => _checking = true);
@@ -88,6 +96,15 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final penalty = ref.watch(appLockControllerProvider).penaltyLeft;
+    // Ticked here rather than by a timer of its own: the countdown only needs
+    // to move while somebody is looking at it, and this widget is only on
+    // screen while somebody is.
+    if (penalty > Duration.zero) {
+      Future<void>.delayed(const Duration(seconds: 1), () {
+        if (mounted) setState(() {});
+      });
+    }
     return Material(
       // Opaque on purpose: the point is that what is behind cannot be read,
       // and a blur is a picture of the thing it is hiding.
@@ -126,7 +143,13 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: AppColors.glassFill,
-                    errorText: _wrong ? t.appLockWrong : null,
+                    // The wait, when there is one, outranks the wrong-code
+                    // line: it is the thing that decides whether trying again
+                    // is even possible, and a bare "wrong code" while nothing
+                    // is being accepted reads as the app being broken.
+                    errorText: penalty > Duration.zero
+                        ? t.appLockWait(_mmss(penalty))
+                        : (_wrong ? t.appLockWrong : null),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),

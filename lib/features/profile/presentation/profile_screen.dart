@@ -686,6 +686,93 @@ class _DiscoverableCard extends ConsumerWidget {
   }
 }
 
+/// How long the app may be away before the code is asked for again.
+///
+/// A lock that asks every single time is the one people turn off, and a lock
+/// that never asks is decoration. This is the dial between them, and where it
+/// sits is the owner's judgement about their own pocket, not something this
+/// app can pick for them.
+class _GraceRow extends ConsumerWidget {
+  const _GraceRow({required this.seconds});
+
+  final int seconds;
+
+  static String _label(AppLocalizations t, int seconds) {
+    if (seconds == 0) return t.appLockGraceNow;
+    if (seconds < 60) return t.appLockGraceAfter('$seconds s');
+    if (seconds < 3600) return t.appLockGraceAfter('${seconds ~/ 60} min');
+    return t.appLockGraceAfter('${seconds ~/ 3600} h');
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        final chosen = await showGlassSheet<int>(
+          context: context,
+          useRootNavigator: true,
+          builder: (sheetContext) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 14),
+                Text(
+                  t.appLockGraceTitle,
+                  style: AppTypography.heading(size: AppMenu.title),
+                ),
+                const SizedBox(height: 8),
+                for (final option in AppLockController.graceChoices)
+                  ListTile(
+                    title: Text(
+                      _label(t, option),
+                      style: TextStyle(color: AppColors.textOnGlass),
+                    ),
+                    trailing: option == seconds
+                        ? Icon(Icons.check_rounded,
+                            color: AppColors.brandPrimary)
+                        : null,
+                    onTap: () => Navigator.of(sheetContext).pop(option),
+                  ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+        if (chosen == null) return;
+        await ref
+            .read(appLockControllerProvider.notifier)
+            .setGraceSeconds(chosen);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.timer_outlined,
+                size: AppMenu.rowIcon, color: AppColors.textOnGlassDim),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                t.appLockGraceTitle,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              ),
+            ),
+            Text(
+              _label(t, seconds),
+              style:
+                  TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: AppColors.textOnGlassFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One labelled switch inside a settings card. Three of these were about to be
 /// copy-pasted, and hand-tuned duplicates drift apart the first time any of
 /// them is touched.
@@ -799,6 +886,15 @@ Future<String?> _askForCode(
 }) {
   return showGlassSheet<String>(
     context: context,
+    // On the root navigator, so the sheet is above the floating tab bar
+    // instead of under it.
+    //
+    // A glass sheet defaults to the shell's navigator, and the tab bar is
+    // drawn over that — which is fine for a short sheet and fatal for a tall
+    // one: the keypad reaches the bottom of the screen, and the Save button
+    // ended up behind the bar. The code could be typed and not confirmed,
+    // which is the second time this sheet has hidden that button.
+    useRootNavigator: true,
     builder: (sheetContext) => _CodePad(title: title, hint: hint),
   );
 }
@@ -1166,6 +1262,12 @@ class _PrivacyCard extends ConsumerWidget {
             value: lock.enabled,
             onChanged: (on) => unawaited(_toggleAppLock(context, ref, on)),
           ),
+          // Only once there is a lock to delay. Offering the delay first would
+          // be a setting for a thing that is not on.
+          if (lock.enabled) ...[
+            const SizedBox(height: 10),
+            _GraceRow(seconds: lock.graceSeconds),
+          ],
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareMapLocation

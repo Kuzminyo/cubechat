@@ -1306,6 +1306,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchEmpty => 'Nothing matches that';
 
   @override
+  String appLockWait(String left) {
+    return 'Too many tries — wait $left';
+  }
+
+  @override
+  String get appLockGraceTitle => 'Ask for the code';
+
+  @override
+  String get appLockGraceNow => 'Every time';
+
+  @override
+  String appLockGraceAfter(String left) {
+    return 'After $left away';
+  }
+
+  @override
   String get chatCalendarTitle => 'By date';
 
   @override

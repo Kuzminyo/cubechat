@@ -1315,6 +1315,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchEmpty => 'Нічого не знайдено';
 
   @override
+  String appLockWait(String left) {
+    return 'Забагато спроб — зачекайте $left';
+  }
+
+  @override
+  String get appLockGraceTitle => 'Питати код';
+
+  @override
+  String get appLockGraceNow => 'Щоразу';
+
+  @override
+  String appLockGraceAfter(String left) {
+    return 'Через $left відсутності';
+  }
+
+  @override
   String get chatCalendarTitle => 'За датами';
 
   @override

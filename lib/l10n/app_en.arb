@@ -602,6 +602,16 @@
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search chats by name, or any message by its words.",
   "chatsSearchEmpty": "Nothing matches that",
+  "appLockWait": "Too many tries — wait {left}",
+  "@appLockWait": {
+    "placeholders": { "left": { "type": "String" } }
+  },
+  "appLockGraceTitle": "Ask for the code",
+  "appLockGraceNow": "Every time",
+  "appLockGraceAfter": "After {left} away",
+  "@appLockGraceAfter": {
+    "placeholders": { "left": { "type": "String" } }
+  },
   "chatCalendarTitle": "By date",
   "chatCalendarEmpty": "Nothing has been said here yet",
   "chatsSearchChatsSection": "Chats",

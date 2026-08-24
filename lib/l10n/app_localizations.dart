@@ -2354,6 +2354,30 @@ abstract class AppLocalizations {
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
 
+  /// No description provided for @appLockWait.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many tries — wait {left}'**
+  String appLockWait(String left);
+
+  /// No description provided for @appLockGraceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for the code'**
+  String get appLockGraceTitle;
+
+  /// No description provided for @appLockGraceNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Every time'**
+  String get appLockGraceNow;
+
+  /// No description provided for @appLockGraceAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'After {left} away'**
+  String appLockGraceAfter(String left);
+
   /// No description provided for @chatCalendarTitle.
   ///
   /// In en, this message translates to:

@@ -26,7 +26,13 @@ import '../../../core/storage/hive_init.dart';
 /// what your code was.
 @immutable
 class AppLockState {
-  const AppLockState({this.enabled = false, this.locked = false});
+  const AppLockState({
+    this.enabled = false,
+    this.locked = false,
+    this.graceSeconds = 0,
+    this.wrongAttempts = 0,
+    this.penaltyUntil,
+  });
 
   /// The switch.
   final bool enabled;
@@ -35,24 +41,90 @@ class AppLockState {
   /// switch is off.
   final bool locked;
 
-  AppLockState copyWith({bool? enabled, bool? locked}) => AppLockState(
+  /// How long the app may be away before it asks again.
+  ///
+  /// Zero means every time. Anything else is the user saying they would rather
+  /// not retype a code to answer a message thirty seconds after putting the
+  /// phone down — which is a real preference and the reason a lock that always
+  /// asks is a lock people turn off.
+  final int graceSeconds;
+
+  /// Wrong codes in a row. Reset by a right one.
+  final int wrongAttempts;
+
+  /// While this is in the future, the code is not accepted at all.
+  ///
+  /// Guessing a four-digit code takes ten thousand tries, which is minutes of
+  /// tapping — unless something makes each try cost. This is that. It is
+  /// stored, so closing the app is not a way out of the wait.
+  final DateTime? penaltyUntil;
+
+  /// How long the current wait has left, or zero.
+  Duration get penaltyLeft {
+    final until = penaltyUntil;
+    if (until == null) return Duration.zero;
+    final left = until.difference(DateTime.now());
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  bool get isPenalised => penaltyLeft > Duration.zero;
+
+  AppLockState copyWith({
+    bool? enabled,
+    bool? locked,
+    int? graceSeconds,
+    int? wrongAttempts,
+    DateTime? penaltyUntil,
+    bool clearPenalty = false,
+  }) =>
+      AppLockState(
         enabled: enabled ?? this.enabled,
         locked: locked ?? this.locked,
+        graceSeconds: graceSeconds ?? this.graceSeconds,
+        wrongAttempts: wrongAttempts ?? this.wrongAttempts,
+        penaltyUntil: clearPenalty ? null : (penaltyUntil ?? this.penaltyUntil),
       );
 
   @override
   bool operator ==(Object other) =>
       other is AppLockState &&
       other.enabled == enabled &&
-      other.locked == locked;
+      other.locked == locked &&
+      other.graceSeconds == graceSeconds &&
+      other.wrongAttempts == wrongAttempts &&
+      other.penaltyUntil == penaltyUntil;
 
   @override
-  int get hashCode => Object.hash(enabled, locked);
+  int get hashCode =>
+      Object.hash(enabled, locked, graceSeconds, wrongAttempts, penaltyUntil);
 }
 
 class AppLockController extends Notifier<AppLockState> {
   static const _hashKey = 'app.lock.hash';
   static const _saltKey = 'app.lock.salt';
+  static const _graceKey = 'app.lock.grace';
+  static const _penaltyKey = 'app.lock.penalty';
+  static const _attemptsKey = 'app.lock.attempts';
+
+  /// The waits a wrong code earns, after the third one in a row.
+  ///
+  /// Three is free because three is how often a person mistypes their own
+  /// code. After that each try costs more than the last: half a minute, a
+  /// minute, two, four, eight, and then a quarter of an hour for as long as
+  /// somebody keeps going. Ten thousand codes at that rate is not an evening's
+  /// work, and none of it inconveniences the owner, who is right on the fourth
+  /// try at the latest.
+  static const List<Duration> penalties = [
+    Duration(seconds: 30),
+    Duration(minutes: 1),
+    Duration(minutes: 2),
+    Duration(minutes: 4),
+    Duration(minutes: 8),
+    Duration(minutes: 15),
+  ];
+
+  /// How long the app may be away before it asks again, as offered.
+  static const List<int> graceChoices = [0, 30, 60, 300, 900, 3600];
 
   /// How long the app may be away before it asks again.
   ///
@@ -85,11 +157,25 @@ class AppLockController extends Notifier<AppLockState> {
         HiveBoxes.settings,
       );
       _box = box;
+      final grace = box.get(_graceKey) as int? ?? 0;
+      final attempts = box.get(_attemptsKey) as int? ?? 0;
+      final penaltyMs = box.get(_penaltyKey) as int?;
+      // The wait outlives the process on purpose: closing the app must not be
+      // a way out of it, which it would be if this lived only in memory.
+      final penaltyUntil = penaltyMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(penaltyMs);
       final hash = box.get(_hashKey) as String?;
-      if (hash != null && hash.isNotEmpty) {
-        // Locked on arrival: a cold start is the case this exists for.
-        state = const AppLockState(enabled: true, locked: true);
-      }
+      final on = hash != null && hash.isNotEmpty;
+      state = state.copyWith(
+        // Locked on arrival when there is a code: a cold start is the case
+        // this exists for.
+        enabled: on,
+        locked: on,
+        graceSeconds: grace,
+        wrongAttempts: attempts,
+        penaltyUntil: penaltyUntil,
+      );
     } catch (e) {
       debugPrint('AppLock load failed: $e');
     }
@@ -167,10 +253,61 @@ class AppLockController extends Notifier<AppLockState> {
   }
 
   /// The answer at the lock screen.
+  /// The answer at the lock screen, with the cost of a wrong one.
+  ///
+  /// Refuses outright while a penalty is running — checking the code first
+  /// would turn the wait into a rate limit somebody can simply wait out while
+  /// still learning, one guess per window, whether each guess was right.
   Future<bool> unlock(String code) async {
-    if (!await verify(code)) return false;
+    if (state.isPenalised) return false;
+    if (!await verify(code)) {
+      await _noteWrongCode();
+      return false;
+    }
+    await _clearAttempts();
     state = state.copyWith(locked: false);
     return true;
+  }
+
+  Future<void> _noteWrongCode() async {
+    final attempts = state.wrongAttempts + 1;
+    // The first three are free: that is how often a person mistypes a code
+    // they know.
+    if (attempts <= 3) {
+      state = state.copyWith(wrongAttempts: attempts);
+      await _put(_attemptsKey, attempts);
+      return;
+    }
+    final step = attempts - 4;
+    final wait = penalties[step < penalties.length ? step : penalties.length - 1];
+    final until = DateTime.now().add(wait);
+    state = state.copyWith(wrongAttempts: attempts, penaltyUntil: until);
+    await _put(_attemptsKey, attempts);
+    await _put(_penaltyKey, until.millisecondsSinceEpoch);
+  }
+
+  Future<void> _clearAttempts() async {
+    state = state.copyWith(wrongAttempts: 0, clearPenalty: true);
+    await _put(_attemptsKey, 0);
+    await _put(_penaltyKey, null);
+  }
+
+  /// How long the app may be away before it asks again.
+  Future<void> setGraceSeconds(int seconds) async {
+    state = state.copyWith(graceSeconds: seconds);
+    await _put(_graceKey, seconds);
+  }
+
+  Future<void> _put(String key, Object? value) async {
+    try {
+      if (value == null) {
+        await _box?.delete(key);
+      } else {
+        await _box?.put(key, value);
+      }
+    } catch (e) {
+      debugPrint('AppLock persist $key failed: $e');
+    }
   }
 
   /// The app went away. Remembered rather than acted on, because a glance at
@@ -185,7 +322,8 @@ class AppLockController extends Notifier<AppLockState> {
     if (!state.enabled || state.locked) return;
     final left = _leftAt;
     if (left == null) return;
-    if (DateTime.now().difference(left) >= grace) {
+    if (DateTime.now().difference(left) >=
+        Duration(seconds: state.graceSeconds)) {
       state = state.copyWith(locked: true);
     }
   }
