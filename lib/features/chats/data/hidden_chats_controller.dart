@@ -40,7 +40,18 @@ class HiddenChatsController extends Notifier<Set<String>> {
       final raw = box.get(_key);
       if (raw is List) {
         final loaded = raw.whereType<String>().toSet();
-        if (loaded.isNotEmpty) state = loaded;
+        // Merged under whatever is already here, never assigned over it.
+        //
+        // This runs from `build`, so it is a write that lands at an unknown
+        // moment — after an encrypted box has been opened, which is not fast
+        // at a cold start. Anything hidden before it finished used to be
+        // discarded by it, and the next `hide` then persisted the set without
+        // it: a chat deleted early in a session came back, permanently, with
+        // nothing to say why.
+        //
+        // In-memory wins because it is newer by definition: it is the thing
+        // the user did during this run.
+        if (loaded.isNotEmpty) state = {...loaded, ...state};
       }
     } catch (e) {
       debugPrint('HiddenChatsController load failed: $e');

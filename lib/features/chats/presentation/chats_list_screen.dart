@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
+import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
@@ -2591,6 +2592,14 @@ Future<void> _confirmAndDeleteChat(
   final roster = ref.read(channelRosterControllerProvider.notifier);
   final hidden = ref.read(hiddenChatsControllerProvider.notifier);
 
+  // Logged step by step, because "the chat is still there" names a symptom and
+  // this sequence has nine places to stop. Without these the only way to tell
+  // which one is to guess, and two guesses have already been wrong.
+  DebugLog.instance.log(
+    'CHAT',
+    'delete ${chat.id} (channel=${chat.isChannel}, alsoForThem=$alsoForThem)',
+  );
+
   await messages.clearForChat(chat.id);
   await favorites.forget(chat.id);
   await pinnedChats.forget(chat.id);
@@ -2612,6 +2621,16 @@ Future<void> _confirmAndDeleteChat(
     // way brings it back on its own.
     await hidden.hide(chat.id);
   }
+
+  // The two facts that decide whether the tile goes, read back after the fact
+  // rather than assumed: the filter in `chatsProvider` keeps a hidden chat on
+  // screen for exactly as long as it still holds messages.
+  final left = ref.read(messagesControllerProvider)[chat.id]?.length ?? 0;
+  DebugLog.instance.log(
+    'CHAT',
+    'delete ${chat.id} done — messages left $left, '
+        'hidden ${ref.read(hiddenChatsControllerProvider).contains(chat.id)}',
+  );
 }
 
 /// The two ways to start something new, behind one overflow control.
