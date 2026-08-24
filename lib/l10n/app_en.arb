@@ -602,6 +602,13 @@
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search chats by name, or any message by its words.",
   "chatsSearchEmpty": "Nothing matches that",
+  "deadmanTitle": "Wipe if unused",
+  "deadmanOff": "Off",
+  "deadmanDays": "After {days} days",
+  "@deadmanDays": {
+    "placeholders": { "days": { "type": "int" } }
+  },
+  "deadmanHint": "If nobody opens this app for that long, everything on it is erased the next time it is opened. It cannot warn you first — that is the point of it.",
   "chatForwardedFrom": "Forwarded from {name}",
   "@chatForwardedFrom": {
     "placeholders": { "name": { "type": "String" } }

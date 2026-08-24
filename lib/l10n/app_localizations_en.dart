@@ -1306,6 +1306,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchEmpty => 'Nothing matches that';
 
   @override
+  String get deadmanTitle => 'Wipe if unused';
+
+  @override
+  String get deadmanOff => 'Off';
+
+  @override
+  String deadmanDays(int days) {
+    return 'After $days days';
+  }
+
+  @override
+  String get deadmanHint =>
+      'If nobody opens this app for that long, everything on it is erased the next time it is opened. It cannot warn you first — that is the point of it.';
+
+  @override
   String chatForwardedFrom(String name) {
     return 'Forwarded from $name';
   }

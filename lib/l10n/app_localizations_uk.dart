@@ -1315,6 +1315,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchEmpty => 'Нічого не знайдено';
 
   @override
+  String get deadmanTitle => 'Стерти, якщо не заходити';
+
+  @override
+  String get deadmanOff => 'Вимкнено';
+
+  @override
+  String deadmanDays(int days) {
+    return 'Через $days днів';
+  }
+
+  @override
+  String get deadmanHint =>
+      'Якщо застосунок не відкривати стільки часу, усе на ньому буде стерто під час наступного відкриття. Попередити він не зможе — у цьому й задум.';
+
+  @override
   String chatForwardedFrom(String name) {
     return 'Переслано від $name';
   }

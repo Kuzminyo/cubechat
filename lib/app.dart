@@ -11,6 +11,8 @@ import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
 import 'features/profile/data/app_lock_controller.dart';
+import 'core/identity/wipe_service.dart';
+import 'features/profile/data/dead_mans_switch_controller.dart';
 import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
 import 'core/util/platform_info.dart';
@@ -97,10 +99,32 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     NotificationService.instance.onReply = _replyToChat;
     // Cold start via a notification tap: open that chat after first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      unawaited(_checkDeadMansSwitch());
       final payload = await NotificationService.instance.initialChatPayload();
       if (payload != null && payload.isNotEmpty) _openChat(payload);
       _startDiscovery();
     });
+  }
+
+  /// Wipe if nobody has opened this app for as long as its owner said.
+  ///
+  /// Checked on launch and on every return to the foreground, because those
+  /// are the only moments it can be: there is no background timer here, and a
+  /// switch that fires while the phone sits in a drawer is not something an
+  /// app can promise. What it can promise is that the first person to open it
+  /// after the deadline finds nothing — which is the case it exists for.
+  ///
+  /// The clock is restarted before anything else, so a launch that does not
+  /// wipe is itself proof of life.
+  Future<void> _checkDeadMansSwitch() async {
+    final deadman = ref.read(deadMansSwitchProvider.notifier);
+    await deadman.loaded;
+    if (!mounted) return;
+    if (ref.read(deadMansSwitchProvider).hasExpired(DateTime.now())) {
+      await emergencyWipe(ref);
+      return;
+    }
+    await deadman.noteOpened();
   }
 
   /// Bring Bluetooth up when the app does, not when somebody opens Nearby.
@@ -284,6 +308,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     final lock = ref.read(appLockControllerProvider.notifier);
     if (state == AppLifecycleState.resumed) {
       lock.noteReturned();
+      unawaited(_checkDeadMansSwitch());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       lock.noteLeft();

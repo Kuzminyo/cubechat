@@ -2354,6 +2354,30 @@ abstract class AppLocalizations {
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
 
+  /// No description provided for @deadmanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wipe if unused'**
+  String get deadmanTitle;
+
+  /// No description provided for @deadmanOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get deadmanOff;
+
+  /// No description provided for @deadmanDays.
+  ///
+  /// In en, this message translates to:
+  /// **'After {days} days'**
+  String deadmanDays(int days);
+
+  /// No description provided for @deadmanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'If nobody opens this app for that long, everything on it is erased the next time it is opened. It cannot warn you first — that is the point of it.'**
+  String get deadmanHint;
+
   /// No description provided for @chatForwardedFrom.
   ///
   /// In en, this message translates to:

@@ -43,6 +43,7 @@ import '../../../core/widgets/glass_toast.dart';
 import 'dart:async';
 import '../../peers/data/peer_discovery_controller.dart';
 import 'widgets/code_pad.dart';
+import '../data/dead_mans_switch_controller.dart';
 
 // The version was a `const '0.1.0'` here, written on the first day and never
 // touched — so this screen, the one place a tester checks what they are
@@ -687,6 +688,128 @@ class _DiscoverableCard extends ConsumerWidget {
   }
 }
 
+/// Wipe the phone if nobody opens the app for long enough.
+///
+/// Its own row rather than a switch, because the only safe way to arm it is to
+/// make somebody choose a number and read a sentence while doing it. There is
+/// no confirmation when it fires — there cannot be, since the premise is that
+/// nobody is there — so every ounce of the safety lives here.
+class _DeadMansRow extends ConsumerWidget {
+  const _DeadMansRow();
+
+  static String _label(AppLocalizations t, int days) =>
+      days == 0 ? t.deadmanOff : t.deadmanDays(days);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final days = ref.watch(deadMansSwitchProvider).days;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            final chosen = await showGlassSheet<int>(
+              context: context,
+              useRootNavigator: true,
+              builder: (sheetContext) => SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 14),
+                    Text(
+                      t.deadmanTitle,
+                      style: AppTypography.heading(size: AppMenu.title),
+                    ),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        t.deadmanHint,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (final option in DeadMansSwitchController.choices)
+                      ListTile(
+                        title: Text(
+                          _label(t, option),
+                          style: TextStyle(
+                            color: option == 0
+                                ? AppColors.textOnGlass
+                                : AppColors.danger,
+                          ),
+                        ),
+                        trailing: option == days
+                            ? Icon(Icons.check_rounded,
+                                color: AppColors.brandPrimary)
+                            : null,
+                        onTap: () => Navigator.of(sheetContext).pop(option),
+                      ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+            );
+            if (chosen == null) return;
+            await ref.read(deadMansSwitchProvider.notifier).setDays(chosen);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.hourglass_disabled_rounded,
+                    size: AppMenu.rowIcon,
+                    color: days == 0
+                        ? AppColors.textOnGlassDim
+                        : AppColors.danger),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    t.deadmanTitle,
+                    style:
+                        TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                  ),
+                ),
+                Text(
+                  _label(t, days),
+                  style: TextStyle(
+                    color: days == 0
+                        ? AppColors.textOnGlassDim
+                        : AppColors.danger,
+                    fontSize: 12.5,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    size: 18, color: AppColors.textOnGlassFaint),
+              ],
+            ),
+          ),
+        ),
+        if (days > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+            child: Text(
+              t.deadmanHint,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 11.5,
+                height: 1.35,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// How long the app may be away before the code is asked for again.
 ///
 /// A lock that asks every single time is the one people turn off, and a lock
@@ -1069,6 +1192,8 @@ class _PrivacyCard extends ConsumerWidget {
             const SizedBox(height: 10),
             _GraceRow(seconds: lock.graceSeconds),
           ],
+          const SizedBox(height: 10),
+          const _DeadMansRow(),
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareMapLocation
