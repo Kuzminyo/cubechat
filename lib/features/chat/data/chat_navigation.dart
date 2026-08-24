@@ -21,6 +21,19 @@ final chatJumpRequestProvider =
 final chatHighlightProvider =
     StateProvider.family<String?, String>((ref, chatId) => null);
 
+/// A request to go to the first message of one day.
+///
+/// The floating date is the only thing on the screen that knows where you are
+/// in a long scrollback, and it was the one thing you could not touch. Tapping
+/// it now goes to the top of the day it names — which is the gesture people
+/// try on it anyway, because it looks like a control.
+///
+/// Held as a day rather than a message id: the chip knows the date, and which
+/// message begins it is the conversation's business to work out, freshly, at
+/// the moment of the tap.
+final chatJumpToDayProvider =
+    StateProvider.family<DateTime?, String>((ref, chatId) => null);
+
 /// What the search bar of this conversation currently holds, so the bubbles
 /// can mark the letters that answered it.
 ///

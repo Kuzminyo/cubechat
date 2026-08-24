@@ -1197,6 +1197,31 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     );
   }
 
+  /// Go to the first message of [day].
+  ///
+  /// The first, not the nearest: tapping a date means "take me to where this
+  /// day starts", and landing in the middle of it would leave the reader
+  /// scrolling up to find the beginning they asked for.
+  ///
+  /// Resolved from the conversation at the moment of the tap rather than
+  /// carried in the request, because the day is what the chip knows and which
+  /// message opens it is a fact about the list that can change while the chip
+  /// is on screen.
+  Future<void> _jumpToDay(DateTime day) async {
+    final request = ++_jumpRequest;
+    final messages = widget.messages;
+    final index = messages.indexWhere((m) => !startsNewDay(m.sentAt, day));
+    if (index < 0) return;
+    _flash(_reachable(messages[index].id));
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || request != _jumpRequest) return;
+    await _jumpToMessageId(
+      _reachable(messages[index].id),
+      _jumpTargetKey,
+      jumpRequest: request,
+    );
+  }
+
   /// The message the list will actually draw for [messageId].
   ///
   /// A photo folded into the album above it renders as nothing at all — no
@@ -1646,6 +1671,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       unawaited(_jumpTo(wireId));
     });
 
+    ref.listen<DateTime?>(chatJumpToDayProvider(widget.chatId), (_, day) {
+      if (day == null) return;
+      ref.read(chatJumpToDayProvider(widget.chatId).notifier).state = null;
+      unawaited(_jumpToDay(day));
+    });
+
     final flashing = ref.watch(chatHighlightProvider(widget.chatId));
     final searchOpen = ref.watch(_chatSearchOpenProvider(widget.chatId));
     final selection = ref.watch(messageSelectionProvider(widget.chatId));
@@ -1797,6 +1828,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     messages: messages,
                     listContext: () => _listKey.currentContext ?? context,
                     topPadding: padding.top,
+                    onTapDay: (day) => ref
+                        .read(chatJumpToDayProvider(widget.chatId).notifier)
+                        .state = day,
                   ),
                 ],
               ),

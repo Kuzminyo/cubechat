@@ -29,6 +29,7 @@ class FloatingDayChip extends StatefulWidget {
     required this.messages,
     required this.listContext,
     this.topPadding = 0,
+    this.onTapDay,
   });
 
   final ScrollController controller;
@@ -41,6 +42,9 @@ class FloatingDayChip extends StatefulWidget {
 
   /// Clears the header the chip would otherwise sit under.
   final double topPadding;
+
+  /// Tapped, with the day it currently names.
+  final void Function(DateTime day)? onTapDay;
 
   @override
   State<FloatingDayChip> createState() => _FloatingDayChipState();
@@ -98,7 +102,17 @@ class _FloatingDayChipState extends State<FloatingDayChip> {
     final sliver = _findSliver(render);
     if (sliver == null) return null;
 
-    final extent = sliver.constraints.remainingPaintExtent;
+    // The header sits over the top of the list, so the top of the *viewport*
+    // is not the top of what anybody can see. Without this the chip named the
+    // day of a message hidden behind the header — a date that belonged to the
+    // conversation somewhere above the one being read, which is exactly the
+    // "the pinned date shows the wrong date" that was reported.
+    //
+    // The list is reversed, so a child's position grows upward from the bottom
+    // of the screen: the first one not covered by the header is the last one
+    // still below this line.
+    final extent =
+        sliver.constraints.remainingPaintExtent - widget.topPadding;
     var child = sliver.lastChild;
     while (child != null && sliver.childMainAxisPosition(child) >= extent) {
       child = sliver.childBefore(child);
@@ -130,26 +144,36 @@ class _FloatingDayChipState extends State<FloatingDayChip> {
       top: widget.topPadding + 6,
       left: 0,
       right: 0,
+      // Only a pointer while it is actually up. Faded out it is nothing but a
+      // transparent strip across the top of the conversation, and a strip that
+      // eats taps meant for the message underneath is worse than no chip.
       child: IgnorePointer(
+        ignoring: !_visible || day == null,
         child: AnimatedOpacity(
           opacity: _visible && day != null ? 1 : 0,
           duration: const Duration(milliseconds: 180),
           child: Center(
             child: day == null
                 ? const SizedBox.shrink()
-                : Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.38),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      formatDayHeader(context, day),
-                      style: TextStyle(
-                        color: AppColors.textOnGlass,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
+                : GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onTapDay?.call(day),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.38),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        formatDayHeader(context, day),
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
