@@ -258,6 +258,8 @@
   "channelNameLabel": "Channel name",
   "channelPasswordLabel": "Password (optional)",
   "channelJoinAction": "Join",
+  "channelNameHint": "Anyone who enters the same name and password lands in the same room. There is no server holding a list of them.",
+  "channelPasswordHint": "The password is the key. Without one the room is open to anyone nearby who knows its name.",
   "channelSubtitle": "Group channel · shared key",
   "chatsStatusChannel": "channel",
   "channelInviteTitle": "Add people",

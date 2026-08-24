@@ -1076,6 +1076,18 @@ abstract class AppLocalizations {
   /// **'Join'**
   String get channelJoinAction;
 
+  /// No description provided for @channelNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone who enters the same name and password lands in the same room. There is no server holding a list of them.'**
+  String get channelNameHint;
+
+  /// No description provided for @channelPasswordHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The password is the key. Without one the room is open to anyone nearby who knows its name.'**
+  String get channelPasswordHint;
+
   /// No description provided for @channelSubtitle.
   ///
   /// In en, this message translates to:

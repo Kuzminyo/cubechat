@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
+import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -608,7 +609,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                   onWipe: () => _confirmWipe(context, ref, t),
                   onSearch: () => context.push('/search'),
                   onAddContact: () => context.push('/contact'),
-                  onNewChannel: () => showNewChannelDialog(context, ref, t),
+                  onNewChannel: () => unawaited(openNewChannelScreen(context)),
                   selectionBar: ChatSelectionBar(
                     key: const ValueKey('selection'),
                     selected: [
@@ -2696,110 +2697,5 @@ class _MenuRow extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-/// Prompt for a channel name + optional password, join it, and open it.
-/// Joining is local — deriving the shared key makes you a member the moment a
-/// matching-key message arrives on the mesh.
-/// Public because the Contacts screen offers the same action from its own
-/// header — one dialog, so the two entry points cannot drift apart.
-Future<void> showNewChannelDialog(
-  BuildContext context,
-  WidgetRef ref,
-  AppLocalizations t,
-) async {
-  final nameCtrl = TextEditingController();
-  final pwCtrl = TextEditingController();
-
-  InputDecoration deco(String hint, {String? prefix}) => InputDecoration(
-        hintText: hint,
-        prefixText: prefix,
-        prefixStyle: TextStyle(color: AppColors.textOnGlassDim),
-        hintStyle: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 14),
-        enabledBorder: UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.glassBorder),
-        ),
-        focusedBorder: UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.brandPrimary),
-        ),
-      );
-
-  final joined = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.bgTop,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: AppColors.glass(0.15)),
-      ),
-      title: Text(
-        t.channelsNewTitle,
-        style: TextStyle(
-          color: AppColors.textOnGlass,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            cursorColor: AppColors.brandPrimary,
-            style: TextStyle(color: AppColors.textOnGlass),
-            decoration: deco(t.channelNameLabel, prefix: '#'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: pwCtrl,
-            obscureText: true,
-            cursorColor: AppColors.brandPrimary,
-            style: TextStyle(color: AppColors.textOnGlass),
-            decoration: deco(t.channelPasswordLabel),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child:
-              Text(t.cancel, style: TextStyle(color: AppColors.textOnGlassDim)),
-        ),
-        TextButton(
-          onPressed: () async {
-            final name = nameCtrl.text.trim();
-            if (name.isEmpty) return;
-            try {
-              final ch = await ref
-                  .read(channelControllerProvider.notifier)
-                  .join(name, password: pwCtrl.text);
-              if (ctx.mounted) Navigator.of(ctx).pop(ch.name);
-            } catch (_) {
-              // The only reachable failure here is a name that wouldn't fit in
-              // a channel invite — an empty one is already guarded above.
-              if (!ctx.mounted) return;
-              // Toast first: it goes to the root overlay, so it survives the
-              // dialog closing underneath it. (This is what the captured
-              // ScaffoldMessenger used to be for.)
-              showGlassToast(ctx, t.channelNameTooLong, tone: ToastTone.danger);
-              Navigator.of(ctx).pop();
-            }
-          },
-          child: Text(
-            t.channelJoinAction,
-            style: TextStyle(color: AppColors.brandPrimary),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  nameCtrl.dispose();
-  pwCtrl.dispose();
-
-  if (joined != null && context.mounted) {
-    context.push(channelRoute(joined));
   }
 }

@@ -565,6 +565,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelJoinAction => 'Join';
 
   @override
+  String get channelNameHint =>
+      'Anyone who enters the same name and password lands in the same room. There is no server holding a list of them.';
+
+  @override
+  String get channelPasswordHint =>
+      'The password is the key. Without one the room is open to anyone nearby who knows its name.';
+
+  @override
   String get channelSubtitle => 'Group channel · shared key';
 
   @override

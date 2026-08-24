@@ -568,6 +568,14 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelJoinAction => 'Приєднатися';
 
   @override
+  String get channelNameHint =>
+      'Хто введе ту саму назву й пароль — потрапить у ту саму кімнату. Немає сервера, який тримав би їх список.';
+
+  @override
+  String get channelPasswordHint =>
+      'Пароль і є ключем. Без нього кімната відкрита кожному поруч, хто знає назву.';
+
+  @override
   String get channelSubtitle => 'Груповий канал · спільний ключ';
 
   @override

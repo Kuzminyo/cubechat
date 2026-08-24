@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
@@ -137,7 +138,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       // so it gets the megaphone rather than a place in the
                       // list. Same dialog the Chats menu opens.
                       IconButton(
-                        onPressed: () => showNewChannelDialog(context, ref, t),
+                        onPressed: () => unawaited(openNewChannelScreen(context)),
                         icon: const Icon(Icons.campaign_rounded),
                         color: AppColors.brandPrimary,
                         iconSize: 26,

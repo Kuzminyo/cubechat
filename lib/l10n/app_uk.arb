@@ -254,6 +254,8 @@
     "channelNameLabel":  "Назва каналу",
     "channelPasswordLabel":  "Пароль (необов’язково)",
     "channelJoinAction":  "Приєднатися",
+    "channelNameHint":  "Хто введе ту саму назву й пароль — потрапить у ту саму кімнату. Немає сервера, який тримав би їх список.",
+    "channelPasswordHint":  "Пароль і є ключем. Без нього кімната відкрита кожному поруч, хто знає назву.",
     "channelSubtitle":  "Груповий канал · спільний ключ",
     "chatsStatusChannel":  "канал",
     "channelInviteTitle":  "Додати учасників",
