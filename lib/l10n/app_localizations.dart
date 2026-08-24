@@ -2333,7 +2333,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatsSearchStartHint.
   ///
   /// In en, this message translates to:
-  /// **'Search your chats and channels by name.'**
+  /// **'Search chats by name, or any message by its words.'**
   String get chatsSearchStartHint;
 
   /// No description provided for @chatsSearchEmpty.
@@ -2341,6 +2341,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
+
+  /// No description provided for @chatsSearchChatsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Chats'**
+  String get chatsSearchChatsSection;
+
+  /// No description provided for @chatsSearchMessagesSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get chatsSearchMessagesSection;
 
   /// No description provided for @contactProfileViewInChat.
   ///

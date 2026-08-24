@@ -1300,10 +1300,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchClear => 'Очистити';
 
   @override
-  String get chatsSearchStartHint => 'Шукайте чати та канали за назвою.';
+  String get chatsSearchStartHint =>
+      'Шукайте чати за назвою або будь-яке повідомлення за словами.';
 
   @override
   String get chatsSearchEmpty => 'Нічого не знайдено';
+
+  @override
+  String get chatsSearchChatsSection => 'Чати';
+
+  @override
+  String get chatsSearchMessagesSection => 'Повідомлення';
 
   @override
   String get contactProfileViewInChat => 'Переглянути в чаті';

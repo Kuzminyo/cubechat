@@ -87,4 +87,15 @@ void main() {
     expect(route.path, '/chat/alice');
     expect(route.queryParameters['from'], 'search');
   });
+
+  test('opening a found message asks the chat to land on it', () {
+    // The whole point of searching message text: arriving at the bottom of a
+    // scrollback with the answer somewhere above is barely better than not
+    // having found it. `message` is what the chat route already reads to jump.
+    final route = Uri.parse(routeForMessageFromSearch(chat('alice'), 'm42'));
+
+    expect(route.path, '/chat/alice');
+    expect(route.queryParameters['from'], 'search');
+    expect(route.queryParameters['message'], 'm42');
+  });
 }

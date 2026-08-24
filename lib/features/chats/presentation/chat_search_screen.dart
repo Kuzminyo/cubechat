@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/recent_searches_controller.dart';
+import '../domain/message_hits.dart';
 import '../models/chat.dart';
 import 'chats_list_screen.dart';
 import 'widgets/chat_tile.dart';
@@ -45,6 +47,21 @@ String routeForChatFromSearch(Chat chat) {
   final route = Uri.parse(routeForChat(chat));
   return route.replace(
       queryParameters: {...route.queryParameters, 'from': 'search'}).toString();
+}
+
+/// The same route, arriving at one message rather than at the bottom.
+///
+/// `message` is the parameter the chat and channel routes already read to jump
+/// and flash — see `app_router.dart`. Nothing new had to be taught to either.
+String routeForMessageFromSearch(Chat chat, String messageId) {
+  final route = Uri.parse(routeForChat(chat));
+  return route.replace(
+    queryParameters: {
+      ...route.queryParameters,
+      'from': 'search',
+      'message': messageId,
+    },
+  ).toString();
 }
 
 /// Full-screen chat search.
@@ -95,6 +112,17 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
     context.push(routeForChatFromSearch(chat));
   }
 
+  /// Open the conversation standing on the message that was found.
+  ///
+  /// The scrollback may be years deep, and dropping the reader at the bottom of
+  /// it with the answer somewhere above is barely better than not finding it.
+  /// The chat route already knows how to arrive at a message and flash it —
+  /// that is how a tapped quote and the pinned bar get there.
+  void _openAt(MessageHit hit) {
+    ref.read(recentSearchesControllerProvider.notifier).remember(hit.chat.id);
+    context.push(routeForMessageFromSearch(hit.chat, hit.message.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -104,6 +132,16 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
     final results = query.isEmpty
         ? const <Chat>[]
         : chats.where((c) => c.peerName.toLowerCase().contains(query)).toList();
+
+    // The words, across every conversation. Watched here rather than inside the
+    // result list so the sweep runs once per keystroke, not once per row.
+    final hits = query.isEmpty
+        ? const <MessageHit>[]
+        : messageHits(
+            chats: chats,
+            messagesByChat: ref.watch(messagesControllerProvider),
+            query: _query,
+          );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -154,7 +192,13 @@ class _ChatSearchScreenState extends ConsumerState<ChatSearchScreen> {
       body: query.isEmpty
           ? _Suggestions(onOpen: _open)
           : _Results(
-              results: results, onOpen: _open, emptyLabel: t.chatsSearchEmpty),
+              results: results,
+              hits: hits,
+              query: _query,
+              onOpen: _open,
+              onOpenMessage: _openAt,
+              emptyLabel: t.chatsSearchEmpty,
+            ),
     );
   }
 }
@@ -263,17 +307,24 @@ class _Suggestions extends ConsumerWidget {
 class _Results extends StatelessWidget {
   const _Results({
     required this.results,
+    required this.hits,
+    required this.query,
     required this.onOpen,
+    required this.onOpenMessage,
     required this.emptyLabel,
   });
 
   final List<Chat> results;
+  final List<MessageHit> hits;
+  final String query;
   final void Function(Chat) onOpen;
+  final void Function(MessageHit) onOpenMessage;
   final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
-    if (results.isEmpty) {
+    final t = AppLocalizations.of(context);
+    if (results.isEmpty && hits.isEmpty) {
       return Center(
         child: Text(
           emptyLabel,
@@ -281,17 +332,130 @@ class _Results extends StatelessWidget {
         ),
       );
     }
-    return ListView.builder(
+
+    // Labelled only when both kinds are on screen. With one kind there is
+    // nothing to tell apart, and a heading over the only section is furniture.
+    final labelled = results.isNotEmpty && hits.isNotEmpty;
+
+    return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      itemCount: results.length,
-      itemBuilder: (_, i) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: FloatingGlass(
-          blur: false,
-          borderRadius: 18,
-          onTap: () => onOpen(results[i]),
-          child: ChatTile(chat: results[i]),
+      children: [
+        if (labelled) _SectionLabel(text: t.chatsSearchChatsSection),
+        for (final chat in results)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: FloatingGlass(
+              blur: false,
+              borderRadius: 18,
+              onTap: () => onOpen(chat),
+              child: ChatTile(chat: chat),
+            ),
+          ),
+        if (labelled) ...[
+          const SizedBox(height: 8),
+          _SectionLabel(text: t.chatsSearchMessagesSection),
+        ],
+        for (final hit in hits)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: FloatingGlass(
+              blur: false,
+              borderRadius: 18,
+              onTap: () => onOpenMessage(hit),
+              child: _MessageHitTile(hit: hit, query: query),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One found message: who it was with, when, and the words around the match.
+class _MessageHitTile extends StatelessWidget {
+  const _MessageHitTile({required this.hit, required this.query});
+
+  final MessageHit hit;
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final snippet = messageHitSnippet(hit.message, query);
+    final body = TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5);
+    final marked = body.copyWith(
+      color: AppColors.textOnGlass,
+      backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.30),
+    );
+
+    // Built from the offsets the search returned rather than by searching the
+    // snippet again: the match was made against a folded copy, so looking for
+    // the raw query here would miss "Привіт" for "привит" — the highlight would
+    // be absent on exactly the results that needed explaining.
+    final spans = <TextSpan>[];
+    var at = 0;
+    for (final mark in snippet.marks) {
+      if (mark.start > at) {
+        spans.add(TextSpan(text: snippet.text.substring(at, mark.start)));
+      }
+      spans.add(
+        TextSpan(
+          text: snippet.text.substring(mark.start, mark.end),
+          style: marked,
         ),
+      );
+      at = mark.end;
+    }
+    if (at < snippet.text.length) {
+      spans.add(TextSpan(text: snippet.text.substring(at)));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PeerAvatar(
+            peerId: hit.chat.peerId,
+            label: hit.chat.peerName,
+            size: 40,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        hit.chat.peerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      formatChatListTime(context, hit.message.sentAt),
+                      style: TextStyle(
+                        color: AppColors.textOnGlassFaint,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text.rich(
+                  TextSpan(style: body, children: spans),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

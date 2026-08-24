@@ -1291,10 +1291,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchClear => 'Clear';
 
   @override
-  String get chatsSearchStartHint => 'Search your chats and channels by name.';
+  String get chatsSearchStartHint =>
+      'Search chats by name, or any message by its words.';
 
   @override
   String get chatsSearchEmpty => 'Nothing matches that';
+
+  @override
+  String get chatsSearchChatsSection => 'Chats';
+
+  @override
+  String get chatsSearchMessagesSection => 'Messages';
 
   @override
   String get contactProfileViewInChat => 'View in chat';
