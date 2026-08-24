@@ -11,6 +11,7 @@ import '../../../core/crypto/identity_service.dart';
 import '../../../core/transport/peer_id.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
+import '../../profile/data/discovery_settings_controller.dart';
 
 enum PeripheralStatus {
   /// Not started yet.
@@ -126,6 +127,21 @@ class PeripheralController extends Notifier<PeripheralState> {
       return;
     }
     log.log('PERIPH-CTL', 'start(peerName=$peerName)');
+    // The radio switch, checked here as well as in PeerDiscoveryController.
+    //
+    // That one calls itself the door every path into scanning and advertising
+    // goes through, and it very nearly is — but the adapter watcher below is a
+    // second door. It restarts advertising whenever Bluetooth reports itself
+    // on, so switching the mesh off stopped the advertiser and the next
+    // adapter event started it again: the toggle looked broken because the
+    // radio came back without it.
+    //
+    // Guarded here rather than in the watcher, so anything else that ever
+    // calls start() is covered by the same check.
+    if (!ref.read(discoverySettingsProvider).meshEnabled) {
+      log.log('PERIPH-CTL', 'mesh is off — not advertising');
+      return;
+    }
     // Remembered so the adapter watcher can restart advertising by itself when
     // Bluetooth comes back, without waiting for the screen to call us again.
     _lastPeerName = peerName;
