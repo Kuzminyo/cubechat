@@ -78,9 +78,25 @@ class DiscoverySettingsController extends Notifier<DiscoverySettings> {
 
   Box<dynamic>? _box;
 
+  Future<void>? _loading;
+
+  /// Completes once the stored switches have been read.
+  ///
+  /// Both defaults are *on*, and the radio starts at launch — so anything that
+  /// asked this provider before the box had opened was told the mesh was
+  /// enabled whatever the user had chosen, and began scanning and advertising
+  /// on the strength of it. The stored value arrived a moment later and
+  /// nothing went back to look, so switching the radio off did not survive a
+  /// restart. That is what "both switches are off and it is still scanning"
+  /// turned out to be.
+  ///
+  /// Anything that *acts* on these settings waits for this. Anything that only
+  /// draws them does not need to: the screen rebuilds when the load lands.
+  Future<void> get loaded => _loading ?? Future<void>.value();
+
   @override
   DiscoverySettings build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return DiscoverySettings.initial;
   }
 

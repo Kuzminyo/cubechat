@@ -602,10 +602,23 @@ class _DiscoverableCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final on = ref.watch(discoverySettingsProvider).discoverable;
+    final settings = ref.watch(discoverySettingsProvider);
+    final on = settings.discoverable;
+    // Dead while the radio is off, and visibly so.
+    //
+    // The card above says as much in words — with the mesh off there is
+    // nothing to be discoverable *on* — but it only said it in words, so this
+    // switch stayed live and looked like it still meant something. It keeps
+    // showing the setting rather than lying about it: the choice is still
+    // yours, it simply has nothing to act on until the radio is back.
+    final usable = settings.meshEnabled;
     return _frame(
       framed,
-      child: Column(
+      child: Opacity(
+        opacity: usable ? 1 : 0.45,
+        child: IgnorePointer(
+          ignoring: !usable,
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -665,7 +678,9 @@ class _DiscoverableCard extends ConsumerWidget {
               height: 1.35,
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

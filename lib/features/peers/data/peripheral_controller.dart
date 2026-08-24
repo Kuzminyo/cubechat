@@ -138,6 +138,7 @@ class PeripheralController extends Notifier<PeripheralState> {
     //
     // Guarded here rather than in the watcher, so anything else that ever
     // calls start() is covered by the same check.
+    await ref.read(discoverySettingsProvider.notifier).loaded;
     if (!ref.read(discoverySettingsProvider).meshEnabled) {
       log.log('PERIPH-CTL', 'mesh is off — not advertising');
       return;

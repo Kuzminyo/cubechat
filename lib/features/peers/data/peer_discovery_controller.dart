@@ -115,6 +115,11 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
     // into scanning and advertising goes through — the Nearby screen, the
     // lifecycle policy, a retune after coming back to the foreground. Anything
     // that turned the mesh on somewhere else would quietly undo the setting.
+    // Read the switch off disk before believing it. The defaults are on, and
+    // this runs at launch — so without the wait, a phone that had the mesh
+    // turned off started scanning anyway and only stopped if somebody went and
+    // toggled it again.
+    await ref.read(discoverySettingsProvider.notifier).loaded;
     if (!ref.read(discoverySettingsProvider).meshEnabled) {
       state =
           state.copyWith(status: PeerDiscoveryStatus.meshOff, peers: const []);
