@@ -41,7 +41,27 @@ class AppBlur {
   const AppBlur._();
 
   /// Standard pane blur.
-  static const double sigma = 14;
+  ///
+  /// 9 since 2026-08-25, on its own and in a build carrying nothing else —
+  /// which is what the note above asks for and what was not done last time.
+  ///
+  /// The prompt was a second phone, a mid-range Mali, reading:
+  ///
+  ///     build  (CPU / Dart)   avg 2.7   p90  5.1 ms
+  ///     raster (GPU)          avg 11.6  p90 17.3 ms
+  ///     484 of 2726 frames over 16.7 ms · GPU-bound
+  ///
+  /// The first phone measured on the same day sat at raster p90 3.4 ms and
+  /// never noticed any of this, which is the whole reason a second device was
+  /// worth asking for: this cost is invisible until the GPU is slower than the
+  /// one it was tuned on.
+  ///
+  /// AWAITING ITS MEASUREMENT. The number to compare is raster p90 on that
+  /// same phone, on the same screen. If it does not move, this goes back to 14
+  /// and the cost is somewhere else — the aurora's four gradient shaders per
+  /// paint and the overdraw of stacked panes are the next two suspects, in
+  /// that order, and each of them gets its own build too.
+  static const double sigma = 9;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.
