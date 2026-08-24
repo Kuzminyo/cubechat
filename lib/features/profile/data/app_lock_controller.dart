@@ -56,10 +56,16 @@ class AppLockController extends Notifier<AppLockState> {
 
   /// How long the app may be away before it asks again.
   ///
-  /// Zero would ask after every glance at a notification shade, which is how a
-  /// lock becomes the thing people turn off. Long enough to answer a call or
-  /// check the time; short enough that a phone left on a table is not open.
-  static const Duration grace = Duration(seconds: 30);
+  /// Zero: every time the app is actually backgrounded, it asks.
+  ///
+  /// This was thirty seconds, on the reasoning that asking after every glance
+  /// at a notification shade is how a lock becomes the thing people turn off.
+  /// The reasoning was right and the number was answering it in the wrong
+  /// place — a shade pull is `inactive`, and only `paused` and `hidden` reach
+  /// [noteLeft] at all (see `app.dart`), so the glance was already excluded.
+  /// What the grace actually did was make the lock look broken: minimise,
+  /// come back in five seconds, nothing happens. Reported exactly that way.
+  static const Duration grace = Duration.zero;
 
   Box<dynamic>? _box;
   DateTime? _leftAt;
@@ -113,10 +119,23 @@ class AppLockController extends Notifier<AppLockState> {
   /// none, because it would ask for a code no answer satisfies.
   Future<bool> enable(String code) async {
     if (code.length < 4) return false;
+    // Wait for the box before writing to it.
+    //
+    // `_box` is filled by `_load`, which `build` starts and cannot await, and
+    // `_box?.put(...)` on a null box is a silent no-op that still returned
+    // true. So a code set in the first moments after launch reported success,
+    // stored nothing, and was gone at the next start — the lock had been
+    // turned on and never asked for anything again.
+    await loaded;
+    final box = _box;
+    if (box == null) {
+      debugPrint('AppLock: no settings box, refusing to half-enable');
+      return false;
+    }
     final salt = _mintSalt();
     try {
-      await _box?.put(_saltKey, salt);
-      await _box?.put(_hashKey, await _hash(code, salt));
+      await box.put(_saltKey, salt);
+      await box.put(_hashKey, await _hash(code, salt));
     } catch (e) {
       debugPrint('AppLock persist failed: $e');
       return false;

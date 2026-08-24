@@ -96,14 +96,30 @@ void main() {
     final l = await lock(container);
     await l.enable('4821');
 
-    // Straight back: the notification shade, a permission dialog, the recents
-    // switcher. A lock that asks after each of those is one people turn off.
+    // Backgrounding asks, every time. This reverses what the test said
+    // before, on purpose and on request: the grace was thirty seconds, which
+    // made the lock look broken — minimise, come back in five seconds, and
+    // nothing happened.
+    //
+    // The concern the grace existed for is still handled, one layer up: a
+    // notification shade or a permission dialog is `inactive`, and only
+    // `paused` and `hidden` reach [noteLeft] at all. So this asks when the app
+    // was actually left, and not for a glance at something on top of it.
     l.noteLeft();
     l.noteReturned();
-    expect(container.read(appLockControllerProvider).locked, isFalse);
+    expect(container.read(appLockControllerProvider).locked, isTrue);
+  });
 
-    // The grace is a real duration, not a formality.
-    expect(AppLockController.grace.inSeconds, greaterThanOrEqualTo(10));
+  test('nothing to come back from leaves it alone', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final l = await lock(container);
+    await l.enable('4821');
+
+    // Resumed without having been left — the first frames of a launch emit
+    // this, and it must not lock a session the user just unlocked.
+    l.noteReturned();
+    expect(container.read(appLockControllerProvider).locked, isFalse);
   });
 
   test('a wipe leaves nothing to ask for', () async {
