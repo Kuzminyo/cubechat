@@ -539,6 +539,8 @@ class MessagingService {
           // read, the other phone's tick never moved, and only re-entering the
           // conversation later fixed it.
           unawaited(_flushPendingReadReceipts());
+          // And the messages themselves, which had no such second chance.
+          unawaited(_flushOutboxOverRelay());
         }
         _relayWasConnected = connected;
       });
@@ -1298,12 +1300,25 @@ class MessagingService {
           canonicalId: canonicalId,
           chatId: chatId,
           messageId: msg.id,
+          frameBytes: wireBytes,
         );
         _scheduleRelayPersist();
         DebugLog.instance.log(
             'MESH',
             'text undeliverable — queued for store-and-forward to '
                 '$canonicalId (held ${_store.size})');
+        // And ask the relays to come back, which is the whole reason this
+        // message has nowhere to go on a phone with no peers nearby.
+        //
+        // The file path already does this a few hundred lines up; text did
+        // not, so a message typed on a weak connection — where the socket is
+        // still opening, or the backoff has grown to two minutes after a dead
+        // spot — was filed away without anything trying to open the road it
+        // was waiting for. On EDGE that is the normal case rather than an
+        // edge one: the frame is 200-odd bytes, but the TLS and WebSocket
+        // handshake in front of it takes longer than a person waits before
+        // pressing send.
+        wakeRelays();
         // Leave status as sending (pending), not failed.
       }
     } catch (e, st) {
@@ -2330,6 +2345,68 @@ class MessagingService {
   bool _flushingReadReceipts = false;
   DateTime? _lastReadReceiptFlush;
   static const Duration _readReceiptFlushGap = Duration(seconds: 5);
+
+  /// Carry queued messages over a relay that has just come up.
+  ///
+  /// Until this existed, a message that found no route was handed to
+  /// store-and-forward and waited there for the recipient to walk into
+  /// Bluetooth range — the relay coming back was not a second chance, only a
+  /// BLE handshake was. For two people who never meet in person that is not a
+  /// delay, it is never.
+  ///
+  /// It is the weak-connection case that makes this common. The socket takes
+  /// longer to open than a person takes to press send, so on a bad link the
+  /// *first* message of a session routinely misses the relay that is up eight
+  /// seconds later.
+  ///
+  /// One at a time: the link that just came up is by assumption a poor one,
+  /// and thirty parallel publishes on it is how it goes down again.
+  ///
+  /// A failure moves on to the next message rather than ending the round,
+  /// because the commonest reason a particular one cannot go is that its
+  /// recipient has no Nostr key on file — and that peer would otherwise stand
+  /// at the head of the queue holding up everybody reachable behind them. Three
+  /// failures in a row is a different statement: that is the link, not the
+  /// recipients, so the round stops and waits for the next relay-up.
+  ///
+  /// Nothing carried is lost — it stays queued for the next attempt or for the
+  /// next Bluetooth handshake, whichever comes first.
+  Future<void> _flushOutboxOverRelay() async {
+    if (_disposed || _outbox.isEmpty) return;
+    if (_flushingOutbox) return;
+    _flushingOutbox = true;
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    var failures = 0;
+    try {
+      // A copy, because a send that succeeds mutates the map underneath us.
+      for (final entry in _outbox.entries.toList()) {
+        if (_disposed) return;
+        final ref = entry.value;
+        if (!await _sendOverNostr(ref.canonicalId, ref.frameBytes)) {
+          DebugLog.instance.log(
+            'NOSTR',
+            'queued message for ${ref.canonicalId} still has no relay road',
+          );
+          if (++failures >= 3) return;
+          continue;
+        }
+        failures = 0;
+        _outbox.remove(entry.key);
+        for (final id in {ref.canonicalId, ref.chatId}) {
+          messages.updateStatus(id, ref.messageId, MessageStatus.delivered);
+          messages.updateRoute(id, ref.messageId, MessageRoute.internet);
+        }
+        DebugLog.instance.log(
+          'NOSTR',
+          'queued message to ${ref.canonicalId} went out by relay',
+        );
+      }
+    } finally {
+      _flushingOutbox = false;
+    }
+  }
+
+  bool _flushingOutbox = false;
 
   Future<void> _flushPendingReadReceipts() async {
     if (_disposed) return;
@@ -8318,10 +8395,19 @@ class _OutboxRef {
     required this.canonicalId,
     required this.chatId,
     required this.messageId,
+    required this.frameBytes,
   });
   final String canonicalId;
   final String chatId;
   final String messageId;
+
+  /// The frame exactly as it would have gone out, kept so a relay coming up
+  /// can carry it without the message being composed again.
+  ///
+  /// The same bytes the store-and-forward buffer holds — already sealed and
+  /// signed, so keeping a second reference costs a pointer, not a copy, and
+  /// the relay learns nothing from it that Bluetooth would not have shown.
+  final Uint8List frameBytes;
 }
 
 /// One signed media manifest awaiting its chunks. Holds enough context
