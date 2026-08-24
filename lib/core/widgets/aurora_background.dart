@@ -4,6 +4,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../theme/colors.dart';
 import '../util/ui_activity.dart';
@@ -15,8 +16,8 @@ import '../util/ui_activity.dart';
 /// of the animation. (It used to sit inside the `AnimatedBuilder`, which
 /// rebuilt the entire app subtree on every one of the animation's frames.)
 ///
-/// The drift is driven by a ~30 fps wall-clock ticker rather than an
-/// [AnimationController] (which repaints every vsync — 120 fps on ProMotion).
+/// The drift repaints ~30 times a second rather than every vsync, which is what
+/// an [AnimationController] would do (120 fps on ProMotion).
 /// The blobs rebuild four radial-gradient shaders per paint, so at 120 fps the
 /// backdrop kept the GPU busy even while the app sat idle; the drift is far too
 /// slow (24 s period) for the difference between 30 and 120 fps to be visible.
@@ -56,10 +57,16 @@ class AuroraBackground extends StatefulWidget {
 
 class _AuroraBackgroundState extends State<AuroraBackground>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-  /// Drift phase in [0, 1), advanced ~30 times/second off wall-clock time.
+  /// Drift phase in [0, 1), advanced ~30 times/second.
   final ValueNotifier<double> _drift = ValueNotifier<double>(0);
   final Stopwatch _clock = Stopwatch();
-  Timer? _ticker;
+
+  /// Pumped by vsync, throttled to [_tickInterval] — see [_startTicker].
+  Ticker? _ticker;
+
+  /// Wall-clock reading at the last repaint, so the throttle can tell whether
+  /// this vsync is the one that owes a new frame.
+  int _lastPaintMs = 0;
 
   static const Duration _driftPeriod = Duration(seconds: 24);
   static const Duration _tickInterval = Duration(milliseconds: 33); // ~30 fps
@@ -114,19 +121,47 @@ class _AuroraBackgroundState extends State<AuroraBackground>
     _idleTimer = Timer(_idleAfter, _stopTicker);
   }
 
+  /// Advance the drift, on vsync, about thirty times a second.
+  ///
+  /// The rate is the one the previous round measured and is unchanged; the
+  /// clock it keeps is not. A `Timer.periodic(33ms)` fires on wall time, which
+  /// has no relationship to when the display is ready for a frame: on a 90 Hz
+  /// panel a vsync comes every 11.1 ms, so a 33 ms timer lands 2 or 3 vsyncs
+  /// apart in a drifting pattern, and a repaint requested just after a vsync
+  /// waits for the next one. Nothing is *dropped* — every frame arrives — but
+  /// the interval between them keeps changing, and uneven pacing is read as
+  /// stutter by the eye just as surely as a missed frame. The same point is
+  /// made about refresh rate in `_matchDisplayRefreshRate`.
+  ///
+  /// A [Ticker] fires *on* vsync, so the throttle below picks whole vsyncs:
+  /// every 3rd at 90 Hz, every 4th at 120, every 2nd at 60 — a steady interval
+  /// at each, and still about thirty repaints a second. That keeps the cost
+  /// this class was rewritten for (four radial-gradient shaders per paint, the
+  /// reason an every-vsync [AnimationController] was rejected) while removing
+  /// the jitter.
+  ///
+  /// This matters most when nothing else is painting: the drift runs on launch
+  /// and for [_idleAfter] after each touch, and is stopped outright while
+  /// scrolling — which is exactly the "janky until you scroll, smooth once you
+  /// do" the report described.
   void _startTicker() {
     if (_ticker != null) return;
     _clock.start();
-    _ticker = Timer.periodic(_tickInterval, (_) {
+    _lastPaintMs = _clock.elapsedMilliseconds;
+    _ticker = createTicker((_) {
+      final now = _clock.elapsedMilliseconds;
+      if (now - _lastPaintMs < _tickInterval.inMilliseconds) return;
+      _lastPaintMs = now;
       final periodMs = _driftPeriod.inMilliseconds;
-      _drift.value = (_clock.elapsedMilliseconds % periodMs) / periodMs;
-    });
+      _drift.value = (now % periodMs) / periodMs;
+    })
+      ..start();
   }
 
   void _stopTicker() {
     _idleTimer?.cancel();
     _idleTimer = null;
-    _ticker?.cancel();
+    _ticker?.dispose();
     _ticker = null;
     _clock.stop(); // preserves elapsed, so the drift resumes seamlessly
   }
