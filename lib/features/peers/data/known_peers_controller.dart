@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../models/known_peer.dart';
+import 'removed_contacts_controller.dart';
 
 /// Roster of peers we have authenticated through Noise XX.
 ///
@@ -68,6 +69,22 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   }) {
     final now = DateTime.now();
     final existing = state[pubkeyHex];
+
+    // A removed contact is not re-created by anything they broadcast.
+    //
+    // Every road back into this roster runs through here — an announcement, a
+    // presence beacon, a completed handshake — and none of them knew the
+    // person had been deleted on purpose, so a removed contact came back
+    // within seconds of the next thing their radio said. This is the one place
+    // that can tell the difference between "update somebody I know" and
+    // "invent somebody I removed".
+    //
+    // Updating an existing entry is untouched: if they are in the roster, they
+    // are a contact, and this is just news about them.
+    if (existing == null &&
+        ref.read(removedContactsControllerProvider).contains(pubkeyHex)) {
+      return;
+    }
 
     final newIsPlaceholder = displayName.startsWith('Peer ');
     final String resolvedName;

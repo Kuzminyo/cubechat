@@ -12,6 +12,7 @@ import '../../features/chats/data/chat_folders_controller.dart';
 import '../../features/chats/data/favorites_controller.dart';
 import '../../features/chats/data/pinned_chats_controller.dart';
 import '../../features/chats/data/hidden_chats_controller.dart';
+import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
@@ -77,6 +78,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(pinnedChatsControllerProvider.notifier).clear();
   await ref.read(hiddenChatsControllerProvider.notifier).clear();
+  // Tombstones are a record of people too, and a wipe leaves no records.
+  await ref.read(removedContactsControllerProvider.notifier).clear();
   // Which conversations you put out of the way is a list of who you are avoiding
   // — as much of a trace as the pins are.
   await ref.read(archivedChatsControllerProvider.notifier).clear();

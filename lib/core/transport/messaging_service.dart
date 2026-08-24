@@ -28,6 +28,7 @@ import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
@@ -7984,6 +7985,19 @@ class MessagingService {
       return;
     }
     final pubkeyHex = _hexOf(pubkey);
+    // Somebody who writes is a contact again, whatever was decided about them
+    // before.
+    //
+    // The tombstone from removing a contact stops their radio from re-creating
+    // the roster entry — an announcement, a beacon, a handshake. A message is
+    // not that: it is a person deliberately saying something, and mail is
+    // never worth losing to a preference. So the removal ends here, and the
+    // append below is free to make the conversation it needs.
+    unawaited(
+      _ref
+          .read(removedContactsControllerProvider.notifier)
+          .restore(pubkeyHex),
+    );
     // Canonical key (lives forever, used by chats list). A false return means
     // this exact wireId is already in the chat — a relay backlog replay or a
     // second delivery path — so there is nothing to fan out and nothing to

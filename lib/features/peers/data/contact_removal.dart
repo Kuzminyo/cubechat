@@ -12,6 +12,7 @@ import '../../chats/data/user_chat_folders_controller.dart';
 import 'contact_aliases_controller.dart';
 import 'known_peers_controller.dart';
 import 'peer_avatars_controller.dart';
+import 'removed_contacts_controller.dart';
 
 /// Forget a person and everything of theirs this phone is holding.
 ///
@@ -25,21 +26,44 @@ import 'peer_avatars_controller.dart';
 ///
 /// The confirmation is the caller's: this asks nothing and undoes nothing.
 Future<void> forgetContactEverywhere(WidgetRef ref, String pubkeyHex) async {
-  await ref.read(knownPeersControllerProvider.notifier).forget(pubkeyHex);
-  await ref.read(peerAvatarsControllerProvider.notifier).forget(pubkeyHex);
-  await ref
-      .read(conversationSettingsControllerProvider.notifier)
-      .forget(pubkeyHex);
-  await ref.read(favoritesControllerProvider.notifier).forget(pubkeyHex);
-  await ref.read(pinnedControllerProvider.notifier).forget(pubkeyHex);
-  await ref.read(draftsControllerProvider.notifier).clear(pubkeyHex);
-  await ref.read(messagesControllerProvider.notifier).clearForChat(pubkeyHex);
-  await ref.read(readMarkersControllerProvider.notifier).forget(pubkeyHex);
-  await ref.read(contactAliasesControllerProvider.notifier).clearAlias(pubkeyHex);
-  await ref.read(pinnedChatsControllerProvider.notifier).forget(pubkeyHex);
+  // Every notifier resolved before the first await, and none reached for
+  // through `ref` after one.
+  //
+  // `ref` belongs to the screen that offered the delete — a contact profile,
+  // or a row in a list — and the very first step removes the person that
+  // screen is about, so it can be gone before the second step runs. Anything
+  // after the throw was skipped, which left a contact forgotten from the
+  // roster and still holding their alias, their avatar and their messages.
+  final known = ref.read(knownPeersControllerProvider.notifier);
+  final removed = ref.read(removedContactsControllerProvider.notifier);
+  final avatars = ref.read(peerAvatarsControllerProvider.notifier);
+  final settings = ref.read(conversationSettingsControllerProvider.notifier);
+  final favorites = ref.read(favoritesControllerProvider.notifier);
+  final pinned = ref.read(pinnedControllerProvider.notifier);
+  final drafts = ref.read(draftsControllerProvider.notifier);
+  final messages = ref.read(messagesControllerProvider.notifier);
+  final readMarkers = ref.read(readMarkersControllerProvider.notifier);
+  final aliases = ref.read(contactAliasesControllerProvider.notifier);
+  final pinnedChats = ref.read(pinnedChatsControllerProvider.notifier);
+  final hidden = ref.read(hiddenChatsControllerProvider.notifier);
+  final folders = ref.read(userChatFoldersControllerProvider.notifier);
+
+  // First, so that nothing arriving mid-removal can put them back before the
+  // rest of it has run.
+  await removed.remember(pubkeyHex);
+  await known.forget(pubkeyHex);
+  await avatars.forget(pubkeyHex);
+  await settings.forget(pubkeyHex);
+  await favorites.forget(pubkeyHex);
+  await pinned.forget(pubkeyHex);
+  await drafts.clear(pubkeyHex);
+  await messages.clearForChat(pubkeyHex);
+  await readMarkers.forget(pubkeyHex);
+  await aliases.clearAlias(pubkeyHex);
+  await pinnedChats.forget(pubkeyHex);
   // Not "hide" — the person is gone, so there is no tile left to suppress, and
   // a stale entry here would hide the next conversation with somebody whose key
   // happens to come back (a contact re-added from the same card).
-  await ref.read(hiddenChatsControllerProvider.notifier).unhide(pubkeyHex);
-  await ref.read(userChatFoldersControllerProvider.notifier).forgetChat(pubkeyHex);
+  await hidden.unhide(pubkeyHex);
+  await folders.forgetChat(pubkeyHex);
 }
