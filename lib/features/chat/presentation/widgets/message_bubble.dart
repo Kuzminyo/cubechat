@@ -32,6 +32,7 @@ import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
+import '../../domain/single_emoji_sticker.dart';
 import '../../domain/message_preview.dart';
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
@@ -85,9 +86,7 @@ bool messageCanBeCopied(
     // bytes never leave either way, but offering Copy and Forward on something
     // the app has just promised to destroy reads as the promise not being
     // meant.
-    !copyingRestricted &&
-    !message.viewOnce &&
-    copyableText(message) != null;
+    !copyingRestricted && !message.viewOnce && copyableText(message) != null;
 
 /// A picture can be passed on as well as a line of text.
 ///
@@ -173,7 +172,8 @@ Future<void> forwardTextTo(WidgetRef ref, Chat target, String text) {
 /// means reading the bytes back off this phone and sending them the way the
 /// gallery does — caption and sticker marker included, so a forwarded sticker
 /// arrives as a sticker rather than as a photo of one.
-Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async {
+Future<void> forwardMessageTo(
+    WidgetRef ref, Chat target, Message message) async {
   if (message.kind == MessageKind.image) {
     final path = MediaPaths.repairOrNull(message.imagePath);
     if (path == null || !MediaPaths.exists(path)) return;
@@ -782,34 +782,34 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final readers = m.readBy.entries.toList()
       ..sort((a, b) => a.value.at.compareTo(b.value.at));
     return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+        ),
+        if (readAt != null)
           Text(
-            t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            t.chatReadAt(formatMessageDetailsTime(context, readAt)),
+            style: const TextStyle(
+              color: _BubbleMeta._readColor,
+              fontSize: 11.5,
+            ),
           ),
-          if (readAt != null)
-            Text(
-              t.chatReadAt(formatMessageDetailsTime(context, readAt)),
-              style: const TextStyle(
-                color: _BubbleMeta._readColor,
-                fontSize: 11.5,
-              ),
+        for (final r in readers)
+          Text(
+            '${r.value.name} · '
+            '${formatMessageDetailsTime(context, r.value.at)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _BubbleMeta._readColor,
+              fontSize: 11.5,
             ),
-          for (final r in readers)
-            Text(
-              '${r.value.name} · '
-              '${formatMessageDetailsTime(context, r.value.at)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _BubbleMeta._readColor,
-                fontSize: 11.5,
-              ),
-            ),
-        ],
-      );
+          ),
+      ],
+    );
   }
 
   /// Pick a chat and re-send this message's text into it.
@@ -1012,10 +1012,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     //
     // The RepaintBoundary stays: it keeps one bubble's repaint out of its
     // neighbours as the list scrolls.
+    final singleEmojiSticker = message.kind == MessageKind.text
+        ? singleEmojiStickerGlyph(message.text)
+        : null;
+
     // A sticker has no bubble at all: no fill, no border, no shadow. It is a
     // picture with a transparent background, and any of those would draw a
     // rectangle around something whose whole point is not having one.
-    final sticker = message.isSticker;
+    final sticker = message.isSticker || singleEmojiSticker != null;
 
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
@@ -1057,9 +1061,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             // width: the same photo is drawn larger without the bubble growing.
             // The rows that keep their inset — an author's name, the caption,
             // the time — ask for it themselves below.
-            padding: photo
+            padding: sticker
                 ? EdgeInsets.zero
-                : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                : photo
+                    ? EdgeInsets.zero
+                    : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             // And no border on a photo bubble, which is why its corners looked
             // broken. `Border.all` paints its stroke *inside* the container, so
             // the picture sits a pixel in from it and is then clipped by the
@@ -1210,8 +1216,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child:
-                            VoiceBubble(message: message, chatId: widget.chatId),
+                        child: VoiceBubble(
+                            message: message, chatId: widget.chatId),
                       ),
                       if (message.isMine &&
                           message.status == MessageStatus.sending) ...[
@@ -1285,6 +1291,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     contact: sharedContact,
                     onTap: () => _openSharedContact(sharedContact),
                   )
+                else if (singleEmojiSticker case final emoji?)
+                  _AnimatedSingleEmojiSticker(glyph: emoji)
                 else
                   MentionText(message.text, highlight: searchQuery),
                 if (!metaOnMedia) ...[
@@ -1825,6 +1833,91 @@ class _SwipeReplyHint extends StatelessWidget {
   }
 }
 
+class _AnimatedSingleEmojiSticker extends StatefulWidget {
+  const _AnimatedSingleEmojiSticker({required this.glyph});
+
+  final String glyph;
+
+  @override
+  State<_AnimatedSingleEmojiSticker> createState() =>
+      _AnimatedSingleEmojiStickerState();
+}
+
+class _AnimatedSingleEmojiStickerState
+    extends State<_AnimatedSingleEmojiSticker>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motion = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1350),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: kStickerWidth,
+      height: kStickerWidth,
+      child: AnimatedBuilder(
+        animation: _motion,
+        builder: (context, child) {
+          final t = Curves.easeInOutSine.transform(_motion.value);
+          final scale = 0.94 + t * 0.09;
+          final tilt = (t - 0.5) * 0.07;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 124 + t * 14,
+                height: 124 + t * 14,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.brandPrimary.withValues(
+                        alpha: 0.20 + t * 0.16,
+                      ),
+                      blurRadius: 34 + t * 18,
+                      spreadRadius: 6 + t * 8,
+                    ),
+                  ],
+                ),
+              ),
+              Transform.rotate(
+                angle: tilt,
+                child: Transform.scale(
+                  scale: scale,
+                  child: child,
+                ),
+              ),
+            ],
+          );
+        },
+        child: Text(
+          widget.glyph,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 94,
+            height: 1,
+            shadows: [
+              Shadow(
+                color: Color(0x66000000),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          textScaler: TextScaler.noScaling,
+        ),
+      ),
+    );
+  }
+}
+
 /// The bottom line of a bubble: what people reacted with, then the clock.
 ///
 /// A [Row] with the reactions flexible and the meta fixed, so a long run of
@@ -2050,10 +2143,12 @@ class _AlbumPayload extends StatelessWidget {
     final cell = (_kAlbumWidth - _gap * (columns - 1)) / columns;
     final rows = <List<Message>>[];
     for (var i = 0; i < messages.length; i += columns) {
-      rows.add(messages.sublist(
-        i,
-        i + columns > messages.length ? messages.length : i + columns,
-      ));
+      rows.add(
+        messages.sublist(
+          i,
+          i + columns > messages.length ? messages.length : i + columns,
+        ),
+      );
     }
 
     return SizedBox(
@@ -2216,11 +2311,10 @@ class _ImagePayload extends StatelessWidget {
       // costs a full-resolution decode per photo and a texture upload to
       // match, which is most of why such a chat warms the phone. At the drawn
       // size it is a twenty-fifth of the pixels.
-      cacheWidth: ((message.isSticker
-                  ? kStickerWidth
-                  : photoBubbleWidth(context)) *
-              MediaQuery.devicePixelRatioOf(context))
-          .round(),
+      cacheWidth:
+          ((message.isSticker ? kStickerWidth : photoBubbleWidth(context)) *
+                  MediaQuery.devicePixelRatioOf(context))
+              .round(),
       errorBuilder: (_, __, ___) => _ImagePlaceholder(
         icon: Icons.broken_image_rounded,
         label: message.imageMime ?? 'image',
