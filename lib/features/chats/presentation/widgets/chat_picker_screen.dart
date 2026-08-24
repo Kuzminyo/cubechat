@@ -5,11 +5,11 @@ import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/typography.dart';
 import '../../../../core/widgets/aurora_background.dart';
+import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
-import '../../../peers/presentation/widgets/peer_avatar.dart';
-import '../../../chat/domain/message_preview.dart';
 import '../../models/chat.dart';
 import '../chats_list_screen.dart';
+import 'chat_tile.dart';
 
 /// Choose one or several chats to send something into.
 ///
@@ -160,42 +160,65 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
               else
                 Expanded(
                   child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                     itemCount: chats.length,
                     itemBuilder: (_, i) {
                       final chat = chats[i];
                       final picked = _picked.contains(chat.id);
-                      return CheckboxListTile(
-                        value: picked,
-                        activeColor: AppColors.brandPrimary,
-                        checkColor: Colors.black,
-                        controlAffinity: ListTileControlAffinity.trailing,
-                        onChanged: (on) => setState(() {
-                          if (on ?? false) {
-                            _picked.add(chat.id);
-                          } else {
-                            _picked.remove(chat.id);
-                          }
-                        }),
-                        secondary: PeerAvatar(
-                          peerId: chat.peerId,
-                          label: chat.peerName,
-                          size: 42,
-                          online: chat.isOnline,
-                        ),
-                        title: Text(
-                          chat.peerName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: AppColors.textOnGlass),
-                        ),
-                        subtitle: Text(
-                          storedTextPreview(chat.lastMessage, t),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.textOnGlassDim,
-                            fontSize: AppMenu.rowSubtitle,
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: FloatingGlass(
+                          blur: false,
+                          borderRadius: 18,
+                          onTap: () => setState(() {
+                            if (!_picked.remove(chat.id)) _picked.add(chat.id);
+                          }),
+                          child: Stack(
+                            children: [
+                              // The chat list's own row, not an imitation of
+                              // it: same faces, same names, same last line,
+                              // same time. Picking somewhere to send to is
+                              // reading the chat list, so it should be the
+                              // chat list — a `CheckboxListTile` looked like a
+                              // settings screen that happened to hold people.
+                              ChatTile(chat: chat),
+                              // The tick rides over the row rather than taking
+                              // a column of its own, so nothing in the tile has
+                              // to move aside for it.
+                              Positioned.fill(
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 14),
+                                    child: AnimatedContainer(
+                                      duration:
+                                          const Duration(milliseconds: 140),
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: picked
+                                            ? AppColors.brandPrimary
+                                            : Colors.transparent,
+                                        border: Border.all(
+                                          color: picked
+                                              ? AppColors.brandPrimary
+                                              : AppColors.glass(0.35),
+                                          width: 1.6,
+                                        ),
+                                      ),
+                                      child: picked
+                                          ? const Icon(
+                                              Icons.check_rounded,
+                                              size: 15,
+                                              color: Colors.black,
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       );
