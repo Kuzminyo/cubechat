@@ -1593,12 +1593,27 @@ class ChatSelectionBar extends ConsumerWidget {
               const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
           tooltip: t.chatsActionDelete,
           onPressed: () async {
+            // Clear the selection *after* the work, not before it.
+            //
+            // This is why deleting a chat did nothing at all, with not even a
+            // line in the log to say it had been tried. Clearing first ends
+            // selection mode, which takes this very bar out of the tree — and
+            // the `context.mounted` guard on the next line then answered
+            // false and returned before a single chat was touched. The guard
+            // was doing its job; it was guarding against a state this handler
+            // had just created for itself.
             final chats = [...selected];
-            ref.read(chatSelectionProvider.notifier).clear();
+            // The root navigator's context outlives the bar, so the dialogs
+            // still have somewhere to open even once the list rebuilds under
+            // them. The notifier is read now for the same reason a notifier is
+            // always read before an await here.
+            final rootContext = Navigator.of(context, rootNavigator: true).context;
+            final selection = ref.read(chatSelectionProvider.notifier);
             for (final chat in chats) {
-              if (!context.mounted) return;
-              await _confirmAndDeleteChat(context, ref, chat, t);
+              if (!rootContext.mounted) return;
+              await _confirmAndDeleteChat(rootContext, ref, chat, t);
             }
+            selection.clear();
           },
         ),
         _SelectionOverflow(selected: selected),

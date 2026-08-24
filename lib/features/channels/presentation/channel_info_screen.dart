@@ -152,7 +152,9 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
             16,
             16,
             16,
-            MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+            // Not the keyboard inset: showGlassSheet already lifts the sheet
+            // by it, and adding it again pushed the button below the fold.
+            16,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
