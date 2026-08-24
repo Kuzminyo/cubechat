@@ -1306,6 +1306,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchEmpty => 'Nothing matches that';
 
   @override
+  String get chatCalendarTitle => 'By date';
+
+  @override
+  String get chatCalendarEmpty => 'Nothing has been said here yet';
+
+  @override
   String get chatsSearchChatsSection => 'Chats';
 
   @override

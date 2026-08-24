@@ -1315,6 +1315,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchEmpty => 'Нічого не знайдено';
 
   @override
+  String get chatCalendarTitle => 'За датами';
+
+  @override
+  String get chatCalendarEmpty => 'Тут ще нічого не сказано';
+
+  @override
   String get chatsSearchChatsSection => 'Чати';
 
   @override

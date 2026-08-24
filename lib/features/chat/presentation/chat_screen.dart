@@ -47,6 +47,7 @@ import '../../stickers/data/sticker_library.dart';
 import '../data/composer_panel.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
+import 'chat_calendar_screen.dart';
 import '../data/message_farewell.dart';
 import '../data/message_selection.dart';
 import '../data/message_visibility.dart';
@@ -1197,6 +1198,21 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     );
   }
 
+  /// Open the calendar, and go wherever it says.
+  ///
+  /// [standingOn] is only marked, not used to pick anything: it is where the
+  /// reader came from, and a calendar that does not show that leaves them
+  /// hunting for the square they were already in.
+  Future<void> _openCalendar(DateTime standingOn) async {
+    final chosen = await showChatCalendar(
+      context,
+      messages: widget.messages,
+      current: standingOn,
+    );
+    if (chosen == null || !mounted) return;
+    await _jumpToDay(chosen);
+  }
+
   /// Go to the first message of [day].
   ///
   /// The first, not the nearest: tapping a date means "take me to where this
@@ -1812,7 +1828,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _DaySeparator(day: m.sentAt),
+                        _DaySeparator(
+                          day: m.sentAt,
+                          onTap: () => unawaited(_openCalendar(m.sentAt)),
+                        ),
                         bubble,
                       ],
                     ),
@@ -2050,28 +2069,37 @@ class _SavedTagFilterBar extends ConsumerWidget {
 /// smoked pane as everything else that floats here, at a size that is legible
 /// without competing with a message.
 class _DaySeparator extends StatelessWidget {
-  const _DaySeparator({required this.day});
+  const _DaySeparator({required this.day, this.onTap});
 
   final DateTime day;
+
+  /// Opens the calendar. The separator is the one place in a conversation
+  /// where a date is written next to the messages it belongs to, so it is
+  /// where somebody looking for a different date will press.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 6),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppColors.pane(0.55),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.glass(0.12)),
-          ),
-          child: Text(
-            formatDayHeader(context, day),
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.pane(0.55),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.glass(0.12)),
+            ),
+            child: Text(
+              formatDayHeader(context, day),
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),

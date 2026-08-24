@@ -54,6 +54,20 @@ String formatDayHeader(BuildContext context, DateTime day) {
   return DateFormat.yMMMMd(locale).format(day);
 }
 
+/// The heading over one month of the calendar.
+///
+/// The year is dropped while it is this year, for the same reason the day
+/// separator drops it: a conversation is mostly made of the current year, and
+/// repeating it above every month is noise that the one older month actually
+/// needs.
+String formatMonthHeader(BuildContext context, DateTime month) {
+  final locale = Localizations.localeOf(context).toLanguageTag();
+  if (month.year == DateTime.now().year) {
+    return DateFormat.MMMM(locale).format(month);
+  }
+  return DateFormat.yMMMM(locale).format(month);
+}
+
 /// Whether [message] is the first one of its calendar day, given the message
 /// before it in the conversation.
 ///

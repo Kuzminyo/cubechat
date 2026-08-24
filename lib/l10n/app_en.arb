@@ -602,6 +602,8 @@
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search chats by name, or any message by its words.",
   "chatsSearchEmpty": "Nothing matches that",
+  "chatCalendarTitle": "By date",
+  "chatCalendarEmpty": "Nothing has been said here yet",
   "chatsSearchChatsSection": "Chats",
   "chatsSearchMessagesSection": "Messages",
   "contactProfileViewInChat": "View in chat",

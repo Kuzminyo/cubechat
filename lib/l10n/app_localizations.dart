@@ -2354,6 +2354,18 @@ abstract class AppLocalizations {
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
 
+  /// No description provided for @chatCalendarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'By date'**
+  String get chatCalendarTitle;
+
+  /// No description provided for @chatCalendarEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing has been said here yet'**
+  String get chatCalendarEmpty;
+
   /// No description provided for @chatsSearchChatsSection.
   ///
   /// In en, this message translates to:

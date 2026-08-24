@@ -552,6 +552,8 @@
     "chatsSearchClear":  "Очистити",
     "chatsSearchStartHint":  "Шукайте чати за назвою або будь-яке повідомлення за словами.",
     "chatsSearchEmpty":  "Нічого не знайдено",
+    "chatCalendarTitle":  "За датами",
+    "chatCalendarEmpty":  "Тут ще нічого не сказано",
     "chatsSearchChatsSection":  "Чати",
     "chatsSearchMessagesSection":  "Повідомлення",
     "contactProfileViewInChat":  "Переглянути в чаті",
