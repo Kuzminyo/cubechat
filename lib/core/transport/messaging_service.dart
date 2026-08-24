@@ -17,6 +17,7 @@ import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
+import '../../features/chat/data/message_farewell.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
@@ -3186,8 +3187,31 @@ class MessagingService {
     final target = TransportEnvelope.hashHex(del.targetMsgId);
     final messages = _ref.read(messagesControllerProvider.notifier);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    messages.deleteFromPeer(canonical, target);
-    if (canonical != peerId) messages.deleteFromPeer(peerId, target);
+
+    // Play it out rather than snap it away. This is the deletion nobody asked
+    // for and the one most likely to be watched happening, so a row that
+    // simply ceases to exist between two frames reads as the app losing a
+    // message rather than as the sender withdrawing it.
+    //
+    // The wire carries a hash, not a local id, so the row has to be found
+    // before it can be marked; if it is not here, there is nothing to animate
+    // and the delete still runs.
+    void remove() {
+      messages.deleteFromPeer(canonical, target);
+      if (canonical != peerId) messages.deleteFromPeer(peerId, target);
+    }
+
+    final stored = _ref.read(messagesControllerProvider);
+    final localId = [
+      ...?stored[canonical],
+      if (canonical != peerId) ...?stored[peerId],
+    ].where((m) => m.wireId == target).map((m) => m.id).toSet();
+
+    unawaited(
+      _ref
+          .read(messageFarewellProvider(canonical).notifier)
+          .dismiss(localId, remove),
+    );
   }
 
   /// An inbound edit from a peer, applied to their own message only.

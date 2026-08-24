@@ -47,6 +47,7 @@ import '../../stickers/data/sticker_library.dart';
 import '../data/composer_panel.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
+import '../data/message_farewell.dart';
 import '../data/message_selection.dart';
 import '../data/message_visibility.dart';
 import '../data/message_reply_target.dart';
@@ -1546,13 +1547,25 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
     if (choice == 'everyone') {
       final messaging = ref.read(messagingServiceProvider);
-      for (final m in picked) {
-        await messaging.sendDeleteForEveryone(widget.chatId, m.wireId!);
-      }
+      await ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+        ids,
+        () async {
+          for (final m in picked) {
+            await messaging.sendDeleteForEveryone(widget.chatId, m.wireId!);
+          }
+        },
+      );
     } else {
-      ref
-          .read(messagesControllerProvider.notifier)
-          .deleteManyLocal(widget.chatId, ids);
+      // Played out before it is written away — thirty rows disappearing
+      // between two frames is the case this matters most for.
+      unawaited(
+        ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+              ids,
+              () => ref
+                  .read(messagesControllerProvider.notifier)
+                  .deleteManyLocal(widget.chatId, ids),
+            ),
+      );
     }
     if (!mounted) return;
     ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
@@ -1628,6 +1641,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             .watch(conversationSettingsControllerProvider)[widget.chatId]
             ?.copyingRestricted ??
         false;
+    // Messages the list is currently playing out. Read once here rather than
+    // per row, like everything else the itemBuilder needs.
+    final farewell = ref.watch(messageFarewellProvider(widget.chatId));
     final matches = messagesMatchingQuery(messages, _searchQuery);
     final selectedIndex = matches.isEmpty
         ? 0
@@ -1734,13 +1750,25 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   // in it, which is where the batch began.
                   final index = messages.length - 1 - i;
                   final previous = index > 0 ? messages[index - 1] : null;
-                  if (!startsNewDay(m.sentAt, previous?.sentAt)) return bubble;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _DaySeparator(day: m.sentAt),
-                      bubble,
-                    ],
+                  // Wrapped last, so a deletion plays out the whole row —
+                  // the bubble and the day separator it may have opened —
+                  // rather than collapsing the bubble inside a heading that
+                  // stays behind for a frame with nothing under it.
+                  final leaving = farewell.contains(m.id) ||
+                      (album?.every((photo) => farewell.contains(photo.id)) ??
+                          false);
+                  if (!startsNewDay(m.sentAt, previous?.sentAt)) {
+                    return _MessageFarewellRow(leaving: leaving, child: bubble);
+                  }
+                  return _MessageFarewellRow(
+                    leaving: leaving,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _DaySeparator(day: m.sentAt),
+                        bubble,
+                      ],
+                    ),
                   );
                 },
                   ),
@@ -1996,6 +2024,69 @@ class _DaySeparator extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A row on its way out: it shrinks, fades and gives up its height, and the
+/// conversation below it slides up to close the gap.
+///
+/// Told by a flag rather than by disappearing, because a widget cannot animate
+/// its own removal — by the time the list rebuilds without it there is nothing
+/// left to animate. See [MessageFarewell], which holds the flag for exactly as
+/// long as this takes.
+///
+/// The scale is slight on purpose. A row that shrinks to nothing draws the eye
+/// to the vanishing rather than to the conversation closing over it, which is
+/// the opposite of what deleting something should feel like.
+class _MessageFarewellRow extends StatefulWidget {
+  const _MessageFarewellRow({required this.leaving, required this.child});
+
+  final bool leaving;
+  final Widget child;
+
+  @override
+  State<_MessageFarewellRow> createState() => _MessageFarewellRowState();
+}
+
+class _MessageFarewellRowState extends State<_MessageFarewellRow>
+    with SingleTickerProviderStateMixin {
+  /// 1 is present, 0 is gone. Starts where this row already is, so a list that
+  /// rebuilds mid-animation does not restart it.
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: MessageFarewell.duration,
+    value: widget.leaving ? 0 : 1,
+  );
+
+  @override
+  void didUpdateWidget(covariant _MessageFarewellRow old) {
+    super.didUpdateWidget(old);
+    if (widget.leaving && !old.leaving) _c.reverse();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.leaving && _c.value == 1) return widget.child;
+    final curve = CurvedAnimation(parent: _c, curve: Curves.easeInCubic);
+    return SizeTransition(
+      sizeFactor: curve,
+      // Collapse towards the top, so the messages below rise into the space
+      // rather than the row sliding down out of its own slot.
+      axisAlignment: -1,
+      child: FadeTransition(
+        opacity: curve,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1).animate(curve),
+          child: widget.child,
         ),
       ),
     );

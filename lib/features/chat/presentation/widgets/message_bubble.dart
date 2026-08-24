@@ -26,6 +26,7 @@ import '../../../chats/models/chat.dart';
 import '../../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../data/chat_navigation.dart';
 import '../../data/media_send_progress.dart';
+import '../../data/message_farewell.dart';
 import '../../data/message_selection.dart';
 import '../../data/conversation_settings_controller.dart';
 import '../../data/message_edit_target.dart';
@@ -909,18 +910,30 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     );
 
     if (choice == 'me') {
-      ref
-          .read(messagesControllerProvider.notifier)
-          .deleteLocal(widget.chatId, m.id);
+      unawaited(
+        ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+          {m.id},
+          () => ref
+              .read(messagesControllerProvider.notifier)
+              .deleteLocal(widget.chatId, m.id),
+        ),
+      );
       // Its tag goes with it, so a deleted note leaves no orphan in the filter
       // bar matching nothing.
       if (isSavedChat(widget.chatId)) {
         unawaited(ref.read(savedTagsProvider.notifier).forget(m.id));
       }
     } else if (choice == 'everyone') {
-      await ref
-          .read(messagingServiceProvider)
-          .sendDeleteForEveryone(widget.chatId, m.wireId!);
+      // Marked here, where the message id is known: the service works in wire
+      // ids and would have to look this one up to say the same thing.
+      await ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
+        {m.id},
+        () => unawaited(
+          ref
+              .read(messagingServiceProvider)
+              .sendDeleteForEveryone(widget.chatId, m.wireId!),
+        ),
+      );
     }
   }
 
