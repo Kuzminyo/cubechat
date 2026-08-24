@@ -372,6 +372,10 @@ class ConversationSettingsController
   }
 
   Future<void> pruneExpired() async {
+    // Messages with a deadline of their own go first, and in every chat rather
+    // than only in the ones with a conversation-wide rule — a timer put on one
+    // line has nothing to do with whether the chat has a setting.
+    ref.read(messagesControllerProvider.notifier).pruneExpiredMessages();
     for (final entry in state.entries) {
       await _pruneChat(
         entry.key,

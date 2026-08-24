@@ -492,6 +492,42 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     return true;
   }
 
+  /// Put a deadline on one message, or take it off.
+  void setExpiry(String peerId, String messageId, DateTime? at) {
+    final current = state[peerId];
+    if (current == null) return;
+    final i = current.indexWhere((m) => m.id == messageId);
+    if (i < 0) return;
+    final list = [...current];
+    list[i] = list[i].copyWith(expiresAt: at, clearExpiry: at == null);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
+  /// Drop every message whose own deadline has passed, in every chat.
+  ///
+  /// Separate from [deleteBefore], which answers a rule about the whole
+  /// conversation. This one is per message and therefore has to walk them —
+  /// cheaply, since the common case is that no message in the app has a
+  /// deadline at all and the scan stops at the first `expiresAt` it fails to
+  /// find.
+  void pruneExpiredMessages() {
+    final now = DateTime.now();
+    final touched = <String, List<Message>>{};
+    for (final entry in state.entries) {
+      final kept = [
+        for (final m in entry.value)
+          if (m.expiresAt == null || m.expiresAt!.isAfter(now)) m,
+      ];
+      if (kept.length != entry.value.length) touched[entry.key] = kept;
+    }
+    if (touched.isEmpty) return;
+    state = {...state, ...touched};
+    for (final entry in touched.entries) {
+      _persist(entry.key, entry.value);
+    }
+  }
+
   /// Mark a voice note as heard on this device.
   ///
   /// Idempotent and silent when there is nothing to change: playback starts
@@ -717,6 +753,8 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
         if (m.audioLevels != null) 'audioLevels': m.audioLevels,
         if (m.voicePlayed) 'voicePlayed': true,
+        if (m.expiresAt != null)
+          'expiresAtMs': m.expiresAt!.millisecondsSinceEpoch,
         if (m.filePath != null) 'filePath': m.filePath,
         if (m.fileName != null) 'fileName': m.fileName,
         if (m.fileBytes != null) 'fileBytes': m.fileBytes,
@@ -807,6 +845,9 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           ?.map((dynamic v) => (v as num).toInt())
           .toList(growable: false),
       voicePlayed: m['voicePlayed'] as bool? ?? false,
+      expiresAt: m['expiresAtMs'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(m['expiresAtMs'] as int)
+          : null,
       filePath: MediaPaths.repairOrNull(m['filePath'] as String?),
       fileName: m['fileName'] as String?,
       fileBytes: m['fileBytes'] as int?,

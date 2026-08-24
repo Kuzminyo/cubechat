@@ -47,6 +47,7 @@ import '../../models/message.dart';
 import '../chat_media_gallery_screen.dart';
 import '../view_once_media_screen.dart';
 import '../../../../core/util/media_storage.dart';
+import 'auto_delete_picker.dart';
 import 'file_bubble.dart';
 import 'photo_flight.dart';
 import 'poll_bubble.dart';
@@ -575,6 +576,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 ? _savedTagText(uk: 'Тег', en: 'Tag')
                 : _savedTagText(uk: 'Прибрати тег', en: 'Remove tag'),
           ),
+        // A deadline on this one line, where auto-delete is a rule for the
+        // whole conversation. Local, like auto-delete: their copy is theirs.
+        SpotlightAction(
+          id: 'timer',
+          icon: Icons.hourglass_bottom_rounded,
+          label: widget.message.expiresAt == null
+              ? t.chatTimerAction
+              : t.chatTimerRemove,
+        ),
         SpotlightAction(
           id: 'delete',
           icon: Icons.delete_outline_rounded,
@@ -601,6 +611,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await _reactFromPicker();
     } else if (picked.startsWith('r:')) {
       _toggleReaction(picked.substring(2));
+    } else if (picked == 'timer') {
+      await _promptTimer();
     } else if (picked == 'reply') {
       _startReply();
     } else if (picked == 'copy') {
@@ -820,6 +832,34 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           ? t.chatForwardSent(chosen.first.peerName)
           : t.chatForwardSentCount(chosen.length),
       icon: Icons.shortcut_rounded,
+      tone: ToastTone.success,
+    );
+  }
+
+  /// Put a deadline on this one message, or take it off.
+  ///
+  /// Reuses the auto-delete picker: the choice is the same shape — a duration
+  /// with a handful of shortcuts — and a second picker offering the same list
+  /// in a different order is how two controls start disagreeing.
+  Future<void> _promptTimer() async {
+    final t = AppLocalizations.of(context);
+    final messages = ref.read(messagesControllerProvider.notifier);
+    if (widget.message.expiresAt != null) {
+      messages.setExpiry(widget.chatId, widget.message.id, null);
+      return;
+    }
+    final chosen = await showAutoDeletePicker(context, ChatAutoDelete.off);
+    if (chosen == null || !chosen.isOn || !mounted) return;
+    messages.setExpiry(
+      widget.chatId,
+      widget.message.id,
+      DateTime.now().add(chosen.duration!),
+    );
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      t.chatTimerSet(formatAutoDelete(t, chosen)),
+      icon: Icons.hourglass_bottom_rounded,
       tone: ToastTone.success,
     );
   }

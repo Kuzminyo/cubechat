@@ -57,6 +57,7 @@ class Message {
     this.audioDurationMs,
     this.audioLevels,
     this.voicePlayed = false,
+    this.expiresAt,
     this.filePath,
     this.fileName,
     this.fileBytes,
@@ -195,6 +196,19 @@ class Message {
   final String? audioMime;
   final int? audioDurationMs;
 
+  /// When this one message stops being kept, or null for "as long as the
+  /// chat keeps it".
+  ///
+  /// Auto-delete is a rule for a whole conversation and this is a rule for one
+  /// line in it — the sentence you would rather not leave lying around, in a
+  /// chat you otherwise want whole.
+  ///
+  /// Local, like auto-delete itself: nothing about either goes on the wire, so
+  /// two people in the same chat each keep their own copy on their own terms.
+  /// It is a note to this device, not a demand on theirs — and a demand is
+  /// what it could never honestly be, since a copy that has arrived is theirs.
+  final DateTime? expiresAt;
+
   /// Whether this voice note has been listened to on this device.
   ///
   /// Local and never on the wire: it answers "have *I* heard this yet", which
@@ -303,6 +317,8 @@ class Message {
     int? audioDurationMs,
     List<int>? audioLevels,
     bool? voicePlayed,
+    DateTime? expiresAt,
+    bool clearExpiry = false,
     bool? forwardSecret,
     Map<String, Set<String>>? reactions,
     Map<String, ChannelRead>? readBy,
@@ -336,6 +352,7 @@ class Message {
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
       audioLevels: audioLevels ?? this.audioLevels,
       voicePlayed: voicePlayed ?? this.voicePlayed,
+      expiresAt: clearExpiry ? null : (expiresAt ?? this.expiresAt),
       forwardSecret: forwardSecret ?? this.forwardSecret,
       wireId: wireId,
       authorName: authorName,
