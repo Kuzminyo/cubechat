@@ -926,6 +926,47 @@ class AppLocalizationsEn extends AppLocalizations {
       'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.';
 
   @override
+  String get chatTimerAction => 'Timer';
+
+  @override
+  String get chatTimerRemove => 'Remove timer';
+
+  @override
+  String get chatTimerTitle => 'Delete this message after';
+
+  @override
+  String chatTimerSet(String time) {
+    return 'This message goes in $time';
+  }
+
+  @override
+  String get chatTimerLocalHint => 'On this device only — their copy is theirs';
+
+  @override
+  String get contactTagAction => 'Label';
+
+  @override
+  String get contactTagRemove => 'Remove label';
+
+  @override
+  String get contactTagTitle => 'Pick a label';
+
+  @override
+  String get contactTagAll => 'All';
+
+  @override
+  String get quietHoursTitle => 'Quiet hours';
+
+  @override
+  String get quietHoursHint => 'Messages still arrive; the phone stays quiet';
+
+  @override
+  String get quietHoursFrom => 'From';
+
+  @override
+  String get quietHoursTo => 'Until';
+
+  @override
   String get appLockTitle => 'App lock';
 
   @override

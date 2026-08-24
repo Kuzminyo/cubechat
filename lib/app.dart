@@ -11,6 +11,7 @@ import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
 import 'features/profile/data/app_lock_controller.dart';
+import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
@@ -403,6 +404,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // (see ThemeController for why), so widgets already built are holding the
     // old colours — changing the key throws the tree away and builds it again.
     final palette = ref.watch(themeControllerProvider);
+    // Built here so its hook into the notification service exists from launch.
+    // Nothing else reads it until somebody opens the settings screen, and a
+    // quiet-hours setting that only takes effect after you go and look at it
+    // is not a setting.
+    ref.watch(quietHoursControllerProvider);
     return KeyedSubtree(
       key: ValueKey('palette-${palette.id}'),
       child: MaterialApp.router(

@@ -34,6 +34,7 @@ import 'avatar_screen.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/app_lock_controller.dart';
 import '../data/nav_bar_controller.dart';
+import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
@@ -231,6 +232,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupApp,
           summary: t.profileVersion(appVersion),
           children: [
+            const _QuietHoursRow(),
             _LanguageRow(locale: locale),
             const _StorageRow(),
             // Diagnostics above the signature, not below it. The name-and-
@@ -826,6 +828,133 @@ Future<String?> _askForCode(
       ),
     ),
   ).whenComplete(controller.dispose);
+}
+
+/// The hours in which the phone stays quiet.
+///
+/// A switch and, once it is on, the two ends of the night. Muting is per chat
+/// and answers "not this person"; this answers "not now", which in a mesh app
+/// matters more than most — messages arrive whenever somebody wanders into
+/// range, and that is as likely to be three in the morning as three in the
+/// afternoon.
+class _QuietHoursRow extends ConsumerWidget {
+  const _QuietHoursRow();
+
+  static String _clock(BuildContext context, int minutes) =>
+      TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
+
+  Future<void> _pick(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool start,
+  }) async {
+    final q = ref.read(quietHoursControllerProvider);
+    final current = start ? q.fromMinutes : q.toMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+    final minutes = picked.hour * 60 + picked.minute;
+    await ref.read(quietHoursControllerProvider.notifier).setWindow(
+          from: start ? minutes : q.fromMinutes,
+          to: start ? q.toMinutes : minutes,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final q = ref.watch(quietHoursControllerProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SettingSwitch(
+          icon: q.enabled
+              ? Icons.nightlight_round
+              : Icons.notifications_active_rounded,
+          title: t.quietHoursTitle,
+          hint: t.quietHoursHint,
+          value: q.enabled,
+          onChanged: (on) => unawaited(
+            ref.read(quietHoursControllerProvider.notifier).setEnabled(on),
+          ),
+        ),
+        // The two ends only when they mean something. A pair of time buttons
+        // under an off switch is furniture.
+        if (q.enabled) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _ClockButton(
+                  label: t.quietHoursFrom,
+                  value: _clock(context, q.fromMinutes),
+                  onTap: () => unawaited(_pick(context, ref, start: true)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ClockButton(
+                  label: t.quietHoursTo,
+                  value: _clock(context, q.toMinutes),
+                  onTap: () => unawaited(_pick(context, ref, start: false)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ClockButton extends StatelessWidget {
+  const _ClockButton({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.glassFill,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.glass(0.14)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: AppMenu.rowSubtitle,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _PrivacyCard extends ConsumerWidget {

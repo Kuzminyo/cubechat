@@ -22,6 +22,7 @@ import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/peers/data/contact_aliases_controller.dart';
+import '../../features/peers/data/contact_tags_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/onboarding/data/onboarding_controller.dart';
 import '../../features/peers/data/typing_controller.dart';
@@ -29,6 +30,7 @@ import '../../features/peers/data/presence_controller.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
+import '../../features/profile/data/quiet_hours_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -66,6 +68,8 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(peerAvatarsControllerProvider.notifier).clear();
   // What you called people is as much your data as who they are.
   await ref.read(contactAliasesControllerProvider.notifier).clear();
+  // And what you labelled them, which is the same kind of private note.
+  await ref.read(contactTagsControllerProvider.notifier).clear();
   await ref.read(channelAvatarsControllerProvider.notifier).clear();
   await ref.read(channelDescriptionsControllerProvider.notifier).clear();
   await ref.read(channelRosterControllerProvider.notifier).clear();
@@ -112,6 +116,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   // A wiped install is indistinguishable from a fresh one, and a fresh one
   // does not ask for a code somebody set on the identity that just went.
   await ref.read(appLockControllerProvider.notifier).reset();
+  await ref.read(quietHoursControllerProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
 

@@ -385,6 +385,24 @@
     "profileReadReceiptsOnHint":  "Відправник бачить, що ви прочитали",
     "profileReadReceiptsOffHint":  "Ви не надсилаєте час прочитання, але бачите його від інших",
     "profilePrivacyExplainer":  "Останній візит працює в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Час прочитання керує лише тим, що надсилаєте ви. На доставку повідомлень це не впливає — вони йдуть так само.",
+    "chatTimerAction":  "Таймер",
+    "chatTimerRemove":  "Прибрати таймер",
+    "chatTimerTitle":  "Видалити це повідомлення через",
+    "chatTimerSet":  "Повідомлення зникне через {time}",
+    "@chatTimerSet":  {
+      "placeholders":  {
+        "time":  { "type":  "String" }
+      }
+    },
+    "chatTimerLocalHint":  "Лише на цьому пристрої — їхня копія належить їм",
+    "contactTagAction":  "Мітка",
+    "contactTagRemove":  "Прибрати мітку",
+    "contactTagTitle":  "Оберіть мітку",
+    "contactTagAll":  "Усі",
+    "quietHoursTitle":  "Тихі години",
+    "quietHoursHint":  "Повідомлення приходять, телефон мовчить",
+    "quietHoursFrom":  "З",
+    "quietHoursTo":  "До",
     "appLockTitle":  "Замок застосунку",
     "appLockHint":  "Питати код під час відкриття",
     "appLockPrompt":  "Введіть код",

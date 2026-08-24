@@ -125,6 +125,18 @@ class NotificationService {
   /// sender's alerts under one MessagingStyle banner; [senderId] seeds the
   /// avatar (defaults to [threadKey]); [isGroup] renders channel alerts as a
   /// group conversation titled after the channel.
+  /// Whether the phone should stay quiet at a given moment.
+  ///
+  /// A function rather than a flag, and set from outside: this service is
+  /// called from the transport with no widget tree and no Riverpod around it,
+  /// and the window it has to answer against is a user setting. See
+  /// `QuietHoursController`, which installs it.
+  ///
+  /// Silences the notification only. The message is delivered, stored and
+  /// unread in the morning either way — a quiet setting that dropped messages
+  /// would be a bug wearing a setting's clothes.
+  bool Function(DateTime)? quietNow;
+
   Future<void> showMessage({
     required String threadKey,
     required String title,
@@ -134,6 +146,9 @@ class NotificationService {
   }) async {
     if (!_ready) await init();
     if (!_ready) return;
+    // Quiet hours. The thread is not even opened: nothing here is worth doing
+    // for a banner that will not be raised.
+    if (quietNow?.call(DateTime.now()) ?? false) return;
 
     final thread = _threads.putIfAbsent(threadKey, () => _Thread());
     // Build (once) a stable avatar for this sender.

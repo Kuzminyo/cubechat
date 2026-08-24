@@ -1718,6 +1718,84 @@ abstract class AppLocalizations {
   /// **'Last seen cuts both ways: hide your own status and you stop seeing everyone else\'s. Read receipts only control what you send. Message delivery is untouched.'**
   String get profilePrivacyExplainer;
 
+  /// No description provided for @chatTimerAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Timer'**
+  String get chatTimerAction;
+
+  /// No description provided for @chatTimerRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove timer'**
+  String get chatTimerRemove;
+
+  /// No description provided for @chatTimerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this message after'**
+  String get chatTimerTitle;
+
+  /// No description provided for @chatTimerSet.
+  ///
+  /// In en, this message translates to:
+  /// **'This message goes in {time}'**
+  String chatTimerSet(String time);
+
+  /// No description provided for @chatTimerLocalHint.
+  ///
+  /// In en, this message translates to:
+  /// **'On this device only — their copy is theirs'**
+  String get chatTimerLocalHint;
+
+  /// No description provided for @contactTagAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Label'**
+  String get contactTagAction;
+
+  /// No description provided for @contactTagRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove label'**
+  String get contactTagRemove;
+
+  /// No description provided for @contactTagTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a label'**
+  String get contactTagTitle;
+
+  /// No description provided for @contactTagAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get contactTagAll;
+
+  /// No description provided for @quietHoursTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours'**
+  String get quietHoursTitle;
+
+  /// No description provided for @quietHoursHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages still arrive; the phone stays quiet'**
+  String get quietHoursHint;
+
+  /// No description provided for @quietHoursFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get quietHoursFrom;
+
+  /// No description provided for @quietHoursTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Until'**
+  String get quietHoursTo;
+
   /// No description provided for @appLockTitle.
   ///
   /// In en, this message translates to:

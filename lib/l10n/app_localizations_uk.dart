@@ -929,6 +929,48 @@ class AppLocalizationsUk extends AppLocalizations {
       'Останній візит працює в обидва боки: сховавши свій статус, ви перестаєте бачити чужий. Час прочитання керує лише тим, що надсилаєте ви. На доставку повідомлень це не впливає — вони йдуть так само.';
 
   @override
+  String get chatTimerAction => 'Таймер';
+
+  @override
+  String get chatTimerRemove => 'Прибрати таймер';
+
+  @override
+  String get chatTimerTitle => 'Видалити це повідомлення через';
+
+  @override
+  String chatTimerSet(String time) {
+    return 'Повідомлення зникне через $time';
+  }
+
+  @override
+  String get chatTimerLocalHint =>
+      'Лише на цьому пристрої — їхня копія належить їм';
+
+  @override
+  String get contactTagAction => 'Мітка';
+
+  @override
+  String get contactTagRemove => 'Прибрати мітку';
+
+  @override
+  String get contactTagTitle => 'Оберіть мітку';
+
+  @override
+  String get contactTagAll => 'Усі';
+
+  @override
+  String get quietHoursTitle => 'Тихі години';
+
+  @override
+  String get quietHoursHint => 'Повідомлення приходять, телефон мовчить';
+
+  @override
+  String get quietHoursFrom => 'З';
+
+  @override
+  String get quietHoursTo => 'До';
+
+  @override
   String get appLockTitle => 'Замок застосунку';
 
   @override

@@ -421,6 +421,24 @@
   "profileReadReceiptsOnHint": "Senders see when you've read them",
   "profileReadReceiptsOffHint": "You stop sending your read time, but still see theirs",
   "profilePrivacyExplainer": "Last seen cuts both ways: hide your own status and you stop seeing everyone else's. Read receipts only control what you send. Message delivery is untouched.",
+  "chatTimerAction": "Timer",
+  "chatTimerRemove": "Remove timer",
+  "chatTimerTitle": "Delete this message after",
+  "chatTimerSet": "This message goes in {time}",
+  "@chatTimerSet": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "chatTimerLocalHint": "On this device only — their copy is theirs",
+  "contactTagAction": "Label",
+  "contactTagRemove": "Remove label",
+  "contactTagTitle": "Pick a label",
+  "contactTagAll": "All",
+  "quietHoursTitle": "Quiet hours",
+  "quietHoursHint": "Messages still arrive; the phone stays quiet",
+  "quietHoursFrom": "From",
+  "quietHoursTo": "Until",
   "appLockTitle": "App lock",
   "appLockHint": "Ask for a code when the app is opened",
   "appLockPrompt": "Enter your code",
