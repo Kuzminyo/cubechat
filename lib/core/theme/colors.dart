@@ -26,6 +26,21 @@ abstract final class AppColors {
     colors: [brandPrimary, brandSecondary],
   );
 
+  /// The wash behind letters a search has found, and the ink to write them in.
+  ///
+  /// Deliberately not the brand colour and deliberately **not** rewritten by
+  /// `ThemeController`. A found word has one job — to be seen from across the
+  /// screen — and a green mark on this green interface disappeared into it,
+  /// which was the report. Amber is the one hue nothing else here uses, so it
+  /// reads as "this is what you were looking for" rather than as decoration,
+  /// and it stays legible whatever palette the user has chosen.
+  ///
+  /// Opaque, with dark ink on top: a translucent mark takes the colour of
+  /// whatever bubble it lands on, so the same highlight was strong on one
+  /// message and invisible on the next.
+  static const Color searchHighlight = Color(0xFFFFC53D);
+  static const Color searchHighlightInk = Color(0xFF10231A);
+
   /// What "white" means for a pane of glass under the current palette.
   ///
   /// Every surface in the app is white at some low opacity over the aurora, and

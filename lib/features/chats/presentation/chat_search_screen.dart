@@ -382,8 +382,9 @@ class _MessageHitTile extends StatelessWidget {
     final snippet = messageHitSnippet(hit.message, query);
     final body = TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5);
     final marked = body.copyWith(
-      color: AppColors.textOnGlass,
-      backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.30),
+      color: AppColors.searchHighlightInk,
+      backgroundColor: AppColors.searchHighlight,
+      fontWeight: FontWeight.w600,
     );
 
     // Built from the offsets the search returned rather than by searching the

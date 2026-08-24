@@ -114,8 +114,15 @@ class _MentionTextState extends State<MentionText> {
       // already coloured and a link is already coloured and underlined, and a
       // third colour competing with those is how a highlight ends up invisible
       // on exactly the words it was asked to point at.
-      backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.30),
-      color: AppColors.textOnGlass,
+      //
+      // Amber and opaque — see [AppColors.searchHighlight]. The first attempt
+      // was the brand green at 30%, which on this green interface was a mark
+      // you had to already know the position of to see.
+      backgroundColor: AppColors.searchHighlight,
+      color: AppColors.searchHighlightInk,
+      fontWeight: FontWeight.w600,
+      // A link keeps its underline; the wash must not add one of its own.
+      decoration: TextDecoration.none,
     );
 
     /// Adds `text[start:end)` in [style], split so the matched letters carry
