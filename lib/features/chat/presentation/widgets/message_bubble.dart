@@ -951,6 +951,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final highlighted =
         ref.watch(chatHighlightProvider(widget.chatId)) == message.id;
 
+    // The term to mark inside this bubble's own words. Watched rather than
+    // passed in, so a message that is not text — a photo, a voice note — costs
+    // nothing but the subscription.
+    final searchQuery = ref.watch(chatSearchQueryProvider(widget.chatId));
+
     // While a selection is running the whole row becomes a checkbox: a tap
     // ticks instead of doing whatever that bubble's tap normally does (open a
     // photo, play a voice note), because a mode where some taps select and
@@ -1167,7 +1172,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                               ? photoBubbleWidth(context)
                               : _kAlbumWidth,
                         ),
-                        child: MentionText(caption),
+                        child: MentionText(caption, highlight: searchQuery),
                       ),
                     ),
                 ] else if (message.kind == MessageKind.audio)
@@ -1255,7 +1260,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     onTap: () => _openSharedContact(sharedContact),
                   )
                 else
-                  MentionText(message.text),
+                  MentionText(message.text, highlight: searchQuery),
                 if (!metaOnMedia) ...[
                   if (!photo) const SizedBox(height: 4),
                   // Reactions and the clock on one line, inside the bubble.

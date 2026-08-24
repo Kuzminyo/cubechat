@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/util/debug_log.dart';
+import '../../domain/message_search.dart';
 
 /// Renders `@name` tokens and web links distinctly while preserving the message
 /// verbatim.
@@ -12,9 +13,17 @@ import '../../../../core/util/debug_log.dart';
 /// clients and searchable like any other words — nothing here changes what was
 /// sent, only what it looks like and what a tap on it does.
 class MentionText extends StatefulWidget {
-  const MentionText(this.text, {super.key});
+  const MentionText(this.text, {super.key, this.highlight = ''});
 
   final String text;
+
+  /// The search query being looked at right now, or empty when none is.
+  ///
+  /// Marking the matched letters is the half of search that was missing: the
+  /// conversation put a bar beside the message it had landed on and left the
+  /// reader to find the word themselves, in a paragraph where it might appear
+  /// three times or once, near the end.
+  final String highlight;
 
   @override
   State<MentionText> createState() => _MentionTextState();
@@ -93,45 +102,103 @@ class _MentionTextState extends State<MentionText> {
     final spans = <TextSpan>[];
     var cursor = 0;
 
+    // Where the search term sits, in offsets into this very string — computed
+    // once for the whole message rather than per span, because the folding it
+    // has to see through spans the whole message too.
+    final marks = widget.highlight.isEmpty
+        ? const <({int start, int end})>[]
+        : messageHighlightRanges(widget.text, widget.highlight);
+
+    final marked = base.copyWith(
+      // A wash behind the letters rather than a colour on them: a mention is
+      // already coloured and a link is already coloured and underlined, and a
+      // third colour competing with those is how a highlight ends up invisible
+      // on exactly the words it was asked to point at.
+      backgroundColor: AppColors.brandPrimary.withValues(alpha: 0.30),
+      color: AppColors.textOnGlass,
+    );
+
+    /// Adds `text[start:end)` in [style], split so the matched letters carry
+    /// the wash. [recognizer] is repeated on every piece, so a link stays one
+    /// tap target even when the search cuts it in two.
+    void add(
+      int start,
+      int end, {
+      TextStyle? style,
+      TapGestureRecognizer? recognizer,
+    }) {
+      if (end <= start) return;
+      var at = start;
+      for (final mark in marks) {
+        if (mark.end <= at || mark.start >= end) continue;
+        final from = mark.start < at ? at : mark.start;
+        final to = mark.end > end ? end : mark.end;
+        if (from > at) {
+          spans.add(
+            TextSpan(
+              text: widget.text.substring(at, from),
+              style: style,
+              recognizer: recognizer,
+            ),
+          );
+        }
+        spans.add(
+          TextSpan(
+            text: widget.text.substring(from, to),
+            style: (style ?? base).merge(marked),
+            recognizer: recognizer,
+          ),
+        );
+        at = to;
+      }
+      if (at < end) {
+        spans.add(
+          TextSpan(
+            text: widget.text.substring(at, end),
+            style: style,
+            recognizer: recognizer,
+          ),
+        );
+      }
+    }
+
     for (final match in _token.allMatches(widget.text)) {
       if (match.start > cursor) {
-        spans.add(TextSpan(text: widget.text.substring(cursor, match.start)));
+        add(cursor, match.start);
       }
       final url = match.namedGroup('url');
       if (url != null) {
         final shown = _trimTrailing(url);
         final recognizer = TapGestureRecognizer()..onTap = () => _open(shown);
         _recognizers.add(recognizer);
-        spans.add(TextSpan(
-          text: shown,
+        add(
+          match.start,
+          match.start + shown.length,
           recognizer: recognizer,
           style: base.copyWith(
             color: AppColors.brandPrimary,
             decoration: TextDecoration.underline,
             decorationColor: AppColors.brandPrimary.withValues(alpha: 0.5),
           ),
-        ));
+        );
         // Whatever was trimmed is still part of the message and is drawn as
         // ordinary text, so nothing is lost between what was sent and what is
         // read.
-        if (shown.length < url.length) {
-          spans.add(TextSpan(text: url.substring(shown.length)));
-        }
+        add(match.start + shown.length, match.end);
       } else {
-        spans.add(TextSpan(
-          text: match.group(0),
+        add(
+          match.start,
+          match.end,
           style: base.copyWith(
             color: AppColors.brandSecondary,
             fontWeight: FontWeight.w700,
           ),
-        ));
+        );
       }
       cursor = match.end;
     }
 
-    if (cursor < widget.text.length) {
-      spans.add(TextSpan(text: widget.text.substring(cursor)));
-    }
+    add(cursor, widget.text.length);
     return Text.rich(TextSpan(style: base, children: spans));
   }
 }
