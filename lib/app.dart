@@ -130,24 +130,15 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void _openChat(String chatId) {
     // A channel's id starts with '#', which is the URL fragment delimiter and
     // cannot travel in a path. It has its own route.
-    // `from=notification` so Back lands on the chats list.
-    //
-    // Without it, back from a chat opened this way went wherever the app had
-    // been when it was put away — often the same conversation, which reads as
-    // the back button doing nothing. Coming in from outside the app, the list
-    // is the only sensible thing underneath. The route already understands
-    // this parameter; search has used it for a while.
     final String target;
     if (chatId.startsWith('#')) {
-      target = '${channelRoute(chatId)}'
-          '${channelRoute(chatId).contains('?') ? '&' : '?'}from=notification';
+      target = channelRoute(chatId);
     } else {
       final known = ref.read(knownPeersControllerProvider)[chatId];
       final name =
           (known?.displayName.isNotEmpty ?? false) ? known!.displayName : 'Peer';
       target = '/chat/${Uri.encodeComponent(chatId)}'
-          '?name=${Uri.encodeQueryComponent(name)}'
-          '&from=notification';
+          '?name=${Uri.encodeQueryComponent(name)}';
     }
 
     final current = _router.routerDelegate.currentConfiguration.uri;
@@ -159,12 +150,21 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         // landed you in the chat you were trying to leave.
         return;
       case ChatOpenAction.replace:
-        // A *different* conversation, with one already on screen. Swapping
-        // rather than stacking is what makes Back mean "the list of chats"
-        // instead of walking you through everybody who happened to write while
-        // the app was in your pocket.
-        _router.pushReplacement(target);
       case ChatOpenAction.push:
+        // Put the chat list underneath, then push onto it.
+        //
+        // Back from a chat opened this way used to go wherever the app had
+        // been when it was put away — often the same conversation, which reads
+        // as the back button doing nothing. The first fix said `from=` and let
+        // the route redirect Back to the list, and that was the wrong lever:
+        // it makes the route claim it may not pop, and Flutter switches the
+        // back *drag* off entirely for such a route. The gesture stopped
+        // working, which is a worse bug than the one being fixed.
+        //
+        // A real stack needs no claim. `/chats` first, the conversation on top
+        // of it: Back and the drag both do the ordinary thing, and the
+        // ordinary thing is now the right one.
+        _router.go('/chats');
         _router.push(target);
     }
   }

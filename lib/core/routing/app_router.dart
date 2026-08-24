@@ -181,12 +181,7 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           final peerId = state.pathParameters['peerId']!;
           final peerLabel = state.uri.queryParameters['name'] ?? 'Peer';
           final initialMessageId = state.uri.queryParameters['message'];
-          // Search and a notification both land here with nothing sensible
-          // underneath: the first would go back into its own results, the
-          // second into whatever the app happened to be showing when it was
-          // put away. Both should go back to the chats.
-          final from = state.uri.queryParameters['from'];
-          final returnToChats = from == 'search' || from == 'notification';
+          final returnToChats = state.uri.queryParameters['from'] == 'search';
           return fadeSlidePage(
             child: AuroraBackground(
               child: ChatScreen(
@@ -211,12 +206,7 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         pageBuilder: (context, state) {
           final channel = '#${state.pathParameters['name']!}';
           final initialMessageId = state.uri.queryParameters['message'];
-          // Search and a notification both land here with nothing sensible
-          // underneath: the first would go back into its own results, the
-          // second into whatever the app happened to be showing when it was
-          // put away. Both should go back to the chats.
-          final from = state.uri.queryParameters['from'];
-          final returnToChats = from == 'search' || from == 'notification';
+          final returnToChats = state.uri.queryParameters['from'] == 'search';
           return fadeSlidePage(
             child: AuroraBackground(
               child: ChatScreen(
