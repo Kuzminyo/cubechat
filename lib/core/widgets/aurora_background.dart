@@ -154,8 +154,18 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   /// core against the UI thread's 5%, which is what this backdrop costs and is
   /// the number to beat if it is ever worth beating.
   ///
-  /// The one outlier left is a 36 ms build frame, which is a cold start doing
-  /// cold-start things and is not this ticker's.
+  /// The cold start was then measured on its own, since that is the half of
+  /// the report this was meant to answer: 0 of 228 frames over 16.7 ms, worst
+  /// frame 16 ms build. Launch costs 63% of a core for its first two seconds —
+  /// Hive opening and decrypting, keys, BLE, relays connecting and already
+  /// publishing — which is finite startup work, not a standing cost; the same
+  /// app settles to 15%.
+  ///
+  /// That also disposes of a guess written here first time round: the 36 ms
+  /// build frame in the reading above is *not* a cold start, because a cold
+  /// start's worst is 16 ms. It happened somewhere in a 4677-frame session and
+  /// has no explanation yet. One frame in 4677 has not earned an investigation,
+  /// but it should not be filed under a cause it does not have either.
   void _startTicker() {
     if (_ticker != null) return;
     _clock.start();
