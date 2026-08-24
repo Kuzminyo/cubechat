@@ -153,7 +153,7 @@ class IosBackgroundRefresh {
       // is exactly how iOS internet messages sat on relays until the user
       // manually opened the app.
       final effectiveWindow = window ?? IosBackgroundRefresh.window;
-      container.read(messagingServiceProvider).wakeRelays();
+      container.read(messagingServiceProvider).wakeRelays(force: true);
       if (effectiveWindow >= mapPresenceMinimumWindow) {
         unawaited(_pokeMapPresence(container, offered));
       }

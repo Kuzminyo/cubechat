@@ -339,7 +339,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // iOS tears the relay sockets down while suspended and nothing was
       // asking them to come back, so a returning iPhone had no relay for up to
       // the two minutes its backoff had grown to.
-      ref.read(messagingServiceProvider).wakeRelays();
+      ref.read(messagingServiceProvider).wakeRelays(force: true);
       ref.read(backgroundModeProvider.notifier).apply();
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the

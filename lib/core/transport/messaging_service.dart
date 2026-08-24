@@ -6715,8 +6715,38 @@ class MessagingService {
   /// Called when the app returns to the foreground. See
   /// [WebSocketNostrRelayClient.wake] for why iOS needs this and Android
   /// mostly does not.
-  void wakeRelays() {
+  /// Last time a wake was actually let through, so one cannot be asked for on
+  /// every keystroke's worth of failure.
+  DateTime? _lastRelayWake;
+
+  /// How close together two wakes may be when something in the app asks for
+  /// one. A resume is [force]d past this; a queued message is not.
+  static const Duration _relayWakeGap = Duration(seconds: 30);
+
+  /// Ask the relays to come back.
+  ///
+  /// [force] for the moments that genuinely change the odds — the app
+  /// returning to the foreground, an iOS background refresh. Those are rare
+  /// and they usually mean the network is different from a moment ago.
+  ///
+  /// Everything else is rate-limited, and that is the whole point of this
+  /// method having a body at all. `wake()` on the client resets the retry
+  /// backoff to two seconds and opens immediately, whatever it had grown to —
+  /// which is correct for a resume and ruinous on a loop. Sending a message
+  /// with no route calls this, so on a phone with no internet every message
+  /// pinned the backoff at its floor: a DNS lookup and a socket attempt to
+  /// every relay, every two seconds, for as long as the user kept typing. The
+  /// backoff grows to two minutes precisely so a dead network is not retried
+  /// all day, and that was being undone message by message.
+  ///
+  /// Reported as the phone getting warm and the app stuttering, and it arrived
+  /// in the same build that first called this from the text path.
+  void wakeRelays({bool force = false}) {
     if (_disposed) return;
+    final now = DateTime.now();
+    final last = _lastRelayWake;
+    if (!force && last != null && now.difference(last) < _relayWakeGap) return;
+    _lastRelayWake = now;
     _relayClient?.wake();
     if (_relayClient?.isConnected == true) {
       nudgeFileQueue();
