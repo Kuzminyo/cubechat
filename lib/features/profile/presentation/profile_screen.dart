@@ -232,7 +232,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           title: t.profileGroupApp,
           summary: t.profileVersion(appVersion),
           children: [
-            const _QuietHoursRow(),
             _LanguageRow(locale: locale),
             const _StorageRow(),
             // Diagnostics above the signature, not below it. The name-and-
@@ -1038,6 +1037,8 @@ class _PrivacyCard extends ConsumerWidget {
               height: 1.35,
             ),
           ),
+          const SizedBox(height: 14),
+          const _QuietHoursRow(),
         ],
       ),
     );
