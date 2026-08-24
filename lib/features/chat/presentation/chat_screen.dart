@@ -21,9 +21,7 @@ import '../../../core/util/audio_trimmer.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/location_service.dart';
 import '../../../core/util/media_storage.dart';
-import '../../../core/transport/shared_contact.dart';
 import '../../../core/transport/shared_location.dart';
-import '../../map/data/map_friend_link.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
@@ -60,6 +58,7 @@ import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
 import '../data/voice_recorder_controller.dart';
+import '../domain/message_search.dart';
 import '../models/message.dart';
 import '../domain/command_processor.dart';
 import '../domain/message_preview.dart';
@@ -126,94 +125,6 @@ ChatRoute resolveChatRoute({
     return (route: route, hops: message.routeHops);
   }
   return (route: fallback, hops: null);
-}
-
-/// The words a search may look inside.
-///
-/// Not [Message.text], which is only words for a text message. A photo keeps
-/// its mime type there, a voice note keeps `audio/aac`, a sticker keeps its
-/// marker, and a shared contact or map pin keeps a base64 blob — so a search
-/// for a single letter matched every photo in the conversation ("image/jpeg"
-/// holds a, e, g, i, m) and every card ever swapped, and landed the reader on
-/// a message the letter is plainly not in. That was the report, and it was
-/// right: those strings are plumbing, not the message.
-///
-/// A sticker answers with the emoji it was filed under, which is the only name
-/// it has and the only thing anybody could search it by.
-String searchableMessageText(Message message) {
-  if (message.isSticker) return message.stickerEmoji ?? '';
-  final parts = <String>[
-    switch (message.kind) {
-      // The caption, never the mime type.
-      MessageKind.image => message.imageCaption ?? '',
-      MessageKind.text => _plainTextOrNothing(message.text),
-      // The question is the message.
-      MessageKind.poll => message.text,
-      MessageKind.audio => '',
-      MessageKind.file => '',
-    },
-    if (message.fileName != null) message.fileName!,
-  ];
-  return parts.where((part) => part.isNotEmpty).join(' ');
-}
-
-/// Text that is a payload rather than a sentence is not searchable either.
-///
-/// A contact card and a map pin travel as text — see [SharedContact] and
-/// [MapFriendLink] — and what they carry is base64, which contains every
-/// letter of the alphabet and belongs to none of them.
-String _plainTextOrNothing(String text) {
-  final trimmed = text.trim();
-  if (trimmed.startsWith('cubechat:')) return '';
-  if (SharedContact.tryParse(trimmed) != null) return '';
-  if (MapFriendLink.tryParse(trimmed) != null) return '';
-  if (SharedLocation.tryParse(trimmed) != null) return '';
-  return text;
-}
-
-List<Message> messagesMatchingQuery(List<Message> messages, String query) {
-  final needle = _normalizeMessageSearchText(query);
-  if (needle.isEmpty) return const <Message>[];
-  final terms = needle.split(' ').where((part) => part.isNotEmpty).toList();
-  return messages.where((message) {
-    final searchable = <String>[
-      searchableMessageText(message),
-      if (message.authorName != null) message.authorName!,
-    ];
-    return searchable.any((value) {
-      if (value.isEmpty) return false;
-      final haystack = _normalizeMessageSearchText(value);
-      if (haystack.isEmpty) return false;
-      return haystack.contains(needle) ||
-          terms.every((term) => haystack.contains(term));
-    });
-  }).toList(growable: false);
-}
-
-String _normalizeMessageSearchText(String value) {
-  final lower = value.toLowerCase();
-  final buffer = StringBuffer();
-  var previousWasSpace = true;
-  for (final rune in lower.runes) {
-    final char = String.fromCharCode(rune);
-    final normalized = switch (char) {
-      'ё' => 'е',
-      'є' => 'е',
-      'і' => 'и',
-      'ї' => 'и',
-      'ґ' => 'г',
-      '’' || '`' || 'ʼ' => "'",
-      _ => char,
-    };
-    if (normalized.trim().isEmpty) {
-      if (!previousWasSpace) buffer.write(' ');
-      previousWasSpace = true;
-    } else {
-      buffer.write(normalized);
-      previousWasSpace = false;
-    }
-  }
-  return buffer.toString().trim();
 }
 
 bool _hasMeshLink(Map<String, ChatSession> sessions, int peripheralLinks) =>
@@ -1138,6 +1049,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScrollChanged);
+    // Start with nothing marked. The query provider outlives this screen, so a
+    // conversation left with the search bar open would otherwise come back
+    // with its letters still washed and no search bar to explain why.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(chatSearchQueryProvider(widget.chatId).notifier).state = '';
+    });
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _revealInitialMessage());
   }
@@ -1287,6 +1205,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   void _updateSearch(String query) {
     final matches = messagesMatchingQuery(widget.messages, query);
+    // Published for the bubbles, which mark the matched letters themselves.
+    ref.read(chatSearchQueryProvider(widget.chatId).notifier).state = query;
     setState(() {
       _searchQuery = query;
       _searchIndex = matches.isEmpty ? 0 : matches.length - 1;
@@ -1308,6 +1228,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   void _closeSearch() {
     ref.read(_chatSearchOpenProvider(widget.chatId).notifier).state = false;
+    ref.read(chatSearchQueryProvider(widget.chatId).notifier).state = '';
     setState(() {
       _searchQuery = '';
       _searchIndex = 0;

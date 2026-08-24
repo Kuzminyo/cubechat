@@ -1,4 +1,5 @@
 import 'package:cubechat/features/chat/models/message.dart';
+import 'package:cubechat/features/chat/domain/message_search.dart';
 import 'package:cubechat/features/chat/presentation/chat_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
