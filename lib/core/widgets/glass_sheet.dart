@@ -56,9 +56,22 @@ Future<T?> showGlassSheet<T>({
         // The bar's own glass, not an approximation of it: same blur, same
         // neutral gradient, same hairline, same two black shadows. A sheet that
         // mixed its own recipe was the surface that still looked filled.
-        child: BarGlass(
-          radius: 28,
-          child: builder(context),
+        //
+        // Capped below the status bar. `isScrollControlled` lets a sheet grow
+        // to the full height, and a sheet with a text field grows exactly that
+        // far when the keyboard opens — the title then slid under the clock.
+        // The cap leaves the top inset plus a little air clear; a short sheet
+        // is unaffected because it never reaches the ceiling.
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height -
+                MediaQuery.paddingOf(context).top -
+                12,
+          ),
+          child: BarGlass(
+            radius: 28,
+            child: builder(context),
+          ),
         ),
       ),
     ),
