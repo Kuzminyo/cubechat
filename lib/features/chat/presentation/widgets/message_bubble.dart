@@ -23,7 +23,7 @@ import '../../../../core/widgets/glass_toast.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
-import '../../../chats/presentation/widgets/chat_picker_sheet.dart';
+import '../../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../data/chat_navigation.dart';
 import '../../data/media_send_progress.dart';
 import '../../data/message_selection.dart';

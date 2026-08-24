@@ -27,7 +27,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
-import '../../chats/presentation/widgets/chat_picker_sheet.dart';
+import '../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../data/contact_aliases_controller.dart';
 import '../data/contact_tags_controller.dart';
