@@ -230,7 +230,26 @@ enum InnerPayloadType {
   /// build the *audio*, not the drawing. An unknown inner-payload type is
   /// dropped on its own, and a voice note with no levels is exactly what every
   /// build shows today.
-  voiceLevels(0xFB);
+  voiceLevels(0xFB),
+
+  /// Who wrote a message before it was forwarded. Body is a [ForwardedFrom].
+  ///
+  /// A companion payload for the same reason as [albumHint] and
+  /// [voiceLevels]: an unknown inner type is dropped on its own, so an older
+  /// build shows the forwarded message exactly as it shows one today — as an
+  /// ordinary message — and loses only the line above it. Carrying the
+  /// attribution *inside* the text would have meant a new payload type for the
+  /// text itself, and an older build drops a type it does not know: the
+  /// message would not arrive at all, which is a great deal worse than
+  /// arriving unlabelled.
+  ///
+  /// It carries a display name and nothing else. Not the author's key: passing
+  /// somebody's identity to a third party is not part of forwarding what they
+  /// said, and the app has no business making that decision on their behalf.
+  /// What is left is a claim by the person forwarding rather than a proof,
+  /// which is what an attribution honestly is — the name travelled with their
+  /// message, not with a signature over it.
+  forwardedFrom(0xFC);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -1967,5 +1986,68 @@ class MessageDelete {
       throw const FormatException('message delete must be exactly the id');
     }
     return MessageDelete(targetMsgId: Uint8List.fromList(bytes));
+  }
+}
+
+/// Who wrote a message before somebody forwarded it.
+///
+/// `[version:1][targetMsgId:16][nameLen:1][name:N]`, the name in UTF-8.
+///
+/// Keyed by the transport msgId of the message it describes, exactly as
+/// [VoiceLevels] is keyed by its media id: the two arrive as separate frames
+/// and in either order, so the bubble has to be findable from the hint rather
+/// than the hint arriving inside the bubble.
+class ForwardedFrom {
+  ForwardedFrom({required this.targetMsgId, required this.name})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+
+  static const int version1 = 1;
+  static const int idLen = 16;
+
+  /// Long enough for any display name this app will show, short enough that
+  /// the field cannot be used to smuggle a paragraph into a one-line header.
+  static const int maxNameBytes = 64;
+
+  /// The message this attribution belongs to.
+  final Uint8List targetMsgId;
+
+  /// The original author's display name, as the forwarder knew it.
+  final String name;
+
+  Uint8List encode() {
+    final nameBytes = utf8.encode(name);
+    if (nameBytes.length > maxNameBytes) {
+      throw FormatException(
+        'forwarded name is ${nameBytes.length} B, max $maxNameBytes',
+      );
+    }
+    final out = Uint8List(2 + idLen + nameBytes.length);
+    out[0] = version1;
+    out.setRange(1, 1 + idLen, targetMsgId);
+    out[1 + idLen] = nameBytes.length;
+    out.setRange(2 + idLen, out.length, nameBytes);
+    return out;
+  }
+
+  static ForwardedFrom decode(Uint8List bytes) {
+    if (bytes.length < 2 + idLen) {
+      throw const FormatException('forwarded-from truncated');
+    }
+    if (bytes[0] != version1) {
+      throw FormatException('forwarded-from version ${bytes[0]} unsupported');
+    }
+    final nameLen = bytes[1 + idLen];
+    if (nameLen > maxNameBytes) {
+      throw FormatException('forwarded name length $nameLen out of range');
+    }
+    if (bytes.length != 2 + idLen + nameLen) {
+      throw const FormatException('forwarded-from length mismatch');
+    }
+    return ForwardedFrom(
+      targetMsgId: Uint8List.fromList(bytes.sublist(1, 1 + idLen)),
+      // Malformed UTF-8 is somebody else's bug or somebody's probe; either way
+      // a replacement character is a better answer than refusing the message.
+      name: utf8.decode(bytes.sublist(2 + idLen), allowMalformed: true),
+    );
   }
 }

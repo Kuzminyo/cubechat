@@ -173,49 +173,39 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
                           onTap: () => setState(() {
                             if (!_picked.remove(chat.id)) _picked.add(chat.id);
                           }),
-                          child: Stack(
+                          child: Row(
                             children: [
-                              // The chat list's own row, not an imitation of
-                              // it: same faces, same names, same last line,
-                              // same time. Picking somewhere to send to is
-                              // reading the chat list, so it should be the
-                              // chat list — a `CheckboxListTile` looked like a
-                              // settings screen that happened to hold people.
-                              ChatTile(chat: chat),
-                              // The tick rides over the row rather than taking
-                              // a column of its own, so nothing in the tile has
-                              // to move aside for it.
-                              Positioned.fill(
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 14),
-                                    child: AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 140),
-                                      width: 22,
-                                      height: 22,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: picked
-                                            ? AppColors.brandPrimary
-                                            : Colors.transparent,
-                                        border: Border.all(
-                                          color: picked
-                                              ? AppColors.brandPrimary
-                                              : AppColors.glass(0.35),
-                                          width: 1.6,
-                                        ),
-                                      ),
-                                      child: picked
-                                          ? const Icon(
-                                              Icons.check_rounded,
-                                              size: 15,
-                                              color: Colors.black,
-                                            )
-                                          : null,
+                              // The tile keeps its own trailing column — the
+                              // time, the pin, the ticks — so the checkbox
+                              // gets a column of its own rather than a place
+                              // on top of them. Overlaid, it sat squarely on
+                              // the timestamp.
+                              Expanded(child: ChatTile(chat: chat)),
+                              Padding(
+                                padding: const EdgeInsets.only(right: 14),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: picked
+                                        ? AppColors.brandPrimary
+                                        : Colors.transparent,
+                                    border: Border.all(
+                                      color: picked
+                                          ? AppColors.brandPrimary
+                                          : AppColors.glass(0.35),
+                                      width: 1.6,
                                     ),
                                   ),
+                                  child: picked
+                                      ? const Icon(
+                                          Icons.check_rounded,
+                                          size: 15,
+                                          color: Colors.black,
+                                        )
+                                      : null,
                                 ),
                               ),
                             ],

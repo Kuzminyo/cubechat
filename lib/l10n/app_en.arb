@@ -602,6 +602,10 @@
   "chatsSearchClear": "Clear",
   "chatsSearchStartHint": "Search chats by name, or any message by its words.",
   "chatsSearchEmpty": "Nothing matches that",
+  "chatForwardedFrom": "Forwarded from {name}",
+  "@chatForwardedFrom": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "appLockWait": "Too many tries — wait {left}",
   "@appLockWait": {
     "placeholders": { "left": { "type": "String" } }

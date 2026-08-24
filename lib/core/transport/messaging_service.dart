@@ -381,6 +381,9 @@ class MessagingService {
   /// a hint whose photos never arrive.
   static const int _maxPendingVoiceLevels = 64;
 
+  /// Attributions that arrived before the message they belong to.
+  final Map<String, String> _pendingForwardedFrom = {};
+
   /// FS media chunks that arrived before their manifest (so before we could
   /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
   final Map<String, List<_PendingFsChunk>> _pendingFsChunks = {};
@@ -4555,6 +4558,7 @@ class MessagingService {
         case InnerPayloadType.typing:
         case InnerPayloadType.albumHint:
         case InnerPayloadType.voiceLevels:
+        case InnerPayloadType.forwardedFrom:
         case InnerPayloadType.conversationClear:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
@@ -5364,6 +5368,13 @@ class MessagingService {
             body: unpacked.body,
           );
 
+        case InnerPayloadType.forwardedFrom:
+          _ingestForwardedFrom(
+            peerId: peerId,
+            senderPub: senderPub,
+            body: unpacked.body,
+          );
+
         case InnerPayloadType.conversationClear:
           await _ingestConversationClear(
             peerId: peerId,
@@ -6150,6 +6161,79 @@ class MessagingService {
   /// Best-effort on purpose, the same way an album hint is: losing this costs
   /// the drawing on their side and nothing else — the audio is a separate
   /// payload and is unaffected — so nothing in here may throw into a send.
+  /// Tell the far side who wrote this before it was forwarded.
+  ///
+  /// Sent after the message and never awaited by it: an attribution that does
+  /// not arrive costs a line above a bubble, and a forward that does not
+  /// arrive costs the message. The two must not share a fate.
+  Future<void> announceForwardedFrom({
+    required String canonicalId,
+    required String wireIdHex,
+    required String name,
+  }) async {
+    final peerPub = _resolvePeerPub(canonicalId);
+    if (peerPub == null) return;
+    try {
+      await _sendControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.forwardedFrom,
+        innerBody: ForwardedFrom(
+          targetMsgId: _hexDecodeBytes(wireIdHex),
+          name: name,
+        ).encode(),
+      );
+    } catch (e) {
+      DebugLog.instance.log(
+        'CHAT',
+        'forwarded-from did not go out (the message is unaffected): $e',
+      );
+    }
+  }
+
+  /// The attribution from the other side: stamp it on the message if that has
+  /// arrived, and hold it if it has not.
+  void _ingestForwardedFrom({
+    required String peerId,
+    required Uint8List? senderPub,
+    required Uint8List body,
+  }) {
+    final ForwardedFrom hint;
+    try {
+      hint = ForwardedFrom.decode(body);
+    } catch (e) {
+      DebugLog.instance
+          .log('CHAT', 'drop malformed forwarded-from from $peerId: $e');
+      return;
+    }
+    final wireId = TransportEnvelope.hashHex(hint.targetMsgId);
+
+    // Scoped to this peer's buckets, as the voice levels and the album hint
+    // are: nobody gets to write a header onto a message somebody else sent.
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    final targets = <String>{peerId};
+    if (senderPub != null) {
+      targets.add(_hexOf(senderPub));
+      final sessions = _ref.read(chatSessionManagerProvider);
+      for (final entry in sessions.entries) {
+        final other = entry.value.remoteStaticPublicKey;
+        if (other != null && _pubkeyEquals(other, senderPub)) {
+          targets.add(entry.key);
+        }
+      }
+    }
+    var stamped = false;
+    for (final bucket in targets) {
+      stamped |= messages.applyForwardedFrom(bucket, wireId, hint.name);
+    }
+    if (stamped) return;
+
+    _pendingForwardedFrom[wireId] = hint.name;
+    while (_pendingForwardedFrom.length > _maxPendingVoiceLevels) {
+      _pendingForwardedFrom.remove(_pendingForwardedFrom.keys.first);
+    }
+  }
+
   Future<void> _announceVoiceLevels({
     required String canonicalId,
     required Uint8List peerPub,
@@ -8032,6 +8116,14 @@ class MessagingService {
     // this exact wireId is already in the chat — a relay backlog replay or a
     // second delivery path — so there is nothing to fan out and nothing to
     // notify about either.
+    // An attribution that beat its own message here. Taken rather than read:
+    // this bubble now holds it, and a re-delivery has nothing left to stamp.
+    final heldName = message.wireId == null
+        ? null
+        : _pendingForwardedFrom.remove(message.wireId);
+    if (heldName != null) {
+      message = message.copyWith(forwardedFrom: heldName);
+    }
     if (!messages.append(pubkeyHex, message)) {
       // Unless it is the file we asked to have again: same id, same bubble, and
       // the whole point is the new path underneath it.

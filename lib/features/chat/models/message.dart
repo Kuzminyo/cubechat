@@ -56,6 +56,7 @@ class Message {
     this.audioMime,
     this.audioDurationMs,
     this.audioLevels,
+    this.forwardedFrom,
     this.voicePlayed = false,
     this.expiresAt,
     this.filePath,
@@ -225,6 +226,13 @@ class Message {
   /// audio.
   final List<int>? audioLevels;
 
+  /// The name of whoever wrote this before it was forwarded, or null.
+  ///
+  /// A claim by the person who forwarded it rather than a proof: the name
+  /// travelled with their message, not with a signature over it. Local to this
+  /// device once it lands, exactly like the voice levels beside it.
+  final String? forwardedFrom;
+
   // Arbitrary-file payload. Unlike images and voice notes, a file keeps the
   // name it was sent under — it is the only thing that says what the bubble is
   // and what it saves as. [fileBytes] is the size on disk, shown next to the
@@ -316,6 +324,7 @@ class Message {
     String? filePath,
     int? audioDurationMs,
     List<int>? audioLevels,
+    String? forwardedFrom,
     bool? voicePlayed,
     DateTime? expiresAt,
     bool clearExpiry = false,
@@ -351,6 +360,7 @@ class Message {
       audioMime: audioMime,
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
       audioLevels: audioLevels ?? this.audioLevels,
+      forwardedFrom: forwardedFrom ?? this.forwardedFrom,
       voicePlayed: voicePlayed ?? this.voicePlayed,
       expiresAt: clearExpiry ? null : (expiresAt ?? this.expiresAt),
       forwardSecret: forwardSecret ?? this.forwardSecret,

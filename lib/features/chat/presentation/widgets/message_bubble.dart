@@ -158,11 +158,13 @@ Future<List<Chat>> pickForwardTargets(
 /// Forwarding is a fresh send, not a relay of the original frame: the original
 /// is encrypted to a session the new chat has no key for, so it could not be
 /// passed along even if we wanted to.
-Future<void> forwardTextTo(WidgetRef ref, Chat target, String text) {
+Future<Message?> forwardTextTo(WidgetRef ref, Chat target, String text) async {
   final messaging = ref.read(messagingServiceProvider);
-  return target.isChannel
-      ? messaging.sendChannelText(target.id, text)
-      : messaging.sendText(target.id, text);
+  if (target.isChannel) {
+    await messaging.sendChannelText(target.id, text);
+    return null;
+  }
+  return messaging.sendText(target.id, text);
 }
 
 /// Pass [message] on to [target], whatever it is made of.
@@ -189,7 +191,34 @@ Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async
         );
     return;
   }
-  await forwardTextTo(ref, target, message.text);
+  final sent = await forwardTextTo(ref, target, message.text);
+  await _attributeForward(ref, target, message, sent);
+}
+
+/// Tell the far side who wrote this originally.
+///
+/// Sent after the message and never allowed to take it down with it: an
+/// attribution that fails costs a line above a bubble, and the bubble is the
+/// part that matters. 1:1 only — a room would need the name to survive the
+/// relay fan-out, and nobody has asked for that.
+///
+/// Only when there is a name to give: a message of our own being passed on is
+/// not "forwarded from" anybody, and forwarding what a peer sent carries the
+/// name we know them by.
+Future<void> _attributeForward(
+  WidgetRef ref,
+  Chat target,
+  Message original,
+  Message? sent,
+) async {
+  if (target.isChannel) return;
+  final wireId = sent?.wireId;
+  if (wireId == null) return;
+  final name = original.forwardedFrom ?? original.authorName;
+  if (name == null || name.isEmpty) return;
+  await ref
+      .read(messagingServiceProvider)
+      .announceForwardedFrom(canonicalId: target.id, wireIdHex: wireId, name: name);
 }
 
 class MessageBubble extends ConsumerStatefulWidget {
@@ -1100,6 +1129,38 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Passed on from somebody else, said above the message rather
+                // than inside it: the words below are theirs and the bubble
+                // must not look like it is quoting them into a sentence.
+                if (message.forwardedFrom case final from?) ...[
+                  inBubble(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.shortcut_rounded,
+                          size: 13,
+                          color: AppColors.brandSecondary,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            AppLocalizations.of(context)
+                                .chatForwardedFrom(from),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.brandSecondary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 // Channel messages from others: show the author's name on top,
                 // since a channel mixes many senders in one conversation.
                 if (!mine && message.authorName != null) ...[

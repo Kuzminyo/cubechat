@@ -471,6 +471,32 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// service is the other: whichever lands second finds the first waiting.
   ///
   /// Returns true when a bubble was actually stamped.
+  /// Stamp "forwarded from" onto the message with this wire id.
+  ///
+  /// Returns whether anything was found, so the transport can hold the
+  /// attribution back when it arrives before the message it describes — the
+  /// two are separate frames and either can win the race.
+  bool applyForwardedFrom(String peerId, String wireId, String name) {
+    final current = state[peerId];
+    if (current == null) return false;
+    final list = [...current];
+    var changed = false;
+    for (var i = 0; i < list.length; i++) {
+      final m = list[i];
+      if (m.wireId != wireId) continue;
+      // Already stamped by a first delivery; a relay replay carries the same
+      // name and rewriting the conversation to store it again costs a disk
+      // write for nothing.
+      if (m.forwardedFrom != null) continue;
+      list[i] = m.copyWith(forwardedFrom: name);
+      changed = true;
+    }
+    if (!changed) return false;
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+    return true;
+  }
+
   bool applyVoiceLevels(String peerId, String wireId, List<int> levels) {
     final current = state[peerId];
     if (current == null) return false;
@@ -752,6 +778,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioMime != null) 'audioMime': m.audioMime,
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
         if (m.audioLevels != null) 'audioLevels': m.audioLevels,
+        if (m.forwardedFrom != null) 'forwardedFrom': m.forwardedFrom,
         if (m.voicePlayed) 'voicePlayed': true,
         if (m.expiresAt != null)
           'expiresAtMs': m.expiresAt!.millisecondsSinceEpoch,
@@ -841,6 +868,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       audioDurationMs: m['audioDurationMs'] as int?,
       // Hive hands back a `List<dynamic>` whatever went in, and a stored
       // history predates this key entirely — both read as "no shape to draw".
+      forwardedFrom: m['forwardedFrom'] as String?,
       audioLevels: (m['audioLevels'] as List<dynamic>?)
           ?.map((dynamic v) => (v as num).toInt())
           .toList(growable: false),

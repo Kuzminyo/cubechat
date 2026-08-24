@@ -2354,6 +2354,12 @@ abstract class AppLocalizations {
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
 
+  /// No description provided for @chatForwardedFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Forwarded from {name}'**
+  String chatForwardedFrom(String name);
+
   /// No description provided for @appLockWait.
   ///
   /// In en, this message translates to:

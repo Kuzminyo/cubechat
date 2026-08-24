@@ -1315,6 +1315,11 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchEmpty => 'Нічого не знайдено';
 
   @override
+  String chatForwardedFrom(String name) {
+    return 'Переслано від $name';
+  }
+
+  @override
   String appLockWait(String left) {
     return 'Забагато спроб — зачекайте $left';
   }

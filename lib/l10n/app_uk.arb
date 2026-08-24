@@ -552,6 +552,7 @@
     "chatsSearchClear":  "Очистити",
     "chatsSearchStartHint":  "Шукайте чати за назвою або будь-яке повідомлення за словами.",
     "chatsSearchEmpty":  "Нічого не знайдено",
+    "chatForwardedFrom":  "Переслано від {name}",
     "appLockWait":  "Забагато спроб — зачекайте {left}",
     "appLockGraceTitle":  "Питати код",
     "appLockGraceNow":  "Щоразу",

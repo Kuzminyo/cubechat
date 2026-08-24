@@ -1306,6 +1306,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchEmpty => 'Nothing matches that';
 
   @override
+  String chatForwardedFrom(String name) {
+    return 'Forwarded from $name';
+  }
+
+  @override
   String appLockWait(String left) {
     return 'Too many tries — wait $left';
   }
