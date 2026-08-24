@@ -138,7 +138,13 @@ void main() {
     );
   });
 
-  test('stored actual route overrides current transport availability', () {
+  test('the header follows the live route, not the last message', () {
+    // This reverses what the header used to do, deliberately. It answered with
+    // the route of the last message that carried one, so a phone that had been
+    // writing over the internet and then met the other person on Bluetooth
+    // went on claiming the internet until something else was sent. The line at
+    // the top of a conversation is read as "how am I connected", and about the
+    // present it was simply wrong.
     final messages = [
       Message(
         id: '1',
@@ -146,16 +152,45 @@ void main() {
         text: 'hello',
         sentAt: DateTime(2026),
         isMine: true,
+        route: MessageRoute.internet,
+      ),
+    ];
+
+    expect(displayedChatRoute(messages, ChatRoute.bluetooth).route,
+        ChatRoute.bluetooth);
+  });
+
+  test('hops come from the conversation, and only for the mesh', () {
+    // Availability cannot know a hop count; a delivery can. But it only means
+    // anything while the mesh is the road actually in use.
+    final messages = [
+      Message(
+        id: 'old',
+        chatId: 'chat',
+        text: 'first',
+        sentAt: DateTime(2026),
+        isMine: true,
+        route: MessageRoute.mesh,
+        routeHops: 5,
+      ),
+      Message(
+        id: 'new',
+        chatId: 'chat',
+        text: 'second',
+        sentAt: DateTime(2026, 1, 2),
+        isMine: true,
         route: MessageRoute.mesh,
         routeHops: 3,
       ),
     ];
-    final result = displayedChatRoute(messages, ChatRoute.bluetooth);
-    expect(result.route, ChatRoute.mesh);
-    expect(result.hops, 3);
+
+    expect(displayedChatRoute(messages, ChatRoute.mesh),
+        (route: ChatRoute.mesh, hops: 3));
+    expect(displayedChatRoute(messages, ChatRoute.bluetooth),
+        (route: ChatRoute.bluetooth, hops: null));
   });
 
-  test('availability remains fallback for legacy history', () {
+  test('a history with no routes still answers with availability', () {
     final result = displayedChatRoute(
         [_message(id: 'legacy', text: 'old')], ChatRoute.internet);
     expect(result, (route: ChatRoute.internet, hops: null));
