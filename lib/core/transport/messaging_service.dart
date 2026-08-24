@@ -7265,15 +7265,36 @@ class MessagingService {
     required bool online,
     required DateTime now,
   }) async {
-    // The beacon is relay-only, so with no socket up the whole fan-out is ten
-    // peers of guaranteed failure spaced by [relayFanoutPacing] — a second of
-    // wakeful work every 45 s on exactly the phone that has no internet.
-    if (_relayClient?.isConnected != true) return false;
+    // The goodbye may take any road; "I am here" still takes only the relay.
+    //
+    // Relay-only is a deliberate decision and stays one for the heartbeat: a
+    // second always-on presence channel is the kind of chatter this app has
+    // been trimming, and at one beacon per contact every seventy seconds the
+    // mesh would carry more presence than conversation.
+    //
+    // The goodbye is not that. It is one frame, once, at the moment the app
+    // goes away — and it is the frame that actually decides whether the other
+    // end is telling the truth. Two phones talking over Bluetooth with the
+    // relay down sent no goodbye at all, so leaving the app left the other
+    // side showing "online" until the beacon aged out two and a half minutes
+    // later. That was the report, and it was the transport, not the timing.
+    //
+    // No new payload type and no new tag: this is the same signed
+    // [InnerPayloadType.presence] an older build already reads, and which road
+    // it arrived by is not something the receiving side can tell.
+    final meshGoodbye = !online && _hasAnyLink;
+    // With no socket up and nothing to hand it to, the fan-out is ten peers of
+    // guaranteed failure spaced by [relayFanoutPacing] — a second of wakeful
+    // work every 45 s on exactly the phone that has no internet.
+    if (_relayClient?.isConnected != true && !meshGoodbye) return false;
     final peers = _ref
         .read(knownPeersControllerProvider)
         .values
+        // A Nostr key is what the relay needs; the mesh addresses people by
+        // their pubkey and needs no such thing, so the goodbye is not limited
+        // to the contacts who happen to have one on file.
         .where((p) =>
-            p.nostrPubkey != null &&
+            (p.nostrPubkey != null || meshGoodbye) &&
             !p.isBlocked &&
             now.difference(p.lastSeen) < _presenceMaxPeerAge)
         .toList()
@@ -7317,7 +7338,9 @@ class MessagingService {
           peerPub: peerPub,
           type: InnerPayloadType.presence,
           innerBody: hiddenHere ? hiddenBody! : body,
-          relayOnly: true,
+          // See [meshGoodbye]: the heartbeat keeps to the relay, the goodbye
+          // takes whatever road exists.
+          relayOnly: online,
         );
         if (n > 0) sent++;
       } catch (e) {
