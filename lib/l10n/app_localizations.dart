@@ -2354,6 +2354,36 @@ abstract class AppLocalizations {
   /// **'Nothing matches that'**
   String get chatsSearchEmpty;
 
+  /// No description provided for @chatRoutesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How this reaches them'**
+  String get chatRoutesTitle;
+
+  /// No description provided for @chatRoutesBluetoothHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Straight to their phone, no internet involved'**
+  String get chatRoutesBluetoothHint;
+
+  /// No description provided for @chatRoutesMeshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Passed on by phones in between'**
+  String get chatRoutesMeshHint;
+
+  /// No description provided for @chatRoutesInternetHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Through a relay, when nobody is in range'**
+  String get chatRoutesInternetHint;
+
+  /// No description provided for @chatRoutesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The road is chosen per message, from whatever is reachable at that moment.'**
+  String get chatRoutesHint;
+
   /// No description provided for @deadmanTitle.
   ///
   /// In en, this message translates to:

@@ -8143,21 +8143,27 @@ class MessagingService {
       return;
     }
 
-    // Fan-out to transport-id keys for any currently open ChatScreen that
-    // was navigated to via a BLE address.
-    final sessions = _ref.read(chatSessionManagerProvider);
-    final extras = <String>[];
-    for (final entry in sessions.entries) {
-      final other = entry.value.remoteStaticPublicKey;
-      if (other != null && _pubkeyEquals(other, pubkey)) {
-        extras.add(entry.key);
-      }
-    }
-    for (final id in extras) {
-      messages.append(id, message);
-    }
-    DebugLog.instance.log('NOISE',
-        'appended to canonical=$pubkeyHex and ${extras.length} transport id(s)');
+    // Stored under the pubkey and nowhere else.
+    //
+    // This used to fan the message out to every open session keyed by BLE
+    // address as well, so a chat opened from Nearby — which navigates by
+    // address — would see it. The guard was sound at the moment of writing:
+    // only sessions whose remote static key matched the sender got a copy.
+    //
+    // What it could not guard is *later*. Android rotates its BLE address,
+    // and the same log that shows this fan-out shows one peer arriving under
+    // three different addresses in as many minutes. The bucket keyed by the
+    // old address keeps the old name and is still on disk when that address
+    // belongs to somebody else — which is how a message from one phone landed
+    // in another phone's conversation, and it is precisely the mistake the
+    // wire notes warn about: a peer id is never a stable key.
+    //
+    // Nothing is lost by stopping. The chat screen already prefers the
+    // canonical bucket and only falls back to the transport id while no
+    // session has resolved a pubkey yet — and a message that decrypted has a
+    // session by definition, so by the time one exists the screen is reading
+    // the pubkey.
+    DebugLog.instance.log('NOISE', 'appended to canonical=$pubkeyHex');
 
     _notifyIncoming(canonicalId: pubkeyHex, message: message);
   }

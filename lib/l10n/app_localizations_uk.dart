@@ -1315,6 +1315,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsSearchEmpty => 'Нічого не знайдено';
 
   @override
+  String get chatRoutesTitle => 'Як це дійде до нього';
+
+  @override
+  String get chatRoutesBluetoothHint => 'Прямо на його телефон, без інтернету';
+
+  @override
+  String get chatRoutesMeshHint => 'Через телефони, що є між вами';
+
+  @override
+  String get chatRoutesInternetHint => 'Через реле, коли поруч нікого немає';
+
+  @override
+  String get chatRoutesHint =>
+      'Дорогу обирає кожне повідомлення окремо — з того, що доступне саме тоді.';
+
+  @override
   String get deadmanTitle => 'Стерти, якщо не заходити';
 
   @override

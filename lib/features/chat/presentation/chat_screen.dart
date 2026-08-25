@@ -953,7 +953,92 @@ class _ChatRouteIndicator extends ConsumerWidget {
     final label = route == ChatRoute.mesh && hops != null
         ? '$baseLabel · $hops'
         : baseLabel;
-    return _routeChip(icon, label, color);
+    // Tapping it says what else is available.
+    //
+    // The header names one road, and which one is a fact the app works out on
+    // every send — but the reader has no way to ask what the alternatives are,
+    // or why the answer is the one it is. On a phone that talks over two
+    // radios and a relay, that is the question people actually have.
+    return GestureDetector(
+      onTap: () => _showRoutes(context, ref, t),
+      child: _routeChip(icon, label, color),
+    );
+  }
+
+  /// Every road to this conversation, and which one the next message takes.
+  ///
+  /// Deliberately not a chooser. The transport is picked per message from what
+  /// is actually reachable at that instant, and letting somebody pin it would
+  /// mean either honouring a choice that has since become impossible or
+  /// quietly ignoring it. This answers the question instead of pretending to
+  /// take orders.
+  void _showRoutes(BuildContext context, WidgetRef ref, AppLocalizations t) {
+    final direct = route == ChatRoute.bluetooth;
+    final mesh = direct || route == ChatRoute.mesh;
+    final relay = ref.read(relaySettingsProvider).isActive;
+
+    Widget row(IconData icon, String title, String hint, bool live,
+            {bool active = false}) =>
+        ListTile(
+          leading: Icon(
+            icon,
+            color: live ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: live ? AppColors.textOnGlass : AppColors.textOnGlassDim,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          subtitle: Text(
+            hint,
+            style:
+                TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+          ),
+          trailing: active
+              ? Icon(Icons.check_rounded, color: AppColors.brandPrimary)
+              : null,
+        );
+
+    unawaited(showGlassSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(
+              t.chatRoutesTitle,
+              style: AppTypography.heading(size: AppMenu.title),
+            ),
+            const SizedBox(height: 8),
+            row(Icons.bluetooth_rounded, t.chatRouteBluetooth,
+                t.chatRoutesBluetoothHint, direct,
+                active: route == ChatRoute.bluetooth),
+            row(Icons.hub_rounded, t.chatRouteMesh, t.chatRoutesMeshHint, mesh,
+                active: route == ChatRoute.mesh),
+            row(Icons.public_rounded, t.chatRouteInternet,
+                t.chatRoutesInternetHint, relay,
+                active: route == ChatRoute.internet),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+              child: Text(
+                t.chatRoutesHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 11.5,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ));
   }
 
   Widget _routeChip(IconData icon, String label, Color color) => Tooltip(

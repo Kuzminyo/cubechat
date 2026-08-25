@@ -1306,6 +1306,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatsSearchEmpty => 'Nothing matches that';
 
   @override
+  String get chatRoutesTitle => 'How this reaches them';
+
+  @override
+  String get chatRoutesBluetoothHint =>
+      'Straight to their phone, no internet involved';
+
+  @override
+  String get chatRoutesMeshHint => 'Passed on by phones in between';
+
+  @override
+  String get chatRoutesInternetHint =>
+      'Through a relay, when nobody is in range';
+
+  @override
+  String get chatRoutesHint =>
+      'The road is chosen per message, from whatever is reachable at that moment.';
+
+  @override
   String get deadmanTitle => 'Wipe if unused';
 
   @override
