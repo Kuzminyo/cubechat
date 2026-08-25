@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui show Shader;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -18,9 +19,11 @@ import '../util/ui_activity.dart';
 ///
 /// The drift repaints ~30 times a second rather than every vsync, which is what
 /// an [AnimationController] would do (120 fps on ProMotion).
-/// The blobs rebuild four radial-gradient shaders per paint, so at 120 fps the
-/// backdrop kept the GPU busy even while the app sat idle; the drift is far too
-/// slow (24 s period) for the difference between 30 and 120 fps to be visible.
+/// The blobs used to rebuild four radial-gradient shaders per paint, so at 120
+/// fps the backdrop kept the GPU busy even while the app sat idle; the drift is
+/// far too slow (24 s period) for the difference between 30 and 120 fps to be
+/// visible. Since 2026-08-25 the four are built once per palette and carried
+/// into place by the canvas — see [_AuroraPainter._blobShader].
 ///
 /// The ticker only runs when someone is actually looking at movement: it stops
 /// when the app leaves the foreground, and again [_idleAfter] a touch ends.
@@ -153,6 +156,9 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   /// bought pacing, not work. GPU raster remains the busiest thread at 8% of a
   /// core against the UI thread's 5%, which is what this backdrop costs and is
   /// the number to beat if it is ever worth beating.
+  ///
+  /// That number is what the shader cache went after next: see
+  /// [_AuroraPainter._blobShader], which is the one change in 0.62.0.
   ///
   /// The cold start was then measured on its own, since that is the half of
   /// the report this was meant to answer: 0 of 228 frames over 16.7 ms, worst
@@ -459,22 +465,65 @@ class _AuroraPainter extends CustomPainter {
     double radius,
     double alpha,
   ) {
-    final shader = RadialGradient(
-      center: center,
-      radius: radius,
-      // Pre-dimmed for the same reason the base gradient is — see [_shade].
-      colors: [_dim(color).withValues(alpha: alpha), Colors.transparent],
-    ).createShader(rect);
     // `radius` is a fraction of the shortest side, which is how RadialGradient
-    // reads it when it builds the shader above — so the same arithmetic here
-    // gives exactly the circle the gradient dies at.
-    final bounds = Rect.fromCircle(
-      center: center.withinRect(rect),
-      radius: radius * rect.shortestSide,
-    ).intersect(rect);
+    // reads it — so the same arithmetic here gives exactly the circle the
+    // gradient dies at.
+    final middle = center.withinRect(rect);
+    final reach = radius * rect.shortestSide;
+    final bounds =
+        Rect.fromCircle(center: middle, radius: reach).intersect(rect);
     // A blob can drift far enough for its circle to miss the screen entirely.
     if (bounds.isEmpty) return;
-    canvas.drawRect(bounds, Paint()..shader = shader);
+
+    // The shader is built once and moved, rather than rebuilt where the blob
+    // now is.
+    //
+    // A RadialGradient reads its centre and radius off the rect it is given,
+    // so a drifting blob meant a new shader every paint — four of them, thirty
+    // times a second, for a backdrop whose whole job is to sit still and look
+    // soft. Built instead against a canonical unit circle at the origin and
+    // carried into place by the canvas: translate to where the blob is, scale
+    // by how far it reaches. A gradient is evaluated per pixel after the
+    // transform, so this is the same arithmetic in a different order and the
+    // result is the same picture.
+    //
+    // The cache is keyed by nothing but the palette, because that is all the
+    // colours depend on — the drift changes where a blob is, never what it is
+    // made of.
+    canvas.save();
+    canvas.translate(middle.dx, middle.dy);
+    canvas.scale(reach);
+    canvas.drawRect(
+      Rect.fromLTRB(
+        (bounds.left - middle.dx) / reach,
+        (bounds.top - middle.dy) / reach,
+        (bounds.right - middle.dx) / reach,
+        (bounds.bottom - middle.dy) / reach,
+      ),
+      Paint()..shader = _blobShader(color, alpha),
+    );
+    canvas.restore();
+  }
+
+  /// One blob's gradient, in unit space around the origin.
+  static final Map<int, ui.Shader> _blobShaders = {};
+  static int _blobShaderPalette = 0;
+
+  ui.Shader _blobShader(Color color, double alpha) {
+    if (_blobShaderPalette != paletteStamp) {
+      _blobShaders.clear();
+      _blobShaderPalette = paletteStamp;
+    }
+    return _blobShaders.putIfAbsent(
+      Object.hash(color, alpha),
+      () => RadialGradient(
+        radius: 1,
+        // Pre-dimmed for the same reason the base gradient is — see [_shade].
+        colors: [_dim(color).withValues(alpha: alpha), Colors.transparent],
+      ).createShader(
+        Rect.fromCircle(center: Offset.zero, radius: 1),
+      ),
+    );
   }
 
   @override
