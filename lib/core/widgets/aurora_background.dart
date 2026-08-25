@@ -506,6 +506,29 @@ class _AuroraPainter extends CustomPainter {
   /// What this costs visually is a step of about 2 pt every few ticks, on a
   /// shape whose radius is ~200 pt and whose edge is a smooth alpha ramp —
   /// roughly a 1% change in alpha at the steepest point of the falloff.
+  ///
+  /// MEASURED, AND IT WORKED. The Mali phone, 2026-08-25, the same screen the
+  /// blur experiment was rejected on:
+  ///
+  ///     raster (GPU)   avg 7.7  p90 16.7 ms   before
+  ///     raster (GPU)   avg 7.0  p90 12.0 ms   after
+  ///
+  /// The p90 is the number that matters and the number nothing had moved. It
+  /// sat at 17.3 with the blur at 14, went to 22.1 with the blur at 9, and was
+  /// still 16.7 after every UI-thread win of the last two rounds. This is the
+  /// first change to take it down, which is what the reasoning predicted: a
+  /// cost paid on a minority of frames lives in the tail, and the aurora is
+  /// the thing that repaints on its own clock.
+  ///
+  /// Whole-process CPU came down with it, 92% of a core to 70%, and the raster
+  /// thread specifically from 256 to 188 ms of CPU per second of wall time.
+  ///
+  /// Honest caveats, because the sessions were not identical. The share of
+  /// frames over 16.7 ms barely moved (20.9% to 21.7%) — the tail got shorter
+  /// without the count shrinking — and build p90 read 4.7 ms against 1.7 in
+  /// the earlier sample, on a session whose log was full of relay publishing.
+  /// That is platform work on the merged UI thread rather than widget work,
+  /// but it is a candidate explanation and not a measured one.
   void _blob(
     Canvas canvas,
     Rect rect,
