@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -48,8 +50,49 @@ class PeerPresence {
 /// "in range", and two people talking over the internet are never in range, so
 /// without this a peer chatting from another city always read as offline.
 class PresenceController extends Notifier<Map<String, PeerPresence>> {
+  /// Drops entries once they are past [PeerPresence.ttl].
+  ///
+  /// Freshness is a question about the clock, and this state only ever changed
+  /// when a beacon *arrived*. A peer who goes quiet sends nothing by
+  /// definition — so nothing changed, nothing rebuilt, and the screen went on
+  /// showing whatever it had last computed. Reported as somebody reading "in
+  /// the app" five minutes after leaving it, which the 150-second window
+  /// should have ended long before.
+  ///
+  /// A stale entry is removed rather than marked: `freshFor` already answers
+  /// null for anything expired and every caller falls back to mesh evidence,
+  /// so absence is the answer the readers were written for.
+  Timer? _sweep;
+
+  /// Half a minute is the most staleness this can leave, against a window of
+  /// two and a half.
+  static const Duration _sweepEvery = Duration(seconds: 30);
+
   @override
-  Map<String, PeerPresence> build() => const <String, PeerPresence>{};
+  Map<String, PeerPresence> build() {
+    ref.onDispose(() {
+      _sweep?.cancel();
+      _sweep = null;
+    });
+    return const <String, PeerPresence>{};
+  }
+
+  /// Runs only while there is something that can expire, and stops itself once
+  /// the map is empty — so a phone with nobody online keeps no timer at all.
+  void _ensureSweeping() {
+    if (_sweep != null || state.isEmpty) return;
+    _sweep = Timer.periodic(_sweepEvery, (_) {
+      final live = <String, PeerPresence>{
+        for (final e in state.entries)
+          if (e.value.isFresh) e.key: e.value,
+      };
+      if (live.length != state.length) state = live;
+      if (state.isEmpty) {
+        _sweep?.cancel();
+        _sweep = null;
+      }
+    });
+  }
 
   /// Record a beacon from [canonicalId]. Out-of-order beacons are ignored — a
   /// stale "offline" arriving after a fresh "online" must not flip the dot.
@@ -70,6 +113,7 @@ class PresenceController extends Notifier<Map<String, PeerPresence>> {
         hidesLastSeen: hidesLastSeen,
       ),
     };
+    _ensureSweeping();
   }
 
   /// Presence for [canonicalId] while it's still fresh, else null so the caller
@@ -80,7 +124,11 @@ class PresenceController extends Notifier<Map<String, PeerPresence>> {
     return p;
   }
 
-  void clear() => state = const <String, PeerPresence>{};
+  void clear() {
+    _sweep?.cancel();
+    _sweep = null;
+    state = const <String, PeerPresence>{};
+  }
 }
 
 final presenceControllerProvider =
