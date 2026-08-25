@@ -2244,7 +2244,40 @@ class MessagingService {
   /// "read by" possible there at all.
   ///
   /// Best-effort: a send failure rolls the ack back so the next view retries.
-  Future<void> sendReadReceipts(String canonicalId) async {
+  Future<void> sendReadReceipts(String canonicalId) =>
+      _timed('sendReadReceipts', () => _sendReadReceipts(canonicalId));
+
+  /// How long one of these actually blocked the thread it ran on.
+  ///
+  /// Both of the calls chat-open schedules are `async`, and an `async` function
+  /// runs synchronously until its first real suspension — so "it is awaited"
+  /// says nothing about whether it stalls a frame. An X3DH encrypt and a
+  /// BIP-340 signature are pure Dart and have no suspension in them at all.
+  ///
+  /// Two numbers, because the difference between them is the answer. `sync` is
+  /// the part that ran before the first await returned control, which is the
+  /// part a frame pays for; `total` includes waiting on the radio and the
+  /// relay, which costs nothing to look at.
+  ///
+  /// Instrumentation, not a fix. A change reasoned from the panel's worst-frame
+  /// number moved it by 3 ms — noise — and nothing said whether the theory was
+  /// wrong or the aim was. This is what says so.
+  Future<void> _timed(String what, Future<void> Function() run) {
+    final clock = Stopwatch()..start();
+    final future = run();
+    final syncUs = clock.elapsedMicroseconds;
+    return future.whenComplete(() {
+      final totalUs = clock.elapsedMicroseconds;
+      if (syncUs < 4000 && totalUs < 40000) return;
+      DebugLog.instance.log(
+        'COST',
+        '$what — sync ${(syncUs / 1000).toStringAsFixed(1)} ms, '
+            'total ${(totalUs / 1000).toStringAsFixed(1)} ms',
+      );
+    });
+  }
+
+  Future<void> _sendReadReceipts(String canonicalId) async {
     // Opted out of read receipts: say nothing. The messages are still marked
     // read locally — this only withholds telling anyone else about it.
     // The global switch and this contact's exception at once — see
@@ -2637,6 +2670,20 @@ class MessagingService {
   /// can land before the settings box has finished opening, and reading through
   /// it would announce "not restricted" for a conversation that is.
   Future<void> announceCopyRestriction(
+    String canonicalId, {
+    bool? restricted,
+    bool force = false,
+  }) =>
+      _timed(
+        'announceCopyRestriction',
+        () => _announceCopyRestriction(
+          canonicalId,
+          restricted: restricted,
+          force: force,
+        ),
+      );
+
+  Future<void> _announceCopyRestriction(
     String canonicalId, {
     bool? restricted,
     bool force = false,

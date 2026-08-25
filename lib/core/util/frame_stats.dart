@@ -4,6 +4,8 @@ import 'dart:ui' show FrameTiming;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/scheduler.dart';
 
+import 'debug_log.dart';
+
 /// Where a frame's time actually goes, measured rather than guessed.
 ///
 /// Two rounds of tuning this app for heat were argued from reading the code,
@@ -176,10 +178,49 @@ class FrameStats {
       if (build > _stallUs || raster > _stallUs) _stalls++;
       if (build > _worstBuildUs) _worstBuildUs = build;
       if (raster > _worstRasterUs) _worstRasterUs = raster;
+      _reportIfSlow(build, raster);
       if (_buildUs.length > _window) _buildUs.removeAt(0);
       if (_rasterUs.length > _window) _rasterUs.removeAt(0);
     }
   }
+
+  /// Put a slow frame into the log, next to whatever caused it.
+  ///
+  /// The panel says a session's worst frame was 33 ms of build and says nothing
+  /// about *when*. That was enough to prove the first-open stall was on the
+  /// Dart thread and not the GPU, and not enough to survive the next step: a
+  /// change reasoned from that number moved it by 3 ms, which is noise, and
+  /// there was no way to tell whether the theory was wrong or the fix was
+  /// aimed at the wrong frame.
+  ///
+  /// DebugLog already timestamps every line to the millisecond, so a frame
+  /// reported here lands directly among the `[CHAT]`, `[NOSTR]` and `[CRYPTO]`
+  /// lines written while it was being built. That turns "something took 33 ms"
+  /// into a list of what was running at the time, which is the question.
+  ///
+  /// Rate-limited to one a second. A phone that starts dropping frames drops
+  /// a lot of them, and a 200-line buffer that fills with its own reporting is
+  /// a buffer that has evicted the evidence.
+  void _reportIfSlow(int buildUs, int rasterUs) {
+    if (buildUs < _reportUs && rasterUs < _reportUs) return;
+    final now = DateTime.now();
+    final last = _lastReport;
+    if (last != null && now.difference(last) < const Duration(seconds: 1)) {
+      return;
+    }
+    _lastReport = now;
+    DebugLog.instance.log(
+      'FRAME',
+      'slow frame — build ${(buildUs / 1000).toStringAsFixed(1)} ms, '
+          'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms',
+    );
+  }
+
+  /// Two 60 Hz frames. High enough that ordinary jank on a slow phone does not
+  /// fill the log, low enough to catch the stalls being hunted.
+  static const int _reportUs = 33000;
+
+  DateTime? _lastReport;
 
   bool get hasSamples => _buildUs.isNotEmpty;
   int get sampleCount => _buildUs.length;
