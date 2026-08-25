@@ -367,10 +367,29 @@ class _AuroraPainter extends CustomPainter {
   Size? _baseShaderSize;
   int? _baseShaderPalette;
 
+  /// One cached shader per blob, in the order they are painted — see [_blob].
+  final List<_CachedBlob?> _blobs = List<_CachedBlob?>.filled(4, null);
+
+  /// The blob palette for the paint currently running.
+  ///
+  /// A field rather than a seventh argument to [_blob]: it is set at the top of
+  /// [paint] and read a few lines later in the same synchronous call, and the
+  /// alternative was threading one more value through four call sites that are
+  /// already dense with numbers. Read at paint time for the same reason the
+  /// base gradient is — a palette switch has to invalidate the cache even
+  /// though the painter instance outlives it.
+  int _blobPalette = 0;
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final paletteStamp = Object.hash(AppColors.bgTop, AppColors.bgBottom);
+    _blobPalette = Object.hash(
+      AppColors.aurora1,
+      AppColors.aurora2,
+      AppColors.aurora3,
+      AppColors.aurora4,
+    );
     if (_baseShader == null ||
         _baseShaderSize != size ||
         _baseShaderPalette != paletteStamp) {
@@ -393,6 +412,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
+      0,
       Alignment(
           -0.7 + 0.25 * math.sin(t) - dx, -0.6 + 0.18 * math.cos(t * 0.8) - dy),
       AppColors.aurora1,
@@ -402,6 +422,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
+      1,
       Alignment(0.7 + 0.20 * math.cos(t * 0.7) - dx,
           -0.7 + 0.22 * math.sin(t * 0.9) + dy),
       AppColors.aurora2,
@@ -414,6 +435,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
+      2,
       Alignment(0.4 + 0.30 * math.sin(t * 1.1 + 1) - dx,
           0.48 + 0.18 * math.cos(t * 0.8 + 1) + dy),
       AppColors.aurora3,
@@ -423,6 +445,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       rect,
+      3,
       Alignment(-0.6 + 0.25 * math.cos(t * 0.9 + 2) - dx,
           0.52 + 0.15 * math.sin(t * 0.6 + 2) - dy),
       AppColors.aurora4,
@@ -452,8 +475,8 @@ class _AuroraPainter extends CustomPainter {
   /// is pixel-identical, and the animation — period, path, colours — is
   /// completely unchanged.
   ///
-  /// A new shader really is built here on every paint, four of them thirty
-  /// times a second, and that really is the biggest thing this backdrop costs.
+  /// A new shader used to be built here on every paint, four of them thirty
+  /// times a second, and that was the biggest thing this backdrop cost.
   /// **Do not fix it by building the gradient once in unit space and scaling
   /// the canvas up to size.** Tried on 2026-08-25 and reverted within the
   /// hour: the backdrop came out in visible rectangular blocks. The arithmetic
@@ -462,40 +485,116 @@ class _AuroraPainter extends CustomPainter {
   /// source, and magnifying a two-unit gradient across a phone screen
   /// magnifies its own rasterisation with it.
   ///
-  /// If this cost is worth attacking again, it has to be attacked without
-  /// shrinking the space the gradient is defined in: cache per *size* rather
-  /// than per unit circle, quantise the drift so the same shader serves a
-  /// range of positions, or move the blobs with a fragment shader that takes
-  /// their centres as uniforms.
+  /// What is done instead is the second of the three ways out that failure
+  /// left open: quantise the drift so one shader serves a range of positions.
+  /// The space the gradient is defined in is untouched — it is still built
+  /// against the full [rect], which is the part that broke last time.
+  ///
+  /// The step sizes come from how fast this thing actually moves. The drift
+  /// period is 24 s and the tick is 33 ms, so one tick advances the phase by
+  /// 0.0086 rad; the fastest blob's centre travels 0.0029 alignment units in
+  /// that time, and an alignment unit is half the screen. On a 400 pt wide
+  /// phone that is 0.6 pt per tick — the blobs move less than a point between
+  /// repaints. Rounding to [_centreStep] means the same shader serves several
+  /// ticks in a row instead of being rebuilt for a sub-pixel difference.
+  ///
+  /// The quantised centre is used for the rectangle as well as for the shader,
+  /// not just for the cache key. They have to agree: a gradient built for one
+  /// place and clipped to a circle around another clips a sliver off its own
+  /// falloff, which is a real artefact rather than a rounding one.
+  ///
+  /// What this costs visually is a step of about 2 pt every few ticks, on a
+  /// shape whose radius is ~200 pt and whose edge is a smooth alpha ramp —
+  /// roughly a 1% change in alpha at the steepest point of the falloff.
   void _blob(
     Canvas canvas,
     Rect rect,
+    int slot,
     Alignment center,
     Color color,
     double radius,
     double alpha,
   ) {
-    final shader = RadialGradient(
-      center: center,
-      radius: radius,
-      // Pre-dimmed for the same reason the base gradient is — see [_shade].
-      colors: [_dim(color).withValues(alpha: alpha), Colors.transparent],
-    ).createShader(rect);
+    // Rounded to whole steps and kept as ints, so the cache comparison is
+    // exact rather than a float equality that is right most of the time.
+    final kx = (center.x / _centreStep).round();
+    final ky = (center.y / _centreStep).round();
+    final kr = (radius / _radiusStep).round();
+    final at = Alignment(kx * _centreStep, ky * _centreStep);
+    final r = kr * _radiusStep;
+
+    final cached = _blobs[slot];
+    final Shader shader;
+    if (cached != null &&
+        cached.size == rect.size &&
+        cached.palette == _blobPalette &&
+        cached.cx == kx &&
+        cached.cy == ky &&
+        cached.radius == kr) {
+      shader = cached.shader;
+    } else {
+      shader = RadialGradient(
+        center: at,
+        radius: r,
+        // Pre-dimmed for the same reason the base gradient is — see [_shade].
+        colors: [_dim(color).withValues(alpha: alpha), Colors.transparent],
+      ).createShader(rect);
+      _blobs[slot] = _CachedBlob(
+        shader: shader,
+        size: rect.size,
+        palette: _blobPalette,
+        cx: kx,
+        cy: ky,
+        radius: kr,
+      );
+    }
+
     // `radius` is a fraction of the shortest side, which is how RadialGradient
     // reads it when it builds the shader above — so the same arithmetic here
     // gives exactly the circle the gradient dies at.
     final bounds = Rect.fromCircle(
-      center: center.withinRect(rect),
-      radius: radius * rect.shortestSide,
+      center: at.withinRect(rect),
+      radius: r * rect.shortestSide,
     ).intersect(rect);
     // A blob can drift far enough for its circle to miss the screen entirely.
     if (bounds.isEmpty) return;
     canvas.drawRect(bounds, Paint()..shader = shader);
   }
 
+  /// Alignment units. Half the screen is 1, so this is ~2 pt on a 400 pt phone.
+  static const double _centreStep = 0.01;
+
+  /// A blob's radius swings by ±0.05 over the whole 24 s period, so this is a
+  /// far coarser grid than the centre's in proportion to what it quantises —
+  /// which is the point: growth is even slower than drift.
+  static const double _radiusStep = 0.004;
+
   @override
   bool shouldRepaint(covariant _AuroraPainter old) =>
       old.focusFrom != focusFrom ||
       old.focusTo != focusTo ||
       old.paletteStamp != paletteStamp;
+}
+
+/// One blob's shader and the quantised state it was built for — see [_blob].
+///
+/// Size and palette are in the key for the same reason they are in the base
+/// gradient's: a rotation or a theme switch has to throw the shader away, and a
+/// cache that outlives what it was built from is worse than no cache.
+class _CachedBlob {
+  const _CachedBlob({
+    required this.shader,
+    required this.size,
+    required this.palette,
+    required this.cx,
+    required this.cy,
+    required this.radius,
+  });
+
+  final Shader shader;
+  final Size size;
+  final int palette;
+  final int cx;
+  final int cy;
+  final int radius;
 }

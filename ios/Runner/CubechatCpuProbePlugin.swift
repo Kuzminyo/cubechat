@@ -134,11 +134,13 @@ final class CubechatCpuProbePlugin: NSObject {
   /// put a display decision in the half of the code that cannot be tested.
   private static func name(in info: thread_extended_info_data_t) -> String {
     var buffer = info.pth_name
+    // Sized before the pointer is taken, not inside the closure. `&buffer`
+    // claims exclusive access for the duration, and reading the same variable
+    // to compute the capacity is a second, overlapping access — which Swift
+    // rejects outright rather than warns about.
+    let capacity = MemoryLayout.size(ofValue: buffer)
     return withUnsafePointer(to: &buffer) { pointer in
-      pointer.withMemoryRebound(
-        to: CChar.self,
-        capacity: MemoryLayout.size(ofValue: buffer)
-      ) {
+      pointer.withMemoryRebound(to: CChar.self, capacity: capacity) {
         String(cString: $0)
       }
     }
