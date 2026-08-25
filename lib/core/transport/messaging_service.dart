@@ -2312,17 +2312,29 @@ class MessagingService {
     final readUpTo = _ref.read(readMarkersControllerProvider)[canonicalId];
     if (readUpTo == null) return;
 
-    final fresh = <Uint8List>[];
+    // Where this chat's receipts got to last time, across restarts — see
+    // [AckMarkersController]. Without it the set below starts empty on every
+    // launch and the whole history is acknowledged again, which is what the
+    // freeze on cold start turned out to be.
+    final ackedUpTo = _ref.read(ackMarkersControllerProvider)[canonicalId];
+
+    final fresh = <({Uint8List id, DateTime at})>[];
     for (final m in msgs) {
       if (m.isMine) continue;
       if (m.sentAt.isAfter(readUpTo)) continue;
+      if (ackedUpTo != null && !m.sentAt.isAfter(ackedUpTo)) continue;
       final w = m.wireId;
       if (w == null || _sentReadAcks.contains(w)) continue;
       try {
-        fresh.add(_hexDecodeBytes(w));
+        fresh.add((id: _hexDecodeBytes(w), at: m.sentAt));
       } catch (_) {/* skip malformed wireId */}
     }
     if (fresh.isEmpty) return;
+
+    // The newest message whose receipt actually went somewhere. Advanced only
+    // on a slice that reported a fan-out, so a run that dies halfway leaves the
+    // marker where the sending stopped rather than where it was aiming.
+    DateTime? acked;
 
     final peerPub = isChannel ? null : _resolvePeerPub(canonicalId);
     if (!isChannel && peerPub == null) return;
@@ -2330,7 +2342,10 @@ class MessagingService {
     for (var i = 0; i < fresh.length; i += ReadReceipt.maxIdsPerFrame) {
       final end = (i + ReadReceipt.maxIdsPerFrame).clamp(0, fresh.length);
       final slice = fresh.sublist(i, end);
-      final receipt = ReadReceipt(status: ReceiptStatus.read, msgIds: slice);
+      final receipt = ReadReceipt(
+        status: ReceiptStatus.read,
+        msgIds: [for (final e in slice) e.id],
+      );
       try {
         // Remembered as acknowledged only once it actually went somewhere.
         //
@@ -2360,8 +2375,10 @@ class MessagingService {
           );
         }
         if (fanout > 0) {
-          for (final id in slice) {
-            _sentReadAcks.add(TransportEnvelope.hashHex(id));
+          for (final e in slice) {
+            _sentReadAcks.add(TransportEnvelope.hashHex(e.id));
+            final seen = acked;
+            if (seen == null || e.at.isAfter(seen)) acked = e.at;
           }
           DebugLog.instance.log(
             'RECEIPT',
@@ -2376,12 +2393,25 @@ class MessagingService {
           // a route actually appears.
           DebugLog.instance.log('RECEIPT',
               'no route for ${slice.length} read ack(s) — will retry');
+          // Whatever did go out before this slice still counts, or the next
+          // launch re-sends it.
+          await _rememberAcked(canonicalId, acked);
           return;
         }
       } catch (e) {
         DebugLog.instance.log('RECEIPT', 'read-receipt send failed: $e');
       }
     }
+    await _rememberAcked(canonicalId, acked);
+  }
+
+  /// Persist how far this chat's receipts got, so the next launch starts from
+  /// there instead of from the beginning of the conversation.
+  Future<void> _rememberAcked(String canonicalId, DateTime? acked) async {
+    if (acked == null) return;
+    await _ref
+        .read(ackMarkersControllerProvider.notifier)
+        .markAcked(canonicalId, acked);
   }
 
   /// Re-offer every read acknowledgement that has not gone out yet.
