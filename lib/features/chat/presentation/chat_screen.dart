@@ -3187,9 +3187,16 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     // is away.
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // The marker stays here: it is local, it is what clears the unread badge
+      // on the list behind us, and it has to be true before anything reports
+      // from it.
       _markChatRead();
-      _maybeSendReadReceipts();
-      _maybeAnnounceCopyRestriction();
+      // The two that talk to another phone wait for the door to finish
+      // opening. See [_afterTransition].
+      _afterTransition(() {
+        _maybeSendReadReceipts();
+        _maybeAnnounceCopyRestriction();
+      });
     });
     // Drop any inline-edit draft left over from a different chat. Deferred so
     // we don't mutate a provider during this widget's mount.
@@ -3201,6 +3208,61 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       });
     }
   }
+
+  /// Run something once the opening transition has finished, not during it.
+  ///
+  /// Opening a chat for the first time janked, and opening the same chat again
+  /// did not. The frame meter said which half: worst frame 36 ms build against
+  /// 16 ms raster, on a phone whose build average is 0.5 ms — a single spike on
+  /// the Dart thread, not the GPU that everything else here has been about.
+  ///
+  /// The asymmetry is the whole diagnosis. A post-frame callback runs inside
+  /// `handleDrawFrame`, so its cost is counted as *build* time, and the first
+  /// open is the only one with anything to do in it: unread messages to
+  /// acknowledge, and a copy-restriction notice that the service itself drops
+  /// after one per peer per run. Second time round both return immediately,
+  /// which is exactly the reported symptom.
+  ///
+  /// What they cost is real work, not waste — composing a receipt means an
+  /// X3DH encrypt and a BIP-340 signature, in Dart, per frame sent, and the
+  /// log for that moment showed six acknowledgements and two notices going out
+  /// with two relay publishes behind them. So this does not make the work
+  /// cheaper or skip it. It moves it off the frames that are animating a route
+  /// into view, where a 36 ms stall is the one thing the user can see.
+  ///
+  /// The retry paths are untouched: a receipt that finds no route is still not
+  /// recorded as sent, and the listeners on the session manager and the relay
+  /// status still fire when a link comes back.
+  void _afterTransition(VoidCallback run) {
+    if (!mounted) return;
+    final animation = ModalRoute.of(context)?.animation;
+    // No route animation, or it is already over — nothing to wait for.
+    if (animation == null || animation.status == AnimationStatus.completed) {
+      run();
+      return;
+    }
+    void onStatus(AnimationStatus status) {
+      if (status == AnimationStatus.forward ||
+          status == AnimationStatus.reverse) {
+        return;
+      }
+      animation.removeStatusListener(onStatus);
+      _transitionWatch = null;
+      // Dismissed means the chat was left before it finished opening. The work
+      // is not done here then; the retry paths own it from that point.
+      if (status == AnimationStatus.completed && mounted) run();
+    }
+
+    _transitionWatch = (animation, onStatus);
+    animation.addStatusListener(onStatus);
+  }
+
+  /// The transition listener while it is attached, so [dispose] can detach it.
+  ///
+  /// A route animation outlives the widget that watched it, so a listener left
+  /// on one fires into a disposed State — the failure this file has already
+  /// produced three times in other shapes.
+  (Animation<double>, AnimationStatusListener)? _transitionWatch;
 
   /// Acknowledge the messages as read now that the user is looking at them.
   ///
@@ -3314,6 +3376,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
+    // The route animation outlives this State, so a listener left on it would
+    // fire into a disposed widget — see [_afterTransition].
+    final watch = _transitionWatch;
+    if (watch != null) {
+      watch.$1.removeStatusListener(watch.$2);
+      _transitionWatch = null;
+    }
     _stickerPanelRequests.dispose();
     _focusComposerRequests.dispose();
     // Only clear if we're still the active chat — guards against the
