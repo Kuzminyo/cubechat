@@ -40,6 +40,46 @@ class UiActivity {
   /// Glass surfaces skip live backdrop sampling during this window.
   final ValueNotifier<bool> isScrolling = ValueNotifier<bool>(false);
 
+  /// True while a route is sliding in or out.
+  ///
+  /// The same signal as [isScrolling] and for the same reason — the backdrop
+  /// under a glass pane is moving, so the blur has to be recomputed every
+  /// frame — but a transition is worse than a scroll: two screens are on
+  /// screen at once, so every pane on both of them is filtering at the same
+  /// time, over the aurora, for the length of the animation.
+  ///
+  /// Measured. Three slow frames caught next to a `[NAV]` line read raster
+  /// 37.2, 38.2 and 46.7 ms against builds of 1.5, 1.2 and 3.9 — the whole
+  /// cost on the GPU, during a transition, on a phone whose ordinary raster
+  /// average is 3.2 ms. The chat list rebuilding twenty times sounds like a
+  /// lot until the denominator arrives beside it: twenty rebuilds across 2795
+  /// frames is nothing, and that is what finally ruled it out.
+  final ValueNotifier<bool> isNavigating = ValueNotifier<bool>(false);
+
+  /// True while anything on screen is moving under the glass.
+  ///
+  /// One listenable rather than two, because a pane that listened to only one
+  /// of them would keep its blur through the other. Panes rebuild on this.
+  late final Listenable inMotion = Listenable.merge([isScrolling, isNavigating]);
+
+  /// Whether a pane should skip its backdrop filter right now.
+  bool get isMoving => isScrolling.value || isNavigating.value;
+
+  /// Transitions can overlap — a push landing while a pop is still running —
+  /// so this counts rather than flips, and the flag clears when the last one
+  /// finishes.
+  int _navDepth = 0;
+
+  void beginNavigation() {
+    _navDepth++;
+    if (!isNavigating.value) isNavigating.value = true;
+  }
+
+  void endNavigation() {
+    if (_navDepth > 0) _navDepth--;
+    if (_navDepth == 0 && isNavigating.value) isNavigating.value = false;
+  }
+
   Timer? _timer;
 
   /// Suppresses the countdown, leaving the interface permanently "in use".

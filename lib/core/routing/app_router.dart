@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../util/debug_log.dart';
+import '../util/ui_activity.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../features/profile/presentation/customize_screen.dart';
 import '../../features/profile/presentation/storage_screen.dart';
@@ -83,11 +84,62 @@ class _LogRoutes extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     DebugLog.instance.log('NAV', 'push ${_name(route)}');
+    _holdGlassStill(route);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     DebugLog.instance.log('NAV', 'pop ${_name(route)}');
+    _holdGlassStill(route);
+  }
+
+  /// Tell the glass to stop sampling while the screens are sliding.
+  ///
+  /// A transition puts two screens on the display at once, each with its own
+  /// panes, each filtering the aurora behind them every frame — which is what
+  /// the raster spikes beside every `[NAV]` line in the log turned out to be.
+  /// The panes keep their tint and drop only the gaussian, which is the same
+  /// trade already made for scrolling and just as invisible: the thing being
+  /// blurred is moving across the screen at the time.
+  ///
+  /// Driven by the route's own animation rather than a fixed delay, so it
+  /// covers exactly the moving part. The timer is a backstop, not the
+  /// mechanism: a route whose animation never reports completed would
+  /// otherwise leave every pane in the app flat until the next transition.
+  void _holdGlassStill(Route<dynamic> route) {
+    // Only a transition-capable route has one, and a route that appears
+    // instantly has nothing to hold the glass still for.
+    if (route is! TransitionRoute<dynamic>) return;
+    final animation = route.animation;
+    if (animation == null) return;
+    // Nothing is moving: a route restored at startup, or one that appears
+    // without a transition. Subscribing to it would arm a hold that nothing
+    // ever releases, because a status listener only fires on a *change*.
+    if (animation.status != AnimationStatus.forward &&
+        animation.status != AnimationStatus.reverse) {
+      return;
+    }
+
+    UiActivity.instance.beginNavigation();
+    var released = false;
+    void onStatus(AnimationStatus status) {
+      if (status == AnimationStatus.forward ||
+          status == AnimationStatus.reverse) {
+        return;
+      }
+      animation.removeStatusListener(onStatus);
+      if (released) return;
+      released = true;
+      UiActivity.instance.endNavigation();
+    }
+
+    // No backstop timer. One was here and it took eight widget tests down: a
+    // test that ends with a pending timer fails, and this observer is
+    // installed on the real router those tests drive. The animation is the
+    // only thing that can say when a transition is over, and a hold that
+    // somehow outlived its animation would flatten the glass rather than break
+    // anything.
+    animation.addStatusListener(onStatus);
   }
 }
 

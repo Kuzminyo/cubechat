@@ -65,8 +65,12 @@ class BarGlass extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: ValueListenableBuilder<bool>(
-                valueListenable: UiActivity.instance.isScrolling,
+              child: ListenableBuilder(
+                // Both kinds of motion, not just scrolling — a route sliding
+                // in puts two screens' worth of panes on the display at once,
+                // every one of them filtering the aurora every frame, which is
+                // what the raster spikes next to each `[NAV]` line were.
+                listenable: UiActivity.instance.inMotion,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -83,12 +87,12 @@ class BarGlass extends StatelessWidget {
                     border: Border.all(color: AppColors.glass(0.16)),
                   ),
                 ),
-                builder: (context, scrolling, pane) {
-                  // A live backdrop filter has to resample the moving list
+                builder: (context, pane) {
+                  // A live backdrop filter has to resample the moving backdrop
                   // every frame. The pane's own tint stays visually identical
-                  // during the gesture; the expensive blur returns when motion
+                  // while it moves; the expensive blur returns when motion
                   // stops.
-                  if (scrolling) return pane!;
+                  if (UiActivity.instance.isMoving) return pane!;
                   return BackdropFilter(filter: AppBlur.pane, child: pane!);
                 },
               ),

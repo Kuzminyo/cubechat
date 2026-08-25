@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
 import '../theme/glass.dart';
+import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
 /// nav bar uses, offered as a reusable surface so a list of them reads as a
@@ -156,8 +157,29 @@ class FloatingGlass extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
+              // Dropped while anything is moving under it, the same trade
+              // BarGlass makes: the tint is unchanged, only the gaussian goes,
+              // and what it would have blurred is sliding across the screen at
+              // the time. A transition is the expensive case — two screens of
+              // panes filtering the aurora at once — and it is where the
+              // 37-47 ms raster frames in the log were.
+              //
+              // Safe to swap live because the surface sits *beside* the
+              // content: only this subtree rebuilds, and the content above
+              // keeps its state. Wrapping the content instead is what once
+              // remounted the photo grid on every scroll.
               child: blur
-                  ? BackdropFilter(filter: AppBlur.pane, child: tint)
+                  ? ListenableBuilder(
+                      listenable: UiActivity.instance.inMotion,
+                      child: tint,
+                      builder: (context, pane) {
+                        if (UiActivity.instance.isMoving) return pane!;
+                        return BackdropFilter(
+                          filter: AppBlur.pane,
+                          child: pane,
+                        );
+                      },
+                    )
                   : tint,
             ),
             // The one unpositioned child, so the stack sizes itself to it —
