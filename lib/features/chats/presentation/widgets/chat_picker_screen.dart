@@ -32,7 +32,7 @@ Future<List<Chat>> showChatPicker(
   bool includeChannels = true,
 }) async {
   final chosen = await Navigator.of(context, rootNavigator: true).push<List<Chat>>(
-    mediaRoute<List<Chat>>(
+    screenRoute<List<Chat>>(
       (_) => _ChatPickerScreen(
         title: title,
         exceptChatId: exceptChatId,

@@ -100,6 +100,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    UiActivity.instance.isNavigating.addListener(_onNavigation);
     // Only run the ticker while we're actually on screen. Drift on launch, then
     // settle: the first frames are the ones with motion worth seeing.
     if (WidgetsBinding.instance.lifecycleState == null ||
@@ -188,6 +189,22 @@ class _AuroraBackgroundState extends State<AuroraBackground>
     _clock.stop(); // preserves elapsed, so the drift resumes seamlessly
   }
 
+  /// Park the drift while a route is sliding, for the reason it parks while a
+  /// list is scrolling: the backdrop is already moving, nobody is looking at
+  /// the blobs, and a transition is the most expensive moment in the app —
+  /// two screens' worth of panes over this gradient at once. Measured at 37 to
+  /// 47 ms of raster per frame before the panes stopped filtering during one.
+  ///
+  /// Registered as a listener rather than read in `build`, because the drift
+  /// runs on a ticker outside the build cycle and this has to reach the ticker.
+  void _onNavigation() {
+    if (UiActivity.instance.isNavigating.value) {
+      _stopTicker();
+    } else if (_pointers == 0 && !_scrolling) {
+      _wake();
+    }
+  }
+
   bool _onScroll(ScrollNotification notification) {
     if (notification is ScrollStartNotification && !_scrolling) {
       _scrolling = true;
@@ -235,6 +252,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    UiActivity.instance.isNavigating.removeListener(_onNavigation);
     UiActivity.instance.setScrolling(false);
     _stopTicker();
     _drift.dispose();

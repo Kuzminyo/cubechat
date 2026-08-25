@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'back_gesture.dart';
@@ -49,14 +48,32 @@ class _SlidePage<T> extends Page<T> {
   final Widget child;
 
   @override
-  Route<T> createRoute(BuildContext context) => _SlideRoute<T>(page: this);
+  Route<T> createRoute(BuildContext context) =>
+      _SlideRoute<T>(builder: (_) => child, settings: this);
 }
 
+/// The same screen transition, for a screen pushed by hand.
+///
+/// Everything routed through go_router already gets [fadeSlidePage] and with it
+/// the edge drag. A handful of full-screen screens are pushed imperatively
+/// instead — the channel form, the calendar, the forward picker — and those
+/// went out on [mediaRoute], which fades. A fade has nothing for a thumb to
+/// pull on, so those screens had a back button and no back gesture, which is
+/// the one inconsistency you feel rather than see.
+///
+/// Same route, same drag, same 300 ms. Media keeps [mediaRoute]: a photo is not
+/// the next screen along, and it has its own pull-down to close.
+PageRoute<T> screenRoute<T>(WidgetBuilder builder) =>
+    _SlideRoute<T>(builder: builder);
+
 class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> {
-  _SlideRoute({required _SlidePage<T> page}) : super(settings: page);
+  _SlideRoute({required WidgetBuilder builder, super.settings})
+      : _builder = builder;
+
+  final WidgetBuilder _builder;
 
   @override
-  Widget buildContent(BuildContext context) => (settings as _SlidePage<T>).child;
+  Widget buildContent(BuildContext context) => _builder(context);
 
   @override
   Duration get transitionDuration => const Duration(milliseconds: 300);

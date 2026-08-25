@@ -26,7 +26,7 @@ import '../data/channel_controller.dart';
 /// sentences that were missing.
 Future<void> openNewChannelScreen(BuildContext context) async {
   final joined = await Navigator.of(context, rootNavigator: true).push<String>(
-    mediaRoute<String>((_) => const NewChannelScreen()),
+    screenRoute<String>((_) => const NewChannelScreen()),
   );
   if (joined != null && context.mounted) {
     context.push(channelRoute(joined));

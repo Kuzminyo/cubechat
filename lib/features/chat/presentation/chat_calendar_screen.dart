@@ -78,7 +78,7 @@ Future<DateTime?> showChatCalendar(
   DateTime? current,
 }) {
   return Navigator.of(context).push<DateTime>(
-    mediaRoute<DateTime>(
+    screenRoute<DateTime>(
       (_) => ChatCalendarScreen(messages: messages, current: current),
     ),
   );

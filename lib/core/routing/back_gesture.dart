@@ -275,7 +275,40 @@ class EdgeBackGestureController {
   /// all until the finger has already travelled far enough to mean it.
   static const double _commitAt = 0.65;
 
-  static const Duration _settle = Duration(milliseconds: 350);
+  /// How long a full screen's worth of travel takes once the finger is off.
+  ///
+  /// It used to be 350 ms flat, whatever was left to cover, and that is the
+  /// whole of what made the release feel wrong in both directions. Let go an
+  /// inch in and the page took 350 ms to crawl back a tenth of the way, which
+  /// reads as the app thinking about it. Flick it three-quarters across and it
+  /// took the same 350 ms to finish the last quarter, which throws away the
+  /// speed the thumb just put into it — the hand says fast, the screen says
+  /// leisurely, and the join between them is what "not smooth" means here.
+  ///
+  /// Proportional to the distance left, so the *pace* is constant instead of
+  /// the duration. 300 ms matches the push, which is the pace the rest of the
+  /// app already moves at.
+  static const Duration _settleFull = Duration(milliseconds: 300);
+
+  /// Under this, a settle stops reading as motion and starts reading as a snap.
+  /// A page an inch from home does not need a tenth of a second, but going to
+  /// zero makes the last moment of the gesture jump.
+  static const Duration _settleMin = Duration(milliseconds: 110);
+
+  /// A flick has already done the moving; the animation is only catching up to
+  /// a decision the hand made, so it covers what is left faster.
+  static const double _flingPace = 0.55;
+
+  static Duration _settleFor(double distance, double velocity) {
+    final travel = distance.clamp(0.0, 1.0);
+    final pace = velocity.abs() >= _minFlingVelocity ? _flingPace : 1.0;
+    final ms = (_settleFull.inMilliseconds * pace * travel).round();
+    return Duration(
+      milliseconds: ms < _settleMin.inMilliseconds
+          ? _settleMin.inMilliseconds
+          : ms,
+    );
+  }
 
   void dragUpdate(double delta) => controller.value -= delta;
 
@@ -294,11 +327,21 @@ class EdgeBackGestureController {
     }
 
     if (complete) {
-      controller.animateTo(1, duration: _settle, curve: curve);
+      // Back where it came from: what is left is the gap up to 1.
+      controller.animateTo(
+        1,
+        duration: _settleFor(1 - controller.value, velocity),
+        curve: curve,
+      );
     } else {
       if (current) navigator.pop();
       if (controller.isAnimating) {
-        controller.animateBack(0, duration: _settle, curve: curve);
+        // Leaving: what is left is the gap down to 0.
+        controller.animateBack(
+          0,
+          duration: _settleFor(controller.value, velocity),
+          curve: curve,
+        );
       }
     }
 
