@@ -2384,6 +2384,42 @@ abstract class AppLocalizations {
   /// **'The road is chosen per message, from whatever is reachable at that moment.'**
   String get chatRoutesHint;
 
+  /// No description provided for @chatRoutesPreferTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What to try first'**
+  String get chatRoutesPreferTitle;
+
+  /// No description provided for @chatRoutesPreferMesh.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth first'**
+  String get chatRoutesPreferMesh;
+
+  /// No description provided for @chatRoutesPreferMeshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Faster in the room, costs no data, tells a relay nothing'**
+  String get chatRoutesPreferMeshHint;
+
+  /// No description provided for @chatRoutesPreferRelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet first'**
+  String get chatRoutesPreferRelay;
+
+  /// No description provided for @chatRoutesPreferRelayHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For a poor Bluetooth link and a good connection'**
+  String get chatRoutesPreferRelayHint;
+
+  /// No description provided for @chatRoutesPreferNote.
+  ///
+  /// In en, this message translates to:
+  /// **'A preference, not a lock. If the road you picked is not reachable, the other one still carries the message.'**
+  String get chatRoutesPreferNote;
+
   /// No description provided for @deadmanTitle.
   ///
   /// In en, this message translates to:

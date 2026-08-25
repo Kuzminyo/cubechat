@@ -866,6 +866,7 @@ class _ChatHeader extends StatelessWidget {
                                     if (route != null) ...[
                                       SizedBox(width: compactRoute ? 4 : 6),
                                       _ChatRouteIndicator(
+                                        chatId: chatId,
                                         route: route!,
                                         hops: routeHops,
                                         compact: compactRoute,
@@ -899,11 +900,13 @@ class _ChatHeader extends StatelessWidget {
 
 class _ChatRouteIndicator extends ConsumerWidget {
   const _ChatRouteIndicator({
+    required this.chatId,
     required this.route,
     this.hops,
     this.compact = false,
   });
 
+  final String chatId;
   final ChatRoute route;
   final int? hops;
   final bool compact;
@@ -965,13 +968,15 @@ class _ChatRouteIndicator extends ConsumerWidget {
     );
   }
 
-  /// Every road to this conversation, and which one the next message takes.
+  /// Every road to this conversation, which one the next message takes, and
+  /// which one to try first.
   ///
-  /// Deliberately not a chooser. The transport is picked per message from what
-  /// is actually reachable at that instant, and letting somebody pin it would
-  /// mean either honouring a choice that has since become impossible or
-  /// quietly ignoring it. This answers the question instead of pretending to
-  /// take orders.
+  /// The top half answers a question; the bottom half takes an instruction.
+  /// The instruction is a *preference*, not a pin — the road is still picked
+  /// per message from what is actually reachable at that instant, so a choice
+  /// that has since become impossible is not honoured rather than being
+  /// obeyed into a message that never arrives. That is the only way a chooser
+  /// can exist here without being a lie.
   void _showRoutes(BuildContext context, WidgetRef ref, AppLocalizations t) {
     final direct = route == ChatRoute.bluetooth;
     final mesh = direct || route == ChatRoute.mesh;
@@ -1024,9 +1029,109 @@ class _ChatRouteIndicator extends ConsumerWidget {
                 active: route == ChatRoute.internet),
             const SizedBox(height: 6),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
               child: Text(
                 t.chatRoutesHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 11.5,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: AppColors.textOnGlassFaint.withValues(alpha: 0.14),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              t.chatRoutesPreferTitle,
+              style: AppTypography.heading(size: AppMenu.title),
+            ),
+            const SizedBox(height: 4),
+            // Watched, not read: the tick has to move under the finger that
+            // moved it, and the sheet is its own subtree.
+            Consumer(
+              builder: (_, sheetRef, __) {
+                final prefersRelay = sheetRef
+                    .watch(conversationSettingsControllerProvider)[chatId]
+                    ?.preferRelay ??
+                    false;
+                Widget option(
+                  IconData icon,
+                  String title,
+                  String hint,
+                  bool chosen,
+                  bool value,
+                ) =>
+                    ListTile(
+                      leading: Icon(
+                        icon,
+                        color: chosen
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassFaint,
+                      ),
+                      title: Text(
+                        title,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontWeight:
+                              chosen ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        hint,
+                        style: TextStyle(
+                          color: AppColors.textOnGlassDim,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                      trailing: Icon(
+                        chosen
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        color: chosen
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassFaint,
+                      ),
+                      onTap: chosen
+                          ? null
+                          : () => unawaited(
+                                sheetRef
+                                    .read(
+                                      conversationSettingsControllerProvider
+                                          .notifier,
+                                    )
+                                    .setPreferRelay(chatId, value),
+                              ),
+                    );
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    option(
+                      Icons.bluetooth_rounded,
+                      t.chatRoutesPreferMesh,
+                      t.chatRoutesPreferMeshHint,
+                      !prefersRelay,
+                      false,
+                    ),
+                    option(
+                      Icons.public_rounded,
+                      t.chatRoutesPreferRelay,
+                      t.chatRoutesPreferRelayHint,
+                      prefersRelay,
+                      true,
+                    ),
+                  ],
+                );
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+              child: Text(
+                t.chatRoutesPreferNote,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,

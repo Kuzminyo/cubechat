@@ -400,6 +400,66 @@ void main() {
   });
   */
 
+  group('which road to try first', () {
+    // A preference, not a pin. The value only reorders what the send path
+    // tries; the tests that matter here are that it is remembered at all and
+    // that it survives a restart, because a setting that quietly resets is
+    // worse than one that was never offered.
+    test('Bluetooth first is the default, and costs nothing to store', () {
+      expect(ConversationSettings.initial.preferRelay, isFalse);
+      expect(ConversationSettings.initial.isDefault, isTrue);
+      expect(
+        const ConversationSettings(preferRelay: true).isDefault,
+        isFalse,
+        reason: 'an entry that only sets this still has to be written',
+      );
+    });
+
+    test('it does not disturb the privacy exceptions beside it', () {
+      final both = ConversationSettings.initial
+          .copyWith(hideLastSeen: true, preferRelay: true);
+      expect(both.preferRelay, isTrue);
+      expect(both.hideLastSeen, isTrue);
+      expect(both.copyWith(preferRelay: false).hideLastSeen, isTrue);
+    });
+
+    test('the choice survives a restart', () async {
+      final chat = 'be' * 32;
+      var container = ProviderContainer();
+      var settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      await settings.setPreferRelay(chat, true);
+      expect(settings.prefersRelay(chat), isTrue);
+      await settleBackgroundStorage();
+      container.dispose();
+
+      container = ProviderContainer();
+      addTearDown(container.dispose);
+      settings = container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      expect(settings.prefersRelay(chat), isTrue);
+      expect(
+        settings.prefersRelay('cc' * 32),
+        isFalse,
+        reason: 'it is a per-conversation choice, not a global one',
+      );
+    });
+
+    test('it can be taken back off', () async {
+      final chat = 'ba' * 32;
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      await settings.loaded;
+      await settings.setPreferRelay(chat, true);
+      await settings.setPreferRelay(chat, false);
+      expect(settings.prefersRelay(chat), isFalse);
+    });
+
+  });
+
   group('ChatAutoDelete', () {
     test('a setting stored as the old enum name survives the upgrade', () {
       // The worst outcome of moving from an enum to a duration would be an

@@ -1223,11 +1223,30 @@ class MessagingService {
       final wireBytes = outboundFrame.encode();
       var deliveredVia = 0;
       MessageRoute? deliveredRoute;
+
+      // The internet first, if this conversation asked for it.
+      //
+      // A bias rather than a lock: the road is still whatever is reachable at
+      // this instant, and a preference that cannot be honoured is simply not
+      // honoured — the radios below are tried exactly as before and the
+      // message still goes. What changes is only the order.
+      //
+      // Bluetooth first stays the default. It is faster in the room, costs no
+      // data, and tells a relay nothing; somebody on a poor link and good wifi
+      // wants the opposite, and only they can know that.
+      if (!transient &&
+          _ref
+              .read(conversationSettingsControllerProvider.notifier)
+              .prefersRelay(canonicalId) &&
+          await _sendOverNostr(canonicalId, wireBytes)) {
+        deliveredVia = 1;
+        deliveredRoute = MessageRoute.internet;
+      }
       // Every delivery attempt is wrapped so a transient BLE failure (stale
       // link, peer's Bluetooth turned off, write rejected) leaves
       // deliveredVia == 0 and routes the message into the pending outbox —
       // it must NOT throw to the outer catch and mark the message failed.
-      if (transportId != null) {
+      if (deliveredVia == 0 && transportId != null) {
         final client = _clients[transportId];
         if (client != null && client.isConnected) {
           try {
@@ -1252,7 +1271,7 @@ class MessagingService {
           deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
           if (deliveredVia > 0) deliveredRoute = MessageRoute.mesh;
         }
-      } else {
+      } else if (deliveredVia == 0) {
         deliveredVia = await _fanoutAllLinks(wireBytes, excludePeerId: null);
         if (deliveredVia > 0) deliveredRoute = MessageRoute.mesh;
       }

@@ -135,6 +135,7 @@ class ConversationSettings {
     this.hideAvatar = false,
     this.hideLastSeen = false,
     this.hideReadReceipts = false,
+    this.preferRelay = false,
   });
 
   static const initial = ConversationSettings();
@@ -197,6 +198,19 @@ class ConversationSettings {
   final bool hideLastSeen;
   final bool hideReadReceipts;
 
+  /// Try the internet before the radios for this conversation.
+  ///
+  /// A bias, not a lock. The road is picked per message from what is actually
+  /// reachable at that instant, so a preference that could not be honoured is
+  /// simply not honoured — the message still goes. What this changes is the
+  /// order things are tried in when more than one is available.
+  ///
+  /// Off by default, because Bluetooth first is the right default for an app
+  /// whose point is working without the internet: it is faster in the room,
+  /// costs no data, and tells a relay nothing. Somebody on a bad Bluetooth
+  /// link and good wifi wants the opposite, and only they can know that.
+  final bool preferRelay;
+
   /// Whether copying, forwarding and sharing are off in this conversation —
   /// the question every message surface actually asks. Either side saying so
   /// is enough; it is a request about the conversation, not about one device.
@@ -212,6 +226,7 @@ class ConversationSettings {
     bool? hideAvatar,
     bool? hideLastSeen,
     bool? hideReadReceipts,
+    bool? preferRelay,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
@@ -223,6 +238,7 @@ class ConversationSettings {
         hideAvatar: hideAvatar ?? this.hideAvatar,
         hideLastSeen: hideLastSeen ?? this.hideLastSeen,
         hideReadReceipts: hideReadReceipts ?? this.hideReadReceipts,
+        preferRelay: preferRelay ?? this.preferRelay,
       );
 
   /// True when there is nothing here worth storing. The hidings count: an
@@ -235,7 +251,8 @@ class ConversationSettings {
       !wallpaper.isSet &&
       !hideAvatar &&
       !hideLastSeen &&
-      !hideReadReceipts;
+      !hideReadReceipts &&
+      !preferRelay;
 
   @override
   bool operator ==(Object other) =>
@@ -247,7 +264,8 @@ class ConversationSettings {
       other.wallpaper == wallpaper &&
       other.hideAvatar == hideAvatar &&
       other.hideLastSeen == hideLastSeen &&
-      other.hideReadReceipts == hideReadReceipts;
+      other.hideReadReceipts == hideReadReceipts &&
+      other.preferRelay == preferRelay;
 
   @override
   int get hashCode => Object.hash(
@@ -259,6 +277,7 @@ class ConversationSettings {
         hideAvatar,
         hideLastSeen,
         hideReadReceipts,
+        preferRelay,
       );
 }
 
@@ -329,6 +348,12 @@ class ConversationSettingsController
 
   Future<void> setWallpaper(String chatId, ChatWallpaper wallpaper) =>
       _put(chatId, forChat(chatId).copyWith(wallpaper: wallpaper));
+
+  /// Try the internet before the radios for this conversation.
+  Future<void> setPreferRelay(String chatId, bool prefer) =>
+      _put(chatId, forChat(chatId).copyWith(preferRelay: prefer));
+
+  bool prefersRelay(String chatId) => forChat(chatId).preferRelay;
 
   Future<void> setHideAvatar(String chatId, bool hidden) =>
       _put(chatId, forChat(chatId).copyWith(hideAvatar: hidden));
@@ -450,6 +475,7 @@ class ConversationSettingsController
             hideAvatar: value['hideAvatar'] == true,
             hideLastSeen: value['hideLastSeen'] == true,
             hideReadReceipts: value['hideReadReceipts'] == true,
+            preferRelay: value['preferRelay'] == true,
           );
           if (!settings.isDefault) loaded[entry.key as String] = settings;
         }
@@ -483,6 +509,7 @@ class ConversationSettingsController
             if (entry.value.hideAvatar) 'hideAvatar': true,
             if (entry.value.hideLastSeen) 'hideLastSeen': true,
             if (entry.value.hideReadReceipts) 'hideReadReceipts': true,
+            if (entry.value.preferRelay) 'preferRelay': true,
           },
       });
     } catch (e) {

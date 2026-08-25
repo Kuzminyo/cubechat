@@ -1324,6 +1324,27 @@ class AppLocalizationsEn extends AppLocalizations {
       'The road is chosen per message, from whatever is reachable at that moment.';
 
   @override
+  String get chatRoutesPreferTitle => 'What to try first';
+
+  @override
+  String get chatRoutesPreferMesh => 'Bluetooth first';
+
+  @override
+  String get chatRoutesPreferMeshHint =>
+      'Faster in the room, costs no data, tells a relay nothing';
+
+  @override
+  String get chatRoutesPreferRelay => 'Internet first';
+
+  @override
+  String get chatRoutesPreferRelayHint =>
+      'For a poor Bluetooth link and a good connection';
+
+  @override
+  String get chatRoutesPreferNote =>
+      'A preference, not a lock. If the road you picked is not reachable, the other one still carries the message.';
+
+  @override
   String get deadmanTitle => 'Wipe if unused';
 
   @override

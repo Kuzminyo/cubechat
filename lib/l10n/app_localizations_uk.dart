@@ -1331,6 +1331,27 @@ class AppLocalizationsUk extends AppLocalizations {
       'Дорогу обирає кожне повідомлення окремо — з того, що доступне саме тоді.';
 
   @override
+  String get chatRoutesPreferTitle => 'Що пробувати першим';
+
+  @override
+  String get chatRoutesPreferMesh => 'Спершу Bluetooth';
+
+  @override
+  String get chatRoutesPreferMeshHint =>
+      'Швидше в одній кімнаті, не витрачає трафік і нічого не каже релею';
+
+  @override
+  String get chatRoutesPreferRelay => 'Спершу інтернет';
+
+  @override
+  String get chatRoutesPreferRelayHint =>
+      'Коли Bluetooth ледь тримає, а зв\'язок добрий';
+
+  @override
+  String get chatRoutesPreferNote =>
+      'Це перевага, а не замок. Якщо обрана дорога недоступна, повідомлення однаково піде іншою.';
+
+  @override
   String get deadmanTitle => 'Стерти, якщо не заходити';
 
   @override
