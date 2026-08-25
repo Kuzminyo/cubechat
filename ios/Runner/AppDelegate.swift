@@ -11,6 +11,11 @@ import UserNotifications
   private var audioTrimPlugin: CubechatAudioTrimPlugin?
   private var openInPlugin: CubechatOpenInPlugin?
 
+  /// Held for the life of the app, like the others: it captures the platform
+  /// thread's mach port in its initialiser and would hand that port back on
+  /// deallocation, taking the Diagnostics CPU panel with it.
+  private var cpuProbePlugin: CubechatCpuProbePlugin?
+
   /// Channel the background window is driven over. Must match
   /// `IosBackgroundRefresh` on the Dart side.
   private static let refreshChannelName = "cubechat/background_refresh"
@@ -115,6 +120,7 @@ import UserNotifications
       blePeripheralPlugin = CubechatBlePeripheralPlugin(messenger: messenger)
       audioTrimPlugin = CubechatAudioTrimPlugin(messenger: messenger)
       openInPlugin = CubechatOpenInPlugin(messenger: messenger)
+      cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
         binaryMessenger: messenger

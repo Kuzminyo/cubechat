@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
+import 'package:flutter/services.dart' show MethodChannel;
 
 /// What the process spends CPU on, broken down by thread.
 ///
@@ -26,16 +27,35 @@ import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 /// log line. The panel was then reporting a build cost it had itself created,
 /// which is the one measurement error a diagnostic must not make.
 ///
-/// Android only. `/proc` is not readable on iOS, [supported] says so, and the
+/// iOS has no `/proc`, and for a long time that meant no panel there at all —
+/// on the platform where the frame meter says "GPU-bound" just as loudly. Mach
+/// keeps the same counters: `task_threads` plus
+/// `thread_info(THREAD_EXTENDED_INFO)` gives a name and a user+system time per
+/// thread, which is what `/proc/self/task/<tid>/stat` gives. That side lives in
+/// `ios/Runner/CubechatCpuProbePlugin.swift` and answers on one channel; the
+/// arithmetic, the grouping and the verdict below are shared, so both platforms
+/// print the same sentence from the same code.
+///
+/// Anything else — desktop, web — has no source and [supported] says so; the
 /// panel hides itself rather than showing zeroes.
 class CpuProbe {
   CpuProbe._();
 
   static final CpuProbe instance = CpuProbe._();
 
+  /// The iOS sampler. Absent on every other platform, and a missing handler
+  /// reads as "no data" rather than as an error — same branch as an Android
+  /// that has tightened `/proc`.
+  static const MethodChannel _channel = MethodChannel('cubechat/cpu_probe');
+
   /// USER_HZ. Fixed at 100 for the Linux userspace ABI regardless of the
   /// kernel's own tick rate, so one tick is 10 ms of CPU.
-  static const int _msPerTick = 10;
+  ///
+  /// Microseconds are what everything past [_sample] works in, because iOS
+  /// reports nanoseconds and quantising that down to Linux's 10 ms would throw
+  /// away real numbers — a thread that used 3 ms would read as zero. Linux
+  /// genuinely has nothing finer, so its ticks are simply widened here.
+  static const int _usPerTick = 10000;
 
   /// The platform thread's row when it is only the platform thread.
   static const String mainLabel = 'platform (main)';
@@ -58,10 +78,16 @@ class CpuProbe {
 
   /// Whether this platform exposes the counters at all.
   ///
-  /// Checked by looking, not by asking the platform: an Android that has
-  /// tightened `/proc` visibility should fall into the same "no data" branch as
-  /// iOS rather than throw on every sample.
+  /// On Android this is checked by looking rather than by asking: a device that
+  /// has tightened `/proc` visibility should fall into the same "no data"
+  /// branch as an unsupported platform rather than throw on every sample.
+  ///
+  /// iOS cannot be checked without a round trip, so it answers yes and lets the
+  /// sample decide. That costs nothing: the panel already renders nothing when
+  /// a report comes back empty, so a build whose native half is missing hides
+  /// the panel exactly as before.
   bool get supported {
+    if (Platform.isIOS) return true;
     if (!Platform.isAndroid) return false;
     try {
       return _taskDir.existsSync();
@@ -80,7 +106,7 @@ class CpuProbe {
   Future<void> begin() async {
     final snap = await _sample();
     if (snap == null) return;
-    _baseline = snap.ticks;
+    _baseline = snap.micros;
     _baselineAt = DateTime.now();
     _baselineMerged = snap.merged;
     revision.value++;
@@ -111,12 +137,13 @@ class CpuProbe {
 
     final rows = <CpuThread>[];
     var totalMs = 0;
-    snap.ticks.forEach((name, ticks) {
+    snap.micros.forEach((name, us) {
       // A thread that did not exist at baseline counts from zero, which is
       // exactly right: it did all of its work inside the window.
-      final delta = ticks - (base[name] ?? 0);
+      final delta = us - (base[name] ?? 0);
       if (delta <= 0) return;
-      final ms = delta * _msPerTick;
+      final ms = delta ~/ 1000;
+      if (ms <= 0) return;
       totalMs += ms;
       rows.add(CpuThread(name, ms, ms * 100 / elapsedMs));
     });
@@ -136,9 +163,66 @@ class CpuProbe {
     revision.value++;
   }
 
-  /// Ticks per thread, grouped by [_label]. Null when `/proc` is unreadable.
-  Future<_Snapshot?> _sample() async {
-    if (!Platform.isAndroid) return null;
+  /// Microseconds per thread, grouped by [_label]. Null when there is no
+  /// source on this platform, or the source refused to answer.
+  Future<_Snapshot?> _sample() {
+    if (Platform.isIOS) return _sampleMach();
+    if (Platform.isAndroid) return _sampleProc();
+    return Future<_Snapshot?>.value();
+  }
+
+  /// The Mach walk, done natively — see `CubechatCpuProbePlugin.swift`.
+  ///
+  /// The native half deliberately decides nothing: it returns a name, a
+  /// microsecond total and whether the thread is the platform one, and every
+  /// judgement about what those mean is made here, where it can be tested
+  /// without a phone.
+  Future<_Snapshot?> _sampleMach() async {
+    final List<Object?> raw;
+    try {
+      final reply = await _channel.invokeMethod<List<Object?>>('sample');
+      if (reply == null || reply.isEmpty) return null;
+      raw = reply;
+    } catch (_) {
+      // No handler in this build, or the walk failed. Both are "no data".
+      return null;
+    }
+
+    final threads = <({String comm, bool isMain, int micros})>[];
+    var dartUiMicros = 0;
+    var mainMicros = 0;
+    for (final row in raw) {
+      if (row is! Map) continue;
+      final comm = row['name'] as String? ?? '';
+      final micros = row['us'] as int? ?? 0;
+      final isMain = row['main'] == true;
+      if (isMain) {
+        mainMicros += micros;
+      } else if (_engineRole(comm) == 'ui') {
+        dartUiMicros += micros;
+      }
+      threads.add((comm: comm, isMain: isMain, micros: micros));
+    }
+    if (threads.isEmpty) return null;
+
+    // Same rule as Android, and it should answer differently here: iOS runs
+    // the UI task runner on its own thread, so the platform row and the Dart
+    // row stay separate and the verdict can talk about drawing share again.
+    // Asked rather than assumed, because that is a fact about the engine's
+    // threading policy and not one this file gets to hold an opinion on.
+    final merged = mergedByLoad(
+      dartUiTicks: dartUiMicros,
+      mainTicks: mainMicros,
+    );
+    final out = <String, int>{};
+    for (final t in threads) {
+      final label = _label(t.comm, isMain: t.isMain, merged: merged);
+      out[label] = (out[label] ?? 0) + t.micros;
+    }
+    return _Snapshot(out, merged);
+  }
+
+  Future<_Snapshot?> _sampleProc() async {
     final int mainTid;
     try {
       mainTid = await _pidOfSelf();
@@ -199,7 +283,7 @@ class CpuProbe {
     final out = <String, int>{};
     for (final t in raw) {
       final label = _label(t.comm, isMain: t.isMain, merged: merged);
-      out[label] = (out[label] ?? 0) + t.ticks;
+      out[label] = (out[label] ?? 0) + t.ticks * _usPerTick;
     }
     return _Snapshot(out, merged);
   }
@@ -314,6 +398,27 @@ class CpuProbe {
     // (`dart:io EventHandler`) never arrives intact.
     if (lower.startsWith('dart:io')) return 'dart:io';
     if (comm.startsWith('DartWorker')) return 'Dart workers';
+    // --- iOS ------------------------------------------------------------
+    // Same job as the binder collapse above: the dispatch pool arrives as a
+    // dozen threads that are individually nothing and collectively the answer,
+    // and most of them have no name at all. An unnamed row is honest — it is
+    // where the work went — and a dozen empty rows are not.
+    if (comm.isEmpty) return 'dispatch pool (unnamed)';
+    if (comm.startsWith('com.apple.uikit')) return 'UIKit events';
+    if (comm.startsWith('com.apple.CoreBluetooth') ||
+        comm.startsWith('CoreBluetooth')) {
+      return 'CoreBluetooth';
+    }
+    if (comm.startsWith('com.apple.NSURLConnection') ||
+        comm.startsWith('com.apple.CFNetwork') ||
+        comm.startsWith('com.apple.network')) {
+      return 'networking';
+    }
+    if (comm.startsWith('com.apple.CoreMotion')) return 'CoreMotion';
+    if (comm.startsWith('com.apple.root')) return 'dispatch pool';
+    // `caulk` is CoreAudio's own scheduler; it means audio is running, which
+    // is what the row should say rather than a name nobody can place.
+    if (comm.startsWith('caulk') || comm.startsWith('AVAudio')) return 'audio';
     if (comm.startsWith('pool-')) return 'Java pool';
     if (comm.startsWith('hwuiTask')) return 'hwui';
     if (comm.startsWith('Jit ')) return 'JIT';
@@ -329,19 +434,30 @@ class CpuProbe {
   /// `1.ui` -> `ui`. The engine prefixes its threads with the engine id, so
   /// `1.ui` on the first engine and `2.ui` on a second one. Null for anything
   /// that is not one of them.
+  ///
+  /// iOS spells the same threads `io.flutter.1.ui`: Linux truncates a thread
+  /// name at 15 characters and the engine shortens them to fit, Mach allows 64
+  /// and it does not. The prefix is dropped here so everything downstream sees
+  /// one spelling — and so a screenshot from either phone has the same rows in
+  /// it, which is the entire point of doing this twice.
   static String? _engineRole(String comm) {
-    final dot = comm.indexOf('.');
+    final name = comm.startsWith(_iosEnginePrefix)
+        ? comm.substring(_iosEnginePrefix.length)
+        : comm;
+    final dot = name.indexOf('.');
     if (dot <= 0) return null;
-    if (int.tryParse(comm.substring(0, dot)) == null) return null;
-    return comm.substring(dot + 1);
+    if (int.tryParse(name.substring(0, dot)) == null) return null;
+    return name.substring(dot + 1);
   }
+
+  static const String _iosEnginePrefix = 'io.flutter.';
 }
 
-/// One pass over `/proc/self/task`: ticks per label, plus whether the engine
-/// was found running Dart on the platform thread.
+/// One pass over whichever source this platform has: microseconds per label,
+/// plus whether the engine was found running Dart on the platform thread.
 class _Snapshot {
-  const _Snapshot(this.ticks, this.merged);
-  final Map<String, int> ticks;
+  const _Snapshot(this.micros, this.merged);
+  final Map<String, int> micros;
   final bool merged;
 }
 

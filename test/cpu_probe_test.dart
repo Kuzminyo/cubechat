@@ -86,6 +86,57 @@ void main() {
     test('leaves an unrecognised thread alone', () {
       expect(CpuProbe.label('BluetoothGatt', isMain: false), 'BluetoothGatt');
     });
+
+    test('an iOS engine thread lands in the same row as its Android twin', () {
+      // The whole point of naming these centrally: two screenshots from two
+      // phones have to be comparable line by line. Mach allows a 64-character
+      // thread name and Linux truncates at 15, so the engine writes
+      // `io.flutter.1.ui` on one and `1.ui` on the other for the same thread.
+      expect(CpuProbe.label('io.flutter.1.ui', isMain: false), 'Dart UI');
+      expect(
+        CpuProbe.label('io.flutter.1.raster', isMain: false),
+        CpuProbe.label('1.raster', isMain: false),
+      );
+      expect(CpuProbe.label('io.flutter.1.io', isMain: false), 'image decode');
+      expect(
+        CpuProbe.label('io.flutter.1.profiler', isMain: false),
+        'profiler',
+      );
+    });
+
+    test('the iOS pools collapse the way the binder pool does', () {
+      // Most of the dispatch pool has no name at all. A dozen blank rows would
+      // push everything worth reading off the panel, and the aggregate is the
+      // answer anyway.
+      expect(CpuProbe.label('', isMain: false), 'dispatch pool (unnamed)');
+      expect(
+        CpuProbe.label('com.apple.root.default-qos', isMain: false),
+        'dispatch pool',
+      );
+      expect(
+        CpuProbe.label('com.apple.uikit.eventfetch-thread', isMain: false),
+        'UIKit events',
+      );
+      expect(
+        CpuProbe.label('com.apple.CoreBluetooth.XPC', isMain: false),
+        'CoreBluetooth',
+      );
+      expect(
+        CpuProbe.label('caulk.messenger.shared:high', isMain: false),
+        CpuProbe.label('AVAudioSession Notify Thread', isMain: false),
+      );
+    });
+
+    test('an empty name never reaches the main thread row', () {
+      // The platform thread on iOS is unnamed, and the unnamed rule above
+      // would file it with the dispatch pool if the main check did not come
+      // first. That would hide the busiest thread in the app inside a pool.
+      expect(CpuProbe.label('', isMain: true), 'platform (main)');
+      expect(
+        CpuProbe.label('', isMain: true, merged: true),
+        'platform + Dart UI',
+      );
+    });
   });
 
   group('parseStat', () {
