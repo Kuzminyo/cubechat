@@ -120,6 +120,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('diagnostics');
     final t = AppLocalizations.of(context);
     final entries = DebugLog.instance.entries;
 

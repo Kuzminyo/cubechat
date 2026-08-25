@@ -209,12 +209,45 @@ class FrameStats {
       return;
     }
     _lastReport = now;
+    final who = takeBuildCounts();
     DebugLog.instance.log(
       'FRAME',
       'slow frame — build ${(buildUs / 1000).toStringAsFixed(1)} ms, '
-          'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms',
+          'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms'
+          '${who.isEmpty ? '' : ' — $who'}',
     );
   }
+
+  /// How many times each watched screen rebuilt since the last report.
+  ///
+  /// The first instrumentation round proved the stall was on the Dart thread
+  /// and ruled out the two calls that looked expensive — both came back at
+  /// 0.0 ms of synchronous work. What it could not say is *which tree* was
+  /// being rebuilt, and the honest answer to that is not visible in the source:
+  /// the tab shell keeps every branch mounted, so a screen nobody is looking
+  /// at rebuilds on every provider change and pays for it in full.
+  ///
+  /// So the screens count themselves. A slow frame arrives with a list of who
+  /// rebuilt beside it, which is the difference between a suspect and a name.
+  ///
+  /// Counting is one increment on an int — cheap enough to leave in an ordinary
+  /// build, which matters because the stall being chased does not reproduce on
+  /// demand.
+  static void countBuild(String screen) {
+    _buildCounts[screen] = (_buildCounts[screen] ?? 0) + 1;
+  }
+
+  /// The counts since the last call, busiest first, and reset.
+  @visibleForTesting
+  static String takeBuildCounts() {
+    if (_buildCounts.isEmpty) return '';
+    final rows = _buildCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    _buildCounts.clear();
+    return rows.map((e) => '${e.key} x${e.value}').join(', ');
+  }
+
+  static final Map<String, int> _buildCounts = <String, int>{};
 
   /// Two 60 Hz frames. High enough that ordinary jank on a slow phone does not
   /// fill the log, low enough to catch the stalls being hunted.

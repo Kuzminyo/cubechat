@@ -11,6 +11,7 @@ import '../../../core/notifications/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../core/transport/file_reassembly.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -4201,6 +4202,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('chat');
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
     final draft = ref.watch(draftsControllerProvider)[widget.canonicalId];

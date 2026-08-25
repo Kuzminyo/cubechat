@@ -41,13 +41,28 @@ class ArchiveScreen extends ConsumerStatefulWidget {
 }
 
 class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
+  /// Resolved while the element is alive, used once it is not.
+  ///
+  /// `ref.read` inside `dispose` throws. The element is marked disposed before
+  /// `State.dispose` runs during unmount, so the read asserts and the clear
+  /// never happens — which is not a crash the user sees, it is a selection bar
+  /// left standing over rows they cannot reach. The stack trace naming this
+  /// line sat in a phone's log for a day.
+  ///
+  /// The notifier is safe to hold: [chatSelectionProvider] is a plain
+  /// `NotifierProvider`, not auto-disposed, so the instance outlives this
+  /// screen by design — it is shared with the main list, which is the entire
+  /// reason this clear exists.
+  late final ChatSelectionController _selection =
+      ref.read(chatSelectionProvider.notifier);
+
   @override
   void dispose() {
     // The selection is shared with the main list, so leaving mid-pick would
     // drop the user back into a list already in selection mode over rows they
     // cannot see. Cleared after the frame: this runs during dispose, and
     // writing to a provider from there rebuilds a tree that is going away.
-    final selection = ref.read(chatSelectionProvider.notifier);
+    final selection = _selection;
     WidgetsBinding.instance.addPostFrameCallback((_) => selection.clear());
     super.dispose();
   }

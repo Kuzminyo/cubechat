@@ -13,6 +13,7 @@ import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -491,6 +492,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
 
   @override
   Widget build(BuildContext context) {
+    FrameStats.countBuild('chats');
     final t = AppLocalizations.of(context);
     final query = ref.watch(chatsQueryProvider).toLowerCase();
     // The drawer's contents are out of this list by construction — see
