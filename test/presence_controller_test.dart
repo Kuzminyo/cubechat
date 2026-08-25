@@ -68,7 +68,13 @@ void main() {
     PeerPresence beacon(bool online, Duration ago) =>
         PeerPresence(online: online, at: now.subtract(ago));
 
-    test('a live session is definite, whatever else says', () {
+    test('a live session is not a claim about being in the app', () {
+      // This used to answer true, on the reasoning that a Noise session can
+      // only exist while both ends are running. Running is not the question:
+      // on Android the app runs in the background behind a foreground
+      // service, so the session outlives anybody looking at it. Reported as
+      // somebody showing present with the app closed, right up until the
+      // process was killed.
       expect(
         peerIsOnline(
           hasLiveSession: true,
@@ -76,7 +82,21 @@ void main() {
           lastSeen: null,
           now: now,
         ),
-        isTrue,
+        isFalse,
+      );
+    });
+
+    test('being in radio range is not being in the app either', () {
+      // An announcement says a radio is nearby. Which road a message takes is
+      // a separate fact with its own indicator.
+      expect(
+        peerIsOnline(
+          hasLiveSession: true,
+          beacon: null,
+          lastSeen: now.subtract(const Duration(seconds: 5)),
+          now: now,
+        ),
+        isFalse,
       );
     });
 
@@ -108,15 +128,19 @@ void main() {
       );
     });
 
-    test('a stale beacon falls back to the mesh window', () {
+    test('a stale beacon reads as offline, not as mesh evidence', () {
+      // The fallback this replaces answered "online" from a recent
+      // announcement, which is a fact about a radio rather than about a
+      // person. An expired beacon means we no longer know, and not knowing
+      // reads as not present.
       expect(
         peerIsOnline(
           hasLiveSession: false,
-          beacon: beacon(false, PeerPresence.ttl * 2),
+          beacon: beacon(true, PeerPresence.ttl * 2),
           lastSeen: now.subtract(const Duration(seconds: 30)),
           now: now,
         ),
-        isTrue,
+        isFalse,
       );
     });
 
@@ -166,7 +190,12 @@ void main() {
       );
     });
 
-    test('mesh evidence still stands in for a missing beacon', () {
+    test('mesh evidence no longer stands in for a missing beacon', () {
+      // With the switch off there is no beacon, and there is now nothing
+      // behind it: the honest answer to "are they in the app" without one is
+      // no. The cost is named where the rule lives — two phones on Bluetooth
+      // alone never read as present, because nothing on that path carries the
+      // claim.
       expect(
         peerIsOnline(
           hasLiveSession: false,
@@ -174,7 +203,7 @@ void main() {
           lastSeen: now.subtract(const Duration(seconds: 1)),
           now: now,
         ),
-        isTrue,
+        isFalse,
       );
     });
 
@@ -199,7 +228,9 @@ void main() {
       );
     });
 
-    test('a live session still counts, because nobody had to tell us', () {
+    test('a live session does not count either, switch or no switch', () {
+      // The link says a phone is reachable. It has never said a person is
+      // looking at it, and that is the question here.
       expect(
         peerIsOnline(
           hasLiveSession: true,
@@ -207,7 +238,7 @@ void main() {
           lastSeen: null,
           now: now,
         ),
-        isTrue,
+        isFalse,
       );
     });
   });

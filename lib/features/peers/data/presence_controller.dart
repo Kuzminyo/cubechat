@@ -167,10 +167,27 @@ bool peerIsOnline({
   required DateTime? lastSeen,
   DateTime? now,
 }) {
-  if (hasLiveSession) return true;
+  // Only a beacon answers this, and only while it is fresh.
+  //
+  // The two other kinds of evidence used to count and both were wrong about
+  // the question. A live Noise session was called definite because it "can
+  // only exist while both ends are running" — but on Android the app runs in
+  // the background behind a foreground service, so the session outlives
+  // anybody looking at it. And a recent announcement was called evidence too,
+  // when what it actually says is that a radio is in range.
+  //
+  // Being reachable is not being in the app, and reading one as the other is
+  // what showed somebody as present with the app closed, right up until the
+  // process itself was killed. Which road their messages take is a separate
+  // fact and has its own indicator; it does not belong in this answer.
+  //
+  // The cost is honest and worth naming: with no relay and no beacon — two
+  // phones on Bluetooth alone — nobody reads as present, because nothing on
+  // that path carries the claim. The heartbeat stays relay-only on purpose
+  // (see `announcePresence`), so silence there means "not known to be in the
+  // app", which is exactly what is shown.
   final at = now ?? DateTime.now();
-  if (beacon != null && at.difference(beacon.at) < PeerPresence.ttl) {
-    return beacon.online;
-  }
-  return lastSeen != null && at.difference(lastSeen) < kMeshPresenceWindow;
+  if (beacon == null) return false;
+  if (at.difference(beacon.at) >= PeerPresence.ttl) return false;
+  return beacon.online;
 }
