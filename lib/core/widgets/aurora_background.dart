@@ -105,9 +105,28 @@ class _AuroraBackgroundState extends State<AuroraBackground>
     // settle: the first frames are the ones with motion worth seeing.
     if (WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-      _wake();
+      // Not immediately. A launch spends its first seconds opening and
+      // decrypting Hive, restoring keys, standing up BLE and connecting
+      // relays that immediately start publishing — measured at 63% of a core
+      // against the 15% the same app settles to. Animating the most expensive
+      // surface in the app straight into that is what a cold start being
+      // rough, and only a cold start, looks like.
+      //
+      // The drift is invisible for its first second anyway: a 24 s period
+      // moves the blobs a fifteenth of the way across in that time. What is
+      // lost is nothing; what is freed is the GPU, during the only window that
+      // has ever been reported as bad.
+      _launchDelay = Timer(_quietAtLaunch, () {
+        _launchDelay = null;
+        if (mounted) _wake();
+      });
     }
   }
+
+  /// How long after launch the backdrop stays still — see [initState].
+  static const Duration _quietAtLaunch = Duration(milliseconds: 2500);
+
+  Timer? _launchDelay;
 
   /// Run the drift now, and park it once things go quiet again.
   void _wake() {
@@ -252,6 +271,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _launchDelay?.cancel();
     UiActivity.instance.isNavigating.removeListener(_onNavigation);
     UiActivity.instance.setScrolling(false);
     _stopTicker();
@@ -602,8 +622,20 @@ class _AuroraPainter extends CustomPainter {
     canvas.drawRect(bounds, Paint()..shader = shader);
   }
 
-  /// Alignment units. Half the screen is 1, so this is ~2 pt on a 400 pt phone.
-  static const double _centreStep = 0.01;
+  /// Alignment units. Half the screen is 1, so this is well under a point on a
+  /// 400 pt phone.
+  ///
+  /// It was 0.01 — about 2 pt — chosen because the arithmetic said a 2 pt step
+  /// on a 200 pt blob with a soft edge could not be seen. It was reported as
+  /// visible jerking anyway, and this file has a standing record of arithmetic
+  /// about it being wrong: the unit-space gradient was right on paper and came
+  /// out in rectangular blocks.
+  ///
+  /// So the step is smaller than the per-tick movement is large. The drift
+  /// advances 0.0029 units in the worst case, so at 0.004 the same shader
+  /// still serves a tick or two in a row — less of the saving, none of the
+  /// risk. If the jerk survives this, the aurora is not what is causing it.
+  static const double _centreStep = 0.004;
 
   /// A blob's radius swings by ±0.05 over the whole 24 s period, so this is a
   /// far coarser grid than the centre's in proportion to what it quantises —

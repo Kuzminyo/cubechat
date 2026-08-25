@@ -170,10 +170,27 @@ class FloatingGlass extends StatelessWidget {
               // remounted the photo grid on every scroll.
               child: blur
                   ? ListenableBuilder(
-                      listenable: UiActivity.instance.inMotion,
+                      // **Navigation only. Not scrolling.**
+                      //
+                      // Dropping it during a scroll is written up below as
+                      // tried and reverted, and on 2026-08-25 it was put back
+                      // by listening to the combined motion signal — which is
+                      // how a documented revert gets undone by accident. It
+                      // was reported the same evening in the same words as
+                      // last time: the surfaces flicker between see-through
+                      // and solid. The note below was right both times.
+                      //
+                      // A transition is the case that revert does not cover
+                      // and the one that measured 37-47 ms of raster: the
+                      // whole screen is being replaced, so a pane changing
+                      // appearance inside it is not something there is any
+                      // stillness to notice it against.
+                      listenable: UiActivity.instance.isNavigating,
                       child: tint,
                       builder: (context, pane) {
-                        if (UiActivity.instance.isMoving) return pane!;
+                        if (UiActivity.instance.isNavigating.value) {
+                          return pane!;
+                        }
                         return BackdropFilter(
                           filter: AppBlur.pane,
                           child: pane,

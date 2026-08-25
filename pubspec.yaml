@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 0.64.3+277
+version: 0.64.4+278
 
 environment:
   sdk: ^3.6.0

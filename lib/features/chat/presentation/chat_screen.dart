@@ -1246,6 +1246,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   int? _builtFrom;
   int? _builtTo;
 
+  /// How far down the floating header reaches, published by the scaffold that
+  /// measures it — see [_FloatingComposerBody.headerBottom].
+  final ValueNotifier<double> _headerBottom = ValueNotifier<double>(0);
+
   void _noteBuilt(int i) {
     if (_builtFrom == null || i < _builtFrom!) _builtFrom = i;
     if (_builtTo == null || i > _builtTo!) _builtTo = i;
@@ -1576,6 +1580,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           duration: const Duration(milliseconds: 380),
           curve: Curves.easeOutCubic,
         );
+        await _nudgeBelowHeader(targetKey);
         return true;
       }
       if (_scroll.hasClients && messages.length > 1) {
@@ -1617,6 +1622,45 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       await WidgetsBinding.instance.endOfFrame;
     }
     return false;
+  }
+
+  /// Push the landed message down if the header is sitting on top of it.
+  ///
+  /// [Scrollable.ensureVisible] centres inside the *viewport*, and the viewport
+  /// here runs the full height of the screen: the header and the pinned bar
+  /// float over the conversation rather than taking a band out of it. Centring
+  /// is right for an ordinary message and cannot be honoured for two of them —
+  /// one near the oldest end of the history, which has nothing above it to
+  /// scroll into view, and one taller than the screen, like a photograph. Both
+  /// land against the top edge, which is exactly where the header is.
+  ///
+  /// So the jump checks its own work. This is a correction, not a policy: it
+  /// does nothing at all unless the message actually ended up underneath
+  /// something, which for most jumps is never.
+  Future<void> _nudgeBelowHeader(GlobalKey targetKey) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_scroll.hasClients) return;
+    final target = targetKey.currentContext?.findRenderObject() as RenderBox?;
+    final list = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (target == null || list == null || !target.hasSize || !list.hasSize) {
+      return;
+    }
+    final top = target.localToGlobal(Offset.zero, ancestor: list).dy;
+    // A little clear of it, not flush against it.
+    final wanted = _headerBottom.value + 8;
+    final short = wanted - top;
+    if (short <= 1) return;
+    final position = _scroll.position;
+    // reverse: true, so a larger offset walks back through the history and
+    // carries what is on screen downwards with it.
+    final next = (position.pixels + short)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((next - position.pixels).abs() < 1) return;
+    await _scroll.animateTo(
+      next,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   /// Forward everything ticked into one other chat.
@@ -1910,6 +1954,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return ChatWallpaperLayer(
       chatId: widget.chatId,
       child: _FloatingComposerBody(
+        headerBottom: _headerBottom,
         scrollToBottom: _canScrollDown
             ? () => _scroll.animateTo(
                   0,
@@ -2986,8 +3031,18 @@ class _FloatingComposerBody extends StatefulWidget {
     required this.listBuilder,
     required this.composer,
     required this.header,
+    required this.headerBottom,
     this.scrollToBottom,
   });
+
+  /// How far down the screen the floating header reaches, published so a jump
+  /// can check its own work.
+  ///
+  /// Only this widget knows: the header's height is measured here, after every
+  /// build, because it grows and shrinks with the pinned bar. A jump lands a
+  /// message by scrolling, and scrolling has no idea anything is floating over
+  /// the top of the conversation.
+  final ValueNotifier<double> headerBottom;
 
   /// Builds the conversation, given the padding that keeps it clear of the two
   /// floating islands.
@@ -3023,6 +3078,7 @@ class _FloatingComposerBodyState extends State<_FloatingComposerBody> {
   void _measure(Duration _) {
     _measureOne(_composerKey, _composerHeight, (h) => _composerHeight = h);
     _measureOne(_headerKey, _headerHeight, (h) => _headerHeight = h);
+    widget.headerBottom.value = _headerHeight + _clearance;
   }
 
   void _measureOne(GlobalKey key, double current, void Function(double) apply) {

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
-import '../theme/glass.dart';
-import '../util/ui_activity.dart';
 import 'floating_glass.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
@@ -65,36 +63,40 @@ class BarGlass extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: ListenableBuilder(
-                // Both kinds of motion, not just scrolling — a route sliding
-                // in puts two screens' worth of panes on the display at once,
-                // every one of them filtering the aurora every frame, which is
-                // what the raster spikes next to each `[NAV]` line were.
-                listenable: UiActivity.instance.inMotion,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.glass(0.07),
-                        AppColors.pane(0.52),
-                        AppColors.pane(0.66),
-                      ],
-                      stops: const [0, 0.35, 1],
-                    ),
-                    borderRadius: BorderRadius.circular(radius),
-                    border: Border.all(color: AppColors.glass(0.16)),
+              // Solid, and therefore not blurred at all.
+              //
+              // This surface used to be a translucent pane over a live
+              // backdrop filter, and the filter was dropped while anything
+              // moved — a scroll, and since the transition work, a route
+              // sliding too. That is invisible on a pane you look *through*
+              // only when what is behind it is already moving, and the bar
+              // sits still while the app moves under it, so the switch read as
+              // the bar itself changing: solid, then see-through, then solid.
+              //
+              // An opaque fill answers that and costs nothing to draw. There
+              // is no blur to lose because there is nothing showing through to
+              // blur, which also takes a full-screen-width gaussian out of
+              // every frame the bar is on screen — the cheapest version of a
+              // change asked for on looks alone.
+              //
+              // The gradient stays: it is what keeps the bar from reading as a
+              // flat slab, and top-to-bottom shading is most of what made the
+              // translucent version look like glass in the first place.
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.pane(0.97),
+                      AppColors.pane(0.99),
+                      AppColors.paneBase,
+                    ],
+                    stops: const [0, 0.35, 1],
                   ),
+                  borderRadius: BorderRadius.circular(radius),
+                  border: Border.all(color: AppColors.glass(0.16)),
                 ),
-                builder: (context, pane) {
-                  // A live backdrop filter has to resample the moving backdrop
-                  // every frame. The pane's own tint stays visually identical
-                  // while it moves; the expensive blur returns when motion
-                  // stops.
-                  if (UiActivity.instance.isMoving) return pane!;
-                  return BackdropFilter(filter: AppBlur.pane, child: pane!);
-                },
               ),
             ),
             // The one unpositioned child, so it is what the stack sizes itself

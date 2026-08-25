@@ -286,18 +286,23 @@ class EdgeBackGestureController {
   /// leisurely, and the join between them is what "not smooth" means here.
   ///
   /// Proportional to the distance left, so the *pace* is constant instead of
-  /// the duration. 300 ms matches the push, which is the pace the rest of the
-  /// app already moves at.
-  static const Duration _settleFull = Duration(milliseconds: 300);
+  /// the duration.
+  ///
+  /// 380 rather than the push's 300. Making it proportional was right and made
+  /// it too quick: a push starts from a standstill and has to announce itself,
+  /// while a release is already in motion and only has to land, so the same
+  /// number reads as hurried in the second case. Slower than the push, faster
+  /// than the flat 350 it replaced at every distance beyond about four fifths.
+  static const Duration _settleFull = Duration(milliseconds: 380);
 
   /// Under this, a settle stops reading as motion and starts reading as a snap.
   /// A page an inch from home does not need a tenth of a second, but going to
   /// zero makes the last moment of the gesture jump.
-  static const Duration _settleMin = Duration(milliseconds: 110);
+  static const Duration _settleMin = Duration(milliseconds: 150);
 
   /// A flick has already done the moving; the animation is only catching up to
   /// a decision the hand made, so it covers what is left faster.
-  static const double _flingPace = 0.55;
+  static const double _flingPace = 0.7;
 
   static Duration _settleFor(double distance, double velocity) {
     final travel = distance.clamp(0.0, 1.0);
