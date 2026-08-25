@@ -227,14 +227,22 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final drafts = ref.watch(draftsControllerProvider);
   final aliases = ref.watch(contactAliasesControllerProvider);
 
+  // A fresh beacon and nothing else — the same rule as [peerIsOnline], which
+  // the chat header uses.
+  //
+  // An established session used to count here too, and that is why the header
+  // could say offline while this list and the profile said online for the same
+  // person: two answers to one question, computed in two places. A session
+  // says a phone is reachable, which is what `isReachableViaMesh` below is
+  // for; being in the app is a claim only a beacon carries.
   final onlinePubkeys = <String>{
-    for (final s in sessions.values)
-      if (s.isEstablished && s.remotePubkeyHex != null) s.remotePubkeyHex!,
-    // Peers who have the app open but are reachable only over the internet:
-    // there is no session and no announcement, so a live beacon is the only
-    // evidence they exist right now (see MessagingService.announcePresence).
     for (final e in presence.entries)
       if (e.value.online && e.value.isFresh) e.key,
+  };
+  // Reachability keeps the session, because that is exactly what it means.
+  final meshReachable = <String>{
+    for (final s in sessions.values)
+      if (s.isEstablished && s.remotePubkeyHex != null) s.remotePubkeyHex!,
   };
 
   final now = DateTime.now();
@@ -246,8 +254,9 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
     final last = lastVisibleMessage(msgs);
     final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
     final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
-    final isReachableViaMesh =
-        !isOnline && now.difference(peer.lastSeen) <= _meshReachableWindow;
+    final isReachableViaMesh = !isOnline &&
+        (meshReachable.contains(peer.pubkeyHex) ||
+            now.difference(peer.lastSeen) <= _meshReachableWindow);
     final draft = drafts[peer.pubkeyHex];
     return Chat(
       id: peer.pubkeyHex,

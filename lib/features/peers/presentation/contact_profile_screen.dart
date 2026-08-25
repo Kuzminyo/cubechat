@@ -656,11 +656,20 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     final hideTimes = !presenceShared || (theirBeacon?.hidesLastSeen ?? false);
     final active =
         contact?.isOnline == true || contact?.isReachableViaMesh == true;
+    // The status line answers one question: are they in the app. How a message
+    // would reach them is a different question with a different answer, and it
+    // belongs beside this rather than in place of it.
+    //
+    // "Via mesh" used to *be* the status, so somebody plainly not in the app
+    // read as something other than offline — the same conflation the presence
+    // rule itself has just shed: reachable is not present.
+    final String? road =
+        contact?.isOnline != true && contact?.isReachableViaMesh == true
+            ? t.chatsStatusViaMesh
+            : null;
     final String status;
     if (contact?.isOnline == true) {
       status = t.presenceOnline;
-    } else if (contact?.isReachableViaMesh == true) {
-      status = t.chatsStatusViaMesh;
     } else if (hideTimes) {
       status = t.presenceRecently;
     } else if (peer == null) {
@@ -711,7 +720,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                       onFaceDrag: _faceDrag,
                       peerId: peerPubkeyHex,
                       label: peerLabel,
-                      status: status,
+                      status: road == null ? status : '$status · $road',
                       statusColor:
                           active ? AppColors.online : AppColors.textOnGlassDim,
                       online: contact?.isOnline ?? false,

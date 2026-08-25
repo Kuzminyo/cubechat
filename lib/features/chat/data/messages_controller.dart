@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/util/media_storage.dart';
+import '../../chats/data/saved_messages.dart';
 import '../models/message.dart';
 
 /// Per-peer message store, keyed by the canonical chat id (the peer's
@@ -44,7 +45,23 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       _box = box;
       final loaded = <String, List<Message>>{};
       final repaired = <String>[];
+      final strays = <String>[];
       for (final key in box.keys) {
+        // Buckets filed under a BLE address, from before conversations were
+        // stored by pubkey alone.
+        //
+        // Android rotates that address, so such a bucket is a conversation
+        // with whoever happened to hold it — it keeps one person's name and
+        // can hold another person's messages, which is exactly what was
+        // reported. Nothing writes them any more; this clears out the ones
+        // already on disk, once, so the chat list stops offering them.
+        //
+        // Everything real is a 64-character pubkey, a channel name, or the
+        // notebook. Anything else was never a durable name for anybody.
+        if (key is String && !_isDurableChatId(key)) {
+          strays.add(key);
+          continue;
+        }
         final raw = box.get(key);
         if (raw == null) continue;
         try {
@@ -64,6 +81,14 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       if (loaded.isNotEmpty) {
         state = {...loaded, ...state};
       }
+      for (final key in strays) {
+        debugPrint('messages bucket "$key": dropping, not a durable chat id');
+        try {
+          await box.delete(key);
+        } catch (e) {
+          debugPrint('could not drop stray bucket "$key": $e');
+        }
+      }
       for (final key in repaired) {
         debugPrint('messages bucket "$key": dropped duplicate wireIds');
         _persist(key, loaded[key]!);
@@ -71,6 +96,18 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     } catch (e, st) {
       debugPrint('Messages load failed: $e\n$st');
     }
+  }
+
+  /// Whether [id] names a conversation that will still mean the same thing
+  /// tomorrow.
+  ///
+  /// A peer's pubkey does, a channel name does, and the notebook does. A BLE
+  /// address does not — Android rotates it — which is why history was never
+  /// safe to file under one.
+  static bool _isDurableChatId(String id) {
+    if (id.startsWith('#')) return true;
+    if (isSavedChat(id)) return true;
+    return id.length == 64 && RegExp(r'^[0-9a-f]+$').hasMatch(id);
   }
 
   List<Message> forPeer(String peerId) => state[peerId] ?? const <Message>[];

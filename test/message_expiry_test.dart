@@ -15,6 +15,10 @@ import 'support/hive_settle.dart';
 /// Local, like auto-delete itself — their copy is theirs, and a demand is what
 /// this could never honestly be.
 void main() {
+  // A real chat id: history is only kept under a pubkey, a channel name or
+  // the notebook, since a BLE address is a name that moves.
+  final alice = 'ac' * 32;
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
@@ -36,7 +40,7 @@ void main() {
 
   Message note(String id, {DateTime? expires}) => Message(
         id: id,
-        chatId: 'alice',
+        chatId: alice,
         text: id,
         sentAt: DateTime(2026),
         isMine: true,
@@ -49,9 +53,9 @@ void main() {
     final messages = container.read(messagesControllerProvider.notifier);
     await messages.loaded;
 
-    messages.append('alice', note('keep'));
+    messages.append(alice, note('keep'));
     messages.pruneExpiredMessages();
-    expect(messages.forPeer('alice'), hasLength(1));
+    expect(messages.forPeer(alice), hasLength(1));
   });
 
   test('a deadline in the past takes that message and nothing else', () async {
@@ -60,18 +64,18 @@ void main() {
     final messages = container.read(messagesControllerProvider.notifier);
     await messages.loaded;
 
-    messages.append('alice', note('keep'));
+    messages.append(alice, note('keep'));
     messages.append(
-      'alice',
+      alice,
       note('gone', expires: DateTime.now().subtract(const Duration(minutes: 1))),
     );
     messages.append(
-      'alice',
+      alice,
       note('later', expires: DateTime.now().add(const Duration(hours: 1))),
     );
 
     messages.pruneExpiredMessages();
-    final left = messages.forPeer('alice').map((m) => m.id).toList();
+    final left = messages.forPeer(alice).map((m) => m.id).toList();
     expect(left, ['keep', 'later']);
   });
 
@@ -81,18 +85,18 @@ void main() {
     final messages = container.read(messagesControllerProvider.notifier);
     await messages.loaded;
 
-    messages.append('alice', note('m1'));
+    messages.append(alice, note('m1'));
     messages.setExpiry(
-      'alice',
+      alice,
       'm1',
       DateTime.now().subtract(const Duration(seconds: 1)),
     );
-    expect(messages.forPeer('alice').single.expiresAt, isNotNull);
+    expect(messages.forPeer(alice).single.expiresAt, isNotNull);
 
-    messages.setExpiry('alice', 'm1', null);
-    expect(messages.forPeer('alice').single.expiresAt, isNull);
+    messages.setExpiry(alice, 'm1', null);
+    expect(messages.forPeer(alice).single.expiresAt, isNull);
     messages.pruneExpiredMessages();
-    expect(messages.forPeer('alice'), hasLength(1),
+    expect(messages.forPeer(alice), hasLength(1),
         reason: 'clearing the timer has to actually clear it');
   });
 
@@ -106,7 +110,7 @@ void main() {
     addTearDown(container.dispose);
     final messages = container.read(messagesControllerProvider.notifier);
     await messages.loaded;
-    messages.append('alice', note('m1', expires: at));
+    messages.append(alice, note('m1', expires: at));
 
     // Flush the debounced write rather than race it: the persist timer is
     // 400 ms and the settle delay is shorter, so without this the second
@@ -118,6 +122,6 @@ void main() {
     final reopened = second.read(messagesControllerProvider.notifier);
     await reopened.loaded;
 
-    expect(reopened.forPeer('alice').single.expiresAt, at);
+    expect(reopened.forPeer(alice).single.expiresAt, at);
   });
 }
