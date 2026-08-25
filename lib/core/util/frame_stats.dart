@@ -178,6 +178,7 @@ class FrameStats {
       if (build > _stallUs || raster > _stallUs) _stalls++;
       if (build > _worstBuildUs) _worstBuildUs = build;
       if (raster > _worstRasterUs) _worstRasterUs = raster;
+      _framesSinceReport++;
       _reportIfSlow(build, raster);
       if (_buildUs.length > _window) _buildUs.removeAt(0);
       if (_rasterUs.length > _window) _rasterUs.removeAt(0);
@@ -208,15 +209,27 @@ class FrameStats {
     if (last != null && now.difference(last) < const Duration(seconds: 1)) {
       return;
     }
+    final since = _framesSinceReport;
+    _framesSinceReport = 0;
     _lastReport = now;
     final who = takeBuildCounts();
     DebugLog.instance.log(
       'FRAME',
       'slow frame — build ${(buildUs / 1000).toStringAsFixed(1)} ms, '
           'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms'
+          ' over $since frame(s)'
           '${who.isEmpty ? '' : ' — $who'}',
     );
   }
+
+  /// Frames covered by the counts in the line above.
+  ///
+  /// Without it `chats x2` is unreadable: two rebuilds across sixty frames is
+  /// nothing, and two across three frames is the whole story. The first log to
+  /// carry the counts read `chats x2` beside a 35 ms build, which is either a
+  /// vindication or a red herring depending on this number, and there was no
+  /// way to tell which.
+  int _framesSinceReport = 0;
 
   /// How many times each watched screen rebuilt since the last report.
   ///

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../util/debug_log.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../features/profile/presentation/customize_screen.dart';
 import '../../features/profile/presentation/storage_screen.dart';
@@ -59,13 +60,44 @@ class _DismissKeyboardOnPop extends NavigatorObserver {
       _release();
 }
 
+/// Puts navigation into the log, so a slow frame can be read against it.
+///
+/// The frame meter reports a build of 35-40 ms and the counters say the chat
+/// list rebuilt twice — so whatever costs that time is one expensive build, not
+/// many cheap ones, and nothing in the log said what the app was *doing* at the
+/// time. The complaint that started this is "opening a chat the first time
+/// lags", which is a navigation, and a `[NAV]` line one millisecond before a
+/// `[FRAME]` line settles that in a way no amount of reading the source has.
+///
+/// Names only, never arguments: a route path here carries a pubkey or a channel
+/// name, and this log gets shared.
+class _LogRoutes extends NavigatorObserver {
+  static String _name(Route<dynamic>? route) {
+    final name = route?.settings.name;
+    if (name != null && name.isNotEmpty) return name;
+    // GoRouter names its pages after the path pattern, not the filled-in path,
+    // but a plain MaterialPageRoute pushed by hand has no name at all.
+    return route == null ? 'none' : route.runtimeType.toString();
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    DebugLog.instance.log('NAV', 'push ${_name(route)}');
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    DebugLog.instance.log('NAV', 'pop ${_name(route)}');
+  }
+}
+
 /// [seenOnboarding] is read from disk before the first frame (see
 /// `readSeenOnboardingFlag`) so a first run opens straight onto the intro
 /// rather than rendering the chats list and redirecting away from it.
 GoRouter buildRouter({bool seenOnboarding = true}) {
   return GoRouter(
     navigatorKey: _rootNavKey,
-    observers: [_DismissKeyboardOnPop()],
+    observers: [_DismissKeyboardOnPop(), _LogRoutes()],
     initialLocation: seenOnboarding ? '/chats' : '/onboarding',
     // Two directions, both narrow. A deep link cannot land somebody inside the
     // app before they have seen the intro, and revisiting /onboarding after
