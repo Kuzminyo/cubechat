@@ -451,6 +451,22 @@ class _AuroraPainter extends CustomPainter {
   /// is untouched; only the area handed to the rasteriser shrinks. The result
   /// is pixel-identical, and the animation — period, path, colours — is
   /// completely unchanged.
+  ///
+  /// A new shader really is built here on every paint, four of them thirty
+  /// times a second, and that really is the biggest thing this backdrop costs.
+  /// **Do not fix it by building the gradient once in unit space and scaling
+  /// the canvas up to size.** Tried on 2026-08-25 and reverted within the
+  /// hour: the backdrop came out in visible rectangular blocks. The arithmetic
+  /// is right — a gradient is evaluated per pixel after the transform — but
+  /// the engine does not evaluate it per pixel from an arbitrarily small
+  /// source, and magnifying a two-unit gradient across a phone screen
+  /// magnifies its own rasterisation with it.
+  ///
+  /// If this cost is worth attacking again, it has to be attacked without
+  /// shrinking the space the gradient is defined in: cache per *size* rather
+  /// than per unit circle, quantise the drift so the same shader serves a
+  /// range of positions, or move the blobs with a fragment shader that takes
+  /// their centres as uniforms.
   void _blob(
     Canvas canvas,
     Rect rect,
