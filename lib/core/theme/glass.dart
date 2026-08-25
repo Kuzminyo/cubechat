@@ -56,12 +56,23 @@ class AppBlur {
   /// worth asking for: this cost is invisible until the GPU is slower than the
   /// one it was tuned on.
   ///
-  /// AWAITING ITS MEASUREMENT. The number to compare is raster p90 on that
-  /// same phone, on the same screen. If it does not move, this goes back to 14
-  /// and the cost is somewhere else — the aurora's four gradient shaders per
-  /// paint and the overdraw of stacked panes are the next two suspects, in
-  /// that order, and each of them gets its own build too.
-  static const double sigma = 9;
+  /// MEASURED, AND IT DID NOT WORK. Back to 14 on 2026-08-25. The same phone,
+  /// same screen, blur at 9:
+  ///
+  ///     raster (GPU)          avg 16.7  p90 22.1 ms
+  ///     373 of 2635 frames over 16.7 ms
+  ///
+  /// against 17.3 ms at sigma 14. Worse, not better — and even allowing that
+  /// other builds landed in between and the sample is not clean, a change made
+  /// to buy raster time that comes back with more of it has not earned its
+  /// place. Lowering it again needs a different reason than this one.
+  ///
+  /// So the cost is somewhere else on that device. The next two suspects, in
+  /// order: the aurora's four radial-gradient shaders per paint, and the
+  /// overdraw of stacked glass panes. Each gets its own build and its own
+  /// measurement, the way this one did — that part worked, even though the
+  /// answer was no.
+  static const double sigma = 14;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.

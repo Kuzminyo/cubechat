@@ -310,15 +310,40 @@ class AppLockController extends Notifier<AppLockState> {
     }
   }
 
+  /// Until when a backgrounding is one the app asked for.
+  DateTime? _ourOwnExcursionUntil;
+
+  /// The next trip out of the app is ours, not the user leaving.
+  ///
+  /// Picking a photo, choosing a file, sharing something, opening a link — all
+  /// of them hand control to another app, and Android reports that exactly as
+  /// it reports somebody pressing Home. With the delay set to "every time",
+  /// coming back from the gallery therefore asked for the code, which is why
+  /// setting an avatar wanted a password.
+  ///
+  /// A window rather than a flag that has to be cleared: whoever opens the
+  /// picker cannot be relied on to be alive when it returns, and a flag left
+  /// standing would be a lock quietly switched off. Generous enough to choose
+  /// a photograph, and it only ever covers a trip this app started.
+  void expectSystemUi() {
+    _ourOwnExcursionUntil = DateTime.now().add(const Duration(minutes: 3));
+  }
+
   /// The app went away. Remembered rather than acted on, because a glance at
   /// the shade is not leaving.
   void noteLeft() {
     if (!state.enabled) return;
+    final excursion = _ourOwnExcursionUntil;
+    if (excursion != null && DateTime.now().isBefore(excursion)) return;
     _leftAt = DateTime.now();
   }
 
   /// The app came back. Asks again only if it was away long enough.
   void noteReturned() {
+    // Back from a picker of our own: the trip is over, so the next one has to
+    // announce itself again. Cleared here rather than left to expire, so a
+    // genuine departure a minute later still asks.
+    _ourOwnExcursionUntil = null;
     if (!state.enabled || state.locked) return;
     final left = _leftAt;
     if (left == null) return;

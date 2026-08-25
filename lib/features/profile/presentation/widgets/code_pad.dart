@@ -53,10 +53,17 @@ class CodePad extends StatefulWidget {
 class CodePadState extends State<CodePad> {
   String _code = '';
 
+  /// Cleared by the next keypress, so the line describes the attempt in front
+  /// of the reader rather than the one before it.
+  bool _dismissedError = false;
+
   void _press(String digit) {
     if (!widget.enabled || _code.length >= CodePad.maxLength) return;
     HapticFeedback.selectionClick();
-    setState(() => _code += digit);
+    setState(() {
+      _dismissedError = true;
+      _code += digit;
+    });
   }
 
   void _backspace() {
@@ -67,6 +74,7 @@ class CodePadState extends State<CodePad> {
 
   void _submit() {
     if (_code.length < CodePad.minLength || !widget.enabled) return;
+    _dismissedError = false;
     HapticFeedback.lightImpact();
     final onSubmit = widget.onSubmit;
     if (onSubmit == null) {
@@ -81,7 +89,7 @@ class CodePadState extends State<CodePad> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final ready = _code.length >= CodePad.minLength && widget.enabled;
-    final error = widget.errorText;
+    final error = _dismissedError ? null : widget.errorText;
 
     return SafeArea(
       child: Padding(
@@ -100,18 +108,13 @@ class CodePadState extends State<CodePad> {
               style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
             ),
             const SizedBox(height: 18),
-            // The wait, when there is one, replaces the dots: nothing typed
-            // counts while it runs, so drawing an empty row of them would
-            // invite typing.
-            if (error != null)
-              Text(
-                error,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.danger, fontSize: 12.5),
-              )
-            else
             // One dot per digit entered, and hollow ones up to the minimum so
             // the length that will be accepted is visible before it is reached.
+            //
+            // Always drawn, never replaced by the error line. The error used to
+            // take their place, so a wrong code left the pad with no way to see
+            // how much had been typed on the retry — which is the one moment
+            // somebody most needs to see it.
             SizedBox(
               height: 16,
               child: Row(
@@ -144,7 +147,22 @@ class CodePadState extends State<CodePad> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            // Under the dots, and gone the moment a key is pressed: an error
+            // that outlives the attempt it describes stops meaning anything.
+            SizedBox(
+              height: 18,
+              child: error == null
+                  ? null
+                  : Center(
+                      child: Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(color: AppColors.danger, fontSize: 12.5),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 8),
             for (final row in const [
               ['1', '2', '3'],
               ['4', '5', '6'],

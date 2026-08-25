@@ -9,8 +9,14 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/presentation/widgets/image_editor.dart';
 import '../../chat/presentation/widgets/media_picker_sheet.dart';
+import '../data/app_lock_controller.dart';
 
 Future<void> pickProfileAvatar(BuildContext context, WidgetRef ref) async {
+  // Choosing a picture hands the screen to the system for a while, and the
+  // lock cannot tell that from the user walking away — so it asked for the
+  // code on the way back, which is not what anybody means by setting an
+  // avatar. This says the trip is ours.
+  ref.read(appLockControllerProvider.notifier).expectSystemUi();
   final t = AppLocalizations.of(context);
   final result = await showGlassSheet<MediaPickerResult>(
     context: context,
