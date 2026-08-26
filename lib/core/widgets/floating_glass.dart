@@ -3,8 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
-import '../theme/glass.dart';
-import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
 /// nav bar uses, offered as a reusable surface so a list of them reads as a
@@ -102,9 +100,9 @@ class FloatingGlass extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.glass(0.07),
-            AppColors.pane(0.52),
-            AppColors.pane(0.66),
+            AppColors.pane(0.96),
+            AppColors.pane(0.98),
+            AppColors.paneBase,
           ],
           stops: const [0, 0.35, 1],
         ),
@@ -168,36 +166,29 @@ class FloatingGlass extends StatelessWidget {
               // content: only this subtree rebuilds, and the content above
               // keeps its state. Wrapping the content instead is what once
               // remounted the photo grid on every scroll.
-              child: blur
-                  ? ListenableBuilder(
-                      // **Navigation only. Not scrolling.**
-                      //
-                      // Dropping it during a scroll is written up below as
-                      // tried and reverted, and on 2026-08-25 it was put back
-                      // by listening to the combined motion signal — which is
-                      // how a documented revert gets undone by accident. It
-                      // was reported the same evening in the same words as
-                      // last time: the surfaces flicker between see-through
-                      // and solid. The note below was right both times.
-                      //
-                      // A transition is the case that revert does not cover
-                      // and the one that measured 37-47 ms of raster: the
-                      // whole screen is being replaced, so a pane changing
-                      // appearance inside it is not something there is any
-                      // stillness to notice it against.
-                      listenable: UiActivity.instance.isNavigating,
-                      child: tint,
-                      builder: (context, pane) {
-                        if (UiActivity.instance.isNavigating.value) {
-                          return pane!;
-                        }
-                        return BackdropFilter(
-                          filter: AppBlur.pane,
-                          child: pane,
-                        );
-                      },
-                    )
-                  : tint,
+              // The blur is gone, and with it the rectangle behind every
+              // island.
+              //
+              // Reported three times — "some shadow, a micro border" — and
+              // finally pointed at in a screenshot: a square-cornered darker
+              // patch around the header capsule and the pinned bar, wider than
+              // the pill it belongs to, sitting over the wallpaper where
+              // nothing hides it. It is not a shadow (the list below is empty)
+              // and not a border (that one follows the corner). It is the
+              // backdrop filter's own layer — the filter runs over a rectangle
+              // and the rounded shape is cut out of the result afterwards.
+              //
+              // `TileMode.decal` is the documented answer to a filter smearing
+              // at its edge and it changed nothing on the phone that reported
+              // this, so the pane is filled instead of sampled. An opaque tint
+              // cannot draw an edge, costs nothing to raster, and is the same
+              // trade the nav bar already took a build earlier.
+              //
+              // What is lost is a softness only visible through a pane that
+              // was 52-66% opaque to begin with. What is gained, besides the
+              // artefact going away, is one gaussian per island per frame —
+              // and there are five of them on a conversation.
+              child: tint,
             ),
             // The one unpositioned child, so the stack sizes itself to it —
             // exactly as when it was the decorated box's child.

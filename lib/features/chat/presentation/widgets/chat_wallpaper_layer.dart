@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -32,6 +33,23 @@ class ChatWallpaperLayer extends ConsumerWidget {
             ChatWallpaper.none;
     if (!wallpaper.isSet) return child;
 
+    // Decoded before the conversation needs it, not while it is arriving.
+    //
+    // "The first time I open a chat it freezes; I close it and open it again
+    // and it is fine" is a cache being filled, and this is the biggest thing
+    // in it: a wallpaper is a photograph from the camera roll, decoded to the
+    // full width of the screen, and the first frame of the conversation cannot
+    // lay out until it exists. Open the same chat again and it is already in
+    // `PaintingBinding.imageCache`, which is exactly the asymmetry reported.
+    //
+    // `precacheImage` starts the decode and does not wait for it, so this
+    // costs the opening frame nothing; what it buys is the decode beginning at
+    // the top of the build rather than partway through layout. The image is
+    // requested with the same provider and the same `cacheWidth` the paint
+    // below uses, so the entry it fills is the entry the paint then finds —
+    // a different width would decode the picture twice and help nothing.
+    _warm(context, wallpaper);
+
     return Stack(
       children: [
         Positioned.fill(child: ChatWallpaperPaint(wallpaper: wallpaper)),
@@ -39,6 +57,22 @@ class ChatWallpaperLayer extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Start the wallpaper's decode without waiting for it — see [build].
+void _warm(BuildContext context, ChatWallpaper wallpaper) {
+  final path = wallpaper.imagePath;
+  if (path == null || !MediaPaths.exists(path)) return;
+  final width = (MediaQuery.sizeOf(context).width *
+          MediaQuery.devicePixelRatioOf(context))
+      .round();
+  unawaited(
+    precacheImage(
+      ResizeImage(FileImage(File(path)), width: width),
+      context,
+      onError: (_, __) {},
+    ),
+  );
 }
 
 /// The wallpaper itself, without the conversation on top — also what the
