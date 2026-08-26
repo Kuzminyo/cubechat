@@ -104,18 +104,38 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
       primaryRouteAnimation: animation,
       secondaryRouteAnimation: secondaryAnimation,
       linearTransition: popGestureInProgress,
-      child: _RoundedWhileMoving(
-        primary: animation,
-        secondary: secondaryAnimation,
-        child: EdgeBackGesture(
-          enabledCallback: () => popGestureEnabled,
-          onStartGesture: () => EdgeBackGestureController(
-            navigator: navigator!,
-            controller: controller!,
-            isCurrent: () => isCurrent,
-            isActive: () => isActive,
+      // Rasterised once, then carried.
+      //
+      // A transition slides two whole screens across each other, and without a
+      // boundary each of them is repainted from its widgets on every frame of
+      // it — a conversation means its wallpaper, its list, its panes, all
+      // redrawn thirty or sixty times to be shown at a different x. The frames
+      // caught next to a `[NAV] pop` were raster-bound at 35 ms against 3.9 ms
+      // of build, which is that: no Dart work, a great deal of drawing.
+      //
+      // Inside the boundary the page becomes one layer the compositor can
+      // translate, so the same pixels are moved rather than made again. It
+      // works here specifically because everything that would keep dirtying
+      // that layer has already been stopped for the length of the transition:
+      // the aurora parks and the panes stop sampling their backdrop.
+      //
+      // Costs one full-screen layer per route while it moves, which is the
+      // trade being made and is why this is not simply left on: a boundary
+      // around something that repaints anyway is pure loss.
+      child: RepaintBoundary(
+        child: _RoundedWhileMoving(
+          primary: animation,
+          secondary: secondaryAnimation,
+          child: EdgeBackGesture(
+            enabledCallback: () => popGestureEnabled,
+            onStartGesture: () => EdgeBackGestureController(
+              navigator: navigator!,
+              controller: controller!,
+              isCurrent: () => isCurrent,
+              isActive: () => isActive,
+            ),
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
