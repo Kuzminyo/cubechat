@@ -1898,6 +1898,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 
   @override
   Widget build(BuildContext context) {
+    // The conversation counts itself. Two slow frames on the Mali phone landed
+    // one frame after a `[NAV] push` reading build 57.8 ms and 33.9 ms against
+    // raster of 7.3 and 10.7 — Dart work, at the moment a chat opens, and the
+    // only screen not reporting how often it rebuilt was this one.
+    FrameStats.countBuild('chat');
     final messages = widget.messages;
     // Photos sent as one batch, drawn as one grid. Derived here rather than
     // stored: nothing on the wire says which pictures went together, and the

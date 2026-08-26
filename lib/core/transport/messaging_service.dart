@@ -2262,71 +2262,6 @@ class MessagingService {
   /// Instrumentation, not a fix. A change reasoned from the panel's worst-frame
   /// number moved it by 3 ms — noise — and nothing said whether the theory was
   /// wrong or the aim was. This is what says so.
-  /// How much of the UI thread the inbound crypto is taking, in aggregate.
-  ///
-  /// Named because the aggregate is the question, not any one message. A relay
-  /// hands over its backlog in one burst at launch — the last cold start
-  /// decrypted and verified about forty bodies inside a quarter of a second —
-  /// and there is no isolate anywhere in this file or in `core/crypto`, so
-  /// every X3DH derivation and every BIP-340 verification in that burst runs on
-  /// the thread that is also trying to draw the first screen.
-  ///
-  /// Timing each one and logging it would bury the evidence: forty lines into a
-  /// two-hundred-line buffer, and the log's own cost added to what it measures.
-  /// So it accumulates and reports at most once a second, and only when there
-  /// was something worth reporting.
-  ///
-  /// Instrumentation, not a fix. The number decides whether the work moves off
-  /// this thread or whether the burst is not where the cold start goes.
-  static int _cryptoUs = 0;
-  static int _cryptoCount = 0;
-
-  static Future<T> _timedCrypto<T>(Future<T> Function() run) async {
-    // The *synchronous* part only, which is the part a frame pays for.
-    //
-    // The first version of this timed the whole `await`, and the number it
-    // produced was nonsense on its face: 1737 ms of crypto inside a window
-    // about one second long. Bodies overlap — each one yields at its first
-    // real suspension and the next starts — so adding up elapsed time counts
-    // the same wall clock many times over. The outbound probe in this file
-    // already had the right shape and this one did not copy it.
-    //
-    // An async function runs synchronously until its first suspension, and
-    // that stretch is what blocks the thread that draws. Everything after it
-    // is waiting, which costs nothing to look at.
-    final clock = Stopwatch()..start();
-    try {
-      final future = run();
-      _cryptoUs += clock.elapsedMicroseconds;
-      return await future;
-    } finally {
-      _cryptoCount++;
-      // Flushed by a timer, not by the next body.
-      //
-      // The first version reported only when another body arrived a second
-      // later, so a burst that finished and stopped was never reported at all
-      // — which is exactly what a cold start does. One log came back with
-      // twenty bodies visible in it and no cost line, and that reads as "the
-      // crypto is free" when it means "the probe never fired".
-      //
-      // A burst is the case being measured, so the timer starts when the
-      // burst does and reports once it has been quiet for a second.
-      _cryptoFlush ??= Timer(const Duration(seconds: 1), () {
-        _cryptoFlush = null;
-        if (_cryptoCount == 0) return;
-        DebugLog.instance.log(
-          'COST',
-          'inbound crypto — ${(_cryptoUs / 1000).toStringAsFixed(1)} ms '
-              'blocking over $_cryptoCount body(ies)',
-        );
-        _cryptoUs = 0;
-        _cryptoCount = 0;
-      });
-    }
-  }
-
-  static Timer? _cryptoFlush;
-
   Future<void> _timed(String what, Future<void> Function() run) {
     final clock = Stopwatch()..start();
     final future = run();
@@ -5155,15 +5090,13 @@ class MessagingService {
           return;
         }
         try {
-          sealedPlain = await _timedCrypto(() async {
-            final sk = await X3dh.deriveReceiver(
-              identityKeyPair: identity.asKeyPair(),
-              signedPrekeyPair: prekeys.signedPrekeyKeyPair,
-              senderIdentityPub: parsed.senderIdentityPub,
-              senderEphemeralPub: parsed.senderEphemeralPub,
-            );
-            return FsMessage.open(key: sk, parsed: parsed);
-          });
+          final sk = await X3dh.deriveReceiver(
+            identityKeyPair: identity.asKeyPair(),
+            signedPrekeyPair: prekeys.signedPrekeyKeyPair,
+            senderIdentityPub: parsed.senderIdentityPub,
+            senderEphemeralPub: parsed.senderEphemeralPub,
+          );
+          sealedPlain = await FsMessage.open(key: sk, parsed: parsed);
           DebugLog.instance
               .log('CRYPTO', 'FS (X3DH) body decrypted from $peerId');
         } catch (e) {
@@ -5266,12 +5199,10 @@ class MessagingService {
           return;
         }
         try {
-          final verified = await _timedCrypto(
-            () => SignedPayload.verifyCompact(
-              wire: sealedPlain,
-              context: ctx,
-              expectedEdPub: expectedEd,
-            ),
+          final verified = await SignedPayload.verifyCompact(
+            wire: sealedPlain,
+            context: ctx,
+            expectedEdPub: expectedEd,
           );
           if (!_freshEnough(verified.timestampMs, peerId)) return;
           innerBytes = verified.inner;

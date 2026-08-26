@@ -34,7 +34,25 @@ class FloatingGlass extends StatelessWidget {
     this.onTap,
     this.onLongPressAt,
     this.blur = true,
+    this.border = true,
   });
+
+  /// Whether to draw the hairline that outlines the pane.
+  ///
+  /// On by default, because it is most of what makes a row on the chats list
+  /// read as a card: over the aurora it separates one tile from the next and
+  /// the whole list from the backdrop.
+  ///
+  /// Off for the islands that float over a conversation — the header capsule,
+  /// the pinned bar. Those sit over a wallpaper, sometimes a photograph, and
+  /// there the same hairline stops separating and starts *tracing*: it draws
+  /// the pane's bounds, which is what got reported three times as "a shadow, a
+  /// micro border behind the islands". A tile in a list is supposed to have an
+  /// edge. An island is supposed to look like it is not attached to anything.
+  ///
+  /// Taken off everywhere first, which changed the chats list and was wrong —
+  /// that screen was already finished and nobody asked for it.
+  final bool border;
 
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -109,21 +127,9 @@ class FloatingGlass extends StatelessWidget {
           stops: const [0, 0.35, 1],
         ),
         borderRadius: radius,
-        // No border.
-        //
-        // This is the "shadow, some micro border behind the islands" that got
-        // reported three times and pointed at in a screenshot. Not a shadow —
-        // that list is empty — and not the blur's edge either, which is what
-        // two builds were spent chasing: a hairline of white at 16%, drawn
-        // around every pane, and read as an outline sitting behind the shape
-        // rather than as part of it.
-        //
-        // It was there to give the pane a lit edge against a dark backdrop.
-        // What it actually does over the aurora and over a wallpaper is trace
-        // the pane's bounds, which is the one thing a floating island must not
-        // do. The gradient already separates it from what is behind: it starts
-        // light at the top and darkens downward, which is the same "lit from
-        // above" cue the border was drawing by hand.
+        border: border
+            ? Border.all(color: AppColors.glass(0.16))
+            : null,
       ),
     );
 
