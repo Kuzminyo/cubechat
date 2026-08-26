@@ -2283,11 +2283,24 @@ class MessagingService {
   static DateTime? _cryptoReportedAt;
 
   static Future<T> _timedCrypto<T>(Future<T> Function() run) async {
+    // The *synchronous* part only, which is the part a frame pays for.
+    //
+    // The first version of this timed the whole `await`, and the number it
+    // produced was nonsense on its face: 1737 ms of crypto inside a window
+    // about one second long. Bodies overlap — each one yields at its first
+    // real suspension and the next starts — so adding up elapsed time counts
+    // the same wall clock many times over. The outbound probe in this file
+    // already had the right shape and this one did not copy it.
+    //
+    // An async function runs synchronously until its first suspension, and
+    // that stretch is what blocks the thread that draws. Everything after it
+    // is waiting, which costs nothing to look at.
     final clock = Stopwatch()..start();
     try {
-      return await run();
-    } finally {
+      final future = run();
       _cryptoUs += clock.elapsedMicroseconds;
+      return await future;
+    } finally {
       _cryptoCount++;
       final now = DateTime.now();
       final last = _cryptoReportedAt;
@@ -2298,7 +2311,7 @@ class MessagingService {
         DebugLog.instance.log(
           'COST',
           'inbound crypto — ${(_cryptoUs / 1000).toStringAsFixed(1)} ms '
-              'over $_cryptoCount body(ies) on the UI thread',
+              'blocking over $_cryptoCount body(ies)',
         );
         _cryptoUs = 0;
         _cryptoCount = 0;
