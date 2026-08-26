@@ -2262,6 +2262,50 @@ class MessagingService {
   /// Instrumentation, not a fix. A change reasoned from the panel's worst-frame
   /// number moved it by 3 ms — noise — and nothing said whether the theory was
   /// wrong or the aim was. This is what says so.
+  /// How much of the UI thread the inbound crypto is taking, in aggregate.
+  ///
+  /// Named because the aggregate is the question, not any one message. A relay
+  /// hands over its backlog in one burst at launch — the last cold start
+  /// decrypted and verified about forty bodies inside a quarter of a second —
+  /// and there is no isolate anywhere in this file or in `core/crypto`, so
+  /// every X3DH derivation and every BIP-340 verification in that burst runs on
+  /// the thread that is also trying to draw the first screen.
+  ///
+  /// Timing each one and logging it would bury the evidence: forty lines into a
+  /// two-hundred-line buffer, and the log's own cost added to what it measures.
+  /// So it accumulates and reports at most once a second, and only when there
+  /// was something worth reporting.
+  ///
+  /// Instrumentation, not a fix. The number decides whether the work moves off
+  /// this thread or whether the burst is not where the cold start goes.
+  static int _cryptoUs = 0;
+  static int _cryptoCount = 0;
+  static DateTime? _cryptoReportedAt;
+
+  static Future<T> _timedCrypto<T>(Future<T> Function() run) async {
+    final clock = Stopwatch()..start();
+    try {
+      return await run();
+    } finally {
+      _cryptoUs += clock.elapsedMicroseconds;
+      _cryptoCount++;
+      final now = DateTime.now();
+      final last = _cryptoReportedAt;
+      if (last == null) {
+        _cryptoReportedAt = now;
+      } else if (now.difference(last) >= const Duration(seconds: 1)) {
+        _cryptoReportedAt = now;
+        DebugLog.instance.log(
+          'COST',
+          'inbound crypto — ${(_cryptoUs / 1000).toStringAsFixed(1)} ms '
+              'over $_cryptoCount body(ies) on the UI thread',
+        );
+        _cryptoUs = 0;
+        _cryptoCount = 0;
+      }
+    }
+  }
+
   Future<void> _timed(String what, Future<void> Function() run) {
     final clock = Stopwatch()..start();
     final future = run();
@@ -5090,13 +5134,15 @@ class MessagingService {
           return;
         }
         try {
-          final sk = await X3dh.deriveReceiver(
-            identityKeyPair: identity.asKeyPair(),
-            signedPrekeyPair: prekeys.signedPrekeyKeyPair,
-            senderIdentityPub: parsed.senderIdentityPub,
-            senderEphemeralPub: parsed.senderEphemeralPub,
-          );
-          sealedPlain = await FsMessage.open(key: sk, parsed: parsed);
+          sealedPlain = await _timedCrypto(() async {
+            final sk = await X3dh.deriveReceiver(
+              identityKeyPair: identity.asKeyPair(),
+              signedPrekeyPair: prekeys.signedPrekeyKeyPair,
+              senderIdentityPub: parsed.senderIdentityPub,
+              senderEphemeralPub: parsed.senderEphemeralPub,
+            );
+            return FsMessage.open(key: sk, parsed: parsed);
+          });
           DebugLog.instance
               .log('CRYPTO', 'FS (X3DH) body decrypted from $peerId');
         } catch (e) {
@@ -5199,10 +5245,12 @@ class MessagingService {
           return;
         }
         try {
-          final verified = await SignedPayload.verifyCompact(
-            wire: sealedPlain,
-            context: ctx,
-            expectedEdPub: expectedEd,
+          final verified = await _timedCrypto(
+            () => SignedPayload.verifyCompact(
+              wire: sealedPlain,
+              context: ctx,
+              expectedEdPub: expectedEd,
+            ),
           );
           if (!_freshEnough(verified.timestampMs, peerId)) return;
           innerBytes = verified.inner;
