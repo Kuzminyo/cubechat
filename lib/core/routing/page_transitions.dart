@@ -171,7 +171,23 @@ class _RoundedWhileMoving extends StatelessWidget {
         final radius = _radius * travelling;
         return ClipRRect(
           borderRadius: BorderRadius.circular(radius),
-          clipBehavior: radius < 0.5 ? Clip.none : Clip.antiAlias,
+          // `hardEdge` while it travels, not `antiAlias`.
+          //
+          // Antialiasing a rounded clip is the expensive kind: on a tiled
+          // mobile GPU it needs coverage per edge pixel and its own pipeline,
+          // and that pipeline is compiled the first time it is used — which is
+          // the first route transition of the app run. "Opening a chat lags
+          // the first couple of times and then it is fine" is what a pipeline
+          // being compiled on the frame that needs it feels like, and the
+          // frames caught next to a `[NAV]` line were raster-bound at 34-43 ms
+          // against builds of 1.6 to 8.9.
+          //
+          // Nothing is lost from the animation: the same corner, the same
+          // radius, the same 300 ms, on the common pipeline instead of the
+          // rare one. What hard edges cost is a stair-step of at most a pixel
+          // on a 22-pixel corner, for the length of a slide, on a shape that
+          // is moving across the screen while it is on show.
+          clipBehavior: radius < 0.5 ? Clip.none : Clip.hardEdge,
           child: inner,
         );
       },

@@ -1,4 +1,4 @@
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, TileMode;
 
 /// The frosted-glass blur, in one place.
 ///
@@ -80,6 +80,22 @@ class AppBlur {
   /// `final`, not a getter: one instance for the whole app rather than a fresh
   /// one per build, so the layer comparison that decides whether a backdrop has
   /// to be re-filtered sees the same object each frame.
-  static final ImageFilter pane =
-      ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
+  ///
+  /// `TileMode.decal` because of what `clamp` does at the edge of the layer.
+  ///
+  /// The default repeats the outermost row of sampled pixels outwards to feed
+  /// the gaussian, so every pane painted a faint rectangle of smeared backdrop
+  /// around itself — square-cornered, on a rounded island, most visible over
+  /// the aurora's gradient where there is nothing to hide it. It was reported
+  /// as "some shadow, a micro border behind the islands", which is exactly
+  /// what it is: not a shadow (this widget's shadow list is empty) and not a
+  /// border, but the blur's own edge.
+  ///
+  /// `decal` treats everything outside as transparent instead, so the filter
+  /// has nothing to smear and the pane ends where its clip ends.
+  static final ImageFilter pane = ImageFilter.blur(
+    sigmaX: sigma,
+    sigmaY: sigma,
+    tileMode: TileMode.decal,
+  );
 }

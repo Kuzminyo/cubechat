@@ -2280,7 +2280,6 @@ class MessagingService {
   /// this thread or whether the burst is not where the cold start goes.
   static int _cryptoUs = 0;
   static int _cryptoCount = 0;
-  static DateTime? _cryptoReportedAt;
 
   static Future<T> _timedCrypto<T>(Future<T> Function() run) async {
     // The *synchronous* part only, which is the part a frame pays for.
@@ -2302,12 +2301,19 @@ class MessagingService {
       return await future;
     } finally {
       _cryptoCount++;
-      final now = DateTime.now();
-      final last = _cryptoReportedAt;
-      if (last == null) {
-        _cryptoReportedAt = now;
-      } else if (now.difference(last) >= const Duration(seconds: 1)) {
-        _cryptoReportedAt = now;
+      // Flushed by a timer, not by the next body.
+      //
+      // The first version reported only when another body arrived a second
+      // later, so a burst that finished and stopped was never reported at all
+      // — which is exactly what a cold start does. One log came back with
+      // twenty bodies visible in it and no cost line, and that reads as "the
+      // crypto is free" when it means "the probe never fired".
+      //
+      // A burst is the case being measured, so the timer starts when the
+      // burst does and reports once it has been quiet for a second.
+      _cryptoFlush ??= Timer(const Duration(seconds: 1), () {
+        _cryptoFlush = null;
+        if (_cryptoCount == 0) return;
         DebugLog.instance.log(
           'COST',
           'inbound crypto — ${(_cryptoUs / 1000).toStringAsFixed(1)} ms '
@@ -2315,9 +2321,11 @@ class MessagingService {
         );
         _cryptoUs = 0;
         _cryptoCount = 0;
-      }
+      });
     }
   }
+
+  static Timer? _cryptoFlush;
 
   Future<void> _timed(String what, Future<void> Function() run) {
     final clock = Stopwatch()..start();
