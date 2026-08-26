@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 
+import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -555,6 +556,29 @@ class _ClampedTextScale extends ConsumerWidget {
   static const double _min = 0.85;
   static const double _max = 1.3;
 
+  /// How far a finger travels before a drag is a drag.
+  ///
+  /// This is the *response* knob, and it is a different thing from how fast a
+  /// list then moves. Flutter's fallback is 18 logical pixels: a scroll does
+  /// not begin, and nothing on screen acknowledges the finger, until it has
+  /// covered that distance. Nothing is slow during those pixels — nothing is
+  /// happening at all, which is exactly what "отклик" means as a complaint.
+  ///
+  /// Twelve rather than something smaller, because the same threshold arms
+  /// every other drag in the app: the swipe-to-reply on a message row and the
+  /// edge drag that goes back. Both become that much easier to trigger by
+  /// accident, and a reply fired by a thumb that meant to scroll is worse than
+  /// six pixels of delay.
+  ///
+  /// A ceiling, not a value. A device that already reports a tighter slop
+  /// keeps it — the platform knows things about its own digitiser that this
+  /// does not.
+  ///
+  /// Physics are untouched on purpose. Friction, fling velocity and the
+  /// deceleration curve are what decide how far a flick carries, and the ask
+  /// was for a quicker answer, not a faster list.
+  static const double _maxTouchSlop = 12;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final media = MediaQuery.of(context);
@@ -562,12 +586,17 @@ class _ClampedTextScale extends ConsumerWidget {
     final scaler = chosen == null
         ? media.textScaler
         : TextScaler.linear(chosen);
+    final gestures = media.gestureSettings;
+    final slop = gestures.touchSlop;
     return MediaQuery(
       data: media.copyWith(
         textScaler: scaler.clamp(
           minScaleFactor: _min,
           maxScaleFactor: _max,
         ),
+        gestureSettings: slop != null && slop <= _maxTouchSlop
+            ? gestures
+            : DeviceGestureSettings(touchSlop: _maxTouchSlop),
       ),
       child: child,
     );

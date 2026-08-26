@@ -208,9 +208,21 @@ class _GlassPillState extends State<_GlassPill>
   static const double _iconSize = 24;
   static const double _labelGap = 2;
 
+  /// 240 ms, down from 420.
+  ///
+  /// The tab's *content* swaps immediately — this controller only drives the
+  /// glow travelling between slots and the icon's scale. But that glow is the
+  /// only thing on screen that acknowledges the tap, so however fast the swap
+  /// underneath is, the bar spent four tenths of a second still catching up,
+  /// and switching tabs read as the app taking its time.
+  ///
+  /// Nothing is removed: the same travel, the same stretch, the same easing,
+  /// over a shorter distance in time. 240 is inside the 180-260 ms band an
+  /// ordinary transition in this app is supposed to sit in — the tab bar was
+  /// simply never held to it.
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 420),
+    duration: const Duration(milliseconds: 240),
     value: 1,
   );
 
