@@ -95,7 +95,10 @@ class BarGlass extends StatelessWidget {
                     stops: const [0, 0.35, 1],
                   ),
                   borderRadius: BorderRadius.circular(radius),
-                  border: Border.all(color: AppColors.glass(0.16)),
+                  // No border, for the reason written up in [FloatingGlass]:
+                  // a hairline around a floating island traces its bounds, and
+                  // tracing its bounds is what made it read as having an
+                  // outline behind it. The pair stay in step.
                 ),
               ),
             ),

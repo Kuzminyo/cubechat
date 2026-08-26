@@ -76,9 +76,10 @@ class MessageIslandGlass extends StatelessWidget {
                         stops: const [0, 0.35, 1],
                       ),
                       borderRadius: radius,
-                      border: Border.all(
-                        color: AppColors.glass(0.14),
-                      ),
+                      // No border — the composer is a floating island and
+                      // follows the rule written up in [FloatingGlass]: a
+                      // hairline around one traces its bounds, which is what
+                      // read as an outline sitting behind it.
                     ),
                   ),
                 ),

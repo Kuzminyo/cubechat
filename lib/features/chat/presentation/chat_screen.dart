@@ -1298,6 +1298,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final previous = {for (final message in before) message.id};
     for (final message in after) {
       if (!previous.contains(message.id) && _isFreshOutgoing(message)) {
+        // Sending puts you back at the bottom.
+        //
+        // Reading back through a conversation and then typing into it is an
+        // ordinary thing to do, and what happened was that the message went,
+        // the list stayed where it was, and the thing just written sat
+        // somewhere below the screen with nothing saying so.
+        //
+        // Only for messages *you* sent, which is what this function already
+        // decides — one arriving from the other person while you are reading
+        // history must not pull the page out from under you.
+        _returnToNewest();
         _smoothSendIds.add(message.id);
         _smoothSendTimers[message.id]?.cancel();
         _smoothSendTimers[message.id] = Timer(const Duration(seconds: 2), () {
@@ -1307,6 +1318,28 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         });
       }
     }
+  }
+
+  /// Ride back down to the newest message — see [_trackSmoothSends].
+  ///
+  /// After the frame that adds the row, because until it exists there is
+  /// nothing to scroll to. `reverse: true`, so the newest message lives at
+  /// offset zero and "down" is towards it.
+  ///
+  /// Does nothing when already there, which is the common case: a scroll of
+  /// zero pixels still animates, and animating the list on every single send
+  /// would fight a finger that is holding it.
+  void _returnToNewest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.pixels <= 1) return;
+      unawaited(_scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      ));
+    });
   }
 
   bool _isFreshOutgoing(Message message) {
