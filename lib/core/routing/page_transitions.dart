@@ -122,10 +122,19 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
       // Costs one full-screen layer per route while it moves, which is the
       // trade being made and is why this is not simply left on: a boundary
       // around something that repaints anyway is pure loss.
-      child: RepaintBoundary(
-        child: _RoundedWhileMoving(
-          primary: animation,
-          secondary: secondaryAnimation,
+      //
+      // **Inside the clip, not outside it.** It was outside first and bought
+      // nothing measurable: closing a chat still read raster 44.6 ms against
+      // build 1.6. [_RoundedWhileMoving] animates its corner radius every
+      // frame, and a clip that changes forces its child to be rasterised
+      // again — so a boundary above the clip is a boundary above something
+      // that is being invalidated sixty times a second, which is precisely the
+      // "pure loss" case named above. Below it, the page rasterises once and
+      // the clip works on the finished layer.
+      child: _RoundedWhileMoving(
+        primary: animation,
+        secondary: secondaryAnimation,
+        child: RepaintBoundary(
           child: EdgeBackGesture(
             enabledCallback: () => popGestureEnabled,
             onStartGesture: () => EdgeBackGestureController(

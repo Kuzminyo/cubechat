@@ -52,7 +52,25 @@ class ChatWallpaperLayer extends ConsumerWidget {
 
     return Stack(
       children: [
-        Positioned.fill(child: ChatWallpaperPaint(wallpaper: wallpaper)),
+        // Its own cached layer.
+        //
+        // A wallpaper is the single most expensive thing on the screen to draw
+        // and the single least likely to change: a photograph scaled to fill,
+        // with a dim laid over it, static from the moment the chat opens until
+        // it closes. Without a boundary it is re-rastered whenever anything
+        // above it repaints — which, in a conversation, is every arriving
+        // message, every delivery mark, every keystroke in the composer.
+        //
+        // It matters most on the way out. Closing a chat measured raster
+        // 44.6 ms against build 1.6 — no Dart work at all, a screenful of
+        // drawing — and the screen being dragged off is the one carrying the
+        // photograph. Cached, the compositor moves those pixels instead of
+        // making them again.
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: ChatWallpaperPaint(wallpaper: wallpaper),
+          ),
+        ),
         child,
       ],
     );
