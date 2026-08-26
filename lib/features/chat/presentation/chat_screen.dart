@@ -3405,9 +3405,33 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   void _markChatRead() {
     if (!mounted) return;
     if (!AppLifecycle.instance.isViewingChat(widget.canonicalId)) return;
+    // Marked up to the newest message, not up to *now*.
+    //
+    // This is called from five places — the frame after the chat opens, every
+    // time a message arrives, on resume, and twice more — and each call used
+    // to hand it `DateTime.now()`. The controller refuses a marker that would
+    // move backwards, and a fresh `now()` is always later than the last one, so
+    // every single call wrote. Every write moves a provider that
+    // `allChatsProvider` watches, and that provider rebuilds the whole chats
+    // list: thirteen watched sources, a sort, and a preview per row.
+    //
+    // Measured: opening a chat produced one frame of 33.4 ms build against
+    // 6.9 ms raster, and the counter beside it read `chats x6` over `1
+    // frame(s)`. Six full rebuilds of the list behind the conversation, in the
+    // single frame that was supposed to be showing the conversation. The
+    // conversation's own counter does not appear at all — it was never the
+    // expensive thing.
+    //
+    // The newest message's timestamp says the same thing the clock did (there
+    // is nothing after it to be unread) and says it *identically* on every
+    // call, so the controller's existing guard turns the other five into
+    // no-ops. Nothing about what "read" means changes.
+    final history = ref.read(messagesControllerProvider)[widget.canonicalId];
+    if (history == null || history.isEmpty) return;
+    final newest = history.last.sentAt;
     ref
         .read(readMarkersControllerProvider.notifier)
-        .markRead(widget.canonicalId);
+        .markRead(widget.canonicalId, at: newest);
   }
 
   @override
