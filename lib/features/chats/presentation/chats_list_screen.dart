@@ -333,8 +333,40 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   // like ordinary conversations; otherwise a starred chat looks like it is
   // pinned even when the user never pinned it.
   entries.sort(compareChatRows);
+
+  // The same rows are the same value.
+  //
+  // Riverpod decides whether to wake a watcher by comparing the old value with
+  // the new one, and two `List`s are only ever equal by identity — so a fresh
+  // list of identical rows still counted as a change and still rebuilt the
+  // chats screen and, through what they share, the open conversation. With
+  // [Chat] now comparing by value, the comparison below is meaningful: if
+  // nothing a row shows has moved, the previous list is handed back and nobody
+  // is woken.
+  //
+  // The cost is one walk over the list against a rebuild of every row plus a
+  // sort, which is the trade this exists to make. Held in a local rather than
+  // asked of the provider because a `Provider` does not offer its own previous
+  // value to its builder.
+  final previous = _lastAllChats;
+  if (previous != null &&
+      previous.length == entries.length &&
+      _sameRows(previous, entries)) {
+    return previous;
+  }
+  _lastAllChats = entries;
   return entries;
 });
+
+/// Last value handed out by [allChatsProvider] — see the comment there.
+List<Chat>? _lastAllChats;
+
+bool _sameRows(List<Chat> a, List<Chat> b) {
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
 
 /// The conversations worth listing as conversations.
 ///

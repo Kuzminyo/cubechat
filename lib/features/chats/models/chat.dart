@@ -85,4 +85,69 @@ class Chat {
   final MessageStatus? outgoingStatus;
 
   bool get autoDeletes => autoDeleteSeconds > 0;
+
+  /// Value equality, so a rebuild that produces the same rows is not a change.
+  ///
+  /// [Chat] is derived, not stored: `allChatsProvider` assembles it fresh from
+  /// thirteen watched sources every time any one of them moves. Without this
+  /// every assembly produced objects that were new *by identity*, Riverpod
+  /// compared them by identity, found them different, and woke every watcher —
+  /// the chats list and, through the providers they share, the open
+  /// conversation too.
+  ///
+  /// Measured before it existed: one frame of 43.2 ms build against 1.6 ms
+  /// raster, with `chats x53, chat x53` beside it. The matching counts are the
+  /// tell — two screens rebuilding the same number of times are being woken by
+  /// one source, not by their own business.
+  ///
+  /// Every field is in here on purpose. A row's unread count, its tick, its
+  /// pin, its preview: leave one out and the list stops updating when that one
+  /// changes, which is a far worse bug than the one being fixed and would not
+  /// show up until somebody noticed a stale badge.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Chat &&
+          other.id == id &&
+          other.peerId == peerId &&
+          other.peerName == peerName &&
+          other.lastMessage == lastMessage &&
+          other.lastTime == lastTime &&
+          other.unreadCount == unreadCount &&
+          other.isMesh == isMesh &&
+          other.isOnline == isOnline &&
+          other.isReachableViaMesh == isReachableViaMesh &&
+          other.isFavorite == isFavorite &&
+          other.isPinned == isPinned &&
+          other.isVerified == isVerified &&
+          other.signKeyRotated == signKeyRotated &&
+          other.isChannel == isChannel &&
+          other.isDraft == isDraft &&
+          other.isMuted == isMuted &&
+          other.autoDeleteSeconds == autoDeleteSeconds &&
+          other.pinRank == pinRank &&
+          other.outgoingStatus == outgoingStatus;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        peerId,
+        peerName,
+        lastMessage,
+        lastTime,
+        unreadCount,
+        isMesh,
+        isOnline,
+        isReachableViaMesh,
+        isFavorite,
+        isPinned,
+        isVerified,
+        signKeyRotated,
+        isChannel,
+        isDraft,
+        isMuted,
+        autoDeleteSeconds,
+        pinRank,
+        outgoingStatus,
+      );
 }
