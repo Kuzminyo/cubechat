@@ -31,20 +31,26 @@ class MessageIslandGlass extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-              spreadRadius: -4,
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.28),
-              blurRadius: 22,
-              offset: const Offset(0, 10),
-              spreadRadius: -12,
-            ),
-          ],
+          // No shadows. This is the "shadow behind the islands".
+          //
+          // Four builds were spent looking for it in the wrong place. It is
+          // not the blur's edge and it is not the hairline border: both were
+          // taken off, separately, and it stayed. It is two real drop shadows,
+          // written here and only here — [FloatingGlass.shadows] has been an
+          // empty list for a long time, with a comment above it saying the
+          // shadows were "asked for and removed". This copy never got the
+          // message, and it is what the chat header, the pinned bar and the
+          // composer are all made of.
+          //
+          // On a dark backdrop a black halo does not read as height. It reads
+          // as grime around the pane, and over a wallpaper — where there is no
+          // dark background for it to disappear into — it reads as a
+          // rectangle sitting behind a rounded island. Which is exactly how it
+          // was described, three times, before anybody found it.
+          //
+          // The panes are separated by their fill and their border, which is
+          // what the other surface concluded and wrote down. This one now
+          // agrees with it.
         ),
         child: ClipRRect(
           borderRadius: radius,
