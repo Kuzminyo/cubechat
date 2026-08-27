@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/theme/glass.dart';
+import '../../../../core/util/ui_activity.dart';
 import 'emoji_sticker_panel.dart';
 
 /// The canonical smoked-glass texture for the message composer island.
@@ -67,8 +68,25 @@ class MessageIslandGlass extends StatelessWidget {
           child: Stack(
             children: [
               Positioned.fill(
-                child: BackdropFilter(
-                  filter: AppBlur.pane,
+                // Dropped while a route is sliding, and only then.
+                //
+                // Dropping it during a *scroll* is written up above as tried
+                // and reverted, and that stands: these panes are large,
+                // permanent and directly over the moving list, so switching
+                // there reads as flickering. A transition is the case that
+                // argument does not cover — the whole screen is being replaced,
+                // so there is no stillness to notice a pane changing against.
+                //
+                // Measured on the slow phone, opening and closing chats:
+                // raster 17 to 29 ms per frame against builds of 0.5 to 1.2.
+                // No Dart work left at all, and three live gaussians riding on
+                // the screen being dragged across — this island is the chat
+                // header, the pinned bar and the composer.
+                //
+                // The surface sits beside the content, so only this subtree
+                // swaps and nothing the caller put inside is remounted.
+                child: ListenableBuilder(
+                  listenable: UiActivity.instance.isNavigating,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -87,6 +105,10 @@ class MessageIslandGlass extends StatelessWidget {
                       ),
                     ),
                   ),
+                  builder: (context, pane) {
+                    if (UiActivity.instance.isNavigating.value) return pane!;
+                    return BackdropFilter(filter: AppBlur.pane, child: pane);
+                  },
                 ),
               ),
               Padding(padding: padding, child: child),
