@@ -2462,6 +2462,7 @@ class MessagingService {
     if (_flushingOutbox) return;
     _flushingOutbox = true;
     final messages = _ref.read(messagesControllerProvider.notifier);
+    final delivered = <String, Set<String>>{};
     var failures = 0;
     try {
       // A copy, because a send that succeeds mutates the map underneath us.
@@ -2478,14 +2479,11 @@ class MessagingService {
         }
         failures = 0;
         _outbox.remove(entry.key);
+        // Collected, not applied. Reporting each landing on its own woke
+        // every screen watching the message store once per message; the batch
+        // goes in after the loop — see [MessagesController.markDeliveredBatch].
         for (final id in {ref.canonicalId, ref.chatId}) {
-          // One write, not two — see [MessagesController.updateDelivery].
-          messages.updateDelivery(
-            id,
-            ref.messageId,
-            MessageStatus.delivered,
-            MessageRoute.internet,
-          );
+          (delivered[id] ??= <String>{}).add(ref.messageId);
         }
         DebugLog.instance.log(
           'NOSTR',
@@ -2494,6 +2492,10 @@ class MessagingService {
       }
     } finally {
       _flushingOutbox = false;
+      // Applied on every exit, including the early return that gives up after
+      // three failures: what did go out has gone out, and the sender is owed
+      // the tick for it.
+      messages.markDeliveredBatch(delivered, MessageRoute.internet);
     }
   }
 
