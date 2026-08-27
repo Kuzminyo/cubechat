@@ -622,20 +622,27 @@ class _AuroraPainter extends CustomPainter {
     canvas.drawRect(bounds, Paint()..shader = shader);
   }
 
-  /// Alignment units. Half the screen is 1, so this is well under a point on a
-  /// 400 pt phone.
+  /// Alignment units. Half the screen is 1, so this is about 2 pt on a 400 pt
+  /// phone.
   ///
-  /// It was 0.01 — about 2 pt — chosen because the arithmetic said a 2 pt step
-  /// on a 200 pt blob with a soft edge could not be seen. It was reported as
-  /// visible jerking anyway, and this file has a standing record of arithmetic
-  /// about it being wrong: the unit-space gradient was right on paper and came
-  /// out in rectangular blocks.
+  /// Back to the measured value, and the round trip is the lesson.
   ///
-  /// So the step is smaller than the per-tick movement is large. The drift
-  /// advances 0.0029 units in the worst case, so at 0.004 the same shader
-  /// still serves a tick or two in a row — less of the saving, none of the
-  /// risk. If the jerk survives this, the aurora is not what is causing it.
-  static const double _centreStep = 0.004;
+  /// 0.01 is what bought raster p90 16.7 -> 12.0 ms on the slow phone. It was
+  /// then dropped to 0.004 on the strength of a report of "jerking" and nothing
+  /// else — no measurement, no attempt to tell the aurora apart from anything
+  /// else moving at the same time. That gave most of the saving back, because
+  /// the drift only advances 0.0029 units a tick and a step that small is
+  /// barely a step at all.
+  ///
+  /// The jerk turned out to be raster from three backdrop filters riding on a
+  /// sliding screen, found later with the frame log. It was never this. The
+  /// tester's own bisect said so first: the build they remember as fine is the
+  /// one that introduced 0.01.
+  ///
+  /// If the stepping is ever genuinely seen, it needs the same treatment as
+  /// everything else in this file — one change, measured on its own, with the
+  /// number written here.
+  static const double _centreStep = 0.01;
 
   /// A blob's radius swings by ±0.05 over the whole 24 s period, so this is a
   /// far coarser grid than the centre's in proportion to what it quantises —

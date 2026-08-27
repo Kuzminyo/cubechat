@@ -78,6 +78,21 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   @override
   Duration get transitionDuration => const Duration(milliseconds: 300);
 
+  /// Leaving takes longer than arriving.
+  ///
+  /// Both were 300 ms, because `reverseTransitionDuration` simply repeats the
+  /// forward one unless it is given its own answer. But the two are not the
+  /// same event. A push is a thing appearing and has to announce itself
+  /// quickly, or the tap feels unanswered. A pop is a thing being put back,
+  /// and at the same speed it reads as being snatched away — the screen you
+  /// were reading is gone before the eye has finished leaving it.
+  ///
+  /// 380 ms is the pace the back gesture's release already settles at, so a
+  /// close by button and a close by thumb now agree instead of being two
+  /// different speeds for one action.
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 380);
+
   @override
   String? get title => null;
 
