@@ -2479,8 +2479,13 @@ class MessagingService {
         failures = 0;
         _outbox.remove(entry.key);
         for (final id in {ref.canonicalId, ref.chatId}) {
-          messages.updateStatus(id, ref.messageId, MessageStatus.delivered);
-          messages.updateRoute(id, ref.messageId, MessageRoute.internet);
+          // One write, not two — see [MessagesController.updateDelivery].
+          messages.updateDelivery(
+            id,
+            ref.messageId,
+            MessageStatus.delivered,
+            MessageRoute.internet,
+          );
         }
         DebugLog.instance.log(
           'NOSTR',

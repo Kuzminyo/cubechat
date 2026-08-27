@@ -210,6 +210,43 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persist(peerId, list);
   }
 
+  /// Status and road in one write.
+  ///
+  /// The two always change together when a message finally goes out, and doing
+  /// them separately means two states, two notifications, and two rebuilds of
+  /// everything watching this store — which includes `allChatsProvider`, and
+  /// through it the whole chats list with its sort and its per-row preview.
+  ///
+  /// That matters because of where it is called from: the outbox flush walks a
+  /// queue of held messages and reports each one as it lands. A queue of ten
+  /// was twenty rebuilds of the list; it is ten now, and each of those is a
+  /// real change worth showing.
+  ///
+  /// The tester's bisect is what found this. 0.54.0 was reported as smooth and
+  /// 0.55.0 as not, and the only functional change between them is the relay
+  /// retry this serves — the aurora edit in that window is comments and
+  /// nothing else.
+  void updateDelivery(
+    String peerId,
+    String msgId,
+    MessageStatus status,
+    MessageRoute route, {
+    int? hops,
+  }) {
+    final current = state[peerId];
+    if (current == null) return;
+    final idx = current.indexWhere((m) => m.id == msgId);
+    if (idx == -1) return;
+    final was = current[idx];
+    if (was.status == status && was.route == route && was.routeHops == hops) {
+      return;
+    }
+    final list = [...current]
+      ..[idx] = was.copyWith(status: status, route: route, routeHops: hops);
+    state = {...state, peerId: list};
+    _persist(peerId, list);
+  }
+
   void updateRoute(
     String peerId,
     String msgId,
