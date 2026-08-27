@@ -262,9 +262,18 @@ class FrameStats {
 
   static final Map<String, int> _buildCounts = <String, int>{};
 
-  /// Two 60 Hz frames. High enough that ordinary jank on a slow phone does not
-  /// fill the log, low enough to catch the stalls being hunted.
-  static const int _reportUs = 33000;
+  /// One 60 Hz frame.
+  ///
+  /// It was two, and that was set while thinking in 60 Hz. On the phone doing
+  /// the reporting the display runs at 120, where the budget is 8.3 ms — so a
+  /// frame of 25 ms is three dropped in a row, plainly visible, and sat
+  /// silently under a 33 ms threshold. A log came back covering three chat
+  /// opens and two closes with no `[FRAME]` line in it at all, while the person
+  /// holding the phone could see the stutter. The meter was wrong, not them.
+  ///
+  /// Flooding is handled by the once-a-second limit below rather than by the
+  /// threshold, which is what lets this be low enough to be useful.
+  static const int _reportUs = 16700;
 
   DateTime? _lastReport;
 
