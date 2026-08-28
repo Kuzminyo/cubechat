@@ -7883,7 +7883,7 @@ class MessagingService {
     // Safe because [peerIsOnline] gives a fresh beacon precedence over
     // lastSeen: a peer who just said goodbye still reads as offline, now with
     // a timestamp that means "just now" instead of one that means nothing.
-    _ref.read(knownPeersControllerProvider.notifier).touch(canonical);
+    _ref.read(knownPeersControllerProvider.notifier).markPresent(canonical);
     DebugLog.instance.log('PRESENCE',
         '${canonical.substring(0, 8)} is ${beacon.online ? 'online' : 'offline'}');
   }

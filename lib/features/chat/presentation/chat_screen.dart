@@ -355,6 +355,17 @@ class ChatScreen extends ConsumerWidget {
             ?.autoDelete ??
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
+    // What the header prints as "last online" — see [KnownPeer.lastPresenceAt].
+    //
+    // Not `lastSeen`, which is refreshed by every signed announcement and so
+    // tracks the phone rather than the person. It read "offline · 17:47" for an
+    // iOS contact who had not opened the app that day; 17:47 was when their
+    // phone last announced itself.
+    //
+    // Null until they send a beacon — an old contact, or one reachable only
+    // over Bluetooth — and then the header says plainly that they are offline
+    // and nothing more, which is the honest answer.
+    final lastPresent = known?.lastPresenceAt;
     final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
     final beacon = ref.watch(
       presenceControllerProvider.select((b) => b[canonicalId]),
@@ -403,10 +414,10 @@ class ChatScreen extends ConsumerWidget {
       // Still reported as online above when they are: that is a fact about
       // now, not a history of when they came and went.
       statusText = t.presenceRecently;
-    } else if (lastSeen != null) {
+    } else if (lastPresent != null) {
       // "offline · 14:05" / "offline · Mon" — precise last-seen.
       statusText =
-          '${t.presenceOffline} · ${formatChatListTime(context, lastSeen)}';
+          '${t.presenceOffline} · ${formatChatListTime(context, lastPresent)}';
     } else {
       statusText = t.presenceOffline;
     }

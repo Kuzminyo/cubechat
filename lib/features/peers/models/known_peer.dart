@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 @immutable
 class KnownPeer {
   const KnownPeer({
+    this.lastPresenceAt,
     required this.pubkeyHex,
     required this.displayName,
     required this.lastSeen,
@@ -36,7 +37,26 @@ class KnownPeer {
 
   final String pubkeyHex;
   final String displayName;
+  /// Last evidence that their *radio* was around: an announcement, a
+  /// handshake, anything that says the phone is reachable.
+  ///
+  /// Refreshed by every signed announcement, and those arrive over a relay
+  /// whether or not anybody has opened the app — so this is emphatically not
+  /// "when they were last here". It is what decides whether a peer is worth
+  /// beaconing to at all, which is the question it is good at.
   final DateTime lastSeen;
+
+  /// Last time they were actually *in the app*, from a presence beacon.
+  ///
+  /// Null for a peer who has never sent one — an old contact, or somebody
+  /// reachable only over Bluetooth, where there are no beacons.
+  ///
+  /// This exists because [lastSeen] was being shown as "last online" and could
+  /// not mean it: a phone announces itself on a schedule, so the header read
+  /// "offline · 17:47" for somebody who had not touched their phone since
+  /// morning — 17:47 was when their phone last spoke, not when they last
+  /// looked. Reported from an iOS device that had not been opened at all.
+  final DateTime? lastPresenceAt;
   final DateTime? verifiedAt;
   final Uint8List? signPublicKey;
 
@@ -90,6 +110,7 @@ class KnownPeer {
   KnownPeer copyWith({
     String? displayName,
     DateTime? lastSeen,
+    DateTime? lastPresenceAt,
     DateTime? verifiedAt,
     Uint8List? signPublicKey,
     DateTime? signKeyRotatedAt,
@@ -108,6 +129,7 @@ class KnownPeer {
       pubkeyHex: pubkeyHex,
       displayName: displayName ?? this.displayName,
       lastSeen: lastSeen ?? this.lastSeen,
+      lastPresenceAt: lastPresenceAt ?? this.lastPresenceAt,
       verifiedAt: clearVerifiedAt ? null : (verifiedAt ?? this.verifiedAt),
       signPublicKey: signPublicKey ?? this.signPublicKey,
       signKeyRotatedAt: clearSignKeyRotatedAt

@@ -141,6 +141,10 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       pubkeyHex: pubkeyHex,
       displayName: resolvedName,
       lastSeen: now,
+      // Carried through, never set here. An announcement says a radio is
+      // around; only a presence beacon says somebody is in the app, and
+      // [markPresent] is the one place that writes it.
+      lastPresenceAt: existing?.lastPresenceAt,
       // Preserve a prior verification across name / lastSeen refreshes —
       // verification is tied to the pubkey, which by definition hasn't
       // changed if we're upserting under the same pubkeyHex. EXCEPT when
@@ -180,6 +184,20 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   /// [upsert] this never touches names or keys, so it can't be used by a peer to
   /// nudge their own record. No-op for an unknown peer: a first contact has to
   /// come through a signed announcement.
+  /// Record that this peer was in the app, just now.
+  ///
+  /// Called only from a presence beacon, which is the only message that means
+  /// it. Everything else — announcements, handshakes, relayed frames — says a
+  /// phone is reachable, and a phone is reachable while its owner is asleep.
+  Future<void> markPresent(String pubkeyHex) async {
+    final existing = state[pubkeyHex];
+    if (existing == null) return;
+    final now = DateTime.now();
+    final updated = existing.copyWith(lastSeen: now, lastPresenceAt: now);
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
   Future<void> touch(String pubkeyHex) async {
     final existing = state[pubkeyHex];
     if (existing == null) return;
@@ -270,6 +288,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         'pubkeyHex': p.pubkeyHex,
         'displayName': p.displayName,
         'lastSeenIso': p.lastSeen.toIso8601String(),
+        if (p.lastPresenceAt != null)
+          'lastPresenceIso': p.lastPresenceAt!.toIso8601String(),
         'verifiedAtIso': p.verifiedAt?.toIso8601String(),
         if (p.signPublicKey != null) 'signPubHex': _hexOf(p.signPublicKey!),
         if (p.signKeyRotatedAt != null)
@@ -294,6 +314,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     return KnownPeer(
       pubkeyHex: m['pubkeyHex'] as String,
       displayName: (m['displayName'] as String?) ?? '',
+      lastPresenceAt:
+          DateTime.tryParse((m['lastPresenceIso'] as String?) ?? ''),
       lastSeen: DateTime.tryParse((m['lastSeenIso'] as String?) ?? '') ??
           DateTime.now(),
       verifiedAt: verifiedRaw == null ? null : DateTime.tryParse(verifiedRaw),

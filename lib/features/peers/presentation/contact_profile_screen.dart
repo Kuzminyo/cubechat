@@ -677,7 +677,13 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     } else {
       status = [
         t.presenceOffline,
-        formatChatListTime(context, peer.lastSeen),
+        // The last time they were in the app, not the last time their phone
+        // spoke — see [KnownPeer.lastPresenceAt]. Falls back to nothing rather
+        // than to `lastSeen`, because a number that means something else is
+        // worse than no number.
+        peer.lastPresenceAt == null
+            ? '—'
+            : formatChatListTime(context, peer.lastPresenceAt!),
       ].join(' \u00B7 ');
     }
     final heroExpanded =
