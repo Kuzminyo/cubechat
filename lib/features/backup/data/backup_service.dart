@@ -89,7 +89,9 @@ class BackupService {
   /// onto — iOS changes it between installs of the *same* app — so an absolute
   /// path is the one thing here guaranteed not to survive the trip.
   Future<Map<String, Object?>> _collectMedia() async {
-    final out = <String, Object?>{};
+    // Newest first, across all four directories at once, so the budget below
+    // keeps the pictures somebody would actually miss.
+    final files = <File>[];
     for (final name in _mediaDirs) {
       final Directory dir;
       try {
@@ -99,19 +101,38 @@ class BackupService {
       }
       if (!dir.existsSync()) continue;
       for (final entity in dir.listSync()) {
-        if (entity is! File) continue;
-        try {
-          final bytes = await entity.readAsBytes();
-          // A backup that refuses to be made is worse than one missing a
-          // video: anything implausible for a chat attachment is skipped
-          // rather than allowed to push the whole payload out of memory.
-          if (bytes.length > _maxMediaBytes) continue;
-          final base = entity.path.split(Platform.pathSeparator).last;
-          out['$name/$base'] = base64Url.encode(bytes);
-        } catch (_) {
-          // A file being written as the backup is read, or one the OS has
-          // taken away. Skipped, not fatal.
-        }
+        if (entity is File) files.add(entity);
+      }
+    }
+    files.sort((a, b) {
+      try {
+        return b.statSync().modified.compareTo(a.statSync().modified);
+      } catch (_) {
+        return 0;
+      }
+    });
+
+    final out = <String, Object?>{};
+    var budget = _maxMediaTotalBytes;
+    for (final entity in files) {
+      try {
+        final size = entity.lengthSync();
+        // A backup that refuses to be made is worse than one missing a video:
+        // anything implausible for a chat attachment is skipped rather than
+        // allowed to push the whole payload out of memory.
+        if (size > _maxMediaBytes) continue;
+        if (size > budget) continue;
+        final bytes = await entity.readAsBytes();
+        budget -= bytes.length;
+        final base = entity.path.split(Platform.pathSeparator).last;
+        // The directory name is recoverable from the file's own parent, so a
+        // file found in one directory is filed back into that one.
+        final dirName =
+            entity.parent.path.split(Platform.pathSeparator).last;
+        out['$dirName/$base'] = base64Url.encode(bytes);
+      } catch (_) {
+        // A file being written as the backup is read, or one the OS has
+        // taken away. Skipped, not fatal.
       }
     }
     return out;
@@ -119,7 +140,22 @@ class BackupService {
 
   /// Per file. Photos are capped by the picker long before this; the limit is
   /// here for the pathological case, not the ordinary one.
-  static const int _maxMediaBytes = 64 * 1024 * 1024;
+  static const int _maxMediaBytes = 16 * 1024 * 1024;
+
+  /// And a ceiling for the lot, which the first version of this did not have.
+  ///
+  /// Without one, a phone with a few hundred photographs produced a payload of
+  /// several hundred megabytes: base64 adds a third, the whole thing is a
+  /// single JSON string held in memory, and it is then encrypted into a second
+  /// buffer beside it. The phone-to-phone transfer refuses anything over
+  /// [PhoneTransferService.maxTransferBytes], so the receiver died partway
+  /// through a transfer the sender had spent a minute building — which is what
+  /// "the QR transfer does not work" was.
+  ///
+  /// Forty-eight megabytes of files is roughly sixty-four once encoded, which
+  /// leaves the encrypted payload comfortably inside the transfer cap and the
+  /// two buffers inside what a mid-range phone will hand out at once.
+  static const int _maxMediaTotalBytes = 48 * 1024 * 1024;
 
   /// Put the files back where the records expect them.
   ///

@@ -72,6 +72,7 @@ import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inner_payload.dart';
 import 'channel_poll.dart';
+import '../util/media_storage.dart';
 import 'channel_admin.dart';
 import 'channel_history.dart';
 import 'peer_id.dart';
@@ -2903,8 +2904,22 @@ class MessagingService {
     final stored =
         _ref.read(messagesControllerProvider)[channel.name] ?? const <Message>[];
     final posts = <ChannelHistoryPost>[];
+    final photos = <Message>[];
     for (final message in stored.reversed) {
       if (posts.length >= ChannelHistory.maxPosts) break;
+      // Pictures go the way pictures go: a manifest and its chunks, re-sent
+      // under the id they first travelled under, so a phone that already holds
+      // one takes the manifest and discards it. Collected here and sent after
+      // the text, because the text is small and should not wait behind
+      // several megabytes of photographs.
+      if (message.kind == MessageKind.image) {
+        if (photos.length < _maxReplayedPhotos &&
+            message.mediaId != null &&
+            MediaPaths.existsOrNull(message.imagePath)) {
+          photos.add(message);
+        }
+        continue;
+      }
       if (message.kind != MessageKind.text) continue;
       final wireId = message.wireId;
       if (wireId == null || wireId.length != 32) continue;
@@ -2920,21 +2935,52 @@ class MessagingService {
         ),
       );
     }
-    if (posts.isEmpty) return 0;
-    final frame = await _buildChannelFrame(
-      channel,
-      InnerPayloadType.channelHistory,
-      // Oldest first, so a reader who takes only part of it takes a beginning.
-      ChannelHistory(posts: posts.reversed.toList()).encode(),
-      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
-    );
-    final fanout = await _broadcastChannelFrame(frame);
+    if (posts.isEmpty && photos.isEmpty) return 0;
+    var fanout = 0;
+    if (posts.isNotEmpty) {
+      final frame = await _buildChannelFrame(
+        channel,
+        InnerPayloadType.channelHistory,
+        // Oldest first, so a reader who takes only part of it takes a
+        // beginning.
+        ChannelHistory(posts: posts.reversed.toList()).encode(),
+        TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+      );
+      fanout = await _broadcastChannelFrame(frame);
+    }
+    // Oldest first here too, and one at a time: a photo is hundreds of chunks
+    // and the room has to carry every one of them.
+    for (final photo in photos.reversed) {
+      try {
+        final path = MediaPaths.repairOrNull(photo.imagePath);
+        if (path == null) continue;
+        await sendChannelImage(
+          channel.name,
+          bytes: await File(path).readAsBytes(),
+          mime: photo.imageMime ?? 'image/jpeg',
+          caption: photo.imageCaption,
+          reuseImageId: _hexDecodeBytes(photo.mediaId!),
+        );
+      } catch (e) {
+        // One unreadable picture does not take the offer down with it.
+        DebugLog.instance.log('CHAN', 'history photo skipped: $e');
+      }
+    }
     DebugLog.instance.log(
       'CHAN',
-      'offered ${posts.length} posts of ${channel.name} history (to $fanout)',
+      'offered ${posts.length} posts and ${photos.length} photos of '
+          '${channel.name} history (to $fanout)',
     );
-    return posts.length;
+    return posts.length + photos.length;
   }
+
+  /// How many pictures one history offer will re-send.
+  ///
+  /// Far fewer than the fifty posts beside them, because a photo is hundreds
+  /// of chunks and every one of them is broadcast to the whole room. Ten is a
+  /// scroll's worth of recent pictures and a few megabytes of airtime; fifty
+  /// would be a room unusable for several minutes.
+  static const int _maxReplayedPhotos = 10;
 
   static ConversationWallpaperPayload _wallpaperPayload(
       ChatWallpaper wallpaper) {
@@ -3798,19 +3844,32 @@ class MessagingService {
   /// Chunks are sized for the conservative MTU rather than a link's negotiated
   /// one, because a broadcast has no single link to size against — the same
   /// frame has to survive the narrowest hop in the room.
-  Future<Message> sendChannelImage(
+  /// [reuseImageId] re-sends a picture the room has already seen, under the id
+  /// it originally travelled with.
+  ///
+  /// That id is the whole mechanism: a message's wireId is its hash, insertion
+  /// is idempotent on the wireId, so a replay lands only on a phone that does
+  /// not have the picture — which is exactly the new member the history offer
+  /// exists for. Minting a fresh id instead would show the room its own
+  /// photographs a second time.
+  ///
+  /// A replay writes nothing locally and returns null: the bubble is already
+  /// here, and appending it again is the duplicate this is designed to avoid.
+  Future<Message?> sendChannelImage(
     String channelName, {
     required Uint8List bytes,
     required String mime,
     String? cachedPath,
     String? caption,
+    Uint8List? reuseImageId,
   }) async {
     final channel =
         _ref.read(channelControllerProvider.notifier).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     await _ensureCanPostToChannel(channel);
 
-    final imageId = ImageChunk.newImageId();
+    final replay = reuseImageId != null;
+    final imageId = reuseImageId ?? ImageChunk.newImageId();
     final caption0 = (caption?.trim().isEmpty ?? true) ? null : caption!.trim();
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
@@ -3823,9 +3882,10 @@ class MessagingService {
       imagePath: cachedPath,
       imageMime: mime,
       wireId: TransportEnvelope.hashHex(imageId),
+      mediaId: _hexOf(imageId),
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
-    messages.append(channel.name, msg);
+    if (!replay) messages.append(channel.name, msg);
 
     try {
       final relayOnly = !_hasAnyLink;
@@ -3878,8 +3938,14 @@ class MessagingService {
           await Future<void>.delayed(const Duration(milliseconds: 15));
         }
       }
-      DebugLog.instance.log('CHAN',
-          'channel photo to ${channel.name}: $total chunks, fanout=$fanout');
+      DebugLog.instance.log(
+        'CHAN',
+        '${replay ? 'replayed' : 'channel'} photo to ${channel.name}: '
+            '$total chunks, fanout=$fanout',
+      );
+      // Nothing to mark on a replay: there is no pending bubble here, only a
+      // picture already in the history being offered again.
+      if (replay) return null;
       messages.updateStatus(
         channel.name,
         msg.id,
@@ -3892,7 +3958,9 @@ class MessagingService {
       );
     } catch (e, st) {
       debugPrint('sendChannelImage failed: $e\n$st');
-      messages.updateStatus(channel.name, msg.id, MessageStatus.failed);
+      if (!replay) {
+        messages.updateStatus(channel.name, msg.id, MessageStatus.failed);
+      }
       rethrow;
     }
     return msg;
@@ -6422,6 +6490,11 @@ class MessagingService {
             // can deliver this photo — the handle that keeps a re-delivered
             // manifest from adding a second copy to the chat.
             wireId: imageWireId,
+            // Kept as well as hashed. A second administrator, or one who
+            // restored this room from a backup, can only offer this picture to
+            // a newcomer by re-sending it under the id it came in on — see
+            // [sendChannelImage].
+            mediaId: _hexOf(manifest.mediaId),
             authorName: authorName,
             authorId: authorId,
             viewOnce: manifest.viewOnce,

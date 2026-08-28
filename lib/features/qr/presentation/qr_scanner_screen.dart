@@ -53,7 +53,29 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
           t.phoneTransferPreparing,
           tone: ToastTone.neutral,
         );
-        await ref.read(phoneTransferServiceProvider).receive(transfer);
+        // Caught here, not by the handlers below.
+        //
+        // Everything that can go wrong with a transfer — the other phone off
+        // the network, a connection refused, a link whose one use is spent, a
+        // backup too large to carry — used to fall through to the generic
+        // arms at the bottom and come back as "invalid QR code", or, for a
+        // StateError, as "this is your own contact card". So a transfer that
+        // failed for a plain network reason told you the thing you had just
+        // scanned was not a transfer at all, which is precisely "the QR
+        // transfer does not work".
+        try {
+          await ref.read(phoneTransferServiceProvider).receive(transfer);
+        } catch (error) {
+          if (!mounted) return;
+          showGlassToast(
+            context,
+            '$error'.replaceFirst(RegExp(r'^\w*(Error|Exception):\s*'), ''),
+            tone: ToastTone.danger,
+            duration: const Duration(seconds: 5),
+          );
+          await _resume();
+          return;
+        }
         if (!mounted) return;
         showGlassToast(
           context,

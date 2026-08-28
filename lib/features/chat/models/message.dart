@@ -58,6 +58,7 @@ class Message {
     this.audioLevels,
     this.forwardedFrom,
     this.forwardedFromId,
+    this.mediaId,
     this.voicePlayed = false,
     this.expiresAt,
     this.filePath,
@@ -244,6 +245,19 @@ class Message {
   /// nowhere.
   final String? forwardedFromId;
 
+  /// The 16-byte media id this attachment travelled under, in hex.
+  ///
+  /// Kept because it is the only thing that makes a picture re-sendable
+  /// *without* everybody seeing it twice. A message's [wireId] is the hash of
+  /// this id, and insertion is idempotent on the wireId — so a replay minted
+  /// with a fresh id is a new message to every phone in the room, and a replay
+  /// carrying the original id lands only where the picture is missing.
+  ///
+  /// Null for text, and for anything stored before this field existed: those
+  /// pictures cannot be replayed, and the history offer simply passes over
+  /// them rather than duplicating them for the whole room.
+  final String? mediaId;
+
   // Arbitrary-file payload. Unlike images and voice notes, a file keeps the
   // name it was sent under — it is the only thing that says what the bubble is
   // and what it saves as. [fileBytes] is the size on disk, shown next to the
@@ -337,6 +351,7 @@ class Message {
     List<int>? audioLevels,
     String? forwardedFrom,
     String? forwardedFromId,
+    String? mediaId,
     bool? voicePlayed,
     DateTime? expiresAt,
     bool clearExpiry = false,
@@ -374,6 +389,7 @@ class Message {
       audioLevels: audioLevels ?? this.audioLevels,
       forwardedFrom: forwardedFrom ?? this.forwardedFrom,
       forwardedFromId: forwardedFromId ?? this.forwardedFromId,
+      mediaId: mediaId ?? this.mediaId,
       voicePlayed: voicePlayed ?? this.voicePlayed,
       expiresAt: clearExpiry ? null : (expiresAt ?? this.expiresAt),
       forwardSecret: forwardSecret ?? this.forwardSecret,

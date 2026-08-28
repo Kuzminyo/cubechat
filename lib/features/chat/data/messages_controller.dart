@@ -947,6 +947,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioLevels != null) 'audioLevels': m.audioLevels,
         if (m.forwardedFrom != null) 'forwardedFrom': m.forwardedFrom,
         if (m.forwardedFromId != null) 'forwardedFromId': m.forwardedFromId,
+        if (m.mediaId != null) 'mediaId': m.mediaId,
         if (m.voicePlayed) 'voicePlayed': true,
         if (m.expiresAt != null)
           'expiresAtMs': m.expiresAt!.millisecondsSinceEpoch,
@@ -1038,6 +1039,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       // history predates this key entirely — both read as "no shape to draw".
       forwardedFrom: m['forwardedFrom'] as String?,
       forwardedFromId: m['forwardedFromId'] as String?,
+      mediaId: m['mediaId'] as String?,
       audioLevels: (m['audioLevels'] as List<dynamic>?)
           ?.map((dynamic v) => (v as num).toInt())
           .toList(growable: false),

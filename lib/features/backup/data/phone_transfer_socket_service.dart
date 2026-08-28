@@ -117,6 +117,18 @@ class PhoneTransferService {
     final encrypted = await _ref.read(backupServiceProvider).create(
           password: password,
         );
+    // Refused here, where it can be said out loud, rather than by the receiver
+    // partway through. The backup carries the media files now, and before the
+    // budget in [BackupService] a phone with a full gallery built something no
+    // transfer would take — the sending phone showed a code, the receiving one
+    // connected, and the transfer died in the middle with nothing to explain
+    // it.
+    if (encrypted.length > maxTransferBytes) {
+      throw StateError(
+        'This backup is ${encrypted.length ~/ (1024 * 1024)} MB, over the '
+        '${maxTransferBytes ~/ (1024 * 1024)} MB a transfer carries',
+      );
+    }
     final server = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     final host = await _localIpv4();
     if (host == null) {
