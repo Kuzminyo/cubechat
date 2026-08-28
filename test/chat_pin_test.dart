@@ -119,10 +119,19 @@ void main() {
     // The bar names the pinned message and previews it.
     expect(find.text('Pinned message'), findsOneWidget);
 
-    // Unpinning asks first. The pin is shared state — clearing it takes the
-    // banner away from everyone in the chat — and the button sits right next to
-    // one you tap to jump to the message.
-    await tester.tap(find.byTooltip('Unpin').last);
+    // Unpinning happens on the list of pins, not on the bar.
+    //
+    // The bar used to carry both an "unpin" and an "all pins" button, side by
+    // side and a few pixels apart, and offering to unpin whichever one the bar
+    // happened to be showing was a strange thing to make the primary action.
+    // One control now, and it opens the list — where you can see what you are
+    // about to unpin.
+    await tester.tap(find.byTooltip('All pinned messages').last);
+    await beat(tester);
+
+    // Still asks first. The pin is shared state: clearing it takes the banner
+    // away from everyone in the chat.
+    await tester.tap(find.widgetWithText(TextButton, 'Unpin all messages'));
     await beat(tester);
     expect(find.text('Unpin this message?'), findsOneWidget);
     expect(
@@ -134,20 +143,20 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Unpin'));
     await beat(tester);
     expect(container.read(pinnedControllerProvider)['#test'], isNull);
-    expect(find.text('Pinned message'), findsNothing);
   });
 
   testWidgets('cancelling the unpin leaves the message pinned', (tester) async {
     final container = await openPinnedChat(tester);
 
-    await tester.tap(find.byTooltip('Unpin'));
+    await tester.tap(find.byTooltip('All pinned messages').last);
+    await beat(tester);
+    await tester.tap(find.widgetWithText(TextButton, 'Unpin all messages'));
     await beat(tester);
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await beat(tester);
 
     expect(
         container.read(pinnedControllerProvider)['#test']?.wireId, 'aa' * 16);
-    expect(find.text('Pinned message'), findsOneWidget);
   });
 
   // Reported from the field: with more than two pins, the first tap jumps

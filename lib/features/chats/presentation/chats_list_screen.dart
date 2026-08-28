@@ -13,6 +13,7 @@ import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/transport/chat_session_manager.dart';
@@ -1652,9 +1653,20 @@ class ChatSelectionBar extends ConsumerWidget {
             // always read before an await here.
             final rootContext = Navigator.of(context, rootNavigator: true).context;
             final selection = ref.read(chatSelectionProvider.notifier);
+            // Asked once for the batch, not once per chat.
+            //
+            // This loop used to call the confirming version, so deleting two
+            // conversations put up two dialogs in a row — answer one and the
+            // next appears in the same place, which reads as the app asking
+            // again rather than asking about the second thing. Reported exactly
+            // that way: "the window can come up twice".
+            //
+            // The single-chat path keeps its own dialog, because there the
+            // question and the thing being asked about are one and the same.
+            if (!await _confirmDeleteMany(rootContext, ref, chats, t)) return;
             for (final chat in chats) {
               if (!rootContext.mounted) return;
-              await _confirmAndDeleteChat(rootContext, ref, chat, t);
+              await _deleteChat(rootContext, ref, chat, alsoForThem: false);
             }
             selection.clear();
           },
@@ -2639,6 +2651,48 @@ Future<void> _confirmAndDeleteChat(
   // cleared but never hidden, and a cleared-but-visible chat is precisely
   // "deleting a chat does nothing". The notifiers outlive any widget, so the
   // sequence finishes whatever the list does underneath it.
+  await _deleteChat(context, ref, chat, alsoForThem: alsoForThem);
+}
+
+/// One question for a whole selection.
+///
+/// Deleting several conversations used to ask about each in turn, and a dialog
+/// that reappears in the same place after being answered reads as the app
+/// asking twice rather than asking about the next thing.
+///
+/// Deliberately local-only: the per-chat dialog offers "delete for them as
+/// well", which retracts our own messages from the other phone, and that is not
+/// a thing to apply in bulk behind one tick. Somebody who wants it can delete
+/// those chats one at a time, where the question is asked about a conversation
+/// they can see.
+Future<bool> _confirmDeleteMany(
+  BuildContext context,
+  WidgetRef ref,
+  List<Chat> chats,
+  AppLocalizations t,
+) async {
+  if (chats.isEmpty) return false;
+  if (chats.length == 1) {
+    await _confirmAndDeleteChat(context, ref, chats.first, t);
+    return false;
+  }
+  return confirmAction(
+    context,
+    title: t.chatsDeleteTitle,
+    message: t.chatsDeleteManyHint(chats.length),
+    confirmLabel: t.chatDeleteAction,
+    destructive: true,
+  );
+}
+
+/// Everything that removing one conversation touches. No questions asked —
+/// the caller has already asked.
+Future<void> _deleteChat(
+  BuildContext context,
+  WidgetRef ref,
+  Chat chat, {
+  required bool alsoForThem,
+}) async {
   final messages = ref.read(messagesControllerProvider.notifier);
   final favorites = ref.read(favoritesControllerProvider.notifier);
   final pinnedChats = ref.read(pinnedChatsControllerProvider.notifier);

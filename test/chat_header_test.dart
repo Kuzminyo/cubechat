@@ -126,7 +126,9 @@ void main() {
     // The island previews the pinned line itself — one copy in the bubble, one
     // in the island.
     expect(find.text('вул. Сагайдачного 12, код 4507'), findsNWidgets(2));
-    expect(find.byTooltip('Unpin'), findsOneWidget);
+    // One control on the bar, and it opens the list of pins. Unpinning lives
+    // there now, where the message being unpinned is in front of you.
+    expect(find.byTooltip('All pinned messages'), findsOneWidget);
 
     // The conversation runs *behind* both islands: it reserves room by padding
     // itself, rather than being pushed down by a bar that would show a band of

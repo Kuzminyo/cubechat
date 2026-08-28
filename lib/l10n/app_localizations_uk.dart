@@ -613,6 +613,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatsDeleteTitle => 'Видалити цей чат?';
 
   @override
+  String chatsDeleteManyHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Очистить $count розмов. Контакти залишаться, тож ви зможете написати їм знову без обміну кодами.',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get chatsDeletePeerHint =>
       'Розмову буде очищено. Контакт залишиться — писати йому знову можна без обміну кодами.';
 

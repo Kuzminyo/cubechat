@@ -1160,6 +1160,12 @@ abstract class AppLocalizations {
   /// **'Delete this chat?'**
   String get chatsDeleteTitle;
 
+  /// No description provided for @chatsDeleteManyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{Clears {count} conversations. The contacts stay, so you can write to them again without swapping codes.}}'**
+  String chatsDeleteManyHint(int count);
+
   /// No description provided for @chatsDeletePeerHint.
   ///
   /// In en, this message translates to:

@@ -272,6 +272,10 @@
   "chatsActionUnfavorite": "Remove from favorites",
   "chatsActionDelete": "Delete chat",
   "chatsDeleteTitle": "Delete this chat?",
+  "chatsDeleteManyHint": "{count, plural, other{Clears {count} conversations. The contacts stay, so you can write to them again without swapping codes.}}",
+  "@chatsDeleteManyHint": {
+    "placeholders": { "count": { "type": "int" } }
+  },
   "chatsDeletePeerHint": "Clears the conversation. The contact stays, so you can write to them again without swapping codes.",
   "chatsDeleteChannelHint": "Leaves the channel and removes its history. You will need the key again to rejoin.",
   "chatsDeleteForThemToo": "Also delete for them",

@@ -170,13 +170,20 @@ class ChatTile extends StatelessWidget {
                         label: t.peerKeyRotated,
                         tone: _PillTone.warning,
                       ),
-                    ] else if (chat.isReachableViaMesh) ...[
-                      const SizedBox(width: 6),
-                      _StatusPill(
-                        icon: Icons.hub_rounded,
-                        label: t.chatsStatusViaMesh,
-                      ),
                     ],
+                    // No "via mesh" pill either.
+                    //
+                    // It said something true and useless: that a radio link to
+                    // this person exists. Nobody reading a list of
+                    // conversations is asking which road a message would take
+                    // — that question belongs to the chat, where the header
+                    // answers it, and it is answered there per message rather
+                    // than as a standing label. On the list it was a bright
+                    // badge that appeared and vanished as people wandered in
+                    // and out of range, on rows whose content had not changed.
+                    //
+                    // Removed for the same reason there is no "offline" pill:
+                    // a lot of ink for a state nobody was asking about.
                     // No "offline" pill. The dot on the avatar already says
                     // who is here, and its absence says the rest — spelling it
                     // out put a grey badge on almost every row, which is a lot

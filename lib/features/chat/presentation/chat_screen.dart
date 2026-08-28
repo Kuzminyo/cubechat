@@ -2640,11 +2640,20 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
       child: _HeaderPill(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
+          // Stated rather than left to the default, because the row mixes a
+          // text field with short labels and buttons: the field's box is taller
+          // than its text, so anything sitting beside it lands wherever the
+          // boxes happen to line up unless this says otherwise.
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: TextField(
                 controller: _controller,
                 focusNode: _focusNode,
+                // The text centres in its own box, so the hint and the counter
+                // beside it share a line instead of the counter reading as a
+                // subscript hanging off the end of the hint.
+                textAlignVertical: TextAlignVertical.center,
                 textInputAction: TextInputAction.search,
                 style: TextStyle(
                   color: AppColors.textOnGlass,
@@ -2669,14 +2678,20 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
                 },
               ),
             ),
-            Text(
-              counter,
-              style: TextStyle(
-                color: widget.resultIndex == null && _query.trim().isNotEmpty
-                    ? AppColors.textOnGlassDim
-                    : AppColors.brandPrimary,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
+            // Air on both sides. Without it the count sat flush against the
+            // end of the hint and read as part of the sentence.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                counter,
+                style: TextStyle(
+                  color: widget.resultIndex == null && _query.trim().isNotEmpty
+                      ? AppColors.textOnGlassDim
+                      : AppColors.brandPrimary,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                ),
               ),
             ),
             _SearchIconButton(
@@ -3020,28 +3035,22 @@ class _PinnedBar extends StatelessWidget {
                   ],
                 ),
               ),
-              // Every pin, as a list.
+              // One control, not two.
               //
-              // The bar shows one at a time and steps through them on tap,
-              // which works for two and is useless for twenty: no way to see
-              // what is pinned, no way to reach the fourth except by tapping
-              // past the first three.
+              // The bar had an "unpin" and an "all pins" button side by side,
+              // a few pixels apart, both small and both about pinning. Telegram
+              // has one, and it is the right count: the list is where you can
+              // see what you are unpinning, and unpinning the one thing the bar
+              // happens to be showing is a strange thing to offer as the
+              // primary action.
               //
-              // Only when there is more than one — a single pin is already
-              // fully shown by the bar, and a control that opens a list of one
-              // is a control that does nothing.
-              if (count > 1)
-                _PillIconButton(
-                  icon: Icons.format_list_bulleted_rounded,
-                  color: AppColors.textOnGlassDim,
-                  tooltip: t.chatShowAllPins,
-                  onPressed: onShowAll,
-                ),
+              // So this opens the list, and the list does the unpinning — one
+              // at a time or all at once, with the message in front of you.
               _PillIconButton(
                 icon: Icons.push_pin_rounded,
                 color: AppColors.textOnGlassDim,
-                tooltip: t.chatUnpinAction,
-                onPressed: onUnpin,
+                tooltip: t.chatShowAllPins,
+                onPressed: onShowAll,
               ),
             ],
           ),

@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/routing/page_transitions.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/aurora_background.dart';
 import '../../../core/theme/typography.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../data/pinned_controller.dart';
 import '../models/message.dart';
 
@@ -72,10 +75,34 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
         if (!_picked.remove(wireId)) _picked.add(wireId);
       });
 
+  /// Unpin, and tell the other side.
+  ///
+  /// Through `sendPin(pinned: false)` rather than the controller's own `unpin`,
+  /// which is what the bar in the conversation does. A pin is a shared fact —
+  /// both phones show the same bar — so unpinning locally would have left the
+  /// other person looking at something this one had already dropped, and the
+  /// next sync would have brought it back.
   Future<void> _unpick(Iterable<String> ids) async {
-    final pins = ref.read(pinnedControllerProvider.notifier);
+    final t = AppLocalizations.of(context);
+    // Asked once, however many are ticked.
+    //
+    // Unpinning is not destructive — the message stays — but it is invisible
+    // and awkward to undo: you have to find the message again in the history to
+    // pin it back. The conversation's own bar already asks before unpinning for
+    // that reason, and this is the same act with more of them selected.
+    if (!await confirmAction(
+      context,
+      title: t.chatUnpinConfirm,
+      message: t.chatUnpinConfirmHint,
+      confirmLabel: t.chatUnpinAction,
+      destructive: false,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final messaging = ref.read(messagingServiceProvider);
     for (final id in ids) {
-      await pins.unpin(widget.chatId, wireId: id);
+      await messaging.sendPin(widget.chatId, id, pinned: false);
     }
     if (!mounted) return;
     setState(_picked.clear);
@@ -88,10 +115,9 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
     // controller keys its map its own way and `pinnedAllIn` is what knows how.
     ref.watch(pinnedControllerProvider);
     final pinnedIds = {
-      for (final pin
-          in ref.read(pinnedControllerProvider.notifier).pinnedAllIn(
-                widget.chatId,
-              ))
+      for (final pin in ref.read(pinnedControllerProvider.notifier).pinnedAllIn(
+            widget.chatId,
+          ))
         pin.wireId,
     };
     final rows = [
@@ -107,77 +133,87 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
         if (didPop || !_selecting) return;
         setState(_picked.clear);
       },
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
+      // The screen paints its own backdrop.
+      //
+      // Without one the Scaffold is transparent and the conversation underneath
+      // shows straight through it — so during the slide you see the chat's
+      // messages, and only when the route settles does anything look like a
+      // separate screen. It read as the window arriving late, and it is what
+      // every other pushed screen here already avoids by carrying the aurora.
+      child: AuroraBackground(
+        child: Scaffold(
           backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: BackButton(
-            color: AppColors.textOnGlass,
-            onPressed: () => _selecting
-                ? setState(_picked.clear)
-                : Navigator.of(context).maybePop(),
-          ),
-          title: Text(
-            _selecting
-                ? t.chatSelectedCount(_picked.length)
-                : t.chatPinnedCount(rows.length),
-            style: AppTypography.heading(size: 17),
-          ),
-          actions: [
-            if (_selecting)
-              IconButton(
-                tooltip: t.chatUnpinAction,
-                icon: Icon(Icons.push_pin_rounded, color: AppColors.textOnGlass),
-                onPressed: () => _unpick(_picked.toList()),
-              ),
-          ],
-        ),
-        body: rows.isEmpty
-            ? Center(
-                child: Text(
-                  t.chatNoPins,
-                  style: TextStyle(color: AppColors.textOnGlassDim),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: BackButton(
+              color: AppColors.textOnGlass,
+              onPressed: () => _selecting
+                  ? setState(_picked.clear)
+                  : Navigator.of(context).maybePop(),
+            ),
+            title: Text(
+              _selecting
+                  ? t.chatSelectedCount(_picked.length)
+                  : t.chatPinnedCount(rows.length),
+              style: AppTypography.heading(size: 17),
+            ),
+            actions: [
+              if (_selecting)
+                IconButton(
+                  tooltip: t.chatUnpinAction,
+                  icon: Icon(Icons.push_pin_rounded,
+                      color: AppColors.textOnGlass),
+                  onPressed: () => _unpick(_picked.toList()),
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                itemCount: rows.length,
-                itemBuilder: (context, i) {
-                  final m = rows[i];
-                  final id = m.wireId!;
-                  return _PinnedRow(
-                    message: m,
-                    selected: _picked.contains(id),
-                    onTap: () {
-                      if (_selecting) {
-                        _toggle(id);
-                        return;
-                      }
-                      // Close first: the message being jumped to is in the
-                      // conversation behind this screen.
-                      Navigator.of(context).pop();
-                      widget.onJump(m);
-                    },
-                    onLongPress: () => _toggle(id),
-                  );
-                },
-              ),
-        bottomNavigationBar: rows.isEmpty
-            ? null
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: TextButton(
-                    onPressed: () =>
-                        _unpick([for (final m in rows) m.wireId!]),
-                    child: Text(
-                      t.chatUnpinAll,
-                      style: TextStyle(color: AppColors.danger),
+            ],
+          ),
+          body: rows.isEmpty
+              ? Center(
+                  child: Text(
+                    t.chatNoPins,
+                    style: TextStyle(color: AppColors.textOnGlassDim),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                  itemCount: rows.length,
+                  itemBuilder: (context, i) {
+                    final m = rows[i];
+                    final id = m.wireId!;
+                    return _PinnedRow(
+                      message: m,
+                      selected: _picked.contains(id),
+                      onTap: () {
+                        if (_selecting) {
+                          _toggle(id);
+                          return;
+                        }
+                        // Close first: the message being jumped to is in the
+                        // conversation behind this screen.
+                        Navigator.of(context).pop();
+                        widget.onJump(m);
+                      },
+                      onLongPress: () => _toggle(id),
+                    );
+                  },
+                ),
+          bottomNavigationBar: rows.isEmpty
+              ? null
+              : SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: TextButton(
+                      onPressed: () =>
+                          _unpick([for (final m in rows) m.wireId!]),
+                      child: Text(
+                        t.chatUnpinAll,
+                        style: TextStyle(color: AppColors.danger),
+                      ),
                     ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }
