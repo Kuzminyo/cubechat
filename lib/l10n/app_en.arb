@@ -551,6 +551,8 @@
   "avatarSet": "Choose a photo",
   "avatarChange": "Change photo",
   "avatarView": "View photo",
+  "profileCoverPhoto": "Profile photo, double tap to enlarge",
+  "profileCoverMenu": "Photo options",
   "avatarSaved": "Saved to gallery",
   "avatarRemove": "Remove photo",
   "avatarRemoveConfirm": "The avatar will be deleted from this device. The generated gradient comes back in its place.",

@@ -2096,6 +2096,18 @@ abstract class AppLocalizations {
   /// **'View photo'**
   String get avatarView;
 
+  /// No description provided for @profileCoverPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile photo, double tap to enlarge'**
+  String get profileCoverPhoto;
+
+  /// No description provided for @profileCoverMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo options'**
+  String get profileCoverMenu;
+
   /// No description provided for @avatarSaved.
   ///
   /// In en, this message translates to:

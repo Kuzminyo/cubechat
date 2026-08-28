@@ -49,6 +49,23 @@ class _TripleTapDetectorState extends State<TripleTapDetector> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _handleTap,
+      // Invisible to a screen reader, on purpose.
+      //
+      // A `GestureDetector` with an `onTap` publishes a tap action, so the app
+      // title on the chats list was announced as something you could activate
+      // — and activating it did nothing, because one tap out of three is not
+      // the gesture. Flutter's own tap-target audit caught it as a 216x44 node
+      // that claims to be tappable, which is precisely what it is.
+      //
+      // > **Design guideline — Accessibility > Mobility**: "Offer alternatives
+      // > to gestures. Make sure your UI's core functionality is accessible
+      // > through more than one type of physical interaction."
+      //
+      // The alternative is what makes this safe to hide rather than something
+      // to expose properly: Emergency Wipe is a labelled button on the profile
+      // screen, with the same confirmation. This detector is the shortcut, and
+      // a shortcut nobody can perform should not be announced as a control.
+      excludeFromSemantics: true,
       child: widget.child,
     );
   }

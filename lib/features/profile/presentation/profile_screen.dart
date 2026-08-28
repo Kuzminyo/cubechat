@@ -2260,51 +2260,77 @@ class _CoverBody extends ConsumerWidget {
         children: [
           Positioned.fromRect(
             rect: rect,
-            child: RawGestureDetector(
-              // The drag lives on the picture rather than on the list: it is a
-              // gesture about the picture, and putting it on the scroll axis
-              // made "see the photo" and "read the settings" fight each other.
-              //
-              // Raw, and eager, because the list is also listening for a
-              // vertical drag and an ordinary detector loses that arena — the
-              // gesture never arrived at all. Claiming it after two points of
-              // travel is what takes it off the scrollable, and only over the
-              // picture: everywhere else on the screen still scrolls.
-              gestures: <Type, GestureRecognizerFactory>{
-                EagerVerticalDragRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                        EagerVerticalDragRecognizer>(
-                  EagerVerticalDragRecognizer.new,
-                  (r) => r
-                    ..onStart = ((_) => onFaceDragStart())
-                    ..onUpdate = onFaceDrag,
-                ),
-                TapGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
-                  TapGestureRecognizer.new,
-                  (r) => r.onTap = onToggle,
-                ),
-              },
-              child: Container(
-                // Keyed for the test that checks it is where it should be:
-                // "centred" is a number, and a golden can show it but cannot
-                // check it.
-                key: const ValueKey('profile-cover-face'),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                  gradient: photo == null
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: IdentityAvatar.paletteFor(fingerprint),
-                        )
-                      : null,
-                  image: photo == null
-                      ? null
-                      : DecorationImage(
-                          image: MemoryImage(photo), fit: BoxFit.cover),
-                  border:
-                      t < 0.5 ? Border.all(color: AppColors.glass(0.2)) : null,
+            // The picture is the subject of this screen, and to a screen
+            // reader it was nothing at all: a tappable rectangle with no name.
+            // Flutter's own `labeledTapTargetGuideline` reported it against
+            // this screen and against no other, which is how it was found.
+            //
+            // > **Design guideline — Accessibility > Vision**: "Describe your
+            // > app's interface and content for screen readers."
+            //
+            // [Semantics.image] as well as [Semantics.button], because it is
+            // both: the label says what the rectangle is, the action says what
+            // happens if you activate it. The drag that does the same job more
+            // finely is not announced and cannot be — which is the reason the
+            // tap has to be.
+            child: Semantics(
+              label: tt.profileCoverPhoto,
+              image: true,
+              button: true,
+              onTap: onToggle,
+              child: RawGestureDetector(
+                // The node above carries the label and the tap; this one would
+                // publish a second, nameless tappable rectangle on top of it,
+                // which is the shape of the original finding.
+                excludeFromSemantics: true,
+                // The drag lives on the picture rather than on the list: it is
+                // a gesture about the picture, and putting it on the scroll
+                // axis made "see the photo" and "read the settings" fight each
+                // other.
+                //
+                // Raw, and eager, because the list is also listening for a
+                // vertical drag and an ordinary detector loses that arena —
+                // the gesture never arrived at all. Claiming it after two
+                // points of travel is what takes it off the scrollable, and
+                // only over the picture: everywhere else still scrolls.
+                gestures: <Type, GestureRecognizerFactory>{
+                  EagerVerticalDragRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                          EagerVerticalDragRecognizer>(
+                    EagerVerticalDragRecognizer.new,
+                    (r) => r
+                      ..onStart = ((_) => onFaceDragStart())
+                      ..onUpdate = onFaceDrag,
+                  ),
+                  TapGestureRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                          TapGestureRecognizer>(
+                    TapGestureRecognizer.new,
+                    (r) => r.onTap = onToggle,
+                  ),
+                },
+                child: Container(
+                  // Keyed for the test that checks it is where it should be:
+                  // "centred" is a number, and a golden can show it but cannot
+                  // check it.
+                  key: const ValueKey('profile-cover-face'),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    gradient: photo == null
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: IdentityAvatar.paletteFor(fingerprint),
+                          )
+                        : null,
+                    image: photo == null
+                        ? null
+                        : DecorationImage(
+                            image: MemoryImage(photo), fit: BoxFit.cover),
+                    border: t < 0.5
+                        ? Border.all(color: AppColors.glass(0.2))
+                        : null,
+                  ),
                 ),
               ),
             ),
@@ -2504,6 +2530,16 @@ class _CoverMenuButton extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.34 * scrim),
         shape: const CircleBorder(),
         child: IconButton(
+          // Three dots and nothing else, so the only name this control has is
+          // the one given here — without it a screen reader reached a button
+          // and had nothing to call it. The other overflow buttons in the app
+          // are already labelled; this one was missed, and Flutter's
+          // `labeledTapTargetGuideline` is what noticed.
+          //
+          // "Photo options" rather than "More": every other menu in the app is
+          // "More", and a reader that says the same word on six screens has
+          // told you where the button is and not what it does.
+          tooltip: AppLocalizations.of(context).profileCoverMenu,
           onPressed: () {
             final box = context.findRenderObject() as RenderBox?;
             if (box == null) return;

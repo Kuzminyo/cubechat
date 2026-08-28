@@ -1157,6 +1157,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get avatarView => 'View photo';
 
   @override
+  String get profileCoverPhoto => 'Profile photo, double tap to enlarge';
+
+  @override
+  String get profileCoverMenu => 'Photo options';
+
+  @override
   String get avatarSaved => 'Saved to gallery';
 
   @override

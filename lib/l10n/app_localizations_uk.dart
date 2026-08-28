@@ -1162,6 +1162,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get avatarView => 'Переглянути фото';
 
   @override
+  String get profileCoverPhoto => 'Фото профілю, подвійний дотик збільшує';
+
+  @override
+  String get profileCoverMenu => 'Дії з фото';
+
+  @override
   String get avatarSaved => 'Збережено до галереї';
 
   @override

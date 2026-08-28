@@ -368,7 +368,22 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = active ? AppColors.brandPrimary : AppColors.ink(0.88);
 
-    return Material(
+    // Which tab you are on is drawn three ways — the glow behind the icon, the
+    // icon's filled variant, and the label going bold — and every one of them
+    // is a colour or a shape. A screen reader saw five identical buttons.
+    //
+    // > **Design guideline — Accessibility > Vision**: "Convey information
+    // > with more than color alone."
+    //
+    // [Semantics.selected] is the non-visual channel for exactly this: it is
+    // what makes a tab announce itself as "selected", in the phrasing and the
+    // language the platform's own reader already uses. [MergeSemantics] folds
+    // the label's node into it so it is announced as one control rather than
+    // as a button with a separate piece of text inside it.
+    //
+    // Held in a local and wrapped at the end rather than nested here, to keep
+    // the tab's own tree at the indentation it was written at.
+    final Widget tab = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -425,6 +440,8 @@ class _NavItem extends StatelessWidget {
         ),
       ),
     );
+
+    return MergeSemantics(child: Semantics(selected: active, child: tab));
   }
 }
 
