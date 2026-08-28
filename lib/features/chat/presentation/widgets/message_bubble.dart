@@ -185,7 +185,10 @@ Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async
     final path = MediaPaths.repairOrNull(message.imagePath);
     if (path == null || !MediaPaths.exists(path)) return;
     final bytes = await File(path).readAsBytes();
-    await ref.read(messagingServiceProvider).sendImage(
+    // Attributed like anything else. A photo used to return here, so a
+    // forwarded picture arrived with no line above it at all — the one kind of
+    // forward where "who sent me this" is asked most often.
+    final sent = await ref.read(messagingServiceProvider).sendImage(
           target.id,
           bytes: bytes,
           mime: message.imageMime ?? 'image/jpeg',
@@ -194,6 +197,7 @@ Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async
               ? Message.stickerMarkerFor(message.stickerEmoji)
               : message.imageCaption,
         );
+    await _attributeForward(ref, target, message, sent);
     return;
   }
   final sent = await forwardTextTo(ref, target, message.text);
@@ -219,14 +223,54 @@ Future<void> _attributeForward(
   if (target.isChannel) return;
   final wireId = sent?.wireId;
   if (wireId == null) return;
-  final name = original.forwardedFrom ?? original.authorName;
+  final name = _forwardAuthorName(ref, original);
   if (name == null || name.isEmpty) return;
+  final authorId = _forwardAuthorId(ref, original);
+  // Stamped here, on our own copy, before anything goes out.
+  //
+  // The attribution used to exist only as a frame sent to the other side, so
+  // the person doing the forwarding saw their own message with no line above
+  // it — no name, no space where one might be — and had no way to tell whether
+  // the header had been sent at all. It is the same fact on both phones and it
+  // should appear on both.
+  ref.read(messagesControllerProvider.notifier).applyForwardedFrom(
+        target.id,
+        wireId,
+        name,
+        authorId: authorId,
+      );
   await ref.read(messagingServiceProvider).announceForwardedFrom(
         canonicalId: target.id,
         wireIdHex: wireId,
         name: name,
-        authorId: _forwardAuthorId(ref, original),
+        authorId: authorId,
       );
+}
+
+/// Whose name goes above a forwarded message.
+///
+/// This is what was missing entirely. It used to read `forwardedFrom ??
+/// authorName`, and `authorName` is set only on channel messages — a room
+/// mixes senders and has to say which one. A 1:1 message has no author field
+/// because the chat itself is the answer, so every forward out of a private
+/// conversation came back null here and returned: no header, no name, and
+/// nothing to suggest one had been intended.
+///
+/// The chat is the answer, so it is used: the contact we hold for that bucket,
+/// falling back to the name the chat list shows. Our own message keeps our own
+/// name rather than none — passing on something we said is still a forward,
+/// and a bubble that suddenly claims to be original is worse than one that
+/// says where it came from.
+String? _forwardAuthorName(WidgetRef ref, Message original) {
+  final carried = original.forwardedFrom ?? original.authorName;
+  if (carried != null && carried.isNotEmpty) return carried;
+  if (original.isMine) {
+    final me = ref.read(nicknameControllerProvider).trim();
+    return me.isEmpty ? null : me;
+  }
+  final peer = ref.read(knownPeersControllerProvider)[original.chatId];
+  final name = peer?.displayName.trim();
+  return (name == null || name.isEmpty) ? null : name;
 }
 
 /// Whose profile the line above a forward should open, if anybody's.
@@ -363,14 +407,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   /// Whether this bubble carries a way into the room its comments live in.
   ///
-  /// A post, in an announcement channel, written by somebody else. Our own
-  /// posts do not need it — the composer's own bar already leads there — and a
-  /// room where anybody may write is its own discussion.
+  /// Any post in an announcement channel, ours included.
   ///
-  /// Not for the discussion room itself, which would otherwise offer a link
+  /// Our own were excluded on the reasoning that the reader's bar already
+  /// leads to the discussion — which is exactly backwards: the reader's bar is
+  /// what somebody who *cannot* post gets, so the administrator, whose posts
+  /// are all their own, had no way into the comments on any of them.
+  ///
+  /// A room where anybody may write is its own discussion and gets nothing.
+  /// Nor does the discussion room itself, which would otherwise offer a link
   /// into its own discussion, and so on.
   bool get _showsComments {
-    if (widget.message.isMine) return false;
     if (!widget.chatId.startsWith('#')) return false;
     if (channelForCommunity(widget.chatId) != null) return false;
     return ref

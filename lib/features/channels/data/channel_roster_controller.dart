@@ -19,6 +19,7 @@ class ChannelMember {
     required this.lastSeen,
     this.mutedUntil,
     this.removedAt,
+    this.provisionalAdmin = false,
   });
 
   final String id;
@@ -43,6 +44,20 @@ class ChannelMember {
   /// thing a room without a server can do.
   final DateTime? removedAt;
 
+  /// A seat this phone handed itself because the room looked unowned.
+  ///
+  /// Joining is deriving a key from a name, so two people who each typed it
+  /// start with an empty roster and each grant themselves the room — and then
+  /// refuse each other's claim, because a claim is only accepted on a room
+  /// with nobody in the seat. Both ended up administrators of the same
+  /// channel, which is why nobody ever saw a reader's view of one.
+  ///
+  /// Marking the claim as unconfirmed is what makes it possible to give up:
+  /// a seat granted by somebody who already held one is settled, and one
+  /// granted by an empty roster is a guess. See the `channelAdmin` ingest,
+  /// where two guesses are resolved the same way on both phones.
+  final bool provisionalAdmin;
+
   bool get isRemoved => removedAt != null;
 
   bool get isMutedNow =>
@@ -58,6 +73,7 @@ class ChannelMember {
     DateTime? mutedUntil,
     DateTime? removedAt,
     bool clearModeration = false,
+    bool? provisionalAdmin,
   }) =>
       ChannelMember(
         id: id,
@@ -66,6 +82,7 @@ class ChannelMember {
         lastSeen: lastSeen ?? this.lastSeen,
         mutedUntil: clearModeration ? null : (mutedUntil ?? this.mutedUntil),
         removedAt: clearModeration ? null : (removedAt ?? this.removedAt),
+        provisionalAdmin: provisionalAdmin ?? this.provisionalAdmin,
       );
 }
 
@@ -131,6 +148,23 @@ class ChannelRosterController
   bool hasAdmin(String channel) =>
       state[channel]?.values.any((m) => m.isAdmin) ?? false;
 
+  /// Whether anybody holds this room on more than their own say-so.
+  ///
+  /// [hasAdmin] answers "is the seat taken", and it is taken the instant this
+  /// phone hands it to itself — which is why two people who each typed the
+  /// room's name both ended up administrators and each refused the other's
+  /// claim. This asks the question that can actually settle it: does anybody
+  /// hold the room by something other than a guess made on an empty roster.
+  bool hasConfirmedAdmin(String channel) =>
+      state[channel]?.values.any((m) => m.isAdmin && !m.provisionalAdmin) ??
+      false;
+
+  /// True when our seat here is one we handed ourselves.
+  bool holdsProvisionalSeat(String channel, String memberId) {
+    final member = state[channel]?[memberId];
+    return member != null && member.isAdmin && member.provisionalAdmin;
+  }
+
   /// Record ourselves in [channel]'s roster, claiming the admin seat if it is
   /// going spare.
   ///
@@ -160,12 +194,17 @@ class ChannelRosterController
     final invited =
         ref.read(channelControllerProvider.notifier).byName(channel)?.viaInvite ??
             false;
+    final claiming =
+        existing == null && adminWhenFirst && !invited && !hasAdmin(channel);
     final member = ChannelMember(
       id: id,
       name: ref.read(nicknameControllerProvider),
-      isAdmin:
-          existing?.isAdmin ?? (adminWhenFirst && !invited && !hasAdmin(channel)),
+      isAdmin: existing?.isAdmin ?? claiming,
       lastSeen: DateTime.now(),
+      // Ours by guess, not by grant. See [ChannelMember.provisionalAdmin] —
+      // it is what lets this phone stand down when somebody else turns out to
+      // have made the same guess first.
+      provisionalAdmin: existing?.provisionalAdmin ?? claiming,
     );
     await record(channel, member);
     return member;
@@ -192,6 +231,7 @@ class ChannelRosterController
             // typed again.
             mutedUntil: old.mutedUntil,
             removedAt: old.removedAt,
+            provisionalAdmin: old.provisionalAdmin,
           );
     state = {
       ...state,
@@ -205,12 +245,29 @@ class ChannelRosterController
     String memberId,
     bool admin,
   ) async {
-    final current = state[channel];
-    final member = current?[memberId];
-    if (current == null || member == null || member.isAdmin == admin) return;
+    final current = state[channel] ?? const <String, ChannelMember>{};
+    // Recorded on the spot when the room has never heard of them. A seat can
+    // be granted to somebody whose first frame has not arrived yet — an
+    // invitation names them, a claim of their own names them — and dropping it
+    // because there is no row to edit is how a room ends up with an admin
+    // nobody has.
+    final member = current[memberId] ??
+        ChannelMember(
+          id: memberId,
+          name: '',
+          isAdmin: false,
+          lastSeen: DateTime.now(),
+        );
+    if (member.isAdmin == admin && current.containsKey(memberId)) return;
     state = {
       ...state,
-      channel: {...current, memberId: member.copyWith(isAdmin: admin)},
+      channel: {
+        ...current,
+        // Settled either way: somebody said so out loud. A seat granted here
+        // is no longer a guess, and one taken away leaves nothing to be
+        // provisional about.
+        memberId: member.copyWith(isAdmin: admin, provisionalAdmin: false),
+      },
     };
     await _persist();
   }
@@ -298,6 +355,10 @@ class ChannelRosterController
             lastSeen: seen,
             mutedUntil: DateTime.tryParse(data['mutedUntil'] as String? ?? ''),
             removedAt: DateTime.tryParse(data['removedAt'] as String? ?? ''),
+            // Absent for a seat stored before the distinction existed. Read as
+            // provisional, because that is what those seats were: every one of
+            // them was handed out by an empty roster.
+            provisionalAdmin: data['confirmedAdmin'] != true,
           );
         }
         loaded[channelEntry.key as String] = members;
@@ -323,6 +384,11 @@ class ChannelRosterController
                 'mutedUntil': member.value.mutedUntil!.toIso8601String(),
               if (member.value.removedAt != null)
                 'removedAt': member.value.removedAt!.toIso8601String(),
+              // Written as the *settled* case, so its absence means a guess.
+              // The other way round, a confirmed seat would store nothing and
+              // read back as provisional on the next launch — which is also
+              // exactly what every seat stored before this existed was.
+              if (!member.value.provisionalAdmin) 'confirmedAdmin': true,
             },
         },
     });

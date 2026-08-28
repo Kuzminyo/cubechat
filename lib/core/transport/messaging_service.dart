@@ -4827,13 +4827,46 @@ class MessagingService {
           // which is all a shared key can offer, and a claim on a room that
           // already has an admin is refused below as it always was.
           final claimsSelf = change.memberId == reactorId && change.isAdmin;
-          if (roster.isAdmin(channel.name, reactorId) ||
-              (claimsSelf && !roster.hasAdmin(channel.name))) {
+          if (roster.isAdmin(channel.name, reactorId)) {
             await roster.setAdmin(
               channel.name,
               change.memberId,
               change.isAdmin,
             );
+          } else if (claimsSelf && !roster.hasConfirmedAdmin(channel.name)) {
+            // Two phones that each typed the room's name, each finding an
+            // empty roster, each handing themselves the seat — and then each
+            // refusing the other, because a claim used to be accepted only on
+            // a room with nobody in it. Both were administrators of the same
+            // channel and neither ever saw a reader's view of one.
+            //
+            // Nobody here holds the room on more than their own say-so, so the
+            // two guesses are settled by the one thing both phones can compute
+            // without talking: the lower fingerprint takes it. Same answer on
+            // both, whichever claim arrives first.
+            final mine = await roster.selfMemberId();
+            final weGuessedToo = roster.holdsProvisionalSeat(channel.name, mine);
+            if (weGuessedToo && mine.compareTo(reactorId) < 0) {
+              // Ours by the tie-break. Say so once, so they can stand down —
+              // once, because two phones re-announcing at each other is how a
+              // room fills the air with nothing.
+              if (_seatDefended.add('${channel.name}/$reactorId')) {
+                unawaited(_announceOwnAdminSeat(channel.name));
+              }
+            } else {
+              await roster.setAdmin(channel.name, change.memberId, true);
+              if (weGuessedToo) {
+                // Theirs, so ours goes. This is the line that turns a phone
+                // back into a reader — the composer becomes the reader's bar,
+                // and posts start being accepted from the person who actually
+                // runs the room.
+                await roster.setAdmin(channel.name, mine, false);
+                DebugLog.instance.log(
+                  'CHAN',
+                  '${channel.name}: stood down, $reactorId holds the room',
+                );
+              }
+            }
           }
 
         case InnerPayloadType.channelModeration:
@@ -8142,6 +8175,11 @@ class MessagingService {
     });
   }
 
+  /// Rooms where we have already answered somebody else's claim on the seat,
+  /// keyed by room and claimant. One answer each, or two phones re-announcing
+  /// at each other fills the air with nothing.
+  final Set<String> _seatDefended = {};
+
   final Set<String> _roomsToIntroduce = {};
   Timer? _introduceRoomsTimer;
 
@@ -8153,13 +8191,30 @@ class MessagingService {
           _ref.read(channelAvatarsControllerProvider.notifier).forChannel(room);
       final description =
           _ref.read(channelDescriptionsControllerProvider)[room];
-      if (picture == null && (description == null || description.isEmpty)) {
+      final channel = _ref.read(channelControllerProvider.notifier).byName(room);
+      final offersHistory = channel?.shareHistory ?? false;
+      if (picture == null &&
+          (description == null || description.isEmpty) &&
+          !offersHistory) {
         continue;
       }
       try {
         if (picture != null) await sendChannelAvatar(room, picture);
         if (description != null && description.isNotEmpty) {
           await sendChannelDescription(room, description);
+        }
+        // And the backlog, when the room is set to hand it over on its own.
+        //
+        // This is the whole of the switch: somebody new turns up in the
+        // roster, and what they missed goes out behind the picture and the
+        // topic that already do. Harmless for everybody else — the posts carry
+        // the ids they originally travelled under, so a member who was here
+        // receives them and stores nothing.
+        //
+        // [sendChannelHistory] throws for a room this phone may not speak for,
+        // which is the ordinary case and is already caught below.
+        if (channel?.shareHistory ?? false) {
+          await sendChannelHistory(room);
         }
         DebugLog.instance.log('CHAN', 're-shared $room state with new members');
       } catch (e) {

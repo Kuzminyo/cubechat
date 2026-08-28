@@ -17,6 +17,7 @@ class Channel {
     required this.joinedAt,
     this.viaInvite = false,
     this.adminOnly = false,
+    this.shareHistory = false,
   });
 
   /// Human channel id, including the leading `#` (e.g. `#general`). Also used
@@ -60,6 +61,16 @@ class Channel {
   /// rule real is that every channel frame is signed and readers drop content
   /// signed by somebody they do not have as an admin.
   final bool adminOnly;
+
+  /// Hand the backlog to somebody who has just arrived, without being asked.
+  ///
+  /// Local to this phone and never sent: it governs what *we* do when a new
+  /// member turns up in the roster, and only an administrator's copy is worth
+  /// offering — see [MessagingService.sendChannelHistory], which is also where
+  /// the safety rule lives. Two admins with it on both offer, and the second
+  /// offer lands on nothing, because the posts carry the ids they originally
+  /// travelled under.
+  final bool shareHistory;
 }
 
 /// What a channel's discussion room is called.

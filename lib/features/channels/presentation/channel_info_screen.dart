@@ -428,7 +428,11 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
             ?.adminOnly ??
         false;
     final picture =
-        ref.watch(channelAvatarsControllerProvider)[widget.channelName];
+        ref.watch(channelAvatarsControllerProvider).isEmpty
+            ? null
+            : ref
+                .read(channelAvatarsControllerProvider.notifier)
+                .forChannel(widget.channelName);
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
     final description =
         ref.watch(channelDescriptionsControllerProvider)[widget.channelName];
@@ -517,6 +521,10 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
             // toast on tap — which tells a member the room has a switch, that
             // it is not theirs, and nothing else they can act on. A rule is
             // felt when it applies; a disabled control for it is furniture.
+            const SizedBox(height: 12),
+            // Everyone's, and above the administrator's block: silencing a
+            // room is the thing a member is most likely to have come here for.
+            _ChannelMute(channelName: widget.channelName),
             if (canManage) ...[
               const SizedBox(height: 12),
               // A room-wide version of the 1:1 switch. Members receive it into
@@ -538,6 +546,11 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
               // administrator wrote all of them. The receiving side refuses it
               // anywhere else — see [MessagingService.sendChannelHistory].
               if (adminOnly) ...[
+                const SizedBox(height: 12),
+                // The switch the manual button was standing in for: on, a new
+                // member is handed the backlog the moment they turn up, which
+                // is the only time anybody actually wants it sent.
+                _ChannelAutoHistory(channelName: widget.channelName),
                 const SizedBox(height: 12),
                 GlassCard(
                   onTap: _shareHistory,
@@ -640,8 +653,11 @@ class _ChannelHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    // No padding of its own: the picture is allowed the whole card, so opening
+    // it fills the width of the screen the way a contact's does instead of
+    // growing into a framed inset. The text below brings its own.
     return GlassCard(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           _ChannelPicture(
@@ -649,7 +665,6 @@ class _ChannelHero extends StatelessWidget {
             picture: picture,
             onEdit: onTapAvatar,
           ),
-          const SizedBox(height: 12),
           Text(
             channelName,
             textAlign: TextAlign.center,
@@ -664,6 +679,7 @@ class _ChannelHero extends StatelessWidget {
             '${t.channelParticipantsTitle}: $memberCount',
             style: TextStyle(color: AppColors.textOnGlassDim),
           ),
+          const SizedBox(height: 18),
           if (onRemoveAvatar != null)
             TextButton(
               onPressed: onRemoveAvatar,
@@ -758,7 +774,13 @@ class _ChannelPictureState extends State<_ChannelPicture>
             final height = ui.lerpDouble(_rest, box.maxWidth * 0.82, t)!;
             final radius = ui.lerpDouble(_rest / 2, 22, t)!;
             return SizedBox(
-              height: height,
+              // The whole card's width, always, so the badge can sit against
+              // the picture's real edge and the closed circle still centres.
+              width: box.maxWidth,
+              // The card gives the picture no padding of its own — the open
+              // state is meant to reach the card's corners — so the breathing
+              // room at rest lives here and goes as it opens.
+              height: height + ui.lerpDouble(22, 0, t)!,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -814,8 +836,8 @@ class _ChannelPictureState extends State<_ChannelPicture>
                     Positioned(
                       // Follows the picture's own edge as it grows, rather
                       // than staying where the circle used to be.
-                      right: (box.maxWidth - width) / 2 + 4 * t,
-                      bottom: 4 * t,
+                      right: (box.maxWidth - width) / 2 + 10 * t,
+                      bottom: ui.lerpDouble(22, 10, t)!,
                       child: GestureDetector(
                         onTap: widget.onEdit,
                         child: Container(
@@ -984,6 +1006,122 @@ class _ChannelCopyRestriction extends ConsumerWidget {
                   showGlassToast(context, t.channelAdminOnly);
                 }
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Hand the backlog over on its own, whenever somebody new arrives.
+///
+/// Local to this phone: it decides what *we* offer, and there is nothing to
+/// tell the room. The manual button below it stays, because a switch turned on
+/// today does nothing for the people who joined last week.
+class _ChannelAutoHistory extends ConsumerWidget {
+  const _ChannelAutoHistory({required this.channelName});
+
+  final String channelName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref.watch(
+      channelControllerProvider.select(
+        (all) => all[channelName]?.shareHistory ?? false,
+      ),
+    );
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Row(
+          children: [
+            Icon(
+              on ? Icons.history_rounded : Icons.history_toggle_off_rounded,
+              size: 19,
+              color: AppColors.textOnGlassDim,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.channelHistoryAuto,
+                    style:
+                        TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    t.channelHistoryAutoHint,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassFaint,
+                      fontSize: 11.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: on,
+              onChanged: (next) => ref
+                  .read(channelControllerProvider.notifier)
+                  .setShareHistory(channelName, next),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Do not announce this room."
+///
+/// Everyone's, not just an administrator's: it is about this phone's
+/// notifications and travels nowhere. It is the switch a 1:1 chat has had in
+/// its profile all along, and rooms — the chats people most want to silence —
+/// were the ones without it. Held down in the reader's bar for a length; here
+/// it is the plain on-and-off, because a profile is where you go to settle
+/// something rather than to snooze it.
+class _ChannelMute extends ConsumerWidget {
+  const _ChannelMute({required this.channelName});
+
+  final String channelName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref.watch(
+      conversationSettingsControllerProvider.select(
+        (all) => all[channelName]?.isMutedNow ?? false,
+      ),
+    );
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Row(
+          children: [
+            Icon(
+              on
+                  ? Icons.notifications_off_rounded
+                  : Icons.notifications_active_rounded,
+              size: 19,
+              color: AppColors.textOnGlassDim,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                t.channelMute,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+              ),
+            ),
+            Switch(
+              value: on,
+              onChanged: (next) => ref
+                  .read(conversationSettingsControllerProvider.notifier)
+                  .setMuted(channelName, next),
             ),
           ],
         ),

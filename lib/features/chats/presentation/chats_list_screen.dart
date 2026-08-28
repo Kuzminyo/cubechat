@@ -324,6 +324,9 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         isPinned: pinnedChats.contains(ch.name),
         pinRank: pinnedChats.indexOf(ch.name),
         isDraft: draft != null,
+        // A room's mute lives with the conversation rather than on a person:
+        // there is nobody to hang it on. See [ConversationSettings.muted].
+        isMuted: settings[ch.name]?.isMutedNow ?? false,
         autoDeleteSeconds: settings[ch.name]?.autoDelete.seconds ?? 0,
         outgoingStatus: _outgoingStatus(last, hasDraft: draft != null),
       ),
@@ -1090,11 +1093,15 @@ Future<bool> _fireSwipeAction(
       return true;
 
     case ChatSwipeAction.mute:
-      // Channels have no roster entry to carry the flag, so there is nothing
-      // to mute — say so rather than doing nothing.
+      // A room now has somewhere to keep it. It never had a [KnownPeer] to
+      // carry the flag — that is a fact about a person, and nobody is muting a
+      // person here — so the swipe used to answer "not here" on the chats
+      // people most want to silence.
       if (chat.isChannel) {
-        showGlassToast(context, t.chatsSwipeNotHere);
-        return false;
+        await ref
+            .read(conversationSettingsControllerProvider.notifier)
+            .setMuted(chat.id, !chat.isMuted);
+        return true;
       }
       await ref
           .read(knownPeersControllerProvider.notifier)
@@ -1611,9 +1618,17 @@ class ChatSelectionBar extends ConsumerWidget {
     // for rather than half of one.
     final allPinned =
         selected.isNotEmpty && selected.every((c) => pinned.contains(c.id));
+    // Rooms are muted too, and through a different door: a channel has no
+    // [KnownPeer] to carry the flag, so its answer lives with the
+    // conversation. Splitting the selection here is what lets one button do
+    // both — it used to hide itself entirely unless every picked row was a
+    // person.
+    final conversations = ref.read(conversationSettingsControllerProvider.notifier);
     final direct = selected.where((c) => !c.isChannel).toList();
-    final allMuted =
-        direct.isNotEmpty && direct.every((c) => peers.isMuted(c.id));
+    final rooms = selected.where((c) => c.isChannel).toList();
+    final allMuted = selected.isNotEmpty &&
+        direct.every((c) => peers.isMuted(c.id)) &&
+        rooms.every((c) => conversations.isMuted(c.id));
 
     return Row(
       children: [
@@ -1645,22 +1660,24 @@ class ChatSelectionBar extends ConsumerWidget {
             ref.read(chatSelectionProvider.notifier).clear();
           },
         ),
-        if (direct.isNotEmpty)
-          IconButton(
-            icon: Icon(
-              allMuted
-                  ? Icons.notifications_active_rounded
-                  : Icons.notifications_off_rounded,
-              color: AppColors.textOnGlass,
-            ),
-            tooltip: _chatText(context, uk: 'Без звуку', en: 'Mute'),
-            onPressed: () async {
-              for (final chat in direct) {
-                await peers.setMuted(chat.id, !allMuted);
-              }
-              ref.read(chatSelectionProvider.notifier).clear();
-            },
+        IconButton(
+          icon: Icon(
+            allMuted
+                ? Icons.notifications_active_rounded
+                : Icons.notifications_off_rounded,
+            color: AppColors.textOnGlass,
           ),
+          tooltip: _chatText(context, uk: 'Без звуку', en: 'Mute'),
+          onPressed: () async {
+            for (final chat in direct) {
+              await peers.setMuted(chat.id, !allMuted);
+            }
+            for (final chat in rooms) {
+              await conversations.setMuted(chat.id, !allMuted);
+            }
+            ref.read(chatSelectionProvider.notifier).clear();
+          },
+        ),
         IconButton(
           icon:
               const Icon(Icons.delete_outline_rounded, color: AppColors.danger),

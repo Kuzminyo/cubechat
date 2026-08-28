@@ -68,7 +68,13 @@ class PeerAvatar extends ConsumerWidget {
     final bytes = blocked
         ? null
         : isChannel
-            ? ref.watch(channelAvatarsControllerProvider)[peerId]
+            // Through the notifier, so a discussion room shows the face of
+            // the channel it belongs to rather than a grey initial.
+            ? (ref.watch(channelAvatarsControllerProvider).isEmpty
+                ? null
+                : ref
+                    .read(channelAvatarsControllerProvider.notifier)
+                    .forChannel(peerId))
             : ref.watch(peerAvatarsControllerProvider)[peerId];
     return IdentityAvatar(
       seed: peerId,

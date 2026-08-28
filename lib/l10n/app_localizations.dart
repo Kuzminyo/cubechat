@@ -1238,6 +1238,18 @@ abstract class AppLocalizations {
   /// **'Nothing to share yet'**
   String get channelHistoryNothing;
 
+  /// No description provided for @channelHistoryAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Give new members the history'**
+  String get channelHistoryAuto;
+
+  /// No description provided for @channelHistoryAutoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'When somebody new appears in the room, the recent posts go out to them on their own. Text only for now — photos are chunked streams and cannot be replayed without duplicating them for everyone.'**
+  String get channelHistoryAutoHint;
+
   /// No description provided for @channelPostComments.
   ///
   /// In en, this message translates to:

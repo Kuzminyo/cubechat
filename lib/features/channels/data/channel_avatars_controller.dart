@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/transport/inner_payload.dart';
+import '../models/channel.dart';
 
 /// Channel pictures, keyed by channel name.
 ///
@@ -28,7 +29,18 @@ class ChannelAvatarsController extends Notifier<Map<String, Uint8List>> {
     return const <String, Uint8List>{};
   }
 
-  Uint8List? forChannel(String name) => state[name];
+  /// A room's picture, falling back to the channel it discusses.
+  ///
+  /// A discussion room has no picture of its own and nobody to set one: it is
+  /// derived rather than created, so it never gets an avatar broadcast, and it
+  /// sat in the chat list as a grey initial beside the channel it belongs to.
+  /// It is the same room to a reader, so it wears the same face.
+  Uint8List? forChannel(String name) {
+    final own = state[name];
+    if (own != null) return own;
+    final parent = channelForCommunity(name);
+    return parent == null ? null : state[parent];
+  }
 
   /// Cache a room's picture. Returns false when the bytes are empty or beyond
   /// what one frame carries — a channel avatar is broadcast, never requested,

@@ -666,6 +666,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelHistoryNothing => 'Nothing to share yet';
 
   @override
+  String get channelHistoryAuto => 'Give new members the history';
+
+  @override
+  String get channelHistoryAutoHint =>
+      'When somebody new appears in the room, the recent posts go out to them on their own. Text only for now — photos are chunked streams and cannot be replayed without duplicating them for everyone.';
+
+  @override
   String get channelPostComments => 'Comments';
 
   @override

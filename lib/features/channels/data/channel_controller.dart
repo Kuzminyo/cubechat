@@ -142,6 +142,8 @@ class ChannelController extends Notifier<Map<String, Channel>> {
       // Survives a re-join: the rule belongs to the room, not to this act of
       // joining it.
       adminOnly: state[name]?.adminOnly ?? false,
+      // Survives a re-join, like the posting rule above it.
+      shareHistory: state[name]?.shareHistory ?? false,
       // Re-joining an existing channel keeps its original position in the
       // chat list rather than jumping it to the top.
       joinedAt: state[name]?.joinedAt ?? DateTime.now(),
@@ -164,6 +166,28 @@ class ChannelController extends Notifier<Map<String, Channel>> {
       joinedAt: current.joinedAt,
       viaInvite: current.viaInvite,
       adminOnly: value,
+      shareHistory: current.shareHistory,
+    );
+    state = {...state, next.name: next};
+    await _persist(next);
+  }
+
+  /// Whether a new member is handed the backlog without asking.
+  ///
+  /// Local, and never sent: it decides what this phone does when somebody it
+  /// has not seen before turns up in the roster. See [Channel.shareHistory].
+  Future<void> setShareHistory(String name, bool value) async {
+    final current = state[normalizeChannelName(name)];
+    if (current == null || current.shareHistory == value) return;
+    final next = Channel(
+      name: current.name,
+      hasPassword: current.hasPassword,
+      key: current.key,
+      tag: current.tag,
+      joinedAt: current.joinedAt,
+      viaInvite: current.viaInvite,
+      adminOnly: current.adminOnly,
+      shareHistory: value,
     );
     state = {...state, next.name: next};
     await _persist(next);
@@ -221,6 +245,7 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         'joinedAtIso': c.joinedAt.toIso8601String(),
         'viaInvite': c.viaInvite,
         'adminOnly': c.adminOnly,
+        'shareHistory': c.shareHistory,
       };
 
   static Channel _decode(Map<dynamic, dynamic> m) => Channel(
@@ -236,6 +261,7 @@ class ChannelController extends Notifier<Map<String, Channel>> {
         // migration those rooms need.
         viaInvite: (m['viaInvite'] as bool?) ?? false,
         adminOnly: (m['adminOnly'] as bool?) ?? false,
+        shareHistory: (m['shareHistory'] as bool?) ?? false,
       );
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {

@@ -669,6 +669,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelHistoryNothing => 'Поки нічим ділитися';
 
   @override
+  String get channelHistoryAuto => 'Віддавати історію новим учасникам';
+
+  @override
+  String get channelHistoryAutoHint =>
+      'Коли в кімнаті з\'являється хтось новий, останні дописи йдуть до нього самі. Поки що лише текст — фото йдуть потоком частин, і повторити їх без дублювання для всіх не можна.';
+
+  @override
   String get channelPostComments => 'Коментарі';
 
   @override
