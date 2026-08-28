@@ -16,6 +16,7 @@ class GlassCard extends StatelessWidget {
     this.borderRadius = 20,
     this.strong = false,
     this.onTap,
+    this.onLongPress,
     this.blur = false,
   });
 
@@ -25,6 +26,10 @@ class GlassCard extends StatelessWidget {
   final double borderRadius;
   final bool strong;
   final VoidCallback? onTap;
+
+  /// Held down. Where a card carries a second, rarer action than its tap —
+  /// moderating a member rather than opening their profile.
+  final VoidCallback? onLongPress;
 
   /// Whether to sample and blur what is behind the card. See
   /// [FloatingGlass.blur] for the full argument; the short version is that a
@@ -85,6 +90,7 @@ class GlassCard extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 onTap: onTap,
+                onLongPress: onLongPress,
                 borderRadius: radius,
                 hoverColor: AppColors.glassHover,
                 child: Padding(padding: padding, child: child),

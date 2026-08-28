@@ -249,7 +249,37 @@ enum InnerPayloadType {
   /// What is left is a claim by the person forwarding rather than a proof,
   /// which is what an attribution honestly is — the name travelled with their
   /// message, not with a signature over it.
-  forwardedFrom(0xFC);
+  forwardedFrom(0xFC),
+
+  /// "If you pass my message on, do not hand over a way back to me."
+  ///
+  /// One byte, 0 or 1, and the weaker sibling of [copyRestriction] — the same
+  /// kind of thing: a request about how what we said may be treated, sent to
+  /// the people we said it to, enforced by their build because there is
+  /// nowhere else it could be.
+  ///
+  /// It has to travel because the person who decides is never the person who
+  /// forwards. A forwarder holds the author's key and could always attach it;
+  /// this is how they learn the author would rather they did not, and it is
+  /// stored with the peer rather than with the conversation because it is a
+  /// fact about a person, not about one room they are in.
+  ///
+  /// An old build drops it and keeps attaching the key, which is what it does
+  /// today. That is the honest cost of a request in a system with no server to
+  /// enforce it, and it is the same cost [copyRestriction] already carries.
+  forwardPrivacy(0xE3),
+
+  /// Signed moderation inside a channel: remove a member, or silence one for a
+  /// while. See `channel_admin.dart`.
+  ///
+  /// Enforced where every channel rule is enforced — on each member's own
+  /// device, against their own roster. The key is shared, so a removed member
+  /// can still encrypt a frame; what changes is that nobody accepts it.
+  channelModeration(0xE4),
+
+  /// A room's backlog, handed over in one signed frame so somebody who has just
+  /// joined can see what was said before they arrived. See [ChannelHistory].
+  channelHistory(0xE5);
 
   const InnerPayloadType(this.tag);
   final int tag;
@@ -1998,11 +2028,25 @@ class MessageDelete {
 /// and in either order, so the bubble has to be findable from the hint rather
 /// than the hint arriving inside the bubble.
 class ForwardedFrom {
-  ForwardedFrom({required this.targetMsgId, required this.name})
-      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B');
+  ForwardedFrom({required this.targetMsgId, required this.name, this.authorPub})
+      : assert(targetMsgId.length == idLen, 'targetMsgId must be $idLen B'),
+        assert(authorPub == null || authorPub.length == pubLen,
+            'authorPub must be $pubLen B');
 
   static const int version1 = 1;
+
+  /// Adds the author's X25519 key after the name, so the line above the message
+  /// can be a way to reach them rather than a piece of text.
+  ///
+  /// A separate version rather than an optional trailer because v1's decoder
+  /// checks the total length exactly, and would refuse the whole payload. It
+  /// refuses this one too — which costs the attribution line on an old build
+  /// and nothing else, since this payload is a companion and the message
+  /// arrives on its own. That is the same trade the type itself was added on.
+  static const int version2 = 2;
+
   static const int idLen = 16;
+  static const int pubLen = 32;
 
   /// Long enough for any display name this app will show, short enough that
   /// the field cannot be used to smuggle a paragraph into a one-line header.
@@ -2014,6 +2058,14 @@ class ForwardedFrom {
   /// The original author's display name, as the forwarder knew it.
   final String name;
 
+  /// The original author's X25519 key, when they permit being reached through
+  /// a forward of their own message — see [InnerPayloadType.forwardPrivacy].
+  ///
+  /// Null is the ordinary case for a v1 sender and the deliberate case for
+  /// somebody who asked not to be linked. Either way the line reads as a name
+  /// and goes nowhere, which is what it did before this field existed.
+  final Uint8List? authorPub;
+
   Uint8List encode() {
     final nameBytes = utf8.encode(name);
     if (nameBytes.length > maxNameBytes) {
@@ -2021,11 +2073,23 @@ class ForwardedFrom {
         'forwarded name is ${nameBytes.length} B, max $maxNameBytes',
       );
     }
-    final out = Uint8List(2 + idLen + nameBytes.length);
-    out[0] = version1;
+    final pub = authorPub;
+    // v1 whenever there is no key to carry: an older build understands it, and
+    // the great majority of forwards have nothing extra to say.
+    if (pub == null) {
+      final out = Uint8List(2 + idLen + nameBytes.length);
+      out[0] = version1;
+      out.setRange(1, 1 + idLen, targetMsgId);
+      out[1 + idLen] = nameBytes.length;
+      out.setRange(2 + idLen, out.length, nameBytes);
+      return out;
+    }
+    final out = Uint8List(2 + idLen + nameBytes.length + pubLen);
+    out[0] = version2;
     out.setRange(1, 1 + idLen, targetMsgId);
     out[1 + idLen] = nameBytes.length;
-    out.setRange(2 + idLen, out.length, nameBytes);
+    out.setRange(2 + idLen, 2 + idLen + nameBytes.length, nameBytes);
+    out.setRange(2 + idLen + nameBytes.length, out.length, pub);
     return out;
   }
 
@@ -2033,21 +2097,27 @@ class ForwardedFrom {
     if (bytes.length < 2 + idLen) {
       throw const FormatException('forwarded-from truncated');
     }
-    if (bytes[0] != version1) {
-      throw FormatException('forwarded-from version ${bytes[0]} unsupported');
+    final version = bytes[0];
+    if (version != version1 && version != version2) {
+      throw FormatException('forwarded-from version $version unsupported');
     }
     final nameLen = bytes[1 + idLen];
     if (nameLen > maxNameBytes) {
       throw FormatException('forwarded name length $nameLen out of range');
     }
-    if (bytes.length != 2 + idLen + nameLen) {
+    final nameEnd = 2 + idLen + nameLen;
+    final expected = version == version1 ? nameEnd : nameEnd + pubLen;
+    if (bytes.length != expected) {
       throw const FormatException('forwarded-from length mismatch');
     }
     return ForwardedFrom(
       targetMsgId: Uint8List.fromList(bytes.sublist(1, 1 + idLen)),
       // Malformed UTF-8 is somebody else's bug or somebody's probe; either way
       // a replacement character is a better answer than refusing the message.
-      name: utf8.decode(bytes.sublist(2 + idLen), allowMalformed: true),
+      name: utf8.decode(bytes.sublist(2 + idLen, nameEnd), allowMalformed: true),
+      authorPub: version == version1
+          ? null
+          : Uint8List.fromList(bytes.sublist(nameEnd, nameEnd + pubLen)),
     );
   }
 }

@@ -32,6 +32,7 @@ class KnownPeer {
     this.nostrPubkey,
     this.blockedAt,
     this.mutedAt,
+    this.allowsForwardLink = true,
     this.avatarHash,
   });
 
@@ -91,6 +92,15 @@ class KnownPeer {
   bool get isBlocked => blockedAt != null;
   bool get isMuted => mutedAt != null;
 
+  /// Whether this person is willing to be reached through a forward of
+  /// something they wrote.
+  ///
+  /// Their setting, learned from them — see
+  /// [InnerPayloadType.forwardPrivacy] — and consulted when *we* forward one
+  /// of their messages on. True until told otherwise, which is what every
+  /// build did before the switch existed.
+  final bool allowsForwardLink;
+
   /// When this peer's signing key last changed under the same pubkeyHex.
   /// Set the moment a fresh signed announcement arrives carrying a
   /// different Ed25519 public key than the one we'd previously cached;
@@ -118,6 +128,7 @@ class KnownPeer {
     Uint8List? nostrPubkey,
     DateTime? blockedAt,
     DateTime? mutedAt,
+    bool? allowsForwardLink,
     Uint8List? avatarHash,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
@@ -139,6 +150,7 @@ class KnownPeer {
       nostrPubkey: nostrPubkey ?? this.nostrPubkey,
       blockedAt: clearBlockedAt ? null : (blockedAt ?? this.blockedAt),
       mutedAt: clearMutedAt ? null : (mutedAt ?? this.mutedAt),
+      allowsForwardLink: allowsForwardLink ?? this.allowsForwardLink,
       avatarHash: clearAvatarHash ? null : (avatarHash ?? this.avatarHash),
     );
   }

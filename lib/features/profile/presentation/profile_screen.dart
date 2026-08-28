@@ -15,6 +15,7 @@ import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
+import '../../../core/transport/messaging_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/util/app_build.dart';
@@ -1229,6 +1230,24 @@ class _PrivacyCard extends ConsumerWidget {
                 : t.profileReadReceiptsOffHint,
             value: s.shareReadReceipts,
             onChanged: n.setShareReadReceipts,
+          ),
+          const SizedBox(height: 14),
+          _SettingSwitch(
+            icon: s.allowForwardLink
+                ? Icons.shortcut_rounded
+                : Icons.person_off_rounded,
+            title: t.privacyForwardLinkTitle,
+            hint: t.privacyForwardLinkHint,
+            value: s.allowForwardLink,
+            // Told to everyone we talk to, not stored and forgotten: the
+            // person who forwards is whoever we said something to, and their
+            // build is the only place this can be honoured.
+            onChanged: (value) async {
+              await n.setAllowForwardLink(value);
+              await ref
+                  .read(messagingServiceProvider)
+                  .broadcastForwardPrivacy(allowed: value);
+            },
           ),
           const SizedBox(height: 10),
           Text(

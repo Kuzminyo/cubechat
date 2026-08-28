@@ -262,6 +262,24 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   bool isBlocked(String pubkeyHex) => state[pubkeyHex]?.isBlocked ?? false;
   bool isMuted(String pubkeyHex) => state[pubkeyHex]?.isMuted ?? false;
 
+  /// Record what a peer asked for about forwards of their own messages.
+  ///
+  /// Never called from the UI: this half of the setting is not ours to change,
+  /// exactly like the copy restriction the peer sets. No-op for somebody we do
+  /// not hold — a first contact comes through a signed announcement, not
+  /// through a preference.
+  Future<void> setAllowsForwardLink(String pubkeyHex, bool allowed) async {
+    final existing = state[pubkeyHex];
+    if (existing == null || existing.allowsForwardLink == allowed) return;
+    final updated = existing.copyWith(allowsForwardLink: allowed);
+    state = {...state, pubkeyHex: updated};
+    await _persist(updated);
+  }
+
+  /// Whether a forward of this person's message may carry a way back to them.
+  bool allowsForwardLink(String pubkeyHex) =>
+      state[pubkeyHex]?.allowsForwardLink ?? true;
+
   /// Revoke a previously-granted verification (the user changed their mind
   /// or suspects a MITM compromise).
   Future<void> revokeVerification(String pubkeyHex) async {
@@ -318,6 +336,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         if (p.nostrPubkey != null) 'nostrPubHex': _hexOf(p.nostrPubkey!),
         if (p.blockedAt != null) 'blockedAtIso': p.blockedAt!.toIso8601String(),
         if (p.mutedAt != null) 'mutedAtIso': p.mutedAt!.toIso8601String(),
+        if (!p.allowsForwardLink) 'noForwardLink': true,
         if (p.avatarHash != null) 'avatarHashHex': _hexOf(p.avatarHash!),
       };
 
@@ -345,6 +364,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       nostrPubkey: nostrRaw == null ? null : _hexDecode(nostrRaw),
       blockedAt: blockedRaw == null ? null : DateTime.tryParse(blockedRaw),
       mutedAt: mutedRaw == null ? null : DateTime.tryParse(mutedRaw),
+      allowsForwardLink: m['noForwardLink'] != true,
       avatarHash: avatarRaw == null ? null : _hexDecode(avatarRaw),
     );
   }

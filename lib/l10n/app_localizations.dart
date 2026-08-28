@@ -1160,6 +1160,102 @@ abstract class AppLocalizations {
   /// **'Back to the channel'**
   String get channelBackToChannel;
 
+  /// No description provided for @channelMemberActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Member'**
+  String get channelMemberActions;
+
+  /// No description provided for @channelRemoveMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from the channel'**
+  String get channelRemoveMember;
+
+  /// No description provided for @channelRemoveMemberHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Their posts stop being accepted here. Nothing stops them rejoining by name — a shared key is the only membership there is.'**
+  String get channelRemoveMemberHint;
+
+  /// No description provided for @channelMuteMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute for…'**
+  String get channelMuteMember;
+
+  /// No description provided for @channelUnmuteMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Let them post again'**
+  String get channelUnmuteMember;
+
+  /// No description provided for @channelMemberRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} was removed'**
+  String channelMemberRemoved(String name);
+
+  /// No description provided for @channelMemberMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} was muted'**
+  String channelMemberMuted(String name);
+
+  /// No description provided for @channelMemberCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} can post again'**
+  String channelMemberCleared(String name);
+
+  /// No description provided for @channelMemberMutedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted'**
+  String get channelMemberMutedNote;
+
+  /// No description provided for @channelShareHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Share the history'**
+  String get channelShareHistory;
+
+  /// No description provided for @channelShareHistoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Puts the last posts of this room back on the air, so anyone who joined later can see them. Everyone who was already here receives nothing new.'**
+  String get channelShareHistoryHint;
+
+  /// No description provided for @channelHistoryShared.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} posts offered'**
+  String channelHistoryShared(int count);
+
+  /// No description provided for @channelHistoryNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to share yet'**
+  String get channelHistoryNothing;
+
+  /// No description provided for @channelPostComments.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get channelPostComments;
+
+  /// No description provided for @privacyForwardLinkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Link back from forwards'**
+  String get privacyForwardLinkTitle;
+
+  /// No description provided for @privacyForwardLinkHint.
+  ///
+  /// In en, this message translates to:
+  /// **'When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.'**
+  String get privacyForwardLinkHint;
+
   /// No description provided for @chatsStatusChannel.
   ///
   /// In en, this message translates to:

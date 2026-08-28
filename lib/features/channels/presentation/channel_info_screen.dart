@@ -1,11 +1,16 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/gestures.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../../../core/routing/back_gesture.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/transport/channel_admin.dart';
 import '../../../core/transport/inner_payload.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/image_encode.dart';
@@ -84,6 +89,187 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
         t.channelContactInviteSent(member.name),
         icon: Icons.person_add_alt_1_rounded,
         tone: ToastTone.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
+  /// Remove somebody from the room, or silence them for a while.
+  ///
+  /// Behind a long press on their row, and offered only to an administrator
+  /// looking at somebody who is not one. An administrator cannot be moderated
+  /// at all — the transport refuses it too — because seniority is not
+  /// something this protocol can establish, and two admins able to remove each
+  /// other leaves every phone in the room with a different answer.
+  Future<void> _moderate(ChannelMember member) async {
+    final t = AppLocalizations.of(context);
+    final messaging = ref.read(messagingServiceProvider);
+    final cleared = member.isMutedNow || member.isRemoved;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.bgTop,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  member.name.isEmpty ? t.channelMemberActions : member.name,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            if (cleared)
+              ListTile(
+                leading: Icon(Icons.undo_rounded,
+                    color: AppColors.brandPrimary),
+                title: Text(
+                  t.channelUnmuteMember,
+                  style: TextStyle(color: AppColors.textOnGlass),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop('clear'),
+              ),
+            ListTile(
+              leading: Icon(Icons.volume_off_rounded,
+                  color: AppColors.textOnGlass),
+              title: Text(
+                t.channelMuteMember,
+                style: TextStyle(color: AppColors.textOnGlass),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop('mute'),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.person_remove_rounded,
+                      color: AppColors.danger),
+              title: Text(
+                t.channelRemoveMember,
+                style: const TextStyle(color: AppColors.danger),
+              ),
+              subtitle: Text(
+                t.channelRemoveMemberHint,
+                style: TextStyle(
+                  color: AppColors.textOnGlassFaint,
+                  fontSize: 11.5,
+                ),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop('remove'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    DateTime? until;
+    if (choice == 'mute') {
+      final hours = await _pickMuteHours();
+      if (hours == null || !mounted) return;
+      // Zero is the "until I say otherwise" row: a mute with no deadline is a
+      // null [ChannelModeration.until], which the wire already means.
+      until = hours == 0 ? null : DateTime.now().add(Duration(hours: hours));
+    }
+
+    try {
+      await messaging.sendChannelModeration(
+        widget.channelName,
+        memberId: member.id,
+        action: switch (choice) {
+          'remove' => ChannelModerationAction.remove,
+          'mute' => ChannelModerationAction.mute,
+          _ => ChannelModerationAction.clear,
+        },
+        until: until,
+      );
+      if (!mounted) return;
+      showGlassToast(
+        context,
+        switch (choice) {
+          'remove' => t.channelMemberRemoved(member.name),
+          'mute' => t.channelMemberMuted(member.name),
+          _ => t.channelMemberCleared(member.name),
+        },
+        icon: choice == 'remove'
+            ? Icons.person_remove_rounded
+            : Icons.volume_off_rounded,
+        tone: choice == 'remove' ? ToastTone.danger : ToastTone.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
+  }
+
+  /// How long a mute lasts, in hours. Zero means no end.
+  Future<int?> _pickMuteHours() async {
+    final t = AppLocalizations.of(context);
+    const choices = <int>[1, 8, 48];
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.bgTop,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final hours in choices)
+              ListTile(
+                title: Text(
+                  hours < 24
+                      ? t.channelMuteHours(hours)
+                      : t.channelMuteDays(hours ~/ 24),
+                  style: TextStyle(color: AppColors.textOnGlass),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop(hours),
+              ),
+            ListTile(
+              title: Text(
+                t.channelMuteForever,
+                style: TextStyle(color: AppColors.textOnGlass),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop(0),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Put the room's recent posts back on the air for whoever joined after they
+  /// were said.
+  ///
+  /// Deliberate rather than automatic — see
+  /// [MessagingService.sendChannelHistory]. Members who were already here
+  /// receive it and store nothing, because every post carries the id it
+  /// originally travelled under.
+  Future<void> _shareHistory() async {
+    final t = AppLocalizations.of(context);
+    try {
+      final count = await ref
+          .read(messagingServiceProvider)
+          .sendChannelHistory(widget.channelName);
+      if (!mounted) return;
+      showGlassToast(
+        context,
+        count == 0 ? t.channelHistoryNothing : t.channelHistoryShared(count),
+        icon: Icons.history_rounded,
+        tone: count == 0 ? ToastTone.danger : ToastTone.success,
       );
     } catch (e) {
       if (!mounted) return;
@@ -237,6 +423,10 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     // meaning again.
     final canManage =
         _myId != null && roster.isAdmin(widget.channelName, _myId!);
+    final adminOnly = ref
+            .watch(channelControllerProvider)[widget.channelName]
+            ?.adminOnly ??
+        false;
     final picture =
         ref.watch(channelAvatarsControllerProvider)[widget.channelName];
     final contacts = _byFingerprint(ref.watch(knownPeersControllerProvider));
@@ -342,6 +532,47 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 channelName: widget.channelName,
                 canManage: canManage,
               ),
+              // Only where a backlog is safe to hand over: a channel frame is
+              // signed by whoever sent it, so replaying somebody else's words
+              // under our own signature is only honest in a room where the
+              // administrator wrote all of them. The receiving side refuses it
+              // anywhere else — see [MessagingService.sendChannelHistory].
+              if (adminOnly) ...[
+                const SizedBox(height: 12),
+                GlassCard(
+                  onTap: _shareHistory,
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded,
+                          color: AppColors.brandPrimary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.channelShareHistory,
+                              style: TextStyle(
+                                color: AppColors.textOnGlass,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              t.channelShareHistoryHint,
+                              style: TextStyle(
+                                color: AppColors.textOnGlassFaint,
+                                fontSize: 11.5,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
             const SizedBox(height: 20),
             Text(
@@ -369,6 +600,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                   isMe: member.id == _myId,
                   canManage: canManage,
                   onInvite: () => _inviteToContacts(member),
+                  onModerate: () => _moderate(member),
                   onToggleAdmin: () =>
                       ref.read(messagingServiceProvider).sendChannelAdminChange(
                             widget.channelName,
@@ -412,32 +644,10 @@ class _ChannelHero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       child: Column(
         children: [
-          GestureDetector(
-            onTap: onTapAvatar,
-            child: Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                IdentityAvatar(
-                  seed: channelName,
-                  label: channelName,
-                  size: 96,
-                  imageBytes: picture,
-                  mark: picture == null ? Icons.campaign_rounded : null,
-                ),
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.brandPrimary,
-                  ),
-                  child: const Icon(
-                    Icons.photo_camera_rounded,
-                    size: 14,
-                    color: Colors.black,
-                  ),
-                ),
-              ],
-            ),
+          _ChannelPicture(
+            channelName: channelName,
+            picture: picture,
+            onEdit: onTapAvatar,
           ),
           const SizedBox(height: 12),
           Text(
@@ -464,6 +674,170 @@ class _ChannelHero extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// The room's picture, which opens the way a person's does.
+///
+/// A channel is a profile like any other, and its photograph was the one that
+/// could not be looked at: tapping it went straight to the picker, so an
+/// administrator could replace a picture they had never seen at full size, and
+/// everybody else tapped a circle that did nothing at all.
+///
+/// The same gesture the contact header uses, and deliberately: up opens, down
+/// closes, a tap does either. What grows is the circle itself — the size and
+/// the corner radius are lerped together — so one shape becomes the other
+/// rather than a second view appearing over the first.
+///
+/// The camera badge keeps the picker, and only for somebody who may set it.
+class _ChannelPicture extends StatefulWidget {
+  const _ChannelPicture({
+    required this.channelName,
+    required this.picture,
+    required this.onEdit,
+  });
+
+  final String channelName;
+  final Uint8List? picture;
+
+  /// Null for a member who cannot change the room's picture.
+  final VoidCallback? onEdit;
+
+  @override
+  State<_ChannelPicture> createState() => _ChannelPictureState();
+}
+
+class _ChannelPictureState extends State<_ChannelPicture>
+    with SingleTickerProviderStateMixin {
+  static const double _rest = 96;
+
+  /// How far a finger travels on the picture before it counts. Short enough to
+  /// feel like a flick, long enough that a scroll which happens to start on
+  /// the picture is still a scroll.
+  static const double _dragToOpen = 28;
+
+  late final AnimationController _open = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+  double _dragged = 0;
+
+  @override
+  void dispose() {
+    _open.dispose();
+    super.dispose();
+  }
+
+  void _toggle() => _open.value > 0.5 ? _open.reverse() : _open.forward();
+
+  void _drag(DragUpdateDetails d) {
+    _dragged += d.delta.dy;
+    if (_open.isAnimating) return;
+    if (_dragged <= -_dragToOpen && _open.value < 1) {
+      _dragged = 0;
+      _open.forward();
+    } else if (_dragged >= _dragToOpen && _open.value > 0) {
+      _dragged = 0;
+      _open.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _open,
+      builder: (context, _) {
+        final t = Curves.easeOutCubic.transform(_open.value);
+        return LayoutBuilder(
+          builder: (context, box) {
+            final width = ui.lerpDouble(_rest, box.maxWidth, t)!;
+            // Squarer as it opens rather than ever taller: a room's picture is
+            // a thumbnail, and stretching it into a portrait frame would show
+            // a crop of it and call that opening it.
+            final height = ui.lerpDouble(_rest, box.maxWidth * 0.82, t)!;
+            final radius = ui.lerpDouble(_rest / 2, 22, t)!;
+            return SizedBox(
+              height: height,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  RawGestureDetector(
+                    gestures: <Type, GestureRecognizerFactory>{
+                      // Eager, because this card sits in a scroll view and an
+                      // ordinary detector loses that arena outright.
+                      EagerVerticalDragRecognizer:
+                          GestureRecognizerFactoryWithHandlers<
+                              EagerVerticalDragRecognizer>(
+                        EagerVerticalDragRecognizer.new,
+                        (r) => r
+                          ..onStart = ((_) => _dragged = 0)
+                          ..onUpdate = _drag,
+                      ),
+                      TapGestureRecognizer:
+                          GestureRecognizerFactoryWithHandlers<
+                              TapGestureRecognizer>(
+                        TapGestureRecognizer.new,
+                        (r) => r.onTap =
+                            widget.picture == null ? widget.onEdit : _toggle,
+                      ),
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(radius),
+                      child: SizedBox(
+                        width: width,
+                        height: height,
+                        child: widget.picture == null
+                            ? IdentityAvatar(
+                                seed: widget.channelName,
+                                label: widget.channelName,
+                                size: _rest,
+                                mark: Icons.campaign_rounded,
+                              )
+                            : Image.memory(
+                                widget.picture!,
+                                fit: BoxFit.cover,
+                                // Decoded at the size actually drawn, so the
+                                // open picture is sharp and the closed one is
+                                // not a full-resolution bitmap squeezed into
+                                // ninety-six points.
+                                cacheWidth: (box.maxWidth *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .round(),
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                      ),
+                    ),
+                  ),
+                  if (widget.onEdit != null)
+                    Positioned(
+                      // Follows the picture's own edge as it grows, rather
+                      // than staying where the circle used to be.
+                      right: (box.maxWidth - width) / 2 + 4 * t,
+                      bottom: 4 * t,
+                      child: GestureDetector(
+                        onTap: widget.onEdit,
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.brandPrimary,
+                          ),
+                          child: const Icon(
+                            Icons.photo_camera_rounded,
+                            size: 14,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -721,6 +1095,7 @@ class _MemberRow extends StatelessWidget {
     required this.canManage,
     required this.onToggleAdmin,
     required this.onInvite,
+    required this.onModerate,
   });
 
   final ChannelMember member;
@@ -732,6 +1107,11 @@ class _MemberRow extends StatelessWidget {
   /// Offer this member our contact card, so they can start a conversation
   /// outside the room. See `_inviteToContacts`.
   final VoidCallback onInvite;
+
+  /// Remove or silence them. Held down rather than given a button: the row
+  /// already carries an action, moderation is the rare thing to want, and a
+  /// bin beside every name is a room that looks like it expects trouble.
+  final VoidCallback onModerate;
 
   @override
   Widget build(BuildContext context) {
@@ -746,6 +1126,7 @@ class _MemberRow extends StatelessWidget {
                 '/person/${peer.pubkeyHex}'
                 '?name=${Uri.encodeComponent(member.name)}',
               ),
+      onLongPress: canManage && !isMe && !member.isAdmin ? onModerate : null,
       child: Row(
         children: [
           IdentityAvatar(
@@ -769,17 +1150,21 @@ class _MemberRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  member.isAdmin
-                      ? t.channelAdministratorsTitle
-                      : peer == null
-                          ? t.channelMemberUnknown
-                          : member.id,
+                  member.isMutedNow
+                      ? t.channelMemberMutedNote
+                      : member.isAdmin
+                          ? t.channelAdministratorsTitle
+                          : peer == null
+                              ? t.channelMemberUnknown
+                              : member.id,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: member.isAdmin
-                        ? AppColors.brandPrimary
-                        : AppColors.textOnGlassFaint,
+                    color: member.isMutedNow
+                        ? AppColors.warning
+                        : member.isAdmin
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassFaint,
                     fontSize: 12,
                   ),
                 ),

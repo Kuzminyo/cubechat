@@ -620,6 +620,65 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelBackToChannel => 'До каналу';
 
   @override
+  String get channelMemberActions => 'Учасник';
+
+  @override
+  String get channelRemoveMember => 'Видалити з каналу';
+
+  @override
+  String get channelRemoveMemberHint =>
+      'Його дописи більше не приймаються тут. Ніщо не заважає йому зайти знову за назвою — спільний ключ і є все членство.';
+
+  @override
+  String get channelMuteMember => 'Заглушити на…';
+
+  @override
+  String get channelUnmuteMember => 'Дозволити писати знову';
+
+  @override
+  String channelMemberRemoved(String name) {
+    return '$name видалений';
+  }
+
+  @override
+  String channelMemberMuted(String name) {
+    return '$name заглушений';
+  }
+
+  @override
+  String channelMemberCleared(String name) {
+    return '$name знову може писати';
+  }
+
+  @override
+  String get channelMemberMutedNote => 'Заглушений';
+
+  @override
+  String get channelShareHistory => 'Поділитися історією';
+
+  @override
+  String get channelShareHistoryHint =>
+      'Повертає в ефір останні дописи цієї кімнати, щоб їх побачив той, хто приєднався пізніше. Ті, хто вже був тут, не отримають нічого нового.';
+
+  @override
+  String channelHistoryShared(int count) {
+    return 'Запропоновано дописів: $count';
+  }
+
+  @override
+  String get channelHistoryNothing => 'Поки нічим ділитися';
+
+  @override
+  String get channelPostComments => 'Коментарі';
+
+  @override
+  String get privacyForwardLinkTitle => 'Посилання на профіль у пересиланнях';
+
+  @override
+  String get privacyForwardLinkHint =>
+      'Коли хтось пересилає ваше повідомлення, рядок над ним може відкривати ваш профіль. Вимкнено — вони бачать лише ім\'я, натиснути нема на що. Це прохання до їхнього застосунку, а не те, що цей може змусити.';
+
+  @override
   String get chatsStatusChannel => 'канал';
 
   @override

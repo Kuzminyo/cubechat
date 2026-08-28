@@ -57,6 +57,7 @@ class Message {
     this.audioDurationMs,
     this.audioLevels,
     this.forwardedFrom,
+    this.forwardedFromId,
     this.voicePlayed = false,
     this.expiresAt,
     this.filePath,
@@ -233,6 +234,16 @@ class Message {
   /// device once it lands, exactly like the voice levels beside it.
   final String? forwardedFrom;
 
+  /// The original author's canonical id (X25519 hex), when they allow being
+  /// reached through a forward of their own words.
+  ///
+  /// What turns the line above the bubble from a piece of text into a way to
+  /// open somebody's profile. Absent for a forward from an older build, and
+  /// deliberately absent when the author asked not to be linked — see
+  /// [InnerPayloadType.forwardPrivacy]. Both read the same way: a name, going
+  /// nowhere.
+  final String? forwardedFromId;
+
   // Arbitrary-file payload. Unlike images and voice notes, a file keeps the
   // name it was sent under — it is the only thing that says what the bubble is
   // and what it saves as. [fileBytes] is the size on disk, shown next to the
@@ -325,6 +336,7 @@ class Message {
     int? audioDurationMs,
     List<int>? audioLevels,
     String? forwardedFrom,
+    String? forwardedFromId,
     bool? voicePlayed,
     DateTime? expiresAt,
     bool clearExpiry = false,
@@ -361,6 +373,7 @@ class Message {
       audioDurationMs: audioDurationMs ?? this.audioDurationMs,
       audioLevels: audioLevels ?? this.audioLevels,
       forwardedFrom: forwardedFrom ?? this.forwardedFrom,
+      forwardedFromId: forwardedFromId ?? this.forwardedFromId,
       voicePlayed: voicePlayed ?? this.voicePlayed,
       expiresAt: clearExpiry ? null : (expiresAt ?? this.expiresAt),
       forwardSecret: forwardSecret ?? this.forwardSecret,

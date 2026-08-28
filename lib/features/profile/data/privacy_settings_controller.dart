@@ -29,6 +29,7 @@ class PrivacySettings {
     required this.shareLastSeen,
     required this.shareReadReceipts,
     required this.shareMapLocation,
+    this.allowForwardLink = true,
   });
 
   /// True: publish the presence beacon, and show peers' online state.
@@ -43,21 +44,35 @@ class PrivacySettings {
   /// False: never request a fix for the map and withdraw our visible pin.
   final bool shareMapLocation;
 
+  /// True: somebody forwarding one of our messages may attach a way back to
+  /// us, so the line above it opens our profile. False: they attach the name
+  /// and nothing else.
+  ///
+  /// A request rather than an enforcement, and the only kind available: the
+  /// person forwarding holds our key either way, and this is us telling their
+  /// build we would rather it did not pass it on. It reaches them as an
+  /// [InnerPayloadType.forwardPrivacy] frame; somebody on an older build keeps
+  /// linking, which is what every build did before the switch existed.
+  final bool allowForwardLink;
+
   static const initial = PrivacySettings(
     shareLastSeen: true,
     shareReadReceipts: true,
     shareMapLocation: false,
+    allowForwardLink: true,
   );
 
   PrivacySettings copyWith({
     bool? shareLastSeen,
     bool? shareReadReceipts,
     bool? shareMapLocation,
+    bool? allowForwardLink,
   }) =>
       PrivacySettings(
         shareLastSeen: shareLastSeen ?? this.shareLastSeen,
         shareReadReceipts: shareReadReceipts ?? this.shareReadReceipts,
         shareMapLocation: shareMapLocation ?? this.shareMapLocation,
+        allowForwardLink: allowForwardLink ?? this.allowForwardLink,
       );
 
   @override
@@ -65,17 +80,20 @@ class PrivacySettings {
       other is PrivacySettings &&
       other.shareLastSeen == shareLastSeen &&
       other.shareReadReceipts == shareReadReceipts &&
-      other.shareMapLocation == shareMapLocation;
+      other.shareMapLocation == shareMapLocation &&
+      other.allowForwardLink == allowForwardLink;
 
   @override
   int get hashCode =>
-      Object.hash(shareLastSeen, shareReadReceipts, shareMapLocation);
+      Object.hash(shareLastSeen, shareReadReceipts, shareMapLocation,
+          allowForwardLink);
 }
 
 class PrivacySettingsController extends Notifier<PrivacySettings> {
   static const _keyLastSeen = 'privacy.shareLastSeen';
   static const _keyReceipts = 'privacy.shareReadReceipts';
   static const _keyMapLocation = 'privacy.shareMapLocation';
+  static const _keyForwardLink = 'privacy.allowForwardLink';
 
   Box<dynamic>? _box;
 
@@ -106,6 +124,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
         shareLastSeen: box.get(_keyLastSeen) as bool? ?? true,
         shareReadReceipts: box.get(_keyReceipts) as bool? ?? true,
         shareMapLocation: box.get(_keyMapLocation) as bool? ?? false,
+        allowForwardLink: box.get(_keyForwardLink) as bool? ?? true,
       );
     } catch (e) {
       debugPrint('PrivacySettings load failed: $e');
@@ -125,6 +144,11 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   Future<void> setShareMapLocation(bool value) async {
     state = state.copyWith(shareMapLocation: value);
     await _put(_keyMapLocation, value);
+  }
+
+  Future<void> setAllowForwardLink(bool value) async {
+    state = state.copyWith(allowForwardLink: value);
+    await _put(_keyForwardLink, value);
   }
 
   Future<void> _put(String key, bool value) async {

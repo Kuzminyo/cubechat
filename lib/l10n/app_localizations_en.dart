@@ -617,6 +617,65 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelBackToChannel => 'Back to the channel';
 
   @override
+  String get channelMemberActions => 'Member';
+
+  @override
+  String get channelRemoveMember => 'Remove from the channel';
+
+  @override
+  String get channelRemoveMemberHint =>
+      'Their posts stop being accepted here. Nothing stops them rejoining by name — a shared key is the only membership there is.';
+
+  @override
+  String get channelMuteMember => 'Mute for…';
+
+  @override
+  String get channelUnmuteMember => 'Let them post again';
+
+  @override
+  String channelMemberRemoved(String name) {
+    return '$name was removed';
+  }
+
+  @override
+  String channelMemberMuted(String name) {
+    return '$name was muted';
+  }
+
+  @override
+  String channelMemberCleared(String name) {
+    return '$name can post again';
+  }
+
+  @override
+  String get channelMemberMutedNote => 'Muted';
+
+  @override
+  String get channelShareHistory => 'Share the history';
+
+  @override
+  String get channelShareHistoryHint =>
+      'Puts the last posts of this room back on the air, so anyone who joined later can see them. Everyone who was already here receives nothing new.';
+
+  @override
+  String channelHistoryShared(int count) {
+    return '$count posts offered';
+  }
+
+  @override
+  String get channelHistoryNothing => 'Nothing to share yet';
+
+  @override
+  String get channelPostComments => 'Comments';
+
+  @override
+  String get privacyForwardLinkTitle => 'Link back from forwards';
+
+  @override
+  String get privacyForwardLinkHint =>
+      'When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.';
+
+  @override
   String get chatsStatusChannel => 'channel';
 
   @override

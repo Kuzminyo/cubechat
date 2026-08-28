@@ -17,6 +17,8 @@ class ChannelMember {
     required this.name,
     required this.isAdmin,
     required this.lastSeen,
+    this.mutedUntil,
+    this.removedAt,
   });
 
   final String id;
@@ -24,12 +26,46 @@ class ChannelMember {
   final bool isAdmin;
   final DateTime lastSeen;
 
-  ChannelMember copyWith({String? name, bool? isAdmin, DateTime? lastSeen}) =>
+  /// Silenced by an administrator until this moment. Their posts are dropped
+  /// on arrival; they stay in the room and keep reading.
+  final DateTime? mutedUntil;
+
+  /// Put out of the room by an administrator.
+  ///
+  /// The row stays rather than being deleted, and that is the point: a roster
+  /// grows from traffic, so deleting somebody would last exactly until their
+  /// next message re-created them. Kept and marked, the row is what every
+  /// later frame of theirs is checked against.
+  ///
+  /// Not a ban. Nothing stops them deriving the key from the room's name
+  /// again — a shared key is the only membership there is — so this is every
+  /// other member declining to accept what they write, which is the strongest
+  /// thing a room without a server can do.
+  final DateTime? removedAt;
+
+  bool get isRemoved => removedAt != null;
+
+  bool get isMutedNow =>
+      mutedUntil != null && mutedUntil!.isAfter(DateTime.now());
+
+  /// Whether what this member writes is accepted at all.
+  bool get canPost => !isRemoved && !isMutedNow;
+
+  ChannelMember copyWith({
+    String? name,
+    bool? isAdmin,
+    DateTime? lastSeen,
+    DateTime? mutedUntil,
+    DateTime? removedAt,
+    bool clearModeration = false,
+  }) =>
       ChannelMember(
         id: id,
         name: name ?? this.name,
         isAdmin: isAdmin ?? this.isAdmin,
         lastSeen: lastSeen ?? this.lastSeen,
+        mutedUntil: clearModeration ? null : (mutedUntil ?? this.mutedUntil),
+        removedAt: clearModeration ? null : (removedAt ?? this.removedAt),
       );
 }
 
@@ -53,8 +89,17 @@ class ChannelRosterController
     return const {};
   }
 
+  /// Everyone in the room, administrators first.
+  ///
+  /// Removed members are not in the room and are not listed. They are still in
+  /// the map — see [ChannelMember.removedAt] — because that is what their next
+  /// message is checked against.
   List<ChannelMember> membersFor(String channel) {
-    final members = state[channel]?.values.toList() ?? <ChannelMember>[];
+    final members = state[channel]
+            ?.values
+            .where((m) => !m.isRemoved)
+            .toList() ??
+        <ChannelMember>[];
     members.sort((a, b) {
       if (a.isAdmin != b.isAdmin) return a.isAdmin ? -1 : 1;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
@@ -141,6 +186,12 @@ class ChannelRosterController
         : member.copyWith(
             isAdmin: old.isAdmin || member.isAdmin,
             name: member.name.trim().isEmpty ? old.name : member.name,
+            // A moderator's decision is not undone by the next thing the
+            // member says. This method is called for every frame that arrives
+            // from them, so without these two a removal would last until they
+            // typed again.
+            mutedUntil: old.mutedUntil,
+            removedAt: old.removedAt,
           );
     state = {
       ...state,
@@ -163,6 +214,54 @@ class ChannelRosterController
     };
     await _persist();
   }
+
+  /// Apply an administrator's decision about one member.
+  ///
+  /// Local, like every other channel rule: what a moderator sends is a signed
+  /// claim, and this is one device deciding to honour it. The caller has
+  /// already checked that the sender is an administrator here.
+  ///
+  /// Records the member first when the room has never heard of them, so a
+  /// removal that arrives before their first message still lands.
+  Future<void> moderate(
+    String channel, {
+    required String memberId,
+    required bool removed,
+    DateTime? mutedUntil,
+    bool clear = false,
+  }) async {
+    final current = state[channel] ?? const <String, ChannelMember>{};
+    final member = current[memberId] ??
+        ChannelMember(
+          id: memberId,
+          name: '',
+          isAdmin: false,
+          lastSeen: DateTime.now(),
+        );
+    final next = clear
+        ? member.copyWith(clearModeration: true)
+        : ChannelMember(
+            id: member.id,
+            name: member.name,
+            isAdmin: member.isAdmin,
+            lastSeen: member.lastSeen,
+            mutedUntil: mutedUntil,
+            removedAt: removed ? DateTime.now() : null,
+          );
+    state = {
+      ...state,
+      channel: {...current, memberId: next},
+    };
+    await _persist();
+  }
+
+  /// Whether this member's posts are accepted in [channel].
+  ///
+  /// Unknown members pass: a roster is learned from traffic, so somebody's
+  /// first message necessarily arrives before there is a row for them, and
+  /// refusing that would make the room unjoinable.
+  bool canPost(String channel, String memberId) =>
+      state[channel]?[memberId]?.canPost ?? true;
 
   Future<void> forget(String channel) async {
     if (!state.containsKey(channel)) return;
@@ -197,6 +296,8 @@ class ChannelRosterController
             name: data['name'] as String? ?? 'Member',
             isAdmin: data['admin'] as bool? ?? false,
             lastSeen: seen,
+            mutedUntil: DateTime.tryParse(data['mutedUntil'] as String? ?? ''),
+            removedAt: DateTime.tryParse(data['removedAt'] as String? ?? ''),
           );
         }
         loaded[channelEntry.key as String] = members;
@@ -218,6 +319,10 @@ class ChannelRosterController
               'name': member.value.name,
               'admin': member.value.isAdmin,
               'lastSeen': member.value.lastSeen.toIso8601String(),
+              if (member.value.mutedUntil != null)
+                'mutedUntil': member.value.mutedUntil!.toIso8601String(),
+              if (member.value.removedAt != null)
+                'removedAt': member.value.removedAt!.toIso8601String(),
             },
         },
     });

@@ -20,6 +20,11 @@ import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
+import '../../../channels/data/channel_controller.dart';
+import '../../../channels/models/channel.dart' show channelForCommunity;
+import '../../../channels/presentation/channel_viewer_bar.dart';
+import '../../../chats/presentation/chats_list_screen.dart' show channelRoute;
+import '../../../peers/data/known_peers_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../chats/models/chat.dart';
@@ -216,9 +221,35 @@ Future<void> _attributeForward(
   if (wireId == null) return;
   final name = original.forwardedFrom ?? original.authorName;
   if (name == null || name.isEmpty) return;
-  await ref
-      .read(messagingServiceProvider)
-      .announceForwardedFrom(canonicalId: target.id, wireIdHex: wireId, name: name);
+  await ref.read(messagingServiceProvider).announceForwardedFrom(
+        canonicalId: target.id,
+        wireIdHex: wireId,
+        name: name,
+        authorId: _forwardAuthorId(ref, original),
+      );
+}
+
+/// Whose profile the line above a forward should open, if anybody's.
+///
+/// Three ways it comes back null, and each is a different "no":
+///
+///  * the author asked not to be linked to — their own setting, which reached
+///    us with the rest of what we know about them;
+///  * they said it in a room, where a signed frame reveals a fingerprint and
+///    not a way to reach anybody;
+///  * it was ours to begin with, and a forward of our own words is not
+///    attributed to us at all.
+///
+/// A message that was already a forward keeps pointing at whoever wrote it
+/// rather than at whoever passed it on, which is what makes a chain of them
+/// still lead somewhere useful.
+String? _forwardAuthorId(WidgetRef ref, Message original) {
+  final earlier = original.forwardedFromId;
+  final id = earlier ?? (original.isMine ? null : original.chatId);
+  if (id == null || id.startsWith('#') || id.length != 64) return null;
+  return ref.read(knownPeersControllerProvider.notifier).allowsForwardLink(id)
+      ? id
+      : null;
 }
 
 class MessageBubble extends ConsumerStatefulWidget {
@@ -329,6 +360,24 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   }
 
   bool get _canReact => widget.message.wireId != null;
+
+  /// Whether this bubble carries a way into the room its comments live in.
+  ///
+  /// A post, in an announcement channel, written by somebody else. Our own
+  /// posts do not need it — the composer's own bar already leads there — and a
+  /// room where anybody may write is its own discussion.
+  ///
+  /// Not for the discussion room itself, which would otherwise offer a link
+  /// into its own discussion, and so on.
+  bool get _showsComments {
+    if (widget.message.isMine) return false;
+    if (!widget.chatId.startsWith('#')) return false;
+    if (channelForCommunity(widget.chatId) != null) return false;
+    return ref
+            .watch(channelControllerProvider)[widget.chatId]
+            ?.adminOnly ??
+        false;
+  }
 
   /// Open the person a card names — importing them first when the card is an
   /// invitation carrying the whole signed announcement.
@@ -1134,29 +1183,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 // must not look like it is quoting them into a sentence.
                 if (message.forwardedFrom case final from?) ...[
                   inBubble(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.shortcut_rounded,
-                          size: 13,
-                          color: AppColors.brandSecondary,
-                        ),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            AppLocalizations.of(context)
-                                .chatForwardedFrom(from),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: AppColors.brandSecondary,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    _ForwardHeader(
+                      name: from,
+                      // Present only when the author allows being reached this
+                      // way. Without it the row is the same row and simply
+                      // does not answer a tap — which is the whole of what
+                      // their privacy switch buys them here.
+                      authorId: message.forwardedFromId,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1368,6 +1401,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           : null,
                       meta: meta,
                     ),
+                  ),
+                ],
+                // The way into what everybody said about this post.
+                //
+                // Only under a post in an announcement channel, because that
+                // is the only place a reader has nowhere else to put a reply —
+                // in a room where anybody may write, the reply goes in the
+                // room. Not on our own posts either: the admin already has the
+                // discussion a tap away in the header.
+                if (_showsComments) ...[
+                  const SizedBox(height: 4),
+                  inBubble(
+                    _CommentsLink(channelName: widget.chatId),
                   ),
                 ],
               ],
@@ -2658,6 +2704,115 @@ class _BubbleMeta extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+
+/// "Comments" under a channel post, opening the room they live in.
+///
+/// A link rather than a count. Counting them would mean reading the discussion
+/// room to draw the channel, and the discussion room is a separate
+/// conversation that a reader may not have opened yet — so the number would be
+/// zero until they looked, which is worse than no number.
+class _CommentsLink extends ConsumerWidget {
+  const _CommentsLink({required this.channelName});
+
+  final String channelName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final name = await openCommunityFor(ref, channelName);
+        if (!context.mounted) return;
+        if (name == null) {
+          showCommunityUnavailable(context);
+          return;
+        }
+        context.push(channelRoute(name));
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mode_comment_outlined,
+            size: 13,
+            color: AppColors.brandPrimary,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            t.channelPostComments,
+            style: TextStyle(
+              color: AppColors.brandPrimary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who wrote this before it was passed on.
+///
+/// Their face and their name, above the bubble rather than inside it: the
+/// words below are theirs, and a bubble that quoted them into a sentence would
+/// read as the forwarder saying them.
+///
+/// Tappable only when the attribution carried a way back to them — see
+/// [Message.forwardedFromId]. An older build's forward, a room's, and one from
+/// somebody who asked not to be linked all arrive without it and all read the
+/// same: a name, going nowhere. Nothing in the row moves between the two
+/// states, so a forward that cannot be followed does not look like a control
+/// that is broken.
+class _ForwardHeader extends StatelessWidget {
+  const _ForwardHeader({required this.name, this.authorId});
+
+  final String name;
+  final String? authorId;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = authorId;
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (id != null) ...[
+          PeerAvatar(peerId: id, label: name, size: 16),
+          const SizedBox(width: 6),
+        ] else ...[
+          Icon(
+            Icons.shortcut_rounded,
+            size: 13,
+            color: AppColors.brandSecondary,
+          ),
+          const SizedBox(width: 5),
+        ],
+        Flexible(
+          child: Text(
+            AppLocalizations.of(context).chatForwardedFrom(name),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.brandSecondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (id == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => context.push(
+        '/person/$id?name=${Uri.encodeComponent(name)}',
+      ),
+      child: row,
     );
   }
 }

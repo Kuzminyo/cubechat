@@ -300,6 +300,50 @@
     }
   },
   "channelBackToChannel": "Back to the channel",
+  "channelMemberActions": "Member",
+  "channelRemoveMember": "Remove from the channel",
+  "channelRemoveMemberHint": "Their posts stop being accepted here. Nothing stops them rejoining by name — a shared key is the only membership there is.",
+  "channelMuteMember": "Mute for…",
+  "channelUnmuteMember": "Let them post again",
+  "channelMemberRemoved": "{name} was removed",
+  "@channelMemberRemoved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "channelMemberMuted": "{name} was muted",
+  "@channelMemberMuted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "channelMemberCleared": "{name} can post again",
+  "@channelMemberCleared": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "channelMemberMutedNote": "Muted",
+  "channelShareHistory": "Share the history",
+  "channelShareHistoryHint": "Puts the last posts of this room back on the air, so anyone who joined later can see them. Everyone who was already here receives nothing new.",
+  "channelHistoryShared": "{count} posts offered",
+  "@channelHistoryShared": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "channelHistoryNothing": "Nothing to share yet",
+  "channelPostComments": "Comments",
+  "privacyForwardLinkTitle": "Link back from forwards",
+  "privacyForwardLinkHint": "When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.",
   "chatsStatusChannel": "channel",
   "channelInviteTitle": "Add people",
   "channelInviteAction": "Invite",

@@ -73,6 +73,7 @@ import 'mtu_budget.dart';
 import 'inner_payload.dart';
 import 'channel_poll.dart';
 import 'channel_admin.dart';
+import 'channel_history.dart';
 import 'peer_id.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
@@ -382,7 +383,7 @@ class MessagingService {
   static const int _maxPendingVoiceLevels = 64;
 
   /// Attributions that arrived before the message they belong to.
-  final Map<String, String> _pendingForwardedFrom = {};
+  final Map<String, _HeldAttribution> _pendingForwardedFrom = {};
 
   /// FS media chunks that arrived before their manifest (so before we could
   /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
@@ -551,6 +552,16 @@ class MessagingService {
           unawaited(_flushPendingReadReceipts());
           // And the messages themselves, which had no such second chance.
           unawaited(_flushOutboxOverRelay());
+          // Somebody who was unreachable when the switch moved.
+          //
+          // Only when it is off: "you may link back to me" is what every build
+          // assumes anyway, so re-announcing it would be a fan-out to every
+          // contact to tell them nothing. The withheld answer is the one worth
+          // catching up, and it is the one that stops working if it does not
+          // arrive.
+          if (!_ref.read(privacySettingsProvider).allowForwardLink) {
+            unawaited(broadcastForwardPrivacy(allowed: false));
+          }
         }
         _relayWasConnected = connected;
       });
@@ -2772,6 +2783,159 @@ class MessagingService {
     }
   }
 
+  /// Tell everybody we talk to whether a forward of our words may carry a way
+  /// back to us.
+  ///
+  /// To every contact rather than to one conversation, because it is a fact
+  /// about us and not about a room: the person who forwards is whoever we said
+  /// it to, and any of them might.
+  ///
+  /// Best effort per peer, and re-sent whenever the switch moves. Somebody
+  /// unreachable at that moment keeps the answer they last heard, which is the
+  /// same guarantee the copy restriction gives and the only one available with
+  /// no server to hold the setting.
+  Future<void> broadcastForwardPrivacy({bool? allowed}) async {
+    if (_disposed) return;
+    final settings = _ref.read(privacySettingsProvider);
+    final on = allowed ?? settings.allowForwardLink;
+    final peers = _ref.read(knownPeersControllerProvider);
+    var told = 0;
+    for (final peer in peers.values) {
+      if (peer.isBlocked) continue;
+      final peerPub = _resolvePeerPub(peer.pubkeyHex);
+      if (peerPub == null) continue;
+      try {
+        final fanout = await _sendControlToPeer(
+          canonicalId: peer.pubkeyHex,
+          peerPub: peerPub,
+          type: InnerPayloadType.forwardPrivacy,
+          innerBody: Uint8List.fromList([on ? 0x01 : 0x00]),
+        );
+        if (fanout > 0) told++;
+      } catch (e) {
+        DebugLog.instance.log('CHAT', 'forward-privacy notice failed: $e');
+      }
+    }
+    DebugLog.instance.log(
+      'CHAT',
+      'forward links are ${on ? 'allowed' : 'refused'} — told $told peer(s)',
+    );
+  }
+
+  /// Remove somebody from a room, or silence them until [until].
+  ///
+  /// Administrators only, and never against another administrator: seniority is
+  /// not a thing this protocol can establish, so the seat protects its holder —
+  /// otherwise two admins take turns removing each other and every phone in the
+  /// room ends up with a different answer.
+  ///
+  /// Applied here as well as broadcast. The sender is a member like any other
+  /// and enforces the same rule against the same roster; waiting for our own
+  /// frame to come back would leave the moderator as the one person still
+  /// accepting the posts.
+  Future<void> sendChannelModeration(
+    String channelName, {
+    required String memberId,
+    required ChannelModerationAction action,
+    DateTime? until,
+  }) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only an admin can moderate $channelName');
+    }
+    if (roster.isAdmin(channel.name, memberId)) {
+      throw StateError('an administrator cannot be removed or silenced');
+    }
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelModeration,
+      ChannelModeration(
+        memberId: memberId,
+        action: action,
+        until: action == ChannelModerationAction.mute ? until : null,
+      ).encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    await roster.moderate(
+      channel.name,
+      memberId: memberId,
+      removed: action == ChannelModerationAction.remove,
+      mutedUntil: action == ChannelModerationAction.mute ? until : null,
+      clear: action == ChannelModerationAction.clear,
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log(
+      'CHAN',
+      '${channel.name}: $memberId ${action.name} (told $fanout)',
+    );
+  }
+
+  /// Hand the room's backlog to whoever is missing it.
+  ///
+  /// A deliberate act by an administrator rather than something that happens on
+  /// its own, because it is the one thing here that puts a room's whole history
+  /// back on the air: the cost is paid by every phone in range, and only the
+  /// person who runs the room can judge whether it is worth paying.
+  ///
+  /// Harmless where it is not needed. Every post carries the wireId it
+  /// originally travelled under and message insertion is idempotent on that, so
+  /// a member who was there stores nothing and sees nothing.
+  ///
+  /// Text only, and the most recent [ChannelHistory.maxPosts]. Pictures are
+  /// chunked streams with their own manifests; replaying those is a different
+  /// job and a far larger one.
+  Future<int> sendChannelHistory(String channelName) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    if (!channel.adminOnly) {
+      throw StateError('history is only shareable in an announcement channel');
+    }
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
+    if (!roster.isAdmin(channel.name, me.id)) {
+      throw StateError('only an admin can share the history of $channelName');
+    }
+    final stored =
+        _ref.read(messagesControllerProvider)[channel.name] ?? const <Message>[];
+    final posts = <ChannelHistoryPost>[];
+    for (final message in stored.reversed) {
+      if (posts.length >= ChannelHistory.maxPosts) break;
+      if (message.kind != MessageKind.text) continue;
+      final wireId = message.wireId;
+      if (wireId == null || wireId.length != 32) continue;
+      if (message.text.trim().isEmpty) continue;
+      if (utf8.encode(message.text).length > ChannelHistory.maxTextBytes) {
+        continue;
+      }
+      posts.add(
+        ChannelHistoryPost(
+          wireId: _hexDecodeBytes(wireId),
+          sentAt: message.sentAt,
+          text: message.text,
+        ),
+      );
+    }
+    if (posts.isEmpty) return 0;
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelHistory,
+      // Oldest first, so a reader who takes only part of it takes a beginning.
+      ChannelHistory(posts: posts.reversed.toList()).encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    final fanout = await _broadcastChannelFrame(frame);
+    DebugLog.instance.log(
+      'CHAN',
+      'offered ${posts.length} posts of ${channel.name} history (to $fanout)',
+    );
+    return posts.length;
+  }
+
   static ConversationWallpaperPayload _wallpaperPayload(
       ChatWallpaper wallpaper) {
     final preset = wallpaper.presetIndex;
@@ -4447,6 +4611,24 @@ class MessagingService {
       // yet been told who the admin is would otherwise refuse that admin's
       // own posts — permanently, since nothing is ever sent twice. Once the
       // roster names them, the post is delivered.
+      // Put out of the room, or silenced for a while.
+      //
+      // Ahead of the announcement rule and applying to every room, because it
+      // is about a person rather than about who may speak here. Posts only:
+      // an administrator's own frames still have to reach us, and a receipt or
+      // a reaction from somebody silenced is not what anybody meant by muting
+      // them.
+      if (_isChannelPost(unpacked.type) &&
+          !_ref
+              .read(channelRosterControllerProvider.notifier)
+              .canPost(channel.name, reactorId)) {
+        DebugLog.instance.log(
+          'CHAN',
+          'drop ${channel.name} post: $reactorId is removed or muted',
+        );
+        return;
+      }
+
       if (channel.adminOnly &&
           _isChannelPost(unpacked.type) &&
           !_ref
@@ -4653,6 +4835,59 @@ class MessagingService {
               change.isAdmin,
             );
           }
+
+        case InnerPayloadType.channelModeration:
+          final call = ChannelModeration.decode(unpacked.body);
+          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          // Only from somebody this device already holds as an administrator.
+          // The frame is signed, so this is not about who sent it but about
+          // whether they were entitled to — and an unowned room grants nothing,
+          // unlike the admin claim above, because removing people is not how
+          // anybody should come into a seat.
+          if (!roster.isAdmin(channel.name, reactorId)) {
+            DebugLog.instance.log(
+              'CHAN',
+              'drop ${channel.name} moderation: $reactorId is not an admin',
+            );
+            return;
+          }
+          // An administrator cannot be removed or silenced by another one.
+          // Seniority is not a thing this protocol can establish, so the only
+          // safe rule is that the seat protects its holder — otherwise two
+          // admins can take turns removing each other and the room ends up
+          // with a different answer on every phone.
+          if (roster.isAdmin(channel.name, call.memberId)) {
+            DebugLog.instance.log(
+              'CHAN',
+              'drop ${channel.name} moderation: target is an admin',
+            );
+            return;
+          }
+          await roster.moderate(
+            channel.name,
+            memberId: call.memberId,
+            removed: call.action == ChannelModerationAction.remove,
+            mutedUntil:
+                call.action == ChannelModerationAction.mute ? call.until : null,
+            clear: call.action == ChannelModerationAction.clear,
+          );
+          DebugLog.instance.log(
+            'CHAN',
+            '${channel.name}: ${call.memberId} ${call.action.name}',
+          );
+
+        case InnerPayloadType.channelHistory:
+          await _ingestChannelHistory(
+            channel: channel,
+            senderId: reactorId,
+            body: unpacked.body,
+          );
+
+        case InnerPayloadType.forwardPrivacy:
+          // A statement about a person, made to the people they talk to. It
+          // has no meaning shouted at a room, and accepting it there would let
+          // anybody holding the key speak for anybody else.
+          break;
 
         case InnerPayloadType.channelAvatar:
         case InnerPayloadType.channelAdminOnly:
@@ -5417,7 +5652,24 @@ class MessagingService {
           break;
 
         case InnerPayloadType.channelAdmin:
+        case InnerPayloadType.channelModeration:
+        case InnerPayloadType.channelHistory:
           break;
+
+        case InnerPayloadType.forwardPrivacy:
+          if (unpacked.body.length != 1 || unpacked.body[0] > 1) {
+            DebugLog.instance
+                .log('CHAT', 'drop forward-privacy from $peerId: malformed');
+            return;
+          }
+          await _ref
+              .read(knownPeersControllerProvider.notifier)
+              .setAllowsForwardLink(peerId, unpacked.body[0] == 0x01);
+          DebugLog.instance.log(
+            'CHAT',
+            '$peerId ${unpacked.body[0] == 0x01 ? 'allows' : 'refuses'} '
+                'a link back from a forward',
+          );
 
         case InnerPayloadType.channelInvite:
           await _ingestChannelInvite(
@@ -6331,10 +6583,14 @@ class MessagingService {
   /// Sent after the message and never awaited by it: an attribution that does
   /// not arrive costs a line above a bubble, and a forward that does not
   /// arrive costs the message. The two must not share a fate.
+  /// [authorId] is the original author's canonical id, when they permit being
+  /// reached through a forward — the caller has already asked. Null keeps the
+  /// payload at v1, which every build in the field understands.
   Future<void> announceForwardedFrom({
     required String canonicalId,
     required String wireIdHex,
     required String name,
+    String? authorId,
   }) async {
     final peerPub = _resolvePeerPub(canonicalId);
     if (peerPub == null) return;
@@ -6346,6 +6602,7 @@ class MessagingService {
         innerBody: ForwardedFrom(
           targetMsgId: _hexDecodeBytes(wireIdHex),
           name: name,
+          authorPub: authorId == null ? null : _hexDecodeBytes(authorId),
         ).encode(),
       );
     } catch (e) {
@@ -6387,13 +6644,19 @@ class MessagingService {
         }
       }
     }
+    final authorId = hint.authorPub == null ? null : _hexOf(hint.authorPub!);
     var stamped = false;
     for (final bucket in targets) {
-      stamped |= messages.applyForwardedFrom(bucket, wireId, hint.name);
+      stamped |= messages.applyForwardedFrom(
+        bucket,
+        wireId,
+        hint.name,
+        authorId: authorId,
+      );
     }
     if (stamped) return;
 
-    _pendingForwardedFrom[wireId] = hint.name;
+    _pendingForwardedFrom[wireId] = _HeldAttribution(hint.name, authorId);
     while (_pendingForwardedFrom.length > _maxPendingVoiceLevels) {
       _pendingForwardedFrom.remove(_pendingForwardedFrom.keys.first);
     }
@@ -7907,6 +8170,72 @@ class MessagingService {
     }
   }
 
+  /// A room's backlog, offered by an administrator.
+  ///
+  /// Idempotent by construction: every post carries the wireId the original
+  /// travelled under, and [MessagesController.append] already refuses a
+  /// wireId it holds. So this lands only where a post is missing — everybody
+  /// who was in the room when it was said stores nothing, and the person who
+  /// just joined gets what they missed.
+  ///
+  /// Refused outside an announcement channel. A channel frame is signed by
+  /// whoever sent it, so a backlog carries the sender's signature over
+  /// somebody else's words; in a room where only administrators post those are
+  /// the administrator's own words and the signature says what it should, and
+  /// anywhere else it would be a licence to put sentences in other people's
+  /// mouths.
+  Future<void> _ingestChannelHistory({
+    required Channel channel,
+    required String senderId,
+    required Uint8List body,
+  }) async {
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    if (!channel.adminOnly || !roster.isAdmin(channel.name, senderId)) {
+      DebugLog.instance.log(
+        'CHAN',
+        'drop ${channel.name} history: not an admin-only room, or not an admin',
+      );
+      return;
+    }
+    final ChannelHistory history;
+    try {
+      history = ChannelHistory.decode(body);
+    } catch (e) {
+      DebugLog.instance.log('CHAN', 'drop ${channel.name} history: $e');
+      return;
+    }
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    // The roster is where a fingerprint becomes a name; it recorded this
+    // sender a few lines before we got here.
+    final name = _ref
+            .read(channelRosterControllerProvider)[channel.name]?[senderId]
+            ?.name ??
+        channel.name;
+    var added = 0;
+    for (final post in history.posts) {
+      final wireId = TransportEnvelope.hashHex(post.wireId);
+      final landed = messages.append(
+        channel.name,
+        Message(
+          id: 'h$wireId',
+          chatId: channel.name,
+          text: post.text,
+          sentAt: post.sentAt,
+          isMine: false,
+          status: MessageStatus.delivered,
+          authorId: senderId,
+          authorName: name,
+          wireId: wireId,
+        ),
+      );
+      if (landed) added++;
+    }
+    DebugLog.instance.log(
+      'CHAN',
+      '${channel.name} history: $added of ${history.posts.length} were new',
+    );
+  }
+
   /// A presence beacon from a peer: they have the app open (or are leaving it).
   ///
   /// Also refreshes their roster `lastSeen`, but only for an "online" beacon —
@@ -8318,11 +8647,14 @@ class MessagingService {
     // notify about either.
     // An attribution that beat its own message here. Taken rather than read:
     // this bubble now holds it, and a re-delivery has nothing left to stamp.
-    final heldName = message.wireId == null
+    final held = message.wireId == null
         ? null
         : _pendingForwardedFrom.remove(message.wireId);
-    if (heldName != null) {
-      message = message.copyWith(forwardedFrom: heldName);
+    if (held != null) {
+      message = message.copyWith(
+        forwardedFrom: held.name,
+        forwardedFromId: held.authorId,
+      );
     }
     if (!messages.append(pubkeyHex, message)) {
       // Unless it is the file we asked to have again: same id, same bubble, and
@@ -8880,4 +9212,15 @@ class _RecentChannelFrame {
 
   final Uint8List bytes;
   final DateTime at;
+}
+
+/// An attribution that arrived before the message it belongs to.
+///
+/// Held by wireId until the bubble turns up — the two travel as separate
+/// payloads on purpose, so either order is ordinary.
+class _HeldAttribution {
+  const _HeldAttribution(this.name, this.authorId);
+
+  final String name;
+  final String? authorId;
 }

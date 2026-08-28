@@ -638,7 +638,12 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// Returns whether anything was found, so the transport can hold the
   /// attribution back when it arrives before the message it describes — the
   /// two are separate frames and either can win the race.
-  bool applyForwardedFrom(String peerId, String wireId, String name) {
+  bool applyForwardedFrom(
+    String peerId,
+    String wireId,
+    String name, {
+    String? authorId,
+  }) {
     final current = state[peerId];
     if (current == null) return false;
     final list = [...current];
@@ -650,7 +655,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       // name and rewriting the conversation to store it again costs a disk
       // write for nothing.
       if (m.forwardedFrom != null) continue;
-      list[i] = m.copyWith(forwardedFrom: name);
+      list[i] = m.copyWith(forwardedFrom: name, forwardedFromId: authorId);
       changed = true;
     }
     if (!changed) return false;
@@ -941,6 +946,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.audioDurationMs != null) 'audioDurationMs': m.audioDurationMs,
         if (m.audioLevels != null) 'audioLevels': m.audioLevels,
         if (m.forwardedFrom != null) 'forwardedFrom': m.forwardedFrom,
+        if (m.forwardedFromId != null) 'forwardedFromId': m.forwardedFromId,
         if (m.voicePlayed) 'voicePlayed': true,
         if (m.expiresAt != null)
           'expiresAtMs': m.expiresAt!.millisecondsSinceEpoch,
@@ -1031,6 +1037,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       // Hive hands back a `List<dynamic>` whatever went in, and a stored
       // history predates this key entirely — both read as "no shape to draw".
       forwardedFrom: m['forwardedFrom'] as String?,
+      forwardedFromId: m['forwardedFromId'] as String?,
       audioLevels: (m['audioLevels'] as List<dynamic>?)
           ?.map((dynamic v) => (v as num).toInt())
           .toList(growable: false),
