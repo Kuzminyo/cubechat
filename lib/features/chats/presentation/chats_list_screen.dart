@@ -576,6 +576,35 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     // back *is* a swipe there was no other way to say "never mind" without
     // finding the small × in the bar that had replaced the title.
     final selecting = selection.isNotEmpty;
+    // A picked chat that is no longer anywhere in the list stops being picked.
+    //
+    // Selection mode is on whenever the set is not empty, and the bar counts
+    // the rows it can *see* — so the instant an action takes the last picked
+    // conversation off the list, the header stays in selection mode reading
+    // "0", over rows nothing is selected in. Reported exactly that way: after
+    // doing the thing, come back to the ordinary list rather than to an empty
+    // selection.
+    //
+    // The handlers clear the set themselves when their work returns; this is
+    // what closes the gap while the work runs — nine storage steps for one
+    // delete — and covers the paths that exit before reaching their own clear.
+    //
+    // Archived ids count as live. Archiving from here would otherwise pull the
+    // set out from under the archive screen, which shares it.
+    if (selecting) {
+      final live = <String>{
+        savedChatId,
+        for (final chat in all) chat.id,
+        ...ref.read(archivedChatsControllerProvider),
+      };
+      if (!selection.every(live.contains)) {
+        // After the frame: a provider must not be written during a build.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref.read(chatSelectionProvider.notifier).retainOnly(live);
+        });
+      }
+    }
     final saved = savedChatRow(ref, t);
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
@@ -1637,21 +1666,13 @@ class ChatSelectionBar extends ConsumerWidget {
               const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
           tooltip: t.chatsActionDelete,
           onPressed: () async {
-            // Clear the selection *after* the work, not before it.
-            //
-            // This is why deleting a chat did nothing at all, with not even a
-            // line in the log to say it had been tried. Clearing first ends
-            // selection mode, which takes this very bar out of the tree — and
-            // the `context.mounted` guard on the next line then answered
-            // false and returned before a single chat was touched. The guard
-            // was doing its job; it was guarding against a state this handler
-            // had just created for itself.
             final chats = [...selected];
             // The root navigator's context outlives the bar, so the dialogs
             // still have somewhere to open even once the list rebuilds under
-            // them. The notifier is read now for the same reason a notifier is
-            // always read before an await here.
+            // them. The notifier and the container are read now for the same
+            // reason: this bar goes as soon as the selection does.
             final rootContext = Navigator.of(context, rootNavigator: true).context;
+            final container = ProviderScope.containerOf(context, listen: false);
             final selection = ref.read(chatSelectionProvider.notifier);
             // Asked once for the batch, not once per chat.
             //
@@ -1663,12 +1684,25 @@ class ChatSelectionBar extends ConsumerWidget {
             //
             // The single-chat path keeps its own dialog, because there the
             // question and the thing being asked about are one and the same.
-            if (!await _confirmDeleteMany(rootContext, ref, chats, t)) return;
-            for (final chat in chats) {
-              if (!rootContext.mounted) return;
-              await _deleteChat(rootContext, ref, chat, alsoForThem: false);
-            }
+            final answer = await _confirmDeleteMany(rootContext, ref, chats, t);
+            if (answer == _DeleteAnswer.no) return;
+            // Out of selection mode on the answer, not on the last write.
+            //
+            // It used to clear after the loop, which meant the header sat in
+            // selection mode counting rows that were already being deleted —
+            // "0 selected" over an ordinary list — for as long as nine storage
+            // steps per chat took. And on the single-chat path it never
+            // cleared at all: that branch does its own asking and its own
+            // deleting and answered `false`, which this handler read as "they
+            // said no" and returned on, leaving the bar standing.
+            //
+            // Safe to do first now only because the work below runs on
+            // [container], which does not care that this widget is gone.
             selection.clear();
+            if (answer == _DeleteAnswer.done) return;
+            for (final chat in chats) {
+              await _deleteChat(container, chat, alsoForThem: false);
+            }
           },
         ),
         _SelectionOverflow(selected: selected),
@@ -2550,6 +2584,10 @@ Future<void> _confirmAndDeleteChat(
       : (ref.read(messagesControllerProvider)[chat.id] ?? const <Message>[])
           .where((m) => m.isMine && m.wireId != null)
           .toList();
+  // Taken while this widget is still in the tree, used once it is not: the
+  // first step of the wipe empties the conversation, which rebuilds the list
+  // and can take the row that asked out from under us. See [_deleteChat].
+  final container = ProviderScope.containerOf(context, listen: false);
 
   var alsoForThem = false;
   final confirmed = await showDialog<bool>(
@@ -2622,36 +2660,7 @@ Future<void> _confirmAndDeleteChat(
   );
   if (confirmed != true) return;
 
-  // Retract before the local wipe: sendDeleteForEveryone resolves each target
-  // against the stored message, so clearing first would leave nothing to send.
-  if (alsoForThem) {
-    final messaging = ref.read(messagingServiceProvider);
-    if (chat.isChannel) {
-      // A room has many people in it and no member gets to erase it for the
-      // rest, so this stays what it always was: retract what we wrote.
-      for (final m in retractable) {
-        await messaging.sendDeleteForEveryone(chat.id, m.wireId!);
-      }
-    } else {
-      // One ask instead of one per message, and it takes the whole
-      // conversation rather than only our half of it — which is what people
-      // mean by deleting a chat for both, and what the per-message retraction
-      // could never do.
-      await messaging.sendConversationClear(chat.id);
-    }
-  }
-
-  // Every notifier is resolved before the first await of the wipe, and none is
-  // reached for through `ref` afterwards.
-  //
-  // `ref` here belongs to a widget in the chat list — the row being deleted.
-  // The very first step empties the conversation, which rebuilds that list;
-  // the row can be gone before the second step runs, and `ref` then throws.
-  // The throw lands in the middle of a nine-step sequence, so the chat was
-  // cleared but never hidden, and a cleared-but-visible chat is precisely
-  // "deleting a chat does nothing". The notifiers outlive any widget, so the
-  // sequence finishes whatever the list does underneath it.
-  await _deleteChat(context, ref, chat, alsoForThem: alsoForThem);
+  await _deleteChat(container, chat, alsoForThem: alsoForThem);
 }
 
 /// One question for a whole selection.
@@ -2665,44 +2674,92 @@ Future<void> _confirmAndDeleteChat(
 /// a thing to apply in bulk behind one tick. Somebody who wants it can delete
 /// those chats one at a time, where the question is asked about a conversation
 /// they can see.
-Future<bool> _confirmDeleteMany(
+Future<_DeleteAnswer> _confirmDeleteMany(
   BuildContext context,
   WidgetRef ref,
   List<Chat> chats,
   AppLocalizations t,
 ) async {
-  if (chats.isEmpty) return false;
+  if (chats.isEmpty) return _DeleteAnswer.no;
   if (chats.length == 1) {
     await _confirmAndDeleteChat(context, ref, chats.first, t);
-    return false;
+    return _DeleteAnswer.done;
   }
-  return confirmAction(
+  final yes = await confirmAction(
     context,
     title: t.chatsDeleteTitle,
     message: t.chatsDeleteManyHint(chats.length),
     confirmLabel: t.chatDeleteAction,
     destructive: true,
   );
+  return yes ? _DeleteAnswer.yes : _DeleteAnswer.no;
+}
+
+/// Three answers, because this used to give two and one of them meant both
+/// "they said no" and "one chat, and it is already deleted" — which is how the
+/// selection survived its own conversation.
+enum _DeleteAnswer {
+  /// Nothing happened. The selection stands: they may want to do something
+  /// else with it.
+  no,
+
+  /// Go ahead.
+  yes,
+
+  /// The single-chat path asked and acted on its own; there is nothing left to
+  /// do but stop selecting.
+  done,
 }
 
 /// Everything that removing one conversation touches. No questions asked —
 /// the caller has already asked.
+///
+/// Through a [ProviderContainer] rather than a `WidgetRef`, because the widget
+/// that asked is usually gone before this finishes: the row being deleted, or
+/// the selection bar, which the header takes out of the tree the moment the
+/// last picked chat leaves the list. A `WidgetRef` read after that throws, in
+/// the middle of a sequence with nine places to stop — and a half-done delete
+/// is exactly the "deleting a chat does nothing" this function's logging was
+/// added to chase. The container belongs to the app's ProviderScope and cannot
+/// go away while a screen is on it.
 Future<void> _deleteChat(
-  BuildContext context,
-  WidgetRef ref,
+  ProviderContainer container,
   Chat chat, {
   required bool alsoForThem,
 }) async {
-  final messages = ref.read(messagesControllerProvider.notifier);
-  final favorites = ref.read(favoritesControllerProvider.notifier);
-  final pinnedChats = ref.read(pinnedChatsControllerProvider.notifier);
-  final folders = ref.read(userChatFoldersControllerProvider.notifier);
-  final readMarkers = ref.read(readMarkersControllerProvider.notifier);
-  final pinned = ref.read(pinnedControllerProvider.notifier);
-  final drafts = ref.read(draftsControllerProvider.notifier);
-  final channels = ref.read(channelControllerProvider.notifier);
-  final roster = ref.read(channelRosterControllerProvider.notifier);
-  final hidden = ref.read(hiddenChatsControllerProvider.notifier);
+  final messaging = container.read(messagingServiceProvider);
+  final messages = container.read(messagesControllerProvider.notifier);
+  final favorites = container.read(favoritesControllerProvider.notifier);
+  final pinnedChats = container.read(pinnedChatsControllerProvider.notifier);
+  final folders = container.read(userChatFoldersControllerProvider.notifier);
+  final readMarkers = container.read(readMarkersControllerProvider.notifier);
+  final pinned = container.read(pinnedControllerProvider.notifier);
+  final drafts = container.read(draftsControllerProvider.notifier);
+  final channels = container.read(channelControllerProvider.notifier);
+  final roster = container.read(channelRosterControllerProvider.notifier);
+  final hidden = container.read(hiddenChatsControllerProvider.notifier);
+
+  // Retract before the local wipe: sendDeleteForEveryone resolves each target
+  // against the stored message, so clearing first would leave nothing to send.
+  if (alsoForThem) {
+    if (chat.isChannel) {
+      // A room has many people in it and no member gets to erase it for the
+      // rest, so this stays what it always was: retract what we wrote.
+      final retractable =
+          (container.read(messagesControllerProvider)[chat.id] ??
+                  const <Message>[])
+              .where((m) => m.isMine && m.wireId != null);
+      for (final m in retractable) {
+        await messaging.sendDeleteForEveryone(chat.id, m.wireId!);
+      }
+    } else {
+      // One ask instead of one per message, and it takes the whole
+      // conversation rather than only our half of it — which is what people
+      // mean by deleting a chat for both, and what the per-message retraction
+      // could never do.
+      await messaging.sendConversationClear(chat.id);
+    }
+  }
 
   // Logged step by step, because "the chat is still there" names a symptom and
   // this sequence has nine places to stop. Without these the only way to tell
@@ -2737,11 +2794,11 @@ Future<void> _deleteChat(
   // The two facts that decide whether the tile goes, read back after the fact
   // rather than assumed: the filter in `chatsProvider` keeps a hidden chat on
   // screen for exactly as long as it still holds messages.
-  final left = ref.read(messagesControllerProvider)[chat.id]?.length ?? 0;
+  final left = container.read(messagesControllerProvider)[chat.id]?.length ?? 0;
   DebugLog.instance.log(
     'CHAT',
     'delete ${chat.id} done — messages left $left, '
-        'hidden ${ref.read(hiddenChatsControllerProvider).contains(chat.id)}',
+        'hidden ${container.read(hiddenChatsControllerProvider).contains(chat.id)}',
   );
 }
 

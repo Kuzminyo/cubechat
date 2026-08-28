@@ -81,6 +81,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       }
       if (loaded.isNotEmpty) {
         state = {...loaded, ...state};
+        unawaited(_seedPresenceFromHistory(loaded));
       }
       for (final key in strays) {
         debugPrint('messages bucket "$key": dropping, not a durable chat id');
@@ -156,15 +157,61 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// for the person is the bug being fixed.
   void _notePresence(String peerId, Message msg) {
     if (msg.isMine) return;
-    // A conversation is filed under a pubkey; a channel under its name, and a
-    // room says nothing about which member was present.
-    if (peerId.length != 64) return;
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(peerId)) return;
+    if (!_isPersonChatId(peerId)) return;
     unawaited(
       ref
           .read(knownPeersControllerProvider.notifier)
           .markPresent(peerId, at: msg.sentAt),
     );
+  }
+
+  /// A conversation is filed under a pubkey; a channel under its name, and a
+  /// room says nothing about which member was present.
+  static bool _isPersonChatId(String chatId) =>
+      chatId.length == 64 && _personChatId.hasMatch(chatId);
+
+  static final RegExp _personChatId = RegExp(r'^[0-9a-f]{64}$');
+
+  /// Give "last online" an answer for the conversations that already exist.
+  ///
+  /// [_notePresence] only ever sees the next message to arrive, so the build
+  /// that stopped trusting announcements left every contact reading "offline"
+  /// with no time beside it until they happened to write again — reported as
+  /// the last-seen times having disappeared altogether. The evidence was on
+  /// disk the whole time: the newest thing each person wrote answers exactly
+  /// the question the live path answers, and it is already in memory by the
+  /// time this runs.
+  ///
+  /// After the roster, because [KnownPeersController.markPresent] is a no-op
+  /// for a peer it has not loaded yet and the two boxes open in a race.
+  ///
+  /// Only the tail of each conversation is read. The list is in arrival order
+  /// and a message can arrive long after it was written, so the newest `sentAt`
+  /// is not reliably the last element — but it is certainly not two hundred
+  /// messages back either, and walking every message of every chat on the frame
+  /// after launch is the kind of work this app has spent a month taking out of
+  /// startup.
+  Future<void> _seedPresenceFromHistory(
+    Map<String, List<Message>> history,
+  ) async {
+    final peers = ref.read(knownPeersControllerProvider.notifier);
+    await peers.loaded;
+    const tail = 50;
+    for (final entry in history.entries) {
+      if (!_isPersonChatId(entry.key)) continue;
+      final messages = entry.value;
+      DateTime? newest;
+      for (var i = messages.length - 1;
+          i >= 0 && i > messages.length - 1 - tail;
+          i--) {
+        final msg = messages[i];
+        if (msg.isMine) continue;
+        if (newest == null || msg.sentAt.isAfter(newest)) newest = msg.sentAt;
+      }
+      if (newest == null) continue;
+      // Never backwards, so a beacon that has already arrived keeps its answer.
+      await peers.markPresent(entry.key, at: newest);
+    }
   }
 
   /// Point an existing attachment bubble at a file that has just landed again.

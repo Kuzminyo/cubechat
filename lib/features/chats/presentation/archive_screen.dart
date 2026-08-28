@@ -9,10 +9,11 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/archived_chats_controller.dart';
+import '../data/saved_messages.dart';
 import '../data/chat_selection_controller.dart';
 import '../data/swipe_action_controller.dart';
 import 'chats_list_screen.dart'
-    show ChatSelectionBar, archivedChatsProvider, routeForChat;
+    show ChatSelectionBar, archivedChatsProvider, chatsProvider, routeForChat;
 import 'widgets/chat_tile.dart';
 import 'widgets/swipe_action_row.dart';
 
@@ -79,6 +80,26 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
       for (final chat in chats)
         if (selection.contains(chat.id)) chat,
     ];
+    // The same prune the main list does, for the same reason: an action that
+    // takes the last picked row off this screen would otherwise leave the title
+    // as a selection bar reading "0". See [ChatSelectionController.retainOnly].
+    //
+    // Against every chat that exists rather than only the archived ones — the
+    // set is shared, and unarchiving is an action on this screen that moves a
+    // row to the other list rather than deleting it.
+    if (selection.isNotEmpty) {
+      final live = <String>{
+        // Synthesised rather than stored, so it is in no provider's list.
+        savedChatId,
+        for (final chat in ref.read(chatsProvider)) chat.id,
+      };
+      if (!selection.every(live.contains)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _selection.retainOnly(live);
+        });
+      }
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,

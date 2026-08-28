@@ -17,11 +17,21 @@ import 'removed_contacts_controller.dart';
 /// a TypeAdapter (the schema is two strings + an ISO timestamp).
 class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   Box<Map<dynamic, dynamic>>? _box;
+  Future<void>? _loading;
+
+  /// Completes once the roster is on the map.
+  ///
+  /// Nothing in the UI waits for it — the screens rebuild when it lands. What
+  /// waits is anything that writes *into* a peer that must already exist:
+  /// [markPresent] is a no-op for somebody it has not heard of, and the boxes
+  /// open in a race, so a caller seeding presence from stored history would
+  /// otherwise win that race about half the time and silently do nothing.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   Map<String, KnownPeer> build() {
     // Kick off the async load; UI updates as soon as the box is ready.
-    unawaited(_loadFromDisk());
+    unawaited(_loading = _loadFromDisk());
     return <String, KnownPeer>{};
   }
 

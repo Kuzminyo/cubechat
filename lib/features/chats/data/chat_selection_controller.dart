@@ -35,6 +35,28 @@ class ChatSelectionController extends Notifier<Set<String>> {
     if (state.isEmpty) return;
     state = const <String>{};
   }
+
+  /// Forget ids that no longer name a chat.
+  ///
+  /// The bar counts the rows it can see, and selection mode is on whenever this
+  /// set is not empty — so the instant an action takes the last picked
+  /// conversation off the list, the two disagree, and the header sits there in
+  /// selection mode reading "0". Deleting a chat left it that way until the
+  /// close button was found and pressed.
+  ///
+  /// Handlers do clear the selection when their work finishes and this does not
+  /// replace that. It covers the gap between the row going and the work
+  /// returning — nine storage steps for one delete — and the handlers that take
+  /// an early exit before reaching their own clear.
+  void retainOnly(Set<String> live) {
+    if (state.isEmpty) return;
+    final next = {
+      for (final id in state)
+        if (live.contains(id)) id,
+    };
+    if (next.length == state.length) return;
+    state = next;
+  }
 }
 
 final chatSelectionProvider =
