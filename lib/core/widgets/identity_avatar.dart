@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../identity/avatar_controller.dart';
 import '../theme/colors.dart';
+import '../util/motion.dart';
 import '../util/ui_activity.dart';
 
 /// Deterministic gradient avatar from a stable seed (e.g. peer pubkey).
@@ -179,10 +180,21 @@ class _OnlineDotState extends State<_OnlineDot>
     end: 0.60,
   ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
 
+  /// Set from the phone's Reduce Motion switch, which is only readable once
+  /// there is a `MediaQuery` above this — so it is cached here rather than
+  /// looked up inside [_applyActivity], which also runs from a listener.
+  bool _stillness = false;
+
   @override
   void initState() {
     super.initState();
     UiActivity.instance.isQuiet.addListener(_applyActivity);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _stillness = AppMotion.reduced(context);
     _applyActivity();
   }
 
@@ -198,6 +210,14 @@ class _OnlineDotState extends State<_OnlineDot>
   /// a half-drawn one.
   void _applyActivity() {
     if (!mounted) return;
+    // A dot breathing once per visible row is peripheral, repetitive motion —
+    // the thing Reduce Motion is turned on to stop. Parked at its brightest so
+    // "online" still reads at a glance, which is the dot's whole job.
+    if (_stillness) {
+      _c.stop();
+      _c.value = 1;
+      return;
+    }
     if (UiActivity.instance.isQuiet.value) {
       _c.stop();
     } else if (!_c.isAnimating) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../util/motion.dart';
+
 /// Slide-up + fade entrance animation, driven by a delay-aware controller.
 class AppearAnimation extends StatefulWidget {
   const AppearAnimation({
@@ -55,12 +57,21 @@ class _AppearAnimationState extends State<AppearAnimation>
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: _c, curve: widget.curve));
 
+  /// The start is a one-shot, but it lives in [didChangeDependencies] — the
+  /// only place early enough to see a `MediaQuery` and still be before the
+  /// first frame. That callback runs again whenever anything inherited moves,
+  /// so it needs a latch of its own.
+  bool _started = false;
+
   @override
-  void initState() {
-    super.initState();
-    if (!widget.enabled) {
-      // Straight to the end state: no ticker, no delayed callback, and the row
-      // is simply there.
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // Straight to the end state: no ticker, no delayed callback, and the row
+    // is simply there. Either because the caller said so — a list past its
+    // first frame — or because the phone asked for less movement.
+    if (!widget.enabled || AppMotion.reduced(context)) {
       _c.value = 1;
       return;
     }

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../theme/colors.dart';
+import '../util/motion.dart';
 import '../util/ui_activity.dart';
 
 /// Full-screen aurora gradient with slowly drifting blobs.
@@ -128,6 +129,33 @@ class _AuroraBackgroundState extends State<AuroraBackground>
 
   Timer? _launchDelay;
 
+  /// The phone's Reduce Motion switch, cached — see [AppMotion].
+  ///
+  /// This gradient is the largest piece of automatic motion in the app: it is
+  /// behind every screen, it is most of the display's area, and nobody asked
+  /// for it. That is the exact shape of what the setting exists to turn off.
+  ///
+  /// The aurora does not disappear when it does. It holds the frame it is on,
+  /// which is the same thing the idle timer already does two seconds after the
+  /// last touch — so this is a state the backdrop is in most of the time
+  /// anyway, and it looks like nothing but a still picture.
+  bool _stillness = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduced = AppMotion.reduced(context);
+    if (reduced == _stillness) return;
+    _stillness = reduced;
+    if (reduced) {
+      _launchDelay?.cancel();
+      _launchDelay = null;
+      _stopTicker();
+    } else {
+      _wake();
+    }
+  }
+
   /// Run the drift now, and park it once things go quiet again.
   void _wake() {
     _startTicker();
@@ -187,7 +215,7 @@ class _AuroraBackgroundState extends State<AuroraBackground>
   /// has no explanation yet. One frame in 4677 has not earned an investigation,
   /// but it should not be filed under a cause it does not have either.
   void _startTicker() {
-    if (_ticker != null) return;
+    if (_ticker != null || _stillness) return;
     _clock.start();
     _lastPaintMs = _clock.elapsedMilliseconds;
     _ticker = createTicker((_) {

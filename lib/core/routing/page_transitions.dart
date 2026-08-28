@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 
+import '../util/motion.dart';
 import 'back_gesture.dart';
 
 /// How a pushed screen arrives, leaves, and is dragged back.
@@ -115,6 +116,33 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    final content = RepaintBoundary(
+      child: EdgeBackGesture(
+        enabledCallback: () => popGestureEnabled,
+        onStartGesture: () => EdgeBackGestureController(
+          navigator: navigator!,
+          controller: controller!,
+          isCurrent: () => isCurrent,
+          isActive: () => isActive,
+        ),
+        child: child,
+      ),
+    );
+
+    // Reduce Motion replaces the travel, it does not remove the transition.
+    //
+    // > **Design guideline — Accessibility > Cognitive**: "Replacing
+    // > transitions in x-, y-, and z-axes with fades to avoid motion."
+    //
+    // So the screen still announces itself, it just arrives in place instead
+    // of sliding in from the side and dragging the one underneath with it.
+    // The edge gesture stays wired up: it is the only way back on a screen
+    // whose back button is a small target, and a fade under a thumb is still a
+    // pop that can be started and abandoned.
+    if (AppMotion.reduced(context)) {
+      return FadeTransition(opacity: animation, child: content);
+    }
+
     return CupertinoPageTransition(
       primaryRouteAnimation: animation,
       secondaryRouteAnimation: secondaryAnimation,
@@ -149,18 +177,7 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
       child: _RoundedWhileMoving(
         primary: animation,
         secondary: secondaryAnimation,
-        child: RepaintBoundary(
-          child: EdgeBackGesture(
-            enabledCallback: () => popGestureEnabled,
-            onStartGesture: () => EdgeBackGestureController(
-              navigator: navigator!,
-              controller: controller!,
-              isCurrent: () => isCurrent,
-              isActive: () => isActive,
-            ),
-            child: child,
-          ),
-        ),
+        child: content,
       ),
     );
   }
