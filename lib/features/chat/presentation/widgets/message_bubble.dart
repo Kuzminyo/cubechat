@@ -180,7 +180,22 @@ Future<Message?> forwardTextTo(WidgetRef ref, Chat target, String text) async {
 /// means reading the bytes back off this phone and sending them the way the
 /// gallery does — caption and sticker marker included, so a forwarded sticker
 /// arrives as a sticker rather than as a photo of one.
-Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async {
+/// [fromChatId] is the bucket [message] was read out of, and it is not the same
+/// thing as `message.chatId`.
+///
+/// An inbound message records the *transport* peer it arrived over — a BLE
+/// address, or the relay's own id — while the conversation it is filed under is
+/// the sender's pubkey. Asking the message where it came from therefore
+/// answered with something the contacts roster has never heard of, which is why
+/// the line above a forward was empty: the name lookup found nobody, and the
+/// whole attribution returned before it began. The bucket is the answer, and
+/// only the caller has it.
+Future<void> forwardMessageTo(
+  WidgetRef ref,
+  Chat target,
+  Message message, {
+  required String fromChatId,
+}) async {
   if (message.kind == MessageKind.image) {
     final path = MediaPaths.repairOrNull(message.imagePath);
     if (path == null || !MediaPaths.exists(path)) return;
@@ -197,11 +212,11 @@ Future<void> forwardMessageTo(WidgetRef ref, Chat target, Message message) async
               ? Message.stickerMarkerFor(message.stickerEmoji)
               : message.imageCaption,
         );
-    await _attributeForward(ref, target, message, sent);
+    await _attributeForward(ref, target, message, sent, fromChatId);
     return;
   }
   final sent = await forwardTextTo(ref, target, message.text);
-  await _attributeForward(ref, target, message, sent);
+  await _attributeForward(ref, target, message, sent, fromChatId);
 }
 
 /// Tell the far side who wrote this originally.
@@ -219,13 +234,14 @@ Future<void> _attributeForward(
   Chat target,
   Message original,
   Message? sent,
+  String fromChatId,
 ) async {
   if (target.isChannel) return;
   final wireId = sent?.wireId;
   if (wireId == null) return;
-  final name = _forwardAuthorName(ref, original);
+  final name = _forwardAuthorName(ref, original, fromChatId);
   if (name == null || name.isEmpty) return;
-  final authorId = _forwardAuthorId(ref, original);
+  final authorId = _forwardAuthorId(ref, original, fromChatId);
   // Stamped here, on our own copy, before anything goes out.
   //
   // The attribution used to exist only as a frame sent to the other side, so
@@ -261,14 +277,18 @@ Future<void> _attributeForward(
 /// name rather than none — passing on something we said is still a forward,
 /// and a bubble that suddenly claims to be original is worse than one that
 /// says where it came from.
-String? _forwardAuthorName(WidgetRef ref, Message original) {
+String? _forwardAuthorName(
+  WidgetRef ref,
+  Message original,
+  String fromChatId,
+) {
   final carried = original.forwardedFrom ?? original.authorName;
   if (carried != null && carried.isNotEmpty) return carried;
   if (original.isMine) {
     final me = ref.read(nicknameControllerProvider).trim();
     return me.isEmpty ? null : me;
   }
-  final peer = ref.read(knownPeersControllerProvider)[original.chatId];
+  final peer = ref.read(knownPeersControllerProvider)[fromChatId];
   final name = peer?.displayName.trim();
   return (name == null || name.isEmpty) ? null : name;
 }
@@ -287,9 +307,13 @@ String? _forwardAuthorName(WidgetRef ref, Message original) {
 /// A message that was already a forward keeps pointing at whoever wrote it
 /// rather than at whoever passed it on, which is what makes a chain of them
 /// still lead somewhere useful.
-String? _forwardAuthorId(WidgetRef ref, Message original) {
+String? _forwardAuthorId(
+  WidgetRef ref,
+  Message original,
+  String fromChatId,
+) {
   final earlier = original.forwardedFromId;
-  final id = earlier ?? (original.isMine ? null : original.chatId);
+  final id = earlier ?? (original.isMine ? null : fromChatId);
   if (id == null || id.startsWith('#') || id.length != 64) return null;
   return ref.read(knownPeersControllerProvider.notifier).allowsForwardLink(id)
       ? id
@@ -949,7 +973,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (chosen.isEmpty || !mounted) return;
     final t = AppLocalizations.of(context);
     for (final chat in chosen) {
-      await forwardMessageTo(ref, chat, widget.message);
+      await forwardMessageTo(
+        ref,
+        chat,
+        widget.message,
+        fromChatId: widget.chatId,
+      );
     }
     if (!mounted) return;
     showGlassToast(

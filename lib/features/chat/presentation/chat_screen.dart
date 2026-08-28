@@ -1782,7 +1782,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (targets.isEmpty || !mounted) return;
     for (final target in targets) {
       for (final m in picked) {
-        await forwardMessageTo(ref, target, m);
+        await forwardMessageTo(
+          ref,
+          target,
+          m,
+          fromChatId: widget.chatId,
+        );
       }
     }
     if (!mounted) return;
