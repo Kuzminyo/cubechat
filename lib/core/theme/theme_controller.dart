@@ -303,7 +303,9 @@ class ThemeController extends Notifier<AppPalette> {
             const Color(0xFFE8E8F0);
     AppColors.textOnGlass = AppColors.ink(0.95);
     AppColors.textOnGlassDim = AppColors.ink(0.6);
-    AppColors.textOnGlassFaint = AppColors.ink(0.4);
+    // 0.52 rather than 0.4: the old value measured 3.75:1 against a pane and
+    // the floor for text this size is 4.5:1. See [AppColors.textOnGlassFaint].
+    AppColors.textOnGlassFaint = AppColors.ink(0.52);
     // The aurora blobs are the brand colours at different weights; leaving them
     // green under an indigo palette was the one thing that gave the shortcut
     // away.

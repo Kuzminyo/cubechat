@@ -90,7 +90,26 @@ abstract final class AppColors {
   static Color textPrimary = Color(0xFFE8E8F0);
   static Color textOnGlass = Colors.white.withValues(alpha: 0.95);
   static Color textOnGlassDim = Colors.white.withValues(alpha: 0.6);
-  static Color textOnGlassFaint = Colors.white.withValues(alpha: 0.4);
+
+  /// The third tier of text: timestamps, hints, the line under a row.
+  ///
+  /// 0.52, not the 0.4 it was for a long time, because 0.4 did not pass.
+  ///
+  /// > **Design guideline — Accessibility > Vision**: text up to 17 pt needs a
+  /// > contrast ratio of at least 4.5:1 against its background.
+  ///
+  /// Composited over a pane at the emerald palette's own dark (about #0E1F16,
+  /// which is the *most* favourable case — a glass pane is darker than the
+  /// aurora behind it), white at 0.4 lands on #6E7874 and measures **3.75:1**.
+  /// Every one of the 99 places this colour is read was therefore below the
+  /// floor, and this tier is where the smallest type in the app lives, which
+  /// is the combination the guideline is specifically about.
+  ///
+  /// 0.52 measures **5.4:1** on the same background, so it keeps its margin on
+  /// the lighter palettes and over a photo. Still visibly the quiet tier —
+  /// [textOnGlassDim] at 0.6 is 6.8:1 and reads as ordinary secondary text, so
+  /// there is room for a third level between that and the floor.
+  static Color textOnGlassFaint = Colors.white.withValues(alpha: 0.52);
 
   // Semantic
   static const Color danger = Color(0xFFFF5A6B);
