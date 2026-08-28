@@ -243,7 +243,18 @@ class Message {
   /// deliberately absent when the author asked not to be linked — see
   /// [InnerPayloadType.forwardPrivacy]. Both read the same way: a name, going
   /// nowhere.
+  ///
+  /// [selfAuthorId] when the words are ours. Our own key would be wrong here
+  /// even though it is exactly what goes out on the wire: that key names a
+  /// *contact* to every other phone, and this one holds no contact card for
+  /// itself — following it would open a profile of a stranger wearing our
+  /// name. The marker is what sends the tap to our own profile instead.
   final String? forwardedFromId;
+
+  /// Stands in for our own key in [forwardedFromId]. Local only; on the wire
+  /// the real key travels, so the phone receiving the forward opens us the
+  /// ordinary way.
+  static const String selfAuthorId = 'self';
 
   /// The 16-byte media id this attachment travelled under, in hex.
   ///

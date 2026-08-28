@@ -120,6 +120,44 @@ void main() {
     );
   });
 
+  test('our own words are marked as ours, not by our key', () async {
+    // The marker rather than a pubkey, because our own key names a *contact*
+    // to every other phone and names nobody on this one — following it would
+    // open the screen built for somebody else with our name on it. The real
+    // key still goes out on the wire, where it means the ordinary thing.
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final messages = container.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+
+    messages.append(
+      peerId,
+      Message(
+        id: 'm1',
+        chatId: peerId,
+        text: 'my own words, passed on',
+        isMine: true,
+        sentAt: DateTime.now(),
+        status: MessageStatus.delivered,
+        wireId: 'ab' * 16,
+      ),
+    );
+    messages.applyForwardedFrom(
+      peerId,
+      'ab' * 16,
+      'Me',
+      authorId: Message.selfAuthorId,
+    );
+
+    final back = container.read(messagesControllerProvider)[peerId]!.single;
+    expect(back.forwardedFromId, Message.selfAuthorId);
+    expect(
+      back.forwardedFromId!.length,
+      isNot(64),
+      reason: 'a pubkey here would be read as a contact id',
+    );
+  });
+
   test('an attribution without a key stays a name', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);

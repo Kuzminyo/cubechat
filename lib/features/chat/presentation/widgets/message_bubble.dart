@@ -24,6 +24,9 @@ import '../../../channels/data/channel_controller.dart';
 import '../../../channels/models/channel.dart' show channelForCommunity;
 import '../../../channels/presentation/channel_viewer_bar.dart';
 import '../../../chats/presentation/chats_list_screen.dart' show channelRoute;
+import '../../../../core/crypto/identity_service.dart';
+import '../../../../core/identity/avatar_controller.dart';
+import '../../../../core/widgets/identity_avatar.dart';
 import '../../../peers/data/known_peers_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
@@ -241,7 +244,11 @@ Future<void> _attributeForward(
   if (wireId == null) return;
   final name = _forwardAuthorName(ref, original, fromChatId);
   if (name == null || name.isEmpty) return;
-  final authorId = _forwardAuthorId(ref, original, fromChatId);
+  // Two answers to the same question, because the two ends mean different
+  // things by "us". Our own key names a contact on their phone and names
+  // nobody on this one — see [Message.selfAuthorId].
+  final wireAuthorId = await _forwardWireAuthorId(ref, original, fromChatId);
+  final localAuthorId = _forwardLocalAuthorId(ref, original, fromChatId);
   // Stamped here, on our own copy, before anything goes out.
   //
   // The attribution used to exist only as a frame sent to the other side, so
@@ -253,13 +260,13 @@ Future<void> _attributeForward(
         target.id,
         wireId,
         name,
-        authorId: authorId,
+        authorId: localAuthorId,
       );
   await ref.read(messagingServiceProvider).announceForwardedFrom(
         canonicalId: target.id,
         wireIdHex: wireId,
         name: name,
-        authorId: authorId,
+        authorId: wireAuthorId,
       );
 }
 
@@ -307,18 +314,55 @@ String? _forwardAuthorName(
 /// A message that was already a forward keeps pointing at whoever wrote it
 /// rather than at whoever passed it on, which is what makes a chain of them
 /// still lead somewhere useful.
-String? _forwardAuthorId(
+String? _forwardLocalAuthorId(
   WidgetRef ref,
   Message original,
   String fromChatId,
 ) {
   final earlier = original.forwardedFromId;
-  final id = earlier ?? (original.isMine ? null : fromChatId);
-  if (id == null || id.startsWith('#') || id.length != 64) return null;
+  if (_isOurs(original, earlier)) {
+    // Our own switch decides this one too. Saying "do not link back to me" and
+    // then linking to ourselves would be the app disagreeing with a setting in
+    // the only place the setting is not enforced by somebody else's build.
+    return ref.read(privacySettingsProvider).allowForwardLink
+        ? Message.selfAuthorId
+        : null;
+  }
+  final id = earlier ?? fromChatId;
+  if (id.startsWith('#') || id.length != 64) return null;
   return ref.read(knownPeersControllerProvider.notifier).allowsForwardLink(id)
       ? id
       : null;
 }
+
+/// The same answer for the other phone, where our key is an ordinary contact.
+///
+/// Resolved through the identity, which is why this one is async: nothing
+/// holds our own canonical id synchronously, and it is wanted here about once
+/// per forward.
+Future<String?> _forwardWireAuthorId(
+  WidgetRef ref,
+  Message original,
+  String fromChatId,
+) async {
+  final earlier = original.forwardedFromId;
+  if (_isOurs(original, earlier)) {
+    if (!ref.read(privacySettingsProvider).allowForwardLink) return null;
+    final identity = await ref.read(identityProvider.future);
+    return [
+      for (final b in identity.publicKey) b.toRadixString(16).padLeft(2, '0'),
+    ].join();
+  }
+  return _forwardLocalAuthorId(ref, original, fromChatId);
+}
+
+/// Whether the words being passed on are ours.
+///
+/// A forward of a forward keeps pointing at whoever wrote the thing, so an
+/// attribution already marked as ours stays ours however many hands it has
+/// been through.
+bool _isOurs(Message original, String? earlier) =>
+    earlier == Message.selfAuthorId || (earlier == null && original.isMine);
 
 class MessageBubble extends ConsumerStatefulWidget {
   const MessageBubble({
@@ -2845,19 +2889,30 @@ class _CommentsLink extends ConsumerWidget {
 /// same: a name, going nowhere. Nothing in the row moves between the two
 /// states, so a forward that cannot be followed does not look like a control
 /// that is broken.
-class _ForwardHeader extends StatelessWidget {
+class _ForwardHeader extends ConsumerWidget {
   const _ForwardHeader({required this.name, this.authorId});
 
   final String name;
   final String? authorId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final id = authorId;
+    // Our own words, passed on. The face comes from our own avatar rather than
+    // from the contacts roster, which has no card for this phone.
+    final ours = id == Message.selfAuthorId;
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (id != null) ...[
+        if (ours) ...[
+          IdentityAvatar(
+            seed: name,
+            label: name,
+            size: 16,
+            imageBytes: ref.watch(avatarProvider),
+          ),
+          const SizedBox(width: 6),
+        ] else if (id != null) ...[
           PeerAvatar(peerId: id, label: name, size: 16),
           const SizedBox(width: 6),
         ] else ...[
@@ -2885,8 +2940,11 @@ class _ForwardHeader extends StatelessWidget {
     if (id == null) return row;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      // Our own profile is a tab, not a contact card. Pushing `/person/<our
+      // key>` would open the screen built for somebody else and fill it with
+      // nothing: no verification, no last seen, no way to write to them.
       onTap: () => context.push(
-        '/person/$id?name=${Uri.encodeComponent(name)}',
+        ours ? '/profile' : '/person/$id?name=${Uri.encodeComponent(name)}',
       ),
       child: row,
     );
