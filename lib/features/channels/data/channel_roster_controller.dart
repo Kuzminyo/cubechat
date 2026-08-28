@@ -126,6 +126,13 @@ class ChannelRosterController
     return member;
   }
 
+  /// Our own id in every roster: the first 16 hex characters of our Ed25519
+  /// key, which is all a signed channel frame reveals about who wrote it.
+  Future<String> selfMemberId() async {
+    final identity = await ref.read(identityProvider.future);
+    return fingerprintOf(identity.signPublicKey);
+  }
+
   Future<void> record(String channel, ChannelMember member) async {
     final current = state[channel] ?? const <String, ChannelMember>{};
     final old = current[member.id];

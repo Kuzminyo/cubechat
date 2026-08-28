@@ -136,6 +136,8 @@ class ConversationSettings {
     this.hideLastSeen = false,
     this.hideReadReceipts = false,
     this.preferRelay = false,
+    this.muted = false,
+    this.mutedUntil,
   });
 
   static const initial = ConversationSettings();
@@ -211,6 +213,27 @@ class ConversationSettings {
   /// link and good wifi wants the opposite, and only they can know that.
   final bool preferRelay;
 
+  /// Silenced: the messages arrive and are stored, nothing is announced.
+  ///
+  /// A second home for a setting that already has one, and deliberately. A 1:1
+  /// mute lives on the person ([KnownPeer.mutedAt]) because that is what it is
+  /// about — the same human across every place they turn up. A channel has no
+  /// person to hang it on: nobody is muting *#news*, they are muting a room.
+  /// So rooms keep it here, with the conversation, and [isMutedNow] is what
+  /// every surface asks. See the notification gate, which consults both.
+  ///
+  /// [mutedUntil] null while [muted] is on means indefinitely — what the
+  /// button in a channel's bar does. A date is what a timed mute writes, and
+  /// it expires on its own without anything having to sweep it: the getter
+  /// compares against the clock, so a mute that has run out is simply not one.
+  final bool muted;
+  final DateTime? mutedUntil;
+
+  /// Muted *right now*, which is the only question worth asking. An expired
+  /// timer is not a mute.
+  bool get isMutedNow =>
+      muted && (mutedUntil == null || mutedUntil!.isAfter(DateTime.now()));
+
   /// Whether copying, forwarding and sharing are off in this conversation —
   /// the question every message surface actually asks. Either side saying so
   /// is enough; it is a request about the conversation, not about one device.
@@ -227,6 +250,9 @@ class ConversationSettings {
     bool? hideLastSeen,
     bool? hideReadReceipts,
     bool? preferRelay,
+    bool? muted,
+    DateTime? mutedUntil,
+    bool clearMutedUntil = false,
   }) =>
       ConversationSettings(
         autoDelete: autoDelete ?? this.autoDelete,
@@ -239,6 +265,8 @@ class ConversationSettings {
         hideLastSeen: hideLastSeen ?? this.hideLastSeen,
         hideReadReceipts: hideReadReceipts ?? this.hideReadReceipts,
         preferRelay: preferRelay ?? this.preferRelay,
+        muted: muted ?? this.muted,
+        mutedUntil: clearMutedUntil ? null : (mutedUntil ?? this.mutedUntil),
       );
 
   /// True when there is nothing here worth storing. The hidings count: an
@@ -252,7 +280,8 @@ class ConversationSettings {
       !hideAvatar &&
       !hideLastSeen &&
       !hideReadReceipts &&
-      !preferRelay;
+      !preferRelay &&
+      !muted;
 
   @override
   bool operator ==(Object other) =>
@@ -265,7 +294,9 @@ class ConversationSettings {
       other.hideAvatar == hideAvatar &&
       other.hideLastSeen == hideLastSeen &&
       other.hideReadReceipts == hideReadReceipts &&
-      other.preferRelay == preferRelay;
+      other.preferRelay == preferRelay &&
+      other.muted == muted &&
+      other.mutedUntil == mutedUntil;
 
   @override
   int get hashCode => Object.hash(
@@ -278,6 +309,8 @@ class ConversationSettings {
         hideLastSeen,
         hideReadReceipts,
         preferRelay,
+        muted,
+        mutedUntil,
       );
 }
 
@@ -354,6 +387,21 @@ class ConversationSettingsController
       _put(chatId, forChat(chatId).copyWith(preferRelay: prefer));
 
   bool prefersRelay(String chatId) => forChat(chatId).preferRelay;
+
+  /// Silence a conversation, optionally until a moment.
+  ///
+  /// [until] null means indefinitely. Turning it off clears the deadline too,
+  /// so switching a timed mute off and on again does not resurrect a stale one.
+  Future<void> setMuted(String chatId, bool muted, {DateTime? until}) => _put(
+        chatId,
+        forChat(chatId).copyWith(
+          muted: muted,
+          mutedUntil: muted ? until : null,
+          clearMutedUntil: !muted || until == null,
+        ),
+      );
+
+  bool isMuted(String chatId) => forChat(chatId).isMutedNow;
 
   Future<void> setHideAvatar(String chatId, bool hidden) =>
       _put(chatId, forChat(chatId).copyWith(hideAvatar: hidden));
@@ -476,6 +524,12 @@ class ConversationSettingsController
             hideLastSeen: value['hideLastSeen'] == true,
             hideReadReceipts: value['hideReadReceipts'] == true,
             preferRelay: value['preferRelay'] == true,
+            muted: value['muted'] == true,
+            mutedUntil: value['mutedUntilMs'] is int
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    value['mutedUntilMs'] as int,
+                  )
+                : null,
           );
           if (!settings.isDefault) loaded[entry.key as String] = settings;
         }
@@ -510,6 +564,9 @@ class ConversationSettingsController
             if (entry.value.hideLastSeen) 'hideLastSeen': true,
             if (entry.value.hideReadReceipts) 'hideReadReceipts': true,
             if (entry.value.preferRelay) 'preferRelay': true,
+            if (entry.value.muted) 'muted': true,
+            if (entry.value.mutedUntil != null)
+              'mutedUntilMs': entry.value.mutedUntil!.millisecondsSinceEpoch,
           },
       });
     } catch (e) {

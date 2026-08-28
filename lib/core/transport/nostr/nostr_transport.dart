@@ -6,6 +6,21 @@ import 'package:meta/meta.dart';
 import 'nostr_event.dart';
 import 'nostr_frame_codec.dart';
 
+/// One inbound frame, and when the sender said they sent it.
+///
+/// `sentAt` comes off the Nostr event's `created_at`, which the sender chooses
+/// — so it is a claim, not a measurement. Treat it as an upper bound on
+/// freshness and never as proof of recency: clamp it to now before using it,
+/// or a peer could keep themselves permanently "just seen" by dating a beacon
+/// in the future.
+@immutable
+class InboundFrame {
+  const InboundFrame({required this.bytes, required this.sentAt});
+
+  final Uint8List bytes;
+  final DateTime sentAt;
+}
+
 /// cubechat's custom event kind for a frame-carrying direct message. Sits in
 /// the NIP-17 "regular DM" range but is cubechat-specific; the payload is our
 /// own encrypted frame (see [NostrFrameCodec]), not a NIP-04/44 message.
@@ -162,14 +177,37 @@ class NostrTransport {
     return _relay.publish(signed);
   }
 
-  /// Frames addressed to us, recovered from inbound Nostr events. Events whose
-  /// content isn't a cubechat frame are silently skipped (a shared public relay
-  /// carries unrelated traffic).
-  Stream<Uint8List> inboundFrames() {
+  /// Frames addressed to us, each with the moment its sender stamped it.
+  ///
+  /// Events whose content isn't a cubechat frame are silently skipped (a shared
+  /// public relay carries unrelated traffic).
+  ///
+  /// The timestamp is the point of this method. A relay *stores* events and
+  /// hands them over on the next subscription, so a frame can arrive hours
+  /// after it was written — and anything in it that is a claim about a moment
+  /// has to be read against when it was said, not when it turned up. A presence
+  /// beacon is exactly that: the last one a phone sent before its battery died
+  /// sat on a relay saying "I am in the app", and every fresh subscription
+  /// delivered it as news.
+  Stream<InboundFrame> inboundFramesTimed() {
     return _relay
         .subscribe(recipientPubkeyHex: _signer.npubHex)
-        .map((e) => NostrFrameCodec.decodeContent(e.content))
-        .where((bytes) => bytes != null)
-        .cast<Uint8List>();
+        .map((e) {
+          final bytes = NostrFrameCodec.decodeContent(e.content);
+          return bytes == null
+              ? null
+              : InboundFrame(
+                  bytes: bytes,
+                  sentAt: DateTime.fromMillisecondsSinceEpoch(
+                    e.createdAt * 1000,
+                  ),
+                );
+        })
+        .where((frame) => frame != null)
+        .cast<InboundFrame>();
   }
+
+  /// The same stream for callers with nothing to date: the frame bytes alone.
+  Stream<Uint8List> inboundFrames() =>
+      inboundFramesTimed().map((frame) => frame.bytes);
 }

@@ -465,7 +465,7 @@ class MessagingService {
   /// fallback switched on with at least one relay configured.
   WebSocketNostrRelayClient? _relayClient;
   NostrTransport? _nostr;
-  StreamSubscription<Uint8List>? _nostrSub;
+  StreamSubscription<InboundFrame>? _nostrSub;
   StreamSubscription<Map<String, RelayState>>? _relayStateSub;
 
   /// Last seen relay connectivity, so [nudgeFileQueue] fires on the edge rather
@@ -517,8 +517,14 @@ class MessagingService {
       final transport = NostrTransport(signer: signer, relay: client);
       _relayClient = client;
       _nostr = transport;
-      _nostrSub = transport.inboundFrames().listen(
-            (bytes) => unawaited(_handleInboundBytes(_nostrPeerId, bytes)),
+      _nostrSub = transport.inboundFramesTimed().listen(
+            (frame) => unawaited(_handleInboundBytes(
+              _nostrPeerId,
+              frame.bytes,
+              // When they said it, not when it reached us. A relay holds
+              // events for whoever subscribes next — see [InboundFrame].
+              sentAt: frame.sentAt,
+            )),
             onError: (Object e) =>
                 DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
           );
@@ -3530,6 +3536,43 @@ class MessagingService {
     }
   }
 
+  /// Copy a post into the room where it is discussed.
+  ///
+  /// Only for an announcement channel, and only from the side that posted it.
+  /// A room where anyone may write already *is* its own discussion; it is the
+  /// one-way channel that needs somewhere for the reply to go, which is the
+  /// whole reason Telegram grew a linked group.
+  ///
+  /// The copy is an ordinary message in an ordinary room, so what a reader
+  /// finds there is the post followed by whatever was said about it, in the
+  /// order it was said — which is what "comments under the post" comes to when
+  /// nothing anywhere is keeping a thread. No new payload, no thread ids, and
+  /// an old build in the same room sees a plain group chat.
+  ///
+  /// Best effort, deliberately. A post that reached the channel is delivered;
+  /// failing to echo it into the discussion must not report the post as failed,
+  /// so nobody awaits this and it swallows its own errors.
+  Future<void> _mirrorToCommunity(Channel channel, String text) async {
+    // The discussion room is itself a channel, and posting into it comes back
+    // through here. Without this the first comment would echo into
+    // `#news-chat-chat` and keep going.
+    if (channelForCommunity(channel.name) != null) return;
+    if (!channel.adminOnly) return;
+    try {
+      final channels = _ref.read(channelControllerProvider.notifier);
+      final community = await channels.joinCommunity(
+        channel.name,
+        // We are posting to an admin-only room, so we are one of its admins —
+        // [_ensureCanPostToChannel] established that before we got here.
+        asAdmin: true,
+      );
+      if (community == null) return;
+      await sendChannelText(community.name, text);
+    } catch (e) {
+      debugPrint('mirror to community failed: $e');
+    }
+  }
+
   /// Post [text] to a joined channel. Encrypted under the shared channel key
   /// and broadcast across the mesh; every member with the key decrypts it.
   /// Returns the local pending Message (bucketed under the channel name).
@@ -3572,6 +3615,7 @@ class MessagingService {
         msg.id,
         fanout > 0 ? MessageRoute.mesh : MessageRoute.queued,
       );
+      unawaited(_mirrorToCommunity(channel, text));
     } catch (e, st) {
       debugPrint('sendChannelText failed: $e\n$st');
       messages.updateStatus(canonicalId, msg.id, MessageStatus.failed);
@@ -4871,6 +4915,7 @@ class MessagingService {
     String peerId,
     Uint8List bytes, {
     bool fromCentral = false,
+    DateTime? sentAt,
   }) async {
     final Frame frame;
     try {
@@ -4886,17 +4931,27 @@ class MessagingService {
     if (frame.type == FrameType.fragment) {
       final whole = _fragments.ingest(peerId, frame.payload);
       if (whole != null) {
-        await _handleInboundBytes(peerId, whole, fromCentral: fromCentral);
+        await _handleInboundBytes(
+          peerId,
+          whole,
+          fromCentral: fromCentral,
+          sentAt: sentAt,
+        );
       }
       return;
     }
-    await _handleFrame(peerId, frame, fromCentral: fromCentral);
+    await _handleFrame(peerId, frame, fromCentral: fromCentral, sentAt: sentAt);
   }
 
   Future<void> _handleFrame(
     String peerId,
     Frame frame, {
     required bool fromCentral,
+    /// When the sender stamped this, for the payloads that are a claim about a
+    /// moment. Null on a radio link, where arrival *is* the moment: a
+    /// Bluetooth frame was written to the air by somebody in range, seconds
+    /// ago. Only the relay can hand over something written hours before.
+    DateTime? sentAt,
   }) async {
     // Transport frames during chunked-media transfer fire dozens-per-second.
     // Logging every one swamps the in-memory ring buffer; we only log
@@ -4969,7 +5024,7 @@ class MessagingService {
           await _writeBack(peerId, reply, fromCentral: fromCentral);
 
       case FrameType.transport:
-        await _handleTransportFrame(peerId, frame);
+        await _handleTransportFrame(peerId, frame, sentAt: sentAt);
 
       case FrameType.peerAnnouncement:
         await _handlePeerAnnouncementFrame(peerId, frame);
@@ -4989,7 +5044,13 @@ class MessagingService {
   /// Transport-frame dispatch — pulls the envelope apart, decides whether
   /// this frame is for us or for someone else (relay path lands in M3.E),
   /// and decrypts + delivers when addressed.
-  Future<void> _handleTransportFrame(String peerId, Frame frame) async {
+  Future<void> _handleTransportFrame(
+    String peerId,
+    Frame frame, {
+    /// When the sender stamped it — see [_handleFrame]. Only the payloads
+    /// that are a claim about a moment look at this.
+    DateTime? sentAt,
+  }) async {
     final TransportEnvelope env;
     try {
       env = TransportEnvelope.decode(frame.payload);
@@ -5400,6 +5461,7 @@ class MessagingService {
             peerId: peerId,
             senderPub: senderPub,
             body: unpacked.body,
+            sentAt: sentAt,
           );
 
         case InnerPayloadType.avatarRequest:
@@ -7854,6 +7916,7 @@ class MessagingService {
     required String peerId,
     required Uint8List? senderPub,
     required Uint8List body,
+    DateTime? sentAt,
   }) {
     final PresenceBeacon beacon;
     try {
@@ -7869,11 +7932,35 @@ class MessagingService {
       return;
     }
     final canonical = _hexOf(senderPub);
-    _ref.read(presenceControllerProvider.notifier).record(
-          canonical,
-          online: beacon.online,
-          hidesLastSeen: beacon.hideLastSeen,
-        );
+    // Dated by the sender, and never later than now.
+    //
+    // The beacon itself carries no clock, so this is the event's `created_at`
+    // — which is a claim the sender makes, hence the clamp: without it a peer
+    // could stay permanently "in the app" by dating every beacon a year ahead.
+    // Clamping only ever makes a beacon look older, which is the safe
+    // direction for a freshness test.
+    //
+    // Getting this wrong is the bug being fixed. A relay keeps events for
+    // whoever subscribes next, so the last "I am here" a phone managed before
+    // it died was handed to us on our next launch and stamped with *our*
+    // clock. The owner had switched the phone off inside the app, and the
+    // header said they were online — for a fresh 150 seconds every time the
+    // relay reconnected.
+    final now = DateTime.now();
+    final stamp =
+        (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
+    // Past believing before it is even recorded. A backlog beacon says what
+    // somebody was doing at a moment that has gone; it is history, and the
+    // only thing left to do with it is the last-seen mark below.
+    final fresh = now.difference(stamp) < PeerPresence.ttl;
+    if (fresh) {
+      _ref.read(presenceControllerProvider.notifier).record(
+            canonical,
+            online: beacon.online,
+            hidesLastSeen: beacon.hideLastSeen,
+            at: stamp,
+          );
+    }
     // Both kinds of beacon are evidence of life *now* — a goodbye most of all,
     // since it is the last thing they did before closing the app. Refreshing
     // only on "hello" left the header showing the moment they *arrived*
@@ -7883,9 +7970,19 @@ class MessagingService {
     // Safe because [peerIsOnline] gives a fresh beacon precedence over
     // lastSeen: a peer who just said goodbye still reads as offline, now with
     // a timestamp that means "just now" instead of one that means nothing.
-    _ref.read(knownPeersControllerProvider.notifier).markPresent(canonical);
-    DebugLog.instance.log('PRESENCE',
-        '${canonical.substring(0, 8)} is ${beacon.online ? 'online' : 'offline'}');
+    //
+    // At the beacon's own moment, not at ours, for the same reason: a beacon
+    // that waited on a relay is evidence of life *then*. [markPresent] never
+    // moves the mark backwards, so a stale one cannot undo a fresher answer.
+    _ref
+        .read(knownPeersControllerProvider.notifier)
+        .markPresent(canonical, at: stamp);
+    DebugLog.instance.log(
+      'PRESENCE',
+      '${canonical.substring(0, 8)} is '
+          '${beacon.online ? 'online' : 'offline'}'
+          '${fresh ? '' : ' (stale by ${now.difference(stamp).inMinutes} min)'}',
+    );
   }
 
   /// Broadcast our announcement immediately, outside the periodic heartbeat.
@@ -8285,6 +8382,14 @@ class MessagingService {
     final known = _ref.read(knownPeersControllerProvider)[canonicalId];
     // Muted peer: message is stored, but stays silent.
     if (known?.isMuted ?? false) return;
+    // And a muted room. A channel has no [KnownPeer] to hang a mute on — the
+    // line above can only ever answer for a person — so rooms keep theirs with
+    // the conversation. See [ConversationSettings.muted].
+    if (_ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .isMuted(canonicalId)) {
+      return;
+    }
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
         : 'New message';

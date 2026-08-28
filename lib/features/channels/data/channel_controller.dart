@@ -85,6 +85,45 @@ class ChannelController extends Notifier<Map<String, Channel>> {
     return _store(name, key, tag, hasPassword: false, viaInvite: true);
   }
 
+  /// Open the discussion room attached to [channelName], joining it if this is
+  /// the first time.
+  ///
+  /// Nothing is asked for and nothing is sent: the key falls out of the
+  /// channel's own key, so every member derives the same room and a member who
+  /// has never opened comments before is admitted by arithmetic. Returns null
+  /// when we are not in the channel — there is nothing to derive from.
+  ///
+  /// [asAdmin] is the caller's standing in the *channel*. It decides whether
+  /// this join may claim the discussion room's admin seat, and it is the only
+  /// honest answer available: a room's first member is indistinguishable from
+  /// its tenth (see [Channel.viaInvite]), so without this the seat would go to
+  /// whoever tapped Comments first.
+  Future<Channel?> joinCommunity(
+    String channelName, {
+    required bool asAdmin,
+  }) async {
+    final parent = byName(channelName);
+    if (parent == null) return null;
+    final name = communityNameFor(parent.name);
+    final existing = state[name];
+    if (existing != null) return existing;
+    final key = await ChannelCrypto.deriveCommunityKey(parent.key);
+    final tag = await ChannelCrypto.deriveTag(key);
+    return _store(
+      name,
+      key,
+      tag,
+      // Cosmetic, and inherited so a locked channel's comments do not read as
+      // an open room.
+      hasPassword: parent.hasPassword,
+      viaInvite: !asAdmin,
+    );
+  }
+
+  /// The discussion room for [channelName], if it has been opened.
+  Channel? communityFor(String channelName) =>
+      state[communityNameFor(channelName)];
+
   Future<Channel> _store(
     String name,
     Uint8List key,

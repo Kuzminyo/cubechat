@@ -62,6 +62,33 @@ class Channel {
   final bool adminOnly;
 }
 
+/// What a channel's discussion room is called.
+///
+/// `#news` discusses in `#news-chat`. Derived rather than linked, for the same
+/// reason admin is claimed rather than granted: there is no server to hold a
+/// link and no creation event to attach one to, so the only relationship two
+/// rooms can have is one both sides can compute. The key comes from the
+/// channel's key — see [ChannelCrypto.deriveCommunityKey] — so the name is a
+/// label, not a secret, and a stranger typing `#news-chat` derives a different
+/// room from the one the comments are in.
+const String communitySuffix = '-chat';
+
+String communityNameFor(String channelName) =>
+    '${normalizeChannelName(channelName)}$communitySuffix';
+
+/// The channel a discussion room belongs to, by name alone.
+///
+/// Only a claim about the name. Whether the room *is* that channel's community
+/// is settled by the key, and the caller checks that by looking for the parent
+/// among the channels actually joined — a room somebody genuinely called
+/// `#foo-chat` derives its key from its own name and matches nothing.
+String? channelForCommunity(String name) {
+  final n = normalizeChannelName(name);
+  if (!n.endsWith(communitySuffix)) return null;
+  final parent = n.substring(0, n.length - communitySuffix.length);
+  return parent.length > 1 ? parent : null;
+}
+
 /// Canonical form of a channel name: lower-case, a single leading `#`, and no
 /// internal whitespace (spaces would otherwise let `#foo bar` and `#foo-bar`
 /// derive different keys for what a user typed as "the same" room). Returns

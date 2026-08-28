@@ -576,6 +576,47 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelSubtitle => 'Group channel · shared key';
 
   @override
+  String get channelMute => 'Mute';
+
+  @override
+  String get channelUnmute => 'Unmute';
+
+  @override
+  String channelMutedUntil(String time) {
+    return 'Muted until $time';
+  }
+
+  @override
+  String get channelMuteFor => 'Mute for…';
+
+  @override
+  String channelMuteHours(int hours) {
+    return '$hours hours';
+  }
+
+  @override
+  String channelMuteDays(int days) {
+    return '$days days';
+  }
+
+  @override
+  String get channelMuteForever => 'Until I turn it back on';
+
+  @override
+  String get channelCommunity => 'Comments';
+
+  @override
+  String get channelCommunityOpen => 'Open the discussion';
+
+  @override
+  String channelCommunitySubtitle(String channel) {
+    return 'Discussion for $channel';
+  }
+
+  @override
+  String get channelBackToChannel => 'Back to the channel';
+
+  @override
   String get chatsStatusChannel => 'channel';
 
   @override

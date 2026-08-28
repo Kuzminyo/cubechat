@@ -579,6 +579,47 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelSubtitle => 'Груповий канал · спільний ключ';
 
   @override
+  String get channelMute => 'Не сповіщати';
+
+  @override
+  String get channelUnmute => 'Сповіщати';
+
+  @override
+  String channelMutedUntil(String time) {
+    return 'Без звуку до $time';
+  }
+
+  @override
+  String get channelMuteFor => 'Не сповіщати…';
+
+  @override
+  String channelMuteHours(int hours) {
+    return '$hours год';
+  }
+
+  @override
+  String channelMuteDays(int days) {
+    return '$days дн';
+  }
+
+  @override
+  String get channelMuteForever => 'Доки не увімкну знову';
+
+  @override
+  String get channelCommunity => 'Коментарі';
+
+  @override
+  String get channelCommunityOpen => 'Відкрити обговорення';
+
+  @override
+  String channelCommunitySubtitle(String channel) {
+    return 'Обговорення $channel';
+  }
+
+  @override
+  String get channelBackToChannel => 'До каналу';
+
+  @override
   String get chatsStatusChannel => 'канал';
 
   @override

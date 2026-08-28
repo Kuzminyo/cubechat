@@ -36,6 +36,7 @@ class ChannelCrypto {
 
   static const _keyDomain = 'cubechat-channel-key-v1';
   static const _tagDomain = 'cubechat-channel-tag-v1';
+  static const _communityDomain = 'cubechat-channel-community-v1';
 
   /// Derive the 32-byte channel key from a [name] and (possibly empty)
   /// [password]. `name` is expected to include its leading `#`. The domain
@@ -49,6 +50,27 @@ class ChannelCrypto {
       0,
       ...utf8.encode(password),
     ];
+    final digest = await _blake.hash(material);
+    return Uint8List.fromList(digest.bytes);
+  }
+
+  /// The key of the discussion room attached to a channel.
+  ///
+  /// From the channel's own key rather than from a name and a password, and
+  /// that is the whole design: holding the channel is what admits you to its
+  /// comments, with no second password to agree on, no second invitation to
+  /// send, and no link for a server to hold — there being no server. Everyone
+  /// who can read a post can derive the room its comments live in, and nobody
+  /// else can.
+  ///
+  /// One-way, like [deriveTag]: a community key does not hand back the
+  /// channel's, so somebody given only the discussion room cannot read the
+  /// channel it belongs to.
+  static Future<Uint8List> deriveCommunityKey(Uint8List channelKey) async {
+    if (channelKey.length != keyLen) {
+      throw const FormatException('channel key must be 32 bytes');
+    }
+    final material = <int>[...utf8.encode(_communityDomain), ...channelKey];
     final digest = await _blake.hash(material);
     return Uint8List.fromList(digest.bytes);
   }

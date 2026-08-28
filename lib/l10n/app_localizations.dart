@@ -1094,6 +1094,72 @@ abstract class AppLocalizations {
   /// **'Group channel · shared key'**
   String get channelSubtitle;
 
+  /// No description provided for @channelMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute'**
+  String get channelMute;
+
+  /// No description provided for @channelUnmute.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmute'**
+  String get channelUnmute;
+
+  /// No description provided for @channelMutedUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted until {time}'**
+  String channelMutedUntil(String time);
+
+  /// No description provided for @channelMuteFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute for…'**
+  String get channelMuteFor;
+
+  /// No description provided for @channelMuteHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} hours'**
+  String channelMuteHours(int hours);
+
+  /// No description provided for @channelMuteDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} days'**
+  String channelMuteDays(int days);
+
+  /// No description provided for @channelMuteForever.
+  ///
+  /// In en, this message translates to:
+  /// **'Until I turn it back on'**
+  String get channelMuteForever;
+
+  /// No description provided for @channelCommunity.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get channelCommunity;
+
+  /// No description provided for @channelCommunityOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the discussion'**
+  String get channelCommunityOpen;
+
+  /// No description provided for @channelCommunitySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discussion for {channel}'**
+  String channelCommunitySubtitle(String channel);
+
+  /// No description provided for @channelBackToChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the channel'**
+  String get channelBackToChannel;
+
   /// No description provided for @chatsStatusChannel.
   ///
   /// In en, this message translates to:

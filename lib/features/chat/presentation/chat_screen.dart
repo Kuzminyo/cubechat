@@ -31,7 +31,10 @@ import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../channels/data/channel_roster_controller.dart';
+import '../../channels/models/channel.dart' show channelForCommunity;
 import '../../channels/presentation/channel_poll_composer.dart';
+import '../../channels/presentation/channel_viewer_bar.dart';
+import '../../chats/presentation/chats_list_screen.dart' show channelRoute;
 import '../../chats/data/read_markers_controller.dart';
 import '../../chats/data/saved_messages.dart';
 import '../../chats/data/saved_tags_controller.dart';
@@ -531,6 +534,17 @@ class ChatScreen extends ConsumerWidget {
     final channel = saved ? null : ref.watch(channelControllerProvider)[peerId];
     final joined = saved || channel != null;
     final rosterVersion = ref.watch(channelRosterControllerProvider);
+    // A discussion room says whose discussion it is.
+    //
+    // By name it is just `#news-chat`, which in a chat list sits next to
+    // `#news` looking like somebody's second room. The claim is checked
+    // against the channels actually joined rather than taken from the suffix:
+    // a room genuinely called `#news-chat` derives its key from its own name
+    // and has nothing to do with `#news`, and we may not be in `#news` at all.
+    final parentChannel =
+        saved ? null : channelForCommunity(peerId);
+    final isCommunity = parentChannel != null &&
+        ref.watch(channelControllerProvider)[parentChannel] != null;
     final self = saved
         ? null
         : ref.watch(_channelSelfMemberProvider(peerId)).valueOrNull;
@@ -577,13 +591,21 @@ class ChatScreen extends ConsumerWidget {
               // Saved notes are not a broadcast; the composer branches on the
               // reserved id before it consults this.
               isChannel: !saved,
+              // Joined, and the room is admins-only. That is a reader, and a
+              // reader gets a reader's island rather than a text field that
+              // takes a message and drops it.
+              readerOnly: !saved && joined && !canPost,
             ),
             header: _ChatHeader(
               onBack: () => _goBack(context),
               chatId: peerId,
               avatarSeed: peerId,
               label: peerLabel,
-              statusText: saved ? t.savedSubtitle : t.channelSubtitle,
+              statusText: saved
+                  ? t.savedSubtitle
+                  : isCommunity
+                      ? t.channelCommunitySubtitle(parentChannel)
+                      : t.channelSubtitle,
               statusColor: AppColors.textOnGlassDim,
               route: saved ? null : route.route,
               routeHops: saved ? null : route.hops,
@@ -3291,12 +3313,21 @@ class _ChatBottomBar extends ConsumerStatefulWidget {
     required this.canonicalId,
     required this.canSend,
     this.isChannel = false,
+    this.readerOnly = false,
   });
 
   final String peerId;
   final String canonicalId;
   final bool canSend;
   final bool isChannel;
+
+  /// In this room, but not allowed to post in it.
+  ///
+  /// Held apart from `!canSend`, which is also false for a channel we have not
+  /// joined and for a 1:1 chat still shaking hands. Those two are waiting for
+  /// something; this one is a settled state with its own controls — see
+  /// [ChannelViewerBar].
+  final bool readerOnly;
 
   @override
   ConsumerState<_ChatBottomBar> createState() => _ChatBottomBarState();
@@ -4394,6 +4425,22 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
   }
 
+  /// Take the reader to this channel's discussion room, joining it on the way.
+  ///
+  /// Nothing is sent: the room's key is derived from the channel's own, so
+  /// this is arithmetic rather than a request that could be refused. It can
+  /// still come back empty — for a channel we are not actually in, which is
+  /// the one case with nothing to derive from.
+  Future<void> _openCommunity() async {
+    final name = await openCommunityFor(ref, widget.canonicalId);
+    if (!mounted || !context.mounted) return;
+    if (name == null) {
+      showCommunityUnavailable(context);
+      return;
+    }
+    context.push(channelRoute(name));
+  }
+
   @override
   Widget build(BuildContext context) {
     FrameStats.countBuild('chat');
@@ -4428,6 +4475,29 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     final selectedMessages = ref.watch(messageSelectionProvider(
       widget.canonicalId,
     ));
+
+    // A reader's island, in place of a composer that would take a message and
+    // then drop it. Before the composer is built rather than instead of it at
+    // the end: there is no draft to restore, no typing to announce and no
+    // attach sheet to prepare for somebody who cannot post.
+    if (widget.readerOnly) {
+      return PopScope<void>(
+        canPop: selectedMessages.isEmpty,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop || selectedMessages.isEmpty) return;
+          ref
+              .read(messageSelectionProvider(widget.canonicalId).notifier)
+              .clear();
+        },
+        child: ChannelViewerBar(
+          channelName: widget.canonicalId,
+          onSearch: () => ref
+              .read(_chatSearchOpenProvider(widget.canonicalId).notifier)
+              .state = true,
+          onOpenCommunity: () => unawaited(_openCommunity()),
+        ),
+      );
+    }
 
     // Inline edit: only when the target belongs to THIS chat.
     final editTarget = ref.watch(messageEditTargetProvider);
