@@ -189,11 +189,20 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   /// Called only from a presence beacon, which is the only message that means
   /// it. Everything else — announcements, handshakes, relayed frames — says a
   /// phone is reachable, and a phone is reachable while its owner is asleep.
-  Future<void> markPresent(String pubkeyHex) async {
+  Future<void> markPresent(String pubkeyHex, {DateTime? at}) async {
     final existing = state[pubkeyHex];
     if (existing == null) return;
-    final now = DateTime.now();
-    final updated = existing.copyWith(lastSeen: now, lastPresenceAt: now);
+    final when = at ?? DateTime.now();
+    // Never backwards. A message can arrive long after it was written — held
+    // by a relay, carried by a data mule — and its own timestamp is the honest
+    // answer to "when were they last there", but it must not undo a beacon
+    // that arrived since.
+    final known = existing.lastPresenceAt;
+    if (known != null && !when.isAfter(known)) return;
+    final updated = existing.copyWith(
+      lastSeen: existing.lastSeen.isAfter(when) ? existing.lastSeen : when,
+      lastPresenceAt: when,
+    );
     state = {...state, pubkeyHex: updated};
     await _persist(updated);
   }

@@ -162,8 +162,7 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
               if (_selecting)
                 IconButton(
                   tooltip: t.chatUnpinAction,
-                  icon: Icon(Icons.push_pin_rounded,
-                      color: AppColors.textOnGlass),
+                  icon: _UnpinIcon(color: AppColors.textOnGlass),
                   onPressed: () => _unpick(_picked.toList()),
                 ),
             ],
@@ -214,6 +213,58 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
                   ),
                 ),
         ),
+      ),
+    );
+  }
+}
+
+/// A pin with a line through it.
+///
+/// Material has `link_off`, `notifications_off` and a dozen more, and no
+/// crossed-out pin — so it is drawn the way those are: the glyph, and a stroke
+/// across it at the angle Material uses for the rest of the family.
+///
+/// Two strokes, not one. The wider one is the backdrop's own dark and sits
+/// behind the bright one, which is what keeps the line readable where it
+/// crosses the thickest part of the pin instead of vanishing into it.
+class _UnpinIcon extends StatelessWidget {
+  const _UnpinIcon({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = IconTheme.of(context).size ?? 24;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.push_pin_rounded, color: color, size: size),
+          Transform.rotate(
+            angle: -0.785398,
+            child: Container(
+              width: size * 0.92,
+              height: 3.4,
+              decoration: BoxDecoration(
+                color: AppColors.paneBase,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Transform.rotate(
+            angle: -0.785398,
+            child: Container(
+              width: size * 0.92,
+              height: 1.8,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

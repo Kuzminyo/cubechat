@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../peers/data/known_peers_controller.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -133,7 +134,37 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     final next = [...current, msg];
     state = {...state, peerId: next};
     _persist(peerId, next);
+    _notePresence(peerId, msg);
     return true;
+  }
+
+  /// A message from somebody is evidence they were in the app when they wrote
+  /// it — which is the question "last online" is asking.
+  ///
+  /// The other source is a presence beacon, and beacons only exist going
+  /// forward: a phone that has never sent one has no answer at all, so a
+  /// restored history would have shown nothing for every contact until the
+  /// next time each of them happened to open the app. The messages are already
+  /// there and already carry the moment they were written.
+  ///
+  /// Their own `sentAt`, not the arrival time. A message can wait on a relay
+  /// or ride in somebody's pocket for a day, and reporting the moment it
+  /// reached this phone would claim the sender was awake when they were not.
+  ///
+  /// Only what a person makes. Receipts, presence beacons and announcements go
+  /// nowhere near this method — they are the phone talking, and mistaking that
+  /// for the person is the bug being fixed.
+  void _notePresence(String peerId, Message msg) {
+    if (msg.isMine) return;
+    // A conversation is filed under a pubkey; a channel under its name, and a
+    // room says nothing about which member was present.
+    if (peerId.length != 64) return;
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(peerId)) return;
+    unawaited(
+      ref
+          .read(knownPeersControllerProvider.notifier)
+          .markPresent(peerId, at: msg.sentAt),
+    );
   }
 
   /// Point an existing attachment bubble at a file that has just landed again.

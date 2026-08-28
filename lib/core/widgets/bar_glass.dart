@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import 'floating_glass.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
 /// like the bar can *be* the bar rather than an approximation of it.
@@ -41,35 +42,10 @@ class BarGlass extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        // A shadow of its own, unlike the floating panes.
-        //
-        // Those sit over a wallpaper and a photograph, where a black halo does
-        // not read as height — it reads as grime, which is why their list is
-        // empty and why this file used to share it. The bar is different in
-        // every way that matters: it is opaque, it never moves, and what is
-        // behind it is the app's own backdrop rather than somebody's holiday
-        // photo. Without a shadow it reads as painted onto the screen instead
-        // of lying on it, which is what "flat, 2D" means.
-        //
-        // Two of them, both tight and both pulled in with negative spread: a
-        // close contact shadow that says the bar is a millimetre off the
-        // surface, and a wider ambient one that gives it somewhere to be. A
-        // single wide soft shadow would smear a dark band under the bar, and
-        // that band is the "plate" this surface exists not to sit on.
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x73000000),
-            blurRadius: 12,
-            offset: Offset(0, 5),
-            spreadRadius: -5,
-          ),
-          BoxShadow(
-            color: Color(0x40000000),
-            blurRadius: 26,
-            offset: Offset(0, 12),
-            spreadRadius: -14,
-          ),
-        ],
+        // Shared, not a second hand-tuned copy — which is what this was, and
+        // it is why the pair outlived the comment in FloatingGlass telling
+        // anyone editing them to keep the two in step.
+        boxShadow: FloatingGlass.shadows,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -108,55 +84,18 @@ class BarGlass extends StatelessWidget {
               // translucent version look like glass in the first place.
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  // A lit top edge, then a long fall to the darkest tone.
-                  //
-                  // The old ramp went from 97% to 100% opacity of the same
-                  // colour, which is a change nobody can see: the bar was one
-                  // flat tone with a hairline round it. What makes a surface
-                  // look like an object is a light source, and the app has one
-                  // by convention — above. So the first two percent of the
-                  // height carry the palette's white, the body sits in the
-                  // pane's own dark, and the bottom is darker still, as if the
-                  // far edge were turning away.
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      AppColors.glass(0.16),
-                      AppColors.pane(0.94),
-                      AppColors.paneBase,
+                      AppColors.pane(0.97),
                       AppColors.pane(0.99),
+                      AppColors.paneBase,
                     ],
-                    stops: const [0, 0.06, 0.72, 1],
+                    stops: const [0, 0.35, 1],
                   ),
                   borderRadius: BorderRadius.circular(radius),
-                  border: Border.all(color: AppColors.glass(0.14)),
-                ),
-              ),
-            ),
-            // The rim light.
-            //
-            // A border is the same brightness the whole way round, which reads
-            // as a drawn outline. Something lit from above catches the light on
-            // its upper edge and nowhere else, and that single asymmetry is
-            // most of what tells the eye a surface has a thickness. Flutter has
-            // no gradient border, so it is a hairline of its own laid along the
-            // top inside the clip — where the rounded corners cut it off
-            // exactly where the curve turns away from the light.
-            Positioned(
-              left: radius / 2,
-              right: radius / 2,
-              top: 0,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.glass(0),
-                      AppColors.glass(0.34),
-                      AppColors.glass(0),
-                    ],
-                  ),
+                  border: Border.all(color: AppColors.glass(0.16)),
                 ),
               ),
             ),

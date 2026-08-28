@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
+import '../../../core/util/media_storage.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/crypto/prekey_service.dart';
 import '../../channels/data/channel_roster_controller.dart';
@@ -60,8 +62,100 @@ class BackupService {
         'ed25519': base64Url.encode(identity.signPrivateKey),
       },
       'boxes': boxes,
+      'media': await _collectMedia(),
     };
     return _codec.encrypt(payload, password: password);
+  }
+
+  /// Directories whose contents a conversation refers to but does not contain.
+  ///
+  /// Everything in Hive was already in the backup — messages, contacts, pins,
+  /// the nickname, avatars, every setting. What was not is what those records
+  /// *point at*: a message says "there is a photograph at this path", and the
+  /// path is all that survived. Restoring on a fresh phone gave you the whole
+  /// history with a grey box where every picture, voice note and sticker had
+  /// been, which is not what "a backup" means to anybody.
+  static const _mediaDirs = <String>[
+    'cubechat-images',
+    'cubechat-sent',
+    'cubechat-audio',
+    'cubechat-stickers',
+  ];
+
+  /// Every media file, keyed by `directory/filename`.
+  ///
+  /// Stored by name rather than by absolute path on purpose: the documents
+  /// directory has a different absolute path on the phone this is restored
+  /// onto — iOS changes it between installs of the *same* app — so an absolute
+  /// path is the one thing here guaranteed not to survive the trip.
+  Future<Map<String, Object?>> _collectMedia() async {
+    final out = <String, Object?>{};
+    for (final name in _mediaDirs) {
+      final Directory dir;
+      try {
+        dir = await mediaDirectory(name);
+      } catch (_) {
+        continue;
+      }
+      if (!dir.existsSync()) continue;
+      for (final entity in dir.listSync()) {
+        if (entity is! File) continue;
+        try {
+          final bytes = await entity.readAsBytes();
+          // A backup that refuses to be made is worse than one missing a
+          // video: anything implausible for a chat attachment is skipped
+          // rather than allowed to push the whole payload out of memory.
+          if (bytes.length > _maxMediaBytes) continue;
+          final base = entity.path.split(Platform.pathSeparator).last;
+          out['$name/$base'] = base64Url.encode(bytes);
+        } catch (_) {
+          // A file being written as the backup is read, or one the OS has
+          // taken away. Skipped, not fatal.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Per file. Photos are capped by the picker long before this; the limit is
+  /// here for the pathological case, not the ordinary one.
+  static const int _maxMediaBytes = 64 * 1024 * 1024;
+
+  /// Put the files back where the records expect them.
+  ///
+  /// Written before the boxes are restored would be pointless and after is
+  /// fine: nothing reads a media path until something draws it, and by then
+  /// both halves are in place.
+  Future<void> _restoreMedia(Object? raw) async {
+    if (raw is! Map) return;
+    for (final entry in raw.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      if (key is! String || value is! String) continue;
+      final slash = key.indexOf('/');
+      if (slash <= 0) continue;
+      final dirName = key.substring(0, slash);
+      final fileName = key.substring(slash + 1);
+      // Only the directories this backup writes, and only a bare filename.
+      // A path arriving from a file somebody else made is not going to be
+      // allowed to name a location.
+      if (!_mediaDirs.contains(dirName)) continue;
+      if (fileName.isEmpty ||
+          fileName.contains('/') ||
+          fileName.contains(r'') ||
+          fileName.contains('..')) {
+        continue;
+      }
+      try {
+        final dir = await mediaDirectory(dirName);
+        final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+        if (file.existsSync()) continue;
+        await file.writeAsBytes(base64Url.decode(value), flush: true);
+      } catch (_) {
+        // One unwritable file does not fail a restore that has already put
+        // the conversations back.
+      }
+    }
   }
 
   /// Decrypts and validates everything before replacing local state.
@@ -71,6 +165,11 @@ class BackupService {
   }) async {
     final payload = await _codec.decrypt(encrypted, password: password);
     final prepared = _validatePayload(payload);
+    // The files the records point at. Before the boxes go in, because a
+    // half-restored phone that has the conversation and not the photograph is
+    // the state this whole change exists to stop — and if the write fails,
+    // nothing has been replaced yet.
+    await _restoreMedia(payload['media']);
 
     // Stop transports first so no late relay/presence write can land while the
     // boxes are being replaced.
