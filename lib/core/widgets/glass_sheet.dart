@@ -9,11 +9,24 @@ import 'bar_glass.dart';
 /// an island that has to look like it floats there. The reverse is the half
 /// people complained about: closing was instant, which reads as the sheet being
 /// deleted rather than put away.
+/// How a sheet arrives and leaves.
+///
+/// Leaving was 280 ms on `easeInCubic`, which is the textbook exit curve and is
+/// wrong for this particular sheet. `easeIn` starts slowly and *accelerates*,
+/// so the last third of the travel happens in almost no time — on a small
+/// element that reads as decisiveness, and on the media island, which is nearly
+/// the whole screen, it reads as the thing being snatched away. Reported as
+/// having no closing animation at all, which is what "too fast to see" means.
+///
+/// Symmetric now, and at the same 340 ms as the arrival. `easeInOutCubic`
+/// eases away from rest and eases back into it, so the island is still moving
+/// visibly when it reaches the bottom of the screen instead of disappearing off
+/// the last few hundred pixels in two frames.
 const AnimationStyle glassSheetMotion = AnimationStyle(
   duration: Duration(milliseconds: 340),
-  reverseDuration: Duration(milliseconds: 280),
+  reverseDuration: Duration(milliseconds: 340),
   curve: Curves.easeOutCubic,
-  reverseCurve: Curves.easeInCubic,
+  reverseCurve: Curves.easeInOutCubic,
 );
 
 /// A modal sheet that floats, the way the nav bar and the composer do.

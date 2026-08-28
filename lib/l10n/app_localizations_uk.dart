@@ -716,6 +716,28 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatUnpinAction => 'Відкріпити';
 
   @override
+  String chatPinnedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count закріплених повідомлень',
+      few: '$count закріплені повідомлення',
+      one: '1 закріплене повідомлення',
+      zero: 'Немає закріплених',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatNoPins => 'Тут нічого не закріплено';
+
+  @override
+  String get chatUnpinAll => 'Відкріпити всі повідомлення';
+
+  @override
+  String get chatShowAllPins => 'Усі закріплені повідомлення';
+
+  @override
   String get chatUnpinConfirm => 'Відкріпити це повідомлення?';
 
   @override

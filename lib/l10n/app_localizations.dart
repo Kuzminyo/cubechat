@@ -1322,6 +1322,30 @@ abstract class AppLocalizations {
   /// **'Unpin'**
   String get chatUnpinAction;
 
+  /// No description provided for @chatPinnedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No pinned messages} =1{1 pinned message} other{{count} pinned messages}}'**
+  String chatPinnedCount(int count);
+
+  /// No description provided for @chatNoPins.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is pinned here'**
+  String get chatNoPins;
+
+  /// No description provided for @chatUnpinAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin all messages'**
+  String get chatUnpinAll;
+
+  /// No description provided for @chatShowAllPins.
+  ///
+  /// In en, this message translates to:
+  /// **'All pinned messages'**
+  String get chatShowAllPins;
+
   /// No description provided for @chatUnpinConfirm.
   ///
   /// In en, this message translates to:

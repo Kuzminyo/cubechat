@@ -712,6 +712,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatUnpinAction => 'Unpin';
 
   @override
+  String chatPinnedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pinned messages',
+      one: '1 pinned message',
+      zero: 'No pinned messages',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get chatNoPins => 'Nothing is pinned here';
+
+  @override
+  String get chatUnpinAll => 'Unpin all messages';
+
+  @override
+  String get chatShowAllPins => 'All pinned messages';
+
+  @override
   String get chatUnpinConfirm => 'Unpin this message?';
 
   @override

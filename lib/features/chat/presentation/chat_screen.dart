@@ -49,6 +49,7 @@ import '../data/composer_panel.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
 import 'chat_calendar_screen.dart';
+import 'pinned_messages_screen.dart';
 import '../data/message_farewell.dart';
 import '../data/message_selection.dart';
 import '../data/message_visibility.dart';
@@ -1246,6 +1247,32 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   int? _builtFrom;
   int? _builtTo;
 
+  /// Photo albums, derived once per version of the history.
+  ///
+  /// `groupPhotoAlbums` walks every message in the conversation, and it was
+  /// being called from `build`. A chat rebuilds for a great many reasons that
+  /// have nothing to do with which photographs arrived together — a delivery
+  /// mark, a keystroke, a presence beacon — and each one paid for a full pass
+  /// over the whole history. That is the shape of "chats with a lot of messages
+  /// are slow to open": the cost is proportional to how much has been said in
+  /// them, and it is paid again and again.
+  ///
+  /// Keyed on the identity of the list rather than its contents. The store
+  /// hands out a new list whenever anything in the conversation changes and the
+  /// same one when nothing has, so identity is exactly the right question and
+  /// costs nothing to ask.
+  List<Message>? _albumSource;
+  PhotoAlbums? _albumCache;
+
+  PhotoAlbums _albumsFor(List<Message> messages) {
+    final cached = _albumCache;
+    if (cached != null && identical(_albumSource, messages)) return cached;
+    final built = groupPhotoAlbums(messages);
+    _albumSource = messages;
+    _albumCache = built;
+    return built;
+  }
+
   /// How far down the floating header reaches, published by the scaffold that
   /// measures it — see [_FloatingComposerBody.headerBottom].
   final ValueNotifier<double> _headerBottom = ValueNotifier<double>(0);
@@ -1907,7 +1934,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // Photos sent as one batch, drawn as one grid. Derived here rather than
     // stored: nothing on the wire says which pictures went together, and the
     // conversation itself says it plainly enough.
-    final albums = groupPhotoAlbums(messages);
+    final albums = _albumsFor(messages);
     // Saved-chat tag filter. Watched so the list restyles when it changes, and
     // both are read here so the itemBuilder does not touch a provider per row.
     final saved = isSavedChat(widget.chatId);
@@ -2216,6 +2243,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       message: pinnedMessage,
                       index: pinIndex,
                       count: visiblePins.length,
+                      onShowAll: () => unawaited(
+                        openPinnedMessages(
+                          context,
+                          chatId: widget.chatId,
+                          pinned: visiblePins,
+                          onJump: (m) => unawaited(_jumpTo(m.wireId!)),
+                        ),
+                      ),
                       // One tap does both jobs, the way Telegram's bar does:
                       // take me to this pin, and leave the bar pointing at the
                       // one above it. A separate "next" chevron meant reading
@@ -2876,11 +2911,15 @@ class _PinnedBar extends StatelessWidget {
     required this.count,
     required this.onTap,
     required this.onUnpin,
+    required this.onShowAll,
   });
 
   final Message message;
   final VoidCallback onTap;
   final VoidCallback onUnpin;
+
+  /// Opens the list of every pin in this conversation.
+  final VoidCallback onShowAll;
 
   /// Position of the shown pin in the conversation, oldest first.
   final int index;
@@ -2981,6 +3020,23 @@ class _PinnedBar extends StatelessWidget {
                   ],
                 ),
               ),
+              // Every pin, as a list.
+              //
+              // The bar shows one at a time and steps through them on tap,
+              // which works for two and is useless for twenty: no way to see
+              // what is pinned, no way to reach the fourth except by tapping
+              // past the first three.
+              //
+              // Only when there is more than one — a single pin is already
+              // fully shown by the bar, and a control that opens a list of one
+              // is a control that does nothing.
+              if (count > 1)
+                _PillIconButton(
+                  icon: Icons.format_list_bulleted_rounded,
+                  color: AppColors.textOnGlassDim,
+                  tooltip: t.chatShowAllPins,
+                  onPressed: onShowAll,
+                ),
               _PillIconButton(
                 icon: Icons.push_pin_rounded,
                 color: AppColors.textOnGlassDim,
