@@ -5900,12 +5900,30 @@ class MessagingService {
                 .log('CHAT', 'drop forward-privacy from $peerId: malformed');
             return;
           }
+          // Filed under the person, not the road it came in on.
+          //
+          // `peerId` is the transport — a BLE address, or the literal string
+          // `nostr:relay` — and the roster is keyed by pubkey. Written against
+          // the transport, the setting landed on a peer nobody has, the real
+          // one never changed, and the log said `nostr:relay refuses a link
+          // back from a forward`, which is what gave it away. The same
+          // confusion the forward attribution itself had.
+          if (senderPub == null) {
+            DebugLog.instance.log(
+              'CHAT',
+              'drop forward-privacy from $peerId: no sender to attribute it to',
+            );
+            return;
+          }
+          final saysForwardLink = unpacked.body[0] == 0x01;
+          final privacyOwner = _hexOf(senderPub);
           await _ref
               .read(knownPeersControllerProvider.notifier)
-              .setAllowsForwardLink(peerId, unpacked.body[0] == 0x01);
+              .setAllowsForwardLink(privacyOwner, saysForwardLink);
           DebugLog.instance.log(
             'CHAT',
-            '$peerId ${unpacked.body[0] == 0x01 ? 'allows' : 'refuses'} '
+            '${privacyOwner.substring(0, 8)} '
+                '${saysForwardLink ? 'allows' : 'refuses'} '
                 'a link back from a forward',
           );
 
