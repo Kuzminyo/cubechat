@@ -1,0 +1,23 @@
+[Unit]
+Description=cubechat push doorbell
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cubechat
+WorkingDirectory=/opt/cubechat-push
+EnvironmentFile=/opt/cubechat-push/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+
+# It reads two files and opens sockets. Nothing else is any of its business.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-push
+
+[Install]
+WantedBy=multi-user.target

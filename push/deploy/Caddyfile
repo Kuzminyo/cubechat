@@ -1,0 +1,19 @@
+# TLS in front, because the phone will not talk to it otherwise.
+#
+# iOS App Transport Security refuses plain HTTP from an app, so the
+# registration call needs a certificate — and a certificate needs a name. Caddy
+# gets one from Let's Encrypt on first start and renews it without being asked.
+#
+# While cubechat.qpon is not delegated in the .qpon registry, the second block
+# is the way in: sslip.io resolves any `a-b-c-d.sslip.io` to that address, and
+# Let's Encrypt issues for it like any other name. Nothing about it is
+# temporary except the name — swap the block over when the domain answers, and
+# nothing else in the app or the service changes.
+
+wake.cubechat.qpon {
+	reverse_proxy 127.0.0.1:8080
+}
+
+209-38-225-225.sslip.io {
+	reverse_proxy 127.0.0.1:8080
+}
