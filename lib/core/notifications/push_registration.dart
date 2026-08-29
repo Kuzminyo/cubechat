@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
@@ -70,11 +71,19 @@ class PushRegistration {
 
   /// Ask for permission, get the token, and hand the server a signed line.
   ///
-  /// Returns false when the user declined, when this is not iOS, or when
-  /// anything on the way failed — all of which the caller shows the same way:
-  /// the switch goes back off.
-  Future<bool> enable() async {
-    if (!PlatformInfo.isIOS) return false;
+  /// The three failures are told apart because only one of them has a way out.
+  /// A refusal iOS has already recorded is permanent as far as the app is
+  /// concerned — `requestAuthorization` returns false without showing anything,
+  /// because the system will not put the prompt up twice — so the only honest
+  /// answer is to send the user to Settings. Reporting that the same way as "it
+  /// did not work" leaves a switch that can never be turned on and never says
+  /// why.
+  Future<PushEnableResult> enable() async {
+    if (!PlatformInfo.isIOS) return PushEnableResult.unsupported;
+    if (await systemStatus() == 'denied') {
+      DebugLog.instance.log('PUSH', 'notifications denied in system settings');
+      return PushEnableResult.denied;
+    }
     final String? token;
     try {
       token = await _channel.invokeMethod<String>('register');
@@ -83,14 +92,21 @@ class PushRegistration {
       // and a build signed without the Push Notifications entitlement, which
       // is refused with "no valid aps-environment".
       DebugLog.instance.log('PUSH', 'no token: ${e.message}');
-      return false;
+      return PushEnableResult.failed;
     }
     if (token == null || token.isEmpty) {
+      // Asked and declined just now, rather than declined at some point in the
+      // past — the prompt did appear, so Settings is still where it is undone.
       DebugLog.instance.log('PUSH', 'permission refused');
-      return false;
+      return PushEnableResult.denied;
     }
-    return _publish(token);
+    return await _publish(token)
+        ? PushEnableResult.ok
+        : PushEnableResult.failed;
   }
+
+  /// Take the user to the one place a refusal can be undone.
+  Future<void> openSystemSettings() => openAppSettings();
 
   /// Ask the server to forget this phone.
   ///
@@ -164,6 +180,13 @@ class PushRegistration {
   }
 }
 
+/// Why turning it on did or did not work.
+///
+/// [denied] is the one with a way out, and the reason this is an enum rather
+/// than a bool: the switch can send somebody to Settings only if it knows that
+/// is the problem.
+enum PushEnableResult { ok, denied, unsupported, failed }
+
 final pushRegistrationProvider = Provider<PushRegistration>(
   PushRegistration.new,
 );
@@ -210,17 +233,21 @@ class PushEnabled extends Notifier<bool> {
   ///
   /// The flag follows what actually happened rather than what was tapped: a
   /// refused permission leaves it off, and the switch springs back on its own.
-  Future<bool> set(bool on) async {
+  Future<PushEnableResult> set(bool on) async {
     final push = ref.read(pushRegistrationProvider);
-    final ok = on ? await push.enable() : await push.disable();
-    state = on && ok;
+    final result = on
+        ? await push.enable()
+        : (await push.disable()
+            ? PushEnableResult.ok
+            : PushEnableResult.failed);
+    state = on && result == PushEnableResult.ok;
     try {
       await _loading;
       await _box?.put(_key, state);
     } catch (e) {
       debugPrint('push flag persist failed: $e');
     }
-    return state;
+    return result;
   }
 }
 

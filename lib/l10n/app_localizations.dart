@@ -1310,6 +1310,18 @@ abstract class AppLocalizations {
   /// **'A small server watches the relays for your address and taps this phone when something lands, so a closed app still tells you. It never sees a message or a key — only that your address received something, and when. The relay already knows that; this is a second place that does.'**
   String get pushWakeHint;
 
+  /// No description provided for @pushWakeDeniedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are switched off'**
+  String get pushWakeDeniedTitle;
+
+  /// No description provided for @pushWakeDeniedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.'**
+  String get pushWakeDeniedHint;
+
   /// No description provided for @pushWakeRefused.
   ///
   /// In en, this message translates to:

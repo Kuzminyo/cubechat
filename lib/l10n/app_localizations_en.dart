@@ -707,6 +707,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'A small server watches the relays for your address and taps this phone when something lands, so a closed app still tells you. It never sees a message or a key — only that your address received something, and when. The relay already knows that; this is a second place that does.';
 
   @override
+  String get pushWakeDeniedTitle => 'Notifications are switched off';
+
+  @override
+  String get pushWakeDeniedHint =>
+      'iOS was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.';
+
+  @override
   String get pushWakeRefused => 'Notifications were not allowed';
 
   @override

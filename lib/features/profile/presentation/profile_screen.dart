@@ -1284,6 +1284,25 @@ class _PrivacyCard extends ConsumerWidget {
 class _PushWakeRow extends ConsumerWidget {
   const _PushWakeRow();
 
+  /// Ask, then take them there. A dialog rather than a toast, because this is
+  /// the one failure with something to do about it and a toast is gone before
+  /// it can be acted on.
+  Future<void> _offerSettings(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations t,
+  ) async {
+    final go = await confirmAction(
+      context,
+      title: t.pushWakeDeniedTitle,
+      message: t.pushWakeDeniedHint,
+      confirmLabel: t.blePermissionOpenSettings,
+      destructive: false,
+    );
+    if (!go) return;
+    await ref.read(pushRegistrationProvider).openSystemSettings();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
@@ -1296,12 +1315,20 @@ class _PushWakeRow extends ConsumerWidget {
       hint: t.pushWakeHint,
       value: on,
       onChanged: (next) async {
-        final settled = await ref.read(pushEnabledProvider.notifier).set(next);
-        // Refused, or nothing answered. The switch springs back on its own
-        // because the flag follows what happened rather than what was tapped —
-        // saying so is the difference between "declined" and "broken".
-        if (context.mounted && next && !settled) {
-          showGlassToast(context, t.pushWakeRefused, tone: ToastTone.danger);
+        final result = await ref.read(pushEnabledProvider.notifier).set(next);
+        if (!context.mounted || !next) return;
+        switch (result) {
+          case PushEnableResult.ok:
+            break;
+          case PushEnableResult.denied:
+            // The dead end this used to be. iOS records a refusal and never
+            // shows the prompt again, so a toast saying "not allowed" left a
+            // switch that could not be turned on and did not say where to go.
+            // Settings is the only place it comes back from.
+            await _offerSettings(context, ref, t);
+          case PushEnableResult.unsupported:
+          case PushEnableResult.failed:
+            showGlassToast(context, t.pushWakeRefused, tone: ToastTone.danger);
         }
       },
     );
