@@ -131,7 +131,10 @@ void main() {
 
     // Still asks first. The pin is shared state: clearing it takes the banner
     // away from everyone in the chat.
-    await tester.tap(find.widgetWithText(TextButton, 'Unpin all messages'));
+    // By its words, not by the widget that happens to carry them: the
+    // control is an island now rather than a TextButton, and the test was
+    // pinned to the shape instead of to the thing.
+    await tester.tap(find.text('Unpin all messages'));
     await beat(tester);
     expect(find.text('Unpin this message?'), findsOneWidget);
     expect(
@@ -150,7 +153,10 @@ void main() {
 
     await tester.tap(find.byTooltip('All pinned messages').last);
     await beat(tester);
-    await tester.tap(find.widgetWithText(TextButton, 'Unpin all messages'));
+    // By its words, not by the widget that happens to carry them: the
+    // control is an island now rather than a TextButton, and the test was
+    // pinned to the shape instead of to the thing.
+    await tester.tap(find.text('Unpin all messages'));
     await beat(tester);
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await beat(tester);

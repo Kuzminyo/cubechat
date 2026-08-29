@@ -11,6 +11,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/transport/messaging_service.dart';
+import 'widgets/chat_input.dart';
 import '../data/messages_controller.dart';
 import '../data/pinned_controller.dart';
 import 'widgets/message_bubble.dart';
@@ -114,8 +115,10 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
   }
 
   /// The picked pins, in the order the list shows them.
-  List<Message> _pickedFrom(List<Message> rows) =>
-      [for (final m in rows) if (_picked.contains(m.wireId)) m];
+  List<Message> _pickedFrom(List<Message> rows) => [
+        for (final m in rows)
+          if (_picked.contains(m.wireId)) m
+      ];
 
   /// Everything ticked, as text, one message per line.
   Future<void> _copy(List<Message> rows) async {
@@ -227,114 +230,242 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
       child: AuroraBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: BackButton(
-              color: AppColors.textOnGlass,
-              onPressed: () => _selecting
-                  ? setState(_picked.clear)
-                  : Navigator.of(context).maybePop(),
-            ),
-            title: Text(
-              _selecting
-                  ? t.chatSelectedCount(_picked.length)
-                  : t.chatPinnedCount(rows.length),
-              style: AppTypography.heading(size: 17),
-            ),
-            actions: [
-              // A pin is a message, and everything you can do to a message you
-              // can do to it here. The screen listed them and offered exactly
-              // one verb — so reading something worth keeping meant going back
-              // to the conversation to find it before it could be copied or
-              // passed on, which is the search this list exists to save.
-              if (_selecting) ...[
-                IconButton(
-                  tooltip: t.chatCopyAction,
-                  icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlass),
-                  onPressed: () => _copy(rows),
-                ),
-                IconButton(
-                  tooltip: t.chatForwardAction,
-                  icon: Icon(
-                    Icons.shortcut_rounded,
-                    color: AppColors.textOnGlass,
-                  ),
-                  onPressed: () => _forward(rows),
-                ),
-                IconButton(
-                  tooltip: t.chatDeleteAction,
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: AppColors.danger,
-                  ),
-                  onPressed: () => _delete(rows),
-                ),
-                IconButton(
-                  tooltip: t.chatUnpinAction,
-                  icon: _UnpinIcon(color: AppColors.textOnGlass),
-                  onPressed: () => _unpick(_picked.toList()),
-                ),
-              ],
-            ],
-          ),
-          body: rows.isEmpty
-              ? Center(
-                  child: Text(
-                    t.chatNoPins,
-                    style: TextStyle(color: AppColors.textOnGlassDim),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                  itemCount: rows.length,
-                  itemBuilder: (context, i) {
-                    final m = rows[i];
-                    final id = m.wireId!;
-                    // Grouped by the day they were written, like the
-                    // conversation they came out of. A list of twenty pins
-                    // gathered over a month reads as one block without it.
-                    final newDay = startsNewDay(
-                      m.sentAt,
-                      i == 0 ? null : rows[i - 1].sentAt,
-                    );
-                    final row = _PinnedRow(
-                      message: m,
-                      selected: _picked.contains(id),
-                      onTap: () {
-                        if (_selecting) {
-                          _toggle(id);
-                          return;
-                        }
-                        // Close first: the message being jumped to is in the
-                        // conversation behind this screen.
-                        Navigator.of(context).pop();
-                        widget.onJump(m);
-                      },
-                      onLongPress: () => _toggle(id),
-                    );
-                    if (!newDay) return row;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [_PinnedDayLine(day: m.sentAt), row],
-                    );
-                  },
-                ),
-          bottomNavigationBar: rows.isEmpty
-              ? null
-              : SafeArea(
+          // No AppBar. This screen is reached from a conversation and looks
+          // like one — a floating capsule over the aurora rather than a bar
+          // owning a band of the screen, which is the shape every other
+          // surface here already has.
+          appBar: null,
+          body: Column(
+            children: [
+              _PinnedHeader(
+                title: _selecting
+                    ? t.chatSelectedCount(_picked.length)
+                    : t.chatPinnedCount(rows.length),
+                onBack: () => _selecting
+                    ? setState(_picked.clear)
+                    : Navigator.of(context).maybePop(),
+                // A pin is a message, and everything you can do to a message
+                // you can do to it here. The screen listed them and offered
+                // exactly one verb — so reading something worth keeping meant
+                // going back to the conversation to find it before it could be
+                // copied or passed on, which is the search this list exists to
+                // save.
+                actions: !_selecting
+                    ? const []
+                    : [
+                        _PinnedHeaderAction(
+                          tooltip: t.chatCopyAction,
+                          icon: Icons.copy_rounded,
+                          onPressed: () => _copy(rows),
+                        ),
+                        _PinnedHeaderAction(
+                          tooltip: t.chatForwardAction,
+                          icon: Icons.shortcut_rounded,
+                          onPressed: () => _forward(rows),
+                        ),
+                        _PinnedHeaderAction(
+                          tooltip: t.chatDeleteAction,
+                          icon: Icons.delete_outline_rounded,
+                          color: AppColors.danger,
+                          onPressed: () => _delete(rows),
+                        ),
+                        _PinnedHeaderAction(
+                          tooltip: t.chatUnpinAction,
+                          iconWidget: _UnpinIcon(color: AppColors.textOnGlass),
+                          onPressed: () => _unpick(_picked.toList()),
+                        ),
+                      ],
+              ),
+              Expanded(
+                child: rows.isEmpty
+                    ? Center(
+                        child: Text(
+                          t.chatNoPins,
+                          style: TextStyle(color: AppColors.textOnGlassDim),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                        itemCount: rows.length,
+                        itemBuilder: (context, i) {
+                          final m = rows[i];
+                          final id = m.wireId!;
+                          // Grouped by the day they were written, like the
+                          // conversation they came out of. A list of twenty pins
+                          // gathered over a month reads as one block without it.
+                          final newDay = startsNewDay(
+                            m.sentAt,
+                            i == 0 ? null : rows[i - 1].sentAt,
+                          );
+                          final row = _PinnedRow(
+                            message: m,
+                            selected: _picked.contains(id),
+                            onTap: () {
+                              if (_selecting) {
+                                _toggle(id);
+                                return;
+                              }
+                              // Close first: the message being jumped to is in the
+                              // conversation behind this screen.
+                              Navigator.of(context).pop();
+                              widget.onJump(m);
+                            },
+                            onLongPress: () => _toggle(id),
+                          );
+                          if (!newDay) return row;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [_PinnedDayLine(day: m.sentAt), row],
+                          );
+                        },
+                      ),
+              ),
+              // The composer's place, and the composer's island: this is the
+              // one thing the screen does to everything at once, and a bare
+              // line of red text at the bottom of the glass was the only
+              // control here that did not look like part of the app.
+              if (rows.isNotEmpty)
+                SafeArea(
+                  top: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: TextButton(
-                      onPressed: () =>
-                          _unpick([for (final m in rows) m.wireId!]),
-                      child: Text(
-                        t.chatUnpinAll,
-                        style: TextStyle(color: AppColors.danger),
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    child: MessageIslandGlass(
+                      borderRadius: 26,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(26),
+                          onTap: () =>
+                              _unpick([for (final m in rows) m.wireId!]),
+                          child: SizedBox(
+                            height: 52,
+                            child: Center(
+                              child: Text(
+                                t.chatUnpinAll,
+                                style: TextStyle(
+                                  color: AppColors.danger,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The screen's own header capsule.
+///
+/// The same island the conversation floats at its top — same glass, same
+/// height, same round button on the leading edge — because this screen is
+/// reached from a conversation and belongs to it. An `AppBar` here was the one
+/// surface in the app still shaped like a bar.
+class _PinnedHeader extends StatelessWidget {
+  const _PinnedHeader({
+    required this.title,
+    required this.onBack,
+    required this.actions,
+  });
+
+  final String title;
+  final VoidCallback onBack;
+  final List<Widget> actions;
+
+  /// The conversation header's height, so the two read as the same object at
+  /// two moments rather than two headers.
+  static const double _height = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // Owns the status-bar inset, exactly as the chat header does: there is no
+      // AppBar left to hold the capsule clear of the notch.
+      padding:
+          EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
+      child: SizedBox(
+        height: _height,
+        child: MessageIslandGlass(
+          borderRadius: _height / 2,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: [
+              _PinnedHeaderAction(
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                icon: Icons.arrow_back_rounded,
+                onPressed: onBack,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.heading(size: 16),
+                ),
+              ),
+              ...actions,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One round control on the header capsule.
+class _PinnedHeaderAction extends StatelessWidget {
+  const _PinnedHeaderAction({
+    required this.tooltip,
+    required this.onPressed,
+    this.icon,
+    this.iconWidget,
+    this.color,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData? icon;
+
+  /// For the crossed-out pin, which is drawn rather than a glyph.
+  final Widget? iconWidget;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.glass(0.18), AppColors.glass(0.10)],
+              ),
+            ),
+            child: Center(
+              child: iconWidget ??
+                  Icon(icon, size: 20, color: color ?? AppColors.textOnGlass),
+            ),
+          ),
         ),
       ),
     );
