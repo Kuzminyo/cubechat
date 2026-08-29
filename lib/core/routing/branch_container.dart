@@ -272,7 +272,12 @@ class _LazyHorizontalDragRecognizer extends HorizontalDragGestureRecognizer {
 
   /// Far enough to be past anything an inner widget wants, short enough that a
   /// deliberate swipe between tabs still feels immediate.
-  static const double _threshold = 44;
+  ///
+  /// Thirty-six, down from forty-four. The margin that matters is the one over
+  /// the page's own back gesture (20 away from the edge) and over the chat
+  /// row's swipe, and sixteen points is still a clear win for both — while the
+  /// tab swipe itself stops needing most of a fingertip before anything moves.
+  static const double _threshold = 36;
 
   @override
   bool hasSufficientGlobalDistanceToAccept(

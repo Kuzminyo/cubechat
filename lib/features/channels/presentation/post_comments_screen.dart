@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/routing/page_transitions.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -165,8 +166,27 @@ class _PostCommentsScreenState extends ConsumerState<_PostCommentsScreen> {
                               padding:
                                   const EdgeInsets.fromLTRB(12, 4, 12, 12),
                               itemCount: comments.length,
-                              itemBuilder: (context, i) =>
-                                  _CommentRow(comment: comments[i]),
+                              itemBuilder: (context, i) {
+                                final comment = comments[i];
+                                // The same day separator the conversation
+                                // draws, for the same reason: a thread that
+                                // ran over a week reads as one sitting
+                                // without it.
+                                final newDay = startsNewDay(
+                                  comment.sentAt,
+                                  i == 0 ? null : comments[i - 1].sentAt,
+                                );
+                                final row = _CommentRow(comment: comment);
+                                if (!newDay) return row;
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _DayLine(day: comment.sentAt),
+                                    row,
+                                  ],
+                                );
+                              },
                             ),
             ),
             if (room != null)
@@ -212,6 +232,42 @@ class _PostCard extends StatelessWidget {
           color: AppColors.textOnGlass,
           fontSize: 13.5,
           height: 1.3,
+        ),
+      ),
+    );
+  }
+}
+
+/// The date a run of comments was written on.
+///
+/// The conversation's own separator, in the two list screens that grew out of
+/// it and did not inherit one — a thread or a pinned list that ran over a week
+/// reads as a single sitting without it.
+class _DayLine extends StatelessWidget {
+  const _DayLine({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.pane(0.55),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glass(0.12)),
+          ),
+          child: Text(
+            formatDayHeader(context, day),
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );

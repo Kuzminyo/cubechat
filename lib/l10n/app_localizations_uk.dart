@@ -685,6 +685,19 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelCommentHint => 'Коментар';
 
   @override
+  String get channelMuteCustom => 'На скільки?';
+
+  @override
+  String get channelMuteCustomHint => 'Годин';
+
+  @override
+  String get chatPinnedManage => 'Закріплені';
+
+  @override
+  String get chatDeleteForMeHint =>
+      'Прибрати з цього телефона й відкріпити. У співрозмовника копія лишається.';
+
+  @override
   String get privacyForwardLinkTitle => 'Посилання на профіль у пересиланнях';
 
   @override

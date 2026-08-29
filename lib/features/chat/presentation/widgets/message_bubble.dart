@@ -121,8 +121,14 @@ bool messageCanBeForwarded(
   };
 }
 
-const double _swipeTrigger = 56;
-const double _swipeMax = 76;
+/// How far a bubble is pulled before the swipe means "reply".
+///
+/// Forty-six, down from fifty-six, and the pull it can travel comes down with
+/// it. Every one of these gestures ends in the same place, so distance asked
+/// for and not needed is paid on all of them — the same reason the page's own
+/// back gesture stopped asking for a third of the screen.
+const double _swipeTrigger = 46;
+const double _swipeMax = 64;
 
 /// How wide a photo is drawn in a bubble.
 ///

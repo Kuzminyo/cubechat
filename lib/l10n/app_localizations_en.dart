@@ -682,6 +682,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelCommentHint => 'Comment';
 
   @override
+  String get channelMuteCustom => 'For how long?';
+
+  @override
+  String get channelMuteCustomHint => 'Hours';
+
+  @override
+  String get chatPinnedManage => 'Pinned';
+
+  @override
+  String get chatDeleteForMeHint =>
+      'Removed from this phone, and unpinned. The other side keeps its copy.';
+
+  @override
   String get privacyForwardLinkTitle => 'Link back from forwards';
 
   @override

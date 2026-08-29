@@ -128,8 +128,16 @@ Uint8List? _encodeChannelAvatar(Uint8List src, int maxBytes) {
     height: side,
   );
 
+  // Starts where the personal avatar starts. A room's picture no longer has to
+  // fit one unfragmentable frame — anything past [AvatarPayload.maxBytes] is
+  // chunked over channel frames the way a photo posted to the room is — so the
+  // ladder is about what is reasonable to broadcast once, not about what the
+  // BLE fragmenter will split.
   const rungs = <({int size, int quality})>[
-    (size: 512, quality: 82),
+    (size: 1920, quality: 88),
+    (size: 1440, quality: 82),
+    (size: 1024, quality: 78),
+    (size: 768, quality: 74),
     (size: 512, quality: 70),
     (size: 384, quality: 70),
     (size: 256, quality: 65),

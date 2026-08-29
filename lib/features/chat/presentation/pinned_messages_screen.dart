@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/routing/page_transitions.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/confirm_dialog.dart';
+import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../data/messages_controller.dart';
 import '../data/pinned_controller.dart';
+import 'widgets/message_bubble.dart';
 import '../models/message.dart';
 
 /// Every pinned message in one conversation, as a screen of its own.
@@ -108,6 +113,85 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
     setState(_picked.clear);
   }
 
+  /// The picked pins, in the order the list shows them.
+  List<Message> _pickedFrom(List<Message> rows) =>
+      [for (final m in rows) if (_picked.contains(m.wireId)) m];
+
+  /// Everything ticked, as text, one message per line.
+  Future<void> _copy(List<Message> rows) async {
+    final t = AppLocalizations.of(context);
+    final text = [
+      for (final m in _pickedFrom(rows))
+        if (copyableText(m) case final line?) line,
+    ].join('\n');
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    setState(_picked.clear);
+    showGlassToast(context, t.chatCopied, icon: Icons.copy_rounded);
+  }
+
+  /// Pass them on, through the same picker the conversation uses.
+  Future<void> _forward(List<Message> rows) async {
+    final picked = _pickedFrom(rows);
+    if (picked.isEmpty) return;
+    final targets = await pickForwardTargets(context, ref, widget.chatId);
+    if (targets.isEmpty || !mounted) return;
+    for (final target in targets) {
+      for (final message in picked) {
+        await forwardMessageTo(
+          ref,
+          target,
+          message,
+          fromChatId: widget.chatId,
+        );
+      }
+    }
+    if (!mounted) return;
+    setState(_picked.clear);
+    showGlassToast(
+      context,
+      targets.length == 1
+          ? AppLocalizations.of(context).chatForwardSent(targets.first.peerName)
+          : AppLocalizations.of(context).chatForwardSentCount(targets.length),
+      icon: Icons.shortcut_rounded,
+    );
+  }
+
+  /// Off this phone, and off the pinned bar with it.
+  ///
+  /// Local only, like the conversation's own "delete for me": a pin is a shared
+  /// fact and the message is somebody's words, so removing both for everybody
+  /// from a list screen is more than anybody tapping here has asked for. The
+  /// pin goes too, because a pin pointing at a message this device no longer
+  /// holds is a bar that cannot be opened.
+  Future<void> _delete(List<Message> rows) async {
+    final t = AppLocalizations.of(context);
+    final picked = _pickedFrom(rows);
+    if (picked.isEmpty) return;
+    if (!await confirmAction(
+      context,
+      title: t.chatDeleteAction,
+      message: t.chatDeleteForMeHint,
+      confirmLabel: t.chatDeleteAction,
+      destructive: true,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final messages = ref.read(messagesControllerProvider.notifier);
+    final messaging = ref.read(messagingServiceProvider);
+    for (final message in picked) {
+      final wireId = message.wireId;
+      if (wireId != null) {
+        await messaging.sendPin(widget.chatId, wireId, pinned: false);
+      }
+      messages.deleteLocal(widget.chatId, message.id);
+    }
+    if (!mounted) return;
+    setState(_picked.clear);
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -159,12 +243,39 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
               style: AppTypography.heading(size: 17),
             ),
             actions: [
-              if (_selecting)
+              // A pin is a message, and everything you can do to a message you
+              // can do to it here. The screen listed them and offered exactly
+              // one verb — so reading something worth keeping meant going back
+              // to the conversation to find it before it could be copied or
+              // passed on, which is the search this list exists to save.
+              if (_selecting) ...[
+                IconButton(
+                  tooltip: t.chatCopyAction,
+                  icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlass),
+                  onPressed: () => _copy(rows),
+                ),
+                IconButton(
+                  tooltip: t.chatForwardAction,
+                  icon: Icon(
+                    Icons.shortcut_rounded,
+                    color: AppColors.textOnGlass,
+                  ),
+                  onPressed: () => _forward(rows),
+                ),
+                IconButton(
+                  tooltip: t.chatDeleteAction,
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColors.danger,
+                  ),
+                  onPressed: () => _delete(rows),
+                ),
                 IconButton(
                   tooltip: t.chatUnpinAction,
                   icon: _UnpinIcon(color: AppColors.textOnGlass),
                   onPressed: () => _unpick(_picked.toList()),
                 ),
+              ],
             ],
           ),
           body: rows.isEmpty
@@ -180,7 +291,14 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
                   itemBuilder: (context, i) {
                     final m = rows[i];
                     final id = m.wireId!;
-                    return _PinnedRow(
+                    // Grouped by the day they were written, like the
+                    // conversation they came out of. A list of twenty pins
+                    // gathered over a month reads as one block without it.
+                    final newDay = startsNewDay(
+                      m.sentAt,
+                      i == 0 ? null : rows[i - 1].sentAt,
+                    );
+                    final row = _PinnedRow(
                       message: m,
                       selected: _picked.contains(id),
                       onTap: () {
@@ -194,6 +312,11 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
                         widget.onJump(m);
                       },
                       onLongPress: () => _toggle(id),
+                    );
+                    if (!newDay) return row;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [_PinnedDayLine(day: m.sentAt), row],
                     );
                   },
                 ),
@@ -212,6 +335,39 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
                     ),
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The date a run of pins was written on. See the comments screen, which draws
+/// the same thing for the same reason.
+class _PinnedDayLine extends StatelessWidget {
+  const _PinnedDayLine({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.pane(0.55),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glass(0.12)),
+          ),
+          child: Text(
+            formatDayHeader(context, day),
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );

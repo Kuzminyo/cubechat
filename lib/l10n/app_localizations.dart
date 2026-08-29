@@ -1268,6 +1268,30 @@ abstract class AppLocalizations {
   /// **'Comment'**
   String get channelCommentHint;
 
+  /// No description provided for @channelMuteCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'For how long?'**
+  String get channelMuteCustom;
+
+  /// No description provided for @channelMuteCustomHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hours'**
+  String get channelMuteCustomHint;
+
+  /// No description provided for @chatPinnedManage.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get chatPinnedManage;
+
+  /// No description provided for @chatDeleteForMeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed from this phone, and unpinned. The other side keeps its copy.'**
+  String get chatDeleteForMeHint;
+
   /// No description provided for @privacyForwardLinkTitle.
   ///
   /// In en, this message translates to:

@@ -4138,6 +4138,14 @@ class MessagingService {
     } else if (!await avatars.store(channel.name, jpeg)) {
       throw StateError('picture is too large for one frame');
     }
+    // Bigger than one broadcast frame goes the way a photo posted to the room
+    // goes: a signed manifest, then chunks. The room's picture used to be
+    // whatever survived being squeezed into a single unsplittable frame, which
+    // is a fact about the BLE fragmenter rather than about a picture.
+    if (jpeg != null && jpeg.length > AvatarPayload.maxBytes) {
+      await _sendChannelAvatarChunked(channel, jpeg);
+      return;
+    }
     final frame = await _buildChannelFrame(
       channel,
       InnerPayloadType.channelAvatar,
@@ -4147,6 +4155,66 @@ class MessagingService {
     final fanout = await _broadcastChannelFrame(frame);
     DebugLog.instance.log('CHAN',
         'channel picture for ${channel.name}: ${jpeg?.length ?? 0}B, fanout=$fanout');
+  }
+
+  /// A room's picture as a manifest and chunks.
+  ///
+  /// The same machinery [sendChannelImage] uses, with the manifest's kind
+  /// saying where the finished bytes belong — so nothing here needed inventing
+  /// except somewhere to put the result. Sized for the conservative MTU, like
+  /// every broadcast: there is no single link to negotiate against.
+  Future<void> _sendChannelAvatarChunked(Channel channel, Uint8List jpeg) async {
+    const mime = 'image/jpeg';
+    final avatarId = ImageChunk.newImageId();
+    final relayOnly = !_hasAnyLink;
+    final chunkData = _mediaChunkData(null,
+        relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
+    final total = (jpeg.length + chunkData - 1) ~/ chunkData;
+    if (total < 1 || total > ImageChunk.maxChunks) {
+      throw StateError('picture is too large for ${channel.name}');
+    }
+    final manifest = MediaManifest(
+      mediaId: avatarId,
+      kind: MediaKind.avatar,
+      total: total,
+      mime: mime,
+      durationMs: 0,
+      sha256: Uint8List.fromList((await Sha256().hash(jpeg)).bytes),
+    );
+    var fanout = await _broadcastChannelFrame(
+      await _buildChannelFrame(
+        channel,
+        InnerPayloadType.mediaManifest,
+        manifest.encode(),
+        TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+      ),
+    );
+    for (var i = 0; i < total; i++) {
+      final start = i * chunkData;
+      final end = (start + chunkData).clamp(0, jpeg.length);
+      fanout = await _broadcastChannelFrame(
+        await _buildChannelFrame(
+          channel,
+          InnerPayloadType.imageChunk,
+          ImageChunk(
+            imageId: avatarId,
+            seq: i,
+            total: total,
+            mime: mime,
+            data: Uint8List.fromList(jpeg.sublist(start, end)),
+          ).encode(),
+          TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+        ),
+      );
+      if (i + 1 < total && !relayOnly) {
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+      }
+    }
+    DebugLog.instance.log(
+      'CHAN',
+      'channel picture for ${channel.name}: ${jpeg.length}B in $total chunks, '
+          'fanout=$fanout',
+    );
   }
 
   /// Set (or, with an empty [text], clear) the room's topic for everyone.
@@ -6088,7 +6156,9 @@ class MessagingService {
           .log('CHAN', 'drop ${channel.name} manifest: malformed ($e)');
       return;
     }
-    if (manifest.kind != MediaKind.image && manifest.kind != MediaKind.audio) {
+    if (manifest.kind != MediaKind.image &&
+        manifest.kind != MediaKind.audio &&
+        manifest.kind != MediaKind.avatar) {
       DebugLog.instance.log('CHAN',
           'drop ${channel.name} manifest: ${manifest.kind.name} not carried in channels');
       return;
@@ -6519,6 +6589,31 @@ class MessagingService {
       final Message message;
       switch (manifest.kind) {
         case MediaKind.avatar:
+          // A room's picture rather than a person's, when the manifest came in
+          // on a channel frame. Authorised the way every other room-wide change
+          // is: the frame was signed, and only a sender this device already
+          // holds as an administrator may set it.
+          final room = channel;
+          if (room != null) {
+            final author = authorId;
+            final roster =
+                _ref.read(channelRosterControllerProvider.notifier);
+            if (author == null || !roster.isAdmin(room.name, author)) {
+              DebugLog.instance.log(
+                'CHAN',
+                'drop ${room.name} picture: sender is not an admin',
+              );
+              return;
+            }
+            await _ref
+                .read(channelAvatarsControllerProvider.notifier)
+                .store(room.name, bytes);
+            DebugLog.instance.log(
+              'CHAN',
+              '${room.name} picture: ${bytes.length}B in place',
+            );
+            return;
+          }
           // Not a message: it is the sender's face, and it still has to match
           // what their signed announcement committed to before it becomes that.
           if (senderPub == null) {

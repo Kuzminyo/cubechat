@@ -54,7 +54,13 @@ class PeerAvatarsController extends Notifier<Map<String, Uint8List>> {
   /// not. This is the limit on what we are willing to keep, and it matches what
   /// the sender is willing to send ([AvatarController.shareByteBudget]) with
   /// room for a peer whose encoder settled a little higher than ours.
-  static const int maxStoredBytes = 256 * 1024;
+  ///
+  /// Raised with the send budget rather than after it. A picture we are willing
+  /// to send and not willing to keep is a transfer that completes and is then
+  /// thrown away — every chunk of it carried across the room for nothing, and
+  /// the face still missing at the end. The two numbers move together, and this
+  /// one stays the larger of them.
+  static const int maxStoredBytes = 640 * 1024;
 
   Future<bool> store(
     String pubkeyHex,

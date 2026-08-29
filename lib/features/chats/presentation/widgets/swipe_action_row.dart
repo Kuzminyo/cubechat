@@ -36,7 +36,12 @@ class SwipeActionRow extends StatefulWidget {
   final Widget child;
 
   /// How far the finger has to travel before releasing means "do it".
-  static const double trigger = 84;
+  ///
+  /// Sixty-eight, down from eighty-four. Still comfortably past the tab
+  /// strip's own threshold, so a row swipe is never mistaken for a tab swipe,
+  /// and no longer most of a thumb's reach for an action taken dozens of times
+  /// a day.
+  static const double trigger = 68;
 
   /// The furthest the row will go, so a long drag does not tear it off the
   /// screen.

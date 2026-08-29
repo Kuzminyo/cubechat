@@ -114,12 +114,16 @@ class AvatarController extends Notifier<Uint8List?> {
   /// is drawn from twice the pixels it needs and the quality ladder never has
   /// to get desperate — which is the actual difference between a face and a
   /// smear.
-  static const int shareSize = 1024;
+  /// Nineteen-twenty: the stored copy's own size, so the picture peers get is
+  /// the picture that was chosen rather than a reduction of it. Asked for
+  /// directly — a face opened full-screen from a 1024 px source on a 1080 px
+  /// phone is soft, and the profile photo is now a thing you *open*.
+  static const int shareSize = 1920;
 
   /// Sizes to fall back through when the picture will not fit [shareByteBudget]
   /// even at the lowest quality. A smaller sharp image beats a larger smeared
   /// one, and beats not arriving at all.
-  static const List<int> shareSizeLadder = [1024, 768, 512];
+  static const List<int> shareSizeLadder = [1920, 1440, 1024, 768];
 
   /// Qualities to try at each size, best first. Starts higher and stops well
   /// short of the old floor of 50 — with [shareByteBudget] no longer a single
@@ -140,7 +144,11 @@ class AvatarController extends Notifier<Uint8List?> {
   /// transfer of any length and not a frame at all. This is now simply what is
   /// reasonable to push across Bluetooth once per change of picture — the same
   /// number a sent photo is held to.
-  static const int shareByteBudget = 192 * 1024;
+  /// Raised with the size it has to carry. A 1920 px face at a usable quality
+  /// is a few hundred kilobytes, which is a photograph — and a photograph is
+  /// exactly what this path now is: a manifest and chunks, sent once per change
+  /// of picture, over machinery that moves far larger things every day.
+  static const int shareByteBudget = 448 * 1024;
 
   ({Uint8List jpeg, Uint8List hash})? _shareable;
 

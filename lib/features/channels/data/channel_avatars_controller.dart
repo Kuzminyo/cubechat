@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/identity/avatar_controller.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/transport/inner_payload.dart';
@@ -46,7 +47,13 @@ class ChannelAvatarsController extends Notifier<Map<String, Uint8List>> {
   /// what one frame carries — a channel avatar is broadcast, never requested,
   /// so it has to fit a single [AvatarPayload].
   Future<bool> store(String name, Uint8List jpeg) async {
-    if (jpeg.isEmpty || jpeg.length > AvatarPayload.maxBytes) return false;
+    // Whatever the room's picture actually is. The old ceiling was the size of
+    // a single broadcast frame, which is a fact about the fragmenter and not
+    // about a picture — and it is no longer even that, since a larger one is
+    // chunked. Kept as a sanity bound rather than a format rule.
+    if (jpeg.isEmpty || jpeg.length > AvatarController.shareByteBudget) {
+      return false;
+    }
     state = {...state, name: jpeg};
     try {
       await _box?.put(name, jpeg);

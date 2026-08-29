@@ -9,9 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../../core/routing/back_gesture.dart';
+import '../../../core/identity/avatar_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/channel_admin.dart';
-import '../../../core/transport/inner_payload.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/image_encode.dart';
 import '../../../core/widgets/aurora_background.dart';
@@ -176,8 +176,15 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
 
     DateTime? until;
     if (choice == 'mute') {
-      final hours = await _pickMuteHours();
+      var hours = await _pickMuteHours();
       if (hours == null || !mounted) return;
+      if (hours < 0) {
+        // However long the administrator says. The presets are shortcuts, not
+        // the set of answers — asked for directly, and the wire has carried an
+        // arbitrary deadline since it was written.
+        hours = await _askMuteHours();
+        if (hours == null || !mounted) return;
+      }
       // Zero is the "until I say otherwise" row: a mute with no deadline is a
       // null [ChannelModeration.until], which the wire already means.
       until = hours == 0 ? null : DateTime.now().add(Duration(hours: hours));
@@ -213,7 +220,73 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     }
   }
 
-  /// How long a mute lasts, in hours. Zero means no end.
+  /// A number of hours typed by hand.
+  ///
+  /// Bounded by what the wire can hold — five bytes of unix seconds, which runs
+  /// out well past any lifetime — and by what a moderator plausibly means: a
+  /// year is already "indefinitely with extra steps", and the row above this
+  /// one says that more honestly.
+  Future<int?> _askMuteHours() async {
+    final t = AppLocalizations.of(context);
+    final controller = TextEditingController();
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.bgTop,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.glass(0.15)),
+        ),
+        title: Text(
+          t.channelMuteCustom,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          style: TextStyle(color: AppColors.textOnGlass),
+          decoration: InputDecoration(
+            hintText: t.channelMuteCustomHint,
+            hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
+          ),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(
+            int.tryParse(value.trim()),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              t.cancel,
+              style: TextStyle(color: AppColors.textOnGlassDim),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              int.tryParse(controller.text.trim()),
+            ),
+            child: Text(
+              t.channelMuteMember,
+              style: TextStyle(color: AppColors.brandPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (entered == null) return null;
+    // A typo must not become a silence nobody can explain: out of range is
+    // treated as no answer rather than clamped into one.
+    if (entered < 1 || entered > 24 * 365) return null;
+    return entered;
+  }
+
+  /// How long a mute lasts, in hours. Zero means no end, and -1 means ask.
   Future<int?> _pickMuteHours() async {
     final t = AppLocalizations.of(context);
     const choices = <int>[1, 8, 48];
@@ -237,6 +310,20 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 ),
                 onTap: () => Navigator.of(sheetContext).pop(hours),
               ),
+            ListTile(
+              title: Text(
+                t.channelMuteCustom,
+                style: TextStyle(color: AppColors.textOnGlass),
+              ),
+              trailing: Icon(
+                Icons.edit_rounded,
+                size: 18,
+                color: AppColors.textOnGlassFaint,
+              ),
+              // -1 is "ask me": the sheet cannot host a field of its own
+              // without fighting the keyboard for the space it is standing in.
+              onTap: () => Navigator.of(sheetContext).pop(-1),
+            ),
             ListTile(
               title: Text(
                 t.channelMuteForever,
@@ -304,7 +391,10 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
 
     final jpeg = await encodeChannelAvatar(
       cropped,
-      maxBytes: AvatarPayload.maxBytes,
+      // The room's picture is chunked when it will not fit one frame, so the
+      // ceiling is what is reasonable to put on the air once rather than what
+      // the fragmenter can split. Same number the personal avatar uses.
+      maxBytes: AvatarController.shareByteBudget,
     );
     if (!mounted) return;
     if (jpeg == null) {

@@ -70,7 +70,12 @@ class EdgeBackGesture extends StatefulWidget {
   /// enough that a deliberate swipe never feels like it is being ignored. It
   /// was 44, which is most of a fingertip and read as the gesture not working
   /// away from the edge at all.
-  static const double _pageThreshold = 26;
+  ///
+  /// Twenty now, down from twenty-six: two points above the slop everything
+  /// else accepts at, which is the least that can still be called "after
+  /// them". Asked for directly — the gesture wanted less travel before it
+  /// starts moving anything.
+  static const double _pageThreshold = 20;
 
   /// Where the immediate band ends: after whatever the platform reserved for
   /// its own gesture, plus [_edgeReach].
@@ -268,12 +273,16 @@ class EdgeBackGestureController {
   /// How much of the page has to be pushed aside for letting go to mean "go
   /// back".
   ///
-  /// iOS wants half the screen; this asks for a third, which is the distance a
-  /// thumb covers without the hand moving and what the gesture feels like it
-  /// should take. Below this it springs back — and it can afford to be
-  /// generous, because away from the leading edge the drag is not claimed at
-  /// all until the finger has already travelled far enough to mean it.
-  static const double _commitAt = 0.65;
+  /// iOS wants half the screen; this asks for a quarter, which is about as far
+  /// as a thumb reaches without the hand moving. Below this it springs back —
+  /// and it can afford to be generous, because away from the leading edge the
+  /// drag is not claimed at all until the finger has already travelled far
+  /// enough to mean it.
+  ///
+  /// It asked for a third before. A third is still a long way across a modern
+  /// phone, and every one of these gestures ends the same way, so the cost of
+  /// asking for more than is needed is paid on every single one.
+  static const double _commitAt = 0.75;
 
   /// How long a full screen's worth of travel takes once the finger is off.
   ///

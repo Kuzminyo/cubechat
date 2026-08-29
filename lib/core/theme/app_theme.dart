@@ -45,8 +45,16 @@ abstract final class AppTheme {
           side: BorderSide(color: AppColors.glass(0.16)),
         ),
       ),
+      // No ripple, and that stays: a spreading circle over a pane of glass
+      // reads as a smear, which is why it was turned off.
       splashFactory: NoSplash.splashFactory,
-      highlightColor: Colors.transparent,
+      // But a press has to be answered by *something*, immediately. With the
+      // highlight transparent as well, nothing at all happened between the
+      // finger landing and whatever the tap eventually did — so every control
+      // in the app felt like it was thinking about it, and a tap that opened a
+      // screen felt slower than the screen took. This is the acknowledgement:
+      // a faint lift under the finger, no travel, nothing to spread.
+      highlightColor: AppColors.glass(0.10),
       hoverColor: AppColors.glassHover,
     );
   }
