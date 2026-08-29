@@ -191,7 +191,12 @@ function handleRegister(event) {
 let apnsKey = null;
 let apnsJwt = null;
 let apnsJwtIssuedAt = 0;
-let apnsSession = null;
+/// One session per host, because there are two hosts and a phone can be on
+/// either.
+const apnsSessions = new Map();
+
+const APNS_PRODUCTION = 'https://api.push.apple.com';
+const APNS_SANDBOX = 'https://api.sandbox.push.apple.com';
 
 /// Apple refuses a token older than an hour and rate-limits one refreshed more
 /// often than every twenty minutes, so it is minted on the half hour.
@@ -219,19 +224,38 @@ function base64Url(text) {
 /// One HTTP/2 session, kept open. Apple expects it: a connection per push is
 /// the thing their documentation asks you not to do, and on a phone-sized
 /// service it is most of the latency.
-function apnsConnection() {
-  if (apnsSession && !apnsSession.closed && !apnsSession.destroyed) {
-    return apnsSession;
-  }
-  apnsSession = http2Connect(APNS_HOST);
-  apnsSession.on('error', (error) => {
-    log('apns', `session error: ${error.message}`);
-    apnsSession = null;
+function apnsConnection(host) {
+  const existing = apnsSessions.get(host);
+  if (existing && !existing.closed && !existing.destroyed) return existing;
+  const session = http2Connect(host);
+  session.on('error', (error) => {
+    log('apns', `session error (${host}): ${error.message}`);
+    apnsSessions.delete(host);
   });
-  apnsSession.on('close', () => {
-    apnsSession = null;
-  });
-  return apnsSession;
+  session.on('close', () => apnsSessions.delete(host));
+  apnsSessions.set(host, session);
+  return session;
+}
+
+/// Which of Apple's two hosts a token belongs to.
+///
+/// A token minted by a sideloaded or Xcode build is a *sandbox* token; one from
+/// TestFlight or the App Store is a *production* token, and each host refuses
+/// the other's with `BadDeviceToken` — a message that reads like a broken token
+/// rather than the wrong address, and costs an evening every time.
+///
+/// So the host is not configured, it is discovered: try, and on that one error
+/// try the other. What worked is remembered per token, so the second push to
+/// the same phone goes straight there. That is also the only way to serve a
+/// sideloaded phone and a TestFlight phone at once, which one setting cannot
+/// do however carefully it is chosen.
+function hostsFor(npub) {
+  const known = tokens.get(npub)?.host;
+  if (known) return [known, known === APNS_PRODUCTION ? APNS_SANDBOX : APNS_PRODUCTION];
+  // The configured one first: it is a hint about which kind of build is being
+  // tested right now, and being right first time saves a round trip.
+  const first = APNS_HOST === APNS_SANDBOX ? APNS_SANDBOX : APNS_PRODUCTION;
+  return [first, first === APNS_PRODUCTION ? APNS_SANDBOX : APNS_PRODUCTION];
 }
 
 /// The push itself: an alert with a fixed string and nothing else in it.
@@ -245,6 +269,64 @@ function apnsConnection() {
 /// What it costs is that the banner says the same thing every time. The app
 /// fetches the message from the relay and decrypts it locally when it opens.
 async function sendPush(npub, token) {
+  const [first, second] = hostsFor(npub);
+  const attempt = await pushTo(npub, token, first);
+  if (attempt.status === 200) {
+    rememberHost(npub, first);
+    return true;
+  }
+  // The one error that means "right token, wrong address". Everything else is
+  // final: a rejected payload or a retired token says the same thing on both
+  // hosts, and trying twice would only double the log.
+  if (attempt.reason === 'BadDeviceToken') {
+    const retry = await pushTo(npub, token, second);
+    if (retry.status === 200) {
+      log('apns', `${short(npub)} is a ${envName(second)} token`);
+      rememberHost(npub, second);
+      return true;
+    }
+    // Refused by both. Now it really is a token that answers to nobody —
+    // reinstalled, or the app removed — and keeping it costs a push per
+    // message forever.
+    if (retry.reason === 'BadDeviceToken' || retry.status === 410) {
+      forgetToken(npub, retry.reason || retry.status);
+      return false;
+    }
+    log('apns', `${short(npub)} refused on both: ${retry.status} ${retry.reason}`);
+    return false;
+  }
+  if (attempt.status === 410) {
+    forgetToken(npub, attempt.reason || attempt.status);
+    return false;
+  }
+  log(
+    'apns',
+    `${short(npub)} refused: ${attempt.status} ${attempt.reason || attempt.body}`,
+  );
+  return false;
+}
+
+function envName(host) {
+  return host === APNS_SANDBOX ? 'sandbox' : 'production';
+}
+
+function rememberHost(npub, host) {
+  const entry = tokens.get(npub);
+  if (!entry || entry.host === host) return;
+  entry.host = host;
+  void saveStore();
+}
+
+function forgetToken(npub, why) {
+  tokens.delete(npub);
+  void saveStore();
+  resubscribe();
+  log('apns', `${short(npub)} token retired (${why})`);
+}
+
+/// One attempt against one host. Returns what Apple said rather than deciding
+/// what it means, because the meaning depends on which attempt this was.
+function pushTo(npub, token, host) {
   const payload = JSON.stringify({
     aps: {
       alert: { 'loc-key': 'PUSH_NEW_MESSAGE' },
@@ -260,7 +342,7 @@ async function sendPush(npub, token) {
   return new Promise((resolve) => {
     let request;
     try {
-      request = apnsConnection().request({
+      request = apnsConnection(host).request({
         ':method': 'POST',
         ':path': `/3/device/${token}`,
         authorization: `bearer ${apnsAuthorization()}`,
@@ -273,7 +355,7 @@ async function sendPush(npub, token) {
       });
     } catch (error) {
       log('apns', `request failed for ${short(npub)}: ${error.message}`);
-      resolve(false);
+      resolve({ status: 0, reason: '', body: error.message });
       return;
     }
 
@@ -288,26 +370,10 @@ async function sendPush(npub, token) {
     });
     request.on('error', (error) => {
       log('apns', `stream error for ${short(npub)}: ${error.message}`);
-      resolve(false);
+      resolve({ status: 0, reason: '', body: error.message });
     });
     request.on('end', () => {
-      if (status === 200) {
-        resolve(true);
-        return;
-      }
-      // A token Apple has retired is a phone that reinstalled or removed the
-      // app. Dropping it here is what stops the registry filling with addresses
-      // that will never answer again.
-      const reason = safeReason(body);
-      if (status === 410 || reason === 'BadDeviceToken') {
-        tokens.delete(npub);
-        void saveStore();
-        resubscribe();
-        log('apns', `${short(npub)} token retired (${reason || status})`);
-      } else {
-        log('apns', `${short(npub)} refused: ${status} ${reason || body}`);
-      }
-      resolve(false);
+      resolve({ status, reason: safeReason(body), body });
     });
     request.end(payload);
   });
