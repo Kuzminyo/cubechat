@@ -676,6 +676,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelPostComments => 'Comments';
 
   @override
+  String get channelNoComments => 'Nothing said about this one yet';
+
+  @override
+  String get channelCommentHint => 'Comment';
+
+  @override
   String get privacyForwardLinkTitle => 'Link back from forwards';
 
   @override

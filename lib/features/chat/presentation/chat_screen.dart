@@ -97,9 +97,23 @@ final _chatSearchOpenProvider =
     StateProvider.autoDispose.family<bool, String>((_, __) => false);
 final _channelSelfMemberProvider = FutureProvider.autoDispose
     .family<ChannelMember, String>((ref, channelName) async {
-  return ref
+  final member = await ref
       .read(channelRosterControllerProvider.notifier)
       .ensureSelf(channelName, adminWhenFirst: true);
+  // On the way into the room, say whether we hold it.
+  //
+  // A seat granted by an empty roster never left the phone that granted it,
+  // and a room already set to admins-only had no reason to announce one again
+  // — so two people who each typed the room's name both stayed administrators
+  // of it, neither ever saw a reader's view, and each refused the other's
+  // backlog for coming from somebody their roster did not have as an admin.
+  // Once per room per run, and a no-op for anybody who holds no seat.
+  if (member.isAdmin) {
+    unawaited(ref.read(messagingServiceProvider).announceChannelSeat(
+          channelName,
+        ));
+  }
+  return member;
 });
 
 enum ChatRoute { bluetooth, mesh, internet, queued }

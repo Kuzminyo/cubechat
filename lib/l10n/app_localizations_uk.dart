@@ -679,6 +679,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelPostComments => 'Коментарі';
 
   @override
+  String get channelNoComments => 'Про цей допис ще нічого не сказали';
+
+  @override
+  String get channelCommentHint => 'Коментар';
+
+  @override
   String get privacyForwardLinkTitle => 'Посилання на профіль у пересиланнях';
 
   @override

@@ -2901,6 +2901,13 @@ class MessagingService {
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can share the history of $channelName');
     }
+    // Before the backlog, who is offering it.
+    //
+    // The receiving side takes a history only from somebody it already holds
+    // as an administrator, and a member who has never been told who that is
+    // holds nobody. Announcing the seat first is what makes the offer landable
+    // — the same order [sendChannelAdminOnly] uses, and for the same reason.
+    await announceChannelSeat(channel.name);
     final stored =
         _ref.read(messagesControllerProvider)[channel.name] ?? const <Message>[];
     final posts = <ChannelHistoryPost>[];
@@ -3786,7 +3793,19 @@ class MessagingService {
   /// Post [text] to a joined channel. Encrypted under the shared channel key
   /// and broadcast across the mesh; every member with the key decrypts it.
   /// Returns the local pending Message (bucketed under the channel name).
-  Future<Message> sendChannelText(String channelName, String text) async {
+  /// [replyToWireId] threads this under an earlier message.
+  ///
+  /// What makes a comment a comment. A discussion room is otherwise a flat
+  /// conversation, and "the comments on this post" is only answerable if each
+  /// one says which post it belongs to — the reply target is that, and the
+  /// channel ingest has understood it for as long as rooms have shown quotes.
+  /// Only the composing side was missing.
+  Future<Message> sendChannelText(
+    String channelName,
+    String text, {
+    String? replyToWireId,
+    String? replyPreview,
+  }) async {
     final channel =
         _ref.read(channelControllerProvider.notifier).byName(channelName);
     if (channel == null) {
@@ -3803,6 +3822,8 @@ class MessagingService {
       isMine: true,
       status: MessageStatus.sending,
       wireId: TransportEnvelope.hashHex(msgId),
+      replyToWireId: replyToWireId,
+      replyPreview: replyPreview,
     );
     final messages = _ref.read(messagesControllerProvider.notifier);
     messages.append(canonicalId, msg);
@@ -3810,8 +3831,25 @@ class MessagingService {
     try {
       final utf8Text = Uint8List.fromList(utf8.encode(text));
       final inner = padTextPayload(utf8Text);
-      final frame = await _buildChannelFrame(
-          channel, InnerPayloadType.text, inner, msgId);
+      // A malformed handle is ignored rather than failing the send, the same
+      // way the 1:1 path treats one: losing the thread is better than losing
+      // the message.
+      Uint8List? replyTarget;
+      if (replyToWireId != null) {
+        try {
+          final decoded = _hexDecodeBytes(replyToWireId);
+          if (decoded.length == replyTargetLen) replyTarget = decoded;
+        } catch (_) {}
+      }
+      final frame = replyTarget == null
+          ? await _buildChannelFrame(
+              channel, InnerPayloadType.text, inner, msgId)
+          : await _buildChannelFrame(
+              channel,
+              InnerPayloadType.textReply,
+              packTextReply(replyTarget, inner),
+              msgId,
+            );
       final fanout = await _broadcastChannelFrame(frame);
       messages.updateStatus(
         canonicalId,
@@ -4233,6 +4271,27 @@ class MessagingService {
   /// Best-effort and quiet: a room where somebody else is already known to be
   /// the admin refuses this on arrival, which is the correct outcome and not
   /// worth a word to the user.
+  /// Say who runs this room, once per room per run.
+  ///
+  /// The claim used to go out only when somebody turned the announcement rule
+  /// on — so a room that was *already* admin-only never said it again, and two
+  /// phones that had each granted themselves the seat (which is what an empty
+  /// roster does to everybody who joins by typing the name) stayed that way
+  /// forever. Both could post, so no reader ever saw a reader's bar, and each
+  /// refused the other's backlog because the sender was not an administrator as
+  /// far as their roster knew.
+  ///
+  /// Saying it on the way into the room is what lets the two converge — see the
+  /// `channelAdmin` ingest, which settles two guesses by fingerprint. Once per
+  /// run, because it is a fact that does not change and the room pays for every
+  /// broadcast.
+  final Set<String> _seatAnnounced = {};
+
+  Future<void> announceChannelSeat(String channelName) async {
+    if (!_seatAnnounced.add(channelName)) return;
+    await _announceOwnAdminSeat(channelName);
+  }
+
   Future<void> _announceOwnAdminSeat(String channelName) async {
     try {
       final channel =
@@ -4697,8 +4756,18 @@ class MessagingService {
         return;
       }
 
+      // A backlog waits for the same answer a post waits for.
+      //
+      // It used to be dropped outright instead of held, which is most of why
+      // "the history does not arrive": the offer and the seat announcement that
+      // authorises it are two broadcasts, and there is no order in which one is
+      // guaranteed to land first. Dropped, the offer was gone; held, it is
+      // handed back through this same path the moment the roster learns who
+      // sent it, and the check below is re-run then.
+      final needsAnAdmin = _isChannelPost(unpacked.type) ||
+          unpacked.type == InnerPayloadType.channelHistory;
       if (channel.adminOnly &&
-          _isChannelPost(unpacked.type) &&
+          needsAnAdmin &&
           !_ref
               .read(channelRosterControllerProvider.notifier)
               .isAdmin(channel.name, reactorId)) {

@@ -1256,6 +1256,18 @@ abstract class AppLocalizations {
   /// **'Comments'**
   String get channelPostComments;
 
+  /// No description provided for @channelNoComments.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing said about this one yet'**
+  String get channelNoComments;
+
+  /// No description provided for @channelCommentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment'**
+  String get channelCommentHint;
+
   /// No description provided for @privacyForwardLinkTitle.
   ///
   /// In en, this message translates to:

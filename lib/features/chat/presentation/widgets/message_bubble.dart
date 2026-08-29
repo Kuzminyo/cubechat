@@ -22,8 +22,7 @@ import '../../../../core/widgets/floating_glass.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../channels/data/channel_controller.dart';
 import '../../../channels/models/channel.dart' show channelForCommunity;
-import '../../../channels/presentation/channel_viewer_bar.dart';
-import '../../../chats/presentation/chats_list_screen.dart' show channelRoute;
+import '../../../channels/presentation/post_comments_screen.dart';
 import '../../../../core/crypto/identity_service.dart';
 import '../../../../core/identity/avatar_controller.dart';
 import '../../../../core/widgets/identity_avatar.dart';
@@ -1533,7 +1532,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                 if (_showsComments) ...[
                   const SizedBox(height: 4),
                   inBubble(
-                    _CommentsLink(channelName: widget.chatId),
+                    _CommentsLink(
+                      channelName: widget.chatId,
+                      post: message,
+                    ),
                   ),
                 ],
               ],
@@ -2836,24 +2838,25 @@ class _BubbleMeta extends StatelessWidget {
 /// conversation that a reader may not have opened yet — so the number would be
 /// zero until they looked, which is worse than no number.
 class _CommentsLink extends ConsumerWidget {
-  const _CommentsLink({required this.channelName});
+  const _CommentsLink({required this.channelName, required this.post});
 
   final String channelName;
+
+  /// Which post this opens the comments *on*. It used to open the whole
+  /// discussion room, so every announcement's comments were the same flat
+  /// conversation and "what was said about this one" had no answer.
+  final Message post;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () async {
-        final name = await openCommunityFor(ref, channelName);
-        if (!context.mounted) return;
-        if (name == null) {
-          showCommunityUnavailable(context);
-          return;
-        }
-        context.push(channelRoute(name));
-      },
+      onTap: () => openPostComments(
+        context,
+        channelName: channelName,
+        post: post,
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
