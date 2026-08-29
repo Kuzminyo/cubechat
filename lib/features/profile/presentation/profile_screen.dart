@@ -15,6 +15,7 @@ import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/identity/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
+import '../../../core/notifications/push_registration.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -40,6 +41,7 @@ import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
+import '../../../core/util/platform_info.dart';
 import '../../../core/widgets/glass_toast.dart';
 import 'dart:async';
 import '../../peers/data/peer_discovery_controller.dart';
@@ -1260,8 +1262,48 @@ class _PrivacyCard extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           const _QuietHoursRow(),
+          if (PlatformInfo.isIOS) ...[
+            const SizedBox(height: 14),
+            const _PushWakeRow(),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// "Wake this phone when something arrives."
+///
+/// iOS only, and off until it is turned on. A terminated app receives nothing —
+/// APNs is the only way in, and APNs needs a server to drive it, which is the
+/// one piece of this app that is not peer to peer.
+///
+/// The switch says what that costs rather than burying it: the server learns
+/// that this npub received something and when, which the relay already sees but
+/// is now seen twice. That is a decision, so it is asked as one.
+class _PushWakeRow extends ConsumerWidget {
+  const _PushWakeRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final on = ref.watch(pushEnabledProvider);
+    return _SettingSwitch(
+      icon: on
+          ? Icons.notifications_active_rounded
+          : Icons.notifications_off_rounded,
+      title: t.pushWakeTitle,
+      hint: t.pushWakeHint,
+      value: on,
+      onChanged: (next) async {
+        final settled = await ref.read(pushEnabledProvider.notifier).set(next);
+        // Refused, or nothing answered. The switch springs back on its own
+        // because the flag follows what happened rather than what was tapped —
+        // saying so is the difference between "declined" and "broken".
+        if (context.mounted && next && !settled) {
+          showGlassToast(context, t.pushWakeRefused, tone: ToastTone.danger);
+        }
+      },
     );
   }
 }

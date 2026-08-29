@@ -703,6 +703,16 @@ class AppLocalizationsUk extends AppLocalizations {
       'Прибрати з цього телефона й відкріпити. У співрозмовника копія лишається.';
 
   @override
+  String get pushWakeTitle => 'Будити цей телефон';
+
+  @override
+  String get pushWakeHint =>
+      'Невеликий сервер стежить за релеями для вашої адреси й стукає в цей телефон, коли щось надходить, — щоб закритий застосунок усе одно сказав вам. Він не бачить ні повідомлення, ні ключів: лише те, що на вашу адресу щось прийшло, і коли. Релей це вже знає; тут з\'являється друге таке місце.';
+
+  @override
+  String get pushWakeRefused => 'Сповіщення не дозволені';
+
+  @override
   String get privacyForwardLinkTitle => 'Посилання на профіль у пересиланнях';
 
   @override

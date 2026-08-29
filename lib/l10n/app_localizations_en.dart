@@ -700,6 +700,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Removed from this phone, and unpinned. The other side keeps its copy.';
 
   @override
+  String get pushWakeTitle => 'Wake this phone';
+
+  @override
+  String get pushWakeHint =>
+      'A small server watches the relays for your address and taps this phone when something lands, so a closed app still tells you. It never sees a message or a key — only that your address received something, and when. The relay already knows that; this is a second place that does.';
+
+  @override
+  String get pushWakeRefused => 'Notifications were not allowed';
+
+  @override
   String get privacyForwardLinkTitle => 'Link back from forwards';
 
   @override

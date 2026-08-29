@@ -15,6 +15,7 @@ import UserNotifications
   /// thread's mach port in its initialiser and would hand that port back on
   /// deallocation, taking the Diagnostics CPU panel with it.
   private var cpuProbePlugin: CubechatCpuProbePlugin?
+  private var pushPlugin: CubechatPushPlugin?
 
   /// Channel the background window is driven over. Must match
   /// `IosBackgroundRefresh` on the Dart side.
@@ -121,6 +122,7 @@ import UserNotifications
       audioTrimPlugin = CubechatAudioTrimPlugin(messenger: messenger)
       openInPlugin = CubechatOpenInPlugin(messenger: messenger)
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
+      pushPlugin = CubechatPushPlugin(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
         binaryMessenger: messenger
@@ -166,6 +168,28 @@ import UserNotifications
         }
       }
     }
+  }
+
+  // MARK: - APNs
+
+  /// The token, handed straight to the plugin that asked for it.
+  ///
+  /// Nothing else here reads it. It is not stored natively and it is not sent
+  /// anywhere from Swift: Dart signs it into a Nostr event with the identity
+  /// key and posts that, because the key lives on the Dart side and is not
+  /// going to be lifted out for this.
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    pushPlugin?.didRegister(deviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    pushPlugin?.didFailToRegister(error: error)
   }
 
   // MARK: - Catch-up after a wake-up

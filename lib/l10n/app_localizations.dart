@@ -1298,6 +1298,24 @@ abstract class AppLocalizations {
   /// **'Removed from this phone, and unpinned. The other side keeps its copy.'**
   String get chatDeleteForMeHint;
 
+  /// No description provided for @pushWakeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wake this phone'**
+  String get pushWakeTitle;
+
+  /// No description provided for @pushWakeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A small server watches the relays for your address and taps this phone when something lands, so a closed app still tells you. It never sees a message or a key — only that your address received something, and when. The relay already knows that; this is a second place that does.'**
+  String get pushWakeHint;
+
+  /// No description provided for @pushWakeRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications were not allowed'**
+  String get pushWakeRefused;
+
   /// No description provided for @privacyForwardLinkTitle.
   ///
   /// In en, this message translates to:
