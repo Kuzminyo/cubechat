@@ -261,6 +261,7 @@
     "channelUnmute":  "Сповіщати",
     "channelMutedUntil":  "Без звуку до {time}",
     "channelMuteFor":  "Не сповіщати…",
+    "channelMuteMinutes":  "{minutes} хв",
     "channelMuteHours":  "{hours} год",
     "channelMuteDays":  "{days} дн",
     "channelMuteForever":  "Доки не увімкну знову",

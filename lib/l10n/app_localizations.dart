@@ -1118,6 +1118,12 @@ abstract class AppLocalizations {
   /// **'Mute for…'**
   String get channelMuteFor;
 
+  /// No description provided for @channelMuteMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} minutes'**
+  String channelMuteMinutes(int minutes);
+
   /// No description provided for @channelMuteHours.
   ///
   /// In en, this message translates to:

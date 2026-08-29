@@ -12,6 +12,7 @@ import '../../../core/utils/time_format.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/transport/messaging_service.dart';
 import 'widgets/chat_input.dart';
+import 'widgets/floating_day_chip.dart';
 import '../data/messages_controller.dart';
 import '../data/pinned_controller.dart';
 import 'widgets/message_bubble.dart';
@@ -74,6 +75,18 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
   /// you cannot see — which is the bug the archive screen already had to have
   /// fixed for the same reason.
   final Set<String> _picked = <String>{};
+
+  /// Driven by the floating day chip, which needs to know where the list is.
+  final ScrollController _scroll = ScrollController();
+
+  /// The list's own context, for the chip to find the sliver through.
+  final GlobalKey _listKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   bool get _selecting => _picked.isNotEmpty;
 
@@ -195,6 +208,64 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
     setState(_picked.clear);
   }
 
+  /// The pins themselves, edge to edge under the two capsules.
+  ///
+  /// Its padding is what keeps the first and last rows clear of them: a list
+  /// that runs under a floating island has to reserve the island's height
+  /// itself, because nothing above it is holding a band open any more.
+  Widget _list(BuildContext context, AppLocalizations t, List<Message> rows) {
+    if (rows.isEmpty) {
+      return Center(
+        child: Text(
+          t.chatNoPins,
+          style: TextStyle(color: AppColors.textOnGlassDim),
+        ),
+      );
+    }
+    return ListView.builder(
+      key: _listKey,
+      controller: _scroll,
+      padding: EdgeInsets.fromLTRB(
+        12,
+        MediaQuery.paddingOf(context).top + _PinnedHeader.height + 12,
+        12,
+        MediaQuery.paddingOf(context).bottom + 88,
+      ),
+      itemCount: rows.length,
+      itemBuilder: (context, i) {
+        final m = rows[i];
+        final id = m.wireId!;
+        // Grouped by the day they were written, like the conversation they
+        // came out of. A list of twenty pins gathered over a month reads as
+        // one block without it.
+        final newDay = startsNewDay(
+          m.sentAt,
+          i == 0 ? null : rows[i - 1].sentAt,
+        );
+        final row = _PinnedRow(
+          message: m,
+          selected: _picked.contains(id),
+          onTap: () {
+            if (_selecting) {
+              _toggle(id);
+              return;
+            }
+            // Close first: the message being jumped to is in the conversation
+            // behind this screen.
+            Navigator.of(context).pop();
+            widget.onJump(m);
+          },
+          onLongPress: () => _toggle(id),
+        );
+        if (!newDay) return row;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [_PinnedDayLine(day: m.sentAt), row],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -235,117 +306,104 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
           // owning a band of the screen, which is the shape every other
           // surface here already has.
           appBar: null,
-          body: Column(
+          // The list runs *under* the islands, not between them.
+          //
+          // Stacked in a column they had nothing behind them but the aurora,
+          // and a pane at this opacity over a soft gradient is a dark slab —
+          // the blur has nothing to soften, so the glass stops reading as
+          // glass. It is the conversation's own arrangement: the content goes
+          // edge to edge and the capsules float over it, which is where the
+          // recipe was tuned and the only place it looks like what it is.
+          body: Stack(
             children: [
-              _PinnedHeader(
-                title: _selecting
-                    ? t.chatSelectedCount(_picked.length)
-                    : t.chatPinnedCount(rows.length),
-                onBack: () => _selecting
-                    ? setState(_picked.clear)
-                    : Navigator.of(context).maybePop(),
-                // A pin is a message, and everything you can do to a message
-                // you can do to it here. The screen listed them and offered
-                // exactly one verb — so reading something worth keeping meant
-                // going back to the conversation to find it before it could be
-                // copied or passed on, which is the search this list exists to
-                // save.
-                actions: !_selecting
-                    ? const []
-                    : [
-                        _PinnedHeaderAction(
-                          tooltip: t.chatCopyAction,
-                          icon: Icons.copy_rounded,
-                          onPressed: () => _copy(rows),
-                        ),
-                        _PinnedHeaderAction(
-                          tooltip: t.chatForwardAction,
-                          icon: Icons.shortcut_rounded,
-                          onPressed: () => _forward(rows),
-                        ),
-                        _PinnedHeaderAction(
-                          tooltip: t.chatDeleteAction,
-                          icon: Icons.delete_outline_rounded,
-                          color: AppColors.danger,
-                          onPressed: () => _delete(rows),
-                        ),
-                        _PinnedHeaderAction(
-                          tooltip: t.chatUnpinAction,
-                          iconWidget: _UnpinIcon(color: AppColors.textOnGlass),
-                          onPressed: () => _unpick(_picked.toList()),
-                        ),
-                      ],
-              ),
-              Expanded(
-                child: rows.isEmpty
-                    ? Center(
-                        child: Text(
-                          t.chatNoPins,
-                          style: TextStyle(color: AppColors.textOnGlassDim),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                        itemCount: rows.length,
-                        itemBuilder: (context, i) {
-                          final m = rows[i];
-                          final id = m.wireId!;
-                          // Grouped by the day they were written, like the
-                          // conversation they came out of. A list of twenty pins
-                          // gathered over a month reads as one block without it.
-                          final newDay = startsNewDay(
-                            m.sentAt,
-                            i == 0 ? null : rows[i - 1].sentAt,
-                          );
-                          final row = _PinnedRow(
-                            message: m,
-                            selected: _picked.contains(id),
-                            onTap: () {
-                              if (_selecting) {
-                                _toggle(id);
-                                return;
-                              }
-                              // Close first: the message being jumped to is in the
-                              // conversation behind this screen.
-                              Navigator.of(context).pop();
-                              widget.onJump(m);
-                            },
-                            onLongPress: () => _toggle(id),
-                          );
-                          if (!newDay) return row;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [_PinnedDayLine(day: m.sentAt), row],
-                          );
-                        },
-                      ),
-              ),
-              // The composer's place, and the composer's island: this is the
-              // one thing the screen does to everything at once, and a bare
-              // line of red text at the bottom of the glass was the only
-              // control here that did not look like part of the app.
+              Positioned.fill(child: _list(context, t, rows)),
+              // The day of whatever is at the top of the list, named while it
+              // is up there.
+              //
+              // A separator sits above the group it belongs to, so the topmost
+              // group visible after any scroll has its label off-screen — and
+              // the next label down, which belongs to the group *below*, is
+              // then the only date in sight. Read as the list showing the wrong
+              // day, and it is the same thing the conversation grew this chip
+              // to answer.
               if (rows.isNotEmpty)
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                    child: MessageIslandGlass(
-                      borderRadius: 26,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(26),
-                          onTap: () =>
-                              _unpick([for (final m in rows) m.wireId!]),
-                          child: SizedBox(
-                            height: 52,
-                            child: Center(
-                              child: Text(
-                                t.chatUnpinAll,
-                                style: TextStyle(
-                                  color: AppColors.danger,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
+                FloatingDayChip(
+                  controller: _scroll,
+                  messages: rows,
+                  listContext: () => _listKey.currentContext ?? context,
+                  topPadding:
+                      MediaQuery.paddingOf(context).top + _PinnedHeader.height,
+                ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: _PinnedHeader(
+                  title: _selecting
+                      ? t.chatSelectedCount(_picked.length)
+                      : t.chatPinnedCount(rows.length),
+                  onBack: () => _selecting
+                      ? setState(_picked.clear)
+                      : Navigator.of(context).maybePop(),
+                  // A pin is a message, and everything you can do to a message
+                  // you can do to it here. The screen listed them and offered
+                  // exactly one verb — so reading something worth keeping meant
+                  // going back to the conversation to find it before it could be
+                  // copied or passed on, which is the search this list exists to
+                  // save.
+                  actions: !_selecting
+                      ? const []
+                      : [
+                          _PinnedHeaderAction(
+                            tooltip: t.chatCopyAction,
+                            icon: Icons.copy_rounded,
+                            onPressed: () => _copy(rows),
+                          ),
+                          _PinnedHeaderAction(
+                            tooltip: t.chatForwardAction,
+                            icon: Icons.shortcut_rounded,
+                            onPressed: () => _forward(rows),
+                          ),
+                          _PinnedHeaderAction(
+                            tooltip: t.chatDeleteAction,
+                            icon: Icons.delete_outline_rounded,
+                            color: AppColors.danger,
+                            onPressed: () => _delete(rows),
+                          ),
+                          _PinnedHeaderAction(
+                            tooltip: t.chatUnpinAction,
+                            iconWidget:
+                                _UnpinIcon(color: AppColors.textOnGlass),
+                            onPressed: () => _unpick(_picked.toList()),
+                          ),
+                        ],
+                ),
+              ),
+              // The one thing this screen does to everything at once, in the
+              // composer's place and the composer's shape.
+              if (rows.isNotEmpty)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                      child: MessageIslandGlass(
+                        borderRadius: 26,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(26),
+                            onTap: () =>
+                                _unpick([for (final m in rows) m.wireId!]),
+                            child: SizedBox(
+                              height: 52,
+                              child: Center(
+                                child: Text(
+                                  t.chatUnpinAll,
+                                  style: TextStyle(
+                                    color: AppColors.danger,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
@@ -382,7 +440,7 @@ class _PinnedHeader extends StatelessWidget {
 
   /// The conversation header's height, so the two read as the same object at
   /// two moments rather than two headers.
-  static const double _height = 56;
+  static const double height = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -392,9 +450,9 @@ class _PinnedHeader extends StatelessWidget {
       padding:
           EdgeInsets.fromLTRB(8, MediaQuery.paddingOf(context).top + 4, 8, 4),
       child: SizedBox(
-        height: _height,
+        height: height,
         child: MessageIslandGlass(
-          borderRadius: _height / 2,
+          borderRadius: height / 2,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Row(
             children: [

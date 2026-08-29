@@ -590,6 +590,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelMuteFor => 'Mute for…';
 
   @override
+  String channelMuteMinutes(int minutes) {
+    return '$minutes minutes';
+  }
+
+  @override
   String channelMuteHours(int hours) {
     return '$hours hours';
   }

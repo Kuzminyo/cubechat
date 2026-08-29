@@ -272,6 +272,14 @@
     }
   },
   "channelMuteFor": "Mute for…",
+  "channelMuteMinutes": "{minutes} minutes",
+  "@channelMuteMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "channelMuteHours": "{hours} hours",
   "@channelMuteHours": {
     "placeholders": {

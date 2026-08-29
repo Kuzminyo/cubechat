@@ -176,18 +176,19 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
 
     DateTime? until;
     if (choice == 'mute') {
-      var hours = await _pickMuteHours();
-      if (hours == null || !mounted) return;
-      if (hours < 0) {
+      var minutes = await _pickMuteMinutes();
+      if (minutes == null || !mounted) return;
+      if (minutes < 0) {
         // However long the administrator says. The presets are shortcuts, not
         // the set of answers — asked for directly, and the wire has carried an
         // arbitrary deadline since it was written.
-        hours = await _askMuteHours();
-        if (hours == null || !mounted) return;
+        minutes = await _askMuteMinutes();
+        if (minutes == null || !mounted) return;
       }
       // Zero is the "until I say otherwise" row: a mute with no deadline is a
       // null [ChannelModeration.until], which the wire already means.
-      until = hours == 0 ? null : DateTime.now().add(Duration(hours: hours));
+      until =
+          minutes == 0 ? null : DateTime.now().add(Duration(minutes: minutes));
     }
 
     try {
@@ -226,7 +227,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
   /// out well past any lifetime — and by what a moderator plausibly means: a
   /// year is already "indefinitely with extra steps", and the row above this
   /// one says that more honestly.
-  Future<int?> _askMuteHours() async {
+  Future<int?> _askMuteMinutes() async {
     final t = AppLocalizations.of(context);
     final controller = TextEditingController();
     final entered = await showDialog<int>(
@@ -282,14 +283,18 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     if (entered == null) return null;
     // A typo must not become a silence nobody can explain: out of range is
     // treated as no answer rather than clamped into one.
-    if (entered < 1 || entered > 24 * 365) return null;
+    if (entered < 1 || entered > 60 * 24 * 365) return null;
     return entered;
   }
 
-  /// How long a mute lasts, in hours. Zero means no end, and -1 means ask.
-  Future<int?> _pickMuteHours() async {
+  /// How long a mute lasts, in minutes. Zero means no end, and -1 means ask.
+  ///
+  /// Minutes rather than whole hours, because an hour is already a long time
+  /// to stop somebody talking and the shortest thing the picker could express
+  /// was one. The wire has always carried a deadline to the second.
+  Future<int?> _pickMuteMinutes() async {
     final t = AppLocalizations.of(context);
-    const choices = <int>[1, 8, 48];
+    const choices = <int>[5, 60, 480, 2880];
     return showModalBottomSheet<int>(
       context: context,
       backgroundColor: AppColors.bgTop,
@@ -300,15 +305,17 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final hours in choices)
+            for (final minutes in choices)
               ListTile(
                 title: Text(
-                  hours < 24
-                      ? t.channelMuteHours(hours)
-                      : t.channelMuteDays(hours ~/ 24),
+                  minutes < 60
+                      ? t.channelMuteMinutes(minutes)
+                      : minutes < 60 * 24
+                          ? t.channelMuteHours(minutes ~/ 60)
+                          : t.channelMuteDays(minutes ~/ (60 * 24)),
                   style: TextStyle(color: AppColors.textOnGlass),
                 ),
-                onTap: () => Navigator.of(sheetContext).pop(hours),
+                onTap: () => Navigator.of(sheetContext).pop(minutes),
               ),
             ListTile(
               title: Text(
@@ -374,8 +381,17 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     );
     if (result is! MediaPickerAssets || result.assets.isEmpty) return;
 
+    // The same size the personal avatar asks for, and the reason the room's
+    // picture stayed soft after the encoder learned to carry a bigger one:
+    // this is where the resolution was being thrown away. A thousand and
+    // twenty-four pixels, then a crop out of the middle of that, is what every
+    // later step had to work from — no ladder further down can put back what
+    // was never handed to it.
     final preview = await result.assets.first.thumbnailDataWithSize(
-      const ThumbnailSize(1024, 1024),
+      const ThumbnailSize(
+        AvatarController.storedSize,
+        AvatarController.storedSize,
+      ),
       quality: 95,
     );
     if (preview == null) {

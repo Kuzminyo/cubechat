@@ -593,6 +593,11 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelMuteFor => 'Не сповіщати…';
 
   @override
+  String channelMuteMinutes(int minutes) {
+    return '$minutes хв';
+  }
+
+  @override
   String channelMuteHours(int hours) {
     return '$hours год';
   }
