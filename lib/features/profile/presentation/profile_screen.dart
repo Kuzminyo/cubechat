@@ -1315,9 +1315,9 @@ class _PushWakeRow extends ConsumerWidget {
       hint: t.pushWakeHint,
       value: on,
       onChanged: (next) async {
-        final result = await ref.read(pushEnabledProvider.notifier).set(next);
+        final outcome = await ref.read(pushEnabledProvider.notifier).set(next);
         if (!context.mounted || !next) return;
-        switch (result) {
+        switch (outcome.result) {
           case PushEnableResult.ok:
             break;
           case PushEnableResult.denied:
@@ -1328,7 +1328,15 @@ class _PushWakeRow extends ConsumerWidget {
             await _offerSettings(context, ref, t);
           case PushEnableResult.unsupported:
           case PushEnableResult.failed:
-            showGlassToast(context, t.pushWakeRefused, tone: ToastTone.danger);
+            // What the system actually said, when it said anything. The
+            // generic line sent people hunting through a log for a sentence
+            // the app already had in its hand.
+            showGlassToast(
+              context,
+              outcome.detail ?? t.pushWakeRefused,
+              tone: ToastTone.danger,
+              duration: const Duration(seconds: 6),
+            );
         }
       },
     );

@@ -78,11 +78,13 @@ class PushRegistration {
   /// answer is to send the user to Settings. Reporting that the same way as "it
   /// did not work" leaves a switch that can never be turned on and never says
   /// why.
-  Future<PushEnableResult> enable() async {
-    if (!PlatformInfo.isIOS) return PushEnableResult.unsupported;
+  Future<PushOutcome> enable() async {
+    if (!PlatformInfo.isIOS) {
+      return const PushOutcome(PushEnableResult.unsupported);
+    }
     if (await systemStatus() == 'denied') {
       DebugLog.instance.log('PUSH', 'notifications denied in system settings');
-      return PushEnableResult.denied;
+      return const PushOutcome(PushEnableResult.denied);
     }
     final String? token;
     try {
@@ -92,17 +94,29 @@ class PushRegistration {
       // and a build signed without the Push Notifications entitlement, which
       // is refused with "no valid aps-environment".
       DebugLog.instance.log('PUSH', 'no token: ${e.message}');
-      return PushEnableResult.failed;
+      return PushOutcome(PushEnableResult.failed, e.message);
+    } on MissingPluginException {
+      // The build predates the plugin. Worth its own answer: the switch is
+      // visible because the *Dart* is new, and a phone can easily be running
+      // an app whose native half is older than the screen drawing it.
+      DebugLog.instance.log('PUSH', 'plugin missing — build has no push code');
+      return const PushOutcome(
+        PushEnableResult.failed,
+        'this build has no push support (native half is older)',
+      );
     }
     if (token == null || token.isEmpty) {
       // Asked and declined just now, rather than declined at some point in the
       // past — the prompt did appear, so Settings is still where it is undone.
       DebugLog.instance.log('PUSH', 'permission refused');
-      return PushEnableResult.denied;
+      return const PushOutcome(PushEnableResult.denied);
     }
     return await _publish(token)
-        ? PushEnableResult.ok
-        : PushEnableResult.failed;
+        ? const PushOutcome(PushEnableResult.ok)
+        : const PushOutcome(
+            PushEnableResult.failed,
+            'the server did not accept the registration',
+          );
   }
 
   /// Take the user to the one place a refusal can be undone.
@@ -187,6 +201,22 @@ class PushRegistration {
 /// is the problem.
 enum PushEnableResult { ok, denied, unsupported, failed }
 
+/// What happened, and — when it went wrong — what the system said about it.
+///
+/// The reason is carried rather than logged and forgotten. "It did not work"
+/// sends somebody hunting through a log; "no valid aps-environment" is the
+/// answer itself, and it is the message Apple returns for the one failure that
+/// looks exactly like a bug in this app and is not: a build signed by an Apple
+/// ID that has no push entitlement.
+class PushOutcome {
+  const PushOutcome(this.result, [this.detail]);
+
+  final PushEnableResult result;
+  final String? detail;
+
+  bool get ok => result == PushEnableResult.ok;
+}
+
 final pushRegistrationProvider = Provider<PushRegistration>(
   PushRegistration.new,
 );
@@ -233,14 +263,16 @@ class PushEnabled extends Notifier<bool> {
   ///
   /// The flag follows what actually happened rather than what was tapped: a
   /// refused permission leaves it off, and the switch springs back on its own.
-  Future<PushEnableResult> set(bool on) async {
+  Future<PushOutcome> set(bool on) async {
     final push = ref.read(pushRegistrationProvider);
     final result = on
         ? await push.enable()
-        : (await push.disable()
-            ? PushEnableResult.ok
-            : PushEnableResult.failed);
-    state = on && result == PushEnableResult.ok;
+        : PushOutcome(
+            await push.disable()
+                ? PushEnableResult.ok
+                : PushEnableResult.failed,
+          );
+    state = on && result.ok;
     try {
       await _loading;
       await _box?.put(_key, state);
