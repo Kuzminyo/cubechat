@@ -39,6 +39,22 @@ class ChatVoiceBar extends ConsumerStatefulWidget {
 class _ChatVoiceBarState extends ConsumerState<ChatVoiceBar> {
   static const double _height = 56;
 
+  /// The last thing the island was showing, kept for as long as it takes to
+  /// fade out.
+  ///
+  /// Without it the close was not a close. The child was swapped for an empty
+  /// box on the very frame playback stopped, so the panel vanished instantly
+  /// and the opacity animation had nothing left to work on — all 220 ms of
+  /// easing went into shrinking a box that was already blank. Holding the last
+  /// playback lets the island fade *itself* out first, and only then collapse.
+  VoicePlayback? _fading;
+
+  /// How long the island takes to go, in two parts: the panel fades, then the
+  /// space it took closes up. Sequential rather than together, because the two
+  /// happening at once is what made it read as a disappearance.
+  static const Duration _fadeOut = Duration(milliseconds: 180);
+  static const Duration _collapse = Duration(milliseconds: 220);
+
   @override
   void initState() {
     super.initState();
@@ -93,27 +109,38 @@ class _ChatVoiceBarState extends ConsumerState<ChatVoiceBar> {
     // shoved the whole conversation down a notch in one frame — and closing one
     // yanked it back up. Both ends are 220 ms of easing now, and the list rides
     // the same curve because it is measuring the same box.
+    if (playback.isActive) {
+      _fading = playback;
+    }
+    // Whatever is on screen right now: the live playback, or the one on its way
+    // out. Cleared when the fade lands, which is what starts the collapse.
+    final shown = playback.isActive ? playback : _fading;
     return ClipRect(
       child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
+        duration: _collapse,
         curve: Curves.easeOutCubic,
         alignment: Alignment.topCenter,
         child: AnimatedOpacity(
           opacity: playback.isActive ? 1 : 0,
-          duration: const Duration(milliseconds: 160),
-          child: playback.isActive
-              ? Padding(
+          duration: _fadeOut,
+          curve: Curves.easeOutCubic,
+          onEnd: () {
+            if (!mounted || playback.isActive || _fading == null) return;
+            setState(() => _fading = null);
+          },
+          child: shown == null
+              ? const SizedBox(width: double.infinity)
+              : Padding(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
                   child: SizedBox(
                     height: _height,
                     child: MessageIslandGlass(
                       borderRadius: _height / 2,
                       padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: _VoicePanel(playback: playback, height: _height),
+                      child: _VoicePanel(playback: shown, height: _height),
                     ),
                   ),
-                )
-              : const SizedBox(width: double.infinity),
+                ),
         ),
       ),
     );

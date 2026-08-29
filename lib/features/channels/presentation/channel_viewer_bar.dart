@@ -46,37 +46,45 @@ class ChannelViewerBar extends ConsumerWidget {
         (all) => all[channelName]?.isMutedNow ?? false,
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-      child: Row(
-        children: [
-          _RoundGlassButton(
-            icon: Icons.search_rounded,
-            tooltip: t.chatSearchTitle,
-            onTap: onSearch,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: MessageIslandGlass(
-              borderRadius: 26,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(26),
-                  onTap: () => _toggleMute(context, ref, muted: muted),
-                  // Held down, it offers a length rather than forever: the
-                  // common case is one loud evening, and a mute you have to
-                  // remember to undo is one you will not.
-                  onLongPress: () => _pickDuration(context, ref),
-                  child: SizedBox(
-                    height: 52,
-                    child: Center(
-                      child: Text(
-                        muted ? t.channelUnmute : t.channelMute,
-                        style: TextStyle(
-                          color: AppColors.textOnGlass,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+    // The composer's own frame, to the point: `SafeArea(top: false)` and the
+    // same twelve underneath. Without the safe area this bar sat in the strip
+    // the system keeps for its gesture bar — lower than the island it stands in
+    // for, on a screen where the two are never seen together and the difference
+    // is only felt as "too low".
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: Row(
+          children: [
+            _RoundGlassButton(
+              icon: Icons.search_rounded,
+              tooltip: t.chatSearchTitle,
+              onTap: onSearch,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: MessageIslandGlass(
+                borderRadius: 26,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(26),
+                    onTap: () => _toggleMute(context, ref, muted: muted),
+                    // Held down, it offers a length rather than forever: the
+                    // common case is one loud evening, and a mute you have to
+                    // remember to undo is one you will not.
+                    onLongPress: () => _pickDuration(context, ref),
+                    child: SizedBox(
+                      height: 52,
+                      child: Center(
+                        child: Text(
+                          muted ? t.channelUnmute : t.channelMute,
+                          style: TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -84,14 +92,14 @@ class ChannelViewerBar extends ConsumerWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _RoundGlassButton(
-            icon: Icons.mode_comment_outlined,
-            tooltip: t.channelCommunity,
-            onTap: onOpenCommunity,
-          ),
-        ],
+            const SizedBox(width: 10),
+            _RoundGlassButton(
+              icon: Icons.mode_comment_outlined,
+              tooltip: t.channelCommunity,
+              onTap: onOpenCommunity,
+            ),
+          ],
+        ),
       ),
     );
   }

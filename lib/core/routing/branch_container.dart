@@ -168,7 +168,18 @@ class _BranchContainerState extends State<BranchContainer>
   /// A cancel is treated as a release with no throw behind it: land on
   /// whichever tab the strip is nearest.
   void _onDragCancel() {
-    if (!_dragging) return;
+    // Settled whether or not a drag was running.
+    //
+    // The guard was there because a cancel with no drag behind it has nothing
+    // to finish — true of the flag, and not of the strip: `_onDragStart` stops
+    // the animation the moment the finger lands, so a gesture that is taken
+    // away between the stop and the first update leaves the tabs parked
+    // wherever they were. Half a screen of one tab and half of the next, which
+    // is the other half of what the back gesture was leaving behind.
+    if (!_dragging) {
+      _settleTo(_target);
+      return;
+    }
     _onDragEnd(DragEndDetails());
   }
 

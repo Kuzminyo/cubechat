@@ -340,8 +340,20 @@ class EdgeBackGestureController {
       );
     } else {
       if (current) navigator.pop();
-      if (controller.isAnimating) {
-        // Leaving: what is left is the gap down to 0.
+      // Settled either way, and that "either" is the fix.
+      //
+      // This used to animate back only when the pop had already started one —
+      // which is the ordinary case and not the only one. A `PopScope` that
+      // answers the pop itself, a route something else has just taken off the
+      // stack: in both, `navigator.pop()` returns having moved nothing, the
+      // controller is not animating, and the page is left sitting exactly where
+      // the finger let go of it. A screen stopped halfway across, reported
+      // three times as the back gesture leaving a chat half-closed.
+      //
+      // A gesture-driven animation must never be left between its endpoints.
+      // Nothing is lost by being sure: when the pop did start the reverse, this
+      // only replaces its curve with the one the release was already using.
+      if (isActive() || controller.isAnimating) {
         controller.animateBack(
           0,
           duration: _settleFor(controller.value, velocity),
