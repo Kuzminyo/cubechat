@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    How the archive is turned into an IPA for App Store Connect.
+
+    Manual signing, deliberately. Automatic signing asks Xcode to mint whatever
+    it needs, which is the right answer on a developer's own Mac and the wrong
+    one on a GitHub runner: the runner is destroyed after every job, so its
+    keychain never holds the private key of a certificate it made last time,
+    and each run issues a *new* distribution certificate. Apple allows three.
+    The fourth build fails with "maximum number of certificates generated" and
+    has to be cleaned up by hand in the developer portal.
+
+    So the certificate and the profile are created once, stored as repository
+    secrets, and imported into a throwaway keychain by the workflow.
+-->
+<plist version="1.0">
+<dict>
+	<!--
+	     Xcode 16 renamed this value from `app-store` to `app-store-connect`
+	     and still accepts the old spelling. If a future Xcode drops it, the
+	     export fails with a message naming the allowed values - switch the
+	     string, there is nothing else to change.
+	-->
+	<key>method</key>
+	<string>app-store</string>
+
+	<key>teamID</key>
+	<string>XGPPT9GNR2</string>
+
+	<key>signingStyle</key>
+	<string>manual</string>
+
+	<!--
+	     The key is the bundle id and the value is the profile's *name* in the
+	     developer portal, not its filename and not its UUID. Create the
+	     profile under exactly this name or the export cannot resolve it.
+
+	     Note the bundle id: iOS is `app.cubechat` while Android stays
+	     `com.cubechat.cubechat`. Not drift - `com.cubechat.cubechat` was
+	     already registered to another Apple account and could not be had.
+	-->
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>app.cubechat</key>
+		<string>cubechat App Store</string>
+	</dict>
+
+	<!--
+	     Ship the dSYMs. Without them App Store Connect shows native crashes as
+	     raw addresses, and the Flutter engine frames are exactly the ones worth
+	     reading.
+	-->
+	<key>uploadSymbols</key>
+	<true/>
+
+	<!--
+	     Export to a file rather than uploading from here. `destination: upload`
+	     would post the build during export, which folds two failures into one
+	     step: a rejected binary and a flaky upload would look the same, and a
+	     retry would rebuild the archive instead of just resending it.
+	-->
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>

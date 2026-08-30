@@ -1,0 +1,238 @@
+name: iOS TestFlight
+
+# Deliberately manual. A TestFlight build is a thing somebody decides to do —
+# it consumes a build number that can never be reused, it notifies testers, and
+# on a first upload it starts an export-compliance review. None of that should
+# happen because a commit landed.
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What testers should be told changed
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Analyze and test
+    # Linux, like the other iOS workflow: analyze and test touch no Apple
+    # toolchain, and a macOS runner costs ten times as much per minute.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Analyze
+        run: |
+          set -o pipefail
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings | tee analyze.log
+          if grep -qE '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log; then
+            echo "::error::flutter analyze reported errors or warnings"
+            grep -E '^[[:space:]]*(error|warning)[[:space:]]*[-•]' analyze.log
+            exit 1
+          fi
+
+      - name: Test
+        run: flutter test --exclude-tags golden
+
+  upload:
+    name: Sign and upload to TestFlight
+    needs: verify
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.x'
+          cache: true
+
+      - name: Pull pub dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Pre-cache iOS artifacts
+        run: flutter precache --ios
+
+      # Same reasoning as the unsigned workflow: MapsKeys.xcconfig is
+      # gitignored because this repository is public, so without this the
+      # placeholder stays literal and the Map tab crashes on launch.
+      - name: Write the Google Maps key
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY_IOS || secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+            echo "::error::GOOGLE_MAPS_API_KEY secret is empty — the map would crash the app"
+            exit 1
+          fi
+          printf 'GOOGLE_MAPS_API_KEY=%s\n' "$GOOGLE_MAPS_API_KEY" \
+            > ios/Flutter/MapsKeys.xcconfig
+
+      - name: Check Runner Swift sources are in the build phase
+        run: |
+          set -e
+          missing=0
+          for f in ios/Runner/*.swift; do
+            name=$(basename "$f")
+            if ! grep -q "$name in Sources" ios/Runner.xcodeproj/project.pbxproj; then
+              echo "::error file=$f::$name is missing from the Runner target's Sources build phase"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Pin the CocoaPods platform to iOS 15
+        run: |
+          set -e
+          cd ios
+          if [ ! -f Podfile ]; then
+            flutter build ios --release --no-codesign --config-only || true
+          fi
+          grep -v "^platform :ios" Podfile > Podfile.pinned
+          printf "platform :ios, '15.0'\n" | cat - Podfile.pinned > Podfile
+          rm -f Podfile.pinned
+
+      # A keychain of its own, thrown away with the runner.
+      #
+      # The default login keychain on a runner is usable but shared with
+      # everything else the job does, and `security` commands against it are
+      # the kind of thing that fails once a year for reasons nobody can
+      # reproduce. A dedicated one is created, unlocked, made default, and
+      # deleted at the end whatever happened.
+      #
+      # `set-key-partition-list` is the step people miss: without it codesign
+      # prompts for keychain access, and a prompt on a headless runner is a job
+      # that hangs until it times out.
+      - name: Import the signing certificate
+        env:
+          CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          set -e
+          if [ -z "$CERT_P12" ]; then
+            echo "::error::IOS_DIST_CERT_P12 is empty — see .github/workflows/ios-testflight.yml"
+            exit 1
+          fi
+          KEYCHAIN=$RUNNER_TEMP/signing.keychain-db
+          PASSWORD=$(uuidgen)
+          echo "$CERT_P12" | base64 --decode > $RUNNER_TEMP/dist.p12
+          security create-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security import $RUNNER_TEMP/dist.p12 -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security default-keychain -s "$KEYCHAIN"
+          rm -f $RUNNER_TEMP/dist.p12
+          echo "identities in the keychain:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      # Xcode finds a profile by having it in this directory. The name inside
+      # the file is what ExportOptions.plist refers to — `cubechat App Store` —
+      # and the filename is irrelevant.
+      - name: Install the provisioning profile
+        env:
+          PROFILE: ${{ secrets.IOS_PROVISION_PROFILE }}
+        run: |
+          set -e
+          if [ -z "$PROFILE" ]; then
+            echo "::error::IOS_PROVISION_PROFILE is empty"
+            exit 1
+          fi
+          DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$DIR"
+          echo "$PROFILE" | base64 --decode > "$DIR/cubechat.mobileprovision"
+          echo "profile installed:"
+          security cms -D -i "$DIR/cubechat.mobileprovision" \
+            | plutil -extract Name raw -
+
+      - name: Build signed IPA
+        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+      # The App Store Connect API key, rather than an Apple ID and password.
+      # A password would need an app-specific one and would still be a second
+      # factor away from working on a runner; the API key is exactly what it is
+      # for. altool looks for it by name in one of a few fixed directories.
+      - name: Upload to App Store Connect
+        env:
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          API_KEY: ${{ secrets.APPSTORE_API_KEY }}
+        run: |
+          set -e
+          if [ -z "$API_KEY" ] || [ -z "$API_KEY_ID" ] || [ -z "$API_ISSUER_ID" ]; then
+            echo "::error::App Store Connect API secrets are missing"
+            exit 1
+          fi
+          mkdir -p ~/private_keys
+          echo "$API_KEY" | base64 --decode > ~/private_keys/AuthKey_$API_KEY_ID.p8
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          echo "uploading $IPA"
+          xcrun altool --upload-app --type ios --file "$IPA" \
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID"
+          rm -f ~/private_keys/AuthKey_$API_KEY_ID.p8
+
+      # The IPA is kept whatever the upload did. A rejected binary and a flaky
+      # upload look the same from here, and rebuilding to retry a *send* wastes
+      # ten minutes of macOS runner for nothing.
+      - name: Keep the IPA
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: cubechat-ios-signed-${{ github.sha }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Remove the keychain
+        if: always()
+        run: |
+          security default-keychain -s login.keychain-db || true
+          security delete-keychain $RUNNER_TEMP/signing.keychain-db || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/cubechat.mobileprovision" || true
+
+      - name: Where it went
+        if: success()
+        run: |
+          {
+            echo "## Uploaded to App Store Connect"
+            echo ""
+            echo "Processing takes a few minutes. It appears under **TestFlight**"
+            echo "once Apple has finished, and the first upload of a new app also"
+            echo "asks for export-compliance answers before testers can install it."
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Notes: ${{ inputs.notes || '(none given)' }}"
+          } >> $GITHUB_STEP_SUMMARY

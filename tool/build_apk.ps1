@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Builds a release APK on this Windows box, working around a broken
-    `.flutter-plugins-dependencies`.
+    Builds a release APK - or, with -Bundle, an AAB for Google Play - on this
+    Windows box, working around a broken `.flutter-plugins-dependencies`.
 
 .DESCRIPTION
     `flutter build apk` does not work here. Every `flutter pub get` (and every
@@ -28,6 +28,23 @@
     there, not from pubspec, so without this step a bumped pubspec silently
     ships a stale versionCode and testers cannot tell two APKs apart.
 
+.PARAMETER Bundle
+    Build an AAB instead of an APK. Google Play accepts nothing else.
+
+    `flutter build appbundle` is broken here for exactly the same reason
+    `flutter build apk` is - it rewrites the plugin list before Gradle reads it
+    - so the workaround has to cover both, and the only difference downstream is
+    which Gradle task runs and where the artifact lands.
+
+    Two things about an AAB that do not apply to the APK:
+
+    - Play re-signs it. The keystore below is the *upload* key from Play's point
+      of view, and the certificate that actually reaches phones is Google's. Any
+      fingerprint restriction - the Maps key's above all - has to name the SHA-1
+      from Play Console, not the one this keystore produces.
+    - Nothing here can install it. An AAB is not a package; Play splits it per
+      device. To test the exact artifact, pull the APKs back out with bundletool.
+
 .PARAMETER Clean
     Run `flutter clean` first. Slower by several minutes; use when a build
     fails in ways that smell like stale intermediates.
@@ -38,9 +55,13 @@
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1 -Bundle
 #>
 [CmdletBinding()]
 param(
+    [switch]$Bundle,
     [switch]$Clean,
     [switch]$SkipPubGet
 )
@@ -202,7 +223,8 @@ $out = foreach ($k in $props.Keys) { "$k=$($props[$k])" }
 Step "local.properties pinned to $versionName / $versionCode"
 
 # --- Build -------------------------------------------------------------------
-Step 'gradlew assembleRelease (this takes ~8 minutes)'
+$task = if ($Bundle) { 'bundleRelease' } else { 'assembleRelease' }
+Step "gradlew $task (this takes ~8 minutes)"
 $sw = [Diagnostics.Stopwatch]::StartNew()
 # Kotlin's incremental caches break on this machine specifically: the plugin
 # sources live on C: and the project on D:, and the cache keys do not survive
@@ -213,35 +235,49 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 & (Join-Path $root 'android\gradlew.bat') -p (Join-Path $root 'android') `
     '-Pkotlin.incremental=false' `
     '-Pkotlin.compiler.execution.strategy=in-process' `
-    assembleRelease --console=plain
+    $task --console=plain
 if ($LASTEXITCODE -ne 0) { throw "Gradle failed ($LASTEXITCODE)." }
 $sw.Stop()
 
-$apk = Join-Path $root 'build\app\outputs\flutter-apk\app-release.apk'
-if (-not (Test-Path $apk)) { throw "Gradle reported success but $apk is missing." }
+# The APK is relocated by the Flutter Gradle plugin; the bundle is not, so it
+# sits where AGP wrote it. Both are under build\app\ only because
+# android\build.gradle.kts redirects the build directory out of android\.
+$artifact = if ($Bundle) {
+    Join-Path $root 'build\app\outputs\bundle\release\app-release.aab'
+} else {
+    Join-Path $root 'build\app\outputs\flutter-apk\app-release.apk'
+}
+if (-not (Test-Path $artifact)) { throw "Gradle reported success but $artifact is missing." }
 
 # --- Deliver under a unique name ---------------------------------------------
 # Gradle always writes the same path, and the size barely moves between builds,
 # so in a file explorer a fresh APK looks exactly like the previous one and gets
 # skipped. Give every build a name that says what it is.
+$ext = if ($Bundle) { 'aab' } else { 'apk' }
 $tag = $stamp -replace '^\d{4}-\d{2}-\d{2}-', ''
-$named = Join-Path $root "build\cubechat-$versionName-$versionCode-$tag.apk"
-Copy-Item $apk $named -Force
+$named = Join-Path $root "build\cubechat-$versionName-$versionCode-$tag.$ext"
+Copy-Item $artifact $named -Force
 
 # --- Verify the stamp actually shipped ---------------------------------------
 # Release Dart is AOT-compiled, so the stamp lives inside libapp.so rather than
 # anywhere greppable in the APK itself. Checking it here is what catches a build
 # that silently reused an old snapshot.
+#
+# An APK holds the library at lib/<abi>/; a bundle nests every module under its
+# own name, so the same file is at base/lib/<abi>/. Worth following rather than
+# skipping the check for bundles: a stale snapshot is exactly as invisible in an
+# AAB, and there it would reach Play rather than one tester's phone.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+$libPath = if ($Bundle) { 'base/lib/arm64-v8a/libapp.so' } else { 'lib/arm64-v8a/libapp.so' }
 $zip = [System.IO.Compression.ZipFile]::OpenRead($named)
 try {
-    $entry = $zip.Entries | Where-Object { $_.FullName -eq 'lib/arm64-v8a/libapp.so' }
-    if (-not $entry) { throw 'No lib/arm64-v8a/libapp.so in the APK.' }
+    $entry = $zip.Entries | Where-Object { $_.FullName -eq $libPath }
+    if (-not $entry) { throw "No $libPath in the $($ext.ToUpper())." }
     $tmp = Join-Path ([IO.Path]::GetTempPath()) 'cubechat-libapp.so'
     [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $tmp, $true)
     $bytes = [System.IO.File]::ReadAllBytes($tmp)
     $text = [System.Text.Encoding]::GetEncoding('latin1').GetString($bytes)
-    if (-not $text.Contains($stamp)) { throw "Built APK does not contain the build stamp '$stamp'." }
+    if (-not $text.Contains($stamp)) { throw "Built $($ext.ToUpper()) does not contain the build stamp '$stamp'." }
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 } finally {
     $zip.Dispose()
@@ -252,4 +288,11 @@ Write-Host ''
 Write-Host "BUILD OK  in $([math]::Round($sw.Elapsed.TotalMinutes,1)) min" -ForegroundColor Green
 Write-Host "  $named"
 Write-Host "  $size MB - cubechat $versionName+$versionCode - stamp verified inside libapp.so"
-Write-Host '  Install OVER the existing app. Uninstalling wipes the identity and breaks existing chats.'
+if ($Bundle) {
+    Write-Host '  Upload to Play Console. This cannot be installed on a phone as it is -'
+    Write-Host '  use bundletool if you need the exact APKs Play would generate.'
+    Write-Host '  Play re-signs with its own key: the SHA-1 that restricts the Maps key must'
+    Write-Host '  come from Play Console (App integrity), not from this keystore.'
+} else {
+    Write-Host '  Install OVER the existing app. Uninstalling wipes the identity and breaks existing chats.'
+}
