@@ -1,0 +1,93 @@
+name: Landing site
+
+# The marketing site in `landing/`, published to GitHub Pages.
+#
+# Only on changes to that directory, plus manual dispatch. The app and the
+# landing page share a repository and nothing else: an APK build has no reason
+# to redeploy a website, and a copy edit on the website has no reason to spend
+# a macOS runner.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Pages needs both: `pages` to deploy, `id-token` for the deployment's own
+# attestation. `contents: read` stays least-privilege — nothing here writes to
+# the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a queued one is not cancelled: the last push
+# should win, and cancelling in-progress would leave whichever finished first
+# as the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+
+      # `ci` rather than `install`: it installs exactly what the lock file says
+      # and fails if the two disagree, which is the difference between a build
+      # that reproduces and one that merely succeeds.
+      - name: Install
+        working-directory: landing
+        run: npm ci
+
+      # Where the site will live. See the comment in landing/vite.config.ts —
+      # on github.io the site sits in a folder, and a base of `/` gives a blank
+      # page whose assets all 404.
+      #
+      # When cubechat.qpon is delegated and set as the custom domain, drop this
+      # env line and add landing/public/CNAME containing the domain. Both
+      # changes are needed: the base makes the assets resolve, the CNAME file
+      # survives the deploy and is what Pages reads the domain from.
+      - name: Build
+        working-directory: landing
+        env:
+          PAGES_BASE: /cubechat/
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Where it went
+        run: |
+          {
+            echo "## Landing site deployed"
+            echo ""
+            echo "- ${{ steps.deploy.outputs.page_url }}"
+            echo "- Commit: \`${{ github.sha }}\`"
+          } >> $GITHUB_STEP_SUMMARY
