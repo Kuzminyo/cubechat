@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    What the app claims for Release builds - the ones that reach TestFlight,
+    the App Store, and Sideloadly.
+
+    `production` matches what the `cubechat App Store` profile grants, checked
+    rather than assumed: the profile's entitlements carry
+    `aps-environment: production` and `get-task-allow: false`. A mismatch here
+    is not a warning, it is a rejected upload.
+
+    One consequence worth writing down. Sideloading re-signs this binary with a
+    free personal profile, which cannot grant `production` - or any
+    aps-environment, since push is a paid-account capability. Sideloadly strips
+    entitlements its profile cannot cover, so the install still works and push
+    stays dead there, which it already was. If an install ever fails right
+    after this file appears, that stripping is the first thing to check.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

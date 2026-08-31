@@ -150,6 +150,36 @@ function deviceTokenOf(content) {
   return /^[0-9a-f]{64,200}$/.test(token) ? token : null;
 }
 
+/// What the banner says, per language the app can be set to.
+///
+/// The server cannot decrypt anything, so this is the whole of the text — the
+/// message itself is fetched from the relay and opened on the phone. Keep these
+/// in step with the app's supported locales: an unknown code falls back to the
+/// same default the app builds with rather than showing nothing.
+const ALERT_BODY = {
+  en: 'New message',
+  uk: 'Нове повідомлення',
+};
+
+const DEFAULT_LANG = 'en';
+
+/// The language tag from a registration, or the default.
+///
+/// Tags are part of what the signature covers, so this cannot be set for
+/// somebody else's npub or changed in flight. Validated against the table
+/// rather than passed through: the value ends up selecting a string, and an
+/// unknown one should degrade to English, not to `undefined`.
+function languageOf(event) {
+  const tags = Array.isArray(event?.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (Array.isArray(tag) && tag[0] === 'lang' && typeof tag[1] === 'string') {
+      const code = tag[1].trim().toLowerCase().slice(0, 2);
+      if (Object.hasOwn(ALERT_BODY, code)) return code;
+    }
+  }
+  return DEFAULT_LANG;
+}
+
 function handleRegister(event) {
   if (!verifyEvent(event)) return { ok: false, reason: 'signature' };
   if (event.kind !== REGISTER_KIND) return { ok: false, reason: 'kind' };
@@ -170,9 +200,21 @@ function handleRegister(event) {
 
   const token = deviceTokenOf(event.content);
   if (!token) return { ok: false, reason: 'token' };
+  const lang = languageOf(event);
 
-  const before = tokens.get(event.pubkey)?.token;
-  tokens.set(event.pubkey, { token, updatedAt: event.created_at });
+  const previous = tokens.get(event.pubkey);
+  const before = previous?.token;
+  tokens.set(event.pubkey, {
+    token,
+    updatedAt: event.created_at,
+    lang,
+    // Carried over only when the token is the same one. Which APNs host a
+    // token belongs to is learned by being refused once (see hostsFor), and
+    // a phone re-registers on every launch — dropping it here would make the
+    // service re-learn it, at the cost of a wasted round trip, forever. A
+    // *new* token may well be a new environment, so that keeps nothing.
+    host: token === before ? previous?.host : undefined,
+  });
   void saveStore();
   // Only when the set of npubs changed. A phone re-registering the same token
   // on every launch must not cost the relays a new subscription each time.
@@ -306,6 +348,16 @@ async function sendPush(npub, token) {
   return false;
 }
 
+/// The banner text for whoever this is going to.
+///
+/// A registry entry written before languages existed has no `lang`, and so does
+/// one from a phone running an older build. Both get English rather than an
+/// empty banner.
+function bodyFor(npub) {
+  const lang = tokens.get(npub)?.lang;
+  return ALERT_BODY[lang] || ALERT_BODY[DEFAULT_LANG];
+}
+
 function envName(host) {
   return host === APNS_SANDBOX ? 'sandbox' : 'production';
 }
@@ -329,7 +381,14 @@ function forgetToken(npub, why) {
 function pushTo(npub, token, host) {
   const payload = JSON.stringify({
     aps: {
-      alert: { 'loc-key': 'PUSH_NEW_MESSAGE' },
+      // The text itself, not a `loc-key`. That is what this sent until
+      // 2026-08-31, and it never worked: `loc-key` names an entry in the
+      // app's Localizable.strings, this Flutter app ships no such file
+      // (its translations are .arb, compiled into Dart), and iOS falls back
+      // to displaying the key. Every banner would have read
+      // "PUSH_NEW_MESSAGE". Shipping the string from here needs no iOS
+      // resource at all, and the language rides in the signed registration.
+      alert: { body: bodyFor(npub) },
       sound: 'default',
       // Collapsed by sender, so ten messages while the phone is in a pocket
       // are one banner rather than ten. The app shows the real list when it

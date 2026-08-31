@@ -8,11 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 
 import '../crypto/identity_service.dart';
+import '../locale/locale_controller.dart';
 import '../transport/nostr/nostr_event.dart';
 import '../transport/nostr/nostr_signer.dart';
 import '../util/debug_log.dart';
@@ -42,6 +44,12 @@ import '../util/platform_info.dart';
 /// sees all of that, so this is a second observer of the same metadata rather
 /// than a new kind of exposure. It is still a real cost, which is why this is
 /// off until somebody turns it on.
+///
+/// One thing the relay does *not* already see is added here: the language the
+/// app is set to, sent so the banner can be written in it. Two values are
+/// possible today, so it narrows a person about as much as knowing they
+/// installed a Ukrainian-language app does. Worth naming rather than leaving
+/// for somebody to find in a packet.
 ///
 /// ## Why the registration is signed
 ///
@@ -137,7 +145,9 @@ class PushRegistration {
           pubkey: signer.npubHex,
           createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
           kind: registrationKind,
-          tags: const <List<String>>[],
+          tags: <List<String>>[
+            <String>['lang', await _language()],
+          ],
           content: token,
         ),
       );
@@ -180,6 +190,29 @@ class PushRegistration {
     } on PlatformException {
       return 'undecided';
     }
+  }
+
+  /// Which language the banner should be written in.
+  ///
+  /// The server cannot read the message, so the banner says a fixed sentence —
+  /// and a fixed sentence still has to be in a language the reader has. It
+  /// travels inside the signed event rather than as a separate field, so it
+  /// cannot be altered in flight or set for somebody else's npub.
+  ///
+  /// Read from storage rather than from [localeControllerProvider], because
+  /// this runs at launch and that controller restores asynchronously; whichever
+  /// won the race would decide, and losing it means the wrong language until
+  /// something re-registers. Falls back to the controller, then to the app's
+  /// build-time default.
+  Future<String> _language() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(localePrefsKey);
+      if (stored != null && stored.isNotEmpty) return stored;
+    } catch (_) {
+      // Storage unavailable is not a reason to skip the registration.
+    }
+    return _ref.read(localeControllerProvider).languageCode;
   }
 
   Secp256k1NostrSigner? _cache;

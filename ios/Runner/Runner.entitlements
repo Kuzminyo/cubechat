@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    What the app claims for Debug and Profile builds.
+
+    A provisioning profile GRANTS rights; the app has to CLAIM them, and until
+    2026-08-31 this file did not exist at all. The App Store profile carried
+    `aps-environment: production` and the binary asked for nothing, so
+    `registerForRemoteNotifications` was refused with "no valid aps-environment"
+    - the same message a build signed by the wrong team gets, which is why the
+    team looked like the whole problem for a week. Both had to be fixed, and
+    the profile was only the half that was visible.
+
+    `development` here and `production` in RunnerRelease.entitlements, because
+    the two are different APNs environments with different device tokens and
+    each host refuses the other's. A Debug build talks to sandbox; anything
+    exported for TestFlight or the App Store talks to production. Claiming
+    `production` in a Debug build fails to install rather than failing to push,
+    since the development profile does not grant it.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
