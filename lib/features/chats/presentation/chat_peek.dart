@@ -11,8 +11,10 @@ import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
+import '../../chat/presentation/widgets/chat_input.dart';
 import '../../chat/presentation/widgets/message_bubble.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/typing_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/pinned_chats_controller.dart';
 import '../data/read_markers_controller.dart';
@@ -133,7 +135,6 @@ class _ChatPeekView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
     final messages =
         ref.watch(messagesControllerProvider)[chat.id] ?? const <Message>[];
 
@@ -180,15 +181,11 @@ class _ChatPeekView extends ConsumerWidget {
                         : _PeekConversation(chat: chat, messages: messages),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    t.chatPeekUnreadNotice,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassFaint,
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+                  // No line explaining that this does not mark anything read.
+                  // It was there to teach the gesture and it read as a warning
+                  // label pasted across the conversation — the whole screen is
+                  // already the explanation, and a caption that has to be read
+                  // once is a caption that is in the way every time after.
                   _PeekActions(chat: chat, onOpen: onOpen, onDelete: onDelete),
                 ],
               ),
@@ -200,52 +197,84 @@ class _ChatPeekView extends ConsumerWidget {
   }
 }
 
-/// Who this is, in the same shape the chat header uses.
-class _PeekHeader extends StatelessWidget {
+/// Who this is, in the capsule the chat header uses.
+///
+/// The same `MessageIslandGlass` at the same pill height, the same 36-point
+/// avatar, and the same two type styles — a 15.5 heading over an 11.5 status
+/// line. Built from the shared widget rather than approximated, because a
+/// header that is nearly the chat's is worse than one that plainly is not: the
+/// peek is supposed to feel like the conversation arriving early.
+class _PeekHeader extends ConsumerWidget {
   const _PeekHeader({required this.chat});
 
   final Chat chat;
 
+  static const double _height = 56;
+
   @override
-  Widget build(BuildContext context) {
-    return FloatingGlass(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          PeerAvatar(
-            peerId: chat.peerId,
-            label: chat.peerName,
-            size: 40,
-            online: chat.isOnline,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  chat.peerName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.heading(
-                    size: 16,
-                    color: AppColors.textOnGlass,
-                  ),
-                ),
-                if (chat.unreadCount > 0)
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    // Typing beats online here for the reason it does everywhere else: it is
+    // the more specific fact, and there is one line to say it in.
+    final typingAt = chat.isChannel
+        ? null
+        : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
+    final isTyping = typingAt != null &&
+        DateTime.now().difference(typingAt) < TypingController.ttl;
+
+    final String? status = isTyping
+        ? t.chatTyping
+        : chat.isOnline
+            ? t.presenceOnline
+            : null;
+
+    return SizedBox(
+      height: _height,
+      child: MessageIslandGlass(
+        borderRadius: _height / 2,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Row(
+          children: [
+            PeerAvatar(
+              peerId: chat.peerId,
+              label: chat.peerName,
+              size: 36,
+              online: chat.isOnline,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    '${chat.unreadCount}',
-                    style: TextStyle(
-                      color: AppColors.brandPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    chat.peerName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.heading(
+                      size: 15.5,
+                      color: AppColors.textOnGlass,
                     ),
                   ),
-              ],
+                  if (status != null)
+                    Text(
+                      status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isTyping
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassDim,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+          ],
+        ),
       ),
     );
   }

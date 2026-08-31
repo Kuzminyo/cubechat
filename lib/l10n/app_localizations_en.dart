@@ -711,9 +711,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatPeekMarkRead => 'Mark as read';
 
   @override
-  String get chatPeekUnreadNotice => 'Looking here does not mark anything read';
-
-  @override
   String get chatDeleteForMeHint =>
       'Removed from this phone, and unpinned. The other side keeps its copy.';
 

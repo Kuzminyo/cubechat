@@ -1322,12 +1322,6 @@ abstract class AppLocalizations {
   /// **'Mark as read'**
   String get chatPeekMarkRead;
 
-  /// No description provided for @chatPeekUnreadNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'Looking here does not mark anything read'**
-  String get chatPeekUnreadNotice;
-
   /// No description provided for @chatDeleteForMeHint.
   ///
   /// In en, this message translates to:

@@ -714,9 +714,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatPeekMarkRead => 'Позначити прочитаним';
 
   @override
-  String get chatPeekUnreadNotice => 'Перегляд тут не позначає прочитаним';
-
-  @override
   String get chatDeleteForMeHint =>
       'Прибрати з цього телефона й відкріпити. У співрозмовника копія лишається.';
 
