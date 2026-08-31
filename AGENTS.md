@@ -28,8 +28,17 @@ flutter analyze
 flutter gen-l10n
 ```
 
-APKs are built by `tool/build_apk.ps1`, never by `flutter build apk` — that
-command is broken in this repo and a hook blocks it.
+APKs are built by a script, not by `flutter build apk` on its own — the script
+is what cross-checks the version and proves the build stamp reached the
+artifact. Which script depends on the machine:
+
+- **macOS / Linux** — `tool/build_apk.sh`
+- **Windows** — `powershell -ExecutionPolicy Bypass -File tool/build_apk.ps1`,
+  and there `flutter build apk` really is broken; a hook blocks it.
+
+The breakage is Windows-only and was verified as such on 2026-08-31, so the
+hook now denies that command only on Windows. Load the `release-build` skill
+before building.
 
 ## Skills — load these rather than reconstructing the rules
 
