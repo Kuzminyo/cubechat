@@ -137,54 +137,65 @@ class _ChatPeekView extends ConsumerWidget {
     final messages =
         ref.watch(messagesControllerProvider)[chat.id] ?? const <Message>[];
 
-    return Stack(
-      children: [
-        // One full-screen blur, and only while this is open. The three
-        // permanent BackdropFilters a conversation carries are the measured
-        // cost in this app; a fourth that exists for two seconds at a time is
-        // not the same kind of expense, so it uses the shared sigma rather
-        // than a constant of its own.
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).maybePop(),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: AppBlur.sigma,
-                sigmaY: AppBlur.sigma,
+    // Transparent Material, and it is not decoration.
+    //
+    // A PopupRoute has no Material of its own, and text with no Material above
+    // it falls back to the debug style Flutter draws with a yellow double
+    // underline — every label on this screen wore one. The same ancestor is
+    // what lets the InkWell in the action rows paint a ripple, so one wrapper
+    // fixes the look and the touch feedback together. Transparent because the
+    // glass islands underneath already own every surface here.
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          // One full-screen blur, and only while this is open. The three
+          // permanent BackdropFilters a conversation carries are the measured
+          // cost in this app; a fourth that exists for two seconds at a time is
+          // not the same kind of expense, so it uses the shared sigma rather
+          // than a constant of its own.
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).maybePop(),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: AppBlur.sigma,
+                  sigmaY: AppBlur.sigma,
+                ),
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.38)),
               ),
-              child: ColoredBox(color: Colors.black.withValues(alpha: 0.38)),
             ),
           ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Column(
-              children: [
-                _PeekHeader(chat: chat),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: messages.isEmpty
-                      ? const SizedBox.shrink()
-                      : _PeekConversation(chat: chat, messages: messages),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  t.chatPeekUnreadNotice,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassFaint,
-                    fontSize: 11,
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: Column(
+                children: [
+                  _PeekHeader(chat: chat),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: messages.isEmpty
+                        ? const SizedBox.shrink()
+                        : _PeekConversation(chat: chat, messages: messages),
                   ),
-                ),
-                const SizedBox(height: 6),
-                _PeekActions(chat: chat, onOpen: onOpen, onDelete: onDelete),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    t.chatPeekUnreadNotice,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassFaint,
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _PeekActions(chat: chat, onOpen: onOpen, onDelete: onDelete),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
