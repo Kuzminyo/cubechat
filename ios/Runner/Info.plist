@@ -37,16 +37,35 @@
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<!-- We encrypt messages with our own implementation — Noise handshakes over
-	     X25519, ChaCha20-Poly1305, and an in-repo secp256k1 — rather than only
-	     calling the encryption iOS provides, and it protects message content
-	     rather than just authenticating a login. Neither of the usual
-	     exemptions covers that, so this is `true` and the export paperwork is
-	     owed. Answering `false` here would be a false declaration to Apple.
-	     Setting the key at all is what stops App Store Connect from asking
-	     again on every single upload. -->
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<!-- ITSAppUsesNonExemptEncryption is deliberately absent, and that is a
+	     retreat rather than an answer.
+
+	     It was `true`, for a reason that still holds: we encrypt messages with
+	     our own implementation — Noise handshakes over X25519,
+	     ChaCha20-Poly1305, and an in-repo secp256k1 — rather than only calling
+	     what iOS provides, and it protects message content rather than just a
+	     login. Neither usual exemption covers that, and `false` would be a
+	     false declaration.
+
+	     But `true` alone does not upload. On 2026-08-31 App Store Connect
+	     refused the build during validation:
+
+	         Validation failed (409) Invalid Export Compliance Code. The export
+	         compliance key value [] in the app's Info.plist doesn't match the
+	         key value of the app's export compliance documentation.
+
+	     `true` requires a second key, ITSEncryptionExportComplianceCode, which
+	     Apple issues once export documentation is on file. That documentation
+	     is reached through the encryption questionnaire, and the questionnaire
+	     hangs off an uploaded build — so the code cannot be obtained until a
+	     build is accepted, and no build is accepted without the code. The App
+	     Information page carries no way in either; it was checked.
+
+	     Absent, the question is asked in App Store Connect per build instead,
+	     which is answerable and true. Put both keys back together once the
+	     code exists — this one without the code is the one combination that
+	     cannot ship. -->
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
