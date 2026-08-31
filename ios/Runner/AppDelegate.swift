@@ -413,13 +413,27 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
 
   @discardableResult
   func start() -> Bool {
+    // The wish is recorded before the ability to grant it is checked, and that
+    // ordering is the whole of this. It used to be the other way round, so a
+    // phone on While-Using fell out at the guard below with the flag still
+    // false — and `authorizationChanged` only re-arms when the flag is true.
+    // Granting Always afterwards in Settings therefore armed nothing, and
+    // Settings is exactly where people go: iOS shows the upgrade prompt at
+    // most once, and anyone who dismissed it has no other route. The symptom
+    // was a live-map pin that simply stopped updating once the app was closed,
+    // with every switch in the app turned on and nothing to see anywhere.
+    //
+    // Nothing is monitoring yet. This says somebody asked for it, so a later
+    // grant has something to act on; `monitoring` still says whether it is
+    // actually running, and `stop()` clears the flag when the wish is
+    // withdrawn.
+    UserDefaults.standard.set(true, forKey: Self.armedKey)
     guard CLLocationManager.significantLocationChangeMonitoringAvailable() else {
       return false
     }
     // Never prompts. While-in-use gets no background delivery, so arming under
     // it would only cost a manager that can never fire.
     guard authorizedAlways else { return false }
-    UserDefaults.standard.set(true, forKey: Self.armedKey)
     guard !monitoring else { return true }
     monitoring = true
     manager.startMonitoringSignificantLocationChanges()

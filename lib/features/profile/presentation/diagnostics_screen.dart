@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/cpu_probe.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
@@ -159,6 +160,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         child: Column(
           children: [
             const _FramePanel(),
+            const _WakePanel(),
             Expanded(
               child: _buildLog(context, t, entries),
             ),
@@ -209,6 +211,129 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 /// Put in front of the log rather than behind a switch because it is only
 /// useful while something is being scrolled, and a screen you have to go and
 /// enable first is a screen nobody reads at the moment it matters.
+/// Whether a closed app will ever run again — and if not, the one thing that
+/// fixes it.
+///
+/// [IosSignificantLocation] exposed `isArmed` and `lastRefusal` "for the
+/// diagnostics screen" and nothing ever read them, so the only trace was a
+/// single [DebugLog] line written at boot. That buffer holds 200 lines and one
+/// photo batch fills it, which meant the answer to "why did my pin stop moving"
+/// was routinely gone before anybody went looking. It is a state, not an event,
+/// so it belongs on a panel.
+///
+/// Re-asked when this screen opens. The call never prompts and is idempotent,
+/// and returning from Settings having just granted Always is exactly when
+/// somebody comes here to check.
+class _WakePanel extends StatefulWidget {
+  const _WakePanel();
+
+  @override
+  State<_WakePanel> createState() => _WakePanelState();
+}
+
+class _WakePanelState extends State<_WakePanel> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    await IosSignificantLocation.instance.start();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Android keeps a foreground service alive and needs no doorbell; there is
+    // nothing here that would be true on it.
+    if (!Platform.isIOS) return const SizedBox.shrink();
+
+    final armed = IosSignificantLocation.instance.isArmed;
+    final refusal = IosSignificantLocation.instance.lastRefusal;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.glass(0.06),
+        border: Border.all(color: AppColors.glass(0.12)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Wake when closed',
+                style: AppTypography.heading(
+                  size: 13,
+                  color: AppColors.textOnGlass,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => unawaited(_refresh()),
+                child: Text(
+                  'check again',
+                  style: TextStyle(
+                    color: AppColors.brandPrimary,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            armed
+                ? 'Armed. Changing area relaunches cubechat, which then '
+                    'catches up on messages and republishes your map pin.'
+                : 'Not armed${refusal == null ? '' : ' — $refusal'}. While the '
+                    'app is closed nothing is sent or received, including your '
+                    'map pin.',
+            style: TextStyle(
+              color: armed
+                  ? AppColors.textOnGlassDim
+                  : AppColors.textOnGlass,
+              fontSize: 11.5,
+              height: 1.35,
+            ),
+          ),
+          if (!armed) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Settings → cubechat → Location → Always.',
+              style: TextStyle(
+                color: AppColors.brandPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          // Said plainly because it is the question this panel gets asked next.
+          // Significant change means a cell hand-off — roughly half a
+          // kilometre, minutes apart — so a phone on a desk stays silent even
+          // when everything above is green, and that is not a fault.
+          Text(
+            'Triggered by moving about half a kilometre, not by messages '
+                'arriving. A phone that stays put stays quiet.',
+            style: TextStyle(
+              color: AppColors.textOnGlassFaint,
+              fontSize: 10,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FramePanel extends StatefulWidget {
   const _FramePanel();
 
