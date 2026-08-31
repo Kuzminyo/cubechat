@@ -1,0 +1,59 @@
+# Line endings are decided here, not by whichever machine has the checkout.
+#
+# This file did not exist until 2026-08-31, and the cost of that showed up the
+# first time the tree moved between machines: the working copy was carried over
+# from a Windows box rather than cloned fresh, so every one of 241 tracked text
+# files arrived with CRLF against an index holding LF. `git status` reported
+# 41184 insertions and exactly 41184 deletions, and not one byte of it was a
+# real change. Nothing was broken — but every diff, every review and every
+# `git add -A` was unreadable until it was undone.
+#
+# `text=auto` lets git decide what is text (it sniffs for NUL bytes), and
+# `eol=lf` pins what lands in the working tree on every platform. The explicit
+# `-text` lines below are for formats where that sniff is not worth trusting:
+# a false positive there does not produce a noisy diff, it corrupts the file.
+
+* text=auto eol=lf
+
+# Binaries. Never normalise, never diff as text.
+*.png     -text
+*.jpg     -text
+*.jpeg    -text
+*.gif     -text
+*.webp    -text
+*.ico     -text
+*.icns    -text
+*.svg     text eol=lf
+*.ttf     -text
+*.otf     -text
+*.woff    -text
+*.woff2   -text
+*.mp4     -text
+*.mp3     -text
+*.wav     -text
+*.m4a     -text
+*.pdf     -text
+*.zip     -text
+*.jar     -text
+*.so      -text
+*.dylib   -text
+*.jks     -text
+*.keystore -text
+*.p12     -text
+*.apk     -text
+*.aab     -text
+*.ipa     -text
+
+# The reference captures the golden tests compare against. Recorded on one
+# machine and compared byte-for-byte; a newline rewrite would fail every one of
+# them with no visible cause.
+.codex/design-qa/** -text
+
+# Windows-only sources. Checked in for the desktop target that exists for UI
+# work, and edited on Windows when they are edited at all — CRLF is what
+# Visual Studio writes and there is no reason to fight it.
+*.sln     text eol=crlf
+*.vcxproj text eol=crlf
+*.props   text eol=crlf
+*.bat     text eol=crlf
+*.ps1     text eol=crlf

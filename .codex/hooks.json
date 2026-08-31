@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python 'D:\\projects\\cubechat\\.codex\\hooks\\guard.py'",
+            "command": "python .codex/hooks/guard.py || python3 .codex/hooks/guard.py",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python 'D:\\projects\\cubechat\\.codex\\hooks\\arb_reminder.py'",
+            "command": "python .codex/hooks/arb_reminder.py || python3 .codex/hooks/arb_reminder.py",
             "timeout": 10
           }
         ]

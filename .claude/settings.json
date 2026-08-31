@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard.py\"",
+            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard.py\" || python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard.py\"",
             "timeout": 10
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/arb_reminder.py\"",
+            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/arb_reminder.py\" || python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/arb_reminder.py\"",
             "timeout": 10
           }
         ]

@@ -6,7 +6,25 @@ user-invocable: true
 
 # Building and shipping cubechat
 
-## `flutter build apk` does not work here, and the error lies
+## Build with the script for your platform, never bare `flutter build apk`
+
+There are two scripts because the two machines fail differently. Both do the
+same two things that matter, and neither is optional: cross-check the version
+against `app_build.dart`, and prove the build stamp reached `libapp.so`.
+
+```bash
+tool/build_apk.sh                              # macOS / Linux
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File tool/build_apk.ps1    # Windows
+```
+
+Flags are the same idea on both — `--clean` / `-Clean`, `--skip-pub-get` /
+`-SkipPubGet`, `--bundle` / `-Bundle` for the AAB Play requires. The bash one
+adds `--arm64`, which is a third the size and what testers are actually handed.
+
+### On Windows, `flutter build apk` is genuinely broken and the error lies
 
 Every `flutter pub get` — and every `analyze`, `test` and `build`, each of which
 runs one — writes `.flutter-plugins-dependencies` with **double-escaped** paths:
@@ -22,22 +40,35 @@ Plugin directory does not exist: ...\geocoding_android-5.0.2\android
 
 That path **does** exist, and the message prints it normalised, which makes it
 look like a corrupt pub cache. It is not. Do not reinstall packages, do not run
-`pub cache repair`.
+`pub cache repair`. `build_apk.ps1` repairs the file and invokes Gradle directly,
+because going through `flutter build` would rewrite it broken again.
 
-A PreToolUse hook blocks `flutter build apk` for this reason. Build with:
+### On macOS that fault does not exist, and a different one does
+
+A path made of forward slashes has nothing to double-escape. Verified rather
+than assumed on 2026-08-31: `pub get` and `flutter build apk` each rewrote the
+file with plain `/Users/...` paths, zero occurrences of `\\\\`, and the build
+ran through to a signed 33.4 MB arm64 APK in 895 s. So `build_apk.sh` drops the
+repair, the plugin-directory check and the `local.properties` pinning — that
+last one because `flutter build` calls `updateLocalProperties()` itself and
+writes `flutter.versionName` / `versionCode` straight from pubspec, leaving
+`GOOGLE_MAPS_API_KEY` alone. The **hook denies `flutter build apk` on Windows
+only** for the same reason.
+
+**The macOS trap is the JDK.** Flutter ignores `JAVA_HOME` and prefers the JDK
+bundled with Android Studio, which is currently **25** — and Gradle 8.14, the
+wrapper this repo pins, supports at most 24. The build then fails inside Gradle
+with a message about Gradle that names nothing pointing at the JDK. It cost a
+build here before it was recognised. `build_apk.sh` checks this before building
+and refuses with the fix; to set it once:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File tool/build_apk.ps1
+flutter config --jdk-dir="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home"
 ```
 
-The script runs pub get, repairs the file, pins `android/local.properties` to
-the pubspec version, invokes Gradle directly (going through `flutter build`
-would just rewrite the file broken again), and verifies the stamp landed inside
-`libapp.so`.
-
-Flags: `-Clean` runs `flutter clean` first — several minutes slower, for
-failures that smell like stale intermediates. `-SkipPubGet` only when nothing
-has touched pubspec since the last run.
+JDK 17 is deliberate — it matches `java-version: '17'` in `android.yml`, so a
+local build and CI do not diverge. Flutter is likewise pinned to 3.41.9 to match
+the workflow's `flutter-version: '3.41.x'`.
 
 ## Bump both version fields first
 
