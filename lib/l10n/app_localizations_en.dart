@@ -696,6 +696,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatPinnedManage => 'Pinned';
 
   @override
+  String get chatPeekOpen => 'Open chat';
+
+  @override
+  String get chatPeekPin => 'Pin';
+
+  @override
+  String get chatPeekUnpin => 'Unpin';
+
+  @override
+  String get chatPeekUnmute => 'Unmute';
+
+  @override
+  String get chatPeekMarkRead => 'Mark as read';
+
+  @override
+  String get chatPeekUnreadNotice => 'Looking here does not mark anything read';
+
+  @override
   String get chatDeleteForMeHint =>
       'Removed from this phone, and unpinned. The other side keeps its copy.';
 

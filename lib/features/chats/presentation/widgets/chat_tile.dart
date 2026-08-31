@@ -19,6 +19,7 @@ class ChatTile extends ConsumerWidget {
     required this.chat,
     this.selected = false,
     this.reorderIndex,
+    this.onAvatarLongPress,
   });
 
   final Chat chat;
@@ -35,6 +36,18 @@ class ChatTile extends ConsumerWidget {
   /// way to start a drag, so an ordinary scroll that begins on a pinned chat
   /// stays a scroll.
   final int? reorderIndex;
+
+  /// Hold the picture to look inside without opening — see `showChatPeek`.
+  ///
+  /// On the avatar rather than on the row, and that is forced rather than
+  /// chosen: holding the row is what puts the list into the mode where a
+  /// pinned row grows its drag handle, and a menu was already tried there once
+  /// and taken back out for stealing it. The avatar is a 48-point target
+  /// inside a row that is doing something else with the same gesture, so the
+  /// two never meet.
+  ///
+  /// Null while a selection is running, which leaves the hold to the row.
+  final VoidCallback? onAvatarLongPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,66 +86,74 @@ class ChatTile extends ConsumerWidget {
           // gesture, most of all — can leave the source hidden. That is a row
           // whose picture is simply missing until something rebuilds it, which
           // is the other half of what was reported.
-          Stack(
-            children: [
-              PeerAvatar(
-                peerId: chat.peerId,
-                label: chat.peerName,
-                size: 48,
-                online: chat.isOnline,
-              ),
-              // Grows in and shrinks out rather than appearing between two
-              // frames. Picking chats out was the one place in the app where
-              // something the finger did landed as a jump; the timing is the
-              // nav bar's, so the two read as the same app.
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: AnimatedScale(
-                  scale: selected ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
-                  curve: selected ? Curves.easeOutBack : Curves.easeInCubic,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.brandPrimary,
-                      border: Border.all(color: AppColors.bgDeep, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.check_rounded,
-                      size: 12,
-                      color: Colors.black,
-                    ),
-                  ),
+          GestureDetector(
+            // The inner detector wins the arena against the row's own hold,
+            // which is what makes this work at all. `behavior` is opaque so a
+            // hold that lands on the transparent corner of the circle still
+            // counts as the avatar rather than falling through to the row.
+            behavior: HitTestBehavior.opaque,
+            onLongPress: onAvatarLongPress,
+            child: Stack(
+              children: [
+                PeerAvatar(
+                  peerId: chat.peerId,
+                  label: chat.peerName,
+                  size: 48,
+                  online: chat.isOnline,
                 ),
-              ),
-              // Bottom *left*: the presence dot owns the other corner, and a
-              // timer stacked on it would be two states in one place.
-              if (chat.autoDeletes)
+                // Grows in and shrinks out rather than appearing between two
+                // frames. Picking chats out was the one place in the app where
+                // something the finger did landed as a jump; the timing is the
+                // nav bar's, so the two read as the same app.
                 Positioned(
-                  left: 0,
+                  right: 0,
                   bottom: 0,
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.bgDeep,
-                      border: Border.all(
-                        color: AppColors.brandPrimary.withValues(alpha: 0.55),
-                        width: 1,
+                  child: AnimatedScale(
+                    scale: selected ? 1 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: selected ? Curves.easeOutBack : Curves.easeInCubic,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.brandPrimary,
+                        border: Border.all(color: AppColors.bgDeep, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 12,
+                        color: Colors.black,
                       ),
                     ),
-                    child: Icon(
-                      Icons.timer_rounded,
-                      size: 11,
-                      color: AppColors.brandPrimary,
-                    ),
                   ),
                 ),
-            ],
+                // Bottom *left*: the presence dot owns the other corner, and a
+                // timer stacked on it would be two states in one place.
+                if (chat.autoDeletes)
+                  Positioned(
+                    left: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.bgDeep,
+                        border: Border.all(
+                          color: AppColors.brandPrimary.withValues(alpha: 0.55),
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.timer_rounded,
+                        size: 11,
+                        color: AppColors.brandPrimary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -41,6 +41,7 @@ import '../../peers/data/contact_removal.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/presence_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
+import 'chat_peek.dart';
 import '../data/archive_visibility_controller.dart';
 import '../data/archived_chats_controller.dart';
 import '../data/chat_folders_controller.dart';
@@ -883,6 +884,29 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                                   chat.isPinned && selection.isNotEmpty
                                       ? i
                                       : null,
+                              // Hold the picture to look inside without the
+                              // badge clearing or a receipt going out. Withheld
+                              // while a selection is running: there the hold
+                              // belongs to the row, and taking it would be the
+                              // same mistake the menu made.
+                              onAvatarLongPress: selection.isEmpty
+                                  ? () => unawaited(
+                                        showChatPeek(
+                                          context,
+                                          chat,
+                                          onOpen: () => context
+                                              .push(routeForChat(chat)),
+                                          onDelete: () => unawaited(
+                                            _confirmAndDeleteChat(
+                                              context,
+                                              ref,
+                                              chat,
+                                              AppLocalizations.of(context),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                  : null,
                             ),
                           ),
                           ),

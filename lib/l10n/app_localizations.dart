@@ -1292,6 +1292,42 @@ abstract class AppLocalizations {
   /// **'Pinned'**
   String get chatPinnedManage;
 
+  /// No description provided for @chatPeekOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open chat'**
+  String get chatPeekOpen;
+
+  /// No description provided for @chatPeekPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get chatPeekPin;
+
+  /// No description provided for @chatPeekUnpin.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get chatPeekUnpin;
+
+  /// No description provided for @chatPeekUnmute.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmute'**
+  String get chatPeekUnmute;
+
+  /// No description provided for @chatPeekMarkRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as read'**
+  String get chatPeekMarkRead;
+
+  /// No description provided for @chatPeekUnreadNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking here does not mark anything read'**
+  String get chatPeekUnreadNotice;
+
   /// No description provided for @chatDeleteForMeHint.
   ///
   /// In en, this message translates to:

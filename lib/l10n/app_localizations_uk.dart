@@ -699,6 +699,24 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatPinnedManage => 'Закріплені';
 
   @override
+  String get chatPeekOpen => 'Відкрити чат';
+
+  @override
+  String get chatPeekPin => 'Закріпити';
+
+  @override
+  String get chatPeekUnpin => 'Відкріпити';
+
+  @override
+  String get chatPeekUnmute => 'Увімкнути звук';
+
+  @override
+  String get chatPeekMarkRead => 'Позначити прочитаним';
+
+  @override
+  String get chatPeekUnreadNotice => 'Перегляд тут не позначає прочитаним';
+
+  @override
   String get chatDeleteForMeHint =>
       'Прибрати з цього телефона й відкріпити. У співрозмовника копія лишається.';
 
