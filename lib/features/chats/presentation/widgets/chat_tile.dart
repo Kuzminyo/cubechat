@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
+import '../../../peers/data/typing_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
@@ -11,7 +13,7 @@ import '../../models/chat.dart';
 /// The contents of one chat row: avatar, name + status, and last-message
 /// preview. It paints no surface of its own — the [FloatingGlass] island the
 /// list wraps it in owns the background, tap ripple and long-press.
-class ChatTile extends StatelessWidget {
+class ChatTile extends ConsumerWidget {
   const ChatTile({
     super.key,
     required this.chat,
@@ -35,8 +37,22 @@ class ChatTile extends StatelessWidget {
   final int? reorderIndex;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
+    // Watched through `select` so a notice about one person repaints one row.
+    // Watching the whole map would rebuild every row in the list every few
+    // seconds for as long as anybody, anywhere, is writing — and this row
+    // carries an avatar and a formatted time, so it is not free.
+    //
+    // Channels are excluded because typing is 1:1 on the wire (see
+    // `InnerPayloadType.typing`); their ids can never appear in the map, and
+    // saying so here keeps a future room-typing feature from silently
+    // half-working.
+    final typingAt = chat.isChannel
+        ? null
+        : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
+    final isTyping = typingAt != null &&
+        DateTime.now().difference(typingAt) < TypingController.ttl;
     // Unread chats "light up": a heavier name and a brighter, non-dimmed
     // preview line, on top of the count badge — so a glance down the list lands
     // on the conversations with something new.
@@ -192,13 +208,20 @@ class ChatTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  chat.isDraft
-                      ? '${t.chatDraft}: ${chat.lastMessage}'
-                      : chat.lastMessage,
+                  // Ahead of the draft, and for the same reason it goes ahead
+                  // of "online" in the chat header: a draft is a note to
+                  // yourself that will still be there in an hour, and this is
+                  // the other person doing something right now. Only one line
+                  // exists, so the live fact takes it.
+                  isTyping
+                      ? t.chatTyping
+                      : chat.isDraft
+                          ? '${t.chatDraft}: ${chat.lastMessage}'
+                          : chat.lastMessage,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: chat.isDraft
+                    color: isTyping || chat.isDraft
                         ? AppColors.brandPrimary
                         : unread
                             ? AppColors.textOnGlass

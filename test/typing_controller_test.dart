@@ -40,6 +40,24 @@ void main() {
     expect(typing.isTyping('alice'), isTrue);
   });
 
+  test('a lapsed notice leaves the map, not just isTyping', () async {
+    // Anything that *watches* this rebuilds on the map changing, so a notice
+    // that only goes stale is a notice that never visibly ends: the chat list
+    // would keep saying "typing…" under a row nobody had touched in a minute.
+    typing.record(
+      'alice',
+      at: DateTime.now().subtract(TypingController.ttl),
+    );
+    expect(container.read(typingControllerProvider).containsKey('alice'), isTrue);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(
+      container.read(typingControllerProvider).containsKey('alice'),
+      isFalse,
+    );
+  });
+
   test('an explicit stop ends it early', () {
     typing.record('alice');
     typing.clear('alice');
