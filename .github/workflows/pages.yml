@@ -64,15 +64,19 @@ jobs:
           PAGES_BASE: /cubechat/
         run: npm run build
 
-      # `enablement` defaults to false, and the first run failed on exactly
-      # that: "Get Pages site failed... verify that the repository has Pages
-      # enabled". Turning it on here means the site is created by the workflow
-      # rather than by remembering to flip a switch in Settings — and a
-      # repository restored from scratch publishes without a manual step.
+      # Pages has to be enabled on the repository once, by hand, and this step
+      # only reads that configuration.
+      #
+      # `enablement: true` was tried here and cannot work: creating a Pages site
+      # is an administrative action, and the workflow token does not have it —
+      # "Create Pages site failed. Resource not accessible by integration".
+      # Granting it would mean a personal access token stored as a secret, which
+      # is a standing key to the repository's settings in exchange for saving
+      # one click, once.
+      #
+      # Settings → Pages → Build and deployment → Source: GitHub Actions.
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload the built site
         uses: actions/upload-pages-artifact@v3
