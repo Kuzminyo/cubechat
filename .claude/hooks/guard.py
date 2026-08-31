@@ -9,11 +9,16 @@ Contract: hook input JSON on stdin, decision JSON on stdout, exit 0. A deny is
 expressed as hookSpecificOutput.permissionDecision so the reason reaches the
 model as an explanation rather than as a crashed hook.
 
-Editing a pattern below means running `python .claude/hooks/guard_test.py`,
-which pins both what must be denied and what must not.
+Editing a pattern below means running the case table beside it, which pins both
+what must be denied and what must not:
+
+    python3 .claude/hooks/guard_test.py     # `python` on Windows
 
 Deliberately ASCII-only: this prints through a Windows console codepage, and a
 non-ASCII reason can come back mangled -- which is, fittingly, the third rule.
+
+One of the three rules is Windows-only; see [WINDOWS] below. This file runs on
+both, so which machine it is on is now part of the decision.
 """
 
 import json
@@ -35,6 +40,24 @@ TEXT_EXT = r"\.(dart|md|arb|ya?ml|kt|swift|json|gradle|kts)"
 CMD_POS = r"(?:^|[;&|(]\s*|\n\s*|\$\(\s*|`\s*)"
 
 BUILD = re.compile(CMD_POS + r"flutter(\.bat)?\s+build\s+(apk|appbundle)", re.I)
+
+# The build denial is Windows-only, because the fault behind it is.
+#
+# What breaks there is `.flutter-plugins-dependencies` coming out
+# double-escaped -- the JSON holding `\\\\` where it should hold `\\` -- and a
+# path made of forward slashes has nothing to double-escape. Measured on macOS
+# 2026-08-31 rather than assumed: `flutter pub get` and then `flutter build
+# apk` each rewrote the file with plain `/Users/...` paths and zero occurrences
+# of `\\\\`, and `assembleRelease` ran through to a signed 33.4 MB arm64 APK in
+# 895 s, stamp verified inside libapp.so.
+#
+# Denying it off Windows would therefore block the one command that works, and
+# send whoever hit the wall to a PowerShell script that will not run there
+# either. `verdict` takes the platform as an argument rather than reading this
+# constant directly, so guard_test.py can pin both branches from either
+# machine: the Windows rule has to stay tested from the Mac, where running the
+# command can no longer reach it.
+WINDOWS = sys.platform == "win32"
 
 UNINSTALL = re.compile(
     CMD_POS + r"(adb(\.exe)?\s+(-s\s+\S+\s+)?uninstall|pm\s+uninstall)\b", re.I
@@ -61,10 +84,10 @@ def repo_text_targets(command):
     return [m.group(0) for m in TARGET.finditer(command) if not SCRATCH.search(m.group(0))]
 
 
-def verdict(command):
+def verdict(command, windows=WINDOWS):
     command = HEREDOC.sub("<<heredoc", command)
 
-    if BUILD.search(command):
+    if windows and BUILD.search(command):
         return (
             "`flutter build apk` does not work in this repo. Every pub get rewrites "
             ".flutter-plugins-dependencies with double-escaped paths, so Gradle dies in ~2s "
@@ -88,11 +111,15 @@ def verdict(command):
             targets = repo_text_targets(command)
             if targets:
                 return (
-                    "Rewriting {} through the shell corrupts non-ASCII: both Bash and "
-                    "PowerShell here re-encode through CP1251 in both directions, and a "
-                    "Get-Content | Set-Content round-trip has already destroyed every "
-                    "em-dash in a source file. Use the Write or Edit tool instead. "
-                    "Reading (cat, sed -n, grep) is unaffected.".format(", ".join(targets[:3]))
+                    "Do not rewrite {} through the shell. On Windows it is destructive: "
+                    "both Bash and PowerShell there re-encode through CP1251 in both "
+                    "directions, and a Get-Content | Set-Content round-trip has already "
+                    "destroyed every em-dash in a source file. That hazard is Windows-only "
+                    "and this rule is not, because the second reason holds everywhere -- a "
+                    "shell rewrite skips the read-before-write that Edit enforces, on a "
+                    "tree whose .arb files are entirely Ukrainian. Use the Write or Edit "
+                    "tool instead. Reading (cat, sed -n, grep) is "
+                    "unaffected.".format(", ".join(targets[:3]))
                 )
 
     return None
