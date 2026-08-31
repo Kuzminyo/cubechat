@@ -199,9 +199,34 @@ jobs:
           echo "$API_KEY" | base64 --decode > ~/private_keys/AuthKey_$API_KEY_ID.p8
           IPA=$(ls build/ios/ipa/*.ipa | head -1)
           echo "uploading $IPA"
+
+          # altool's exit code is not the answer, and trusting it cost a run.
+          #
+          # On 2026-08-31 it printed a 401 from App Store Connect, then
+          # "Unable to authenticate (-19209)", and exited 0. `set -e` saw
+          # nothing wrong, the step went green, and so did the whole workflow —
+          # a build reported as delivered that Apple never received. A run that
+          # lies about that is worse than one that fails, because the failure at
+          # least gets looked at.
+          #
+          # So the output is read as well. altool prints its diagnostics on
+          # stderr with an `ERROR:` tag, which is the same shape whether the
+          # trouble is credentials, a rejected binary or a dropped connection.
+          set +e
           xcrun altool --upload-app --type ios --file "$IPA" \
-            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID"
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID" \
+            2>&1 | tee "$RUNNER_TEMP/altool.log"
+          code=${PIPESTATUS[0]}
+          set -e
+
+          # Before the verdict, so a failed upload does not also leave the key
+          # sitting on the runner.
           rm -f ~/private_keys/AuthKey_$API_KEY_ID.p8
+
+          if [ "$code" -ne 0 ] || grep -q "ERROR:" "$RUNNER_TEMP/altool.log"; then
+            echo "::error::altool did not deliver the build — see its output above"
+            exit 1
+          fi
 
       # The IPA is kept whatever the upload did. A rejected binary and a flaky
       # upload look the same from here, and rebuilding to retry a *send* wastes
