@@ -345,7 +345,14 @@ class _BackgroundModeCard extends ConsumerWidget {
               ),
             ],
           ),
-          if (enabled) ...[
+          // Android only, because the exemption is an Android concept. iOS has
+          // no battery-optimisation whitelist to be let out of: what limits a
+          // backgrounded app there is the system's own scheduling, which
+          // nothing in an app can opt out of. The row was offering a fix for a
+          // problem that does not exist, on the platform where the problem it
+          // names is genuinely unsolvable — the worst place to put a button
+          // that does nothing.
+          if (enabled && PlatformInfo.isAndroid) ...[
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,

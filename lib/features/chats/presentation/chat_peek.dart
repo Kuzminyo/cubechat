@@ -232,48 +232,64 @@ class _PeekHeader extends ConsumerWidget {
       height: _height,
       child: MessageIslandGlass(
         borderRadius: _height / 2,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        child: Row(
-          children: [
-            PeerAvatar(
-              peerId: chat.peerId,
-              label: chat.peerName,
-              size: 36,
-              online: chat.isOnline,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    chat.peerName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.heading(
-                      size: 15.5,
-                      color: AppColors.textOnGlass,
-                    ),
-                  ),
-                  if (status != null)
+        // Wider on the left than the chat's own pill, and that is the fix
+        // rather than a preference. There the same 6 points sit behind a
+        // back-button circle, which is what holds the avatar off the edge; the
+        // peek has no back button, so copying the padding put the picture hard
+        // against the rounded corner, where a circle inside a circle reads as
+        // misaligned even though nothing is.
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        // Centred the way `_HeaderPill` centres its own contents. Without it
+        // the Row is stretched to the island's full height and its children
+        // are aligned against that rather than against each other, which is
+        // the vertical half of the same complaint.
+        child: Center(
+          child: Row(
+            // Said out loud rather than left to the default: the name and the
+            // avatar are different heights, and a status line appearing under
+            // the name must not shift the picture.
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              PeerAvatar(
+                peerId: chat.peerId,
+                label: chat.peerName,
+                size: 36,
+                online: chat.isOnline,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      status,
+                      chat.peerName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isTyping
-                            ? AppColors.brandPrimary
-                            : AppColors.textOnGlassDim,
-                        fontSize: 11.5,
+                      style: AppTypography.heading(
+                        size: 15.5,
+                        color: AppColors.textOnGlass,
                       ),
                     ),
-                ],
+                    if (status != null)
+                      Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isTyping
+                              ? AppColors.brandPrimary
+                              : AppColors.textOnGlassDim,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-          ],
+              const SizedBox(width: 6),
+            ],
+          ),
         ),
       ),
     );
