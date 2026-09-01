@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Encrypted, serverless P2P messaging over a Bluetooth LE mesh, with an optional
 Nostr relay fallback. Flutter; Android and iOS are the real targets (web and
-windows build for UI work but have no BLE). `landing/` is a separate React + Vite
-marketing site with its own `package.json`.
+windows build for UI work but have no BLE). The marketing site at cubechat.tech
+lives in its own repository, Kuzminyo/landing_cubechat — it is not in this tree.
 
 `lib/core/` holds transport, crypto, ble, storage, theme and shared widgets.
 `lib/features/<name>/{data,models,domain,presentation}` holds the rest — `data/`
