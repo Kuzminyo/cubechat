@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
@@ -238,6 +239,30 @@ class BackupService {
       }
     }
     _invalidateState();
+    await _warmRestoredIdentity();
+  }
+
+  /// Read back the two things a person looks at first, before returning.
+  ///
+  /// `invalidate` is lazy: it disposes the controller and rebuilds it when
+  /// something next reads it. [NicknameController.build] returns
+  /// `Anonymous` synchronously and only then opens the box, so whatever
+  /// displays a name in the frame after a restore displays that placeholder —
+  /// and a restore is precisely the moment somebody is watching to see whether
+  /// their identity came back. It reads as "the restore lost my name".
+  ///
+  /// The value is in the box by now; this only makes the read happen before
+  /// the restore reports success rather than after. The avatar is warmed for
+  /// the same reason and with more at stake: its announcement digest is what
+  /// tells every contact whether we still have a picture, and answering from
+  /// an unloaded controller tells them we removed it.
+  Future<void> _warmRestoredIdentity() async {
+    try {
+      await _ref.read(nicknameControllerProvider.notifier).loaded;
+      await _ref.read(avatarProvider.notifier).shareable();
+    } catch (e) {
+      debugPrint('warming restored identity failed: $e');
+    }
   }
 
   Future<dynamic> _openBox(String name) {

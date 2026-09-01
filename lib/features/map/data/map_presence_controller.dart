@@ -102,6 +102,11 @@ class MapPresenceController extends Notifier<int> {
   /// radio; a single successful send starts it again.
   int _deadRounds = 0;
 
+  /// Map friends we have already complained about being unable to reach.
+  /// Cleared for a peer the moment a send to them succeeds, so a transport
+  /// that comes back is reported once too rather than staying silent.
+  final Set<String> _reportedUnreachable = <String>{};
+
   /// About two minutes at [_tick]. Long enough to ride out a transport that is
   /// still coming up after a launch, which is the ordinary reason a beacon
   /// fails, and short enough that a dead friend list does not cost an evening.
@@ -346,8 +351,20 @@ class MapPresenceController extends Notifier<int> {
         try {
           await messaging.sendText(peerId, share, transient: true);
           sent++;
+          _reportedUnreachable.remove(peerId);
         } catch (e) {
-          debugPrint('MapPresenceController send failed for $peerId: $e');
+          // Once per peer, not once per tick.
+          //
+          // A map friend whose pubkey no longer resolves — left behind by a
+          // restore, most often — fails identically every thirty-five seconds
+          // for as long as sharing is on. In a 200-line log buffer that is a
+          // hundred and seventy lines of the same sentence, and it evicts the
+          // evidence of whatever was actually being investigated. The fact is
+          // worth exactly one line: it does not change until something else
+          // does.
+          if (_reportedUnreachable.add(peerId)) {
+            debugPrint('MapPresenceController send failed for $peerId: $e');
+          }
         }
       }
       // Only a beacon that got out counts against the next one. Marking the

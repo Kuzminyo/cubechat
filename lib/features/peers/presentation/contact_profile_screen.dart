@@ -172,7 +172,8 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     final aliases = ref.read(contactAliasesControllerProvider.notifier);
     await aliases.loaded;
     if (!context.mounted) return;
-    final controller = TextEditingController(text: aliases.forPeer(peerPubkeyHex) ?? '');
+    final controller =
+        TextEditingController(text: aliases.forPeer(peerPubkeyHex) ?? '');
     final chosen = await showGlassSheet<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -202,8 +203,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
               Text(
                 t.contactAliasHint,
                 textAlign: TextAlign.center,
-                style:
-                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -377,239 +377,240 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                t.contactProfileActions,
-                                style: AppTypography.heading(size: AppMenu.title),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: close,
-                              icon: const Icon(Icons.close_rounded),
-                              color: AppColors.textOnGlassDim,
-                            ),
-                          ],
-                        ),
-                      ),
-                      _ActionTile(
-                        icon: Icons.drive_file_rename_outline_rounded,
-                        label: t.contactAliasAction,
-                        // The name they broadcast, shown underneath, so it is
-                        // clear the rename is yours and theirs is untouched.
-                        subtitle: displayNameForPeer(
-                          peer?.displayName ?? '',
-                          peerPubkeyHex,
-                        ),
-                        onTap: () {
-                          close();
-                          _renameContact(context, ref);
-                        },
-                      ),
-                      _ActionTile(
-                        icon: Icons.auto_delete_rounded,
-                        label: t.contactProfileAutoDelete,
-                        subtitle: _autoDeleteLabel(
-                          t,
-                          conversationSettings.autoDelete,
-                        ),
-                        onTap: () {
-                          close();
-                          _chooseAutoDelete(
-                            context,
-                            ref,
-                            conversationSettings.autoDelete,
-                          );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: Icons.wallpaper_rounded,
-                        label: t.chatWallpaperTitle,
-                        onTap: () {
-                          close();
-                          context.push(
-                            '/wallpaper/${Uri.encodeComponent(peerPubkeyHex)}',
-                          );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: Icons.person_add_alt_1_rounded,
-                        label: t.contactProfileShare,
-                        onTap: () {
-                          close();
-                          _shareContact(context, ref);
-                        },
-                      ),
-                      // A label of your own for this person. Local, like the
-                      // alias beside it: what you have decided to call
-                      // somebody is your business, and telling them would turn
-                      // a private note into a message.
-                      _ActionTile(
-                        icon: Icons.sell_rounded,
-                        label: tag == null
-                            ? t.contactTagAction
-                            : t.contactTagRemove,
-                        subtitle: tag,
-                        onTap: () async {
-                          close();
-                          final tags =
-                              ref.read(contactTagsControllerProvider.notifier);
-                          if (tag != null) {
-                            await tags.setTag(peerPubkeyHex, null);
-                            return;
-                          }
-                          final picked = await showEmojiPicker(
-                            context,
-                            title: t.contactTagTitle,
-                          );
-                          if (picked == null) return;
-                          await tags.setTag(peerPubkeyHex, picked);
-                        },
-                      ),
-                      // Three exceptions to the global privacy switches, for
-                      // this one person. Nothing here goes on the wire — each
-                      // is a decision not to send something they have no other
-                      // way of learning, so the row that turns it on is the
-                      // whole of the mechanism.
-                      _ActionTile(
-                        icon: conversationSettings.hideAvatar
-                            ? Icons.visibility_off_rounded
-                            : Icons.account_circle_rounded,
-                        label: conversationSettings.hideAvatar
-                            ? t.contactShowAvatar
-                            : t.contactHideAvatar,
-                        subtitle: conversationSettings.hideAvatar
-                            ? t.contactHiddenFromThem
-                            : null,
-                        onTap: () async {
-                          close();
-                          await ref
-                              .read(conversationSettingsControllerProvider
-                                  .notifier)
-                              .setHideAvatar(
-                                peerPubkeyHex,
-                                !conversationSettings.hideAvatar,
-                              );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: conversationSettings.hideLastSeen
-                            ? Icons.visibility_off_rounded
-                            : Icons.schedule_rounded,
-                        label: conversationSettings.hideLastSeen
-                            ? t.contactShowLastSeen
-                            : t.contactHideLastSeen,
-                        subtitle: conversationSettings.hideLastSeen
-                            ? t.contactHiddenFromThem
-                            : null,
-                        onTap: () async {
-                          close();
-                          await ref
-                              .read(conversationSettingsControllerProvider
-                                  .notifier)
-                              .setHideLastSeen(
-                                peerPubkeyHex,
-                                !conversationSettings.hideLastSeen,
-                              );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: conversationSettings.hideReadReceipts
-                            ? Icons.visibility_off_rounded
-                            : Icons.done_all_rounded,
-                        label: conversationSettings.hideReadReceipts
-                            ? t.contactShowReadReceipts
-                            : t.contactHideReadReceipts,
-                        subtitle: conversationSettings.hideReadReceipts
-                            ? t.contactHiddenFromThem
-                            : null,
-                        onTap: () async {
-                          close();
-                          await ref
-                              .read(conversationSettingsControllerProvider
-                                  .notifier)
-                              .setHideReadReceipts(
-                                peerPubkeyHex,
-                                !conversationSettings.hideReadReceipts,
-                              );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: conversationSettings.restrictCopying
-                            ? Icons.content_copy_rounded
-                            : Icons.layers_clear_rounded,
-                        label: conversationSettings.restrictCopying
-                            ? t.contactProfileAllowCopying
-                            : t.contactProfileRestrictCopying,
-                        // Says what the conversation is actually doing, which
-                        // is not always what this switch says: the peer may
-                        // have asked for the same thing, and then turning ours
-                        // off changes nothing here. Better to read that from
-                        // the row than to discover it at an absent Forward.
-                        subtitle: conversationSettings.copyingRestricted
-                            ? (conversationSettings.restrictCopying
-                                ? t.contactProfileCopyingRestricted
-                                : t.contactProfileCopyingRestrictedByPeer)
-                            : null,
-                        onTap: () async {
-                          close();
-                          final restricted =
-                              !conversationSettings.restrictCopying;
-                          await ref
-                              .read(conversationSettingsControllerProvider
-                                  .notifier)
-                              .setRestrictCopying(
-                                peerPubkeyHex,
-                                restricted,
-                              );
-                          // The half that matters: the other phone is the one
-                          // that could forward this conversation on, and it
-                          // cannot honour a switch it never heard about.
-                          unawaited(
-                            ref
-                                .read(messagingServiceProvider)
-                                .announceCopyRestriction(
-                                  peerPubkeyHex,
-                                  restricted: restricted,
-                                  force: true,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  t.contactProfileActions,
+                                  style: AppTypography.heading(
+                                      size: AppMenu.title),
                                 ),
-                          );
-                          if (!context.mounted) return;
-                          showGlassToast(
-                            context,
-                            restricted
-                                ? t.contactProfileCopyingRestricted
-                                : t.contactProfileCopyingAllowed,
-                            icon: restricted
-                                ? Icons.layers_clear_rounded
-                                : Icons.content_copy_rounded,
-                            tone: ToastTone.success,
-                          );
-                        },
-                      ),
-                      _ActionTile(
-                        icon: Icons.person_remove_rounded,
-                        label: t.contactProfileDelete,
-                        onTap: () {
-                          close();
-                          _deleteContact(context, ref);
-                        },
-                      ),
-                      const Divider(height: 1, color: Color(0x26FFFFFF)),
-                      _ActionTile(
-                        icon: Icons.block_rounded,
-                        label: peer?.isBlocked == true
-                            ? t.peerUnblock
-                            : t.peerBlock,
-                        tone: AppColors.danger,
-                        onTap: () {
-                          close();
-                          _setBlocked(ref, peer);
-                        },
-                      ),
+                              ),
+                              IconButton(
+                                onPressed: close,
+                                icon: const Icon(Icons.close_rounded),
+                                color: AppColors.textOnGlassDim,
+                              ),
+                            ],
+                          ),
+                        ),
+                        _ActionTile(
+                          icon: Icons.drive_file_rename_outline_rounded,
+                          label: t.contactAliasAction,
+                          // The name they broadcast, shown underneath, so it is
+                          // clear the rename is yours and theirs is untouched.
+                          subtitle: displayNameForPeer(
+                            peer?.displayName ?? '',
+                            peerPubkeyHex,
+                          ),
+                          onTap: () {
+                            close();
+                            _renameContact(context, ref);
+                          },
+                        ),
+                        _ActionTile(
+                          icon: Icons.auto_delete_rounded,
+                          label: t.contactProfileAutoDelete,
+                          subtitle: _autoDeleteLabel(
+                            t,
+                            conversationSettings.autoDelete,
+                          ),
+                          onTap: () {
+                            close();
+                            _chooseAutoDelete(
+                              context,
+                              ref,
+                              conversationSettings.autoDelete,
+                            );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: Icons.wallpaper_rounded,
+                          label: t.chatWallpaperTitle,
+                          onTap: () {
+                            close();
+                            context.push(
+                              '/wallpaper/${Uri.encodeComponent(peerPubkeyHex)}',
+                            );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: Icons.person_add_alt_1_rounded,
+                          label: t.contactProfileShare,
+                          onTap: () {
+                            close();
+                            _shareContact(context, ref);
+                          },
+                        ),
+                        // A label of your own for this person. Local, like the
+                        // alias beside it: what you have decided to call
+                        // somebody is your business, and telling them would turn
+                        // a private note into a message.
+                        _ActionTile(
+                          icon: Icons.sell_rounded,
+                          label: tag == null
+                              ? t.contactTagAction
+                              : t.contactTagRemove,
+                          subtitle: tag,
+                          onTap: () async {
+                            close();
+                            final tags = ref
+                                .read(contactTagsControllerProvider.notifier);
+                            if (tag != null) {
+                              await tags.setTag(peerPubkeyHex, null);
+                              return;
+                            }
+                            final picked = await showEmojiPicker(
+                              context,
+                              title: t.contactTagTitle,
+                            );
+                            if (picked == null) return;
+                            await tags.setTag(peerPubkeyHex, picked);
+                          },
+                        ),
+                        // Three exceptions to the global privacy switches, for
+                        // this one person. Nothing here goes on the wire — each
+                        // is a decision not to send something they have no other
+                        // way of learning, so the row that turns it on is the
+                        // whole of the mechanism.
+                        _ActionTile(
+                          icon: conversationSettings.hideAvatar
+                              ? Icons.visibility_off_rounded
+                              : Icons.account_circle_rounded,
+                          label: conversationSettings.hideAvatar
+                              ? t.contactShowAvatar
+                              : t.contactHideAvatar,
+                          subtitle: conversationSettings.hideAvatar
+                              ? t.contactHiddenFromThem
+                              : null,
+                          onTap: () async {
+                            close();
+                            await ref
+                                .read(conversationSettingsControllerProvider
+                                    .notifier)
+                                .setHideAvatar(
+                                  peerPubkeyHex,
+                                  !conversationSettings.hideAvatar,
+                                );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: conversationSettings.hideLastSeen
+                              ? Icons.visibility_off_rounded
+                              : Icons.schedule_rounded,
+                          label: conversationSettings.hideLastSeen
+                              ? t.contactShowLastSeen
+                              : t.contactHideLastSeen,
+                          subtitle: conversationSettings.hideLastSeen
+                              ? t.contactHiddenFromThem
+                              : null,
+                          onTap: () async {
+                            close();
+                            await ref
+                                .read(conversationSettingsControllerProvider
+                                    .notifier)
+                                .setHideLastSeen(
+                                  peerPubkeyHex,
+                                  !conversationSettings.hideLastSeen,
+                                );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: conversationSettings.hideReadReceipts
+                              ? Icons.visibility_off_rounded
+                              : Icons.done_all_rounded,
+                          label: conversationSettings.hideReadReceipts
+                              ? t.contactShowReadReceipts
+                              : t.contactHideReadReceipts,
+                          subtitle: conversationSettings.hideReadReceipts
+                              ? t.contactHiddenFromThem
+                              : null,
+                          onTap: () async {
+                            close();
+                            await ref
+                                .read(conversationSettingsControllerProvider
+                                    .notifier)
+                                .setHideReadReceipts(
+                                  peerPubkeyHex,
+                                  !conversationSettings.hideReadReceipts,
+                                );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: conversationSettings.restrictCopying
+                              ? Icons.content_copy_rounded
+                              : Icons.layers_clear_rounded,
+                          label: conversationSettings.restrictCopying
+                              ? t.contactProfileAllowCopying
+                              : t.contactProfileRestrictCopying,
+                          // Says what the conversation is actually doing, which
+                          // is not always what this switch says: the peer may
+                          // have asked for the same thing, and then turning ours
+                          // off changes nothing here. Better to read that from
+                          // the row than to discover it at an absent Forward.
+                          subtitle: conversationSettings.copyingRestricted
+                              ? (conversationSettings.restrictCopying
+                                  ? t.contactProfileCopyingRestricted
+                                  : t.contactProfileCopyingRestrictedByPeer)
+                              : null,
+                          onTap: () async {
+                            close();
+                            final restricted =
+                                !conversationSettings.restrictCopying;
+                            await ref
+                                .read(conversationSettingsControllerProvider
+                                    .notifier)
+                                .setRestrictCopying(
+                                  peerPubkeyHex,
+                                  restricted,
+                                );
+                            // The half that matters: the other phone is the one
+                            // that could forward this conversation on, and it
+                            // cannot honour a switch it never heard about.
+                            unawaited(
+                              ref
+                                  .read(messagingServiceProvider)
+                                  .announceCopyRestriction(
+                                    peerPubkeyHex,
+                                    restricted: restricted,
+                                    force: true,
+                                  ),
+                            );
+                            if (!context.mounted) return;
+                            showGlassToast(
+                              context,
+                              restricted
+                                  ? t.contactProfileCopyingRestricted
+                                  : t.contactProfileCopyingAllowed,
+                              icon: restricted
+                                  ? Icons.layers_clear_rounded
+                                  : Icons.content_copy_rounded,
+                              tone: ToastTone.success,
+                            );
+                          },
+                        ),
+                        _ActionTile(
+                          icon: Icons.person_remove_rounded,
+                          label: t.contactProfileDelete,
+                          onTap: () {
+                            close();
+                            _deleteContact(context, ref);
+                          },
+                        ),
+                        const Divider(height: 1, color: Color(0x26FFFFFF)),
+                        _ActionTile(
+                          icon: Icons.block_rounded,
+                          label: peer?.isBlocked == true
+                              ? t.peerUnblock
+                              : t.peerBlock,
+                          tone: AppColors.danger,
+                          onTap: () {
+                            close();
+                            _setBlocked(ref, peer);
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -706,159 +707,162 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
               NotificationListener<ScrollNotification>(
                 onNotification: _onScroll,
                 child: CustomScrollView(
-                // Bouncing on both platforms: Android's clamping physics never
-                // lets `pixels` go below zero, so "pulled past the top" would
-                // have nothing to measure and the gesture would only exist on
-                // an iPhone.
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: AnimatedBuilder(
-                      animation: _open,
-                      builder: (context, _) => _ProfileHero(
-                      t: _open.value,
-                      compact: heroCompact,
-                      expanded: heroExpanded,
-                      onFaceTap: _toggleFace,
-                      onFaceDragStart: _faceDragStart,
-                      onFaceDrag: _faceDrag,
-                      peerId: peerPubkeyHex,
-                      label: peerLabel,
-                      status: road == null ? status : '$status · $road',
-                      statusColor:
-                          active ? AppColors.online : AppColors.textOnGlassDim,
-                      online: contact?.isOnline ?? false,
-                      muted: peer?.isMuted ?? false,
-                      blocked: peer?.isBlocked ?? false,
-                      onBack: () => Navigator.of(context).maybePop(),
-                      onMore: () => setMenuState(() => actionsOpen = true),
-                      onChat: () => context.push(_chatRoute()),
-                      onMute: () => _setMuted(ref, peer),
-                      onVerify: () => context.push(_verifyRoute()),
-                      onBlock: () => _setBlocked(ref, peer),
-                      chatLabel: t.contactProfileChat,
-                      muteLabel:
-                          peer?.isMuted == true ? t.peerUnmute : t.peerMute,
-                      verifyLabel: t.contactProfileVerify,
-                      blockLabel:
-                          peer?.isBlocked == true ? t.peerUnblock : t.peerBlock,
-                      moreTooltip: t.contactProfileActions,
+                  // Bouncing on both platforms: Android's clamping physics never
+                  // lets `pixels` go below zero, so "pulled past the top" would
+                  // have nothing to measure and the gesture would only exist on
+                  // an iPhone.
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: AnimatedBuilder(
+                        animation: _open,
+                        builder: (context, _) => _ProfileHero(
+                          t: _open.value,
+                          compact: heroCompact,
+                          expanded: heroExpanded,
+                          onFaceTap: _toggleFace,
+                          onFaceDragStart: _faceDragStart,
+                          onFaceDrag: _faceDrag,
+                          peerId: peerPubkeyHex,
+                          label: peerLabel,
+                          status: road == null ? status : '$status · $road',
+                          statusColor: active
+                              ? AppColors.online
+                              : AppColors.textOnGlassDim,
+                          online: contact?.isOnline ?? false,
+                          muted: peer?.isMuted ?? false,
+                          blocked: peer?.isBlocked ?? false,
+                          onBack: () => Navigator.of(context).maybePop(),
+                          onMore: () => setMenuState(() => actionsOpen = true),
+                          onChat: () => context.push(_chatRoute()),
+                          onMute: () => _setMuted(ref, peer),
+                          onVerify: () => context.push(_verifyRoute()),
+                          onBlock: () => _setBlocked(ref, peer),
+                          chatLabel: t.contactProfileChat,
+                          muteLabel:
+                              peer?.isMuted == true ? t.peerUnmute : t.peerMute,
+                          verifyLabel: t.contactProfileVerify,
+                          blockLabel: peer?.isBlocked == true
+                              ? t.peerUnblock
+                              : t.peerBlock,
+                          moreTooltip: t.contactProfileActions,
+                        ),
                       ),
                     ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 140),
-                    sliver: SliverList.list(
-                      children: [
-                        _InfoCard(
-                          icon: Icons.key_rounded,
-                          title: t.contactProfileId,
-                          value: peerPubkeyHex,
-                          onCopy: () => _copyId(context),
-                        ),
-                        const SizedBox(height: 12),
-                        GlassCard(
-                          strong: true,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                  color: AppColors.brandPrimary
-                                      .withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(15),
-                                ),
-                                child: Icon(
-                                  peer?.isVerified == true
-                                      ? Icons.verified_rounded
-                                      : Icons.shield_rounded,
-                                  color: AppColors.brandPrimary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      t.contactProfileSecurity,
-                                      style: TextStyle(
-                                        color: AppColors.textOnGlass,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      peer?.isVerified == true
-                                          ? t.verifyAlreadyDone
-                                          : t.contactProfileVerifyHint,
-                                      style: TextStyle(
-                                        color: AppColors.textOnGlassDim,
-                                        fontSize: 12,
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                onPressed: () => context.push(_verifyRoute()),
-                                tooltip: t.contactProfileVerify,
-                                icon: Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: AppColors.textOnGlassDim,
-                                ),
-                              ),
-                            ],
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 140),
+                      sliver: SliverList.list(
+                        children: [
+                          _InfoCard(
+                            icon: Icons.key_rounded,
+                            title: t.contactProfileId,
+                            value: peerPubkeyHex,
+                            onCopy: () => _copyId(context),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        _SharedContentCard(
-                          mediaLabel: t.contactProfileMedia,
-                          voiceLabel: t.contactProfileVoiceMessages,
-                          fileLabel: t.contactProfileFiles,
-                          mediaCount: mediaCount,
-                          voiceCount: voiceCount,
-                          fileCount: fileCount,
-                          onMedia: () => context.push(_contentRoute(0)),
-                          onVoice: () => context.push(_contentRoute(1)),
-                          onFiles: () => context.push(_contentRoute(2)),
-                        ),
-                        if (peer?.isBlocked == true) ...[
                           const SizedBox(height: 12),
                           GlassCard(
+                            strong: true,
                             child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(
-                                  Icons.block_rounded,
-                                  color: AppColors.danger,
-                                  size: 20,
+                                Container(
+                                  width: 46,
+                                  height: 46,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.brandPrimary
+                                        .withValues(alpha: 0.14),
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  child: Icon(
+                                    peer?.isVerified == true
+                                        ? Icons.verified_rounded
+                                        : Icons.shield_rounded,
+                                    color: AppColors.brandPrimary,
+                                  ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    t.peerBlockedNote,
-                                    style: TextStyle(
-                                      color: AppColors.textOnGlassDim,
-                                      fontSize: 13,
-                                      height: 1.35,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        t.contactProfileSecurity,
+                                        style: TextStyle(
+                                          color: AppColors.textOnGlass,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        peer?.isVerified == true
+                                            ? t.verifyAlreadyDone
+                                            : t.contactProfileVerifyHint,
+                                        style: TextStyle(
+                                          color: AppColors.textOnGlassDim,
+                                          fontSize: 12,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () => context.push(_verifyRoute()),
+                                  tooltip: t.contactProfileVerify,
+                                  icon: Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: AppColors.textOnGlassDim,
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          _SharedContentCard(
+                            mediaLabel: t.contactProfileMedia,
+                            voiceLabel: t.contactProfileVoiceMessages,
+                            fileLabel: t.contactProfileFiles,
+                            mediaCount: mediaCount,
+                            voiceCount: voiceCount,
+                            fileCount: fileCount,
+                            onMedia: () => context.push(_contentRoute(0)),
+                            onVoice: () => context.push(_contentRoute(1)),
+                            onFiles: () => context.push(_contentRoute(2)),
+                          ),
+                          if (peer?.isBlocked == true) ...[
+                            const SizedBox(height: 12),
+                            GlassCard(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(
+                                    Icons.block_rounded,
+                                    color: AppColors.danger,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      t.peerBlockedNote,
+                                      style: TextStyle(
+                                        color: AppColors.textOnGlassDim,
+                                        fontSize: 13,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
                 ),
               ),
               Positioned.fill(
@@ -1176,11 +1180,21 @@ class _ProfileHero extends ConsumerWidget {
                         // the same colours twice.
                         child: t < 0.5
                             ? Center(
+                                // No dot on this one. The header clips its
+                                // circle, and the dot sits at the corner of
+                                // the avatar's square box — outside the
+                                // circle — so clipping cut it into a crescent
+                                // hanging off the edge. It reads as a
+                                // rendering fault because it is one.
+                                //
+                                // Presence belongs to the status line below
+                                // instead, where it is a separate element with
+                                // nothing to clip it and room to say what it
+                                // means.
                                 child: PeerAvatar(
                                   peerId: peerId,
                                   label: label,
                                   size: faceSize,
-                                  online: online,
                                 ),
                               )
                             : null,
@@ -1262,16 +1276,40 @@ class _ProfileHero extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  Text(
-                    status,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: t < 0.5 ? TextAlign.center : TextAlign.start,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    // Follows the name: centred over the round face, aligned
+                    // left once the header has opened into the photograph.
+                    mainAxisAlignment: t < 0.5
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (online) ...[
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: AppColors.online,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Flexible(
+                        child: Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign:
+                              t < 0.5 ? TextAlign.center : TextAlign.start,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1307,7 +1345,9 @@ class _ProfileHero extends ConsumerWidget {
                       onTap: onVerify,
                     ),
                     _QuickAction(
-                      icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                      icon: blocked
+                          ? Icons.lock_open_rounded
+                          : Icons.block_rounded,
                       label: blockLabel,
                       tone: blocked ? AppColors.brandPrimary : AppColors.danger,
                       onTap: onBlock,
@@ -1341,7 +1381,8 @@ class _RoundButton extends StatelessWidget {
         child: IconButton(
           onPressed: onTap,
           tooltip: tooltip,
-          icon: Icon(icon, color: AppColors.textOnGlass, size: AppMenu.buttonIcon),
+          icon: Icon(icon,
+              color: AppColors.textOnGlass, size: AppMenu.buttonIcon),
         ),
       );
 }

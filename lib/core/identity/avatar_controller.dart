@@ -159,6 +159,19 @@ class AvatarController extends Notifier<Uint8List?> {
   /// re-encoding a JPEG for every peer that asks would be work per *request*
   /// rather than per *avatar*. Null when the user has no picture set.
   Future<({Uint8List jpeg, Uint8List hash})?> shareable() async {
+    // Wait for the disk before answering "no picture".
+    //
+    // This is read to build the announcement, where null does not mean "not
+    // yet" — it means "this person has no avatar", and a v0x05 announcement is
+    // authoritative about that. Answering null while the encrypted box is
+    // still opening therefore told every contact to forget our face, and the
+    // announcement heartbeat starts well before the keystore does.
+    //
+    // The receiving half then dropped the picture it had just asked for with
+    // "nothing announced to match": it asked on an announcement that carried
+    // the digest, and by the time fourteen chunks had arrived a later
+    // announcement had cleared it.
+    await _ready;
     final source = state;
     if (source == null) return null;
     final cached = _shareable;

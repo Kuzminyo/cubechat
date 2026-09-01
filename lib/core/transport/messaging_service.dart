@@ -7321,8 +7321,39 @@ class MessagingService {
 
   /// The check itself, shared by the one-frame and the chunked arrival.
   Future<void> _ingestAvatarBytes(String pubkeyHex, Uint8List jpeg) async {
-    final expected =
+    var expected =
         _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
+
+    // A picture we asked for is a picture we may keep, even if the peer's
+    // stored digest has moved on since.
+    //
+    // Checking only the *current* announcement made this a race the sender
+    // could lose by being slow: we ask on an announcement carrying a digest,
+    // fourteen chunks take five seconds to arrive, and any announcement in
+    // between — one sent before their avatar had loaded from disk, say —
+    // clears the field. The bytes then arrive verified, whole, and are thrown
+    // away with "nothing announced to match", which is what made avatars look
+    // like they load forever: every heartbeat asks again and every answer is
+    // discarded.
+    //
+    // `_avatarRequested` only ever gains entries in [_reconcileAvatar], from
+    // the digest of a *verified signed* announcement by that peer. So a hash
+    // in it is a commitment they made and signed, which is the property this
+    // check exists to enforce — matching it is not a weaker test than matching
+    // the stored one, it is the same test against an entry that has not been
+    // overwritten yet.
+    if (expected == null) {
+      final digest = Uint8List.fromList((await Sha256().hash(jpeg)).bytes);
+      if (_avatarRequested.contains('$pubkeyHex:${_hexOf(digest)}')) {
+        expected = digest;
+        DebugLog.instance.log(
+          'AVATAR',
+          'from $pubkeyHex: announcement cleared mid-transfer, keeping the '
+              'picture we asked for',
+        );
+      }
+    }
+
     if (expected == null) {
       DebugLog.instance
           .log('AVATAR', 'drop from $pubkeyHex: nothing announced to match');
