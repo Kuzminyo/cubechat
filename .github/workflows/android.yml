@@ -221,6 +221,27 @@ jobs:
             echo "::error::GOOGLE_MAPS_API_KEY secret is empty — the map would build black"
             exit 1
           fi
+          # Gradle asks for more memory than this runner has.
+          #
+          # android/gradle.properties sets -Xmx8G -XX:MaxMetaspaceSize=4G,
+          # which is a reasonable thing to give Gradle on a developer's desktop
+          # and up to twelve gigabytes for one JVM here — alongside the Kotlin
+          # daemon and the Dart AOT compiler, on a runner with sixteen, for two
+          # full builds in a row (--split-per-abi, then universal).
+          #
+          # The kernel takes the daemon, Gradle reports "failed with exit code
+          # 143" — SIGTERM, not a compile error — and the job ends as "The
+          # operation was canceled", which reads like somebody pressed a button.
+          # It ran to 766 s and 837 s on two attempts, once alone on the runner,
+          # so it is not contention.
+          #
+          # Capped here rather than in the project file, which is tuned for a
+          # machine that has the memory. Properties in GRADLE_USER_HOME take
+          # precedence over the project's.
+          mkdir -p ~/.gradle
+          printf 'org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=1G\n' \
+            >> ~/.gradle/gradle.properties
+
           flutter build apk --release --split-per-abi
           flutter build apk --release
 
