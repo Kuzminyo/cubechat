@@ -13,11 +13,19 @@ import '../util/platform_info.dart';
 /// developer account, signed distribution and a server that knows which npub
 /// talks to whom. cubechat has none of those on purpose.
 ///
-/// Significant-change monitoring is the only free way left to run again. iOS
-/// relaunches the app into the background when the phone changes neighbourhood
-/// — a cell hand-off, roughly half a kilometre, minutes apart — and the native
-/// side spends that relaunch the way it spends a scheduled window: pull what
-/// the relays are holding, store it, raise the notifications.
+/// Two mechanisms, both of which relaunch a terminated app, and the native side
+/// arms them together.
+///
+/// Significant-change monitoring rings on a cell hand-off — roughly half a
+/// kilometre, minutes apart. Region monitoring rings on leaving a 100 m circle
+/// drawn around wherever we last were, and the circle is redrawn on every wake.
+/// The second exists because the first is too coarse for a live map: a phone
+/// that stays home never changes cell, so a closed app said nothing for days
+/// while the same app in the background reported every minute.
+///
+/// Either way the native side spends the relaunch as it spends a scheduled
+/// window: pull what the relays are holding, store it, raise the
+/// notifications — and republish the map pin from the position that woke us.
 ///
 /// ## What it is not
 ///
@@ -25,6 +33,10 @@ import '../util/platform_info.dart';
 /// a phone that stays put is a phone that hears nothing until it is opened.
 /// What it buys is that walking to the shop catches you up, instead of the
 /// messages waiting until you next unlock and open cubechat.
+///
+/// The circle narrows "moving" from half a kilometre to a hundred metres. It
+/// does not remove the condition: nothing iOS offers reports a position
+/// continuously from an app that is not running, and no setting changes that.
 ///
 /// ## What it costs
 ///
@@ -77,7 +89,7 @@ class IosSignificantLocation {
         DebugLog.instance.log(
           'SLC',
           ok
-              ? 'armed — the phone will relaunch us when it changes area'
+              ? 'armed — relaunch on leaving a 100 m circle, or on changing area'
               : 'NOT armed: iOS location for cubechat is not set to Always. '
                   'Settings → cubechat → Location → Always.',
         );
