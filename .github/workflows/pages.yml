@@ -50,18 +50,19 @@ jobs:
         working-directory: landing
         run: npm ci
 
-      # Where the site will live. See the comment in landing/vite.config.ts —
-      # on github.io the site sits in a folder, and a base of `/` gives a blank
-      # page whose assets all 404.
+      # No PAGES_BASE any more: on cubechat.tech the site is the whole origin,
+      # so the base is `/`, which is what vite.config.ts falls back to.
       #
-      # When cubechat.qpon is delegated and set as the custom domain, drop this
-      # env line and add landing/public/CNAME containing the domain. Both
-      # changes are needed: the base makes the assets resolve, the CNAME file
-      # survives the deploy and is what Pages reads the domain from.
+      # It was `/cubechat/` while the site lived at kuzminyo.github.io/cubechat/
+      # — inside a folder, where a base of `/` gives a page whose HTML loads and
+      # whose every asset 404s. If the custom domain is ever removed, that line
+      # has to come back with it; the two are one decision, not two.
+      #
+      # The domain itself is landing/public/CNAME. Pages reads it from the
+      # deployed site rather than from settings, so it survives a redeploy and
+      # lives in version control where it can be reviewed.
       - name: Build
         working-directory: landing
-        env:
-          PAGES_BASE: /cubechat/
         run: npm run build
 
       # Pages has to be enabled on the repository once, by hand, and this step
