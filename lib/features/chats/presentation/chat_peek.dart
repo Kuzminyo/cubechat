@@ -173,12 +173,41 @@ class _ChatPeekView extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Column(
                 children: [
-                  _PeekHeader(chat: chat),
+                  // Pull the header down to leave, the way a sheet is
+                  // dismissed everywhere else. Only the header: the same
+                  // gesture on the conversation is a scroll, and a screen
+                  // where dragging sometimes scrolls and sometimes closes is
+                  // worse than one with no gesture at all.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragEnd: (details) {
+                      if ((details.primaryVelocity ?? 0) > 240) {
+                        Navigator.of(context).maybePop();
+                      }
+                    },
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: _PeekHeader(chat: chat),
+                  ),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: messages.isEmpty
-                        ? const SizedBox.shrink()
-                        : _PeekConversation(chat: chat, messages: messages),
+                    // A tap anywhere in the conversation closes it too.
+                    //
+                    // The barrier behind everything already did this, and it
+                    // was unreachable: the list covers the whole middle of the
+                    // screen, and while the bubbles ignore pointers the
+                    // scrollable under them does not pass a tap through. So
+                    // the only places that worked were the thin margins, and
+                    // the way out of the screen was effectively hidden.
+                    //
+                    // A tap, not a drag: the scrollable wins the drag arena,
+                    // so the list still scrolls exactly as before.
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: messages.isEmpty
+                          ? const SizedBox.shrink()
+                          : _PeekConversation(chat: chat, messages: messages),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   // No line explaining that this does not mark anything read.
@@ -368,7 +397,10 @@ class _PeekActions extends ConsumerWidget {
     final unread = chat.unreadCount > 0;
 
     return FloatingGlass(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      // Tight. Five rows at the old height took a quarter of the screen, and
+      // every point they cost is a point of conversation not shown — which is
+      // the thing somebody opened this to read.
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -450,16 +482,16 @@ class _PeekAction extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 21),
+            Icon(icon, color: color, size: 19),
             const SizedBox(width: 16),
             Text(
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w500,
               ),
             ),

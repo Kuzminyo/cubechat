@@ -158,6 +158,34 @@ void main() {
     );
   });
 
+  testWidgets('tapping the conversation closes it', (tester) async {
+    // What was reported as "you cannot get back": the barrier behind
+    // everything did close the peek, and the message list covered the whole
+    // middle of the screen. The bubbles ignore pointers, but the scrollable
+    // under them does not pass a tap through, so the only places that worked
+    // were the margins — and nothing said so.
+    await _openPeek(tester);
+    expect(find.text('newer'), findsOneWidget);
+
+    await tester.tap(find.text('newer'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('newer'), findsNothing);
+  });
+
+  testWidgets('the list still scrolls rather than closing', (tester) async {
+    // The other half of the same change: a tap closes, a drag must not. If
+    // the dismissal ever becomes a drag handler, this is what catches it.
+    await _openPeek(tester);
+
+    // At the list, not at a bubble: bubbles ignore pointers on purpose, and a
+    // drag that lands on one proves nothing about whether the list scrolls.
+    await tester.drag(find.byType(ListView), const Offset(0, 60));
+    await tester.pumpAndSettle();
+
+    expect(find.text('newer'), findsOneWidget);
+  });
+
   testWidgets('tapping outside closes it', (tester) async {
     await _openPeek(tester);
     expect(find.text('newer'), findsOneWidget);
