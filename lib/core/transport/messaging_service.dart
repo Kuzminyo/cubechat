@@ -1307,8 +1307,23 @@ class MessagingService {
       // The frame published to a relay is byte-identical to the one BLE would
       // have carried: still SealedBox/X3DH-encrypted and signed, so the relay
       // is a dumb pipe that learns only who talks to whom, and when.
+      // `!transient`, and leaving that off is what kept the doorbell ringing
+      // after the outbox was fixed. A map pin is a text message — the position
+      // rides as a `cubechat:loc:v1:` URI, which is how every small payload
+      // travels here — so it comes down this path like anything typed, and
+      // `MapPresenceController` republishes it to every map friend on a timer.
+      // The server log read as a metronome about every ninety seconds, and the
+      // sender's log showed why: four `sendText` calls of the same 287 bytes
+      // inside 400 ms, one per friend, right after `[MAP] rebuilding the map`.
+      //
+      // `transient` already exists to mean "not a message a person wrote" —
+      // the branch above consults it — and this one simply did not ask.
       if (deliveredVia == 0 &&
-          await _sendOverNostr(canonicalId, wireBytes, wakesPeer: true)) {
+          await _sendOverNostr(
+            canonicalId,
+            wireBytes,
+            wakesPeer: !transient,
+          )) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
       }
