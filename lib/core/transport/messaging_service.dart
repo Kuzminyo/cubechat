@@ -3252,12 +3252,26 @@ class MessagingService {
   Future<void> _ingestConversationClear({
     required String peerId,
     required Uint8List? senderPub,
+    DateTime? sentAt,
   }) async {
     final messages = _ref.read(messagesControllerProvider.notifier);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    await messages.clearForChat(canonical);
-    if (canonical != peerId) await messages.clearForChat(peerId);
-    DebugLog.instance.log('CHAT', '$canonical cleared the conversation here');
+    // Bounded by the moment the clear was sent, which is what keeps a second
+    // delivery of it from taking anything — see [clearForChatUpTo]. Clamped
+    // to now for the same reason presence clamps: the stamp is the sender's
+    // `created_at`, a claim rather than a fact, and one dated in the future
+    // would erase messages that have not been written yet.
+    //
+    // Falling back to now with no stamp is the BLE path, which has no backlog
+    // to replay and so behaves exactly as it did.
+    final now = DateTime.now();
+    final upTo = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
+    await messages.clearForChatUpTo(canonical, upTo);
+    if (canonical != peerId) await messages.clearForChatUpTo(peerId, upTo);
+    DebugLog.instance.log(
+      'CHAT',
+      '$canonical cleared the conversation here (up to $upTo)',
+    );
   }
 
   /// Burn a view-once photo here, and tell the other side to burn theirs.
@@ -6068,6 +6082,7 @@ class MessagingService {
           await _ingestConversationClear(
             peerId: peerId,
             senderPub: senderPub,
+            sentAt: sentAt,
           );
 
         case InnerPayloadType.copyRestriction:

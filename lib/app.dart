@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/ble/background_mode_controller.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/notifications/push_registration.dart';
 import 'core/routing/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
@@ -104,6 +105,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       final payload = await NotificationService.instance.initialChatPayload();
       if (payload != null && payload.isNotEmpty) _openChat(payload);
       _startDiscovery();
+      _refreshPushRegistration();
     });
   }
 
@@ -148,6 +150,28 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     if (!PlatformInfo.isMobile) return;
     // Idempotent, so the Peers screen calling it again on mount is harmless.
     unawaited(ref.read(peerDiscoveryControllerProvider.notifier).start());
+  }
+
+  /// Re-publish the APNs token, if the owner asked for notifications.
+  ///
+  /// `PushEnabled` already re-registers on launch when its flag is on, and
+  /// said so in a comment — but it is a `Notifier`, and a Notifier does not
+  /// build until somebody reads it. The only reader was the switch on the
+  /// profile screen, so "on every launch" was in truth "on every launch where
+  /// the owner happens to open Profile".
+  ///
+  /// That is the whole of the bug. iOS hands out a fresh token after a
+  /// restore, a reinstall, or a TestFlight update, and the server addresses a
+  /// phone by the last token it was told about — so after an update the
+  /// doorbell rang an address nobody lived at any more. In the app the alerts
+  /// still worked, because those are drawn locally and need no token at all,
+  /// which is exactly the shape reported: notifications only while the app is
+  /// open.
+  ///
+  /// One read is the entire fix; everything else already existed.
+  void _refreshPushRegistration() {
+    if (!PlatformInfo.isIOS) return;
+    ref.read(pushEnabledProvider);
   }
 
   /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`

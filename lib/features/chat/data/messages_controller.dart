@@ -837,6 +837,38 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     return removed;
   }
 
+  /// Erase this conversation as it stood at [upTo], keeping anything said
+  /// since.
+  ///
+  /// This is what a peer's "I cleared this, please do the same" must use, and
+  /// the cutoff is what makes obeying it survivable. A relay hands its backlog
+  /// to whoever subscribes next, and the `since` on our REQ deliberately
+  /// overlaps the last ten minutes (see `_sinceSlack`) to cover a sender whose
+  /// clock trails ours — so a clear that was sent once is *delivered* again on
+  /// every launch. Text survives that because the store dedups on wireId; a
+  /// clear had no such defence and re-ran, wiping the messages that had
+  /// arrived since. Reported as messages and contacts that were there and then
+  /// were not.
+  ///
+  /// Bounding it by the clear's own moment makes the second delivery a no-op
+  /// without keeping a record of what has been obeyed: everything at or before
+  /// that moment is already gone, so there is nothing left for the replay to
+  /// take. It also makes a genuinely late one correct rather than merely
+  /// harmless — a peer who cleared while this phone was off gets the
+  /// conversation up to that point erased, and whatever they said afterwards
+  /// stays, which is what they asked for.
+  Future<void> clearForChatUpTo(String chatId, DateTime upTo) async {
+    final existing = state[chatId];
+    if (existing == null) return;
+    final kept = existing
+        .where((m) => m.sentAt.isAfter(upTo))
+        .toList(growable: false);
+    if (kept.length == existing.length) return;
+    if (kept.isEmpty) return clearForChat(chatId);
+    state = {...state, chatId: kept};
+    _persist(chatId, kept);
+  }
+
   /// Erase a single chat (the `/clear` IRC command).
   Future<void> clearForChat(String chatId) async {
     if (!state.containsKey(chatId)) return;
