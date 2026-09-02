@@ -2668,15 +2668,31 @@ class MessagingService {
     required String peerId,
     required Uint8List? senderPub,
     required Uint8List body,
+    DateTime? sentAt,
   }) {
     if (body.isEmpty) return;
     final canonicalId = senderPub != null ? _hexOf(senderPub) : peerId;
     final controller = _ref.read(typingControllerProvider.notifier);
-    if (body[0] == 0x01) {
-      controller.record(canonicalId);
-    } else {
+    if (body[0] != 0x01) {
+      // A stop is applied whatever its age. It can only take the indicator
+      // down, and taking it down late is better than leaving it up.
       controller.clear(canonicalId);
+      return;
     }
+
+    // "I am writing" is a claim about this second, and it was being believed
+    // whenever it happened to arrive.
+    //
+    // The notice was stamped with our own clock, so one held on a relay came
+    // out of the backlog looking new. Reported as the indicator appearing
+    // while nobody was typing, and a log of a relay reconnect shows the shape
+    // of it: presence beacons in the same burst were stale by two, four, five,
+    // six and seven minutes. Presence filters those; this did not, so a
+    // seven-minute-old keystroke lit the line for its full eight seconds.
+    final now = DateTime.now();
+    final stamp = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
+    if (now.difference(stamp) >= TypingController.ttl) return;
+    controller.record(canonicalId, at: stamp);
   }
 
   /// Peers we have already told about our copy restriction this run.
@@ -6079,6 +6095,7 @@ class MessagingService {
               peerId: peerId,
               senderPub: senderPub,
               body: unpacked.body,
+              sentAt: sentAt,
             );
           }
 
