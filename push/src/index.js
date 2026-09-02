@@ -310,9 +310,31 @@ function hostsFor(npub) {
 ///
 /// What it costs is that the banner says the same thing every time. The app
 /// fetches the message from the relay and decrypts it locally when it opens.
+/// Every attempt, named.
+///
+/// `token retired (BadDeviceToken)` was the whole story a failure told, and it
+/// is not enough to act on: it carries the *second* attempt's reason and never
+/// says which host either attempt went to, so "both environments refuse it"
+/// and "one environment was asked twice" read identically. That ambiguity cost
+/// a diagnosis — the topic, the key and the entitlement were each suspected
+/// and cleared while the log said the same eight words each time.
+///
+/// The token's own shape is worth a line too. A truncated or re-encoded token
+/// is refused exactly like a foreign one, and length plus the first bytes tells
+/// the two apart without putting the whole address in a log file.
+function logAttempt(npub, token, host, result) {
+  log(
+    'apns',
+    `${short(npub)} -> ${envName(host)}: ` +
+      `${result.status || 'no response'} ${result.reason || result.body || ''}`.trim() +
+      ` [token ${token.length} chars, ${token.slice(0, 8)}…]`,
+  );
+}
+
 async function sendPush(npub, token) {
   const [first, second] = hostsFor(npub);
   const attempt = await pushTo(npub, token, first);
+  logAttempt(npub, token, first, attempt);
   if (attempt.status === 200) {
     rememberHost(npub, first);
     return true;
@@ -322,6 +344,7 @@ async function sendPush(npub, token) {
   // hosts, and trying twice would only double the log.
   if (attempt.reason === 'BadDeviceToken') {
     const retry = await pushTo(npub, token, second);
+    logAttempt(npub, token, second, retry);
     if (retry.status === 200) {
       log('apns', `${short(npub)} is a ${envName(second)} token`);
       rememberHost(npub, second);
