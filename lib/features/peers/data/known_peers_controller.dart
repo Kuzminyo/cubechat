@@ -28,10 +28,23 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   /// otherwise win that race about half the time and silently do nothing.
   Future<void> get loaded => _loading ?? Future<void>.value();
 
+  /// Presence marks accumulated behind the leading edge — see [markPresent].
+  final Map<String, KnownPeer> _pendingPresence = <String, KnownPeer>{};
+  Timer? _presenceFlush;
+
+  /// The same window [PresenceController] coalesces on, because it is the same
+  /// burst arriving at both.
+  static const Duration _presenceCoalesceWindow = Duration(milliseconds: 100);
+
   @override
   Map<String, KnownPeer> build() {
     // Kick off the async load; UI updates as soon as the box is ready.
     unawaited(_loading = _loadFromDisk());
+    ref.onDispose(() {
+      _presenceFlush?.cancel();
+      _presenceFlush = null;
+      _pendingPresence.clear();
+    });
     return <String, KnownPeer>{};
   }
 
@@ -200,7 +213,9 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   /// it. Everything else — announcements, handshakes, relayed frames — says a
   /// phone is reachable, and a phone is reachable while its owner is asleep.
   Future<void> markPresent(String pubkeyHex, {DateTime? at}) async {
-    final existing = state[pubkeyHex];
+    // Against what is queued as well as what is published, or a burst would be
+    // judged against half its own history.
+    final existing = _pendingPresence[pubkeyHex] ?? state[pubkeyHex];
     if (existing == null) return;
     final when = at ?? DateTime.now();
     // Never backwards. A message can arrive long after it was written — held
@@ -213,8 +228,51 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       lastSeen: existing.lastSeen.isAfter(when) ? existing.lastSeen : when,
       lastPresenceAt: when,
     );
-    state = {...state, pubkeyHex: updated};
-    await _persist(updated);
+
+    // The first mark of a burst lands at once; the rest of it queues.
+    //
+    // A relay hands over its backlog on connect, and every beacon in it is
+    // newer than the last, so each one was a `state =` *and* an encrypted Hive
+    // write. One launch log has twenty-odd inside 200 ms, stale by up to
+    // twenty-three minutes — twenty writes to disk in the half-second after
+    // boot, which is exactly when somebody is looking at the screen and the
+    // app feels slow. Reported as freezing, and worst at startup.
+    //
+    // Leading edge, like [PresenceController]: a single mark — the ordinary
+    // case — is not delayed, while a backlog collapses into a few changes and
+    // one batched write instead of twenty of each.
+    if (_presenceFlush == null) {
+      _presenceFlush = Timer(_presenceCoalesceWindow, _flushPresenceMarks);
+      state = {...state, pubkeyHex: updated};
+      await _persist(updated);
+      return;
+    }
+    _pendingPresence[pubkeyHex] = updated;
+  }
+
+  /// Publish everything queued behind the leading edge as one change, and
+  /// write it as one batch.
+  void _flushPresenceMarks() {
+    _presenceFlush = null;
+    if (_pendingPresence.isEmpty) return;
+    final batch = Map<String, KnownPeer>.from(_pendingPresence);
+    _pendingPresence.clear();
+    state = {...state, ...batch};
+    unawaited(_persistAll(batch.values));
+  }
+
+  /// One `putAll` rather than a write per peer. Hive encrypts and flushes per
+  /// call, so batching is the whole point.
+  Future<void> _persistAll(Iterable<KnownPeer> peers) async {
+    final box = _box;
+    if (box == null) return;
+    try {
+      await box.putAll({
+        for (final peer in peers) peer.pubkeyHex: _encode(peer),
+      });
+    } catch (e) {
+      debugPrint('KnownPeers batch persist failed: $e');
+    }
   }
 
   Future<void> touch(String pubkeyHex) async {
@@ -292,6 +350,10 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
 
   /// Forget every known peer — used by the Emergency Wipe flow.
   Future<void> clear() async {
+    // A queued mark must not resurrect a peer a wipe has just removed.
+    _presenceFlush?.cancel();
+    _presenceFlush = null;
+    _pendingPresence.clear();
     state = <String, KnownPeer>{};
     try {
       await _box?.clear();
