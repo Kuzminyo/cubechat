@@ -413,11 +413,21 @@ function pushTo(npub, token, host) {
       // resource at all, and the language rides in the signed registration.
       alert: { body: bodyFor(npub) },
       sound: 'default',
-      // Collapsed by sender, so ten messages while the phone is in a pocket
-      // are one banner rather than ten. The app shows the real list when it
-      // opens; a stack of identical placeholders helps nobody.
+      // Grouped, not collapsed. `thread-id` stacks the banners together in
+      // Notification Centre; it does not replace one with the next, which is
+      // what `apns-collapse-id` did below until 2026-09-02.
+      //
+      // That collapsing was deliberate once — ten identical "New message"
+      // banners were held to help nobody — and it was wrong in practice.
+      // Replacing the banner is indistinguishable from never having sent it:
+      // the phone owner sees one notice, no matter how many people wrote,
+      // and reads that as messages going missing. Asked for and changed.
       'thread-id': 'cubechat',
-      badge: 1,
+      // Deliberately no `badge`. It was a hardcoded 1, which was already a
+      // guess and becomes a contradiction next to five banners. The server
+      // cannot count unread mail — it cannot read any of it, and it never
+      // learns what has been opened — so it now asserts nothing and leaves
+      // the badge to the app, which knows.
     },
   });
 
@@ -431,7 +441,10 @@ function pushTo(npub, token, host) {
         'apns-topic': APNS_TOPIC,
         'apns-push-type': 'alert',
         'apns-priority': '10',
-        'apns-collapse-id': 'cubechat',
+        // No `apns-collapse-id`. With one there, every push carried the same
+        // id and APNs treats that as "this replaces the last one" — so a
+        // second message overwrote the first banner instead of arriving
+        // beside it. Without it each push stands on its own.
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(payload),
       });
