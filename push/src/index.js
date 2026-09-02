@@ -560,9 +560,27 @@ function subscribeOn(socket) {
   // `since` is now: the backlog is not our business. A message that arrived
   // while this service was down has already been waiting, and waking a phone
   // for it an hour later is a notification about the past.
+  // `#w` is what makes this a doorbell rather than a smoke alarm.
+  //
+  // Without it the filter matched every frame addressed to a registered npub,
+  // and most frames are housekeeping: a presence heartbeat every 70 seconds,
+  // read receipts, announcements, typing notices. A phone with the app closed
+  // got a "New message" banner about once a minute with no message behind it —
+  // reported, and worse than no notification at all, because it teaches the
+  // owner to ignore the real ones.
+  //
+  // This service cannot tell the two apart, and should not be able to: it
+  // holds no key and decrypts nothing. So the sender marks the frames a person
+  // would want to be woken for, in the clear, and this asks for only those.
+  // See `kWakeTag` in nostr_transport.dart for what that costs.
+  //
+  // A build that predates the tag rings no doorbell at all. That is the safe
+  // direction and it cost nothing when it shipped: push had one registered
+  // device in the world, and it took the new build the same day.
   const filter = {
     kinds: [FRAME_KIND],
     '#p': npubs,
+    '#w': ['1'],
     since: Math.floor(Date.now() / 1000),
   };
   socket.send(JSON.stringify(['REQ', 'wake', filter]));

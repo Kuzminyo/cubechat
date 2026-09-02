@@ -148,5 +148,47 @@ void main() {
 
       expect(frames, isEmpty);
     });
+
+    test('a frame carries no wake tag unless it is asked for', () async {
+      // The default is the safe one. Machinery — the presence heartbeat every
+      // 70 seconds, receipts, typing — travels this path, and waking a closed
+      // phone for it put a "New message" banner on the lock screen once a
+      // minute with nothing behind it.
+      await alice.sendFrame(
+        recipientNpubHex: bob.npubHex,
+        frameBytes: _frameBytes('housekeeping'),
+      );
+
+      expect(relay.published.single.firstTagValue(kWakeTag), isNull);
+    });
+
+    test('a frame that wakes the peer says so in the clear', () async {
+      // In the clear on purpose: the push service holds no key and decrypts
+      // nothing, so the only way it can tell a message from a heartbeat is if
+      // the sender says which this is.
+      await alice.sendFrame(
+        recipientNpubHex: bob.npubHex,
+        frameBytes: _frameBytes('a real message'),
+        wakesPeer: true,
+      );
+
+      expect(relay.published.single.firstTagValue(kWakeTag), '1');
+    });
+
+    test('the wake tag does not disturb delivery', () async {
+      // The recipient tag still has to be found, and the frame still has to
+      // arrive byte-for-byte — a tag added for a doorbell must not change what
+      // the transport is for.
+      final payload = _frameBytes('still arrives');
+      final received = bob.inboundFrames().first;
+
+      await alice.sendFrame(
+        recipientNpubHex: bob.npubHex,
+        frameBytes: payload,
+        wakesPeer: true,
+      );
+
+      expect(await received, payload);
+    });
   });
 }

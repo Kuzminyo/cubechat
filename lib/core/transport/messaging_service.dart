@@ -604,7 +604,15 @@ class MessagingService {
   /// the peer's Nostr pubkey. Returns false (never throws) when the fallback is
   /// off, we don't know the peer's npub, or no relay accepted the event — the
   /// caller then falls through to store-and-forward exactly as before.
-  Future<bool> _sendOverNostr(String canonicalId, Uint8List frameBytes) async {
+  /// [wakesPeer] rings the recipient's doorbell — see [kWakeTag]. Off unless
+  /// asked, because the doorbell used to ring for everything: the presence
+  /// heartbeat alone put a "New message" banner on a closed phone every 70
+  /// seconds with nothing behind it.
+  Future<bool> _sendOverNostr(
+    String canonicalId,
+    Uint8List frameBytes, {
+    bool wakesPeer = false,
+  }) async {
     final transport = _nostr;
     // Said out loud, because the silence here is what made a phone look broken:
     // messages queued for hours with no line in the log to say the internet
@@ -635,6 +643,7 @@ class MessagingService {
       final receipt = await transport.sendFrame(
         recipientNpubHex: npubHex,
         frameBytes: frameBytes,
+        wakesPeer: wakesPeer,
       );
       // A write is not a send. Relays refuse events routinely — rate limits,
       // size caps, spam heuristics — and counting a refusal as delivery is how
@@ -1256,7 +1265,7 @@ class MessagingService {
           _ref
               .read(conversationSettingsControllerProvider.notifier)
               .prefersRelay(canonicalId) &&
-          await _sendOverNostr(canonicalId, wireBytes)) {
+          await _sendOverNostr(canonicalId, wireBytes, wakesPeer: true)) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
       }
@@ -1298,7 +1307,8 @@ class MessagingService {
       // The frame published to a relay is byte-identical to the one BLE would
       // have carried: still SealedBox/X3DH-encrypted and signed, so the relay
       // is a dumb pipe that learns only who talks to whom, and when.
-      if (deliveredVia == 0 && await _sendOverNostr(canonicalId, wireBytes)) {
+      if (deliveredVia == 0 &&
+          await _sendOverNostr(canonicalId, wireBytes, wakesPeer: true)) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
       }
@@ -2487,7 +2497,11 @@ class MessagingService {
       for (final entry in _outbox.entries.toList()) {
         if (_disposed) return;
         final ref = entry.value;
-        if (!await _sendOverNostr(ref.canonicalId, ref.frameBytes)) {
+        if (!await _sendOverNostr(
+          ref.canonicalId,
+          ref.frameBytes,
+          wakesPeer: true,
+        )) {
           DebugLog.instance.log(
             'NOSTR',
             'queued message for ${ref.canonicalId} still has no relay road',
@@ -4479,6 +4493,13 @@ class MessagingService {
     final frameBytes =
         Frame(type: FrameType.transport, payload: env.encode()).encode();
 
+    // No `wakesPeer` on this path or the one below, and that is the fix rather
+    // than an omission. Everything that travels as a control frame is
+    // machinery — the presence heartbeat every 70 seconds, typing notices,
+    // read receipts, copy-restriction notes, the conversation clear — and none
+    // of it is news to a person. Waking a closed phone for all of it put a
+    // "New message" banner on the lock screen about once a minute with no
+    // message behind it, which teaches the owner to ignore the real ones.
     if (relayOnly) {
       return await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
     }
@@ -4672,7 +4693,13 @@ class MessagingService {
     var sent = 0;
     for (var i = 0; i < targets.length; i++) {
       try {
-        if (await _sendOverNostr(targets[i].pubkeyHex, frameBytes)) sent++;
+        if (await _sendOverNostr(
+          targets[i].pubkeyHex,
+          frameBytes,
+          wakesPeer: true,
+        )) {
+          sent++;
+        }
       } catch (e) {
         DebugLog.instance.log('CHAN', 'relay post failed: $e');
       }
@@ -7821,7 +7848,7 @@ class MessagingService {
         return true;
       }
     }
-    return _sendOverNostr(canonicalId, frameBytes);
+    return _sendOverNostr(canonicalId, frameBytes, wakesPeer: true);
   }
 
   Future<int> _fanoutAllLinks(

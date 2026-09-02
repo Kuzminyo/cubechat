@@ -30,6 +30,28 @@ const int kCubechatFrameKind = 1059;
 /// relay indexes on it so a receiver can subscribe to just their own mail.
 const String kRecipientTag = 'p';
 
+/// Marks a frame worth waking a sleeping phone for.
+///
+/// The push service cannot decrypt anything — that is the point of it — so it
+/// woke a phone for *every* frame addressed to it. Most frames are housekeeping:
+/// a presence heartbeat every 70 seconds, read receipts, announcements, typing
+/// notices. The result was a "New message" banner about once a minute with no
+/// message behind it, which is worse than no notification at all, because it
+/// trains the owner to ignore the real ones.
+///
+/// Only the sender knows which is which, so the sender says so, out here in the
+/// clear where the service can read it without holding a key.
+///
+/// The cost, stated plainly: a relay operator can now tell a real message from
+/// housekeeping. That is a genuine leak and it is close to free anyway — a
+/// 190-byte event arriving every 70 seconds is a heartbeat to anyone watching
+/// sizes and timing, with or without this tag. What stays hidden is what it
+/// says, who wrote it, and what the two of you talk about.
+///
+/// Absent means "do not wake", so an old build simply rings no doorbell rather
+/// than ringing it wrongly.
+const String kWakeTag = 'w';
+
 /// The network seam: publishes signed events to relays and streams back events
 /// addressed to us. A production implementation manages a pool of relay
 /// WebSocket connections (`wss://…`), REQ/EVENT/EOSE framing, and reconnection.
@@ -160,9 +182,14 @@ class NostrTransport {
 
   /// Build, sign and publish an event carrying [frameBytes] to the peer whose
   /// Nostr pubkey is [recipientNpubHex].
+  /// [wakesPeer] marks this as something a person would want to be woken for —
+  /// a message, not machinery. Defaults to false so anything added later has to
+  /// say it out loud rather than inheriting a doorbell it does not need. See
+  /// [kWakeTag].
   Future<PublishReceipt> sendFrame({
     required String recipientNpubHex,
     required Uint8List frameBytes,
+    bool wakesPeer = false,
   }) async {
     final event = NostrEvent(
       pubkey: _signer.npubHex,
@@ -170,6 +197,7 @@ class NostrTransport {
       kind: kCubechatFrameKind,
       tags: [
         [kRecipientTag, recipientNpubHex],
+        if (wakesPeer) [kWakeTag, '1'],
       ],
       content: NostrFrameCodec.encodeContent(frameBytes),
     );
