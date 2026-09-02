@@ -215,7 +215,26 @@ class _ChatPeekView extends ConsumerWidget {
                   // label pasted across the conversation — the whole screen is
                   // already the explanation, and a caption that has to be read
                   // once is a caption that is in the way every time after.
-                  _PeekActions(chat: chat, onOpen: onOpen, onDelete: onDelete),
+                  // Narrow, and left, so there is bare screen beside it.
+                  //
+                  // Full width, the panel was the bottom quarter of the screen
+                  // with nothing around it to tap, and the way out was the
+                  // thin margins again. The empty space next to it is not
+                  // decoration: the Column does not hit-test where it has no
+                  // child, so a tap there falls through to the barrier and
+                  // closes the peek — the largest, most obvious target on the
+                  // screen doing the most obvious thing.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.62,
+                      child: _PeekActions(
+                        chat: chat,
+                        onOpen: onOpen,
+                        onDelete: onDelete,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
