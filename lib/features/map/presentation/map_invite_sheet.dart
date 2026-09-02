@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../chat/domain/message_preview.dart';
 import '../../../core/identity/nickname_controller.dart';
 import '../../../core/theme/colors.dart';
+import '../../peers/data/presence_controller.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
@@ -233,7 +234,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                         peerId: chat.peerId,
                         label: chat.peerName,
                         size: 42,
-                        online: chat.isOnline,
+                        online: ref.watch(peerOnlineProvider(chat.peerId)),
                       ),
                       title: Text(
                         chat.peerName,

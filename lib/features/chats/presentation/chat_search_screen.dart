@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../peers/data/presence_controller.dart';
 import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../l10n/app_localizations.dart';
@@ -483,14 +484,14 @@ class _SectionLabel extends StatelessWidget {
 }
 
 /// One face in the frequent row: avatar over a clipped name.
-class _FrequentTile extends StatelessWidget {
+class _FrequentTile extends ConsumerWidget {
   const _FrequentTile({required this.chat, required this.onTap});
 
   final Chat chat;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -503,7 +504,7 @@ class _FrequentTile extends StatelessWidget {
               peerId: chat.peerId,
               label: chat.peerName,
               size: 60,
-              online: chat.isOnline,
+              online: ref.watch(peerOnlineProvider(chat.peerId)),
             ),
             const SizedBox(height: 6),
             Text(

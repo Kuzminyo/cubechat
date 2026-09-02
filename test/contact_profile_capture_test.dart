@@ -13,6 +13,7 @@ import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/features/chats/models/chat.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/peers/data/known_peers_controller.dart';
+import 'package:cubechat/features/peers/data/presence_controller.dart';
 import 'package:cubechat/features/peers/models/known_peer.dart';
 import 'package:cubechat/features/peers/presentation/contact_profile_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
@@ -32,6 +33,22 @@ class _CaptureKnownPeersController extends KnownPeersController {
           lastSeen: DateTime(2026),
         ),
       };
+}
+
+/// Alice is in the app, which is what this capture is a picture of: the green
+/// dot on her avatar and "В мережі" under her name.
+///
+/// It used to be said by `Chat(isOnline: true)`, and presence is no longer a
+/// field on a row — the screen reads the beacon itself now. So the beacon is
+/// what the test supplies. `at` is the wall clock rather than a fixed date
+/// because freshness is measured against it: pinned to 2026 the beacon is
+/// stale on arrival and the dot never appears.
+class _PresentAlice extends PresenceController {
+  @override
+  Map<String, PeerPresence> build() {
+    super.build();
+    return {_pubkey: PeerPresence(online: true, at: DateTime.now())};
+  }
 }
 
 Future<void> _capture(
@@ -57,6 +74,7 @@ void main() {
           knownPeersControllerProvider.overrideWith(
             _CaptureKnownPeersController.new,
           ),
+          presenceControllerProvider.overrideWith(_PresentAlice.new),
           chatsProvider.overrideWithValue([
             Chat(
               id: _pubkey,
@@ -66,7 +84,6 @@ void main() {
               lastTime: DateTime(2026),
               unreadCount: 0,
               isMesh: true,
-              isOnline: true,
             ),
           ]),
         ],

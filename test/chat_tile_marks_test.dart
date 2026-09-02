@@ -19,7 +19,6 @@ Chat _chat({bool muted = false, int autoDeleteSeconds = 0}) => Chat(
       lastTime: DateTime(2026, 1, 1),
       unreadCount: 0,
       isMesh: true,
-      isOnline: false,
       isMuted: muted,
       autoDeleteSeconds: autoDeleteSeconds,
     );

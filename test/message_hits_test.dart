@@ -11,7 +11,6 @@ Chat _chat(String id, {String? name, bool isChannel = false}) => Chat(
       lastTime: DateTime(2026),
       unreadCount: 0,
       isMesh: false,
-      isOnline: false,
       isChannel: isChannel,
     );
 

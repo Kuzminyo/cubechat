@@ -101,7 +101,6 @@ Chat? savedChatRow(WidgetRef ref, AppLocalizations t) {
     lastTime: last?.sentAt ?? messages.last.sentAt,
     unreadCount: 0,
     isMesh: false,
-    isOnline: false,
     // A normal row in every other respect, so it pins and expires like one.
     isPinned: pinned.contains(savedChatId),
     pinRank: pinned.indexOf(savedChatId),
@@ -226,22 +225,23 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final favorites = ref.watch(favoritesControllerProvider);
   final pinnedChats = ref.watch(pinnedChatsControllerProvider);
   final readMarkers = ref.watch(readMarkersControllerProvider);
-  final presence = ref.watch(presenceControllerProvider);
   final drafts = ref.watch(draftsControllerProvider);
   final aliases = ref.watch(contactAliasesControllerProvider);
 
-  // A fresh beacon and nothing else — the same rule as [peerIsOnline], which
-  // the chat header uses.
+  // Presence is deliberately not watched here, and that is the point of this
+  // provider being as long as it is.
   //
-  // An established session used to count here too, and that is why the header
-  // could say offline while this list and the profile said online for the same
-  // person: two answers to one question, computed in two places. A session
-  // says a phone is reachable, which is what `isReachableViaMesh` below is
-  // for; being in the app is a claim only a beacon carries.
-  final onlinePubkeys = <String>{
-    for (final e in presence.entries)
-      if (e.value.online && e.value.isFresh) e.key,
-  };
+  // It used to build an `onlinePubkeys` set from the whole presence map, so a
+  // single beacon about a single person re-ran everything below: the preview
+  // string, the unread count and the sort, for every row. Beacons arrive more
+  // often than all eleven remaining sources put together, and the bill landed
+  // in the middle of screen transitions — 29.4 and 35.2 ms of build against
+  // 0.8 ms of raster, tagged `chats x4` and `chats x2`, measured on iOS at
+  // build 937.
+  //
+  // A row asks [peerOnlineProvider] for its own peer instead, so a beacon
+  // repaints one avatar. See `ChatTile`.
+  //
   // Reachability keeps the session, because that is exactly what it means.
   final meshReachable = <String>{
     for (final s in sessions.values)
@@ -256,10 +256,12 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
     // skips the ones an older build already filed there.
     final last = lastVisibleMessage(msgs);
     final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
-    final isOnline = onlinePubkeys.contains(peer.pubkeyHex);
-    final isReachableViaMesh = !isOnline &&
-        (meshReachable.contains(peer.pubkeyHex) ||
-            now.difference(peer.lastSeen) <= _meshReachableWindow);
+    // No longer suppressed by presence. It used to read `!isOnline && ...`, so
+    // that a tile said either "online" or "via mesh" and never both; the two
+    // consumers that care still prefer presence when it is true, and now they
+    // are the ones holding that precedence rather than this line.
+    final isReachableViaMesh = meshReachable.contains(peer.pubkeyHex) ||
+        now.difference(peer.lastSeen) <= _meshReachableWindow;
     final draft = drafts[peer.pubkeyHex];
     return Chat(
       id: peer.pubkeyHex,
@@ -282,7 +284,6 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       lastTime: draft?.updatedAt ?? last?.sentAt ?? _neverSpoken,
       unreadCount: unread,
       isMesh: true,
-      isOnline: isOnline,
       isReachableViaMesh: isReachableViaMesh,
       isVerified: peer.isVerified,
       signKeyRotated: peer.hasUnacknowledgedRotation,
@@ -319,7 +320,6 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
         lastTime: draft?.updatedAt ?? last?.sentAt ?? ch.joinedAt,
         unreadCount: unread,
         isMesh: true,
-        isOnline: false,
         isChannel: true,
         isFavorite: favorites.contains(ch.name),
         isPinned: pinnedChats.contains(ch.name),
@@ -610,6 +610,22 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
       }
     }
     final saved = savedChatRow(ref, t);
+    // Presence is read here only while the one folder that filters on it is
+    // the folder showing. Every other folder — and the unfiltered list, which
+    // is what the app opens on — never touches it, which is the whole point of
+    // [allChatsProvider] no longer watching it: a beacon must not re-sort a
+    // list that is not filtered by beacons.
+    final onlineIds = folder == ChatFolder.online
+        ? <String>{
+            for (final e in ref.watch(presenceControllerProvider).entries)
+              if (peerIsOnline(
+                hasLiveSession: false,
+                beacon: e.value,
+                lastSeen: null,
+              ))
+                e.key,
+          }
+        : const <String>{};
     final filtered = [
       // An ordinary row, sorted by when it was last written in like every
       // other.
@@ -619,7 +635,10 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
           (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
         saved,
       ...all.where((c) {
-        if (folder != null && !folder.matches(c)) return false;
+        if (folder != null &&
+            !folder.matches(c, online: onlineIds.contains(c.id))) {
+          return false;
+        }
         if (userFolder != null && !userFolder.contains(c.id)) return false;
         if (query.isEmpty) return true;
         return c.peerName.toLowerCase().contains(query) ||

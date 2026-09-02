@@ -10,7 +10,6 @@ Chat _chat(String id, String name, {bool channel = false}) => Chat(
       lastTime: DateTime(2026),
       unreadCount: 0,
       isMesh: true,
-      isOnline: false,
       isChannel: channel,
     );
 

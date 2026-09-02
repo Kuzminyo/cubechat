@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../peers/data/presence_controller.dart';
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/utils/time_format.dart';
@@ -270,9 +271,10 @@ class _PeekHeader extends ConsumerWidget {
     final isTyping = typingAt != null &&
         DateTime.now().difference(typingAt) < TypingController.ttl;
 
+    final isOnline = ref.watch(peerOnlineProvider(chat.peerId));
     final String? status = isTyping
         ? t.chatTyping
-        : chat.isOnline
+        : isOnline
             ? t.presenceOnline
             : null;
 
@@ -302,7 +304,7 @@ class _PeekHeader extends ConsumerWidget {
                 peerId: chat.peerId,
                 label: chat.peerName,
                 size: 36,
-                online: chat.isOnline,
+                online: isOnline,
               ),
               const SizedBox(width: 10),
               Expanded(

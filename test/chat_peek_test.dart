@@ -51,7 +51,6 @@ Chat _chat() => Chat(
       lastTime: _today,
       unreadCount: 2,
       isMesh: true,
-      isOnline: false,
     );
 
 /// The scope is owned by the widget tree, not held outside it.

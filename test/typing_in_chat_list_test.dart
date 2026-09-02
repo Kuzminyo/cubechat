@@ -30,7 +30,6 @@ Chat _chat({
       lastTime: DateTime(2026, 1, 1),
       unreadCount: 0,
       isMesh: true,
-      isOnline: false,
       isDraft: isDraft,
       isChannel: isChannel,
     );

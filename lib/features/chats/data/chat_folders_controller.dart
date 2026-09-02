@@ -26,7 +26,11 @@ enum ChatFolder {
     return null;
   }
 
-  bool matches(Chat chat) => switch (this) {
+  /// [online] is passed in rather than read off [chat], because presence is
+  /// no longer a field on a row — see [peerOnlineProvider]. Only this one
+  /// folder needs the answer for anything but drawing, and only while it is
+  /// the folder selected, so the caller fetches it and nobody else pays.
+  bool matches(Chat chat, {required bool online}) => switch (this) {
         ChatFolder.unread => chat.unreadCount > 0,
         // Saved notes are neither a person nor a room, so they belong to
         // neither folder — filing your own notebook under "people you talk to"
@@ -34,7 +38,7 @@ enum ChatFolder {
         ChatFolder.direct => !chat.isChannel && !isSavedChat(chat.id),
         ChatFolder.channels => chat.isChannel,
         ChatFolder.favorites => chat.isFavorite,
-        ChatFolder.online => chat.isOnline || chat.isReachableViaMesh,
+        ChatFolder.online => online || chat.isReachableViaMesh,
       };
 }
 

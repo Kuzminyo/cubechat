@@ -17,7 +17,6 @@ void main() {
         lastTime: DateTime(2026),
         unreadCount: 0,
         isMesh: false,
-        isOnline: false,
         isFavorite: favorite,
         isChannel: channel,
       );

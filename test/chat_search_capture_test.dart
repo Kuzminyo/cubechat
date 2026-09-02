@@ -57,7 +57,6 @@ Chat _chat(String id, String name, {bool favorite = false}) => Chat(
       lastTime: DateTime(2026, 8, 3, 11, 4),
       unreadCount: 0,
       isMesh: true,
-      isOnline: false,
       isFavorite: favorite,
     );
 

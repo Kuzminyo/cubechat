@@ -194,6 +194,26 @@ final presenceControllerProvider =
   PresenceController.new,
 );
 
+/// Whether one person is in the app, asked one person at a time.
+///
+/// The chat list used to carry this on every row, computed in the provider
+/// that builds the list — so a beacon about anybody rebuilt the whole list:
+/// twelve watched sources, a sort and a preview per row, measured at 29–35 ms
+/// of build while a screen transition was running.
+///
+/// `select` on one key means a beacon about one person wakes that person's row
+/// and nothing else. The rest of the list does not recompute, because it no
+/// longer depends on presence at all.
+///
+/// Freshness is still the clock, and still needs the sweep in
+/// [PresenceController]: an entry going stale is not an event, so the sweep
+/// removing it is what makes the dot go out.
+final peerOnlineProvider = Provider.family<bool, String>((ref, canonicalId) {
+  final beacon =
+      ref.watch(presenceControllerProvider.select((m) => m[canonicalId]));
+  return peerIsOnline(hasLiveSession: false, beacon: beacon, lastSeen: null);
+});
+
 /// How long after an announcement a peer still counts as mesh-reachable. Peers
 /// re-announce every 60 s, so ~2.5 ticks absorbs one missed beacon.
 const Duration kMeshPresenceWindow = Duration(seconds: 150);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../peers/data/presence_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
@@ -66,6 +67,15 @@ class ChatTile extends ConsumerWidget {
         : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
     final isTyping = typingAt != null &&
         DateTime.now().difference(typingAt) < TypingController.ttl;
+    // Watched here, one key at a time, rather than carried in on the row.
+    //
+    // Presence used to be a field on `Chat`, computed by `allChatsProvider`
+    // from the whole presence map — so a beacon about one person rebuilt every
+    // preview string, every unread count and the sort. This narrows that to the
+    // one avatar the beacon is about. A channel has no presence at all and must
+    // not open a subscription pretending otherwise.
+    final isOnline =
+        chat.isChannel ? false : ref.watch(peerOnlineProvider(chat.peerId));
     // Unread chats "light up": a heavier name and a brighter, non-dimmed
     // preview line, on top of the count badge — so a glance down the list lands
     // on the conversations with something new.
@@ -99,7 +109,7 @@ class ChatTile extends ConsumerWidget {
                   peerId: chat.peerId,
                   label: chat.peerName,
                   size: 48,
-                  online: chat.isOnline,
+                  online: isOnline,
                 ),
                 // Grows in and shrinks out rather than appearing between two
                 // frames. Picking chats out was the one place in the app where

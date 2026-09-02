@@ -1,5 +1,6 @@
 import 'package:cubechat/features/chats/models/chat.dart';
 import 'package:cubechat/features/chats/presentation/widgets/chat_tile.dart';
+import 'package:cubechat/features/peers/data/presence_controller.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -9,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 Chat _chat({
   required String name,
   required DateTime at,
-  bool online = false,
   int unread = 0,
 }) =>
     Chat(
@@ -20,14 +20,23 @@ Chat _chat({
       lastTime: at,
       unreadCount: unread,
       isMesh: false,
-      isOnline: online,
     );
 
-Future<void> _pumpList(WidgetTester tester, List<Chat> chats) async {
+Future<void> _pumpList(
+  WidgetTester tester,
+  List<Chat> chats, {
+  Set<String> online = const {},
+}) async {
   // A row draws the peer's avatar if we hold one, so the tile now reads from a
   // provider and needs a container even when no picture exists.
+  //
+  // Presence is a provider too, and no longer a field on the row: a tile asks
+  // about its own peer, so the test answers per peer as well.
   await tester.pumpWidget(
     ProviderScope(
+        overrides: [
+          peerOnlineProvider.overrideWith((ref, peer) => online.contains(peer)),
+        ],
         child: MaterialApp(
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -59,10 +68,14 @@ void main() {
       (tester) async {
     // The dot on the avatar already says who is here, and its absence says the
     // rest. Spelling out "offline" put a grey badge on nearly every row.
-    await _pumpList(tester, [
-      _chat(name: 'Alice', at: now),
-      _chat(name: 'Bob', at: now, online: true),
-    ]);
+    await _pumpList(
+      tester,
+      [
+        _chat(name: 'Alice', at: now),
+        _chat(name: 'Bob', at: now),
+      ],
+      online: const {'Bob'},
+    );
     final t = await AppLocalizations.delegate.load(const Locale('en'));
 
     expect(find.text(t.chatsStatusOffline), findsNothing);
@@ -73,11 +86,15 @@ void main() {
     // They used to trail the name inside its row, so their position moved with
     // whatever preceded them — a long name or an extra pill — and the column
     // came out ragged.
-    await _pumpList(tester, [
-      _chat(name: 'A', at: now),
-      _chat(name: 'A considerably longer display name', at: now, online: true),
-      _chat(name: 'Mid length', at: now, unread: 3),
-    ]);
+    await _pumpList(
+      tester,
+      [
+        _chat(name: 'A', at: now),
+        _chat(name: 'A considerably longer display name', at: now),
+        _chat(name: 'Mid length', at: now, unread: 3),
+      ],
+      online: const {'A considerably longer display name'},
+    );
 
     final rights = tester
         .widgetList<Text>(find.textContaining(':'))

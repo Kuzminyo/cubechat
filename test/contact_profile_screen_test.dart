@@ -44,7 +44,6 @@ void main() {
               lastTime: DateTime(2026),
               unreadCount: 0,
               isMesh: true,
-              isOnline: true,
             ),
           ]),
         ],

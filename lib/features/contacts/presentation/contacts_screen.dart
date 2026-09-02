@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../peers/data/presence_controller.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/appear_animation.dart';
@@ -447,7 +448,7 @@ class _ContactsSearchField extends StatelessWidget {
   }
 }
 
-class _ContactTile extends StatelessWidget {
+class _ContactTile extends ConsumerWidget {
   const _ContactTile({required this.contact, this.tag});
 
   final Chat contact;
@@ -457,9 +458,14 @@ class _ContactTile extends StatelessWidget {
   final String? tag;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
-    final status = contact.isOnline
+    // The one thing this row does read for itself, and it reads exactly one
+    // key of one map — which is the same rule the tag above states, not an
+    // exception to it. Presence changes far more often than anything else on
+    // the screen, so the alternative was rebuilding every row for one person.
+    final isOnline = ref.watch(peerOnlineProvider(contact.peerId));
+    final status = isOnline
         ? t.presenceOnline
         : contact.isReachableViaMesh
             ? t.chatsStatusViaMesh
@@ -473,7 +479,7 @@ class _ContactTile extends StatelessWidget {
             peerId: contact.peerId,
             label: contact.peerName,
             size: 48,
-            online: contact.isOnline,
+            online: isOnline,
             heroTag: 'contact-avatar-${contact.peerId}',
           ),
           const SizedBox(width: 12),
@@ -516,7 +522,7 @@ class _ContactTile extends StatelessWidget {
                 Text(
                   status,
                   style: TextStyle(
-                    color: contact.isOnline
+                    color: isOnline
                         ? AppColors.brandPrimary
                         : AppColors.textOnGlassDim,
                     fontSize: 13,

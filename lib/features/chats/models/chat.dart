@@ -12,7 +12,6 @@ class Chat {
     required this.lastTime,
     required this.unreadCount,
     required this.isMesh,
-    required this.isOnline,
     this.isReachableViaMesh = false,
     this.isFavorite = false,
     this.isPinned = false,
@@ -33,7 +32,13 @@ class Chat {
   final DateTime lastTime;
   final int unreadCount;
   final bool isMesh;
-  final bool isOnline;
+  /// Presence is deliberately absent.
+  ///
+  /// It lived here, computed for every row by the provider that builds the
+  /// list, which made a beacon about one person recompute all of it — twelve
+  /// watched sources, a sort and a preview per row. Ask
+  /// [peerOnlineProvider] for one person instead; a row that watches its own
+  /// peer repaints alone.
 
   /// True when there's no direct BLE session but we've received a peer
   /// announcement recently — i.e. the peer is reachable via one or more
@@ -115,7 +120,6 @@ class Chat {
           other.lastTime == lastTime &&
           other.unreadCount == unreadCount &&
           other.isMesh == isMesh &&
-          other.isOnline == isOnline &&
           other.isReachableViaMesh == isReachableViaMesh &&
           other.isFavorite == isFavorite &&
           other.isPinned == isPinned &&
@@ -137,7 +141,6 @@ class Chat {
         lastTime,
         unreadCount,
         isMesh,
-        isOnline,
         isReachableViaMesh,
         isFavorite,
         isPinned,

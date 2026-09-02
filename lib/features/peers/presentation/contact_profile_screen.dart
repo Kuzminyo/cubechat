@@ -653,10 +653,20 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     // Theirs as well as ours: a peer whose own switch is off says so on every
     // beacon, and this is the screen that would otherwise print the very clock
     // they asked us not to.
-    final theirBeacon = ref.watch(presenceControllerProvider)[peerPubkeyHex];
+    // One key, not the whole map: this screen is about one person, and a
+    // beacon about anybody else has nothing to say to it.
+    final theirBeacon = ref.watch(
+      presenceControllerProvider.select((m) => m[peerPubkeyHex]),
+    );
     final hideTimes = !presenceShared || (theirBeacon?.hidesLastSeen ?? false);
-    final active =
-        contact?.isOnline == true || contact?.isReachableViaMesh == true;
+    // Read off the beacon this screen already holds rather than off the chat
+    // row, which no longer carries presence — see [peerOnlineProvider].
+    final isOnline = peerIsOnline(
+      hasLiveSession: false,
+      beacon: theirBeacon,
+      lastSeen: null,
+    );
+    final active = isOnline || contact?.isReachableViaMesh == true;
     // The status line answers one question: are they in the app. How a message
     // would reach them is a different question with a different answer, and it
     // belongs beside this rather than in place of it.
@@ -664,12 +674,11 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     // "Via mesh" used to *be* the status, so somebody plainly not in the app
     // read as something other than offline — the same conflation the presence
     // rule itself has just shed: reachable is not present.
-    final String? road =
-        contact?.isOnline != true && contact?.isReachableViaMesh == true
-            ? t.chatsStatusViaMesh
-            : null;
+    final String? road = !isOnline && contact?.isReachableViaMesh == true
+        ? t.chatsStatusViaMesh
+        : null;
     final String status;
-    if (contact?.isOnline == true) {
+    if (isOnline) {
       status = t.presenceOnline;
     } else if (hideTimes) {
       status = t.presenceRecently;
@@ -731,7 +740,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           statusColor: active
                               ? AppColors.online
                               : AppColors.textOnGlassDim,
-                          online: contact?.isOnline ?? false,
+                          online: isOnline,
                           muted: peer?.isMuted ?? false,
                           blocked: peer?.isBlocked ?? false,
                           onBack: () => Navigator.of(context).maybePop(),
