@@ -289,12 +289,21 @@ class _WakePanelState extends State<_WakePanel> {
           ),
           const SizedBox(height: 8),
           Text(
+            // "Nothing is received" stopped being true when push started
+            // working on 2026-09-02. A message now rings a closed phone
+            // through APNs, which needs no location permission at all, and a
+            // panel still saying otherwise sends its reader to change a
+            // setting that will not fix what they came here about.
+            //
+            // What this card is about is narrower than it used to be: the map
+            // pin, which really does need the app to be running.
             armed
                 ? 'Armed. Changing area relaunches cubechat, which then '
                     'catches up on messages and republishes your map pin.'
-                : 'Not armed${refusal == null ? '' : ' — $refusal'}. While the '
-                    'app is closed nothing is sent or received, including your '
-                    'map pin.',
+                : 'Not armed${refusal == null ? '' : ' — $refusal'}. Messages '
+                    'still wake the phone — that is push, and it needs no '
+                    'location. What stops is your map pin, which only moves '
+                    'while the app is running.',
             style: TextStyle(
               color: armed
                   ? AppColors.textOnGlassDim

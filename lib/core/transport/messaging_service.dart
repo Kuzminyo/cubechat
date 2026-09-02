@@ -2497,11 +2497,20 @@ class MessagingService {
       for (final entry in _outbox.entries.toList()) {
         if (_disposed) return;
         final ref = entry.value;
-        if (!await _sendOverNostr(
-          ref.canonicalId,
-          ref.frameBytes,
-          wakesPeer: true,
-        )) {
+        // No doorbell on a retry, and this was got wrong once. Marking the
+        // outbox as wake-worthy looked right — a queued message is a real
+        // message somebody has not seen — and in practice it rings for mail
+        // that arrived long ago by another road. The queue holds what the mesh
+        // could not carry, and that includes frames a Bluetooth handshake
+        // delivered afterwards; one launch replayed 152 of them across four
+        // peers, each ringing a phone whose app then dropped it as
+        // already-stored. Reported as notifications for messages that had
+        // already arrived, or that did not exist at all — the same thing seen
+        // from the lock screen.
+        //
+        // The doorbell rang once when the message was first sent. Ringing
+        // again on every relay reconnect is not a second message.
+        if (!await _sendOverNostr(ref.canonicalId, ref.frameBytes)) {
           DebugLog.instance.log(
             'NOSTR',
             'queued message for ${ref.canonicalId} still has no relay road',
