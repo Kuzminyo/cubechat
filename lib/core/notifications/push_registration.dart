@@ -332,13 +332,36 @@ class PushEnabled extends Notifier<bool> {
       // a server that has already forgotten this npub answers
       // `registered:false` and changes nothing. A promise the app made on the
       // user's behalf is worth re-making until it lands.
-      if (stored) {
-        unawaited(ref.read(pushRegistrationProvider).enable());
-      } else if (PlatformInfo.isIOS) {
-        unawaited(ref.read(pushRegistrationProvider).disable());
-      }
+      unawaited(reassert());
     } catch (e) {
       debugPrint('push flag load failed: $e');
+    }
+  }
+
+  /// Tell the server the switch's current position, whatever it is.
+  ///
+  /// Called after the flag is loaded and again on every return to the
+  /// foreground, because the two halves of this switch can disagree. Turning
+  /// it off records the choice locally whether or not the withdrawal reached
+  /// the server — so one request lost to a dead network left the switch
+  /// reading off while the doorbell went on ringing, with nothing anywhere
+  /// aware of it and nothing retrying. Confirmed from outside: `/health` still
+  /// counted the phone with the switch down.
+  ///
+  /// Idempotent in both directions. A server that already holds this token
+  /// answers `refreshed`; one that has already forgotten this npub answers
+  /// `registered:false`. Neither costs more than one small request, and coming
+  /// back to the foreground is the moment a phone most reliably has a network
+  /// again — which is exactly when a promise that did not land deserves
+  /// another go.
+  Future<void> reassert() async {
+    if (!PlatformInfo.isIOS) return;
+    await _loading;
+    final push = ref.read(pushRegistrationProvider);
+    if (state) {
+      await push.enable();
+    } else {
+      await push.disable();
     }
   }
 

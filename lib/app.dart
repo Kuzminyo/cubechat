@@ -171,7 +171,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// One read is the entire fix; everything else already existed.
   void _refreshPushRegistration() {
     if (!PlatformInfo.isIOS) return;
-    ref.read(pushEnabledProvider);
+    // `.notifier` rather than the value, because reading the value a second
+    // time gives back an already-built Notifier and asks it nothing. The first
+    // read is what loads the flag; every read after that has to say so out
+    // loud. See `PushEnabled.reassert`.
+    unawaited(ref.read(pushEnabledProvider.notifier).reassert());
   }
 
   /// Opens the chat for [chatId] — a pubkey-hex canonical id, or a `#channel`
@@ -390,6 +394,18 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // asking them to come back, so a returning iPhone had no relay for up to
       // the two minutes its backoff had grown to.
       ref.read(messagingServiceProvider).wakeRelays(force: true);
+      // Say the push switch's current position again, now that there is very
+      // likely a network.
+      //
+      // At launch alone was not enough. Turning the switch off records the
+      // choice locally whether or not the server heard it, so a withdrawal
+      // attempted with no signal left the switch reading off and the doorbell
+      // ringing — and a phone that is simply used all day never relaunches, so
+      // nothing would have corrected it until the next cold start. Coming back
+      // to the foreground is the moment a phone most reliably has a connection
+      // again, which makes it the right moment to re-state a promise that may
+      // not have landed.
+      _refreshPushRegistration();
       ref.read(backgroundModeProvider.notifier).apply();
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the
