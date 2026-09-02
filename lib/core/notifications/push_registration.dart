@@ -64,14 +64,30 @@ class PushRegistration {
 
   static const _channel = MethodChannel('cubechat/push');
 
-  /// Where the doorbell lives.
+  /// Where the doorbell lives, tried in order until one answers.
   ///
-  /// An sslip.io name rather than `wake.cubechat.qpon`, because that domain is
-  /// not delegated in the `.qpon` registry — the registrar holds it and the
-  /// registry does not, so no resolver can find it. This name resolves to the
-  /// same machine and carries a real certificate. Swapping it over later is
-  /// this line and one in the Caddyfile.
-  static const endpoint = 'https://209-38-225-225.sslip.io/register';
+  /// The sslip.io name came first because `wake.cubechat.qpon` was never
+  /// delegated in the `.qpon` registry, so no resolver could find it. That is
+  /// no longer the constraint — cubechat.tech is ours and answers — and the
+  /// stand-in turns out to have a fault of its own worth naming.
+  ///
+  /// `a-b-c-d.sslip.io` is a wildcard resolver that maps any name of that
+  /// shape to the address written in it. That is precisely the shape DNS
+  /// rebinding protection exists to block, and plenty of home routers,
+  /// company networks and carrier resolvers do block it. Measured on
+  /// 2026-09-02: 1.1.1.1 and 8.8.8.8 both answered for this name while the
+  /// system resolver on the developer's own machine returned "no such host".
+  /// A phone behind such a resolver could never register, and the only trace
+  /// would be one `registration failed` line.
+  ///
+  /// So: the real name first, the old one behind it. Two entries rather than
+  /// one because the swap cannot be atomic — a build reaches phones before,
+  /// during and after a DNS record propagates, and this way the order does not
+  /// matter. Drop the second once no shipped build is asking for it.
+  static const endpoints = <String>[
+    'https://push.cubechat.tech/register',
+    'https://209-38-225-225.sslip.io/register',
+  ];
 
   /// Its own kind, so a registration can never be mistaken for a frame — and so
   /// a relay would simply ignore one if a phone ever published it by mistake.
@@ -138,9 +154,10 @@ class PushRegistration {
   Future<bool> disable() => _publish('');
 
   Future<bool> _publish(String token) async {
+    final NostrEvent event;
     try {
       final signer = await _signer();
-      final event = await signer.sign(
+      event = await signer.sign(
         NostrEvent(
           pubkey: signer.npubHex,
           createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -151,30 +168,49 @@ class PushRegistration {
           content: token,
         ),
       );
-      final client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 12);
-      try {
-        final request = await client.postUrl(Uri.parse(endpoint));
-        request.headers.contentType = ContentType.json;
-        request.write(jsonEncode(event.toJson()));
-        final response = await request.close().timeout(
-              const Duration(seconds: 20),
-            );
-        final body = await response.transform(utf8.decoder).join();
-        final ok = response.statusCode == 200;
-        DebugLog.instance.log(
-          'PUSH',
-          token.isEmpty
-              ? 'unregister ${ok ? 'accepted' : 'refused'}: $body'
-              : 'register ${ok ? 'accepted' : 'refused'}: $body',
-        );
-        return ok;
-      } finally {
-        client.close(force: true);
-      }
     } catch (e) {
-      DebugLog.instance.log('PUSH', 'registration failed: $e');
+      DebugLog.instance.log('PUSH', 'could not sign the registration: $e');
       return false;
+    }
+    // Signed once and offered to each in turn: the same event is valid at any
+    // of them, and re-signing per attempt would only move the timestamp.
+    for (final endpoint in endpoints) {
+      if (await _post(endpoint, event, token)) return true;
+    }
+    DebugLog.instance.log(
+      'PUSH',
+      'no doorbell answered — tried ${endpoints.length}',
+    );
+    return false;
+  }
+
+  /// One attempt at one endpoint. Never throws; the caller tries the next.
+  Future<bool> _post(String endpoint, NostrEvent event, String token) async {
+    final host = Uri.parse(endpoint).host;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 12);
+    try {
+      final request = await client.postUrl(Uri.parse(endpoint));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(event.toJson()));
+      final response = await request.close().timeout(
+            const Duration(seconds: 20),
+          );
+      final body = await response.transform(utf8.decoder).join();
+      final ok = response.statusCode == 200;
+      DebugLog.instance.log(
+        'PUSH',
+        '${token.isEmpty ? 'unregister' : 'register'} '
+            '${ok ? 'accepted' : 'refused'} by $host: $body',
+      );
+      return ok;
+    } catch (e) {
+      // Named rather than swallowed, because "could not resolve host" is the
+      // failure this list exists for and it must be readable in a log.
+      DebugLog.instance.log('PUSH', '$host did not answer: $e');
+      return false;
+    } finally {
+      client.close(force: true);
     }
   }
 

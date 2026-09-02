@@ -4,13 +4,20 @@
 # registration call needs a certificate — and a certificate needs a name. Caddy
 # gets one from Let's Encrypt on first start and renews it without being asked.
 #
-# While cubechat.qpon is not delegated in the .qpon registry, the second block
-# is the way in: sslip.io resolves any `a-b-c-d.sslip.io` to that address, and
-# Let's Encrypt issues for it like any other name. Nothing about it is
-# temporary except the name — swap the block over when the domain answers, and
-# nothing else in the app or the service changes.
+# push.cubechat.tech is the real name and the one the app asks for first. It
+# needs one A record pointing here; the apex stays on GitHub Pages for the
+# marketing site and is not touched.
+#
+# The sslip.io block stays until no shipped build is still asking for it. It
+# was the way in while cubechat.qpon sat undelegated in the .qpon registry —
+# sslip.io resolves any `a-b-c-d.sslip.io` to the address written in the name —
+# and that same trick is what DNS rebinding protection blocks, which is the
+# reason it is no longer the first choice. See `push_registration.dart`.
+#
+# cubechat.qpon is kept out: it has never resolved, so Caddy would fail the
+# ACME challenge for it on every start.
 
-wake.cubechat.qpon {
+push.cubechat.tech {
 	reverse_proxy 127.0.0.1:8080
 }
 

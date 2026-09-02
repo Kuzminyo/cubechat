@@ -3,26 +3,37 @@
 The droplet is `209.38.225.225` (`10.19.0.5` on the VPC, which nothing here
 needs — the relays and Apple are both on the public side). Ubuntu 24.04.
 
-## The domain, and why it is not in the way
+## The domain
 
-`cubechat.qpon` is **not delegated in the `.qpon` registry**. Asked the zone's
-own nameserver directly:
+`push.cubechat.tech`. One A record:
+
+| Type | Host   | Value            |
+|------|--------|------------------|
+| A    | `push` | `209.38.225.225` |
+
+Nothing else in the zone is touched — the apex stays on GitHub Pages for the
+marketing site. Caddy gets the certificate from Let's Encrypt on first start
+once the record answers.
+
+**No new domain is needed for this.** A subdomain of one already owned costs
+nothing and is the same amount of work as a fresh registration would be.
+
+`cubechat.qpon` was the original plan and is abandoned: the registrar's panel
+had the domain and an A record for `wake`, but the registry did not have the
+domain at all, so no resolver on earth could find it —
 
 ```
 $ nslookup -type=NS cubechat.qpon a.nic.qpon
 *** Non-existent domain
 ```
 
-The registrar's panel has the domain and an A record for `wake`; the registry
-does not have the domain at all, so no resolver on earth can find it. Nothing on
-this side can fix that — the nameservers have to reach the registry, which is a
-question for the registrar.
-
-It does not have to hold anything up. `209-38-225-225.sslip.io` resolves to the
-droplet today and Let's Encrypt issues for it, so the service can be finished,
-deployed and pointed at from the app while the domain is sorted out. Moving to
-`wake.cubechat.qpon` later is one line in the Caddyfile and one string in the
-app.
+`209-38-225-225.sslip.io` was the stand-in while that was true, and it still
+answers, so the app keeps it as a second choice behind the real name. It is not
+a good first choice: sslip.io maps any `a-b-c-d.sslip.io` to the address written
+in the name, which is exactly the shape DNS rebinding protection blocks. On
+2026-09-02 the developer's own machine returned "no such host" for it while
+1.1.1.1 and 8.8.8.8 both answered. Drop it from the Caddyfile and from
+`push_registration.dart` once no shipped build still asks for it.
 
 ## Getting the files there
 
@@ -70,10 +81,9 @@ systemctl enable --now cubechat-push
 systemctl reload caddy || systemctl restart caddy
 ```
 
-The Caddyfile names `wake.cubechat.qpon` as well as the sslip.io address. Caddy
-will keep trying to get a certificate for a name that does not resolve and log
-about it; that is expected until the registry has the domain, and it does not
-stop the other name from working.
+The Caddyfile names `push.cubechat.tech` and the sslip.io address. Add the A
+record **before** reloading Caddy, or it will fail the ACME challenge for the
+new name and keep retrying until the record answers.
 
 ## Checking it
 
@@ -89,8 +99,13 @@ Through Caddy, from anywhere — and on Windows it must be `curl.exe`, because
 PowerShell's `curl` is an alias for `Invoke-WebRequest` and does not take `-s`:
 
 ```powershell
-curl.exe -s https://209-38-225-225.sslip.io/health
+curl.exe -s https://push.cubechat.tech/health
 ```
+
+`{"ok":true,"tokens":N,...}` — and `N` is the number that answers "is anybody
+registered". A phone that has turned the switch on and reached the server moves
+it; `tokens:0` with a healthy service means no registration has ever landed,
+whatever the app appears to say.
 
 `{"ok":true,"tokens":0,"relays":["wss://nos.lol","wss://relay.primal.net"]}`
 means the registry is empty, both relays are up, and it is waiting. That is the
