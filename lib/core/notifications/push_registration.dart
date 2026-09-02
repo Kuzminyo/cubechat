@@ -321,7 +321,22 @@ class PushEnabled extends Notifier<bool> {
       // forever: iOS hands out a new one after a restore or a reinstall, and
       // the old one is then an address that answers to nobody. The server
       // stores by npub, so a repeat is an update rather than a duplicate.
-      if (stored) unawaited(ref.read(pushRegistrationProvider).enable());
+      // And un-registered on every launch while it is off, which is the half
+      // that was missing. `set(false)` writes the flag whether or not the
+      // server accepted the withdrawal, so one failed request left the switch
+      // reading off while the doorbell went on ringing — reported exactly that
+      // way, and confirmed by `/health` still counting the phone with the
+      // switch down. Nothing retried, because nothing knew.
+      //
+      // Saying it again costs one small request per launch and is idempotent:
+      // a server that has already forgotten this npub answers
+      // `registered:false` and changes nothing. A promise the app made on the
+      // user's behalf is worth re-making until it lands.
+      if (stored) {
+        unawaited(ref.read(pushRegistrationProvider).enable());
+      } else if (PlatformInfo.isIOS) {
+        unawaited(ref.read(pushRegistrationProvider).disable());
+      }
     } catch (e) {
       debugPrint('push flag load failed: $e');
     }
