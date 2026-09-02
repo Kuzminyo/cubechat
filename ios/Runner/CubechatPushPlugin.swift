@@ -46,6 +46,8 @@ final class CubechatPushPlugin: NSObject {
         self.status(result)
       case "register":
         self.register(result)
+      case "setBadge":
+        self.setBadge(call.arguments, result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -109,6 +111,28 @@ final class CubechatPushPlugin: NSObject {
         self.pending = result
         UIApplication.shared.registerForRemoteNotifications()
       }
+    }
+  }
+
+  /// The number on the app icon.
+  ///
+  /// Lives here rather than in the notification plugin because that one can
+  /// only set a badge while *showing* something, and the moment the count has
+  /// to fall — a chat being opened and read — is precisely a moment when
+  /// nothing is being shown. Dart owns the number; this only carries it.
+  ///
+  /// `setBadgeCount` from iOS 16 onwards, because
+  /// `applicationIconBadgeNumber` is deprecated there and writing it logs a
+  /// warning on every message.
+  private func setBadge(_ arguments: Any?, _ result: @escaping FlutterResult) {
+    let count = (arguments as? NSNumber)?.intValue ?? 0
+    DispatchQueue.main.async {
+      if #available(iOS 16.0, *) {
+        UNUserNotificationCenter.current().setBadgeCount(max(0, count))
+      } else {
+        UIApplication.shared.applicationIconBadgeNumber = max(0, count)
+      }
+      result(nil)
     }
   }
 

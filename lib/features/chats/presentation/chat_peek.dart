@@ -83,8 +83,11 @@ class _ChatPeekRoute extends PopupRoute<void> {
   @override
   String? get barrierLabel => 'Chat preview';
 
+  // Longer than it was (220 ms). The extra time is spent on the tail of the
+  // scale curve, where the movement is already slight — the panel reads as
+  // present just as quickly, and stops without a visible edge to the motion.
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 220);
+  Duration get transitionDuration => const Duration(milliseconds: 280);
 
   @override
   Duration get reverseTransitionDuration => const Duration(milliseconds: 170);
@@ -108,16 +111,34 @@ class _ChatPeekRoute extends PopupRoute<void> {
     // from is still visible behind the blur, and a slide would argue with the
     // list scrolling underneath. Honours the platform's reduce-motion setting,
     // where it becomes a plain fade.
+    //
+    // Two curves rather than one, and that is what the smoothness complaint was
+    // about. Fade and scale on the same easing arrive together, so the panel is
+    // fully opaque while it is still visibly growing — which reads as a jump
+    // followed by a settle rather than as one movement. The opacity now leads
+    // and finishes early; the size keeps travelling under a curve that decays
+    // for longer, so the last few percent of growth happens on something the
+    // eye has already accepted as present.
     final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    final curved = CurvedAnimation(
+    final fade = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutCubic,
+      // Opaque by 55% of the way in, and gone in the first half on the way out.
+      curve: const Interval(0, 0.55, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.5, 1, curve: Curves.easeIn),
+    );
+    final faded = FadeTransition(opacity: fade, child: child);
+    if (reduce) return faded;
+    final grow = CurvedAnimation(
+      parent: animation,
+      // Quint decays far more gently at the end than cubic: the panel stops
+      // moving instead of arriving.
+      curve: Curves.easeOutQuint,
       reverseCurve: Curves.easeInCubic,
     );
-    final faded = FadeTransition(opacity: curved, child: child);
-    if (reduce) return faded;
     return ScaleTransition(
-      scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+      // From further down than before — 0.94 was too small a distance to read
+      // as growth at all, so the whole thing looked like a hard cut.
+      scale: Tween<double>(begin: 0.90, end: 1).animate(grow),
       child: faded,
     );
   }

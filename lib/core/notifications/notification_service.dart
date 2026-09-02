@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../util/platform_info.dart';
 import 'avatar_bitmap.dart';
 
 /// Rich incoming-message notifications built on flutter_local_notifications.
@@ -194,9 +196,33 @@ class NotificationService {
           ),
         ],
       ),
-      iOS: const DarwinNotificationDetails(
-        threadIdentifier: 'cubechat',
+      iOS: DarwinNotificationDetails(
+        // One thread per conversation, not one for the whole app.
+        //
+        // iOS stacks notifications that share a thread identifier, so a single
+        // constant here put every person into the same pile — three people
+        // writing looked like one conversation, and the stack had to be opened
+        // to find out who. Android has always grouped per chat, through
+        // `MessagingStyle` above; this is the same idea said in the way iOS
+        // understands.
+        //
+        // The push that arrives while the app is closed cannot do this and
+        // will not: the server sending it knows only that some npub has mail,
+        // never whose. That is deliberate, and it is why those still stack
+        // together under one heading.
+        threadIdentifier: threadKey,
         categoryIdentifier: _categoryId,
+        // The number on the app icon, and the reason it never moved before:
+        // nothing was setting it. Android has carried a count per conversation
+        // since this was written (`number:` above, the figure Telegram shows
+        // beside a chat); iOS puts its count on the icon instead, and the icon
+        // said nothing at all.
+        //
+        // Summed across conversations because that is what the icon means on
+        // iOS — one number for the whole app, not one per chat. `clearForChat`
+        // drops a thread when its chat is opened, so reading takes the badge
+        // down the same way arriving put it up.
+        badgeNumber: _unreadTotal,
       ),
     );
     try {
@@ -212,6 +238,10 @@ class NotificationService {
     }
   }
 
+  /// Everything waiting across every conversation — what the iOS icon shows.
+  int get _unreadTotal =>
+      _threads.values.fold(0, (sum, t) => sum + t.inboundCount);
+
   /// Clears any banner for a chat — called when the user opens that chat. Also
   /// forgets the thread history so a later message starts a fresh conversation.
   Future<void> clearForChat(String threadKey) async {
@@ -219,7 +249,30 @@ class NotificationService {
     try {
       await _plugin.cancel(threadKey.hashCode & 0x7fffffff);
     } catch (_) {}
+    // The badge does not follow a cancelled banner on iOS — it is a separate
+    // number the app owns, and a count that only ever climbs is worse than no
+    // count, because it stops meaning anything within a day.
+    await _syncBadge();
   }
+
+  /// Push the running total to the app icon.
+  ///
+  /// `flutter_local_notifications` can only set a badge as part of *showing*
+  /// something, which is no use for the moment a chat is read and the number
+  /// should fall. This is the one call that does it on its own.
+  Future<void> _syncBadge() async {
+    if (!PlatformInfo.isIOS) return;
+    try {
+      await _badgeChannel.invokeMethod<void>('setBadge', _unreadTotal);
+    } on MissingPluginException {
+      // A build whose native half predates this. The count simply does not
+      // move; nothing else is affected.
+    } catch (e) {
+      debugPrint('NotificationService badge failed: $e');
+    }
+  }
+
+  static const _badgeChannel = MethodChannel('cubechat/push');
 
   /// If the app was launched by tapping a notification (cold start), returns
   /// that notification's chat-id payload so the app can open the chat.
