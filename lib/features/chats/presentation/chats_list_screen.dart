@@ -177,6 +177,33 @@ int unreadMessageCount(List<Message> msgs, DateTime? lastReadAt) {
 /// with the list it describes.
 final Expando<_UnreadCount> _unreadCache = Expando<_UnreadCount>('unread');
 
+/// The last row built for a peer, with the inputs that produced it.
+///
+/// Keyed on the `KnownPeer` instance, so anything the peer itself carries —
+/// name, verification, mute, last-seen — invalidates by identity without
+/// appearing in the key.
+final Expando<_CachedRow> _rowCache = Expando<_CachedRow>('chatRow');
+
+/// The tuple a row depends on, outside the peer itself.
+typedef _RowKey = (
+  List<Message>,
+  DateTime?,
+  Object?,
+  String?,
+  bool,
+  int,
+  int,
+  bool,
+  Locale,
+);
+
+class _CachedRow {
+  const _CachedRow(this.key, this.chat);
+
+  final _RowKey key;
+  final Chat chat;
+}
+
 class _UnreadCount {
   const _UnreadCount(this.lastReadAt, this.count);
 
@@ -258,6 +285,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   };
 
   final now = DateTime.now();
+  final locale = ref.read(localeControllerProvider);
   final entries = known.values.map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
     // Map beacons are not conversation, so they must not be what a tile says
@@ -272,7 +300,40 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
     final isReachableViaMesh = meshReachable.contains(peer.pubkeyHex) ||
         now.difference(peer.lastSeen) <= _meshReachableWindow;
     final draft = drafts[peer.pubkeyHex];
-    return Chat(
+
+    // Everything this row is made of, and nothing else.
+    //
+    // The provider was measured recomputing six times inside one frame —
+    // `allChats x6` beside a 26.4 ms build — because opening a chat moves
+    // several of the eleven sources it watches and each change is read before
+    // the next arrives. Six full passes over every conversation, building a
+    // display name and a preview string for each, when at most one of them had
+    // actually changed.
+    //
+    // So a row is rebuilt only when its own inputs move. Five of those six
+    // passes now cost a key comparison per peer instead of the strings.
+    // Records compare field by field and a `List` compares by identity, which
+    // is exactly the test wanted: the message store hands back the same list
+    // instance for every conversation it did not touch.
+    //
+    // The Expando is keyed on the peer, so a changed `KnownPeer` — a new
+    // instance, as the controller always makes — misses on its own without
+    // being named in the key. Same idea as `_unreadCache` above, one level up.
+    final key = (
+      msgs,
+      readMarkers[peer.pubkeyHex],
+      draft,
+      aliases[peer.pubkeyHex],
+      favorites.contains(peer.pubkeyHex),
+      pinnedChats.indexOf(peer.pubkeyHex),
+      settings[peer.pubkeyHex]?.autoDelete.seconds ?? 0,
+      isReachableViaMesh,
+      locale,
+    );
+    final cached = _rowCache[peer];
+    if (cached != null && cached.key == key) return cached.chat;
+
+    final chat = Chat(
       id: peer.pubkeyHex,
       peerId: peer.pubkeyHex,
       peerName: contactDisplayName(
@@ -304,6 +365,8 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
       autoDeleteSeconds: settings[peer.pubkeyHex]?.autoDelete.seconds ?? 0,
       outgoingStatus: _outgoingStatus(last, hasDraft: draft != null),
     );
+    _rowCache[peer] = _CachedRow(key, chat);
+    return chat;
   }).toList();
 
   // Group channels sit in the same list. They have no online/verified state —
