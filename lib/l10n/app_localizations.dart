@@ -2492,6 +2492,18 @@ abstract class AppLocalizations {
   /// **'Delete from contacts'**
   String get contactProfileDelete;
 
+  /// No description provided for @contactProfileRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Add back to contacts'**
+  String get contactProfileRestore;
+
+  /// No description provided for @contactProfileRestoreDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Back in your contacts'**
+  String get contactProfileRestoreDone;
+
   /// No description provided for @contactProfileDeleteTitle.
   ///
   /// In en, this message translates to:

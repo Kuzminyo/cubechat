@@ -32,6 +32,7 @@ import '../../profile/data/privacy_settings_controller.dart';
 import '../data/contact_aliases_controller.dart';
 import '../data/contact_tags_controller.dart';
 import '../data/contact_removal.dart';
+import '../data/removed_contacts_controller.dart';
 import '../data/known_peers_controller.dart';
 import '../data/peer_avatars_controller.dart';
 import '../data/presence_controller.dart';
@@ -292,6 +293,26 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
           ? t.contactProfileShareSent(chosen.first.peerName)
           : t.chatForwardSentCount(chosen.length),
       icon: Icons.send_rounded,
+      tone: ToastTone.success,
+    );
+  }
+
+  /// Put somebody back in Contacts.
+  ///
+  /// No confirmation, unlike its opposite: this adds a row to a list and takes
+  /// nothing away, so there is nothing to be sure about. It also does not pop
+  /// the screen — you are looking at a person, and they are still the person
+  /// you were looking at.
+  Future<void> _restoreContact(BuildContext context, WidgetRef ref) async {
+    final t = AppLocalizations.of(context);
+    await ref
+        .read(removedContactsControllerProvider.notifier)
+        .restore(peerPubkeyHex);
+    if (!context.mounted) return;
+    showGlassToast(
+      context,
+      t.contactProfileRestoreDone,
+      icon: Icons.person_add_alt_1_rounded,
       tone: ToastTone.success,
     );
   }
@@ -591,14 +612,33 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                             );
                           },
                         ),
-                        _ActionTile(
-                          icon: Icons.person_remove_rounded,
-                          label: t.contactProfileDelete,
-                          onTap: () {
-                            close();
-                            _deleteContact(context, ref);
-                          },
-                        ),
+                        // The same row says both things, because they are the
+                        // same decision seen from its two sides. Removing
+                        // somebody from Contacts keeps the conversation and
+                        // their keys — see [removeFromContacts] — so the only
+                        // way back used to be waiting for them to write, and a
+                        // list you can leave but not rejoin is a trap. This is
+                        // the door.
+                        if (ref
+                            .watch(removedContactsControllerProvider)
+                            .contains(peerPubkeyHex))
+                          _ActionTile(
+                            icon: Icons.person_add_alt_1_rounded,
+                            label: t.contactProfileRestore,
+                            onTap: () {
+                              close();
+                              _restoreContact(context, ref);
+                            },
+                          )
+                        else
+                          _ActionTile(
+                            icon: Icons.person_remove_rounded,
+                            label: t.contactProfileDelete,
+                            onTap: () {
+                              close();
+                              _deleteContact(context, ref);
+                            },
+                          ),
                         const Divider(height: 1, color: Color(0x26FFFFFF)),
                         _ActionTile(
                           icon: Icons.block_rounded,

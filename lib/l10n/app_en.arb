@@ -652,6 +652,8 @@
   "contactProfileCopyingRestrictedByPeer": "Disabled at the other end",
   "contactProfileCopyingAllowed": "Copying and forwarding are allowed",
   "contactProfileDelete": "Delete from contacts",
+  "contactProfileRestore": "Add back to contacts",
+  "contactProfileRestoreDone": "Back in your contacts",
   "contactProfileDeleteTitle": "Remove contact?",
   "contactProfileDeleteMessage": "{name} will disappear from Contacts. Chat history stays on this device.",
   "@contactProfileDeleteMessage": {

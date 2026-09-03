@@ -1374,6 +1374,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileDelete => 'Delete from contacts';
 
   @override
+  String get contactProfileRestore => 'Add back to contacts';
+
+  @override
+  String get contactProfileRestoreDone => 'Back in your contacts';
+
+  @override
   String get contactProfileDeleteTitle => 'Remove contact?';
 
   @override

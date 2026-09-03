@@ -28,7 +28,6 @@ import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
-import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
@@ -9052,19 +9051,23 @@ class MessagingService {
       return;
     }
     final pubkeyHex = _hexOf(pubkey);
-    // Somebody who writes is a contact again, whatever was decided about them
-    // before.
+    // Somebody who writes is NOT a contact again, and used to be.
     //
-    // The tombstone from removing a contact stops their radio from re-creating
-    // the roster entry — an announcement, a beacon, a handshake. A message is
-    // not that: it is a person deliberately saying something, and mail is
-    // never worth losing to a preference. So the removal ends here, and the
-    // append below is free to make the conversation it needs.
-    unawaited(
-      _ref
-          .read(removedContactsControllerProvider.notifier)
-          .restore(pubkeyHex),
-    );
+    // The old reasoning was that mail is never worth losing to a preference,
+    // and it was sound while removing a contact deleted the conversation with
+    // them: a message from a removed person had nowhere to land, so the
+    // removal had to be undone first. That is no longer true. Removing a
+    // contact keeps the roster entry and the whole conversation now — see
+    // `removeFromContacts` — so their message arrives, is stored, and shows in
+    // the chat list exactly as it always did. Nothing is lost by leaving them
+    // off the Contacts screen.
+    //
+    // What was lost was the decision. Somebody tidied their list, the other
+    // person wrote a week later, and the row came back with no explanation —
+    // which is the same complaint that started this, seen from the other end.
+    //
+    // The way back is a button on their profile, which is where somebody who
+    // wants them back is already looking.
     // Canonical key (lives forever, used by chats list). A false return means
     // this exact wireId is already in the chat — a relay backlog replay or a
     // second delivery path — so there is nothing to fan out and nothing to

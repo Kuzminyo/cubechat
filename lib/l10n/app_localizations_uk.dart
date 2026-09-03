@@ -1379,6 +1379,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileDelete => 'Видалити з контактів';
 
   @override
+  String get contactProfileRestore => 'Повернути до контактів';
+
+  @override
+  String get contactProfileRestoreDone => 'Знову у ваших контактах';
+
+  @override
   String get contactProfileDeleteTitle => 'Видалити контакт?';
 
   @override

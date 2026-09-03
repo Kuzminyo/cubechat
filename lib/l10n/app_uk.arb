@@ -533,6 +533,8 @@
     "contactProfileCopyingRestrictedByPeer":  "Вимкнено співрозмовником",
     "contactProfileCopyingAllowed":  "Копіювання і пересилання дозволено",
     "contactProfileDelete":  "Видалити з контактів",
+    "contactProfileRestore": "Повернути до контактів",
+    "contactProfileRestoreDone": "Знову у ваших контактах",
     "contactProfileDeleteTitle":  "Видалити контакт?",
     "contactProfileDeleteMessage":  "{name} зникне з розділу «Контакти». Історія чату залишиться на цьому пристрої.",
     "@contactProfileDeleteMessage":  {
