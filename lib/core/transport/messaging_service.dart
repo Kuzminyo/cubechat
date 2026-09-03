@@ -28,6 +28,7 @@ import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
@@ -9001,6 +9002,25 @@ class MessagingService {
       throw StateError('that is your own contact card');
     }
     final pubkeyHex = _hexOf(ann.pubkey);
+    // Adding somebody from their card lifts a previous removal, and forgetting
+    // that made them unaddable.
+    //
+    // The tombstone stops an announcement, a beacon or a handshake from
+    // *creating* a roster entry — that is its whole job, and it is why a
+    // removed contact no longer walks back in off the radio. `_ingestAnnouncement`
+    // shares these two lines and must keep being blocked. A card is the other
+    // thing entirely: the owner of the phone deliberately saying "this person".
+    //
+    // Without this the upsert below returned at that guard, so scanning the
+    // code did nothing at all — no contact, and no avatar either, because there
+    // was no entry to hang one on. Reported as both.
+    //
+    // It only bites somebody with no roster entry left, which means people
+    // removed by builds up to 944: those deleted the entry as well. A removal
+    // made now keeps it and blocks nothing.
+    await _ref
+        .read(removedContactsControllerProvider.notifier)
+        .restore(pubkeyHex);
     _ref.read(knownPeersControllerProvider.notifier).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
