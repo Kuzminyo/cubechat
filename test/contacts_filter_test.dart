@@ -40,6 +40,33 @@ void main() {
     expect(result.map((chat) => chat.id), ['bob']);
   });
 
+  test('removing a contact takes them off this screen and nowhere else', () {
+    // The other half of the pair above. Deleting a conversation must not
+    // delete the contact; removing a contact must not delete the conversation
+    // — which means the history that builds this row is still there, and only
+    // this list may act on the removal.
+    final result = contactChatsFromHistory(
+      [_chat('bob', 'Bob'), _chat('carol', 'Carol')],
+      const {'bob', 'carol'},
+      removedContactIds: const {'bob'},
+    );
+
+    expect(result.map((chat) => chat.id), ['carol']);
+  });
+
+  test('a removed contact stays off even with the chat deleted too', () {
+    // Both kinds of evidence present at once: history and a deleted
+    // conversation. Neither may put somebody back.
+    final result = contactChatsFromHistory(
+      [_chat('bob', 'Bob')],
+      const {'bob'},
+      deletedChatIds: const {'bob'},
+      removedContactIds: const {'bob'},
+    );
+
+    expect(result, isEmpty);
+  });
+
   test('contact opens its profile before the chat', () {
     final route = routeForContactProfile(_chat('ab cd', 'Alice & Bob'));
 

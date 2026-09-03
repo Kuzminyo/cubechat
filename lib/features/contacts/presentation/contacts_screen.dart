@@ -12,6 +12,7 @@ import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../peers/data/contact_removal.dart';
+import '../../peers/data/removed_contacts_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../peers/data/contact_tags_controller.dart';
@@ -33,16 +34,26 @@ import '../../chats/presentation/chats_list_screen.dart';
 /// Note what this still excludes: a phone that merely walked past yours is in
 /// the peer roster and in neither of these sets, so Contacts stays a list of
 /// people rather than a list of strangers the radio has met.
+///
+/// [removedContactIds] is the one thing that can take somebody *off* this
+/// screen, and it has to be, because the list is derived rather than stored.
+/// Removing a contact deliberately keeps the conversation now — see
+/// [removeFromContacts] — so the history that builds a row survives the
+/// removal, and without this the person would be back the moment the screen
+/// rebuilt.
 List<Chat> contactChatsFromHistory(
   Iterable<Chat> chats,
   Iterable<String> chatIdsWithHistory, {
   Iterable<String> deletedChatIds = const <String>[],
+  Iterable<String> removedContactIds = const <String>[],
 }) {
   final ids = chatIdsWithHistory.toSet();
   final deleted = deletedChatIds.toSet();
+  final removed = removedContactIds.toSet();
   final contacts = chats
       .where((chat) =>
           !chat.isChannel &&
+          !removed.contains(chat.id) &&
           (ids.contains(chat.id) || deleted.contains(chat.id)))
       .toList();
   contacts.sort((a, b) {
@@ -67,6 +78,7 @@ final contactChatsProvider = Provider<List<Chat>>((ref) {
         .where((entry) => entry.value.isNotEmpty)
         .map((entry) => entry.key),
     deletedChatIds: ref.watch(hiddenChatsControllerProvider),
+    removedContactIds: ref.watch(removedContactsControllerProvider),
   );
 });
 String routeForContactProfile(Chat contact) =>
@@ -347,7 +359,7 @@ Future<void> _showContactMenu(
     ),
   );
   if (confirmed != true) return;
-  await forgetContactEverywhere(ref, contact.peerId);
+  await removeFromContacts(ref, contact.peerId);
 }
 
 /// The pinned row that opens the contact-card screen.

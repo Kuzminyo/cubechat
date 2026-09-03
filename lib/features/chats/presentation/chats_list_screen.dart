@@ -2321,7 +2321,7 @@ Future<void> _confirmAndForgetContact(
     ),
   );
   if (confirmed != true) return;
-  await forgetContactEverywhere(ref, chat.id);
+  await removeFromContacts(ref, chat.id);
   if (!context.mounted) return;
   showGlassToast(
     context,

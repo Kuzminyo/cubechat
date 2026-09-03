@@ -331,10 +331,10 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     );
     if (confirmed != true) return;
     // Everything this person leaves behind, in the one place that lists it —
-    // see [forgetContactEverywhere]. The Contacts list and the chat list offer
+    // see [removeFromContacts]. The Contacts list and the chat list offer
     // the same delete, and three copies of an eleven-step cleanup is three
     // chances for one of them to forget a step.
-    await forgetContactEverywhere(ref, peerPubkeyHex);
+    await removeFromContacts(ref, peerPubkeyHex);
     if (context.mounted) Navigator.of(context).maybePop();
   }
 
