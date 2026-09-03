@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/util/frame_stats.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/util/media_storage.dart';
@@ -133,6 +134,13 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     final wireId = msg.wireId;
     if (wireId != null && current.any((m) => m.wireId == wireId)) return false;
     final next = [...current, msg];
+    // Counted so a slow frame can say whether the message store was publishing
+    // during it. Every append replaces the whole map, and every watcher — the
+    // chat, the list, contacts, all mounted at once by the tab shell — rebuilds
+    // on each one. A relay backlog is thirty of these inside a second, and a
+    // frame that lands in the middle of that reads as a mystery without a
+    // number beside it.
+    FrameStats.countBuild('msgAppend');
     state = {...state, peerId: next};
     _persist(peerId, next);
     _notePresence(peerId, msg);

@@ -214,6 +214,15 @@ MessageStatus? _outgoingStatus(Message? last, {required bool hasDraft}) {
 }
 
 final allChatsProvider = Provider<List<Chat>>((ref) {
+  // Counted like a screen, and for the reason the screen counting was added:
+  // a slow frame names who rebuilt, and `chats x28` cannot say whether this
+  // provider re-derived the whole list or the widget merely rebuilt over an
+  // unchanged one. Those have different fixes and the log could not tell them
+  // apart, which is how a wrong guess gets made and reverted.
+  //
+  // One increment on an int, the same cost the screen counters were judged
+  // cheap enough for.
+  FrameStats.countBuild('allChats');
   // The row previews are words — "Photo", "Sticker" — so the list re-derives
   // when the language does.
   final t = lookupAppLocalizations(ref.watch(localeControllerProvider));
