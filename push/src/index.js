@@ -44,6 +44,15 @@ const APNS_KEY_ID = process.env.APNS_KEY_ID || '';
 const APNS_TEAM_ID = process.env.APNS_TEAM_ID || '';
 const APNS_KEY_PATH = process.env.APNS_KEY_PATH || './AuthKey.p8';
 
+// Firebase Cloud Messaging — the Android half of the same doorbell.
+//
+// A service-account JSON downloaded from the Firebase console. Only three of
+// its fields are used: the project id names the endpoint, and the client email
+// and private key sign the assertion that buys an access token. Absent means
+// Android registrations are accepted and never rung, which is what every
+// deployment did before this existed.
+const FCM_KEY_PATH = process.env.FCM_KEY_PATH || './fcm-service-account.json';
+
 const STORE_PATH = process.env.STORE_PATH || './tokens.json';
 
 /** npub (hex) -> { token, updatedAt } */
@@ -140,13 +149,36 @@ function verifyEvent(event) {
   }
 }
 
-/// A device token, or null when the content is not one.
+/// Which push network a registration belongs to.
 ///
-/// APNs tokens are 32 bytes of hex. Checked rather than trusted because this
-/// string is handed straight to Apple, and a registry full of rubbish is a
-/// registry that spends its rate limit on nothing.
-function deviceTokenOf(content) {
-  const token = content.trim().toLowerCase();
+/// Carried on the event rather than guessed from the token's shape. The shapes
+/// do differ — APNs is hex, FCM is a long opaque string with punctuation in it
+/// — but a rule inferred from today's formats is a rule that breaks the day
+/// either vendor changes one, silently and in production.
+function platformOf(event) {
+  for (const tag of event.tags ?? []) {
+    if (tag[0] !== 'platform' || typeof tag[1] !== 'string') continue;
+    const value = tag[1].trim().toLowerCase();
+    if (value === 'android' || value === 'ios') return value;
+  }
+  // Absent means iOS: every build that registered before Android could was an
+  // iPhone, and a stored registration must not change meaning under an upgrade.
+  return 'ios';
+}
+
+/// Checked rather than trusted, because this string is handed straight to a
+/// vendor and a registry full of rubbish spends its rate limit on nothing.
+///
+/// APNs is 32 bytes of hex. FCM is an opaque token — Google documents no
+/// format and has changed its length more than once — so the check is only
+/// that it is plausible and free of anything that could break out of a JSON
+/// body or a URL path.
+function deviceTokenOf(content, platform) {
+  const raw = content.trim();
+  if (platform === 'android') {
+    return /^[A-Za-z0-9_:.-]{100,4096}$/.test(raw) ? raw : null;
+  }
+  const token = raw.toLowerCase();
   return /^[0-9a-f]{64,200}$/.test(token) ? token : null;
 }
 
@@ -198,7 +230,8 @@ function handleRegister(event) {
     return { ok: true, registered: false };
   }
 
-  const token = deviceTokenOf(event.content);
+  const platform = platformOf(event);
+  const token = deviceTokenOf(event.content, platform);
   if (!token) return { ok: false, reason: 'token' };
   const lang = languageOf(event);
 
@@ -208,6 +241,7 @@ function handleRegister(event) {
     token,
     updatedAt: event.created_at,
     lang,
+    platform,
     // Carried over only when the token is the same one. Which APNs host a
     // token belongs to is learned by being refused once (see hostsFor), and
     // a phone re-registers on every launch — dropping it here would make the
@@ -331,7 +365,161 @@ function logAttempt(npub, token, host, result) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// FCM
+// ---------------------------------------------------------------------------
+
+let fcmAccount = null;
+let fcmAccountRead = false;
+let fcmToken = null;
+let fcmTokenExpiry = 0;
+
+/// The service account, read once. Null when the file is not there, which is a
+/// deployment without Android push rather than an error.
+async function fcmServiceAccount() {
+  if (fcmAccountRead) return fcmAccount;
+  fcmAccountRead = true;
+  try {
+    const raw = JSON.parse(await readFile(FCM_KEY_PATH, 'utf8'));
+    if (!raw.project_id || !raw.client_email || !raw.private_key) {
+      log('fcm', 'service account is missing project_id/client_email/private_key');
+      return null;
+    }
+    fcmAccount = raw;
+    log('fcm', `service account for ${raw.project_id}`);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      log('fcm', `service account unreadable: ${error.message}`);
+    } else {
+      log('fcm', 'no service account — Android push is off');
+    }
+  }
+  return fcmAccount;
+}
+
+/// An OAuth access token for the messaging scope.
+///
+/// Google wants a bearer token rather than a self-signed JWT the way Apple
+/// does, so this is one extra round trip — but only once an hour. Refreshed
+/// five minutes early, because a token that expires between the check and the
+/// send is a push nobody gets and nobody can explain.
+async function fcmAccessToken() {
+  const now = Math.floor(Date.now() / 1000);
+  if (fcmToken && now < fcmTokenExpiry - 300) return fcmToken;
+  const account = await fcmServiceAccount();
+  if (!account) return null;
+
+  const header = Buffer.from(
+    JSON.stringify({ alg: 'RS256', typ: 'JWT' }),
+  ).toString('base64url');
+  const claims = Buffer.from(
+    JSON.stringify({
+      iss: account.client_email,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    }),
+  ).toString('base64url');
+  const signer = createSign('RSA-SHA256');
+  signer.update(`${header}.${claims}`);
+  const assertion =
+    `${header}.${claims}.${signer.sign(account.private_key, 'base64url')}`;
+
+  try {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.access_token) {
+      log('fcm', `token refused: ${response.status} ${JSON.stringify(body)}`);
+      return null;
+    }
+    fcmToken = body.access_token;
+    fcmTokenExpiry = now + (body.expires_in ?? 3600);
+    return fcmToken;
+  } catch (error) {
+    log('fcm', `token request failed: ${error.message}`);
+    return null;
+  }
+}
+
+/// Ring an Android phone.
+///
+/// A `notification` block rather than a data-only message, for the same reason
+/// the APNs payload is an alert and not `content-available`: a data-only
+/// message is not shown by the system and needs the app to be alive to draw
+/// anything, which is precisely what is not true here. The system draws this
+/// one whether or not cubechat is running.
+///
+/// The body is the same fixed string APNs carries. This service decrypts
+/// nothing and has nothing else to say.
+async function sendFcm(npub, token) {
+  const account = await fcmServiceAccount();
+  const access = await fcmAccessToken();
+  if (!account || !access) return false;
+  const url =
+    `https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`;
+  const payload = {
+    message: {
+      token,
+      notification: { body: bodyFor(npub) },
+      android: {
+        // Wake it now. The alternative is `normal`, which lets the system hold
+        // the message until it next feels like waking the device — the same
+        // trade Apple's priority 10 avoids.
+        priority: 'high',
+        notification: {
+          // Grouped like the iOS thread id, so a stack of these reads as one
+          // conversation rather than a column.
+          tag: 'cubechat',
+          sound: 'default',
+        },
+      },
+    },
+  };
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${access}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (response.status === 200) {
+      log('fcm', `${short(npub)} -> delivered [token ${token.length} chars]`);
+      return true;
+    }
+    const text = await response.text();
+    log('fcm', `${short(npub)} -> ${response.status} ${text.slice(0, 200)}`);
+    // Google's word for "this token answers to nobody": the app was
+    // uninstalled, or the token was replaced. Same meaning as APNs 410.
+    if (
+      response.status === 404 ||
+      (response.status === 400 && text.includes('UNREGISTERED'))
+    ) {
+      forgetToken(npub, `fcm ${response.status}`);
+    }
+    return false;
+  } catch (error) {
+    log('fcm', `${short(npub)} -> request failed: ${error.message}`);
+    return false;
+  }
+}
+
 async function sendPush(npub, token) {
+  // Android goes to Google, everything else to Apple. The two networks share
+  // nothing but this doorbell's intent, so the split is here rather than
+  // threaded through the APNs code below.
+  if (tokens.get(npub)?.platform === 'android') {
+    return sendFcm(npub, token);
+  }
   const [first, second] = hostsFor(npub);
   const attempt = await pushTo(npub, token, first);
   logAttempt(npub, token, first, attempt);
@@ -627,6 +815,13 @@ const server = createServer(async (request, response) => {
     return json(response, 200, {
       ok: true,
       tokens: tokens.size,
+      // Split by platform, because "tokens:1" stopped answering the question
+      // the moment there were two kinds. A deployment with no FCM service
+      // account accepts Android registrations and rings none of them, and this
+      // is where that shows.
+      ios: [...tokens.values()].filter((t) => t.platform !== 'android').length,
+      android: [...tokens.values()].filter((t) => t.platform === 'android').length,
+      fcm: fcmAccountRead ? (fcmAccount?.project_id ?? null) : 'not read yet',
       relays: [...sockets.keys()],
     });
   }
