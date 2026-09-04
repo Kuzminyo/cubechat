@@ -325,11 +325,12 @@ class _WakePanelState extends State<_WakePanel> {
           ],
           const SizedBox(height: 6),
           // Said plainly because it is the question this panel gets asked next.
-          // Significant change means a cell hand-off — roughly half a
-          // kilometre, minutes apart — so a phone on a desk stays silent even
-          // when everything above is green, and that is not a fault.
+          // Two triggers now: leaving a 100 m circle drawn around wherever we
+          // last were, and the coarse cell hand-off behind it. Either way it is
+          // *movement*, so a phone on a desk stays silent even when everything
+          // above is green, and that is not a fault.
           Text(
-            'Triggered by moving about half a kilometre, not by messages '
+            'Triggered by moving about a hundred metres, not by messages '
                 'arriving. A phone that stays put stays quiet.',
             style: TextStyle(
               color: AppColors.textOnGlassFaint,

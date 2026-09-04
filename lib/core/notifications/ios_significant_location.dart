@@ -89,12 +89,7 @@ class IosSignificantLocation {
         DebugLog.instance.log(
           'SLC',
           ok
-              // Says what is armed now, not what was armed for one build. The
-              // 100 m circle went out with the crash it arrived with — see
-              // `SignificantLocationWatcher` in AppDelegate.swift — and a log
-              // line promising it would send the next reader looking for code
-              // that is not there.
-              ? 'armed — the phone will relaunch us when it changes area'
+              ? 'armed — relaunch on leaving a 100 m circle, or on changing area'
               : 'NOT armed: iOS location for cubechat is not set to Always. '
                   'Settings → cubechat → Location → Always.',
         );

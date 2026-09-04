@@ -385,30 +385,50 @@ import UserNotifications
 /// Costs almost nothing to leave on: no GPS is started, the data is what the
 /// baseband already knows. Requires Always authorisation, and is armed only
 /// once the user has granted it for the live map — nothing here asks for it.
-/// ## Region monitoring was tried here and taken out again
+/// ## Region monitoring: out in 939, back in 951
 ///
-/// `a08e25d` added a 100 m circle re-armed on every wake, to narrow the
-/// wake-up condition from a cell hand-off — half a kilometre, often more, so a
-/// phone that stays home never rings at all. It shipped in build 936 and 936
-/// is the build that started crashing; 933, 934 and 935 did not. The only
-/// other change in that build was the Gradle heap on the CI runner, which
-/// cannot reach a phone, and the Dart half of the commit was comments and one
-/// log string. By elimination the circle is what arrived with the crash.
+/// It arrived in 936, and 936 is the build where crashes started. It went out
+/// again by *elimination* — 936 was 935 plus this and a CI heap setting, and a
+/// setting on a build runner cannot reach a phone. No crash report was ever
+/// read.
 ///
-/// Removed rather than repaired because no crash report has been read yet and
-/// a repair without one is a guess dressed as a fix. Removing it costs nothing
-/// that was working: the phone the logs come from prints `NOT armed` on every
-/// launch — its Location is not set to Always, so `start()` returned at the
-/// authorisation guard and not one line of the region code ever ran there.
+/// Against that: on the phone whose logs were read, this code never ran. Every
+/// launch printed `NOT armed`, because Location was not set to Always and
+/// `start()` returns at that guard long before any region is created. Whatever
+/// crashed that phone was not reached from here.
 ///
-/// Restore it against a crash report, not against a theory. If the report
-/// names something other than CoreLocation, this was the wrong thing to remove
-/// and the circle can come straight back.
+/// And the coarse doorbell alone is not enough for what it is for: significant
+/// change fires on a cell hand-off, half a kilometre and often more, so a
+/// person who walked nine hundred metres was reported as never having moved.
+///
+/// So it is back, guarded at every point CoreLocation documents a refusal —
+/// availability, authorisation, a coordinate that is not a place, a radius past
+/// the system's ceiling — and it narrates itself into the system log. If it
+/// crashes now, a report will name it instead of leaving the next person to
+/// eliminate it a second time.
 final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
   /// Survives termination on purpose: after a relaunch there is no Dart yet to
   /// ask, and the manager has to be monitoring again before iOS will deliver
   /// the event that caused the relaunch.
   private static let armedKey = "cubechat.significantLocation.armed"
+
+  /// The circle we sit inside; leaving it is the event.
+  ///
+  /// Significant-change monitoring rings on a cell hand-off — half a kilometre,
+  /// often more, and only when the cell actually changes. Reported from the
+  /// field: nine hundred metres on foot and the pin never moved. Region
+  /// monitoring is the finer instrument iOS offers for the same job and it
+  /// relaunches a terminated app the same way.
+  ///
+  /// One region, moved rather than accumulated: iOS allows twenty per app and a
+  /// stale one is a wake-up for somewhere nobody is. Re-armed from positions we
+  /// are handed anyway, so it starts no GPS of its own.
+  private static let regionId = "cubechat.here"
+
+  /// A hundred metres, and not less. Smaller circles are accepted and then fire
+  /// late, early or repeatedly, because the fix deciding is the same coarse one
+  /// the system already had.
+  private static let regionRadius: CLLocationDistance = 100
 
   private let manager = CLLocationManager()
   private let onWake: (CLLocation?) -> Void
@@ -456,6 +476,7 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
     guard !monitoring else { return true }
     monitoring = true
     manager.startMonitoringSignificantLocationChanges()
+    armRegion(around: manager.location)
     NSLog("cubechat: significant location monitoring armed")
     return true
   }
@@ -465,6 +486,65 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
     guard monitoring else { return }
     monitoring = false
     manager.stopMonitoringSignificantLocationChanges()
+    clearRegions()
+  }
+
+  /// Draw the circle around where we are, replacing the one before it.
+  ///
+  /// Restored in 951 after being taken out in 939. It went out by elimination
+  /// rather than by evidence — 936 was 935 plus this and a CI setting, and 936
+  /// is where crashes started — but on the phone whose logs were read this code
+  /// never ran at all: `NOT armed`, because Location was not set to Always and
+  /// `start()` returns above. Whatever crashed that phone, it was not reached
+  /// from here.
+  ///
+  /// So it comes back guarded at every point CoreLocation is documented to
+  /// refuse, and noisy in the system log, so that a crash report can name it
+  /// instead of leaving the next person to eliminate it again.
+  private func armRegion(around location: CLLocation?) {
+    guard let location else { return }
+    guard authorizedAlways else { return }
+    guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
+      NSLog("cubechat: region monitoring unavailable on this device")
+      return
+    }
+    // A fix can carry a coordinate that is not a place. Handing one to
+    // CLCircularRegion is undefined rather than merely useless.
+    let centre = location.coordinate
+    guard CLLocationCoordinate2DIsValid(centre),
+          centre.latitude.isFinite,
+          centre.longitude.isFinite else {
+      NSLog("cubechat: skipping region, coordinate is not valid")
+      return
+    }
+    // The system publishes a ceiling and refuses anything past it. 100 m is far
+    // below every real value, but reading the number costs nothing and a
+    // hardcoded radius that outgrows a future device is exactly the kind of
+    // thing that fails in the field and not here.
+    let ceiling = manager.maximumRegionMonitoringDistance
+    let radius = ceiling > 0 ? min(Self.regionRadius, ceiling) : Self.regionRadius
+
+    clearRegions()
+    let region = CLCircularRegion(
+      center: centre,
+      radius: radius,
+      identifier: Self.regionId
+    )
+    // Only leaving matters. Entry would fire the moment the region is created,
+    // since we are standing in the middle of it.
+    region.notifyOnEntry = false
+    region.notifyOnExit = true
+    manager.startMonitoring(for: region)
+    NSLog("cubechat: watching a \(Int(radius)) m circle from here")
+  }
+
+  /// Ours only. Another framework's regions are not this class's to cancel.
+  private func clearRegions() {
+    // `monitoredRegions` is a Set and Swift hands back a copy, so removing
+    // while iterating it is safe — the loop is not walking the live collection.
+    for region in manager.monitoredRegions where region.identifier == Self.regionId {
+      manager.stopMonitoring(for: region)
+    }
   }
 
   /// Re-arm after a launch — including the launch this monitoring caused.
@@ -479,7 +559,38 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
     // The newest of the batch. CoreLocation can deliver several at once after
     // a relaunch, and the pin wants the one that is true now, not the one that
     // rang the doorbell first.
-    onWake(locations.last)
+    let newest = locations.last
+    // The circle follows. Without this it stays where it was first drawn, and
+    // the second time somebody leaves home nothing rings.
+    armRegion(around: newest)
+    onWake(newest)
+  }
+
+  /// Left the circle — the fine-grained half of the doorbell.
+  ///
+  /// `manager.location` rather than a fresh fix: it is the position the system
+  /// already used to decide we had left. Asking for a new one would start GPS
+  /// in the background, which an Android battery report once named as this
+  /// app's single largest expense.
+  func locationManager(
+    _ manager: CLLocationManager, didExitRegion region: CLRegion
+  ) {
+    guard region.identifier == Self.regionId else { return }
+    NSLog("cubechat: left the watched circle")
+    let here = manager.location
+    // Re-armed first, so the next departure is covered even if the catch-up
+    // below is cut short by the system reclaiming us.
+    armRegion(around: here)
+    onWake(here)
+  }
+
+  /// A region that could not be monitored is not a silent failure.
+  func locationManager(
+    _ manager: CLLocationManager,
+    monitoringDidFailFor region: CLRegion?,
+    withError error: Error
+  ) {
+    NSLog("cubechat: region monitoring failed: \(error.localizedDescription)")
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -507,6 +618,9 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
     } else if monitoring {
       monitoring = false
       manager.stopMonitoringSignificantLocationChanges()
+      // A region monitored under While-Using never fires, and a watcher that
+      // cannot ring should not look armed.
+      clearRegions()
     }
   }
 }
