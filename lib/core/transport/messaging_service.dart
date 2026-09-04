@@ -204,6 +204,14 @@ class MessagingService {
         _noteNewRoomMembers(previous, next);
       },
     );
+    // The 1:1 counterpart. A message signed compactly cannot be checked until
+    // its sender's announcement has landed, and the two race; the roster
+    // changing is the moment the answer may have arrived, so it is the moment
+    // to try what was held. See [_holdUnverified].
+    _ref.listen(
+      knownPeersControllerProvider,
+      (_, __) => unawaited(_replayHeldUnverified()),
+    );
     _startFileQueueTimer();
     _wireNostrFallback();
     _startInBackground('relay buffer', _loadRelayBuffer());
@@ -5604,6 +5612,11 @@ class MessagingService {
     /// When the sender stamped it — see [_handleFrame]. Only the payloads
     /// that are a claim about a moment look at this.
     DateTime? sentAt,
+
+    /// A second pass at a frame this phone held because it could not yet
+    /// verify who sent it — see [_holdUnverified]. It has already been through
+    /// the duplicate check once and must not be refused by it now.
+    bool replaying = false,
   }) async {
     final TransportEnvelope env;
     try {
@@ -5620,7 +5633,7 @@ class MessagingService {
     // Dedup: drop frames we've already seen via another path. Keyed on the
     // (origin, msgId) pair which is stable regardless of which relay
     // delivered the copy.
-    if (!_dedup.acceptEnvelope(env)) {
+    if (!replaying && !_dedup.acceptEnvelope(env)) {
       DebugLog.instance
           .log('NOISE', 'drop transport: duplicate (origin+msgId)');
       return;
@@ -5814,10 +5827,25 @@ class MessagingService {
         // the sender's verifying key from a prior announcement.
         final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
         if (expectedEd == null) {
-          DebugLog.instance.log(
-              'CRYPTO',
-              'drop FS body from $peerId: sender ed pub unknown '
-                  '(awaiting their announcement)');
+          // Held, not dropped, and that is the whole of this change.
+          //
+          // A compact signature carries no ed pub, so the sender's verifying
+          // key has to be known already. It usually is — but a message and the
+          // announcement identifying its sender are separate frames on
+          // separate paths, and either can arrive first. This one lost the
+          // race, and losing it used to mean the message was gone for good.
+          //
+          // Invisible from the inside and loud from the outside: the push
+          // service rings on seeing an event addressed to you and decrypts
+          // nothing, so the banner arrived and the app opened on an empty
+          // chat. Reported in those words, and the log agreed — one
+          // `drop FS body … awaiting their announcement` per lost message,
+          // several an hour in ordinary use.
+          //
+          // Channels already had this shape for the same reason: a post can
+          // beat the roster that says its author may speak. See
+          // [_replayHeldChannelPosts].
+          _holdUnverified(env.originPubkeyHash, peerId, frame, sentAt);
           return;
         }
         try {
@@ -8388,6 +8416,83 @@ class MessagingService {
     }
   }
 
+  /// Frames whose sender could not be verified yet, by origin hash.
+  ///
+  /// A message signed compactly needs the sender's verifying key, which only
+  /// their announcement carries. When the two race and the message wins, this
+  /// is where it waits instead of being thrown away — see the hold in
+  /// [_handleTransportFrame].
+  ///
+  /// Capped per origin and swept by age for the same reason the channel one
+  /// is: a stranger whose announcement never arrives must not be able to fill
+  /// memory by talking. What is dropped here was unverifiable for a full
+  /// minute, which is far longer than the two frames take to cross.
+  final Map<String, List<_HeldFrame>> _heldUnverified = {};
+
+  static const int _heldUnverifiedPerOrigin = 20;
+  static const Duration _heldUnverifiedTtl = Duration(minutes: 1);
+
+  void _holdUnverified(
+    Uint8List originHash,
+    String peerId,
+    Frame frame,
+    DateTime? sentAt,
+  ) {
+    final key = _hexOf(originHash);
+    final held = _heldUnverified.putIfAbsent(key, () => <_HeldFrame>[]);
+    held.add(_HeldFrame(
+      peerId: peerId,
+      frame: frame,
+      sentAt: sentAt,
+      at: DateTime.now(),
+    ));
+    if (held.length > _heldUnverifiedPerOrigin) held.removeAt(0);
+    DebugLog.instance.log(
+      'CRYPTO',
+      'holding FS body from $peerId until their announcement '
+          '(${held.length} waiting)',
+    );
+  }
+
+  /// Run the held frames again now that somebody's key may have landed.
+  ///
+  /// Oldest first, so a burst that waited reads in the order it was written.
+  /// `replaying: true` because each of these was already counted by the
+  /// duplicate check on its first pass; refusing them there is what would make
+  /// this whole mechanism a no-op.
+  Future<void> _replayHeldUnverified() async {
+    if (_heldUnverified.isEmpty) return;
+    final now = DateTime.now();
+    for (final key in _heldUnverified.keys.toList(growable: false)) {
+      final held = _heldUnverified[key];
+      if (held == null) continue;
+      held.removeWhere((f) => now.difference(f.at) > _heldUnverifiedTtl);
+      if (held.isEmpty) {
+        _heldUnverified.remove(key);
+        continue;
+      }
+      // Still nobody to check the signature against — leave them waiting.
+      if (await _expectedEdPubFor(_hexDecodeBytes(key)) == null) continue;
+      _heldUnverified.remove(key);
+      DebugLog.instance.log(
+        'CRYPTO',
+        'replaying ${held.length} held frame(s) from ${key.substring(0, 8)}',
+      );
+      for (final f in held) {
+        try {
+          await _handleTransportFrame(
+            f.peerId,
+            f.frame,
+            sentAt: f.sentAt,
+            replaying: true,
+          );
+        } catch (e) {
+          DebugLog.instance.log('CRYPTO', 'held frame failed: $e');
+        }
+      }
+    }
+  }
+
   /// Posts waiting on the roster to say their author may speak here.
   ///
   /// Keyed by sender within a room and capped, so a stranger shouting into an
@@ -9645,6 +9750,22 @@ class _HeldChannelState {
 
 /// A channel post whose author is not yet known to be allowed to speak in an
 /// announcement room. See [MessagingService._holdChannelPost].
+class _HeldFrame {
+  const _HeldFrame({
+    required this.peerId,
+    required this.frame,
+    required this.sentAt,
+    required this.at,
+  });
+
+  final String peerId;
+  final Frame frame;
+  final DateTime? sentAt;
+
+  /// When it was held, so it can be given up on rather than kept forever.
+  final DateTime at;
+}
+
 class _HeldChannelPost {
   _HeldChannelPost({required this.deliver, required this.at});
 
