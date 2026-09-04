@@ -2190,7 +2190,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileGlassHint =>
-      'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.';
+      'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.';
 
   @override
   String get mapAlwaysNeeded =>

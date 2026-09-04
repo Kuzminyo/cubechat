@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
+import '../../../core/routing/app_router.dart';
 import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
@@ -505,7 +506,7 @@ class ChatsListScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   late final ScrollController _scrollController;
 
   /// How far the header is into its selection state, 0..1.
@@ -532,7 +533,39 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is ModalRoute<void>) appRouteObserver.subscribe(this, route);
+  }
+
+  /// A chat (or anything else) has closed and this list is on top again.
+  ///
+  /// The rebuilds it skipped while covered were skipped by dropping the
+  /// providers it watches, so nothing has been telling it about arrivals. One
+  /// full build here is what makes that safe: the list on screen is built from
+  /// what is true now, not from what was true when the chat opened.
+  @override
+  void didPopNext() {
+    if (mounted) setState(() {});
+  }
+
+  /// The last tree, returned unchanged while something is on top of it.
+  ///
+  /// Every `[FRAME]` line from a phone reporting stutter named `chats` beside
+  /// `chat` — the list rebuilding underneath a conversation that completely
+  /// covers it, on every read marker, every beacon, every arriving message.
+  /// The shell keeps the branch mounted, so nothing stops that by itself.
+  ///
+  /// Returning the *same widget instance* is what makes this cheap rather than
+  /// merely cheaper: the framework compares by identity first and skips the
+  /// whole subtree, so a covered list costs one comparison instead of a
+  /// screenful of rows.
+  Widget? _covered;
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _select.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -601,6 +634,18 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Something is on top of this list — a conversation, a profile, a sheet —
+    // and it covers the whole screen. Hand back the tree already on display
+    // and touch nothing on the way out: not watching the providers is
+    // precisely what stops the rebuilds, and [didPopNext] is what makes that
+    // safe. Counted under its own name so a log says plainly that the skip is
+    // happening rather than leaving it to be inferred.
+    final covered = !(ModalRoute.of(context)?.isCurrent ?? true);
+    final last = _covered;
+    if (covered && last != null) {
+      FrameStats.countBuild('chats(skipped)');
+      return last;
+    }
     FrameStats.countBuild('chats');
     final t = AppLocalizations.of(context);
     final query = ref.watch(chatsQueryProvider).toLowerCase();
@@ -717,7 +762,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
             c.lastMessage.toLowerCase().contains(query);
       }),
     ]..sort(compareChatRows);
-    return PopScope<void>(
+    return _covered = PopScope<void>(
       canPop: !selecting,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && selecting) {

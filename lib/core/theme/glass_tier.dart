@@ -21,6 +21,13 @@ import 'glass.dart';
 ///
 /// So the phone is asked rather than assumed. Not by model or chipset — those
 /// lists are wrong within a year — but by what its GPU actually did.
+///
+/// **Worth less than it looks on a phone that keeps up.** Measured 2026-09-04:
+/// 30% of a core on `full`, 28% on `light`, forty seconds of the same use each.
+/// The full argument and the numbers are on [AppBlur.panes]; the short version
+/// is that this setting earns its place on the slow phone it was written for
+/// and almost nothing on a fast one, so it is not the lever to reach for when
+/// somebody with a healthy frame budget says the phone is warm.
 enum GlassTier {
   /// Decide from a measurement, once, and remember the answer.
   auto,

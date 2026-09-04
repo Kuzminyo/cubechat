@@ -72,6 +72,17 @@ class _DismissKeyboardOnPop extends NavigatorObserver {
 ///
 /// Names only, never arguments: a route path here carries a pubkey or a channel
 /// name, and this log gets shared.
+/// Lets a screen hear that it has been covered by a pushed route, and that the
+/// route has gone again.
+///
+/// The shell keeps every branch mounted, so a screen with something on top of
+/// it is still in the tree, still watching everything it watches, and still
+/// rebuilding in full for changes nobody can see. Knowing when it is covered is
+/// what lets it stop; knowing when it is uncovered is what lets it be correct
+/// again afterwards, which is the half that makes the first half safe.
+final RouteObserver<ModalRoute<void>> appRouteObserver =
+    RouteObserver<ModalRoute<void>>();
+
 class _LogRoutes extends NavigatorObserver {
   static String _name(Route<dynamic>? route) {
     final name = route?.settings.name;
@@ -149,7 +160,7 @@ class _LogRoutes extends NavigatorObserver {
 GoRouter buildRouter({bool seenOnboarding = true}) {
   return GoRouter(
     navigatorKey: _rootNavKey,
-    observers: [_DismissKeyboardOnPop(), _LogRoutes()],
+    observers: [_DismissKeyboardOnPop(), _LogRoutes(), appRouteObserver],
     initialLocation: seenOnboarding ? '/chats' : '/onboarding',
     // Two directions, both narrow. A deep link cannot land somebody inside the
     // app before they have seen the intro, and revisiting /onboarding after

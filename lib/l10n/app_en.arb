@@ -1000,7 +1000,7 @@
   "profileGlassAuto": "Automatic",
   "profileGlassFull": "Full",
   "profileGlassLight": "Light",
-  "profileGlassHint": "Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.",
+  "profileGlassHint": "Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.",
   "mapAlwaysNeeded": "For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.",
   "profileScaleSmall": "Smaller",
   "profileScaleNormal": "Normal",

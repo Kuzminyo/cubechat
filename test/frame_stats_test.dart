@@ -1,4 +1,5 @@
 import 'package:cubechat/core/util/frame_stats.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -42,6 +43,46 @@ void main() {
 
     expect(FrameStats.instance.avgRasterMs, closeTo(2, 0.5));
     expect(FrameStats.instance.avgBuildMs, closeTo(1, 0.5));
+  });
+
+  testWidgets('a slow frame names what that frame rebuilt, not the second '
+      'around it', (tester) async {
+    FrameStats.instance
+      ..reset()
+      ..start();
+    await tester.pumpWidget(const SizedBox.shrink());
+    // Real time, not pumped time: the warm-up filter reads the wall clock, and
+    // `pump` moves the test's clock without moving that one.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 800)),
+    );
+    // Drop the frames drawn getting here. In the app every drawn frame is
+    // answered by exactly one timing; a test injects timings by hand, so the
+    // queue has to be emptied of frames no timing will ever arrive for.
+    FrameStats.instance.reset();
+
+    // Frame one rebuilds something. `pump` only draws when a frame is already
+    // scheduled — with nothing dirty it returns having done nothing at all —
+    // so the frame has to be asked for explicitly.
+    FrameStats.countBuild('chats');
+    tester.binding.scheduleFrame();
+    await tester.pump();
+    // Frame two rebuilds something else, and is the slow one.
+    FrameStats.countBuild('chat');
+    tester.binding.scheduleFrame();
+    await tester.pump();
+
+    // Two timings, in the order the frames were drawn. The first is cheap and
+    // reports nothing; the second is what lands in the log.
+    FrameStats.instance.ingestForTest([_frame(buildMs: 1, rasterMs: 1)]);
+    FrameStats.instance.ingestForTest([_frame(buildMs: 25, rasterMs: 2)]);
+
+    expect(FrameStats.instance.lastSlowFrameWho, 'chat x1');
+    expect(
+      FrameStats.instance.lastSlowFrameWho,
+      isNot(contains('chats')),
+      reason: 'the cheap frame before it must not be blamed for this one',
+    );
   });
 
   test('stopping detaches the per-frame callback', () async {

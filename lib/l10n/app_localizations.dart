@@ -3893,7 +3893,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileGlassHint.
   ///
   /// In en, this message translates to:
-  /// **'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.'**
+  /// **'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.'**
   String get profileGlassHint;
 
   /// No description provided for @mapAlwaysNeeded.

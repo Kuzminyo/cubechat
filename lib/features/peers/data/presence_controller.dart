@@ -26,11 +26,28 @@ class PeerPresence {
   final bool hidesLastSeen;
 
   /// A beacon is only worth believing for a while: the app can be killed
-  /// outright, and the goodbye beacon is best-effort. Two heartbeats
-  /// ([MessagingService.presenceHeartbeat] is 70 s) fit inside this window with
-  /// room to spare, so one dropped beacon does not dim a peer who is still
-  /// there — the same margin the mesh gives a missed announcement.
-  static const Duration ttl = Duration(seconds: 150);
+  /// outright, and the goodbye beacon is best-effort.
+  ///
+  /// **100 s, down from 150 on 2026-09-04.** The old value fitted two whole
+  /// heartbeats ([MessagingService.presenceHeartbeat] is 70 s) so that one
+  /// entirely lost beacon could not dim a peer who was still there. That margin
+  /// was bought with the wait everybody else pays: somebody who loses their
+  /// network sends no goodbye, so the dot stayed lit for the full window, and
+  /// it was reported exactly that way — "в сети через 2 минуты проходит когда
+  /// вышел из сети".
+  ///
+  /// 100 s still clears a *late* beacon comfortably — 70 s of cadence plus 30
+  /// of slack, which covers a relay reconnect and the fan-out pacing. What it
+  /// no longer covers is a beacon lost outright: that now shows the peer as
+  /// away for the 40 s until the next one lands. That is the trade, and it is
+  /// the right way round — a dot that goes out too early is corrected within
+  /// the minute by the person themselves, and one that stays lit is a lie
+  /// nobody can correct.
+  ///
+  /// The other direction — beaconing more often so the window can shrink
+  /// without losing the margin — is radio, and radio is the heat three rounds
+  /// of this app have been spent removing. Not that.
+  static const Duration ttl = Duration(seconds: 100);
 
   bool get isFresh => DateTime.now().difference(at) < ttl;
 
@@ -64,9 +81,19 @@ class PresenceController extends Notifier<Map<String, PeerPresence>> {
   /// so absence is the answer the readers were written for.
   Timer? _sweep;
 
-  /// Half a minute is the most staleness this can leave, against a window of
-  /// two and a half.
-  static const Duration _sweepEvery = Duration(seconds: 30);
+  /// Ten seconds, because half a minute of it was being added to the window
+  /// somebody actually waits through.
+  ///
+  /// The window is 150 seconds and the sweep decides when its expiry is
+  /// *noticed*, so at half a minute a dot could stay lit for three minutes
+  /// after the person put their phone down — and it was reported as exactly
+  /// that: "в сети через 2 минуты проходит когда вышел из сети". A third of
+  /// that wait was this timer, and this timer costs nothing: no radio, no
+  /// signature, one pass over at most a few dozen map entries. The 150 seconds
+  /// underneath it is the part that is not free — shortening that means
+  /// beaconing more often, which is radio, which is the heat this app has spent
+  /// three rounds taking out. So the free third goes and the rest stays.
+  static const Duration _sweepEvery = Duration(seconds: 10);
 
   /// Beacons arrived but not yet published to watchers.
   ///

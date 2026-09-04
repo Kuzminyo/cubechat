@@ -115,6 +115,27 @@ class AppBlur {
   ///
   /// Lowering [sigma] instead was measured and made it worse — see above. This
   /// is the other lever.
+  ///
+  /// **How much it is worth, measured 2026-09-04 on a 120 Hz Android phone.**
+  /// Forty seconds of the same use on each setting, reading the rasterizer's
+  /// CPU off the Diagnostics panel:
+  ///
+  /// ```
+  /// full glass   GPU raster 30% of a core
+  /// light glass  GPU raster 28% of a core
+  /// ```
+  ///
+  /// Two points. On a phone whose frames were already healthy the whole blur is
+  /// worth almost nothing, and what the rasterizer is actually spending its
+  /// time on is everything else — the full-screen gradients, the translucent
+  /// panes stacked over them, and a route transition drawing two of those
+  /// stacks at once, all of it at 120 frames a second.
+  ///
+  /// That does not retire this flag: the phone it was written for sat at `raster
+  /// avg 16.0 / p90 25.0 ms`, and a gaussian is not free there. It does retire
+  /// the sentence "the blur is the expensive thing", which this setting's own
+  /// hint used to say and no longer does. Anyone reaching for the next
+  /// GPU-side win should start with overdraw, not with the filter.
   static bool panes = true;
 
   /// Ready-made filter, so no call site has to remember to pass the same value

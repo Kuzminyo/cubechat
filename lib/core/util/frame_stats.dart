@@ -84,7 +84,52 @@ class FrameStats {
     _listening = true;
     _collectFrom = DateTime.now().add(_warmUp);
     SchedulerBinding.instance.addTimingsCallback(_onTimings);
+    _closeFrames();
   }
+
+  /// Close off each frame's build counts as that frame finishes.
+  ///
+  /// A persistent frame callback runs inside `handleDrawFrame`, and
+  /// `WidgetsBinding` registered its own `drawFrame` before this one — so by
+  /// the time this runs, build, layout and paint for the frame are done and
+  /// [_buildCounts] holds exactly what that frame rebuilt. Moving it aside here
+  /// is what turns "seventeen chats builds somewhere in the last second" into
+  /// "this 25 ms frame rebuilt chats once".
+  ///
+  /// Registered once and never removed: a persistent callback cannot be, and
+  /// the work is moving a map of at most a handful of entries.
+  void _closeFrames() {
+    if (_closingFrames) return;
+    _closingFrames = true;
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      if (_buildCounts.isEmpty) {
+        // Still a frame, and still needs an entry: the queue below is matched
+        // to the timings stream position by position, so a frame that skipped
+        // is a frame that has to be represented.
+        _frameCounts.add(const <String, int>{});
+      } else {
+        _frameCounts.add(Map<String, int>.of(_buildCounts));
+        _buildCounts.clear();
+      }
+      // Timings arrive a frame or two behind, never further, so a short queue
+      // is enough — and a bounded one cannot grow while nobody is listening.
+      while (_frameCounts.length > _frameCountsDepth) {
+        _frameCounts.removeAt(0);
+      }
+    });
+  }
+
+  bool _closingFrames = false;
+
+  /// Per-frame build counts, oldest first, waiting for their timing.
+  ///
+  /// Paired with the timings stream by position rather than by a frame number:
+  /// every drawn frame pushes exactly one entry here and produces exactly one
+  /// [FrameTiming], and both arrive in order. If the two ever slip, the counts
+  /// are off by a frame — which is still an incomparably better answer than the
+  /// one-second window this replaced.
+  final List<Map<String, int>> _frameCounts = <Map<String, int>>[];
+  static const int _frameCountsDepth = 8;
 
   /// Whether frames are being collected. False means the engine is not calling
   /// us at all, which is what a screen nobody is looking at should cost.
@@ -152,7 +197,24 @@ class FrameStats {
     _stalls = 0;
     _worstBuildUs = 0;
     _worstRasterUs = 0;
+    // Both belong to the window that just ended. Left behind, the rate limit
+    // could swallow the first slow frame after a reset — the one somebody
+    // pressed reset in order to see.
+    _lastReport = null;
+    _frameCounts.clear();
+    _lastSlowFrameWho = null;
   }
+
+  /// What the last reported slow frame said rebuilt, for tests.
+  ///
+  /// The log is the real output, and in a test it is not reachable: [DebugLog]
+  /// captures `debugPrint`, which `flutter_test` has already replaced with its
+  /// own. Asserting on this instead keeps the test about the thing worth
+  /// pinning down — that a frame is blamed for its own rebuilds and not for
+  /// the ones around it.
+  @visibleForTesting
+  String? get lastSlowFrameWho => _lastSlowFrameWho;
+  String? _lastSlowFrameWho;
 
   /// Feed timings in as if the engine had reported them. The engine's own
   /// callback list is not reachable from a test, and the two rules worth
@@ -179,7 +241,12 @@ class FrameStats {
       if (build > _worstBuildUs) _worstBuildUs = build;
       if (raster > _worstRasterUs) _worstRasterUs = raster;
       _framesSinceReport++;
-      _reportIfSlow(build, raster);
+      // Taken for every frame, slow or not, so the queue stays in step with the
+      // timings rather than draining only when something is reported.
+      final who = _frameCounts.isEmpty
+          ? const <String, int>{}
+          : _frameCounts.removeAt(0);
+      _reportIfSlow(build, raster, who);
       if (_buildUs.length > _window) _buildUs.removeAt(0);
       if (_rasterUs.length > _window) _rasterUs.removeAt(0);
     }
@@ -202,7 +269,7 @@ class FrameStats {
   /// Rate-limited to one a second. A phone that starts dropping frames drops
   /// a lot of them, and a 200-line buffer that fills with its own reporting is
   /// a buffer that has evicted the evidence.
-  void _reportIfSlow(int buildUs, int rasterUs) {
+  void _reportIfSlow(int buildUs, int rasterUs, Map<String, int> thisFrame) {
     if (buildUs < _reportUs && rasterUs < _reportUs) return;
     final now = DateTime.now();
     final last = _lastReport;
@@ -212,14 +279,26 @@ class FrameStats {
     final since = _framesSinceReport;
     _framesSinceReport = 0;
     _lastReport = now;
-    final who = takeBuildCounts();
+    // What *this* frame rebuilt, not what the last second did. The window
+    // version could not tell a suspect from a bystander: "chats x17" beside a
+    // 25 ms frame is either the whole story or seventeen cheap rebuilds spread
+    // over two hundred other frames, and there was no way to know which.
+    final who = _format(thisFrame);
+    _lastSlowFrameWho = who;
     DebugLog.instance.log(
       'FRAME',
       'slow frame — build ${(buildUs / 1000).toStringAsFixed(1)} ms, '
           'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms'
-          ' over $since frame(s)'
-          '${who.isEmpty ? '' : ' — $who'}',
+          ' — ${who.isEmpty ? 'nothing counted rebuilt' : who}'
+          ' · 1 of $since frame(s) since the last report',
     );
+  }
+
+  static String _format(Map<String, int> counts) {
+    if (counts.isEmpty) return '';
+    final rows = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return rows.map((e) => '${e.key} x${e.value}').join(', ');
   }
 
   /// Frames covered by the counts in the line above.
@@ -250,16 +329,7 @@ class FrameStats {
     _buildCounts[screen] = (_buildCounts[screen] ?? 0) + 1;
   }
 
-  /// The counts since the last call, busiest first, and reset.
-  @visibleForTesting
-  static String takeBuildCounts() {
-    if (_buildCounts.isEmpty) return '';
-    final rows = _buildCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    _buildCounts.clear();
-    return rows.map((e) => '${e.key} x${e.value}').join(', ');
-  }
-
+  /// This frame's counts so far, emptied into [_frameCounts] when it ends.
   static final Map<String, int> _buildCounts = <String, int>{};
 
   /// One 60 Hz frame.
