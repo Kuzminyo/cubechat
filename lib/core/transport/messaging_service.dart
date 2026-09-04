@@ -2777,9 +2777,16 @@ class MessagingService {
   ///
   /// [force] is the switch being thrown: it always sends, including the "back
   /// on" that lifts a restriction. Without it this is the opportunistic resend
-  /// — at most once per peer per app run, and nothing at all when the answer is
-  /// "not restricted", since a fresh contact does not need telling that a
-  /// default is still the default.
+  /// — at most once per peer per app run, whichever answer it is.
+  ///
+  /// It used to say here that "not restricted" was never sent, because a fresh
+  /// contact does not need telling that a default is still the default. That
+  /// stopped being true when the dedup below learned to remember *which* answer
+  /// a peer was given, and the reason is two lines down: lifting a ban rested
+  /// on one unacknowledged frame, so a peer who missed it went on refusing to
+  /// forward for good. The stale sentence was read off a log by somebody
+  /// counting relay traffic, who took four notices to four different peers for
+  /// one notice repeated four times.
   ///
   /// [restricted] is only passed by the switch, which knows the new value
   /// before the store has finished writing it. Everyone else leaves it null and
