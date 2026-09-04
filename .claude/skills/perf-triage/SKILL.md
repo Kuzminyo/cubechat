@@ -77,6 +77,18 @@ half the lesson; re-proposing it is the failure this section exists to prevent.
 - **Blur sigma 9** (2026-08-17, reverted) — shipped in the same build as the
   above, so it was never measured on its own. If it is lowered again, do it
   alone. See `lib/core/theme/glass.dart`.
+- **The glass tier as a heat lever** (2026-09-04, measured, keep but do not
+  reach for). Forty seconds of the same use on each setting, reading the
+  rasterizer's CPU off the Diagnostics panel on a 120 Hz Android phone:
+  **full 30% of a core, light 28%.** Two points. The whole blur is worth almost
+  nothing on a phone whose frames are already healthy, and the setting's own
+  hint claimed it was "the most expensive thing this interface draws" until that
+  day. What the rasterizer actually spends its time on is the full-screen
+  gradients, the translucent panes over them, and a route transition drawing two
+  of those stacks at once — 3 ms a frame times 120 frames a second is ~36% of a
+  core, and that arithmetic is the whole answer to "why is it warm". The tier
+  keeps its place for the slow phone it was written for. The next GPU-side win
+  is **overdraw**, which nobody has counted yet.
 - **An animation-polish branch** (2026-08-17) — written and deleted. Fix measured
   lag before any "make it feel better" pass, and animate what every touch does
   rather than what happens rarely.

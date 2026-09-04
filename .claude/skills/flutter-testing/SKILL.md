@@ -105,6 +105,26 @@ ProviderScope(
 Widgets need `AppLocalizations` in scope; copy the harness from
 `chat_search_capture_test.dart`.
 
+### `pump()` draws nothing unless a frame is already scheduled
+
+`tester.pump()` runs `handleBeginFrame`/`handleDrawFrame` **only** when
+`hasScheduledFrame` — with nothing dirty it returns having done absolutely
+nothing, silently and successfully. Anything hooked to the frame lifecycle
+(`addPersistentFrameCallback`, a painter's repaint, a ticker) therefore does not
+run, and the test fails on a wrong value rather than on a missing frame. Cost an
+hour on `frame_stats_test.dart`, where two `pump()`s produced zero frames and the
+per-frame counters read empty.
+
+```dart
+tester.binding.scheduleFrame();
+await tester.pump();
+```
+
+Two related clocks, also worth keeping straight: `tester.pump(duration)` moves
+the **test's** clock, and anything reading `DateTime.now()` — the warm-up filter
+in `FrameStats`, every freshness window in the app — does not see it. Real time
+needs `await tester.runAsync(() => Future.delayed(...))`.
+
 ## Analyze
 
 ```bash
