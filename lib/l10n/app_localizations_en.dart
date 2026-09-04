@@ -2193,6 +2193,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.';
 
   @override
+  String get mapAlwaysNeeded =>
+      'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.';
+
+  @override
   String get profileScaleSmall => 'Smaller';
 
   @override

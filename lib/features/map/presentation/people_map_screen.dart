@@ -39,6 +39,8 @@ import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
 import 'map_layer_sheet.dart';
 import '../../../core/util/debug_log.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/platform_info.dart';
 
 // Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
@@ -148,9 +150,34 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
   double get _markerBox => 72 * _markerScale;
 
+  /// Map sharing is on, this is iOS, and Location is only "While Using".
+  ///
+  /// The one combination where everything looks correct and nothing works: the
+  /// switch is on, the pin moves while you watch it, and the moment the app is
+  /// closed iOS stops delivering anything at all. The app deliberately never
+  /// asks for Always — somebody who has not turned the live map on should not
+  /// be asked for their location by a messenger — and the price of that
+  /// restraint was a day spent looking for a bug that was a setting.
+  ///
+  /// So it is said here instead, on the screen it is about, at the moment it
+  /// matters. Not a prompt: a sentence and a way to Settings.
+  bool _needsAlways = false;
+
+  Future<void> _checkAlways() async {
+    if (!PlatformInfo.isIOS) return;
+    final sharing = ref.read(privacySettingsProvider).shareMapLocation;
+    // `start` never prompts and is idempotent — it reports whether Always is
+    // already granted, which is exactly the question.
+    final armed = sharing && await IosSignificantLocation.instance.start();
+    if (!mounted) return;
+    final needs = sharing && !armed;
+    if (needs != _needsAlways) setState(() => _needsAlways = needs);
+  }
+
   @override
   void initState() {
     super.initState();
+    unawaited(_checkAlways());
     // Texture layer, not hybrid composition — stated rather than left to the
     // default, because it was the other way round for one build and the
     // reasoning is worth keeping.
@@ -207,6 +234,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Before the Android guard below: coming back from Settings is exactly how
+    // this answer changes, and that happens on iOS.
+    if (state == AppLifecycleState.resumed) unawaited(_checkAlways());
     if (!PlatformInfo.isAndroid || !mounted) return;
     // `paused` is the one that means the Activity stopped and the surface with
     // it. `inactive` is the transient step through the shade or the recents
@@ -497,6 +527,18 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               ),
             ),
           ),
+          if (_needsAlways)
+            Positioned(
+              top: profileTop +
+                  (selectedNode == null || selectedDetail == null ? 0 : 82) +
+                  (_failure == null ? 0 : 52),
+              left: 24,
+              right: 24,
+              child: _StatusPill(
+                text: t.mapAlwaysNeeded,
+                onTap: () => unawaited(openAppSettings()),
+              ),
+            ),
           if (_failure != null)
             Positioned(
               top: profileTop +
@@ -1543,13 +1585,18 @@ class _RoundIcon extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.text});
+  const _StatusPill({required this.text, this.onTap});
 
   final String text;
+
+  /// Optional, because most of these only report. The one that can be acted on
+  /// — Location set to While Using — leads to Settings.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Center(
         child: FloatingGlass(
+          onTap: onTap,
           blur: false,
           borderRadius: 18,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

@@ -3896,6 +3896,12 @@ abstract class AppLocalizations {
   /// **'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.'**
   String get profileGlassHint;
 
+  /// No description provided for @mapAlwaysNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.'**
+  String get mapAlwaysNeeded;
+
   /// No description provided for @profileScaleSmall.
   ///
   /// In en, this message translates to:

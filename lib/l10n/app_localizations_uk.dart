@@ -2208,6 +2208,10 @@ class AppLocalizationsUk extends AppLocalizations {
       'Розмиття того, що за панеллю, — найдорожче, що малює цей інтерфейс. Автоматично вимірює ваш телефон один раз і вирішує; Полегшене лишає відтінок і прибирає розмиття.';
 
   @override
+  String get mapAlwaysNeeded =>
+      'Щоб карта оновлювалася, поки cubechat закрито, у налаштуваннях місцезнаходження треба вибрати «Завжди». Торкніться, щоб відкрити.';
+
+  @override
   String get profileScaleSmall => 'Менший';
 
   @override
