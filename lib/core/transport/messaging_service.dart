@@ -4843,6 +4843,11 @@ class MessagingService {
     );
     final Uint8List innerBytes;
     final Uint8List senderEdPub;
+    // Past the replay window, and when the author says they wrote it. See
+    // [_pastReplayWindow]: a post is a stored message and survives being old;
+    // the room's control frames do not.
+    bool channelStale;
+    DateTime channelSignedAt;
     try {
       final expectedEd = await _expectedEdPubFor(env.originPubkeyHash);
       final verified = await SignedPayload.verify(
@@ -4850,7 +4855,10 @@ class MessagingService {
         context: ctx,
         expectedEdPub: expectedEd,
       );
-      if (!_freshEnough(verified.timestampMs, peerId)) return;
+      if (!_plausibleClock(verified.timestampMs, peerId)) return;
+      channelStale = _pastReplayWindow(verified.timestampMs, peerId);
+      channelSignedAt =
+          DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
       innerBytes = verified.inner;
       senderEdPub = verified.senderEdPub;
       await _maybeCacheSignerForOrigin(
@@ -4865,6 +4873,7 @@ class MessagingService {
 
     try {
       final unpacked = unpackInnerPayload(innerBytes);
+      if (channelStale && !survivesReplayWindow(unpacked.type)) return;
       final authorName = _resolveAuthorName(senderEdPub);
       final reactorId = _hexOf(senderEdPub).substring(0, 16);
       await _ref.read(channelRosterControllerProvider.notifier).record(
@@ -5238,6 +5247,7 @@ class MessagingService {
             authorName: authorName,
             authorId: reactorId,
             manifestBytes: unpacked.body,
+            sentAt: _stampFrom(channelSignedAt),
           );
 
         case InnerPayloadType.imageChunk:
@@ -5800,6 +5810,26 @@ class MessagingService {
       );
       Uint8List innerBytes;
       Uint8List? verifiedSenderEdPub;
+      // When the sender says they sent it, in their own signature.
+      //
+      // Every received message used to be stamped `DateTime.now()` — the
+      // moment its last byte landed. Over a relay that is whenever the phone
+      // next connected, so a conversation reopened after a while showed
+      // yesterday's messages as having arrived at breakfast, all at the same
+      // minute; over Bluetooth it is when the transfer finished, which for a
+      // photo is minutes after it was sent. Nothing on the receiving side knew
+      // any better, and the file said so in several places.
+      //
+      // It did know. The signature covers a timestamp — it is what the replay
+      // window has always been reading — and a relay cannot alter it without
+      // the sender's Ed25519 key. So the clock was on the wire the whole time,
+      // used only to reject things.
+      //
+      // Clamped to now on use, never trusted forward: see [_stampFrom].
+      DateTime? signedAt;
+      // Older than the replay window. Not a verdict by itself any more — the
+      // payload type decides. See [_pastReplayWindow].
+      var stale = false;
       if (sealedPlain.isNotEmpty &&
           sealedPlain[0] == SignedPayload.markerByte) {
         try {
@@ -5809,7 +5839,10 @@ class MessagingService {
             context: ctx,
             expectedEdPub: expectedEd,
           );
-          if (!_freshEnough(verified.timestampMs, peerId)) return;
+          if (!_plausibleClock(verified.timestampMs, peerId)) return;
+          stale = _pastReplayWindow(verified.timestampMs, peerId);
+          signedAt =
+              DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
           innerBytes = verified.inner;
           verifiedSenderEdPub = verified.senderEdPub;
           DebugLog.instance.log(
@@ -5854,7 +5887,10 @@ class MessagingService {
             context: ctx,
             expectedEdPub: expectedEd,
           );
-          if (!_freshEnough(verified.timestampMs, peerId)) return;
+          if (!_plausibleClock(verified.timestampMs, peerId)) return;
+          stale = _pastReplayWindow(verified.timestampMs, peerId);
+          signedAt =
+              DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
           innerBytes = verified.inner;
           verifiedSenderEdPub = expectedEd;
           DebugLog.instance
@@ -5911,6 +5947,14 @@ class MessagingService {
         );
       }
 
+      // Old, and not the kind of thing that survives being old.
+      if (stale && !survivesReplayWindow(unpacked.type)) return;
+      // What the sender's own clock said, falling back to what the relay
+      // recorded when they published, and finally to now. All three are the
+      // same moment when nothing has gone wrong; they differ exactly when this
+      // matters.
+      final stamp = _stampFrom(signedAt ?? sentAt);
+
       switch (unpacked.type) {
         case InnerPayloadType.text:
           final plaintext = utf8.decode(
@@ -5946,7 +5990,7 @@ class MessagingService {
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
             text: plaintext,
-            sentAt: DateTime.now(),
+            sentAt: stamp,
             isMine: false,
             forwardSecret: cipher == _cipherX3dh,
             wireId: TransportEnvelope.hashHex(env.msgId),
@@ -5966,7 +6010,7 @@ class MessagingService {
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
             text: plaintext,
-            sentAt: DateTime.now(),
+            sentAt: stamp,
             isMine: false,
             forwardSecret: cipher == _cipherX3dh,
             wireId: TransportEnvelope.hashHex(env.msgId),
@@ -6127,6 +6171,7 @@ class MessagingService {
             senderPub: senderPub,
             wasSigned: verifiedSenderEdPub != null,
             manifestBytes: unpacked.body,
+            sentAt: stamp,
           );
 
         case InnerPayloadType.viewOnceConsumed:
@@ -6276,6 +6321,7 @@ class MessagingService {
     required String authorName,
     required String authorId,
     required Uint8List manifestBytes,
+    required DateTime sentAt,
   }) async {
     final MediaManifest manifest;
     try {
@@ -6296,6 +6342,7 @@ class MessagingService {
     _pendingManifests[_hexOf(manifest.mediaId)] = _ManifestEntry(
       manifest: manifest,
       arrivedAt: DateTime.now(),
+      sentAt: sentAt,
       peerId: channel.name,
       senderPub: null,
       channel: channel,
@@ -6521,6 +6568,7 @@ class MessagingService {
     required Uint8List? senderPub,
     required bool wasSigned,
     required Uint8List manifestBytes,
+    required DateTime sentAt,
   }) async {
     if (!wasSigned) {
       DebugLog.instance.log('CRYPTO',
@@ -6554,6 +6602,7 @@ class MessagingService {
         senderPub: senderPub,
         manifest: manifest,
         bytes: orphan.bytes,
+        sentAt: sentAt,
       );
       return;
     }
@@ -6565,6 +6614,7 @@ class MessagingService {
     _pendingManifests[key] = _ManifestEntry(
       manifest: manifest,
       arrivedAt: DateTime.now(),
+      sentAt: sentAt,
       peerId: peerId,
       senderPub: senderPub,
     );
@@ -6685,6 +6735,7 @@ class MessagingService {
       senderPub: pending.senderPub,
       manifest: pending.manifest,
       bytes: bytes,
+      sentAt: pending.sentAt,
       channel: pending.channel,
       authorName: pending.authorName,
       authorId: pending.authorId,
@@ -6696,6 +6747,10 @@ class MessagingService {
     required Uint8List? senderPub,
     required MediaManifest manifest,
     required Uint8List bytes,
+    /// When the sender signed the manifest. Null only from a path that has no
+    /// manifest of its own to read it from, where the moment of assembly is
+    /// the best available answer.
+    DateTime? sentAt,
     Channel? channel,
     String? authorName,
     String? authorId,
@@ -6774,7 +6829,7 @@ class MessagingService {
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
             text: manifest.caption ?? manifest.mime,
-            sentAt: DateTime.now(),
+            sentAt: _stampFrom(sentAt),
             isMine: false,
             kind: MessageKind.image,
             imagePath: path,
@@ -6814,7 +6869,7 @@ class MessagingService {
             id: 'm${DateTime.now().microsecondsSinceEpoch}',
             chatId: peerId,
             text: manifest.mime,
-            sentAt: DateTime.now(),
+            sentAt: _stampFrom(sentAt),
             isMine: false,
             kind: MessageKind.audio,
             audioPath: path,
@@ -7979,20 +8034,75 @@ class MessagingService {
     return true;
   }
 
-  /// Replay-window gate shared by the full + compact signed paths. The
-  /// signed timestamp can't be refreshed by a relay without the sender's
-  /// Ed25519 key, so a captured frame re-injected after dedup expiry still
-  /// carries its original send time. Returns false (and logs) when the
-  /// frame is too old or implausibly far in the future.
-  bool _freshEnough(int timestampMs, String peerId) {
+  /// Whether the signed timestamp is older than the replay window.
+  ///
+  /// Not a verdict on its own any more, and that is the change. It used to be:
+  /// past the window, dropped, whatever it was. A phone out of contact for more
+  /// than an hour therefore *received* the mail waiting for it on the relay and
+  /// then destroyed it — one `drop signed body … stale` line and nothing else,
+  /// no gap in the conversation, nothing to notice. Seen in a real log with two
+  /// messages in it, 62 and 64 minutes old.
+  ///
+  /// The sender's own queue could not rescue them either: it holds the built,
+  /// already-signed frame, so every retry carries the original timestamp and
+  /// every retry after the first hour is refused for certain. Two mechanisms
+  /// that both assume an hour is enough, failing together the moment it is not.
+  ///
+  /// What the window is for is a captured frame re-injected after the dedup
+  /// cache forgets it. For anything that lands in the message store that threat
+  /// is already answered, permanently and by construction — a replayed message
+  /// is recognised by its own id (`skip already-stored message`), and the store
+  /// does not expire after an hour. So the window is kept exactly where it is
+  /// still the only defence, and lifted where it was never the defence at all.
+  /// [_survivesReplayWindow] draws that line.
+  bool _pastReplayWindow(int timestampMs, String peerId) {
     final skewMs = DateTime.now().millisecondsSinceEpoch - timestampMs;
-    if (skewMs > _replayMaxAgeMs) {
-      DebugLog.instance.log(
-          'CRYPTO',
-          'drop signed body from $peerId: stale '
-              '(${(skewMs / 1000).round()}s old > replay window)');
-      return false;
-    }
+    if (skewMs <= _replayMaxAgeMs) return false;
+    DebugLog.instance.log(
+        'CRYPTO',
+        'old signed body from $peerId '
+            '(${(skewMs / 1000).round()}s old > replay window)');
+    return true;
+  }
+
+  /// Whether a payload of this type is safe to accept past the replay window.
+  ///
+  /// Only what the message store itself dedupes, forever: the text somebody
+  /// wrote and the media that travels with it. Everything else keeps the hard
+  /// window, because nothing else has a second line of defence — a replayed
+  /// receipt, reaction, edit or delete lands on a message that is already
+  /// there and changes it, and an edit in particular could put back a version
+  /// the sender has since replaced.
+  @visibleForTesting
+  static bool survivesReplayWindow(InnerPayloadType type) => switch (type) {
+        InnerPayloadType.text ||
+        InnerPayloadType.textReply ||
+        InnerPayloadType.imageChunk ||
+        InnerPayloadType.audioChunk ||
+        InnerPayloadType.mediaManifest =>
+          true,
+        _ => false,
+      };
+
+  /// A send time we are willing to write into the transcript.
+  ///
+  /// Clamped to now, never forward. [_plausibleClock] has already refused
+  /// anything wildly ahead, but a few seconds of ordinary clock drift between
+  /// two phones would otherwise put a message in the future — where it sorts
+  /// above everything, sits under tomorrow's day separator, and stays there.
+  DateTime _stampFrom(DateTime? claimed) {
+    final now = DateTime.now();
+    if (claimed == null || claimed.isAfter(now)) return now;
+    return claimed;
+  }
+
+  /// Hard drop: a timestamp our clock says has not happened yet.
+  ///
+  /// Kept absolute, unlike the age above. Nothing legitimate is stamped in the
+  /// future, and a frame claiming to be is either a broken clock or somebody
+  /// trying to park a message at the top of a conversation forever.
+  bool _plausibleClock(int timestampMs, String peerId) {
+    final skewMs = DateTime.now().millisecondsSinceEpoch - timestampMs;
     if (skewMs < -_replayMaxFutureMs) {
       DebugLog.instance.log(
           'CRYPTO',
@@ -9674,6 +9784,7 @@ class _ManifestEntry {
   _ManifestEntry({
     required this.manifest,
     required this.arrivedAt,
+    required this.sentAt,
     required this.peerId,
     required this.senderPub,
     this.channel,
@@ -9682,6 +9793,13 @@ class _ManifestEntry {
   });
   final MediaManifest manifest;
   final DateTime arrivedAt;
+
+  /// When the sender says they sent it — their signed timestamp, not the
+  /// moment the last chunk landed. A photo over Bluetooth finishes arriving
+  /// minutes after it was sent, and the transcript used to show the second
+  /// number; the album grouping read it too, which is why two photos sent
+  /// together over a slow link drew as two bubbles.
+  final DateTime sentAt;
 
   /// The chat the finished media belongs in: a peer's pubkey hex, or a
   /// `#channel` name when [channel] is set.

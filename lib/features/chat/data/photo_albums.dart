@@ -50,14 +50,40 @@ const int kMaxAlbumPhotos = 9;
 /// enough that a picture sent later, as a reply to something said in between,
 /// stays its own message.
 ///
-/// Five minutes, not ninety seconds, because a received photo is stamped when
-/// its last chunk lands rather than when it was sent — nothing on the wire
-/// carries the sender's clock — so the gap between two of them includes the
-/// whole transfer of the first. Two pictures sent together from an iPhone over
-/// Bluetooth arrived four minutes apart and drew as two bubbles, while the
-/// same pair over a fast link grouped correctly. The proper fix is a timestamp
-/// in the manifest; this stops the display depending on the link speed.
-const Duration kAlbumWindow = Duration(minutes: 5);
+/// **Ninety seconds again, and this time it means ninety seconds.**
+///
+/// It was widened to five minutes because a received photo was stamped when its
+/// last chunk landed rather than when it was sent, so the gap between two of
+/// them included the whole transfer of the first — two pictures sent together
+/// from an iPhone over Bluetooth arrived four minutes apart and drew as two
+/// bubbles. That note ended "the proper fix is a timestamp in the manifest",
+/// and the proper fix is now in: every received message and every received
+/// photo is stamped from the sender's own signed timestamp, which has been on
+/// the wire all along and was only ever read to reject things.
+///
+/// So this measures what it says again — time between two photos being *sent* —
+/// and the five minutes it needed while it was measuring transfers is now the
+/// thing that folds two separate sends into one album.
+const Duration kAlbumWindow = Duration(seconds: 90);
+
+/// How close the *second* photo has to be for a run to open at all.
+///
+/// A run holding one photo has no rhythm to be judged against, so [kAlbumWindow]
+/// was the only test — and any two single photos inside it were folded together
+/// however much had happened in between. Reported as: one person sends a photo,
+/// the other sends photos, the first sends one more, and it attaches to their
+/// first.
+///
+/// A picker sends its batch as fast as it can encode, and in *sent* time that
+/// is seconds. A person who sends one picture, watches somebody answer, and
+/// sends another has taken far longer than that, whatever the link was doing.
+/// Twenty seconds tells those apart and needs no heuristic about what happened
+/// in between — which was tried, and broke the case two people sending batches
+/// at the same time exist to keep working.
+///
+/// This is only ever the fallback. A batch of two or more announces itself
+/// ([Message.albumId], `AlbumHint`), and that answer wins outright above.
+const Duration kAlbumOpeningGap = Duration(seconds: 20);
 
 /// Fold consecutive photos from one sender into albums.
 ///
@@ -180,7 +206,7 @@ bool _joins(List<Message> run, Message next) {
 
   final gap = next.sentAt.difference(previous.sentAt).abs();
   if (gap > kAlbumWindow) return false;
-  if (run.length < 2) return true;
+  if (run.length < 2) return gap <= kAlbumOpeningGap;
 
   // The batch's own rhythm, rather than one window for every link.
   //

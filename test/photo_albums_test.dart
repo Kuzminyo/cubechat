@@ -170,12 +170,16 @@ void main() {
     expect(albums.isFolded('second0'), isFalse);
   });
 
-  test('a slow batch is still one batch', () {
-    // Over Bluetooth a photo can take a minute, and an even minute-apart run is
-    // one send — the adaptive limit has to scale with the link, not fight it.
+  test('an even run keeps going at its own pace', () {
+    // This used to read "over Bluetooth a photo can take a minute", with the
+    // photos a minute apart, because a received photo was stamped when its last
+    // chunk landed. It is stamped from the sender's signature now, so the link
+    // no longer stretches a batch out and the gaps here are what a picker
+    // actually produces. The rule under test is unchanged: a run with an even
+    // rhythm carries on at that rhythm rather than at one fixed window.
     final albums = groupPhotoAlbums([
       for (var i = 0; i < 4; i++)
-        photo('slow$i', second: i * 60, isMine: false),
+        photo('slow$i', second: i * 10, isMine: false),
     ]);
 
     expect(albums.albumAt('slow0'), hasLength(4));
@@ -236,5 +240,82 @@ void main() {
   test('a lone photo is left alone', () {
     expect(groupPhotoAlbums([photo('a')]).isEmpty, isTrue);
     expect(groupPhotoAlbums(const []).isEmpty, isTrue);
+  });
+
+  test('a photo sent after the other person answered with one is not '
+      'folded into the first', () {
+    // The report, exactly: one sends a photo, the other sends photos, the first
+    // sends one more — and it attached to their first. Neither of the two has
+    // an album id, because a single photo announces none, so this used to fall
+    // through to the five-minute window and fold them together however much
+    // happened in between.
+    final albums = groupPhotoAlbums([
+      photo('mine-1', second: 0),
+      photo('theirs-1', second: 30, isMine: false, authorId: 'them'),
+      photo('theirs-2', second: 33, isMine: false, authorId: 'them'),
+      photo('mine-2', second: 70),
+    ]);
+
+    expect(albums.albumAt('mine-1'), isNull, reason: 'two separate sends');
+    expect(albums.isFolded('mine-2'), isFalse);
+    // Theirs really were a batch — three seconds apart — and they still are.
+    expect(albums.albumAt('theirs-1')?.length, 2);
+  });
+
+  test('two simultaneous batches still survive being interleaved', () {
+    // The case the per-sender runs exist for, and the one the rule above must
+    // not break: both people are sending a batch, so their photos land in one
+    // another's runs, and neither batch may be cut up by the other.
+    final albums = groupPhotoAlbums([
+      photo('mine-1', second: 0),
+      photo('theirs-1', second: 1, isMine: false, authorId: 'them'),
+      photo('mine-2', second: 2),
+      photo('theirs-2', second: 3, isMine: false, authorId: 'them'),
+      photo('mine-3', second: 4),
+    ]);
+
+    expect(albums.albumAt('mine-1')?.length, 3);
+    expect(albums.albumAt('theirs-1')?.length, 2);
+  });
+
+  test('an announced batch is grouped even when it was interrupted', () {
+    // A build that announces its albums says where the batch begins and ends,
+    // and that answer beats every heuristic — including the new one.
+    final albums = groupPhotoAlbums([
+      photo('mine-1', second: 0, albumId: 'a1'),
+      photo('theirs-1', second: 30, isMine: false, authorId: 'them'),
+      photo('mine-2', second: 70, albumId: 'a1'),
+    ]);
+
+    expect(albums.albumAt('mine-1')?.length, 2);
+  });
+
+  test('a batch crawling over a slow link is still one album', () {
+    // The case the five-minute window was widened for, answered properly now:
+    // the photos are stamped when the sender sent them, so a transfer taking
+    // four minutes does not push them apart in the first place. Announced as
+    // one batch, which is what a picker sending two photos does.
+    final albums = groupPhotoAlbums([
+      photo('a', second: 0, albumId: 'batch'),
+      photo('b', second: 240, albumId: 'batch'),
+    ]);
+
+    expect(albums.albumAt('a')?.length, 2);
+  });
+
+  test('two photos from an old build group only if they were sent together',
+      () {
+    // No album id, so the gap decides. Seconds apart is a picker; a minute
+    // apart is a person doing something twice.
+    expect(
+      groupPhotoAlbums([photo('a', second: 0), photo('b', second: 4)])
+          .albumAt('a')
+          ?.length,
+      2,
+    );
+    expect(
+      groupPhotoAlbums([photo('a', second: 0), photo('b', second: 60)]).isEmpty,
+      isTrue,
+    );
   });
 }
