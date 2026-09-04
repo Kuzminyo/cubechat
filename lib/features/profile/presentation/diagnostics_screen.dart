@@ -545,7 +545,7 @@ class _CpuPanel extends StatefulWidget {
   State<_CpuPanel> createState() => _CpuPanelState();
 }
 
-class _CpuPanelState extends State<_CpuPanel> {
+class _CpuPanelState extends State<_CpuPanel> with WidgetsBindingObserver {
   Timer? _tick;
   CpuReport? _report;
 
@@ -559,6 +559,7 @@ class _CpuPanelState extends State<_CpuPanel> {
     super.initState();
     if (!CpuProbe.instance.supported) return;
     CpuProbe.instance.revision.addListener(_onWindowRestarted);
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_refresh());
     _tick = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
   }
@@ -566,8 +567,44 @@ class _CpuPanelState extends State<_CpuPanel> {
   @override
   void dispose() {
     _tick?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     CpuProbe.instance.revision.removeListener(_onWindowRestarted);
     super.dispose();
+  }
+
+  /// Coming back from the background ends one window and starts another.
+  ///
+  /// The baseline is taken when this screen appears and was never touched
+  /// again, so leaving the app with Diagnostics open and returning to it
+  /// produced a report spanning the whole absence: the milliseconds were real
+  /// but the percentages were divided by a wall clock that had been running
+  /// with nobody looking. Reported as "GPU raster was either 73 thousand or
+  /// 7300, I could not screenshot it" — and the difference between those two
+  /// is the difference between a normal window and the GPU working while the
+  /// app is not on screen, which is the kind of thing this panel exists to
+  /// catch.
+  ///
+  /// So the window that just ended is written to the log before the new one
+  /// starts. It answers the question the old behaviour only ever hinted at —
+  /// what the process did while away — and it answers it somewhere that
+  /// survives without a screenshot.
+  ///
+  /// Not while a hold is open: a hold is somebody deliberately measuring across
+  /// screens, and backgrounding the app in the middle of that is still their
+  /// window to end, not this one's.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (FrameStats.instance.isHolding) return;
+    unawaited(_restartAfterBackground());
+  }
+
+  Future<void> _restartAfterBackground() async {
+    final away = await CpuProbe.instance.report();
+    if (away != null) {
+      DebugLog.instance.log('CPU', 'while away — ${away.summary}');
+    }
+    await CpuProbe.instance.begin();
   }
 
   /// A reset or a newly armed hold starts the window again, and the numbers on

@@ -53,6 +53,48 @@ void main() {
     expect(acks.ackedUpTo(chat), at);
   });
 
+  test('both markers can be waited for, which is what stops the storm',
+      () async {
+    // The sweep reads these two together — how far the person has read, and
+    // how far that has been reported — and it runs when a relay connects,
+    // about a second after launch, while the boxes are still opening. Loaded
+    // out of step they say the worst possible thing: everything read, nothing
+    // acknowledged, so acknowledge the whole conversation again. Sixteen relay
+    // publishes and two seconds of work, on every launch, measured on a phone
+    // with about two hundred messages in one chat.
+    //
+    // The ack marker had `loaded` and the read marker did not, and nothing
+    // awaited either. Both have it now, and this is the guarantee the sweep
+    // leans on: after awaiting, what was on disk is in the state.
+    final at = DateTime(2026, 9, 4, 19, 33);
+    var container = ProviderContainer();
+    await container.read(readMarkersControllerProvider.notifier).markRead(
+          chat,
+          at: at,
+        );
+    await container.read(ackMarkersControllerProvider.notifier).markAcked(
+          chat,
+          at,
+        );
+    await settleBackgroundStorage();
+    container.dispose();
+
+    container = ProviderContainer();
+    addTearDown(container.dispose);
+    final reads = container.read(readMarkersControllerProvider.notifier);
+    final acks = container.read(ackMarkersControllerProvider.notifier);
+    // No settle: the awaits below are the whole mechanism under test.
+    await reads.loaded;
+    await acks.loaded;
+
+    expect(container.read(readMarkersControllerProvider)[chat], at);
+    expect(
+      acks.ackedUpTo(chat),
+      at,
+      reason: 'read without waiting, this is null and everything is re-acked',
+    );
+  });
+
   test('it never moves backwards', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);

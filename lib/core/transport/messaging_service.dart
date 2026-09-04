@@ -2360,6 +2360,32 @@ class MessagingService {
     // the other phone showed two ticks for a conversation nobody had looked
     // at. No marker means the chat has never been opened, and there is nothing
     // honest to report about it.
+    // Waited for, not read early — and this is the whole of the cold-start
+    // storm.
+    //
+    // The sweep runs when a relay connects, which is about a second after
+    // launch, while both of these boxes are still opening. They are read
+    // together and they answer two halves of one question: how far the person
+    // has read, and how far that has been reported. Loaded out of step they
+    // say the worst possible thing — everything read, nothing acknowledged —
+    // and the entire conversation is acknowledged again.
+    //
+    // Measured on a phone with about two hundred messages in one chat: sixteen
+    // relay publishes inside 1.1 seconds, `sendReadReceipts total 2089 ms`, on
+    // every single launch. It also filled the 200-line debug log in three
+    // seconds, so every log sent in to diagnose anything else arrived holding
+    // nothing but this.
+    //
+    // The marker that exists to prevent exactly this was added and is correct;
+    // it was simply being read before it was there. `announceCopyRestriction`
+    // learned the same lesson about its own settings box a while ago and has
+    // the same `await` two dozen lines up.
+    final readMarkers = _ref.read(readMarkersControllerProvider.notifier);
+    final ackMarkers = _ref.read(ackMarkersControllerProvider.notifier);
+    await readMarkers.loaded;
+    await ackMarkers.loaded;
+    if (_disposed) return;
+
     final readUpTo = _ref.read(readMarkersControllerProvider)[canonicalId];
     if (readUpTo == null) return;
 

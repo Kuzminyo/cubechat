@@ -23,11 +23,29 @@ class ReadMarkersController extends Notifier<Map<String, DateTime>> {
 
   Box<dynamic>? _box;
 
+  Future<void>? _loading;
+
   @override
   Map<String, DateTime> build() {
-    unawaited(_load());
+    _loading = _load();
     return const <String, DateTime>{};
   }
+
+  /// Resolves once the box is open, whether or not it had anything in it.
+  ///
+  /// The same guarantee [AckMarkersController.loaded] gives, and needed for the
+  /// same reason from the other side. Both of these are read together when read
+  /// receipts are swept — one says how far the person has read, the other how
+  /// far that has been reported — and the sweep runs when a relay connects,
+  /// about a second after launch, while these boxes are still opening.
+  ///
+  /// Read too early they disagree in the worst possible direction: this one
+  /// loaded and the other not, which reads as "everything has been read and
+  /// nothing has been acknowledged" and acknowledges the entire conversation
+  /// again. On a phone with a couple of hundred messages that is sixteen relay
+  /// publishes and two seconds of work on every cold start, and a 200-line
+  /// debug log that holds three seconds of history because the storm filled it.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   Future<void> _load() async {
     try {
@@ -83,6 +101,17 @@ class ReadMarkersController extends Notifier<Map<String, DateTime>> {
 
   Future<void> _persist() async {
     try {
+      // See [loaded]. Without this the first write of a launch lands on a null
+      // box and is lost without a word — and the write that happens first on a
+      // launch is this one, because marking a chat read is what opening it
+      // does. So a chat opened in the seconds after launch was read on screen
+      // and unread again on the next start, and the receipt sweep saw no marker
+      // at all for it.
+      //
+      // [AckMarkersController] below has carried this line for a while; this
+      // half of the same file never got it. The two are read together and one
+      // of them was silently dropping writes.
+      await loaded;
       await _box?.put(_key, {
         for (final e in state.entries) e.key: e.value.toIso8601String(),
       });

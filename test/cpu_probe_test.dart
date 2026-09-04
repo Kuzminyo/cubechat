@@ -266,6 +266,25 @@ void main() {
       });
     });
 
+    test('a window fits on one line of the log', () {
+      // The window that matters most ends with nobody looking at it — the app
+      // was in the background — so there is no screen to photograph. It has to
+      // be readable as text, and the wall time has to travel beside the
+      // milliseconds: 73000 ms is an alarm over forty seconds and unremarkable
+      // over half an hour, and the number alone cannot say which. Reported as
+      // "GPU raster was either 73 thousand or 7300, I could not screenshot it".
+      final r = report(
+        const [
+          CpuThread('GPU raster', 73000, 4),
+          CpuThread('platform + Dart UI', 900, 0.05),
+        ],
+        wallMs: 1800000,
+      );
+
+      expect(r.summary, contains('GPU raster 73000 ms'));
+      expect(r.summary, contains('over 1800 s'));
+    });
+
     test('top() is a ceiling, not a requirement', () {
       final r = report([
         const CpuThread('Dart UI', 300, 3),

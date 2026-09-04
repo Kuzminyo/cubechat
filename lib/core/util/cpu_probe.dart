@@ -517,6 +517,20 @@ class CpuReport {
     CpuProbe.impellerLabel,
   };
 
+  /// The whole window on one line, for the log.
+  ///
+  /// The panel is a screen, and a screen has to be photographed to be shared.
+  /// A window that ends while nobody is looking at it — coming back from the
+  /// background — has no screen to be photographed at all, and that is exactly
+  /// the window worth reading. Same numbers, in a form that survives.
+  String get summary {
+    final rows = top(4).map(
+      (t) => '${t.name} ${t.cpuMs} ms '
+          '(${t.percentOfOneCore.toStringAsFixed(0)}%)',
+    );
+    return '${rows.join(', ')} over ${(wallMs / 1000).toStringAsFixed(0)} s';
+  }
+
   /// The sentence the panel exists to print.
   ///
   /// Deliberately about *where*, not about *how much*: the absolute number
