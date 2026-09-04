@@ -57,7 +57,7 @@ void main() {
   test('a full buffer says the window is already truncated', () {
     // Distinct lines, because an identical one is counted rather than appended
     // and would never fill the buffer.
-    for (var i = 0; i < 210; i++) {
+    for (var i = 0; i < DebugLog.capacity + 10; i++) {
       DebugLog.instance.log('MESH', 'forwarded frame $i');
     }
 
@@ -83,5 +83,42 @@ void main() {
     DebugLog.instance.log('MESH', 'forwarded a frame');
 
     expect(DebugLog.instance.summarize(), contains('RECEIPT 50'));
+  });
+
+  test('a burst that alternates between two shapes collapses to two lines',
+      () {
+    // Adjacent-only collapsing caught nothing that mattered, because a burst
+    // alternates. This is the shape it does catch: two lines taking turns.
+    for (var i = 0; i < 20; i++) {
+      DebugLog.instance.log('RECEIPT', 'sent 12 read ack(s) to e3f9fef4');
+      DebugLog.instance.log('NOSTR', 'sent 383B to e3f9fef4 via relay');
+    }
+
+    final lines = DebugLog.instance.entries.map((e) => e.text).toList();
+    expect(lines, hasLength(2));
+    expect(lines.every((l) => l.contains('20')), isTrue);
+  });
+
+  test('a burst that also emits unique lines is only partly collapsed', () {
+    // The honest limit, written down so nobody reads more into the mechanism
+    // than it does. The read-receipt sweep put a `published <event id>` between
+    // every repeat, and those ids are all different — so as they pile up they
+    // push the identical lines further apart than the lookback reaches, and
+    // the collapsing gives out.
+    //
+    // Which is why the buffer is a thousand lines and why the sweep itself was
+    // fixed. This one is the cheapest of the three and the least load-bearing.
+    for (var i = 0; i < 16; i++) {
+      DebugLog.instance.log('RECEIPT', 'sent 12 read ack(s) to e3f9fef4');
+      DebugLog.instance.log('NOSTR', 'published ${i.toRadixString(16)}');
+    }
+
+    final lines = DebugLog.instance.entries.map((e) => e.text).toList();
+    expect(lines.where((l) => l.contains('published')), hasLength(16));
+    expect(
+      lines.where((l) => l.contains('read ack(s)')).length,
+      lessThan(16),
+      reason: 'some collapsing happens, just not all of it',
+    );
   });
 }

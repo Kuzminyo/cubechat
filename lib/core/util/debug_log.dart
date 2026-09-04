@@ -20,7 +20,25 @@ class DebugLog extends ChangeNotifier {
 
   static final DebugLog instance = DebugLog._();
 
-  static const int _capacity = 200;
+  /// Lines held. Was 200, and 200 turned out to be about three seconds.
+  ///
+  /// The cap was set against an unbounded heap, which is the right worry and
+  /// the wrong number: a line is roughly 130 bytes, so this is under 150 KB on
+  /// a phone that routinely holds a decoded photograph twenty times that. What
+  /// it cost instead was every diagnosis of the day it was measured — logs sent
+  /// in about late messages, phantom notifications and slow frames all arrived
+  /// covering three seconds, because a read-receipt sweep had filled the buffer
+  /// before anything else could be read.
+  ///
+  /// The sweep is fixed and the collapsing below is wider, so this is the third
+  /// change of the same shape rather than the only one. It is here because the
+  /// other two make the window longer and this makes it long enough: the same
+  /// traffic that read three seconds reads a couple of minutes at a thousand.
+  static const int _capacity = 1000;
+
+  /// How many lines the buffer holds, for a test that has to fill it.
+  @visibleForTesting
+  static int get capacity => _capacity;
   final List<DebugLogEntry> _entries = [];
 
   /// Newest first.
@@ -52,16 +70,42 @@ class DebugLog extends ChangeNotifier {
     debugPrint('[$tag] $message');
   }
 
+  /// How far back to look for a line to collapse into, and how recently it
+  /// must have been seen.
+  ///
+  /// Adjacent-only was the rule and it caught nothing that mattered. A burst
+  /// interleaves: the read-receipt sweep writes `sent 12 read ack(s)`, then
+  /// `sent 383B to …`, then `published <id>` — and the id is different every
+  /// time, so the two lines that *are* identical are never neighbours and the
+  /// counter never fired. Sixteen sweeps came to forty-eight lines, which is a
+  /// quarter of the whole buffer for one second of one subsystem.
+  ///
+  /// Four back and three seconds: wide enough for a burst that alternates
+  /// between two or three shapes, narrow enough that a line collapsed into an
+  /// earlier one is still describing the same moment. A repeat outside either
+  /// bound is a new line, because by then the count would be lying about when.
+  static const int _collapseLookback = 4;
+  static const Duration _collapseWithin = Duration(seconds: 3);
+
   void _push(String line) {
-    final last = _entries.isEmpty ? null : _entries.last;
-    if (last != null && last.line == line) {
-      last.repeats++;
-      last.at = DateTime.now();
-    } else {
-      _entries.add(DebugLogEntry(line, DateTime.now()));
-      if (_entries.length > _capacity) {
-        _entries.removeRange(0, _entries.length - _capacity);
-      }
+    final now = DateTime.now();
+    final from =
+        _entries.length < _collapseLookback ? 0 : _entries.length - _collapseLookback;
+    for (var i = _entries.length - 1; i >= from; i--) {
+      final entry = _entries[i];
+      if (entry.line != line) continue;
+      if (now.difference(entry.at) > _collapseWithin) break;
+      // Counted where it already sits rather than moved to the end: the buffer
+      // is read in order, and a line that jumps forward every time it repeats
+      // would reorder the very sequence somebody is reading it for.
+      entry.repeats++;
+      entry.at = now;
+      _scheduleNotify();
+      return;
+    }
+    _entries.add(DebugLogEntry(line, now));
+    if (_entries.length > _capacity) {
+      _entries.removeRange(0, _entries.length - _capacity);
     }
     _scheduleNotify();
   }
