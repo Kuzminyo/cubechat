@@ -51,15 +51,26 @@ void main() {
       ..reset()
       ..start();
     await tester.pumpWidget(const SizedBox.shrink());
+
+    // The warm-up, played out rather than skipped. Frames are drawn and their
+    // timings arrive, and those timings are discarded — which is the whole
+    // point of the warm-up and was also the bug: discarding used to return
+    // without taking the frame's entry off the queue, so everything afterwards
+    // was answered about a frame six or seven back. A shipped log read
+    // `nothing counted rebuilt` on every slow frame in it, which is impossible
+    // during a route transition and was a broken meter, not a finding.
+    for (var i = 0; i < 3; i++) {
+      FrameStats.countBuild('during-the-warm-up');
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      FrameStats.instance.ingestForTest([_frame(buildMs: 1, rasterMs: 1)]);
+    }
+
     // Real time, not pumped time: the warm-up filter reads the wall clock, and
     // `pump` moves the test's clock without moving that one.
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 800)),
     );
-    // Drop the frames drawn getting here. In the app every drawn frame is
-    // answered by exactly one timing; a test injects timings by hand, so the
-    // queue has to be emptied of frames no timing will ever arrive for.
-    FrameStats.instance.reset();
 
     // Frame one rebuilds something. `pump` only draws when a frame is already
     // scheduled — with nothing dirty it returns having done nothing at all —

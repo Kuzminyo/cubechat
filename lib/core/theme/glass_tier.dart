@@ -80,6 +80,27 @@ class GlassTierController extends Notifier<GlassTier> {
   /// that means the slow tenth of frames is missing even a 60 Hz budget.
   static const double _rasterP90Ceiling = 16.7;
 
+  /// A single frame long enough to be felt as a stop, not a stutter.
+  ///
+  /// The p90 above cannot see this and that is the point. Measured on a 120 Hz
+  /// Android phone on 2026-09-04: raster p90 4.5 ms, whole session 41 slow
+  /// frames out of 3697 — by every rolling number, a phone that can easily
+  /// afford the glass. And it froze on the way back out of a chat, repeatedly,
+  /// with `build 0.5 ms, raster 93.1 ms` in the log: eleven dropped frames in a
+  /// row, and the one thing the person holding it actually complained about.
+  ///
+  /// The cause is the blur's own optimisation. Panes drop the gaussian while a
+  /// route slides (see `_holdGlassStill`) and take it back when the animation
+  /// ends — so every pane's backdrop layer is allocated again in one frame. Set
+  /// to light glass on the same phone, the worst raster frame went from 93 ms
+  /// to 27 and the freeze went with it.
+  ///
+  /// So the verdict asks both questions. An average says whether the interface
+  /// is affordable; the worst frame says whether it is *bearable*, and one 90 ms
+  /// stop is worth more than a thousand frames that were 2 ms under budget.
+  /// 50 ms is three dropped frames at 60 Hz — past arguing about.
+  static const double _rasterWorstCeiling = 50;
+
   /// Long enough to catch scrolling and a screen change, short enough that the
   /// answer arrives while the app is still being opened for the first time.
   static const Duration _measureAfter = Duration(seconds: 45);
@@ -149,11 +170,14 @@ class GlassTierController extends Notifier<GlassTier> {
         return;
       }
       final p90 = stats.p90RasterMs;
-      final verdict =
-          p90 > _rasterP90Ceiling ? GlassTier.light : GlassTier.full;
+      final worst = stats.worstRasterMs;
+      final verdict = p90 > _rasterP90Ceiling || worst > _rasterWorstCeiling
+          ? GlassTier.light
+          : GlassTier.full;
       DebugLog.instance.log(
         'GLASS',
-        'raster p90 ${p90.toStringAsFixed(1)} ms over ${stats.totalFrames} '
+        'raster p90 ${p90.toStringAsFixed(1)} ms, worst '
+            '${worst.toStringAsFixed(1)} ms over ${stats.totalFrames} '
             'frames — ${verdict.name} glass',
       );
       try {

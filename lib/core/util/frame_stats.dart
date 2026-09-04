@@ -102,6 +102,15 @@ class FrameStats {
     if (_closingFrames) return;
     _closingFrames = true;
     SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      // Nobody is draining while stopped, and a persistent callback cannot be
+      // removed — so pushing here would fill the queue with frames no timing
+      // will ever claim, and the panel would come back up misaligned by
+      // however many the trim below left. The counts are cleared for the same
+      // reason: they belong to a frame nobody is measuring.
+      if (!_listening) {
+        _buildCounts.clear();
+        return;
+      }
       if (_buildCounts.isEmpty) {
         // Still a frame, and still needs an entry: the queue below is matched
         // to the timings stream position by position, so a frame that skipped
@@ -125,11 +134,28 @@ class FrameStats {
   ///
   /// Paired with the timings stream by position rather than by a frame number:
   /// every drawn frame pushes exactly one entry here and produces exactly one
-  /// [FrameTiming], and both arrive in order. If the two ever slip, the counts
-  /// are off by a frame — which is still an incomparably better answer than the
-  /// one-second window this replaced.
+  /// [FrameTiming], and both arrive in order.
+  ///
+  /// Position pairing is only as good as the draining, and the first version of
+  /// this got that wrong in the one place it is easy to: the warm-up filter
+  /// returned before taking anything, so the queue ran permanently ahead and
+  /// every count landed on a frame it did not belong to. A whole shipped log
+  /// read `nothing counted rebuilt` on every slow frame, which is not a finding
+  /// about the app but a broken meter. Both paths drain now, and [_drainAndDrop]
+  /// is what the discarding one calls.
   final List<Map<String, int>> _frameCounts = <Map<String, int>>[];
   static const int _frameCountsDepth = 8;
+
+  /// Take [count] entries off the front and throw them away.
+  ///
+  /// The trim in the frame callback is a safety valve, not a mechanism: it fires
+  /// only when nobody is draining, and by then alignment is already lost. This
+  /// is the drain for timings that are deliberately not being reported on.
+  void _drainFrameCounts(int count) {
+    for (var i = 0; i < count && _frameCounts.isNotEmpty; i++) {
+      _frameCounts.removeAt(0);
+    }
+  }
 
   /// Whether frames are being collected. False means the engine is not calling
   /// us at all, which is what a screen nobody is looking at should cost.
@@ -139,6 +165,11 @@ class FrameStats {
     if (!_listening) return;
     _listening = false;
     SchedulerBinding.instance.removeTimingsCallback(_onTimings);
+    // Whatever is queued belongs to frames whose timings will never be taken.
+    // Left behind, they would be handed to the first frames of the *next*
+    // measuring window and blame them for somebody else's rebuilds.
+    _frameCounts.clear();
+    _buildCounts.clear();
   }
 
   Timer? _holdTimer;
@@ -227,7 +258,21 @@ class FrameStats {
   void _onTimings(List<FrameTiming> timings) {
     final from = _collectFrom;
     if (from != null) {
-      if (DateTime.now().isBefore(from)) return;
+      if (DateTime.now().isBefore(from)) {
+        // Discarded, but still drained. The queue of per-frame counts is
+        // matched to this stream position by position, and every frame drawn
+        // during the warm-up pushed an entry — returning here without taking
+        // them left the two permanently out of step by however many frames the
+        // warm-up covered, capped at [_frameCountsDepth] by the trim below.
+        //
+        // What that looked like from outside: every slow frame in a shipped log
+        // read `nothing counted rebuilt`, which cannot be true of a route
+        // transition, and would have been read as "widget rebuilds are not the
+        // cost" — a conclusion drawn from an instrument that was answering
+        // about a different frame each time.
+        _drainFrameCounts(timings.length);
+        return;
+      }
       _collectFrom = null;
     }
     for (final t in timings) {
