@@ -726,7 +726,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pushWakeDeniedHint =>
-      'iOS was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.';
+      'The system was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.';
 
   @override
   String get pushWakeRefused => 'Notifications were not allowed';

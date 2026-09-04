@@ -1269,7 +1269,7 @@ class _PrivacyCard extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           const _QuietHoursRow(),
-          if (PlatformInfo.isIOS) ...[
+          if (PlatformInfo.isMobile) ...[
             const SizedBox(height: 14),
             const _PushWakeRow(),
           ],
@@ -1281,9 +1281,14 @@ class _PrivacyCard extends ConsumerWidget {
 
 /// "Wake this phone when something arrives."
 ///
-/// iOS only, and off until it is turned on. A terminated app receives nothing —
-/// APNs is the only way in, and APNs needs a server to drive it, which is the
-/// one piece of this app that is not peer to peer.
+/// Both phones now, and off until it is turned on. A terminated app receives
+/// nothing — APNs on iOS, FCM on Android, and either one needs a server to
+/// drive it, which is the one piece of this app that is not peer to peer.
+///
+/// Android was left out while the foreground service was believed to survive a
+/// swipe from recents. It does on some builds and not on others, and the phones
+/// where it does not are exactly the ones people report as "messages stopped
+/// coming" — so the switch is offered there too.
 ///
 /// The switch says what that costs rather than burying it: the server learns
 /// that this npub received something and when, which the relay already sees but

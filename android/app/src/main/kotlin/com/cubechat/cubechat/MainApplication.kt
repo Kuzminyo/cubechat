@@ -64,6 +64,14 @@ class MainApplication : Application() {
         CubechatAudioTrimPlugin(
             methodChannel = MethodChannel(messenger, "cubechat/audio_trim"),
         )
+        // Here rather than on the Activity because Dart main() runs on this
+        // engine before any Activity exists, and the push switch re-asserts
+        // itself from there on every launch. MainActivity lends it a window
+        // later, which only the permission dialog needs.
+        CubechatPushPlugin(
+            context = applicationContext,
+            messenger = messenger,
+        )
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

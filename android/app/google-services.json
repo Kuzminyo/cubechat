@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "453154401184",
+    "project_id": "cubechat-afdac",
+    "storage_bucket": "cubechat-afdac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:453154401184:android:3e0959d0f0e11c8e3d12c5",
+        "android_client_info": {
+          "package_name": "com.cubechat.cubechat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJ3ZFcEJPG1jKgWiLF9I88WCsflyzAnPc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

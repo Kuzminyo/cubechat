@@ -6,6 +6,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 val releaseProperties = Properties().apply {
@@ -143,4 +144,18 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // Firebase Cloud Messaging, and nothing else from Firebase.
+    //
+    // The BOM rather than a pinned version, so the messaging library and the
+    // transitive pieces it needs are always a set that was tested together —
+    // mixing Firebase versions by hand is a class of runtime failure that
+    // compiles perfectly.
+    //
+    // No `firebase_core`/`firebase_messaging` Flutter plugins: push already has
+    // a native half on iOS behind a `cubechat/push` MethodChannel, and this is
+    // the same shape on the other platform. Two dependencies instead of five,
+    // and the Dart side does not learn a second way to ask the same question.
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

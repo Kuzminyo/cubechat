@@ -30,6 +30,12 @@ import '../util/platform_info.dart';
 /// than by anybody writing. APNs is the only mechanism Apple provides for
 /// "wake up, there is a message", and APNs can only be driven by a server.
 ///
+/// Android held out longer, because the foreground service really does survive
+/// a swipe from recents — until the manufacturer decides otherwise. Reported
+/// from the field on 2026-09-04 and reproduced: task swiped away, service gone,
+/// nothing arrives. FCM is the same answer on that side, and it is the same
+/// server: one registry, one relay subscription, two ways out.
+///
 /// ## What the server is given
 ///
 /// One line: this npub, that device token. It subscribes to the same relays the
@@ -93,6 +99,16 @@ class PushRegistration {
   /// a relay would simply ignore one if a phone ever published it by mistake.
   static const registrationKind = 24242;
 
+  /// Which network will carry the knock: `ios` for APNs, `android` for FCM.
+  ///
+  /// Told rather than guessed. The two token formats do differ — APNs is 32
+  /// bytes of hex, FCM an opaque string with punctuation in it — but a server
+  /// that infers the vendor from a shape breaks the day either vendor changes
+  /// one, silently and in production. It rides inside the signed event, so it
+  /// cannot be flipped in flight to send somebody else's pushes to the wrong
+  /// place.
+  static String get platformTag => PlatformInfo.isAndroid ? 'android' : 'ios';
+
   /// Ask for permission, get the token, and hand the server a signed line.
   ///
   /// The three failures are told apart because only one of them has a way out.
@@ -103,7 +119,7 @@ class PushRegistration {
   /// did not work" leaves a switch that can never be turned on and never says
   /// why.
   Future<PushOutcome> enable() async {
-    if (!PlatformInfo.isIOS) {
+    if (!PlatformInfo.isMobile) {
       return const PushOutcome(PushEnableResult.unsupported);
     }
     if (await systemStatus() == 'denied') {
@@ -164,6 +180,7 @@ class PushRegistration {
           kind: registrationKind,
           tags: <List<String>>[
             <String>['lang', await _language()],
+            <String>['platform', platformTag],
           ],
           content: token,
         ),
@@ -220,7 +237,7 @@ class PushRegistration {
   /// notifications were turned off in Settings does not show an on switch that
   /// can never do anything — iOS will not put the prompt up a second time.
   Future<String> systemStatus() async {
-    if (!PlatformInfo.isIOS) return 'unsupported';
+    if (!PlatformInfo.isMobile) return 'unsupported';
     try {
       return await _channel.invokeMethod<String>('status') ?? 'undecided';
     } on PlatformException {
@@ -355,7 +372,7 @@ class PushEnabled extends Notifier<bool> {
   /// again — which is exactly when a promise that did not land deserves
   /// another go.
   Future<void> reassert() async {
-    if (!PlatformInfo.isIOS) return;
+    if (!PlatformInfo.isMobile) return;
     await _loading;
     final push = ref.read(pushRegistrationProvider);
     if (state) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -233,8 +235,47 @@ class NotificationService {
         details,
         payload: threadKey,
       );
+      unawaited(_dismissDoorbell());
     } catch (e) {
       debugPrint('NotificationService.showMessage failed: $e');
+    }
+  }
+
+  /// Take down the generic "New message" banner FCM drew for this.
+  ///
+  /// Android keeps the process alive behind a foreground service, so on a phone
+  /// where that survives, both halves fire for one message: the doorbell rings
+  /// (the server has no idea the app is running) and the app itself then shows
+  /// the real notification, with the sender's name, their face and the text.
+  /// Two banners, one message.
+  ///
+  /// The real one wins. The placeholder is cancelled by the tag the server
+  /// stamps on it — `android.notification.tag` in `sendFcm`, and the two must
+  /// stay in step — which is a thing only the native side can do, because a
+  /// notification posted by another component is not `flutter_local_
+  /// notifications`' to cancel.
+  ///
+  /// Twice, because the order is not fixed: the relay usually beats Google, but
+  /// not always, and a banner that arrives four seconds after the one it
+  /// duplicates would otherwise stay. Cancelling a tag that holds nothing costs
+  /// a binder call and does nothing visible.
+  ///
+  /// iOS has no equivalent and needs none: a terminated app is the only case
+  /// where APNs delivers, and a terminated app draws nothing of its own.
+  Future<void> _dismissDoorbell() async {
+    if (!PlatformInfo.isAndroid) return;
+    for (final delay in const <Duration>[Duration.zero, Duration(seconds: 4)]) {
+      if (delay > Duration.zero) await Future<void>.delayed(delay);
+      try {
+        await _badgeChannel.invokeMethod<void>('dismissDoorbell');
+      } on MissingPluginException {
+        // A build whose native half predates this. The duplicate stays; it is
+        // the same banner the user would have had with no push at all.
+        return;
+      } catch (e) {
+        debugPrint('dismissDoorbell failed: $e');
+        return;
+      }
     }
   }
 

@@ -31,6 +31,15 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingBluetoothResult: MethodChannel.Result? = null
 
+    /**
+     * The push plugin lives on the Application's engine (it has to answer
+     * before any Activity exists — see [CubechatPushPlugin]). All it wants from
+     * here is a window to raise the notification-permission dialog from, lent
+     * for as long as this Activity is alive and taken back after.
+     */
+    private val pushPlugin: CubechatPushPlugin?
+        get() = CubechatPushPlugin.instance
+
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
         return FlutterEngineCache.getInstance().get(MainApplication.ENGINE_ID)
             ?: super.provideFlutterEngine(context)
@@ -110,6 +119,27 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        pushPlugin?.attach(this)
+    }
+
+    override fun onDestroy() {
+        pushPlugin?.detach(this)
+        super.onDestroy()
+    }
+
+    /**
+     * The notification permission's answer, on its way back to the Dart side
+     * that asked for it. Everything else here is somebody else's request code
+     * and goes to super, which is what feeds permission_handler.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (pushPlugin?.onPermissionResult(requestCode, grantResults) == true) return
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     /**

@@ -729,7 +729,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get pushWakeDeniedHint =>
-      'iOS одного разу почула «ні» й більше не питатиме, тож увімкнути це можна лише в Налаштуваннях — cubechat, далі «Сповіщення». Після цього поверніться сюди.';
+      'Система одного разу почула «ні» й більше не питатиме, тож увімкнути це можна лише в Налаштуваннях — cubechat, далі «Сповіщення». Після цього поверніться сюди.';
 
   @override
   String get pushWakeRefused => 'Сповіщення не дозволені';

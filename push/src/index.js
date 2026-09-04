@@ -477,6 +477,12 @@ async function sendFcm(npub, token) {
         notification: {
           // Grouped like the iOS thread id, so a stack of these reads as one
           // conversation rather than a column.
+          //
+          // It is also the handle the app cancels this by. A phone whose
+          // process is still alive gets the real notification from the relay a
+          // moment later — sender, face, text — and takes this one down by
+          // exactly this tag (CubechatPushPlugin.DOORBELL_TAG). Change it here
+          // and the duplicate comes back with nothing failing anywhere.
           tag: 'cubechat',
           sound: 'default',
         },
@@ -870,6 +876,13 @@ async function main() {
     // there, which is the right kind of broken.
     log('apns', `no key at ${APNS_KEY_PATH} (${error.code}) — pushes will fail`);
   }
+  // Read now rather than on the first Android push, for the same reason the
+  // APNs key is read here: "did the key land" is a question asked while
+  // deploying, and answering it by waiting for a phone to register and then a
+  // message to arrive is not answering it. The boot log now says which of the
+  // two networks this deployment can actually reach, and `/health` says the
+  // same thing to anyone outside.
+  await fcmServiceAccount();
   for (const url of RELAYS) connectRelay(url);
   server.listen(PORT, () => log('http', `listening on ${PORT}`));
 }

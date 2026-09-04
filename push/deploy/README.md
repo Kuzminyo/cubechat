@@ -71,6 +71,37 @@ cp .env.example .env
 Put `AuthKey.p8` beside it and fill in `.env` — the key id from the `.p8`
 filename, the team id (`XGPPT9GNR2`) and the topic (`app.cubechat`).
 
+## The Android half
+
+Android registrations go to FCM instead of APNs, and FCM authenticates with a
+Google service account rather than a `.p8`. One file, and the service picks it
+up on its own — there is nothing to set in `.env`, because
+`WorkingDirectory=/opt/cubechat-push` makes the default path resolve there.
+
+Firebase console → the **cubechat-afdac** project → Settings → Service accounts
+→ **Generate new private key**. It downloads a JSON file. That file is a
+credential for sending pushes as this project: it never goes into git.
+
+```powershell
+scp D:\path\to\cubechat-afdac-*.json `
+  root@209.38.225.225:/opt/cubechat-push/fcm-service-account.json
+```
+
+```bash
+chown cubechat:cubechat /opt/cubechat-push/fcm-service-account.json
+chmod 600 /opt/cubechat-push/fcm-service-account.json
+systemctl restart cubechat-push
+journalctl -u cubechat-push -n 5 --no-pager | grep fcm
+```
+
+The last line is the check: `service account for cubechat-afdac` means it read
+the key. `no service account — Android push is off` means the file is not where
+it is looking, and the service runs on happily ringing iPhones only.
+
+The project has to be the same one `android/app/google-services.json` names.
+A key from a different Firebase project authenticates fine and then answers
+`404` for every token, which reads exactly like "the app was uninstalled".
+
 ```bash
 chown -R cubechat:cubechat /opt/cubechat-push
 chmod 600 /opt/cubechat-push/.env
@@ -105,7 +136,8 @@ curl.exe -s https://push.cubechat.tech/health
 `{"ok":true,"tokens":N,...}` — and `N` is the number that answers "is anybody
 registered". A phone that has turned the switch on and reached the server moves
 it; `tokens:0` with a healthy service means no registration has ever landed,
-whatever the app appears to say.
+whatever the app appears to say. `ios` and `android` beside it split that count,
+which is the only way to tell which half of a two-phone test actually arrived.
 
 `{"ok":true,"tokens":0,"relays":["wss://nos.lol","wss://relay.primal.net"]}`
 means the registry is empty, both relays are up, and it is waiting. That is the

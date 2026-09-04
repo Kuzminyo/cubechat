@@ -1349,7 +1349,7 @@ abstract class AppLocalizations {
   /// No description provided for @pushWakeDeniedHint.
   ///
   /// In en, this message translates to:
-  /// **'iOS was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.'**
+  /// **'The system was told no once and will not ask again, so this can only be turned back on in Settings — cubechat, then Notifications. Come back here afterwards.'**
   String get pushWakeDeniedHint;
 
   /// No description provided for @pushWakeRefused.

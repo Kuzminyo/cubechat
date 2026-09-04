@@ -132,6 +132,21 @@
             android:foregroundServiceType="connectedDevice|location"
             android:stopWithTask="false" />
 
+        <!-- Where a push from the doorbell lands when the app is not running.
+             The channel is the same one NotificationService pre-creates at
+             launch, so a message that arrives while the task is dead looks and
+             sounds exactly like one that arrives while it is alive; without
+             this FCM invents a "Miscellaneous" channel the user cannot find a
+             setting for. The icon is named for the same reason: unset, FCM uses
+             the launcher icon, and a full-colour icon in the status bar is
+             drawn as a white square. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="cubechat_messages" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
