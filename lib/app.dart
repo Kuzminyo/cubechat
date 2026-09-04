@@ -485,13 +485,19 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // measurement deciding one — has to discard every const-built pane, the
     // same way a palette change does. See [GlassTierController].
     final glass = ref.watch(glassTierControllerProvider);
+    // And the revision beside it, because the tier alone does not change when
+    // the startup measurement decides for `auto` — see [glassRevisionProvider].
+    final glassRevision = ref.watch(glassRevisionProvider);
     // Built here so its hook into the notification service exists from launch.
     // Nothing else reads it until somebody opens the settings screen, and a
     // quiet-hours setting that only takes effect after you go and look at it
     // is not a setting.
     ref.watch(quietHoursControllerProvider);
     return KeyedSubtree(
-      key: ValueKey('palette-${palette.id}-glass-${glass.name}-${AppBlur.panes}'),
+      key: ValueKey(
+        'palette-${palette.id}-glass-${glass.name}-$glassRevision-'
+        '${AppBlur.panes}',
+      ),
       child: MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appName,
       debugShowCheckedModeBanner: false,

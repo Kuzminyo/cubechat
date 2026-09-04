@@ -118,9 +118,61 @@ Future<void> _bootStep(
   }
 }
 
+/// Put every uncaught error into the log the user can actually send.
+///
+/// Until now nothing did. A crash — "it closes when I come back from a chat" —
+/// left the in-app log with the last ordinary line before it and nothing else,
+/// so the one report that matters most was the one report with no evidence in
+/// it. `debugPrint` goes to a console nobody has on a phone.
+///
+/// Both hooks, because they catch different things: [FlutterError.onError] is
+/// the framework's own errors (a build that throws, a failed layout, a disposed
+/// object used again), and `PlatformDispatcher.onError` is everything else that
+/// escapes an async gap. Neither is *handled* here — the framework's own
+/// behaviour is kept, so a debug build still shows the red screen and a release
+/// build still terminates if that is what it was going to do. This only makes
+/// sure the reason is written down first.
+///
+/// One line, not a full stack: [DebugLog] holds 200 lines and a stack trace is
+/// twenty of them, which would evict the context that says what the user was
+/// doing. The first frame naming this app's own code is the one that matters,
+/// and it is picked out below.
+void _logUncaughtErrors() {
+  final chained = FlutterError.onError;
+  FlutterError.onError = (details) {
+    DebugLog.instance.log(
+      'CRASH',
+      '${details.exception} — ${_originOf(details.stack)}',
+    );
+    chained?.call(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    DebugLog.instance.log('CRASH', '$error — ${_originOf(stack)}');
+    // False: not handled. Anything that reaches here was going to end the
+    // isolate, and pretending otherwise would hide a real fault behind a log
+    // line — which is the opposite of the point.
+    return false;
+  };
+}
+
+/// The first frame that belongs to this app rather than to the framework.
+///
+/// A stack from a widget error is forty frames of `package:flutter` above the
+/// line that actually broke. This walks down to the first `package:cubechat`
+/// frame, which is the one worth a place in a 200-line buffer.
+String _originOf(StackTrace? stack) {
+  if (stack == null) return 'no stack';
+  for (final line in stack.toString().split('\n')) {
+    if (line.contains('package:cubechat/')) return line.trim();
+  }
+  final first = stack.toString().split('\n').first.trim();
+  return first.isEmpty ? 'no stack' : first;
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
+  _logUncaughtErrors();
   // First, so that a stall in any step below still leaves a log that says which
   // build was trying to start. This used to sit after Hive and notifications,
   // where a hang meant no boot line at all.

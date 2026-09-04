@@ -51,9 +51,18 @@ class GlassTierController extends Notifier<GlassTier> {
   Box<dynamic>? _box;
   Timer? _measure;
 
-  /// Incremented on every change, so the app root can key off it and discard
-  /// const-built panes. The same mechanism `ThemeController` uses.
-  int revision = 0;
+  /// Bumped on every change to [AppBlur.panes], so the app root can key off it
+  /// and discard const-built panes. The same mechanism `ThemeController` uses.
+  ///
+  /// A provider rather than a plain field, and that is the whole of the bug it
+  /// fixes: a field nobody watches changes nothing. The root keyed off the
+  /// *chosen* tier, which is a different fact — under `auto` it never changes
+  /// at all, so the startup measurement deciding "light" flipped the static and
+  /// left every pane on screen still blurring until something else happened to
+  /// rebuild the tree.
+  void _bumpRevision() {
+    ref.read(glassRevisionProvider.notifier).state++;
+  }
 
   /// Above this, a phone is not keeping up and the glass is what it is paying
   /// for.
@@ -113,7 +122,7 @@ class GlassTierController extends Notifier<GlassTier> {
     final panes = effective == GlassTier.full;
     if (AppBlur.panes == panes) return;
     AppBlur.panes = panes;
-    revision++;
+    _bumpRevision();
   }
 
   /// Watch one window of real use, then decide once.
@@ -151,21 +160,40 @@ class GlassTierController extends Notifier<GlassTier> {
 
   /// Choose by hand. Never silently overridden afterwards — somebody who picked
   /// the full glass on a slow phone meant it.
+  ///
+  /// The order matters and used to be wrong. `state = tier` marks the root
+  /// dirty; the rebuild happens on the next frame. Applying afterwards put a
+  /// Hive write in between, so the tree was rebuilt reading the *old*
+  /// [AppBlur.panes] and the new value landed a few milliseconds later with
+  /// nothing left to rebuild. Choosing "light" then did nothing visible until
+  /// the app was restarted — reported exactly that way, with the panel still
+  /// showing the raster thread leading. Applied first, the rebuild the state
+  /// change causes is already the right one.
   Future<void> set(GlassTier tier) async {
+    final remembered = _box?.get(_autoVerdictKey) as String?;
+    _apply(tier, remembered: remembered);
     state = tier;
-    String? remembered;
-    try {
-      await _box?.put(_key, tier.name);
-      remembered = _box?.get(_autoVerdictKey) as String?;
-    } catch (e) {
-      debugPrint('glass tier persist failed: $e');
-    }
     if (tier == GlassTier.auto && remembered == null) {
       _scheduleMeasurement();
     }
-    _apply(tier, remembered: remembered);
+    try {
+      await _box?.put(_key, tier.name);
+    } catch (e) {
+      // Persisting is the part that may fail; the interface has already
+      // changed, and it changing back on the next launch is the honest result
+      // of a failed write rather than a reason to ignore the tap.
+      debugPrint('glass tier persist failed: $e');
+    }
   }
 }
 
 final glassTierControllerProvider =
     NotifierProvider<GlassTierController, GlassTier>(GlassTierController.new);
+
+/// Changes whenever [AppBlur.panes] does.
+///
+/// The app root watches this and not the chosen tier. The two are different
+/// questions: the tier is what the user picked, and under `auto` it stays
+/// `auto` forever while the thing that actually decides — the measurement —
+/// flips underneath it.
+final glassRevisionProvider = StateProvider<int>((ref) => 0);
