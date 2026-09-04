@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/routing/app_shell.dart' show tabSpecFor;
 import '../../../core/theme/colors.dart';
+import '../../../core/theme/glass_tier.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -67,6 +68,10 @@ class CustomizeScreen extends ConsumerWidget {
             const _ThemeCard(),
             const SizedBox(height: 12),
             const _ScaleCard(),
+            const SizedBox(height: 12),
+            // Beside the scale, because both are "how this looks on *my*
+            // phone" rather than a preference about the app.
+            const _GlassCard(),
             const SizedBox(height: 12),
             const _SwipeCard(),
             const SizedBox(height: 12),
@@ -225,6 +230,70 @@ class _ThemeCard extends ConsumerWidget {
 /// someone who made everything bigger meant this too; the other three are for
 /// the phone that was tuned for something else.
 ///
+/// Whether panes blur what is behind them.
+///
+/// Offered rather than decided silently. Automatic measures the phone once and
+/// remembers the answer, which is right for almost everybody — but a person who
+/// wants the full glass on a slow phone is allowed to have it, and a person who
+/// would rather have the frames than the effect on a fast one is too. Taking an
+/// interface away from somebody without a way back is the thing this row
+/// exists to avoid.
+class _GlassCard extends ConsumerWidget {
+  const _GlassCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(glassTierControllerProvider);
+    final notifier = ref.read(glassTierControllerProvider.notifier);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.profileGlass,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<GlassTier>(
+            segments: [
+              ButtonSegment(
+                value: GlassTier.auto,
+                label: Text(t.profileGlassAuto),
+              ),
+              ButtonSegment(
+                value: GlassTier.full,
+                label: Text(t.profileGlassFull),
+              ),
+              ButtonSegment(
+                value: GlassTier.light,
+                label: Text(t.profileGlassLight),
+              ),
+            ],
+            selected: {current},
+            showSelectedIcon: false,
+            onSelectionChanged: (picked) =>
+                unawaited(notifier.set(picked.first)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            t.profileGlassHint,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A preview of the actual size sits under the row, so the choice can be made
 /// by looking rather than by guessing what "Larger" means here.
 class _ScaleCard extends ConsumerWidget {

@@ -206,7 +206,11 @@ class FloatingGlass extends StatelessWidget {
                       listenable: UiActivity.instance.isNavigating,
                       child: tint,
                       builder: (context, pane) {
-                        if (UiActivity.instance.isNavigating.value) {
+                        // The tier first: a phone judged unable to afford
+                        // the gaussian never runs one, and that answer does not
+                        // change while anybody is looking. See [AppBlur.panes].
+                        if (!AppBlur.panes ||
+                            UiActivity.instance.isNavigating.value) {
                           return pane!;
                         }
                         return BackdropFilter(

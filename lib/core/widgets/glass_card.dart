@@ -44,7 +44,10 @@ class GlassCard extends StatelessWidget {
   /// softening.
   final bool blur;
 
-  Widget _maybeBlur(Widget child) => blur
+  // `AppBlur.panes` gates every pane in the app on what this phone's GPU was
+  // measured able to afford — see [GlassTier]. Stable for the session, so
+  // nothing flickers.
+  Widget _maybeBlur(Widget child) => blur && AppBlur.panes
       ? BackdropFilter(
           filter: AppBlur.pane,
           child: child,

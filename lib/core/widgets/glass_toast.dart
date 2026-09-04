@@ -199,8 +199,7 @@ class _GlassToastState extends State<_GlassToast>
                   ),
                   child: ClipRRect(
                     borderRadius: radius,
-                    child: BackdropFilter(
-                      filter: AppBlur.pane,
+                    child: GlassBlur(
                       child: Container(
                         padding: EdgeInsets.fromLTRB(
                           icon == null ? 20 : 16,

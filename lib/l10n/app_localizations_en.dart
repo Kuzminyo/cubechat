@@ -2177,6 +2177,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileScaleSystem => 'System';
 
   @override
+  String get profileGlass => 'Glass';
+
+  @override
+  String get profileGlassAuto => 'Automatic';
+
+  @override
+  String get profileGlassFull => 'Full';
+
+  @override
+  String get profileGlassLight => 'Light';
+
+  @override
+  String get profileGlassHint =>
+      'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.';
+
+  @override
   String get profileScaleSmall => 'Smaller';
 
   @override

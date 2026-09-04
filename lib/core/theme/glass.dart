@@ -1,5 +1,7 @@
 import 'dart:ui' show ImageFilter, TileMode;
 
+import 'package:flutter/widgets.dart';
+
 /// The frosted-glass blur, in one place.
 ///
 /// Measured, not guessed. Diagnostics reports frame cost split by thread, and
@@ -37,6 +39,22 @@ import 'dart:ui' show ImageFilter, TileMode;
 /// This is a knob, deliberately. If a surface ever needs more, give that
 /// surface its own number and say why; do not raise this one, or the cost
 /// silently returns everywhere at once.
+/// A pane's blur, or nothing, depending on what this phone can afford.
+///
+/// One widget rather than the same ternary at five call sites — and one place
+/// for the next person to find when they wonder why a pane is flat. The answer
+/// is [AppBlur.panes] and the reasoning is on it.
+class GlassBlur extends StatelessWidget {
+  const GlassBlur({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AppBlur.panes
+      ? BackdropFilter(filter: AppBlur.pane, child: child)
+      : child;
+}
+
 class AppBlur {
   const AppBlur._();
 
@@ -73,6 +91,31 @@ class AppBlur {
   /// measurement, the way this one did — that part worked, even though the
   /// answer was no.
   static const double sigma = 14;
+
+  /// Whether panes filter what is behind them at all.
+  ///
+  /// Mutable static, written once by [GlassTierController] and read at build
+  /// time — the same shape `AppColors` uses for palettes, and for the same
+  /// reason: it has to reach every pane in the app without threading a
+  /// parameter through all of them.
+  ///
+  /// **Stable on purpose.** Dropping the blur *dynamically* — when the app is
+  /// scrolling, when a pane is off-screen, when anything moves — has been
+  /// written and reverted twice, and the report was the same words both times:
+  /// the surfaces flicker between see-through and solid. See the note in
+  /// `floating_glass.dart`. This flag changes on a settings tap or once at
+  /// startup, so there is nothing to flicker against.
+  ///
+  /// Why it exists: three panes filter permanently, and each re-runs its
+  /// gaussian on every frame the content behind it moves. On a phone whose GPU
+  /// can afford it that is the interface. On one that cannot it was measured at
+  /// `raster avg 16.0 / p90 25.0 ms`, 197 frames of 2325 over budget and 64% of
+  /// a core, with the panel naming it outright: *GPU-bound — blur / gradients /
+  /// overdraw*. The same build on a faster phone sat at 2.7 ms.
+  ///
+  /// Lowering [sigma] instead was measured and made it worse — see above. This
+  /// is the other lever.
+  static bool panes = true;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.

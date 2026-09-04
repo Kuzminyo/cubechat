@@ -83,8 +83,7 @@ class MessageIslandGlass extends StatelessWidget {
                 // state. The raster saving is real and is not worth it, and the
                 // next person to find those numbers should spend them
                 // somewhere else.
-                child: BackdropFilter(
-                  filter: AppBlur.pane,
+                child: GlassBlur(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(

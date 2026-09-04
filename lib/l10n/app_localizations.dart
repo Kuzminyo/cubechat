@@ -3866,6 +3866,36 @@ abstract class AppLocalizations {
   /// **'System'**
   String get profileScaleSystem;
 
+  /// No description provided for @profileGlass.
+  ///
+  /// In en, this message translates to:
+  /// **'Glass'**
+  String get profileGlass;
+
+  /// No description provided for @profileGlassAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get profileGlassAuto;
+
+  /// No description provided for @profileGlassFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Full'**
+  String get profileGlassFull;
+
+  /// No description provided for @profileGlassLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get profileGlassLight;
+
+  /// No description provided for @profileGlassHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Blurring what is behind a panel is the most expensive thing this interface draws. Automatic measures your phone once and decides; Light keeps the tint and drops the blur.'**
+  String get profileGlassHint;
+
   /// No description provided for @profileScaleSmall.
   ///
   /// In en, this message translates to:

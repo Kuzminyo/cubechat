@@ -2192,6 +2192,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get profileScaleSystem => 'Системний';
 
   @override
+  String get profileGlass => 'Скло';
+
+  @override
+  String get profileGlassAuto => 'Автоматично';
+
+  @override
+  String get profileGlassFull => 'Повне';
+
+  @override
+  String get profileGlassLight => 'Полегшене';
+
+  @override
+  String get profileGlassHint =>
+      'Розмиття того, що за панеллю, — найдорожче, що малює цей інтерфейс. Автоматично вимірює ваш телефон один раз і вирішує; Полегшене лишає відтінок і прибирає розмиття.';
+
+  @override
   String get profileScaleSmall => 'Менший';
 
   @override

@@ -20,6 +20,8 @@ import 'features/profile/presentation/app_lock_gate.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
+import 'core/theme/glass.dart';
+import 'core/theme/glass_tier.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/chat/data/messages_controller.dart';
@@ -479,13 +481,17 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // (see ThemeController for why), so widgets already built are holding the
     // old colours — changing the key throws the tree away and builds it again.
     final palette = ref.watch(themeControllerProvider);
+    // Watched, not merely read: choosing a glass tier — or the startup
+    // measurement deciding one — has to discard every const-built pane, the
+    // same way a palette change does. See [GlassTierController].
+    final glass = ref.watch(glassTierControllerProvider);
     // Built here so its hook into the notification service exists from launch.
     // Nothing else reads it until somebody opens the settings screen, and a
     // quiet-hours setting that only takes effect after you go and look at it
     // is not a setting.
     ref.watch(quietHoursControllerProvider);
     return KeyedSubtree(
-      key: ValueKey('palette-${palette.id}'),
+      key: ValueKey('palette-${palette.id}-glass-${glass.name}-${AppBlur.panes}'),
       child: MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appName,
       debugShowCheckedModeBanner: false,
