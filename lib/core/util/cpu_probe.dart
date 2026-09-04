@@ -535,7 +535,16 @@ class CpuReport {
       // What still survives is the comparison between that row and the others,
       // which is what the panel was built to ask.
       if (busiest.name != CpuProbe.mergedMainLabel) {
-        return '${busiest.name} leads — more CPU than the UI thread itself';
+        // Says "used the most", not "leads". It named a busiest thread in the
+        // same green the frame panel uses for "inside budget", directly under a
+        // percentage printed in red, and it was read as a fault on a phone
+        // whose frames were entirely fine — build p90 1.1 ms, raster p90 5.2,
+        // two frames of 317 over budget. This panel is about share; whether
+        // that share is a problem is the question the frame panel above
+        // answers, and this now says so instead of implying its own verdict.
+        final share = (busiest.cpuMs * 100 / totalCpuMs).round();
+        return '${busiest.name} used the most CPU ($share%) — whether that is '
+            'too much is what the frame numbers above say';
       }
       final share = (busiest.cpuMs * 100 / totalCpuMs).round();
       return 'UI thread leads with $share% — it also runs the platform side, '
