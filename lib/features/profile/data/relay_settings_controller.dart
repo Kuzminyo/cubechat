@@ -28,9 +28,37 @@ class RelaySettings {
   /// costing a third of every fan-out — a presence beacon goes to each relay per
   /// contact — to store nothing at all. A relay that refuses is worse than one
   /// fewer relay: the recipient only has to be listening on one.
+  /// Added `wss://nostr.mom` on 2026-09-06, because two was one too few.
+  ///
+  /// Both incumbents spent a day failing in turn — `nos.lol` refusing the
+  /// upgrade to a websocket five times in a row with the backoff climbing to
+  /// 32 s, `relay.primal.net` answering 502 — and a phone log from that day
+  /// counted 112 publishes of which **none** were confirmed by both relays and
+  /// 42 went to one. Delivery rested on a single road most of the time, and a
+  /// recipient only has to be listening on one: a third is the whole fix.
+  ///
+  /// Chosen by probe rather than by reputation. Seven candidates were asked for
+  /// their NIP-11 document and given a REQ for kind 1059, six rounds twenty
+  /// seconds apart. What that could settle, it settled — `relay.nostr.band` and
+  /// `relay.nostr.bg` were unreachable, and the rest declared no payment, no
+  /// AUTH and no restricted writes. What it could **not** settle is the thing
+  /// actually being fixed: all seven answered 6/6 from a desktop on a good
+  /// line, including the two that had been dropping sockets on the phone all
+  /// day. So the flapping is not the relays being down for everyone, and no
+  /// probe from here would have found it.
+  ///
+  /// The choice among the survivors is therefore latency (186 ms median, joint
+  /// fastest with `nostr.oxtr.dev`) and independence: a third relay run by the
+  /// same people as one of the first two would buy nothing on the day one
+  /// operator has trouble.
+  ///
+  /// `relay.damus.io` stays out. See above — it was dropped for rate-limiting
+  /// real messages out of a fan-out, and being short of relays is not a reason
+  /// to take back one that refuses.
   static const defaultUrls = <String>[
     'wss://nos.lol',
     'wss://relay.primal.net',
+    'wss://nostr.mom',
   ];
 
   static const initial = RelaySettings(enabled: false, urls: defaultUrls);
@@ -71,6 +99,22 @@ class RelaySettingsController extends Notifier<RelaySettings> {
   /// retired relay back keeps it.
   static const _retiredAppliedKey = 'nostr.relays.retiredApplied';
 
+  /// Relay endpoints added to the defaults, folded once into lists that were
+  /// saved before they were stock.
+  ///
+  /// The mirror of [_retiredUrls] and needed for exactly the same reason: a
+  /// stored list wins over the defaults, and merely switching the internet
+  /// fallback on writes one. So every phone that has ever used the relay
+  /// screen — which is every phone testing this — would have kept its two and
+  /// never seen the third, and the fix for "delivery rests on one road" would
+  /// have reached nobody who reported it.
+  static const _addedUrls = <String>['wss://nostr.mom'];
+
+  /// Applied once, so somebody who deliberately removes an added relay keeps it
+  /// removed. The same promise the retirement above makes in the other
+  /// direction: this may change a list once, and never again.
+  static const _addedAppliedKey = 'nostr.relays.addedApplied.v1';
+
   Box<dynamic>? _box;
 
   @override
@@ -103,6 +147,21 @@ class RelaySettingsController extends Notifier<RelaySettings> {
           }
         }
         await box.put(_retiredAppliedKey, true);
+      }
+
+      final addedApplied = box.get(_addedAppliedKey) as bool? ?? false;
+      if (!addedApplied) {
+        if (stored != null && stored.isNotEmpty) {
+          final missing =
+              _addedUrls.where((u) => !stored!.contains(u)).toList();
+          if (missing.isNotEmpty) {
+            stored = [...stored, ...missing];
+            await box.put(_urlsKey, stored);
+          }
+        }
+        // Marked done even when the list was empty or untouched: an empty list
+        // already falls through to the defaults below, which now carry it.
+        await box.put(_addedAppliedKey, true);
       }
 
       state = RelaySettings(
