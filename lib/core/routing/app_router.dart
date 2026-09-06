@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'branch_pager.dart';
 import '../util/debug_log.dart';
 import '../util/ui_activity.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
@@ -198,6 +199,20 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           builder: (context, ref, _) {
             final layout = ref.watch(navBarControllerProvider);
             final order = layout.branches;
+            // Read, not watched: the pager is asked at the moment a finger
+            // decides, and watching it would rebuild the whole strip every
+            // time a folder changed — which is the thing the drag just did.
+            //
+            // Only when the branch that published it is the one showing: every
+            // branch stays mounted for the life of the shell, so the chats
+            // list's pager is registered while somebody is on their profile,
+            // and without this check the folders would eat a sideways flick on
+            // every screen in the app.
+            BranchPager? pager() {
+              final p = ref.read(branchPagerProvider);
+              if (p == null) return null;
+              return navigationShell.currentIndex == p.branch ? p : null;
+            }
             return BranchContainer(
               // Hiding the tab you are standing on is allowed, and this is
               // where it lands: not on the bar, so not in the strip, so first
@@ -206,6 +221,9 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
               currentIndex: layout.positionOf(navigationShell.currentIndex) ?? 0,
               branches: [for (final branch in order) children[branch]],
               onSwitch: (i) => navigationShell.goBranch(order[i]),
+              branchWantsStep: (delta) =>
+                  pager()?.canStep(delta) ?? false,
+              onBranchStep: (delta) => pager()?.step(delta),
             );
           },
         ),

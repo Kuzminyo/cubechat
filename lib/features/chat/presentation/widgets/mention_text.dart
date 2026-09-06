@@ -13,9 +13,19 @@ import '../../domain/message_search.dart';
 /// clients and searchable like any other words — nothing here changes what was
 /// sent, only what it looks like and what a tap on it does.
 class MentionText extends StatefulWidget {
-  const MentionText(this.text, {super.key, this.highlight = ''});
+  const MentionText(this.text, {super.key, this.highlight = '', this.fontSize});
 
   final String text;
+
+  /// Overrides the body size. Only the emoji-only message uses it, and it uses
+  /// it for the whole reason it exists: a message that is nothing but emoji is
+  /// drawn large, the way every messenger draws one.
+  ///
+  /// Passed rather than read from an inherited style because everything else
+  /// about the run — the link colour, the mention weight, the marked letters of
+  /// a search hit — is built from [base] here, and a size arriving by a
+  /// different road would have to be merged into each of them separately.
+  final double? fontSize;
 
   /// The search query being looked at right now, or empty when none is.
   ///
@@ -96,7 +106,7 @@ class _MentionTextState extends State<MentionText> {
 
     final base = TextStyle(
       color: AppColors.textOnGlass,
-      fontSize: 14.5,
+      fontSize: widget.fontSize ?? 14.5,
       height: 1.35,
     );
     final spans = <TextSpan>[];

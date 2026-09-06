@@ -39,13 +39,35 @@ abstract final class BuiltinStickers {
   /// Ordinary, widely-drawn emoji only. Anything newer than about Emoji 12
   /// risks landing on a phone whose system font has never heard of it, and a
   /// sticker that renders as a blank box is worse than one that isn't offered.
+  /// Doubled on 2026-09-06 — forty-eight was reported as too few for a pack
+  /// somebody is meant to pick from rather than exhaust.
+  ///
+  /// The rule above did the choosing and nothing was added that breaks it:
+  /// every glyph here is Emoji 12 or older, which is 2019 and earlier, so a
+  /// phone old enough to be running this app has a font that draws it. `🫠`
+  /// was already the newest thing in the list and stays the newest.
+  ///
+  /// Each of these is drawn into a PNG the first time the pack is used, so the
+  /// cost of the extra rows is one round of that, once, on one launch — the
+  /// files are kept afterwards.
   static const List<String> glyphs = <String>[
+    // Faces
     '😀', '😂', '🥲', '😍', '😎', '🤩', '🥳', '😭',
     '😡', '🤯', '🤔', '🤗', '🙃', '😴', '🤤', '🥴',
     '🤒', '🥶', '🤠', '🤫', '😇', '🤪', '😱', '🫠',
+    '😉', '😘', '🥺', '😅', '😏', '🙄', '😬', '😐',
+    '🤢', '🤧', '🥵', '🤓', '🧐', '😤', '😳', '🤭',
+    // Hands and people
     '👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '👋',
+    '🤞', '👌', '🤙', '👀', '🫶', '🤦', '🤷', '💅',
+    // Hearts and marks
     '❤️', '💔', '💕', '🔥', '✨', '⭐', '💯', '🎉',
+    '💥', '💤', '💦', '🎊', '❓', '❗', '✅', '❌',
+    // Things
     '🎁', '☕', '🍕', '🌚', '🌈', '⚡', '🐱', '🐶',
+    '🍺', '🍎', '🍔', '🍰', '🌙', '☀️', '🌧️', '❄️',
+    '🐻', '🦊', '🐸', '🦄', '🎂', '⚽', '🎮', '💰',
+    '📱', '💡', '🔒', '🚀', '🕐', '🎵', '📷', '🏆',
   ];
 
   /// The file a glyph is drawn into, whether or not it exists yet.

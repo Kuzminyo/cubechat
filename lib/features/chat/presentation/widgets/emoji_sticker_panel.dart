@@ -110,6 +110,7 @@ class EmojiStickerPanel extends StatefulWidget {
     super.key,
     required this.height,
     required this.onEmoji,
+    this.onBackspace,
     this.onSticker,
     this.onCreateSticker,
     this.startOnStickers = false,
@@ -117,6 +118,11 @@ class EmojiStickerPanel extends StatefulWidget {
 
   final double height;
   final ValueChanged<String> onEmoji;
+
+  /// Rub out the character before the caret. Null where the panel is picking
+  /// one emoji rather than typing several — a sheet that closes on a pick has
+  /// nothing to rub out.
+  final VoidCallback? onBackspace;
 
   /// Null where a picture cannot be sent — the panel is then emoji only, and
   /// the sticker tab is not offered rather than being offered and refusing.
@@ -183,7 +189,10 @@ class _EmojiStickerPanelState extends State<EmojiStickerPanel> {
                       onPick: widget.onSticker!,
                       onCreate: widget.onCreateSticker,
                     )
-                  : EmojiPane(onPick: widget.onEmoji),
+                  : EmojiPane(
+                      onPick: widget.onEmoji,
+                      onBackspace: widget.onBackspace,
+                    ),
             ),
           ],
         ),
@@ -215,6 +224,7 @@ class KeyboardSlotPanel extends StatefulWidget {
     super.key,
     required this.open,
     required this.onEmoji,
+    this.onBackspace,
     this.onSticker,
     this.onCreateSticker,
     this.startOnStickers = false,
@@ -227,6 +237,11 @@ class KeyboardSlotPanel extends StatefulWidget {
 
   final ValueChanged<String> onEmoji;
   final void Function(String path, String? emoji)? onSticker;
+
+  /// Rub out the character before the caret. Null where the panel is picking
+  /// one emoji rather than typing several — a sheet that closes on a pick has
+  /// nothing to rub out.
+  final VoidCallback? onBackspace;
   final VoidCallback? onCreateSticker;
   final bool startOnStickers;
 
@@ -352,6 +367,7 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
         height: full,
         startOnStickers: widget.startOnStickers,
         onEmoji: widget.onEmoji,
+        onBackspace: widget.onBackspace,
         onSticker: widget.onSticker,
         onCreateSticker: widget.onCreateSticker,
       ),

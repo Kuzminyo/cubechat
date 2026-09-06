@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -367,6 +368,45 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
     if (!_editing) widget.onChanged?.call(next);
   }
 
+  /// Rub out the character before the caret, the way a keyboard's own key does.
+  ///
+  /// The emoji panel covers the keyboard while it is open, and the keyboard is
+  /// where backspace lives — so picking one emoji too many meant closing the
+  /// panel, deleting, and opening it again. Asked for as "кнопку что бы стерать
+  /// их".
+  ///
+  /// One *character*, not one code unit. An emoji is routinely several — a skin
+  /// tone is a modifier, a family is people joined by zero-width joiners — and
+  /// deleting a code unit at a time leaves the reader pressing backspace four
+  /// times and watching the glyph change into other glyphs on the way out.
+  void _backspaceEmoji() {
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final start = selection.start < 0 ? text.length : selection.start;
+    final end = selection.end < 0 ? text.length : selection.end;
+    if (start != end) {
+      // Something is selected: backspace deletes the selection, as everywhere.
+      final next = text.replaceRange(start, end, '');
+      _controller.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: start),
+      );
+      if (!_editing) widget.onChanged?.call(next);
+      return;
+    }
+    if (start == 0) return;
+    final before = text.substring(0, start);
+    final characters = before.characters;
+    if (characters.isEmpty) return;
+    final trimmed = characters.skipLast(1).toString();
+    final next = trimmed + text.substring(start);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: trimmed.length),
+    );
+    if (!_editing) widget.onChanged?.call(next);
+  }
+
   void _togglePanel({bool stickers = false}) {
     if (_panelOpen && !stickers) {
       // The panel stays up and gives its space back point for point as the
@@ -450,6 +490,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                 onKeyboardTookOver: _keyboardTookOver,
                 startOnStickers: _panelOnStickers,
                 onEmoji: _insertEmoji,
+                onBackspace: _backspaceEmoji,
                 onSticker: widget.onSticker,
                 onCreateSticker: widget.onCreateSticker == null
                     ? null

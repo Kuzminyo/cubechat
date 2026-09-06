@@ -49,6 +49,7 @@ import '../../../map/data/map_presence_controller.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
+import '../../../stickers/data/sticker_library.dart';
 import 'emoji_picker_sheet.dart';
 import 'message_spotlight.dart';
 import '../../models/message.dart';
@@ -764,6 +765,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.edit_rounded,
             label: t.chatEditAction,
           ),
+        // Keep somebody else's sticker.
+        //
+        // A picture already had this, through the gallery's own menu — but a
+        // sticker deliberately does not open a gallery (it is a gesture, not a
+        // document, and the viewer would be a dead end to back out of), so the
+        // one thing in a conversation most worth keeping was the one thing
+        // with no way to keep it. Holding it is where its actions live, so
+        // this belongs here.
+        //
+        // Hidden once it is already kept rather than shown as a no-op: the
+        // library is a set, and offering to add what is in it twice is an
+        // offer that does nothing.
+        if (widget.message.isSticker &&
+            widget.message.imagePath != null &&
+            !ref
+                .read(stickerLibraryProvider.notifier)
+                .has(widget.message.imagePath!))
+          SpotlightAction(
+            id: 'keep-sticker',
+            icon: Icons.auto_awesome_rounded,
+            label: t.stickerKeep,
+          ),
         // Saved-chat only: a tag is a way back to a note in a growing pile,
         // and there is no pile to file in a real conversation. Says "remove"
         // when one is already on, so the same entry both sets and clears.
@@ -826,6 +849,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             widget.message.wireId!,
             pinned: picked == 'pin',
           );
+    } else if (picked == 'keep-sticker') {
+      await _keepSticker();
     } else if (picked == 'forward') {
       await _promptForward();
     } else if (picked == 'edit') {
@@ -1017,6 +1042,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// That is the only shape that works here — the original is encrypted to a
   /// session the new chat has no key for, so it could not be passed along even
   /// if we wanted to.
+  /// Keep a sticker somebody sent, under an emoji of your choosing.
+  ///
+  /// A copy, not a reference — the same promise the gallery's version makes:
+  /// the message can be deleted, the history cleared or the whole chat
+  /// auto-expired, and a sticker that vanished with it would be a strange thing
+  /// to have kept.
+  ///
+  /// The picker opens on its own rather than pre-filled with the emoji it
+  /// arrived under: the sheet takes no starting value, and threading one
+  /// through for this alone would be a parameter with a single caller.
+  Future<void> _keepSticker() async {
+    final path = widget.message.imagePath;
+    if (path == null) return;
+    final t = AppLocalizations.of(context);
+    final emoji = await showEmojiPicker(context, title: t.stickerEmojiTitle);
+    if (!mounted) return;
+    final kept =
+        await ref.read(stickerLibraryProvider.notifier).keep(path, emoji: emoji);
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      kept ? t.stickerKept : t.stickerFailed,
+      icon: kept ? Icons.auto_awesome_rounded : null,
+      tone: kept ? ToastTone.success : ToastTone.danger,
+    );
+  }
+
   Future<void> _promptForward() async {
     final chosen = await pickForwardTargets(context, ref, widget.chatId);
     if (chosen.isEmpty || !mounted) return;
@@ -1220,6 +1272,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // rectangle around something whose whole point is not having one.
     final sticker = message.isSticker;
 
+    // A message that is nothing but emoji is drawn the way a sticker is: large,
+    // and with no bubble around it. A bubble is a frame for text, and there is
+    // no text here — asked for against Telegram, where two laughing faces come
+    // out as two big faces and nothing else.
+    //
+    // Shares the sticker's path rather than inventing a second bare shape, so
+    // the two cannot drift apart. What it does *not* share is the sticker's
+    // fixed width: this is a line of text, and it is sized by its own font.
+    final bareEmoji = message.kind == MessageKind.text
+        ? message.bareEmojiCount
+        : null;
+    final bare = sticker || bareEmoji != null;
+
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
     const inset = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
@@ -1247,7 +1312,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
-          boxShadow: sticker ? const <BoxShadow>[] : FloatingGlass.shadows,
+          boxShadow: bare ? const <BoxShadow>[] : FloatingGlass.shadows,
         ),
         child: ClipRRect(
           borderRadius: radius,
@@ -1274,7 +1339,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             // carries over — a border exists to give a pane of glass an edge,
             // and a picture already has one. Everything that is not a photo
             // keeps its border.
-            decoration: sticker
+            decoration: bare
                 ? const BoxDecoration()
                 : mine
                     ? BoxDecoration(
@@ -1505,7 +1570,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     onTap: () => _openSharedContact(sharedContact),
                   )
                 else
-                  MentionText(message.text, highlight: searchQuery),
+                  MentionText(
+                    message.text,
+                    highlight: searchQuery,
+                    // Fewer of them, bigger — one on its own is the loudest and
+                    // three are closer to a line of text than to a gesture.
+                    // Sticker-sized at the top end rather than merely larger:
+                    // the point of a bare emoji is that it is not a sentence.
+                    fontSize: switch (bareEmoji) {
+                      1 => 48,
+                      2 => 40,
+                      3 => 32,
+                      _ => null,
+                    },
+                  ),
                 if (!metaOnMedia) ...[
                   if (!photo) const SizedBox(height: 4),
                   // Reactions and the clock on one line, inside the bubble.

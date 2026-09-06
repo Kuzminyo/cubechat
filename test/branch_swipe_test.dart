@@ -93,4 +93,106 @@ void main() {
     expect(_onScreen(), ['two']);
     expect(switched, 1);
   });
+
+  group('a branch with pages of its own', () {
+    /// The chats list has folders under its title, and flipping those is meant
+    /// to be the same gesture as changing tab: the folders first, the next tab
+    /// once they run out.
+    Future<void> pumpWithFolders(
+      WidgetTester tester, {
+      required int folders,
+      required void Function(int delta) onStep,
+      required void Function(int tab) onSwitch,
+    }) {
+      var index = 0;
+      var folder = 0;
+      return tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              _chooseTab = (i) => setState(() => index = i);
+              return BranchContainer(
+                currentIndex: index,
+                onSwitch: (i) {
+                  onSwitch(i);
+                  setState(() => index = i);
+                },
+                branchWantsStep: (delta) {
+                  if (index != 0) return false;
+                  final next = folder + delta;
+                  return next >= 0 && next < folders;
+                },
+                onBranchStep: (delta) {
+                  onStep(delta);
+                  setState(() => folder += delta);
+                },
+                branches: const [
+                  Center(child: Text('one')),
+                  Center(child: Text('two')),
+                  Center(child: Text('three')),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    testWidgets('takes the flick before the strip does', (tester) async {
+      var stepped = 0;
+      var switched = -1;
+      await pumpWithFolders(
+        tester,
+        folders: 3,
+        onStep: (d) => stepped += d,
+        onSwitch: (i) => switched = i,
+      );
+
+      await tester.fling(find.text('one'), const Offset(-400, 0), 1200);
+      await tester.pumpAndSettle();
+
+      expect(stepped, 1, reason: 'the folder moved');
+      expect(switched, -1, reason: 'and the tab did not');
+      expect(_onScreen(), ['one'],
+          reason: 'the strip never left, so nothing slid and snapped back');
+    });
+
+    testWidgets('gives the strip the flick that runs off the end',
+        (tester) async {
+      var switched = -1;
+      // One folder is no folders to flip: the first flick is already the edge.
+      await pumpWithFolders(
+        tester,
+        folders: 1,
+        onStep: (_) {},
+        onSwitch: (i) => switched = i,
+      );
+
+      await tester.fling(find.text('one'), const Offset(-400, 0), 1200);
+      await tester.pumpAndSettle();
+
+      expect(switched, 1);
+      expect(_onScreen(), ['two']);
+    });
+
+    testWidgets('leaves every other tab alone', (tester) async {
+      // The shell keeps every branch mounted, so the chats list is alive and
+      // registered while somebody is two tabs away. Its folders must not eat
+      // the flick there.
+      var switched = -1;
+      await pumpWithFolders(
+        tester,
+        folders: 3,
+        onStep: (_) => fail('a folder stepped on the wrong tab'),
+        onSwitch: (i) => switched = i,
+      );
+      _chooseTab(1);
+      await tester.pumpAndSettle();
+
+      await tester.fling(find.text('two'), const Offset(-400, 0), 1200);
+      await tester.pumpAndSettle();
+
+      expect(switched, 2);
+    });
+  });
 }

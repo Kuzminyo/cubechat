@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
 import '../../../core/routing/app_router.dart';
+import '../../../core/routing/branch_pager.dart';
 import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/identity/wipe_service.dart';
@@ -539,6 +540,45 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     if (route is ModalRoute<void>) appRouteObserver.subscribe(this, route);
   }
 
+  /// Publish the folder row as something a sideways flick can walk through.
+  ///
+  /// The tab strip owns the horizontal drag for the whole shell, so the folders
+  /// cannot claim it themselves; they say how many stops they have and how to
+  /// move, and the strip asks before deciding a flick was about tabs. Off the
+  /// end of the folders is the next tab, which is what makes it one gesture
+  /// rather than two — asked for in exactly those words.
+  ///
+  /// Registered from `build` and only when it changes, because the row's
+  /// contents are known there and nowhere else: the built-in folders a person
+  /// has switched on, the ones they made, and which is selected.
+  void _publishPager(List<_FolderStop> stops, int index) {
+    if (_publishedStops == stops.length && _publishedIndex == index) return;
+    _publishedStops = stops.length;
+    _publishedIndex = index;
+    // After the frame: this runs from `build`, and writing to a provider that
+    // something else is watching in the middle of one is the error Riverpod
+    // exists to shout about.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(branchPagerProvider.notifier).state = BranchPager(
+        branch: kChatsBranch,
+        index: index,
+        count: stops.length,
+        step: (delta) => _goToStop(stops, index + delta),
+      );
+    });
+  }
+
+  int? _publishedStops;
+  int? _publishedIndex;
+
+  void _goToStop(List<_FolderStop> stops, int to) {
+    if (to < 0 || to >= stops.length) return;
+    final stop = stops[to];
+    ref.read(selectedFolderProvider.notifier).state = stop.builtIn;
+    ref.read(selectedUserFolderProvider.notifier).state = stop.userFolderId;
+  }
+
   /// A chat (or anything else) has closed and this list is on top again.
   ///
   /// The rebuilds it skipped while covered were skipped by dropping the
@@ -669,6 +709,22 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
         : ref
             .read(userChatFoldersControllerProvider.notifier)
             .byId(selectedUserFolderId);
+
+    // The folder row as a row of stops, in the order the pills are drawn: All,
+    // the built-in folders that are switched on, then the ones the user made.
+    // Published for the tab strip to walk through — see [_publishPager].
+    final stops = <_FolderStop>[
+      const _FolderStop(),
+      for (final f in folders) _FolderStop(builtIn: f),
+      for (final f in userFolders) _FolderStop(userFolderId: f.id),
+    ];
+    final stopIndex = stops.indexWhere(
+      (s) => s.builtIn == folder && s.userFolderId == userFolder?.id,
+    );
+    // A folder switched off while it was the one showing leaves the selection
+    // pointing at nothing in the row; the pills already fall back to All, and
+    // so does this rather than publishing an index of -1.
+    _publishPager(stops, stopIndex < 0 ? 0 : stopIndex);
 
     final selection = ref.watch(chatSelectionProvider);
     // Outside build, so nothing is started while the tree is being built.
@@ -2072,6 +2128,19 @@ IconData folderIcon(ChatFolder folder) => switch (folder) {
       ChatFolder.favorites => Icons.star_rounded,
       ChatFolder.online => Icons.radar_rounded,
     };
+
+/// One stop in the folder row: All, a built-in folder, or one the user made.
+///
+/// Both fields null is All — the same shape the two selection providers use,
+/// where null in each means "not filtered by this kind". Keeping that shape
+/// rather than inventing a third means stepping to a stop is the same two
+/// writes a tap on its pill already does.
+class _FolderStop {
+  const _FolderStop({this.builtIn, this.userFolderId});
+
+  final ChatFolder? builtIn;
+  final String? userFolderId;
+}
 
 class _FolderFilterIsland extends StatelessWidget {
   const _FolderFilterIsland({

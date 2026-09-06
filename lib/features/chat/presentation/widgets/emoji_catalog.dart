@@ -192,7 +192,26 @@ abstract final class EmojiCatalog {
     ],
   );
 
-  static const groups = <EmojiGroup>[
+  /// Everything, in one grid, ahead of the themed tabs.
+  ///
+  /// The themes are how you find an emoji you are picturing; this is how you
+  /// find one you would recognise but cannot name a category for, and it is the
+  /// tab to land on when you do not yet know which of the eight it lives under.
+  /// Asked for as "просто общую вкладку и по темам" — both, not one instead of
+  /// the other.
+  ///
+  /// Built from the same lists rather than written out again, so a glyph added
+  /// to a theme appears here without anybody remembering to do it twice.
+  static final all = EmojiGroup(
+    id: 'all',
+    icon: Icons.apps_rounded,
+    emoji: [
+      for (final group in themed) ...group.emoji,
+    ],
+  );
+
+  /// The eight themes, in the order every keyboard puts them.
+  static const themed = <EmojiGroup>[
     smileys,
     people,
     nature,
@@ -202,4 +221,10 @@ abstract final class EmojiCatalog {
     objects,
     symbols,
   ];
+
+  /// What the category bar shows: everything first, then the themes.
+  ///
+  /// `final` rather than `const` because [all] is built from the others. The
+  /// list is made once at startup and never again.
+  static final groups = <EmojiGroup>[all, ...themed];
 }

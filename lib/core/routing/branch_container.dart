@@ -24,6 +24,8 @@ class BranchContainer extends StatefulWidget {
     required this.currentIndex,
     required this.branches,
     required this.onSwitch,
+    this.branchWantsStep,
+    this.onBranchStep,
   });
 
   final int currentIndex;
@@ -34,6 +36,20 @@ class BranchContainer extends StatefulWidget {
   /// also a go_router type that cannot be built in a test, and what this widget
   /// needs from it is one integer and one callback.
   final ValueChanged<int> onSwitch;
+
+  /// Whether the branch on screen wants this step for itself.
+  ///
+  /// The chats list has folders under its title, and flipping those is the same
+  /// gesture as changing tab — the folders first, the next tab once they run
+  /// out. Asked rather than assumed, and asked as one boolean, because the
+  /// shell has no business knowing what a branch keeps in its header.
+  ///
+  /// Null means nothing to ask and every drag is about tabs, which is what this
+  /// widget did before and what every branch except Chats still does.
+  final bool Function(int delta)? branchWantsStep;
+
+  /// Hand the step to the branch. Called only after [branchWantsStep] agreed.
+  final ValueChanged<int>? onBranchStep;
 
   @override
   State<BranchContainer> createState() => _BranchContainerState();
@@ -145,7 +161,31 @@ class _BranchContainerState extends State<BranchContainer>
     _page.stop();
   }
 
+  /// Which way this drag is going, as a step: -1 back, +1 forward, 0 undecided.
+  ///
+  /// Dragging left reveals what is to the right, so a negative delta is a
+  /// forward step — the same sign convention [_onDragEnd] already uses for
+  /// velocity.
+  int _stepFor(double dx) => dx == 0 ? 0 : (dx < 0 ? 1 : -1);
+
+  /// True while the finger is on a drag the branch underneath will claim.
+  ///
+  /// Set on the first movement and held for the whole gesture, so a drag does
+  /// not change its mind about who it belongs to halfway across the screen. The
+  /// strip stays still while it is true: it is not going anywhere, and a strip
+  /// that slides and then snaps back says the opposite of what happened.
+  bool _branchClaims = false;
+  bool _claimDecided = false;
+
   void _onDragUpdate(DragUpdateDetails d) {
+    if (!_claimDecided) {
+      final step = _stepFor(d.primaryDelta ?? 0);
+      if (step != 0) {
+        _claimDecided = true;
+        _branchClaims = widget.branchWantsStep?.call(step) ?? false;
+      }
+    }
+    if (_branchClaims) return;
     final last = (widget.branches.length - 1).toDouble();
     // Dragging left moves the strip right, one screen width per tab. Clamped at
     // both ends rather than rubber-banded: there is nothing past Profile, and a
@@ -177,6 +217,10 @@ class _BranchContainerState extends State<BranchContainer>
     // wherever they were. Half a screen of one tab and half of the next, which
     // is the other half of what the back gesture was leaving behind.
     if (!_dragging) {
+      // Cleared here as well: a gesture taken away before it moved leaves no
+      // claim behind to answer for the next one.
+      _claimDecided = false;
+      _branchClaims = false;
       _settleTo(_target);
       return;
     }
@@ -186,6 +230,21 @@ class _BranchContainerState extends State<BranchContainer>
   void _onDragEnd(DragEndDetails d) {
     _dragging = false;
     final velocity = d.primaryVelocity ?? 0;
+    if (_branchClaims) {
+      _claimDecided = false;
+      _branchClaims = false;
+      // The direction the finger settled on, which for a slow drag the velocity
+      // no longer remembers — so the strip's own resting position answers it.
+      final step = velocity != 0
+          ? _stepFor(velocity)
+          : _stepFor(_page.value - widget.currentIndex);
+      if (step != 0 && (widget.branchWantsStep?.call(step) ?? false)) {
+        widget.onBranchStep?.call(step);
+      }
+      // Nothing to settle: the strip never moved.
+      return;
+    }
+    _claimDecided = false;
     final last = widget.branches.length - 1;
     final from = widget.currentIndex;
     // A flick decides on its own, however short: past ~600 px/s the finger has

@@ -81,9 +81,25 @@ class EmojiPickerSheet extends ConsumerWidget {
 /// which closes on a pick because a reaction is one choice, and the composer's
 /// panel, which stays open because typing emoji is several.
 class EmojiPane extends ConsumerStatefulWidget {
-  const EmojiPane({super.key, required this.onPick, this.showRecents = true});
+  const EmojiPane({
+    super.key,
+    required this.onPick,
+    this.showRecents = true,
+    this.onBackspace,
+  });
 
   final ValueChanged<String> onPick;
+
+  /// Rub out the character before the caret.
+  ///
+  /// Null where the pane is picking one emoji rather than typing several: a
+  /// sheet that closes on a pick has nothing to rub out, and a key that cannot
+  /// do anything is worse than no key.
+  ///
+  /// It lives here because this panel covers the keyboard while it is open, and
+  /// backspace is on the keyboard — so one emoji too many meant closing the
+  /// panel, deleting, and opening it again.
+  final VoidCallback? onBackspace;
 
   /// The six the reaction strip already offers, repeated at the top.
   final bool showRecents;
@@ -132,6 +148,7 @@ class _EmojiPaneState extends ConsumerState<EmojiPane> {
         ),
         _CategoryBar(
           selected: _group,
+          onBackspace: widget.onBackspace,
           onSelect: (i) {
             setState(() => _group = i);
             if (_scroll.hasClients) _scroll.jumpTo(0);
@@ -187,10 +204,15 @@ class _EmojiCell extends StatelessWidget {
 }
 
 class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.selected, required this.onSelect});
+  const _CategoryBar({
+    required this.selected,
+    required this.onSelect,
+    this.onBackspace,
+  });
 
   final int selected;
   final void Function(int index) onSelect;
+  final VoidCallback? onBackspace;
 
   @override
   Widget build(BuildContext context) {
@@ -212,6 +234,18 @@ class _CategoryBar extends StatelessWidget {
                 color: i == selected
                     ? AppColors.brandPrimary
                     : AppColors.textOnGlassDim,
+              ),
+            ),
+          // At the end of the row, where a keyboard keeps it. Not a category
+          // and never selected, so it does not take the brand colour.
+          if (onBackspace != null)
+            IconButton(
+              onPressed: onBackspace,
+              iconSize: 21,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.backspace_outlined,
+                color: AppColors.textOnGlassDim,
               ),
             ),
         ],

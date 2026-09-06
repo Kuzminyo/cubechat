@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart';
 
 enum MessageStatus { sending, delivered, read, failed }
@@ -341,6 +342,76 @@ class Message {
   /// messenger draws one.
   bool get isSticker =>
       kind == MessageKind.image && text.trim().startsWith(stickerMarker);
+
+  /// How many emoji this message is, when it is nothing else.
+  ///
+  /// Null for anything with a word in it. A message that is only emoji is drawn
+  /// the way every messenger draws one — large, and with no bubble around it —
+  /// because a bubble is a frame for text and there is no text here. Asked for
+  /// against Telegram, where two laughing faces come out as two big faces and
+  /// nothing else.
+  ///
+  /// Capped at [maxBareEmoji]: past a handful they stop being a reaction and
+  /// start being a message, and a wall of forty at sticker size is a screenful.
+  /// Those keep the bubble and the ordinary size.
+  ///
+  /// Counted in grapheme clusters, not runes. A single emoji is routinely
+  /// several code points — a skin tone is a modifier, a family is people joined
+  /// by zero-width joiners, a flag is two regional indicators — and counting
+  /// runes would call one waving hand three emoji and refuse to enlarge it.
+  int? get bareEmojiCount {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    var count = 0;
+    for (final cluster in t.characters) {
+      // Spaces between them are still nothing but emoji. People type "😀 😀"
+      // as readily as "😀😀" and mean the same thing by it.
+      if (cluster.trim().isEmpty) continue;
+      if (!_isEmojiCluster(cluster)) return null;
+      count++;
+      if (count > maxBareEmoji) return null;
+    }
+    return count == 0 ? null : count;
+  }
+
+  /// Past this many, an emoji message is a message again.
+  static const int maxBareEmoji = 3;
+
+  /// Whether a grapheme cluster is made only of emoji and their joinery.
+  ///
+  /// Deliberately a check on the cluster's parts rather than a regex over the
+  /// whole string: the joiners, variation selectors and skin-tone modifiers
+  /// that hold one emoji together are not themselves emoji, and a rule written
+  /// as "every rune is in an emoji block" rejects every emoji that is more than
+  /// one rune — which is most of the ones people actually send.
+  static bool _isEmojiCluster(String cluster) {
+    var sawPictograph = false;
+    for (final rune in cluster.runes) {
+      if (_isJoinery(rune)) continue;
+      if (!_isPictograph(rune)) return false;
+      sawPictograph = true;
+    }
+    return sawPictograph;
+  }
+
+  /// Zero-width joiner, variation selectors, skin tones and keycap marks: the
+  /// glue inside an emoji, meaningless on their own.
+  static bool _isJoinery(int rune) =>
+      rune == 0x200D || // zero-width joiner
+      rune == 0xFE0F || // variation selector-16, "draw this as emoji"
+      rune == 0xFE0E ||
+      rune == 0x20E3 || // combining enclosing keycap
+      (rune >= 0x1F3FB && rune <= 0x1F3FF); // skin tones
+
+  static bool _isPictograph(int rune) =>
+      (rune >= 0x1F300 && rune <= 0x1FAFF) || // the main emoji planes
+      (rune >= 0x2600 && rune <= 0x27BF) || // misc symbols and dingbats
+      (rune >= 0x1F000 && rune <= 0x1F2FF) || // mahjong, cards, enclosed
+      (rune >= 0x1F1E6 && rune <= 0x1F1FF) || // regional indicators, for flags
+      rune == 0x2B50 ||
+      rune == 0x2B55 ||
+      (rune >= 0x2190 && rune <= 0x21FF) || // arrows drawn as emoji
+      (rune >= 0x2B00 && rune <= 0x2BFF);
 
   /// The emoji this sticker was filed under, or null for one sent before they
   /// had any (or by a build that does not set them).
