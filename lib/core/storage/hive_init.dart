@@ -5,7 +5,15 @@ import 'package:path_provider/path_provider.dart';
 /// Hive box names. Centralised so a wipe can iterate them in one place.
 abstract final class HiveBoxes {
   static const knownPeers = 'cubechat.known_peers';
+
+  /// Conversations, one entry per chat holding the whole list.
+  ///
+  /// Superseded by [messageRecords] and deliberately still here: it is read
+  /// once to import from, and then left alone. See [MessageStore].
   static const messages = 'cubechat.messages';
+
+  /// Conversations, one entry per message. See [MessageStore] for why.
+  static const messageRecords = 'cubechat.message_records';
 
   /// User preferences: nickname, etc.
   static const settings = 'cubechat.settings';
@@ -53,6 +61,7 @@ abstract final class HiveBoxes {
   static const all = <String>[
     knownPeers,
     messages,
+    messageRecords,
     settings,
     relayBuffer,
     channels,

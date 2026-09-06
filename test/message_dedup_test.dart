@@ -160,8 +160,13 @@ void main() {
   // history per launch. Fixing append() stops it growing, but the copies already
   // on disk have to be collapsed on load or the chat stays visibly duplicated.
   test('duplicates already on disk are healed when history loads', () async {
+    // Each copy has its own id and the shared wireId, which is what a
+    // re-downloaded backlog actually produces: `append` stamps a fresh id from
+    // the clock every time, and the wireId is the only thing that says two of
+    // them are the same message.
+    var n = 0;
     Map<String, dynamic> stored(String text, String wireId) => {
-          'id': 'm$wireId$text',
+          'id': 'm${n++}',
           'chatId': peerId,
           'text': text,
           'sentAtIso': DateTime(2026, 7, 26, 16, 8).toIso8601String(),
@@ -184,15 +189,26 @@ void main() {
 
     final fresh = ProviderContainer();
     addTearDown(fresh.dispose);
-    final n = fresh.read(messagesControllerProvider.notifier);
-    await n.loaded;
+    final controller = fresh.read(messagesControllerProvider.notifier);
+    await controller.loaded;
 
     expect(
-      n.forPeer(peerId).map((m) => m.text),
+      controller.forPeer(peerId).map((m) => m.text),
       ['Оно', 'Дублируется'],
     );
     // …and the repair is written back, so it doesn't have to run again.
-    await n.flushPending();
-    expect(box.get(peerId), hasLength(2));
+    //
+    // Written to the record store, not to the bucket it was read from: the
+    // old box is imported once and then left alone, deliberately — see
+    // [MessageStore]. So what has to be checked is that four of the six
+    // records are gone, which is the diffing write doing its half of the
+    // repair.
+    await controller.flushPending();
+    final records = await hiveCipherProvider
+        .openEncryptedBox<Map<dynamic, dynamic>>(HiveBoxes.messageRecords);
+    final mine = records.keys.where(
+      (dynamic k) => k is String && k.startsWith(peerId),
+    );
+    expect(mine, hasLength(2));
   });
 }

@@ -4,14 +4,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
-
 import '../../../core/util/frame_stats.dart';
-import '../../../core/storage/hive_cipher.dart';
-import '../../../core/storage/hive_init.dart';
 import '../../../core/util/media_storage.dart';
 import '../../chats/data/saved_messages.dart';
 import '../models/message.dart';
+import 'message_store.dart';
 
 /// Per-peer message store, keyed by the canonical chat id (the peer's
 /// pubkeyHex once the handshake has authenticated them).
@@ -20,7 +17,10 @@ import '../models/message.dart';
 /// the box is a `List<Map<String, dynamic>>` of messages — simple, schema-
 /// stable, no codegen TypeAdapter required.
 class MessagesController extends Notifier<Map<String, List<Message>>> {
-  Box<List<dynamic>>? _box;
+  /// Where history actually lives. One record per message, so the cost of
+  /// recording a tick or a reaction no longer grows with the length of the
+  /// conversation it lands in — see [MessageStore].
+  final MessageStore _store = MessageStore(encode: _encode, decode: _decode);
   Future<void>? _loading;
 
   /// Completes once the persisted history has been merged into [state]. The app
@@ -42,59 +42,40 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
 
   Future<void> _loadFromDisk() async {
     try {
-      final box = await hiveCipherProvider
-          .openEncryptedBox<List<dynamic>>(HiveBoxes.messages);
-      _box = box;
-      final loaded = <String, List<Message>>{};
-      final repaired = <String>[];
-      final strays = <String>[];
-      for (final key in box.keys) {
-        // Buckets filed under a BLE address, from before conversations were
-        // stored by pubkey alone.
+      // Buckets filed under a BLE address, from before conversations were
+      // stored by pubkey alone, are dropped on the way in — Android rotates
+      // that address, so such a bucket is a conversation with whoever happened
+      // to hold it, keeping one person's name while holding another person's
+      // messages. The store applies [_isDurableChatId] and deletes the rest.
+      final loaded = await _store.load(isDurableChatId: _isDurableChatId);
+
+      // Heal history written before [append] deduped: a device that took a
+      // relay backlog replay on every launch has each internet-delivered
+      // message stored several times over.
+      final repaired = <String, List<Message>>{};
+      for (final entry in loaded.entries) {
+        // Tell the store what it holds, always — including for a conversation
+        // about to be repaired.
         //
-        // Android rotates that address, so such a bucket is a conversation
-        // with whoever happened to hold it — it keeps one person's name and
-        // can hold another person's messages, which is exactly what was
-        // reported. Nothing writes them any more; this clears out the ones
-        // already on disk, once, so the chat list stops offering them.
-        //
-        // Everything real is a 64-character pubkey, a channel name, or the
-        // notebook. Anything else was never a durable name for anybody.
-        if (key is String && !_isDurableChatId(key)) {
-          strays.add(key);
-          continue;
-        }
-        final raw = box.get(key);
-        if (raw == null) continue;
-        try {
-          final decoded = raw
-              .map((dynamic m) => _decode((m as Map).cast<String, dynamic>()))
-              .toList();
-          // Heal history written before [append] deduped: a device that took a
-          // relay backlog replay on every launch has each internet-delivered
-          // message stored several times over.
-          final unique = _withoutWireIdDuplicates(decoded);
-          if (unique.length != decoded.length) repaired.add(key as String);
-          loaded[key as String] = unique;
-        } catch (e) {
-          debugPrint('skip corrupt messages bucket "$key": $e');
-        }
+        // Two things depend on it. A conversation that needs no repair must
+        // not look new to the next write, or a single reaction would rewrite
+        // every record in it. And a conversation that *is* repaired needs the
+        // store to know which records were there before, because the removals
+        // are what the repair consists of: the write below is a diff, and a
+        // diff against nothing deletes nothing.
+        _store.adopt(entry.key, entry.value);
+        final unique = _withoutWireIdDuplicates(entry.value);
+        if (unique.length != entry.value.length) repaired[entry.key] = unique;
       }
+      loaded.addAll(repaired);
+
       if (loaded.isNotEmpty) {
         state = {...loaded, ...state};
         unawaited(_seedPresenceFromHistory(loaded));
       }
-      for (final key in strays) {
-        debugPrint('messages bucket "$key": dropping, not a durable chat id');
-        try {
-          await box.delete(key);
-        } catch (e) {
-          debugPrint('could not drop stray bucket "$key": $e');
-        }
-      }
-      for (final key in repaired) {
-        debugPrint('messages bucket "$key": dropped duplicate wireIds');
-        _persist(key, loaded[key]!);
+      for (final entry in repaired.entries) {
+        debugPrint('messages "${entry.key}": dropped duplicate wireIds');
+        _persist(entry.key, entry.value);
       }
     } catch (e, st) {
       debugPrint('Messages load failed: $e\n$st');
@@ -795,11 +776,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     _persistTimer = null;
     _dirty.clear();
     state = <String, List<Message>>{};
-    try {
-      await _box?.clear();
-    } catch (e) {
-      debugPrint('Messages box clear failed: $e');
-    }
+    await _store.clear();
   }
 
   /// Remove messages older than [cutoff] from one conversation.
@@ -833,11 +810,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       // Same reasoning as clearAll: drop the pending snapshot rather than let
       // it be written over the delete.
       _dirty.remove(chatId);
-      try {
-        await _box?.delete(chatId);
-      } catch (e) {
-        debugPrint('Messages auto-delete($chatId) failed: $e');
-      }
+      await _store.deleteChat(chatId);
     } else {
       state = {...state, chatId: next};
       _persist(chatId, next);
@@ -883,11 +856,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     state = {...state}..remove(chatId);
     // A pending snapshot of this chat would land after the delete and undo it.
     _dirty.remove(chatId);
-    try {
-      await _box?.delete(chatId);
-    } catch (e) {
-      debugPrint('Messages delete($chatId) failed: $e');
-    }
+    await _store.deleteChat(chatId);
   }
 
   /// [msgs] with later copies of an already-seen [Message.wireId] removed,
@@ -931,7 +900,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   static const Duration _persistDebounce = Duration(milliseconds: 400);
 
   void _persist(String peerId, List<Message> msgs) {
-    if (_box == null) return;
+    if (!_store.isOpen) return;
     _dirty[peerId] = msgs;
     _persistTimer ??= Timer(_persistDebounce, () {
       _persistTimer = null;
@@ -947,16 +916,11 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   Future<void> flushPending() async {
     _persistTimer?.cancel();
     _persistTimer = null;
-    final box = _box;
-    if (box == null || _dirty.isEmpty) return;
+    if (!_store.isOpen || _dirty.isEmpty) return;
     final batch = Map<String, List<Message>>.from(_dirty);
     _dirty.clear();
     for (final entry in batch.entries) {
-      try {
-        await box.put(entry.key, entry.value.map(_encode).toList());
-      } catch (e) {
-        debugPrint('Messages persist(${entry.key}) failed: $e');
-      }
+      await _store.write(entry.key, entry.value);
     }
   }
 
