@@ -21,7 +21,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cubechat/core/theme/colors.dart';
-import 'package:cubechat/core/widgets/floating_glass.dart';
 import 'package:cubechat/features/chat/presentation/widgets/chat_input.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -161,18 +160,12 @@ void main() {
     );
   });
 
-  testWidgets('the floating pane fill deepens evenly', (tester) async {
-    final severity = await _bandSeverity(
-      tester,
-      const FloatingGlass(child: SizedBox.expand()),
-    );
-    expect(
-      severity,
-      lessThan(_evenEnough),
-      reason: 'FloatingGlass puts ${(severity * 100).round()}% of its whole '
-          'vertical change into one tenth of its height.',
-    );
-  });
+  // [FloatingGlass] — the chat-list tiles and the other floating panes — keeps
+  // the old fill on purpose. It was changed alongside the chat islands for
+  // consistency and taken straight back out: the band is a complaint about the
+  // chat, the tiles were not what anybody asked about, and a surface nobody
+  // objected to does not get changed to match an argument about another one.
+  // So there is no evenness test for it, and there should not be one.
 
   testWidgets('the metric catches the fill that shipped through 967',
       (tester) async {

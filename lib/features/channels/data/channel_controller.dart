@@ -20,10 +20,18 @@ import '../models/channel.dart';
 /// server or invite round-trip.
 class ChannelController extends Notifier<Map<String, Channel>> {
   Box<Map<dynamic, dynamic>>? _box;
+  Future<void>? _loading;
+
+  /// Resolves when the channels on disk are in [state].
+  ///
+  /// Same shape as every other controller that reads a box from `build()`. It
+  /// exists so startup can wait for the chat list to be true before drawing it
+  /// — see `warmChatList`.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   Map<String, Channel> build() {
-    unawaited(_loadFromDisk());
+    unawaited(_loading = _loadFromDisk());
     return <String, Channel>{};
   }
 

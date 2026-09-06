@@ -15,10 +15,21 @@ class PinnedChatsController extends Notifier<List<String>> {
   static const _key = 'pinned_chats';
 
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// A write that arrived before there was a box to put it in. See [_persist].
+  bool _writePending = false;
+
+  /// Resolves when the pins on disk are in [state].
+  ///
+  /// Two things need it. Startup waits on it so the list is ordered correctly
+  /// on the frame it first appears on, and [_persist] waits on it so a pin made
+  /// before the box finished opening is not thrown away — see there.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   List<String> build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <String>[];
   }
 
@@ -29,15 +40,28 @@ class PinnedChatsController extends Notifier<List<String>> {
       );
       _box = box;
       final raw = box.get(_key);
-      if (raw is! List) return;
-      final seen = <String>{};
-      final loaded = [
-        for (final id in raw.whereType<String>())
-          if (seen.add(id)) id,
-      ];
-      if (loaded.isNotEmpty) state = loaded;
+      if (raw is List) {
+        final seen = <String>{};
+        final onDisk = [
+          for (final id in raw.whereType<String>())
+            if (seen.add(id)) id,
+        ];
+        if (onDisk.isNotEmpty) {
+          // Anything pinned while this read was in flight keeps its pin, and
+          // keeps its place at the top — it is the most recent thing the user
+          // did. Replacing the state outright would undo it, which is the other
+          // half of the race [_persist] describes: the note left there would
+          // then write back a list the load had already emptied.
+          final pending = [for (final id in state) if (!seen.contains(id)) id];
+          state = pending.isEmpty ? onDisk : [...pending, ...onDisk];
+        }
+      }
     } catch (e) {
       debugPrint('PinnedChats load failed: $e');
+    }
+    if (_writePending && _box != null) {
+      _writePending = false;
+      await _persist();
     }
   }
 
@@ -110,8 +134,24 @@ class PinnedChatsController extends Notifier<List<String>> {
   }
 
   Future<void> _persist() async {
+    // The write used to be `_box?.put`, and `_box` is null until the load
+    // finishes — so a pin made in the first moments after launch went nowhere
+    // at all, silently, because `?.` on a null is a no-op and not an error. The
+    // chat looked pinned until the next launch, which is the worst way for a
+    // setting to fail.
+    //
+    // Waiting for the load here was the first fix and it deadlocked the suite:
+    // a caller that awaits a pin would then be awaiting an encrypted box, whose
+    // platform-channel replies arrive only when the caller yields. Leaving a
+    // note instead costs nothing and cannot block anybody — [_load] performs
+    // the write the moment there is a box to perform it on.
+    final box = _box;
+    if (box == null) {
+      _writePending = true;
+      return;
+    }
     try {
-      await _box?.put(_key, [...state]);
+      await box.put(_key, [...state]);
     } catch (e) {
       debugPrint('PinnedChats persist failed: $e');
     }

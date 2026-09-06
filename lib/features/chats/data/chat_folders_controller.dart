@@ -54,10 +54,20 @@ class ChatFoldersController extends Notifier<List<ChatFolder>> {
   static const _key = 'chats.folders';
 
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// A write that arrived before there was a box to put it in. See [_persist].
+  bool _writePending = false;
+
+  /// Resolves when the folder row on disk is in [state]. Startup waits on it so
+  /// the folders are there on the first frame rather than appearing over the
+  /// list a moment later; [_persist] waits on it so a folder added before the
+  /// box opened is not dropped.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   List<ChatFolder> build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <ChatFolder>[];
   }
 
@@ -68,15 +78,32 @@ class ChatFoldersController extends Notifier<List<ChatFolder>> {
       );
       _box = box;
       final raw = box.get(_key);
-      if (raw is! List) return;
-      final loaded = raw
-          .whereType<String>()
-          .map(ChatFolder.byName)
-          .whereType<ChatFolder>()
-          .toList();
-      if (loaded.isNotEmpty) state = loaded;
+      if (raw is List) {
+        final loaded = raw
+            .whereType<String>()
+            .map(ChatFolder.byName)
+            .whereType<ChatFolder>()
+            .toList();
+        // Merged under what is already here: a folder added while this read was
+        // in flight is newer than the disk.
+        if (loaded.isNotEmpty) {
+          final onDisk = loaded.toSet();
+          final pending = [
+            for (final folder in state)
+              if (!onDisk.contains(folder)) folder,
+          ];
+          state = pending.isEmpty ? loaded : [...loaded, ...pending];
+        }
+      }
     } catch (e) {
       debugPrint('ChatFolders load failed: $e');
+    }
+    // A write that arrived while this was in flight had nowhere to go. There is
+    // somewhere now, and the state it writes is the merged one — the user's
+    // change included. See [_persist].
+    if (_writePending && _box != null) {
+      _writePending = false;
+      await _persist();
     }
   }
 
@@ -105,8 +132,24 @@ class ChatFoldersController extends Notifier<List<ChatFolder>> {
   }
 
   Future<void> _persist() async {
+    // Never `await loaded` here.
+    //
+    // It was written that way first and it deadlocked the suite: a widget test
+    // that awaits a folder toggle would then be awaiting the encrypted box,
+    // and the box is opened over platform channels whose replies only arrive
+    // when the test pumps — which it cannot, because it is awaiting. The same
+    // shape is reachable in the app from any caller that awaits a mutation.
+    //
+    // So the write does not wait for the load; it leaves a note, and [_load]
+    // performs it the moment there is a box to perform it on. The write still
+    // cannot be lost, and nothing ever blocks on storage that may not be ready.
+    final box = _box;
+    if (box == null) {
+      _writePending = true;
+      return;
+    }
     try {
-      await _box?.put(_key, [for (final folder in state) folder.name]);
+      await box.put(_key, [for (final folder in state) folder.name]);
     } catch (e) {
       debugPrint('ChatFolders persist failed: $e');
     }

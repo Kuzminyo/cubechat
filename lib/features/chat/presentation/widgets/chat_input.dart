@@ -110,6 +110,14 @@ class MessageIslandGlass extends StatelessWidget {
                       // and where it cannot stretch into a band. The small
                       // top-to-bottom deepening stays: it is what keeps the
                       // island from reading as a flat rectangle.
+                      //
+                      // [FloatingGlass] — the chat-list tiles — deliberately
+                      // still has the old fill. It was changed to match and
+                      // changed straight back: the band was reported about the
+                      // chat, and a surface nobody complained about does not
+                      // get altered to be consistent with an argument about
+                      // another one. So the two are no longer identical, and
+                      // that is the intent rather than an oversight.
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,

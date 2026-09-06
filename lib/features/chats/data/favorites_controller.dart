@@ -28,10 +28,19 @@ class FavoritesController extends Notifier<List<String>> {
   // so it must be opened as Box<dynamic> — Hive forbids two type parameters for
   // one box.
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// A write that arrived before there was a box to put it in. See [_persist].
+  bool _writePending = false;
+
+  /// Resolves when the favourites on disk are in [state]. Startup waits on it
+  /// so the stars are right on the first frame; [_persist] waits on it so a
+  /// star tapped before the box opened is not dropped.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   List<String> build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <String>[];
   }
 
@@ -55,10 +64,22 @@ class FavoritesController extends Notifier<List<String>> {
           for (final id in loaded)
             if (seen.add(id)) id,
         ];
-        if (unique.isNotEmpty) state = unique;
+        // Merged under what is already here rather than assigned over it: a
+        // star tapped while this read was in flight is newer than the disk and
+        // must not be undone by it.
+        if (unique.isNotEmpty) {
+          final pending = [for (final id in state) if (seen.add(id)) id];
+          state = pending.isEmpty ? unique : [...pending, ...unique];
+        }
       }
     } catch (e) {
       debugPrint('FavoritesController load failed: $e');
+    }
+    // A write that arrived while this was in flight had nowhere to go. There is
+    // somewhere now, and the state it writes is the merged one. See [_persist].
+    if (_writePending && _box != null) {
+      _writePending = false;
+      await _persist();
     }
   }
 
@@ -108,8 +129,17 @@ class FavoritesController extends Notifier<List<String>> {
   }
 
   Future<void> _persist() async {
+    // Until the load finishes `_box` is null and `?.put` is a silent no-op, so
+    // a star tapped in the first moments after launch was lost. Waiting for the
+    // load instead would block a caller that awaits it on a box opened over
+    // platform channels, which deadlocks a widget test; a note cannot.
+    final box = _box;
+    if (box == null) {
+      _writePending = true;
+      return;
+    }
     try {
-      await _box?.put(_key, [...state]);
+      await box.put(_key, [...state]);
     } catch (e) {
       debugPrint('FavoritesController persist failed: $e');
     }

@@ -23,10 +23,19 @@ class ArchivedChatsController extends Notifier<Set<String>> {
   static const _key = 'archived_chats';
 
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// A write that arrived before there was a box to put it in. See [_persist].
+  bool _writePending = false;
+
+  /// Resolves when what is archived on disk is in [state]. Startup waits on it
+  /// so the list hides the right rows on its first frame; [_persist] waits on
+  /// it so an archive made before the box opened is not dropped.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   Set<String> build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <String>{};
   }
 
@@ -37,11 +46,21 @@ class ArchivedChatsController extends Notifier<Set<String>> {
       _box = box;
       final raw = box.get(_key);
       if (raw is List) {
-        final loaded = raw.whereType<String>().toSet();
-        if (loaded.isNotEmpty) state = loaded;
+        final onDisk = raw.whereType<String>().toSet();
+        // Merged under what is already here, never assigned over it — the same
+        // race [HiddenChatsController] documents at length: this write lands at
+        // an unknown moment after an encrypted box has opened, and anything
+        // archived before then would otherwise be discarded by it.
+        if (onDisk.isNotEmpty) state = {...onDisk, ...state};
       }
     } catch (e) {
       debugPrint('ArchivedChatsController load failed: $e');
+    }
+    // A write that arrived while this was in flight had nowhere to go. There is
+    // somewhere now, and the state it writes is the merged one. See [_persist].
+    if (_writePending && _box != null) {
+      _writePending = false;
+      await _persist();
     }
   }
 
@@ -82,8 +101,18 @@ class ArchivedChatsController extends Notifier<Set<String>> {
   }
 
   Future<void> _persist() async {
+    // `_box` is null until the load finishes, and `?.` on a null is a silent
+    // no-op rather than an error — archiving a chat in the first moments after
+    // launch went nowhere and came back on the next start. Waiting for the load
+    // here would block any caller that awaits an archive on a box opened over
+    // platform channels, which deadlocks a widget test; a note cannot.
+    final box = _box;
+    if (box == null) {
+      _writePending = true;
+      return;
+    }
     try {
-      await _box?.put(_key, state.toList());
+      await box.put(_key, state.toList());
     } catch (e) {
       debugPrint('ArchivedChatsController persist failed: $e');
     }

@@ -17,6 +17,7 @@ import 'core/util/build_probe.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/platform_info.dart';
 import 'core/util/media_storage.dart';
+import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 
@@ -258,6 +259,27 @@ Future<void> main() async {
 
   final container = ProviderContainer();
   IosBackgroundRefresh.instance.install(container);
+
+  // The one thing above that is allowed to hold the first frame for a screen's
+  // worth of content rather than for a decision.
+  //
+  // Everything else here is bounded because a stall would look like an app
+  // that will not open. This is bounded for the same reason and admitted for a
+  // different one: without it the first frame is a chat list with no chats in
+  // it, which renders the "no chats yet" empty state on a phone full of
+  // conversations, and the rows then replace it without an entrance because
+  // [AppearOnce] has already switched the animation off. A wrong screen
+  // followed by a cut is worse than a launch icon held for the length of a
+  // disk read. See [warmChatList].
+  //
+  // A second is the whole budget. Past that the old behaviour is better than a
+  // logo that will not go away, and the log line says which it was.
+  await _bootStep(
+    'chat-list',
+    () => warmChatList(container),
+    limit: const Duration(seconds: 1),
+  );
+
   runApp(
     UncontrolledProviderScope(
       container: container,

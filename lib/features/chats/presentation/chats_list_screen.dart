@@ -994,8 +994,12 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-                    sliver: AppearOnce(
-                      builder: (context, animate) => SliverReorderableList(
+                    // No [AppearOnce] here any more — see the note on
+                    // [AppearAnimation.enabled] below for why the chat list
+                    // does not play an entrance. Archive and Contacts still
+                    // wrap their lists in it.
+                    sliver: Builder(
+                      builder: (context) => SliverReorderableList(
                         itemCount: filtered.length,
                         onReorderStart: (_) => HapticFeedback.selectionClick(),
                         // A click on the way down as well as on the way up: the drop
@@ -1067,7 +1071,28 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                               bottom: i == filtered.length - 1 ? 0 : 8,
                             ),
                             child: AppearAnimation(
-                              enabled: animate,
+                              // Off, deliberately, and it has been off in
+                              // practice all along.
+                              //
+                              // [AppearOnce] only says yes on the list's first
+                              // frame, and until `warmChatList` existed that
+                              // frame had no rows in it — the conversations
+                              // arrived afterwards, with `animate` already
+                              // false. So this entrance has not actually run on
+                              // a cold start for as long as anyone can
+                              // remember, and warming the list would have
+                              // switched it back on.
+                              //
+                              // Which is the one thing that was asked for not
+                              // to happen: "they should be there straight
+                              // away". A staggered slide is a hundred and fifty
+                              // milliseconds of something arriving, and after
+                              // two reports of a jerk at startup, introducing
+                              // one now would be answering the complaint with
+                              // the complaint. The flourish belongs to a list
+                              // that appears while you are watching — Archive
+                              // and Contacts, entered by a tap, still have it.
+                              enabled: false,
                               delay: AppearAnimation.stagger(i),
                               child: SwipeActionRow(
                                 // Off while picking chats out: in that mode a row

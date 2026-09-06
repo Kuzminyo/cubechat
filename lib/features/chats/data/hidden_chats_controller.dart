@@ -25,10 +25,21 @@ class HiddenChatsController extends Notifier<Set<String>> {
   static const _key = 'hidden_chats';
 
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// A write that arrived before there was a box to put it in. See [_persist].
+  bool _writePending = false;
+
+  /// Resolves when what is hidden on disk is in [state].
+  ///
+  /// [_load] already merges rather than assigns, which is half of the race
+  /// described there. This is the other half: the write needs the box, and
+  /// until this resolves there is not one.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   Set<String> build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return const <String>{};
   }
 
@@ -55,6 +66,12 @@ class HiddenChatsController extends Notifier<Set<String>> {
       }
     } catch (e) {
       debugPrint('HiddenChatsController load failed: $e');
+    }
+    // The other half of the same race: the merge above kept the early `hide`,
+    // and this is what finally puts it on disk. See [_persist].
+    if (_writePending && _box != null) {
+      _writePending = false;
+      await _persist();
     }
   }
 
@@ -84,8 +101,18 @@ class HiddenChatsController extends Notifier<Set<String>> {
   }
 
   Future<void> _persist() async {
+    // The merge in [_load] kept the early `hide` in memory; this is what gets
+    // it onto disk. Without it, `_box` is still null and `?.put` is a silent
+    // no-op — the set was right until the process ended. Waiting for the load
+    // instead would block a caller that awaits a hide on a box opened over
+    // platform channels, which deadlocks a widget test.
+    final box = _box;
+    if (box == null) {
+      _writePending = true;
+      return;
+    }
     try {
-      await _box?.put(_key, state.toList());
+      await box.put(_key, state.toList());
     } catch (e) {
       debugPrint('HiddenChatsController persist failed: $e');
     }
