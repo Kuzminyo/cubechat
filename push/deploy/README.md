@@ -146,6 +146,43 @@ whole of what "working" looks like until a phone registers.
 An empty reply means nothing is listening — the service is not running, or
 Caddy is not in front of it. Both show up in `systemctl status`.
 
+## What the service keeps, and for how long
+
+On disk it holds exactly one file of its own: `tokens.json`, the registry of
+`npub -> device token`. That is the service. Everything else lives in memory
+and dies with the process — the set of recently seen event ids is bounded at
+five thousand and is never written down.
+
+The journal is the exception, and it was the one worth fixing. Every event
+writes a line naming a person:
+
+```
+[wake] a1b2c3d4 has mail
+[apns] a1b2c3d4 -> production: 200
+```
+
+Eight characters of an npub beside a timestamp, kept until the disk fills.
+The app tells its users that the doorbell *learns* who received something and
+when; it never promised the server would write it down forever.
+
+```bash
+cp deploy/journald-cubechat.conf /etc/systemd/journald.conf.d/cubechat.conf
+systemctl restart systemd-journald
+journalctl --vacuum-time=3d          # drop what is already there
+journalctl --disk-usage
+```
+
+Three days is what a bug report needs — every diagnosis this service has been
+through was answered by lines minutes or hours old — and the 100M ceiling in
+the same file is there so a burst cannot outrun the time limit.
+
+**This is not a memory fix.** Measured on 2026-09-06 while the question was
+being asked: the process sat at 46.3M with a peak of 72.8M after two days up,
+`available` memory was 540M of 961M, disk 12% of 24G, and the memory graph was
+a flat line. Nothing on this droplet is filling. What was accumulating was a
+record of other people's traffic, which is a different problem and the one
+worth acting on.
+
 ## The firewall
 
 Only 80 and 443 need to be open. The service itself listens on 8080 and Caddy
