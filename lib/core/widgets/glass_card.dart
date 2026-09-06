@@ -81,13 +81,28 @@ class GlassCard extends StatelessWidget {
                 width: 1,
               ),
               borderRadius: radius,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 24,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              // No shadow. The third copy of one, and the third time it has
+              // been taken out.
+              //
+              // [FloatingGlass.shadows] has been an empty list for a long time
+              // with a note above it saying why: on a dark backdrop a black
+              // halo does not read as height, it reads as grime around the
+              // pane, and the halos overlap wherever two panes sit near each
+              // other. `MessageIslandGlass` carried its own copy and cost four
+              // builds to find, because everybody looked at the blur's edge and
+              // the hairline border first.
+              //
+              // This one is the worst of the three, because these cards nest:
+              // the contact profile's actions panel is a card, and inside it
+              // sit an info card and two more cards, each with its own soft
+              // black halo offset six points down. Stacked inside one
+              // translucent island they read as horizontal bands across it —
+              // reported as "полоски на острове чужого профиля", and visible on
+              // full glass rather than light because a blurred backdrop is
+              // smooth enough for a halo to show against.
+              //
+              // The panes are separated by their fill and their border, which
+              // is what the other two concluded. This one now agrees.
             ),
             child: Material(
               color: Colors.transparent,

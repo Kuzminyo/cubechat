@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/glass.dart';
 import 'floating_glass.dart';
 
 /// The nav bar's pane of glass, on its own so anything else that has to look
@@ -87,11 +88,43 @@ class BarGlass extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.pane(0.97),
-                      AppColors.pane(0.99),
-                      AppColors.paneBase,
-                    ],
+                    // The one thing here that follows the glass tier.
+                    //
+                    // The bar was the only glass surface in the app that did
+                    // not — every pane, card and toast reads [AppBlur.panes],
+                    // and this one was left out when the tier was added, so
+                    // "Light" changed the whole interface except the bar
+                    // sitting across the bottom of it. Reported as exactly
+                    // that: make the main bar follow the modes.
+                    //
+                    // It follows by *fill*, not by blur, and that is
+                    // deliberate. The blur was taken off this surface on
+                    // purpose — see the note above: a full-screen-width
+                    // gaussian on every frame the bar is on screen, and a
+                    // filter that came and went with scrolling read as the bar
+                    // itself flickering solid, see-through, solid. Today added
+                    // a second reason: on full glass, panes take their gaussian
+                    // back in one frame at the end of a route transition, and
+                    // that frame was measured at 93 ms — eleven dropped in a
+                    // row. Putting a permanent full-width blur back here is
+                    // walking into both.
+                    //
+                    // So: on full glass the bar is a pane you can nearly see
+                    // through, and the aurora moving behind it is what makes it
+                    // read as glass. On light it is solid, because a
+                    // translucent bar with no blur under it is a list scrolling
+                    // through the icons.
+                    colors: AppBlur.panes
+                        ? [
+                            AppColors.pane(0.72),
+                            AppColors.pane(0.80),
+                            AppColors.pane(0.88),
+                          ]
+                        : [
+                            AppColors.pane(0.97),
+                            AppColors.pane(0.99),
+                            AppColors.paneBase,
+                          ],
                     stops: const [0, 0.35, 1],
                   ),
                   borderRadius: BorderRadius.circular(radius),
