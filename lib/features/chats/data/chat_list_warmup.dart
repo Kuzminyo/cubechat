@@ -49,7 +49,14 @@ Future<void> warmChatList(ProviderContainer container) async {
   // Reading a notifier is what constructs it, and constructing it is what
   // starts its read. So this line is the work beginning, not a query about it.
   await Future.wait(<Future<void>>[
-    container.read(messagesControllerProvider.notifier).loaded,
+    // Summaries, not history.
+    //
+    // A summary per conversation is what the list is made of; the messages
+    // inside one are not read until somebody opens it. That is the difference
+    // between a launch whose cost is the number of chats and one whose cost is
+    // everything ever said in them — the second kind gets slower every month
+    // and eventually hits the cap this whole step runs under.
+    container.read(messagesControllerProvider.notifier).summariesLoaded,
     container.read(knownPeersControllerProvider.notifier).loaded,
     container.read(channelControllerProvider.notifier).loaded,
     container.read(contactAliasesControllerProvider.notifier).loaded,

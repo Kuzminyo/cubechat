@@ -29,6 +29,7 @@ import '../../../core/widgets/triple_tap_detector.dart';
 import '../../../core/widgets/unread_badge.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
+import '../../chat/data/chat_summary.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../../channels/data/channel_roster_controller.dart';
 import '../../chat/data/drafts_controller.dart';
@@ -188,7 +189,11 @@ final Expando<_CachedRow> _rowCache = Expando<_CachedRow>('chatRow');
 
 /// The tuple a row depends on, outside the peer itself.
 typedef _RowKey = (
-  List<Message>,
+  // History, once it is loaded, and the summary the row was drawn from until
+  // then. Exactly one of the two is non-null at any moment, and the handover
+  // from one to the other is a change this key has to notice.
+  List<Message>?,
+  ChatSummary?,
   DateTime?,
   Object?,
   String?,
@@ -288,13 +293,25 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
 
   final now = DateTime.now();
   final locale = ref.read(localeControllerProvider);
+  // What the list is drawn from before history has finished loading.
+  //
+  // Startup waits for these and not for the conversations — a summary per chat
+  // instead of every message in every chat — so the launch costs the number of
+  // conversations rather than their length. History arrives a moment later and
+  // takes over below; the two agree, so nothing moves when it does.
+  final summaries = ref.read(messagesControllerProvider.notifier).summaries;
+
   final entries = known.values.map((peer) {
-    final msgs = messagesByChat[peer.pubkeyHex] ?? const [];
+    final msgs = messagesByChat[peer.pubkeyHex];
+    final summary = msgs == null ? summaries[peer.pubkeyHex] : null;
     // Map beacons are not conversation, so they must not be what a tile says
     // the conversation last was. New ones never reach history at all; this
     // skips the ones an older build already filed there.
-    final last = lastVisibleMessage(msgs);
-    final unread = unreadMessageCount(msgs, readMarkers[peer.pubkeyHex]);
+    final last =
+        msgs != null ? lastVisibleMessage(msgs) : summary?.last;
+    final unread = msgs != null
+        ? unreadMessageCount(msgs, readMarkers[peer.pubkeyHex])
+        : summary?.unreadAfter(readMarkers[peer.pubkeyHex]) ?? 0;
     // No longer suppressed by presence. It used to read `!isOnline && ...`, so
     // that a tile said either "online" or "via mesh" and never both; the two
     // consumers that care still prefer presence when it is true, and now they
@@ -322,7 +339,11 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
     // instance, as the controller always makes — misses on its own without
     // being named in the key. Same idea as `_unreadCache` above, one level up.
     final key = (
+      // Both, because either can be the source: history once it is loaded, the
+      // summary until then. `msgs` going from null to a list is itself the
+      // change of hands, and a key holding both notices it.
       msgs,
+      summary,
       readMarkers[peer.pubkeyHex],
       draft,
       aliases[peer.pubkeyHex],

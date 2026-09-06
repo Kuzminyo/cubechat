@@ -100,9 +100,18 @@ Future<void> _bootStep(
   final watch = Stopwatch()..start();
   try {
     await step().timeout(limit);
-    // Only worth a line when it was slow enough to be felt; a healthy boot
-    // should not have to push the interesting entries out of the buffer.
-    if (watch.elapsedMilliseconds >= 250) {
+    // Sixty rather than two hundred and fifty.
+    //
+    // At the old bar a healthy boot printed nothing, which was the intent —
+    // and it also meant that "the icon sits there too long" had no evidence
+    // behind it at all. The steps here now add up to under two hundred
+    // milliseconds together, so every one of them is invisible, and the next
+    // thing to cut cannot be chosen without knowing which one it is.
+    //
+    // Six lines at worst, on one launch, in a two-hundred-line buffer. The
+    // rest of the boot is the engine starting and the system's own launch
+    // screen, neither of which this can see.
+    if (watch.elapsedMilliseconds >= 60) {
       DebugLog.instance
           .log('BOOT', '$what took ${watch.elapsedMilliseconds}ms');
     }

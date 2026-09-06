@@ -8,7 +8,9 @@ import '../../../core/util/frame_stats.dart';
 import '../../../core/util/media_storage.dart';
 import '../../chats/data/saved_messages.dart';
 import '../models/message.dart';
+import 'chat_summary.dart';
 import 'message_store.dart';
+import 'message_visibility.dart';
 
 /// Per-peer message store, keyed by the canonical chat id (the peer's
 /// pubkeyHex once the handshake has authenticated them).
@@ -27,6 +29,19 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// doesn't need to wait (the UI rebuilds when it lands); tests do.
   Future<void> get loaded => _loading ?? Future<void>.value();
 
+  Future<void>? _summarising;
+
+  /// Completes once the per-chat summaries are in [summaries].
+  ///
+  /// This is the one startup waits for. It reads a small record per
+  /// conversation instead of every message in every conversation, so the time
+  /// it takes is the number of chats rather than the length of them — which is
+  /// what stops a launch getting slower every month somebody uses the app.
+  Future<void> get summariesLoaded => _summarising ?? Future<void>.value();
+
+  /// What the chat list draws until [state] catches up. See [ChatSummary].
+  Map<String, ChatSummary> summaries = const <String, ChatSummary>{};
+
   @override
   Map<String, List<Message>> build() {
     // A debounced write must not outlive the notifier that queued it: the box
@@ -36,8 +51,24 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
       _persistTimer?.cancel();
       _persistTimer = null;
     });
+    // Both start now; only one of them is worth holding a frame for.
+    //
+    // The summaries are what the chat list needs and they are small, so
+    // startup waits for them. History is everything else — what a conversation
+    // actually says, which nobody can read until they open one — so it lands
+    // when it lands, and the list swaps from summary to history without
+    // anybody seeing the difference, because the two agree.
+    unawaited(_summarising = _loadSummaries());
     unawaited(_loading = _loadFromDisk());
     return <String, List<Message>>{};
+  }
+
+  Future<void> _loadSummaries() async {
+    try {
+      summaries = await _store.loadSummaries();
+    } catch (e) {
+      debugPrint('Chat summaries load failed: $e');
+    }
   }
 
   Future<void> _loadFromDisk() async {
@@ -77,6 +108,29 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         debugPrint('messages "${entry.key}": dropped duplicate wireIds');
         _persist(entry.key, entry.value);
       }
+
+      // Now that history has been read once, leave behind what the *next*
+      // launch needs so it does not have to read it again.
+      //
+      // This is the whole migration: a phone upgrading to this build has no
+      // summaries, reads everything exactly as before, and writes them on the
+      // way out. From the launch after that, startup is the number of chats.
+      //
+      // After the summaries box is open, obviously — it is opened alongside
+      // this, and whichever finishes first must not skip the write.
+      await summariesLoaded;
+      await _store.summariseAll(loaded);
+      summaries = {
+        for (final entry in loaded.entries)
+          entry.key: ChatSummary(
+            last: lastVisibleMessage(entry.value),
+            incomingAtMs: <int>[
+              for (final m in entry.value)
+                if (!m.isMine && !isMapBeaconMessage(m))
+                  m.sentAt.millisecondsSinceEpoch,
+            ]..sort(),
+          ),
+      };
     } catch (e, st) {
       debugPrint('Messages load failed: $e\n$st');
     }

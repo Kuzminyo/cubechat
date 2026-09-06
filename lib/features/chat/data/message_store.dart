@@ -6,6 +6,8 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../models/message.dart';
+import 'chat_summary.dart';
+import 'message_visibility.dart';
 
 /// Conversations on disk, one record per message.
 ///
@@ -68,6 +70,7 @@ class MessageStore {
   static const String _seqField = '_seq';
 
   Box<Map<dynamic, dynamic>>? _box;
+  Box<Map<dynamic, dynamic>>? _summaryBox;
 
   /// What was last written for each chat, by reference.
   ///
@@ -81,6 +84,75 @@ class MessageStore {
   final Map<String, int> _nextSeq = <String, int>{};
 
   bool get isOpen => _box != null;
+
+  /// Read the per-conversation summaries, and nothing else.
+  ///
+  /// This is what startup waits for. It opens a box holding one small record
+  /// per chat, so the cost is the number of conversations rather than the
+  /// number of messages in them — which is the difference between a launch
+  /// that is the same speed forever and one that gets slower every month.
+  ///
+  /// A conversation missing from what this returns is not an empty
+  /// conversation; it is one whose summary has not been written yet. That
+  /// happens exactly once per chat, on the first launch after this shipped,
+  /// and [summariseAll] fills them in as soon as history is read.
+  Future<Map<String, ChatSummary>> loadSummaries() async {
+    final box = await hiveCipherProvider
+        .openEncryptedBox<Map<dynamic, dynamic>>(HiveBoxes.chatSummaries);
+    _summaryBox = box;
+    final out = <String, ChatSummary>{};
+    for (final key in box.keys) {
+      if (key is! String) continue;
+      final raw = box.get(key);
+      if (raw == null) continue;
+      try {
+        final map = raw.cast<String, dynamic>();
+        final last = map['last'];
+        out[key] = ChatSummary(
+          last: last is Map
+              ? decode(Map<String, dynamic>.from(last.cast<String, dynamic>()))
+              : null,
+          incomingAtMs: List<int>.from(
+            (map['in'] as List<dynamic>? ?? const <dynamic>[]).whereType<int>(),
+          ),
+        );
+      } catch (e) {
+        debugPrint('skip corrupt chat summary "$key": $e');
+      }
+    }
+    return out;
+  }
+
+  /// Write a summary for every conversation given.
+  ///
+  /// Called once, after the first full read of history, so that the launch
+  /// after this one has summaries to find. Also the repair path: a summary
+  /// that went missing or was written by an older shape is simply replaced.
+  Future<void> summariseAll(Map<String, List<Message>> chats) async {
+    final box = _summaryBox;
+    if (box == null) return;
+    try {
+      await box.putAll(<String, Map<String, dynamic>>{
+        for (final entry in chats.entries)
+          entry.key: _summaryOf(entry.value),
+      });
+    } catch (e) {
+      debugPrint('Chat summaries write failed: $e');
+    }
+  }
+
+  /// The record behind [ChatSummary], built from a conversation.
+  Map<String, dynamic> _summaryOf(List<Message> messages) {
+    final last = lastVisibleMessage(messages);
+    final incoming = <int>[
+      for (final m in messages)
+        if (!m.isMine && !isMapBeaconMessage(m)) m.sentAt.millisecondsSinceEpoch,
+    ]..sort();
+    return <String, dynamic>{
+      if (last != null) 'last': encode(last),
+      'in': incoming,
+    };
+  }
 
   /// Open the box, import the old format if this is the first run on it, and
   /// return every conversation.
@@ -185,6 +257,15 @@ class MessageStore {
       if (gone.isNotEmpty) await box.deleteAll(gone);
       _nextSeq[chatId] = seq;
       _written[chatId] = messages;
+      // The summary goes with every write, not on a schedule of its own: it is
+      // what the next launch will draw the chat list from, and a summary that
+      // lags the conversation is a list that opens on yesterday's last message.
+      //
+      // Rebuilt whole rather than patched. It walks the conversation, which
+      // this method already did to diff it, and the walk is integer
+      // comparisons — the expensive parts, encoding and encryption, stay
+      // proportional to what changed.
+      await _summaryBox?.put(chatId, _summaryOf(messages));
     } catch (e) {
       debugPrint('Messages persist($chatId) failed: $e');
     }
@@ -210,9 +291,9 @@ class MessageStore {
       for (final key in box.keys)
         if (key is String && key.startsWith(prefix)) key,
     ];
-    if (keys.isEmpty) return;
     try {
-      await box.deleteAll(keys);
+      await _summaryBox?.delete(chatId);
+      if (keys.isNotEmpty) await box.deleteAll(keys);
     } catch (e) {
       debugPrint('Messages delete($chatId) failed: $e');
     }
@@ -224,6 +305,7 @@ class MessageStore {
     _nextSeq.clear();
     try {
       await _box?.clear();
+      await _summaryBox?.clear();
     } catch (e) {
       debugPrint('Messages clear failed: $e');
     }

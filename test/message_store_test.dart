@@ -205,6 +205,87 @@ void main() {
     expect(back.keys, [chatId]);
   });
 
+  group('summaries', () {
+    test('a summary is written with the conversation and read back alone',
+        () async {
+      final store = newStore();
+      await store.load(isDurableChatId: (_) => true);
+      await store.loadSummaries();
+      await store.write(chatId, [
+        msg('m1', 'first', minute: 1),
+        msg('m2', 'last thing said', minute: 2),
+      ]);
+
+      // A fresh launch that reads summaries and never touches history.
+      final summaries = await newStore().loadSummaries();
+      expect(summaries[chatId]?.last?.text, 'last thing said');
+    });
+
+    test('the unread count matches what full history would say', () async {
+      final store = newStore();
+      await store.load(isDurableChatId: (_) => true);
+      await store.loadSummaries();
+      final history = [
+        msg('m1', 'theirs', minute: 1),
+        msg('m2', 'theirs', minute: 2),
+        msg('m3', 'theirs', minute: 3),
+      ];
+      await store.write(chatId, history);
+
+      final summary = (await newStore().loadSummaries())[chatId]!;
+      expect(summary.unreadAfter(null), 3, reason: 'never opened');
+      expect(summary.unreadAfter(DateTime(2026, 9, 6, 12, 2)), 1);
+      expect(summary.unreadAfter(DateTime(2026, 9, 6, 12, 3)), 0);
+    });
+
+    test('our own messages are not unread', () async {
+      final store = newStore();
+      await store.load(isDurableChatId: (_) => true);
+      await store.loadSummaries();
+      await store.write(chatId, [
+        msg('m1', 'theirs', minute: 1),
+        Message(
+          id: 'm2',
+          chatId: chatId,
+          text: 'mine',
+          sentAt: DateTime(2026, 9, 6, 12, 2),
+          isMine: true,
+        ),
+      ]);
+
+      final summary = (await newStore().loadSummaries())[chatId]!;
+      expect(summary.unreadAfter(null), 1);
+    });
+
+    test('the unread times are sorted, so a backlog counts correctly',
+        () async {
+      // A relay replays what it held, so a message written earlier arrives
+      // after one written later. Counting "newer than the marker" over an
+      // unsorted list would stop at the first old one.
+      final store = newStore();
+      await store.load(isDurableChatId: (_) => true);
+      await store.loadSummaries();
+      await store.write(chatId, [
+        msg('m1', 'arrived first, written last', minute: 50),
+        msg('m2', 'arrived second, written first', minute: 1),
+        msg('m3', 'arrived third, written in between', minute: 20),
+      ]);
+
+      final summary = (await newStore().loadSummaries())[chatId]!;
+      expect(summary.unreadAfter(DateTime(2026, 9, 6, 12, 10)), 2);
+    });
+
+    test('deleting a conversation takes its summary with it', () async {
+      final store = newStore();
+      await store.load(isDurableChatId: (_) => true);
+      await store.loadSummaries();
+      await store.write(chatId, [msg('m1', 'here', minute: 1)]);
+      await store.deleteChat(chatId);
+
+      expect((await newStore().loadSummaries()).containsKey(chatId), isFalse);
+    });
+  });
+
   group('importing the previous format', () {
     /// Write history the old way: one entry per chat, holding the whole list.
     Future<void> seedV1(Map<String, List<Message>> chats) async {

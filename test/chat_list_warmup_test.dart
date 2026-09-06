@@ -83,18 +83,41 @@ void main() {
 
     // Read synchronously, exactly as the first `build()` of the list does.
     // Nothing is pumped and nothing is awaited between here and the assertion.
+    //
+    // The summary, not the conversation. Startup deliberately does not wait
+    // for history — that is what keeps the launch the same speed whatever the
+    // history weighs — so what has to be true here is that the row can be
+    // drawn: the preview and the unread badge, both of which come from this.
+    final summary = container
+        .read(messagesControllerProvider.notifier)
+        .summaries[chatId];
     expect(
-      container.read(messagesControllerProvider)[chatId],
+      summary,
       isNotNull,
-      reason: 'the conversation was on disk and the first frame did not have '
-          'it, which is the frame that renders the empty state',
+      reason: 'the conversation was on disk and the first frame had nothing '
+          'to draw it from, which is the frame that renders the empty state',
     );
+    expect(summary!.last?.text, 'the message that was already there');
+    expect(summary.unreadAfter(null), 1);
     expect(
       container.read(pinnedChatsControllerProvider),
       contains(chatId),
       reason: 'a pin that lands after the first frame reorders the list under '
           'the reader, which is the same jerk in a smaller size',
     );
+  });
+
+  test('history still arrives, a moment later', () async {
+    await seed();
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await warmChatList(container);
+    // Nobody waits for this at startup; everything that reads whole
+    // conversations does.
+    await container.read(messagesControllerProvider.notifier).loaded;
+
+    expect(container.read(messagesControllerProvider)[chatId], hasLength(1));
   });
 
   test('without the warmup the first read really is empty', () async {

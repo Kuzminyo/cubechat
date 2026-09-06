@@ -15,6 +15,16 @@ abstract final class HiveBoxes {
   /// Conversations, one entry per message. See [MessageStore] for why.
   static const messageRecords = 'cubechat.message_records';
 
+  /// One tiny record per conversation: the last thing said in it, and when
+  /// each incoming message arrived. Everything the chat list needs, and
+  /// nothing else — so the list can be drawn without reading history.
+  ///
+  /// A box of its own rather than a corner of [messageRecords], because Hive's
+  /// `Box` reads its whole file into memory when it opens. Sharing one would
+  /// mean paying for every message to find nine summaries, which is the cost
+  /// this exists to avoid.
+  static const chatSummaries = 'cubechat.chat_summaries';
+
   /// User preferences: nickname, etc.
   static const settings = 'cubechat.settings';
 
@@ -62,6 +72,7 @@ abstract final class HiveBoxes {
     knownPeers,
     messages,
     messageRecords,
+    chatSummaries,
     settings,
     relayBuffer,
     channels,
