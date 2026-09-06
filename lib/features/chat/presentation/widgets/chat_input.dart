@@ -87,15 +87,36 @@ class MessageIslandGlass extends StatelessWidget {
                 child: GlassBlur(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
+                      // The light belt across the top of every island: here.
+                      //
+                      // The fill used to open on `glass(0.07)` — white, at
+                      // seven percent, over nothing — and reach `pane(0.48)`
+                      // only a third of the way down. So the top third of each
+                      // island was a ramp from "the backdrop, barely tinted"
+                      // to "half-covered dark", which on a bright wallpaper is
+                      // a wide pale band with a soft edge where it settles.
+                      // That band is what was reported, repeatedly, as the
+                      // stripe on the islands.
+                      //
+                      // It cost four builds because the search kept landing on
+                      // the edges — the border came off, the blur's rim came
+                      // off, then two real drop shadows came off, and each time
+                      // the band was still there, because none of them drew it.
+                      // A gradient stop is not an edge and does not look like
+                      // one in the code.
+                      //
+                      // Now the fill is even, and the whisper of white lives in
+                      // the border, which is where a pane's lit edge belongs
+                      // and where it cannot stretch into a band. The small
+                      // top-to-bottom deepening stays: it is what keeps the
+                      // island from reading as a flat rectangle.
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          AppColors.glass(0.07),
-                          AppColors.pane(0.48),
+                          AppColors.pane(0.52),
                           AppColors.pane(0.60),
                         ],
-                        stops: const [0, 0.35, 1],
                       ),
                       borderRadius: radius,
                       // Softer since the shadows came off.

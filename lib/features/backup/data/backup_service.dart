@@ -177,9 +177,14 @@ class BackupService {
       // A path arriving from a file somebody else made is not going to be
       // allowed to name a location.
       if (!_mediaDirs.contains(dirName)) continue;
+      // The middle test was `contains(r'')` — an empty raw string, which every
+      // string contains. So this rejected every file there has ever been, and
+      // a restore put the conversations back and silently kept none of the
+      // photos or voice notes they refer to. It was meant to be a backslash,
+      // written the one way that cannot be misread as an escape.
       if (fileName.isEmpty ||
           fileName.contains('/') ||
-          fileName.contains(r'') ||
+          fileName.contains('\\') ||
           fileName.contains('..')) {
         continue;
       }

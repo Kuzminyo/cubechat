@@ -706,6 +706,51 @@ function alreadySeen(id) {
   return false;
 }
 
+/// When each recipient was last rung, so a flood of events is not a flood of
+/// pushes.
+///
+/// `seen` dedups one *event* arriving from several relays. It does nothing
+/// about many different events aimed at one person, and nothing about who
+/// sent them: the wake tag is a public recipient id, so anybody able to
+/// publish to a relay we watch can address as many events at somebody as they
+/// like and this would have rung for every one. A signature check would not
+/// help — a spammer signs with their own key quite happily — so the bound has
+/// to be on the ringing, not on the sender.
+///
+/// Coalescing rather than dropping, and it costs nothing real: this push says
+/// "you have mail" and nothing else. Two events ten seconds apart mean one
+/// doorbell either way; the app fetches everything waiting once it is awake.
+const lastWake = new Map();
+const WAKE_GAP_MS = 15_000;
+const WAKE_MAX_PER_HOUR = 60;
+const HOUR_MS = 3_600_000;
+
+function shouldWake(npub) {
+  const now = Date.now();
+  const entry = lastWake.get(npub);
+  if (!entry) {
+    lastWake.set(npub, { at: now, hourStart: now, count: 1 });
+    return true;
+  }
+  if (now - entry.hourStart >= HOUR_MS) {
+    entry.hourStart = now;
+    entry.count = 0;
+  }
+  if (now - entry.at < WAKE_GAP_MS) return false;
+  if (entry.count >= WAKE_MAX_PER_HOUR) {
+    // One line an hour, not one a message: the point of the ceiling is to stop
+    // a flood, and a log that floods alongside it defeats half of that.
+    if (entry.count === WAKE_MAX_PER_HOUR) {
+      log('wake', `${short(npub)} over the hourly ceiling — holding`);
+      entry.count++;
+    }
+    return false;
+  }
+  entry.at = now;
+  entry.count++;
+  return true;
+}
+
 function connectRelay(url) {
   if (sockets.has(url)) return;
   const socket = new WebSocket(url);
@@ -726,11 +771,14 @@ function connectRelay(url) {
     if (!Array.isArray(frame) || frame[0] !== 'EVENT') return;
     const event = frame[2];
     if (!event || event.kind !== FRAME_KIND) return;
+    if (typeof event.id !== 'string' || !Array.isArray(event.tags)) return;
     if (alreadySeen(event.id)) return;
-    for (const tag of event.tags ?? []) {
-      if (tag[0] !== RECIPIENT_TAG) continue;
+    for (const tag of event.tags) {
+      if (!Array.isArray(tag) || tag[0] !== RECIPIENT_TAG) continue;
+      if (typeof tag[1] !== 'string') continue;
       const entry = tokens.get(tag[1]);
       if (!entry) continue;
+      if (!shouldWake(tag[1])) continue;
       log('wake', `${short(tag[1])} has mail`);
       void sendPush(tag[1], entry.token);
     }

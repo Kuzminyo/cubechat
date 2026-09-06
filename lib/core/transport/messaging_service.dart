@@ -255,6 +255,20 @@ class MessagingService {
   /// sends the manifest.
   static const int _maxPendingFsChunks = 8192;
 
+  /// The same bound, across every waiting transfer at once.
+  ///
+  /// [_maxPendingFsChunks] is per `mediaId`, and a `mediaId` is chosen by the
+  /// sender: a fresh one each time steps around the per-transfer cap entirely,
+  /// so the only thing bounding this was the manifest TTL. Sixteen mebibytes
+  /// of buffered chunks and two dozen simultaneous transfers is far past
+  /// anything real — a manifest is sent *before* its chunks, so a transfer
+  /// that buffers at all is one that lost a race — and well short of what
+  /// makes the OS kill a messenger for its footprint.
+  static const int _maxPendingFsBytes = 16 * 1024 * 1024;
+
+  /// How many separate transfers may sit waiting for a manifest at once.
+  static const int _maxPendingFsTransfers = 24;
+
   final Ref _ref;
 
   /// Set by [dispose] so async teardown steps know the container is on its way
@@ -1140,6 +1154,20 @@ class MessagingService {
       replyToWireId: replyTarget != null ? replyToWireId : null,
       replyPreview: replyTarget != null ? replyPreview : null,
     );
+    // Whether a transient send actually left the phone.
+    //
+    // A filed message records its own fate — the store gets `delivered` or
+    // `queued` and the tick in the bubble follows it. A transient one is filed
+    // nowhere, so its fate had no way out of this method: the caller awaited,
+    // nothing threw, and "no route" was a line in the log and nothing else.
+    //
+    // [MapPresenceController] is that caller, and it counts successful sends to
+    // decide whether anyone is still receiving — which is what parks the GPS
+    // when nobody is. Counting "did not throw" meant it parked never, and the
+    // whole mechanism for not holding a location fix open for an audience of
+    // nobody has been dead code since it was written. Location is the most
+    // expensive thing this app can leave running.
+    var transientDelivered = false;
     final messages = _ref.read(messagesControllerProvider.notifier);
     if (!transient) {
       messages.append(canonicalId, msg);
@@ -1339,6 +1367,7 @@ class MessagingService {
       // A beacon that went nowhere is simply skipped: it says where somebody is
       // *now*, and the next one is forty-five seconds away.
       if (transient) {
+        transientDelivered = deliveredVia > 0;
         if (deliveredVia == 0) {
           DebugLog.instance
               .log('MAP', 'presence beacon to $canonicalId found no route');
@@ -1404,6 +1433,14 @@ class MessagingService {
           messages.updateStatus(chatId, msg.id, MessageStatus.failed);
         }
       }
+    }
+    // The transient caller reads its fate off the route, since nothing filed it
+    // anywhere it could be read from. `queued` is the same word the store uses
+    // for a message that found no road, and it means the same thing here.
+    if (transient) {
+      return msg.copyWith(
+        route: transientDelivered ? MessageRoute.mesh : MessageRoute.queued,
+      );
     }
     return msg;
   }
@@ -5817,6 +5854,7 @@ class MessagingService {
               arrivedAt: DateTime.now(),
             ));
           }
+          _evictPendingFsOverBudget();
           return;
         }
         try {
@@ -6935,6 +6973,57 @@ class MessagingService {
     } catch (e, st) {
       DebugLog.instance.log('CRYPTO', 'media persist failed: $e');
       debugPrint('$st');
+    }
+  }
+
+  /// Hold the waiting-for-a-manifest buffers inside a budget that does not
+  /// depend on the sender's choices.
+  ///
+  /// The per-transfer cap counts chunks under one `mediaId`, and the `mediaId`
+  /// comes off the wire — a sender that picks a new one every chunk was
+  /// bounded by nothing but the manifest TTL, and could hold as much of this
+  /// phone's memory as it cared to spend airtime on. Time is not a budget when
+  /// the other side controls the rate.
+  ///
+  /// Oldest transfer first, which is the same rule [_evictOldestManifest] uses
+  /// and for the same reason: a manifest travels ahead of its chunks, so the
+  /// buffer that has waited longest is the one least likely to still be a real
+  /// transfer in progress.
+  void _evictPendingFsOverBudget() {
+    var bytes = 0;
+    for (final list in _pendingFsChunks.values) {
+      for (final chunk in list) {
+        bytes += chunk.body.length;
+      }
+    }
+    while (_pendingFsChunks.length > _maxPendingFsTransfers ||
+        bytes > _maxPendingFsBytes) {
+      String? oldestKey;
+      DateTime? oldestAt;
+      for (final entry in _pendingFsChunks.entries) {
+        // An empty list got there by hitting the per-transfer cap and is worth
+        // nothing; treat it as the oldest thing there is.
+        if (entry.value.isEmpty) {
+          oldestKey = entry.key;
+          break;
+        }
+        final at = entry.value.first.arrivedAt;
+        if (oldestAt == null || at.isBefore(oldestAt)) {
+          oldestAt = at;
+          oldestKey = entry.key;
+        }
+      }
+      if (oldestKey == null) break;
+      final dropped = _pendingFsChunks.remove(oldestKey);
+      if (dropped == null) break;
+      for (final chunk in dropped) {
+        bytes -= chunk.body.length;
+      }
+      DebugLog.instance.log(
+        'CRYPTO',
+        'drop buffered FS chunks for $oldestKey under memory pressure '
+            '(${_pendingFsChunks.length} transfers left)',
+      );
     }
   }
 

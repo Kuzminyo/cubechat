@@ -11,6 +11,7 @@ import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/shared_location.dart';
 import '../../../core/util/location_service.dart';
 import '../../../core/util/platform_info.dart';
+import '../../chat/models/message.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import 'map_friends_controller.dart';
 import '../../../core/util/debug_log.dart';
@@ -349,9 +350,20 @@ class MapPresenceController extends Notifier<int> {
       var sent = 0;
       for (final peerId in peers) {
         try {
-          await messaging.sendText(peerId, share, transient: true);
-          sent++;
-          _reportedUnreachable.remove(peerId);
+          // Delivered, not merely attempted.
+          //
+          // This used to count every call that did not throw, and a beacon
+          // with nowhere to go does not throw — `sendText` logs "found no
+          // route" and returns normally. So `sent` was the number of peers in
+          // the list, never zero, and the whole branch below that parks the
+          // GPS when nobody is receiving could not be reached. The fix is in
+          // what `sendText` returns, and this is the half that reads it.
+          final outcome =
+              await messaging.sendText(peerId, share, transient: true);
+          if (outcome.route != MessageRoute.queued) {
+            sent++;
+            _reportedUnreachable.remove(peerId);
+          }
         } catch (e) {
           // Once per peer, not once per tick.
           //

@@ -116,15 +116,19 @@ class FloatingGlass extends StatelessWidget {
     // it is what the pane costs.
     final Widget tint = DecoratedBox(
       decoration: BoxDecoration(
+        // Even fill, for the reason written out in [MessageIslandGlass]: a
+        // white stop at the top of the ramp is a pale band across the top
+        // third of the pane, not a highlight along its edge. The two surfaces
+        // are meant to be indistinguishable, so they change together — fixing
+        // one alone would leave the chat list and the chat looking like two
+        // different materials.
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.glass(0.07),
-            AppColors.pane(0.52),
+            AppColors.pane(0.54),
             AppColors.pane(0.66),
           ],
-          stops: const [0, 0.35, 1],
         ),
         borderRadius: radius,
         border: border

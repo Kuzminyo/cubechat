@@ -66,14 +66,32 @@ class HiveCipherProvider {
     try {
       existing = await _storage.read(key: _keyName);
     } catch (e) {
+      // Our own key, never `deleteAll()`.
+      //
+      // It used to be `deleteAll()`, which is not "forget the history key" —
+      // it empties the whole secure store, and IdentityService keeps
+      // `cubechat.identity.priv` and `cubechat.identity.signseed` in the same
+      // one, under the same options. So a single failed read here threw away
+      // the identity: new pubkey, new Nostr key, every existing conversation
+      // dead on both ends, unrecoverable. That is the outcome an uninstall
+      // produces, reached by a transient error.
+      //
+      // And transient is the likely case, not the corrupt one: the iOS entries
+      // are `first_unlock`, so a read before the first unlock after a reboot
+      // fails by design — and a push that starts us in the background is
+      // exactly how we get there now.
+      //
+      // History can still reset here, and that half is unchanged: a key we
+      // cannot read is a key we cannot decrypt yesterday's boxes with, and
+      // there is no way to tell a corrupt store from a locked one from inside
+      // this method. Retrying was tried and taken back out — it turns the
+      // failure path into a second of dead startup, on the path where the app
+      // is already having a bad morning. What changed is only the blast
+      // radius: the identity no longer goes with the history.
       debugPrint('Hive cipher: secure read failed ($e) — resetting key');
       try {
-        await _storage.deleteAll();
-      } catch (_) {
-        try {
-          await _storage.delete(key: _keyName);
-        } catch (_) {}
-      }
+        await _storage.delete(key: _keyName);
+      } catch (_) {}
       existing = null;
     }
     Uint8List keyBytes;

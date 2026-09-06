@@ -185,6 +185,20 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       avatarHash: quarantineRotation
           ? existing?.avatarHash
           : (avatarKnown ? avatarHash : existing?.avatarHash),
+      // Decisions this device made about this person, carried across every
+      // refresh. They are ours, not theirs: nothing a peer broadcasts is
+      // allowed to change them, and this constructor is the only way an
+      // announcement reaches the roster.
+      //
+      // Left out, they fell back to their defaults — unblocked, unmuted,
+      // forwarding allowed — so a blocked contact only had to keep announcing
+      // itself to be let back in, which is precisely what a blocked contact's
+      // radio keeps doing. Silent, because the roster looked correct until the
+      // next announcement landed, and there is no test that watches a block
+      // survive one.
+      blockedAt: existing?.blockedAt,
+      mutedAt: existing?.mutedAt,
+      allowsForwardLink: existing?.allowsForwardLink ?? true,
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
