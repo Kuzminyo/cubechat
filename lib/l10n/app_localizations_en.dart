@@ -1486,6 +1486,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get presenceRecently => 'last seen recently';
 
   @override
+  String get presenceJustNow => 'just now';
+
+  @override
+  String presenceMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes ago',
+      one: '$count minute ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String chatReadByCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

@@ -724,17 +724,19 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
       status = t.presenceRecently;
     } else if (peer == null) {
       status = t.presenceOffline;
+    } else if (peer.lastPresenceAt == null) {
+      // Falls back to nothing rather than to `lastSeen`, because a number
+      // that means something else is worse than no number.
+      status = t.presenceOffline;
     } else {
-      status = [
-        t.presenceOffline,
-        // The last time they were in the app, not the last time their phone
-        // spoke — see [KnownPeer.lastPresenceAt]. Falls back to nothing rather
-        // than to `lastSeen`, because a number that means something else is
-        // worse than no number.
-        peer.lastPresenceAt == null
-            ? '—'
-            : formatChatListTime(context, peer.lastPresenceAt!),
-      ].join(' \u00B7 ');
+      // The last time they were in the app, not the last time their phone
+      // spoke — see [KnownPeer.lastPresenceAt]. Said the way a person says
+      // it: "just now" under a minute, the count of minutes for the first
+      // hour, and the clock after that. See [formatLastSeen].
+      //
+      // Not prefixed with "offline" any more: the phrase already says they
+      // are not here, and saying it twice filled a line with room for one.
+      status = formatLastSeen(context, peer.lastPresenceAt!);
     }
     final heroExpanded =
         (MediaQuery.sizeOf(context).height * 0.61).clamp(430.0, 560.0);

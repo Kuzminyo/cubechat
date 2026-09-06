@@ -1,0 +1,434 @@
+[
+  {
+    "id": "cat-wave",
+    "label": "Привет",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-laugh",
+    "label": "Смех",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-love",
+    "label": "Любовь",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-sleep",
+    "label": "Сон",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-approve",
+    "label": "Одобряю",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-shy",
+    "label": "Смущение",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-sad",
+    "label": "Грусть",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-angry",
+    "label": "Сержусь",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-party",
+    "label": "Праздник",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-surprise",
+    "label": "Удивление",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-matcha",
+    "label": "Перерыв с матчей",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "cat-cool",
+    "label": "Всё под контролем",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-smile",
+    "label": "Улыбка",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-laugh",
+    "label": "Смех",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-heart",
+    "label": "Сердце",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-kiss",
+    "label": "Поцелуй",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-love",
+    "label": "Влюблённость",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-surprise",
+    "label": "Удивление",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-sad",
+    "label": "Грусть",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-angry",
+    "label": "Злость",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-approve",
+    "label": "Лайк",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-clap",
+    "label": "Аплодисменты",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-fire",
+    "label": "Огонь",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  },
+  {
+    "id": "emoji-party",
+    "label": "Праздник",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses"
+  }
+]

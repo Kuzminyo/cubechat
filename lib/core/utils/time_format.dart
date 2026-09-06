@@ -20,6 +20,34 @@ String formatChatListTime(BuildContext context, DateTime time) {
   return DateFormat.yMd(locale).format(time);
 }
 
+/// When somebody was last in the app, said the way a person would say it.
+///
+/// Three registers, because the useful answer changes with the age of it:
+///
+///   * **Under a minute** — "just now". Nobody says "one minute ago" about
+///     somebody who is still putting their phone down, and a counter that
+///     starts at zero minutes reads as broken.
+///   * **Under an hour** — "N minutes ago". This is the range where the number
+///     is what you want: whether they left four minutes ago or forty changes
+///     whether you wait.
+///   * **Past an hour** — the clock, and then the day. By then the elapsed time
+///     has stopped being the useful form — "was 214 minutes ago" is arithmetic
+///     somebody has to do — and the wall clock is what a person remembers
+///     against. Handed to [formatChatListTime], which already knows how to
+///     shorten yesterday and last week.
+///
+/// Asked for in those three pieces, in those words.
+String formatLastSeen(BuildContext context, DateTime time) {
+  final t = AppLocalizations.of(context);
+  final elapsed = DateTime.now().difference(time);
+  // A clock that has gone backwards — theirs or ours — is not a reason to show
+  // a negative count. "Just now" is the honest reading of a stamp that has not
+  // happened yet by a few seconds.
+  if (elapsed.inMinutes < 1) return t.presenceJustNow;
+  if (elapsed.inMinutes < 60) return t.presenceMinutesAgo(elapsed.inMinutes);
+  return formatChatListTime(context, time);
+}
+
 String formatBubbleTime(BuildContext context, DateTime time) {
   final locale = Localizations.localeOf(context).toLanguageTag();
   return DateFormat.Hm(locale).format(time);

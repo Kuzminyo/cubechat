@@ -432,9 +432,11 @@ class ChatScreen extends ConsumerWidget {
       // now, not a history of when they came and went.
       statusText = t.presenceRecently;
     } else if (lastPresent != null) {
-      // "offline · 14:05" / "offline · Mon" — precise last-seen.
-      statusText =
-          '${t.presenceOffline} · ${formatChatListTime(context, lastPresent)}';
+      // "just now", "был(а) 12 минут назад", and past an hour the clock —
+      // see [formatLastSeen], which carries the argument for the three
+      // registers. The bare "offline · 14:05" this replaced was the third one
+      // for every gap, including the ones a minute wide.
+      statusText = formatLastSeen(context, lastPresent);
     } else {
       statusText = t.presenceOffline;
     }

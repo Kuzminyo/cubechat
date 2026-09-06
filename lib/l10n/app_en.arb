@@ -713,6 +713,14 @@
   "contactProfilePolls": "Polls",
   "contactProfileNoPolls": "No polls yet",
   "presenceRecently": "last seen recently",
+  "presenceJustNow": "just now",
+  "presenceMinutesAgo": "{count, plural, one{{count} minute ago} other{{count} minutes ago}}",
+  "@presenceMinutesAgo": {
+    "description": "How long ago somebody was last in the app, for the first hour after they left. Past an hour the clock is shown instead.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "chatReadByCount": "{count, plural, one{Read by {count}} other{Read by {count}}}",
   "@chatReadByCount": {
     "placeholders": {

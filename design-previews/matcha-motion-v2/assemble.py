@@ -67,6 +67,116 @@ def extract(sheet):
    frames.append(ImageOps.pad(im,(SIZE,SIZE),method=Image.Resampling.LANCZOS,color=(0,0,0,0)))
   result.append(frames)
  return result
+
+def smooth_motion(stem,im):
+ a=rgba_array(im)
+ mask=np.uint8(np.asarray(im.getchannel('A'))>180)
+ count,components,stats,centers=cv2.connectedComponentsWithStats(mask,8)
+ largest=1+int(np.argmax(stats[1:,cv2.CC_STAT_AREA]))
+ x,y,w,h=stats[largest,:4].astype(float)
+ cx=x+w*.5;cy=y+h*.55
+ def point(px,py):return x+w*px,y+h*py
+ def field(m,px,py,dx,dy,rx,ry):
+  weight=np.exp(-.5*(((xx-px)/rx)**2+((yy-py)/ry)**2))
+  m[:,:,0]-=dx*weight;m[:,:,1]-=dy*weight
+ def rotate(m,px,py,angle,rx,ry):
+  vx=xx-px;vy=yy-py
+  weight=np.exp(-.5*((vx/rx)**2+(vy/ry)**2))
+  co=math.cos(angle);si=math.sin(angle)
+  m[:,:,0]+=((co-1)*vx+si*vy)*weight
+  m[:,:,1]+=(-si*vx+(co-1)*vy)*weight
+ def pulse(m,px,py,amount,rx,ry):
+  weight=np.exp(-.5*(((xx-px)/rx)**2+((yy-py)/ry)**2))
+  m[:,:,0]-=(xx-px)*amount*weight
+  m[:,:,1]-=(yy-py)*amount*weight
+ output=[]
+ for fi in range(N):
+  phase=fi/N;v=math.sin(2*math.pi*phase);u=(1-math.cos(2*math.pi*phase))/2
+  m=grid.copy()
+  if stem=='emoji-heart':
+   beat=.09*math.exp(-((phase-.28)/.09)**2)+.055*math.exp(-((phase-.49)/.075)**2)
+   m[:,:,0]=cx+(xx-cx)/(1+beat);m[:,:,1]=cy+(yy-cy)/(1+beat)
+  elif stem=='emoji-fire':
+   # Keep the flame base planted while the tip sways continuously.
+   rise=np.clip((y+h-yy)/h,0,1)
+   m[:,:,0]-=9*rise**1.7*np.sin(2*math.pi*phase+rise*2.0)
+   m[:,:,1]-=3*rise*u
+  elif stem.startswith('cat-'):
+   headx,heady=point(.48,.32)
+   pulse(m,*point(.5,.71),.015*u,w*.40,h*.32)
+   # A small tail sway maintains a living idle pose without shifting the feet.
+   field(m,*point(.85,.65),3.5*v,-1.5*u,w*.14,h*.25)
+   if stem=='cat-wave':
+    field(m,*point(.20,.54),4*v,-12*u,w*.15,h*.16)
+    rotate(m,headx,heady,.018*v,w*.45,h*.35)
+   elif stem=='cat-laugh':
+    field(m,headx,heady,1.5*v,-5*u,w*.43,h*.35)
+    rotate(m,headx,heady,.028*v,w*.43,h*.32)
+   elif stem=='cat-love':
+    pulse(m,*point(.49,.66),.07*u,w*.25,h*.22)
+    rotate(m,headx,heady,.016*v,w*.40,h*.30)
+   elif stem=='cat-sleep':
+    pulse(m,*point(.63,.44),.022*u,w*.36,h*.30)
+    field(m,*point(.82,.38),2*v,-3*u,w*.15,h*.26)
+   elif stem=='cat-approve':
+    field(m,*point(.26,.60),1*v,-7*u,w*.17,h*.19)
+    field(m,headx,heady,0,2.5*u,w*.43,h*.30)
+   elif stem=='cat-shy':
+    rotate(m,headx,heady,.018*v,w*.44,h*.34)
+    field(m,*point(.25,.65),2*u,-2*u,w*.14,h*.16)
+    field(m,*point(.72,.65),-2*u,-2*u,w*.14,h*.16)
+   elif stem=='cat-sad':
+    field(m,headx,heady,0,3*u,w*.43,h*.35)
+    rotate(m,headx,heady,.01*v,w*.40,h*.32)
+   elif stem=='cat-angry':
+    pulse(m,headx,heady,.017*u,w*.4,h*.28)
+    field(m,*point(.5,.06),2*v,-4*u,w*.25,h*.13)
+   elif stem=='cat-party':
+    rotate(m,*point(.5,.56),.035*v,w*.65,h*.60)
+    field(m,*point(.18,.52),-2*v,-5*u,w*.2,h*.22)
+    field(m,*point(.78,.48),2*v,-5*u,w*.2,h*.22)
+   elif stem=='cat-surprise':
+    field(m,headx,heady,0,-4*u,w*.43,h*.35)
+    pulse(m,headx,heady,.018*u,w*.45,h*.35)
+   elif stem=='cat-matcha':
+    field(m,*point(.51,.63),0,-6*u,w*.27,h*.23)
+    rotate(m,headx,heady,.012*v,w*.43,h*.34)
+   elif stem=='cat-cool':
+    rotate(m,headx,heady,.025*v,w*.44,h*.35)
+    field(m,*point(.19,.5),0,-4*u,w*.16,h*.2)
+  elif stem=='emoji-clap':
+   rotate(m,cx,cy,.018*v,w*.7,h*.7)
+   field(m,*point(.26,.55),4*u,-1*u,w*.24,h*.4)
+   field(m,*point(.72,.48),-4*u,1*u,w*.24,h*.4)
+  elif stem=='emoji-approve':
+   rotate(m,*point(.5,.8),.04*v,w*.7,h*.8)
+   field(m,*point(.48,.18),1*v,-2*u,w*.25,h*.35)
+  elif stem=='emoji-party':
+   rotate(m,cx,cy,.03*v,w*.7,h*.7)
+   field(m,*point(.12,.62),-5*u,0,w*.20,h*.18)
+  else:
+   rotate(m,cx,cy,.02*v,w*.65,h*.65)
+   pulse(m,cx,cy,.012*u,w*.5,h*.5)
+   if stem=='emoji-love':
+    pulse(m,*point(.32,.39),.07*u,w*.18,h*.17)
+    pulse(m,*point(.68,.39),.07*u,w*.18,h*.17)
+   elif stem=='emoji-laugh':
+    field(m,*point(.5,.65),0,-3*u,w*.34,h*.28)
+    field(m,*point(.16,.6),0,3*u,w*.12,h*.2)
+    field(m,*point(.84,.6),0,3*u,w*.12,h*.2)
+   elif stem=='emoji-kiss':
+    pulse(m,*point(.75,.58),.075*u,w*.17,h*.18)
+   elif stem=='emoji-surprise':
+    pulse(m,*point(.5,.67),.06*u,w*.17,h*.22)
+   elif stem=='emoji-angry':
+    field(m,*point(.34,.35),0,2*u,w*.2,h*.17)
+    field(m,*point(.66,.35),0,2*u,w*.2,h*.17)
+   elif stem=='emoji-sad':
+    field(m,*point(.19,.61),0,4*u,w*.12,h*.22)
+  output.append(straight_image(remap(a,m)))
+ return output
+
+CACHED={'cat-wave','cat-laugh','cat-love','cat-sleep','cat-approve','cat-shy','cat-sad','cat-angry','cat-party','cat-surprise','cat-matcha','cat-cool','emoji-smile'}
 manifest=[]
 preview=[Image.new('RGBA',(840,560),'#f4f3ea') for _ in range(N)]
 comparison=None
@@ -80,28 +190,28 @@ for kind,filename,names,labels in SPECS:
   if stem=='cat-approve': keyframes=[keyframes[i] for i in [0,2,3,0]]
   # Keep the tear on the same cheek for the sad cat.
   if stem=='cat-sad': keyframes=[keyframes[i] for i in [3,1,2,3]]
-  arrays=[rgba_array(im) for im in keyframes]
-  pairs=[flow_pair(arrays[i],arrays[(i+1)%4]) for i in range(4)]
-  frames=[]
-  for fi in range(N):
-   phase=fi/N*4
-   pair=int(phase)%4; local=phase-int(phase)
-   # Rest gently at each pose, easing in and out of every transition.
-   t=max(0,min(1,(local-.16)/.76))
-   t=t*t*(3-2*t)
-   fa,fb=pairs[pair]
-   frames.append(between(arrays[pair],arrays[(pair+1)%4],fa,fb,t))
-  frames[0].save(ROOT/(stem+'.png'))
-  frames[0].save(ROOT/(stem+'.webp'),save_all=True,append_images=frames[1:],duration=MS,loop=0,quality=92,method=4,minimize_size=True)
-  gifframes=[]
-  for frame in frames:
-   bg=Image.new('RGBA',(SIZE,SIZE),'#f4f3ea');bg.alpha_composite(frame)
-   gifframes.append(bg.resize((240,240),Image.Resampling.LANCZOS).convert('RGB'))
-  gifframes[0].save(ROOT/(stem+'.gif'),save_all=True,append_images=gifframes[1:],duration=MS,loop=0,disposal=2,optimize=False)
+  chosen={'cat-wave':1,'cat-shy':2,'cat-matcha':2,'cat-cool':1,'emoji-kiss':1}.get(stem,0)
+  if stem in CACHED:
+   frames=[]
+   with Image.open(ROOT/(stem+'.webp')) as cached:
+    for k in range(cached.n_frames):
+     cached.seek(k);cached.load()
+     frames.extend([cached.convert('RGBA').copy()]*max(1,round(cached.info.get('duration',MS)/MS)))
+   assert len(frames)==N,(stem,len(frames))
+  else:
+   frames=smooth_motion(stem,keyframes[chosen])
+  if stem not in CACHED:
+   frames[0].save(ROOT/(stem+'.png'))
+   frames[0].save(ROOT/(stem+'.webp'),save_all=True,append_images=frames[1:],duration=MS,loop=0,quality=92,method=2,minimize_size=False)
+   gifframes=[]
+   for frame in frames:
+    bg=Image.new('RGBA',(SIZE,SIZE),'#f4f3ea');bg.alpha_composite(frame)
+    gifframes.append(bg.resize((240,240),Image.Resampling.LANCZOS).convert('RGB'))
+   gifframes[0].save(ROOT/(stem+'.gif'),save_all=True,append_images=gifframes[1:],duration=MS,loop=0,disposal=2,optimize=False)
   index=len(manifest)
   for fi,frame in enumerate(frames):
    preview[fi].alpha_composite(frame.resize((132,132),Image.Resampling.LANCZOS),((index%6)*140+4,(index//6)*140+4))
-  manifest.append({'id':stem,'label':labels[row],'kind':kind,'size_webp':[SIZE,SIZE],'size_gif':[240,240],'cycle_ms':N*MS,'source_keyframes':4,'sampled_frames':N,'fps':25,'method':'bidirectional optical-flow interpolation with smoothstep easing and short pose holds'})
+  manifest.append({'id':stem,'label':labels[row],'kind':kind,'size_webp':[SIZE,SIZE],'size_gif':[240,240],'cycle_ms':N*MS,'source_poses':1,'sampled_frames':N,'fps':25,'method':'continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses'})
   if stem=='cat-wave':
    montage=Image.new('RGB',(SIZE*5,SIZE*2),'#f4f3ea')
    for j,k in enumerate([0,5,10,15,20,25,30,35,40,45]):
@@ -111,7 +221,7 @@ for kind,filename,names,labels in SPECS:
 preview_rgb=[im.convert('RGB') for im in preview]
 preview_rgb[0].save(ROOT/'animated-preview.gif',save_all=True,append_images=preview_rgb[1:],duration=MS,loop=0,disposal=2,optimize=False)
 preview_rgb[0].save(ROOT/'preview-still.png')
-preview_rgb[0].save(ROOT/'animated-preview.webp',save_all=True,append_images=preview_rgb[1:],duration=MS,loop=0,quality=88,method=4)
+preview_rgb[0].save(ROOT/'animated-preview.webp',save_all=True,append_images=preview_rgb[1:],duration=MS,loop=0,quality=88,method=2)
 (ROOT/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
 # Decode every exported frame, verify timings and record actual encoder frame counts.
 checks=[]
