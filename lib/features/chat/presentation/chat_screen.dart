@@ -1385,7 +1385,24 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         // decides — one arriving from the other person while you are reading
         // history must not pull the page out from under you.
         _returnToNewest();
-        _smoothSendIds.add(message.id);
+        // One at a time, and it is the newest.
+        //
+        // The flag is read when a bubble is first built, so sending three
+        // messages in three seconds left three of them marked at once — and
+        // anything that rebuilt those rows replayed all three entry
+        // animations together. Reported as the recently-sent ones twitching:
+        // plural, which is the part that gives it away, because one message
+        // arriving should move one bubble.
+        //
+        // Clearing the others costs nothing to a bubble already on screen: its
+        // controller ran at mount and is long finished. What it prevents is the
+        // *next* rebuild finding a handful of messages still claiming to be new.
+        for (final id in _smoothSendIds) {
+          _smoothSendTimers.remove(id)?.cancel();
+        }
+        _smoothSendIds
+          ..clear()
+          ..add(message.id);
         _smoothSendTimers[message.id]?.cancel();
         _smoothSendTimers[message.id] = Timer(const Duration(seconds: 2), () {
           _smoothSendTimers.remove(message.id)?.cancel();

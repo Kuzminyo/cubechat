@@ -588,7 +588,26 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                               color: AppColors.textOnGlass,
                               fontSize: 14.5,
                             ),
-                            onSubmitted: (_) => _send(),
+                            // The keyboard's own send key closes the keyboard,
+                            // and the app's send button does not — so the same
+                            // action had two different outcomes depending on
+                            // which one the thumb reached for. Reported as the
+                            // keyboard shutting after a reply.
+                            //
+                            // It is Flutter, not the platform: `EditableText`
+                            // unfocuses after an action it considers final, and
+                            // `send` is one of them. Asking for the focus back
+                            // is the whole fix, and it has to be after `_send`
+                            // so the field is already empty when the caret
+                            // returns to it.
+                            //
+                            // A conversation is a run of messages. Closing the
+                            // keyboard after each one means reopening it for
+                            // the next, which is the tap this exists to save.
+                            onSubmitted: (_) {
+                              _send();
+                              _focus.requestFocus();
+                            },
                             textInputAction: TextInputAction.send,
                             decoration: InputDecoration(
                               isCollapsed: true,
