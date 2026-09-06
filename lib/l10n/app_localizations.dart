@@ -2660,6 +2660,36 @@ abstract class AppLocalizations {
   /// **'{count, plural, one{{count} hour ago} other{{count} hours ago}}'**
   String presenceHoursAgo(int count);
 
+  /// No description provided for @presenceYesterdayAt.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday at {time}'**
+  String presenceYesterdayAt(String time);
+
+  /// Selected on the weekday number rather than formatted, so a language that inflects can put the day in the case its preposition needs.
+  ///
+  /// In en, this message translates to:
+  /// **'{day, select, 1{on Monday} 2{on Tuesday} 3{on Wednesday} 4{on Thursday} 5{on Friday} 6{on Saturday} 7{on Sunday} other{this week}}'**
+  String presenceOnWeekday(String day);
+
+  /// No description provided for @presenceWeeksAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{a week ago} other{{count} weeks ago}}'**
+  String presenceWeeksAgo(int count);
+
+  /// No description provided for @presenceMonthsAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{a month ago} other{{count} months ago}}'**
+  String presenceMonthsAgo(int count);
+
+  /// No description provided for @presenceLongAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'a long time ago'**
+  String get presenceLongAgo;
+
   /// How long ago somebody was last in the app, for the first hour after they left. Past an hour the clock is shown instead.
   ///
   /// In en, this message translates to:

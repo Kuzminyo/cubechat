@@ -596,6 +596,11 @@
     "presenceRecently":  "був(ла) нещодавно",
     "presenceJustNow":  "тільки що",
     "presenceHoursAgo":  "{count, plural, one{був(ла) {count} годину тому} few{був(ла) {count} години тому} many{був(ла) {count} годин тому} other{був(ла) {count} години тому}}",
+    "presenceYesterdayAt":  "був(ла) вчора о {time}",
+    "presenceOnWeekday":  "{day, select, 1{був(ла) у понеділок} 2{був(ла) у вівторок} 3{був(ла) у середу} 4{був(ла) у четвер} 5{був(ла) у п’ятницю} 6{був(ла) у суботу} 7{був(ла) у неділю} other{був(ла) цього тижня}}",
+    "presenceWeeksAgo":  "{count, plural, one{був(ла) тиждень тому} few{був(ла) {count} тижні тому} many{був(ла) {count} тижнів тому} other{був(ла) {count} тижні тому}}",
+    "presenceMonthsAgo":  "{count, plural, one{був(ла) місяць тому} few{був(ла) {count} місяці тому} many{був(ла) {count} місяців тому} other{був(ла) {count} місяці тому}}",
+    "presenceLongAgo":  "був(ла) давно",
     "presenceMinutesAgo":  "{count, plural, one{був(ла) {count} хвилину тому} few{був(ла) {count} хвилини тому} many{був(ла) {count} хвилин тому} other{був(ла) {count} хвилини тому}}",
     "chatReadByCount":  "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
     "@chatReadByCount":  {

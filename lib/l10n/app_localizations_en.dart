@@ -1500,6 +1500,54 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String presenceYesterdayAt(String time) {
+    return 'yesterday at $time';
+  }
+
+  @override
+  String presenceOnWeekday(String day) {
+    String _temp0 = intl.Intl.selectLogic(
+      day,
+      {
+        '1': 'on Monday',
+        '2': 'on Tuesday',
+        '3': 'on Wednesday',
+        '4': 'on Thursday',
+        '5': 'on Friday',
+        '6': 'on Saturday',
+        '7': 'on Sunday',
+        'other': 'this week',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String presenceWeeksAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count weeks ago',
+      one: 'a week ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String presenceMonthsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count months ago',
+      one: 'a month ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get presenceLongAgo => 'a long time ago';
+
+  @override
   String presenceMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

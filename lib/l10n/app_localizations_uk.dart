@@ -1511,6 +1511,58 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String presenceYesterdayAt(String time) {
+    return 'був(ла) вчора о $time';
+  }
+
+  @override
+  String presenceOnWeekday(String day) {
+    String _temp0 = intl.Intl.selectLogic(
+      day,
+      {
+        '1': 'був(ла) у понеділок',
+        '2': 'був(ла) у вівторок',
+        '3': 'був(ла) у середу',
+        '4': 'був(ла) у четвер',
+        '5': 'був(ла) у п’ятницю',
+        '6': 'був(ла) у суботу',
+        '7': 'був(ла) у неділю',
+        'other': 'був(ла) цього тижня',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String presenceWeeksAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'був(ла) $count тижні тому',
+      many: 'був(ла) $count тижнів тому',
+      few: 'був(ла) $count тижні тому',
+      one: 'був(ла) тиждень тому',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String presenceMonthsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'був(ла) $count місяці тому',
+      many: 'був(ла) $count місяців тому',
+      few: 'був(ла) $count місяці тому',
+      one: 'був(ла) місяць тому',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get presenceLongAgo => 'був(ла) давно';
+
+  @override
   String presenceMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

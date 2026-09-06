@@ -1,0 +1,162 @@
+[
+  {
+    "file": "cat-morning.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-morning.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-cozy.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-cozy.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-flower.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-flower.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-cookie.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-cookie.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-work.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-work.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-hurry.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-hurry.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-birthday.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-birthday.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-nope.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "cat-nope.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-grin.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-grin.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-rofl.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-rofl.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-tongue.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-tongue.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-relieved.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-relieved.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-skeptical.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-skeptical.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-unamused.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-unamused.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-pleading.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-pleading.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-starry.webp",
+    "frames": 100,
+    "duration_ms": 4000
+  },
+  {
+    "file": "emoji-starry.gif",
+    "frames": 100,
+    "duration_ms": 4000
+  }
+]

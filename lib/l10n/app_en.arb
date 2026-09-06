@@ -721,6 +721,24 @@
       "count": { "type": "int" }
     }
   },
+  "presenceYesterdayAt": "yesterday at {time}",
+  "@presenceYesterdayAt": {
+    "placeholders": { "time": { "type": "String" } }
+  },
+  "presenceOnWeekday": "{day, select, 1{on Monday} 2{on Tuesday} 3{on Wednesday} 4{on Thursday} 5{on Friday} 6{on Saturday} 7{on Sunday} other{this week}}",
+  "@presenceOnWeekday": {
+    "description": "Selected on the weekday number rather than formatted, so a language that inflects can put the day in the case its preposition needs.",
+    "placeholders": { "day": { "type": "String" } }
+  },
+  "presenceWeeksAgo": "{count, plural, one{a week ago} other{{count} weeks ago}}",
+  "@presenceWeeksAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "presenceMonthsAgo": "{count, plural, one{a month ago} other{{count} months ago}}",
+  "@presenceMonthsAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "presenceLongAgo": "a long time ago",
   "presenceMinutesAgo": "{count, plural, one{{count} minute ago} other{{count} minutes ago}}",
   "@presenceMinutesAgo": {
     "description": "How long ago somebody was last in the app, for the first hour after they left. Past an hour the clock is shown instead.",

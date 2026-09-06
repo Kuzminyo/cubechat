@@ -30,26 +30,55 @@ String formatChatListTime(BuildContext context, DateTime time) {
 ///   * **Under an hour** — "N minutes ago". This is the range where the number
 ///     is what you want: whether they left four minutes ago or forty changes
 ///     whether you wait.
-///   * **Past an hour** — the clock, and then the day. By then the elapsed time
-///     has stopped being the useful form — "was 214 minutes ago" is arithmetic
-///     somebody has to do — and the wall clock is what a person remembers
-///     against. Handed to [formatChatListTime], which already knows how to
-///     shorten yesterday and last week.
+///   * **Past an hour** — hours, while they are still a number somebody holds.
+///   * **Yesterday** — the day and the hour, because "вчора о 00:30" is what a
+///     person says and "37 hours ago" is arithmetic they have to do.
+///   * **This week** — the day spelled out. Not the abbreviation
+///     [formatChatListTime] uses: that one is sized for a chat row, where "чт"
+///     beside a name is all there is room for, and in a sentence about a person
+///     it reads as a stray letter.
+///   * **Past that** — weeks, then months. What somebody says out loud about a
+///     gap that size. A date is what they look up when they need one, and this
+///     line is not where anybody looks anything up.
 ///
-/// Asked for in those three pieces, in those words.
+/// Every step is a separate phrase in the ARB rather than a formatter's output
+/// with a preposition pasted in front, because "у середу" is not "у середа" and
+/// a language that inflects cannot be served that way.
 String formatLastSeen(BuildContext context, DateTime time) {
   final t = AppLocalizations.of(context);
-  final elapsed = DateTime.now().difference(time);
+  final now = DateTime.now();
+  final elapsed = now.difference(time);
   // A clock that has gone backwards — theirs or ours — is not a reason to show
   // a negative count. "Just now" is the honest reading of a stamp that has not
   // happened yet by a few seconds.
   if (elapsed.inMinutes < 1) return t.presenceJustNow;
   if (elapsed.inMinutes < 60) return t.presenceMinutesAgo(elapsed.inMinutes);
-  // Hours, while they are still a small number somebody can hold. Past a day
-  // the count stops being the useful form — "was 37 hours ago" is arithmetic
-  // again — and the clock with its day takes over.
+  // Hours, while they are still a small number somebody can hold.
   if (elapsed.inHours < 24) return t.presenceHoursAgo(elapsed.inHours);
-  return formatChatListTime(context, time);
+
+  final locale = Localizations.localeOf(context).toLanguageTag();
+  // Yesterday, with the hour — "вчора о 00:30". It still reaches here past the
+  // 24-hour rule above: seen at half past midnight and read late the following
+  // night is forty-six hours by the clock and yesterday by the calendar, and
+  // the calendar is what a person means.
+  if (_sameDay(now.subtract(const Duration(days: 1)), time)) {
+    return t.presenceYesterdayAt(DateFormat.Hm(locale).format(time));
+  }
+  // The day itself, spelled out. `formatChatListTime` abbreviates — it is
+  // sized for a chat row, where "чт" beside a name is all there is room for —
+  // and in a sentence about a person that reads as a stray letter rather than
+  // as Thursday. Selected on the weekday number in the ARB, because "у середу"
+  // is not "у середа" and a locale that inflects cannot be served by pasting a
+  // preposition in front of a formatter's output.
+  if (elapsed.inDays < 7) return t.presenceOnWeekday(time.weekday.toString());
+  // Weeks, then months. Both are what somebody says out loud about a gap that
+  // size; a date is what they look up when they need one, and this line is not
+  // where anybody looks anything up.
+  if (elapsed.inDays < 28) return t.presenceWeeksAgo(elapsed.inDays ~/ 7);
+  if (elapsed.inDays < 365) {
+    return t.presenceMonthsAgo((elapsed.inDays / 30).floor().clamp(1, 12));
+  }
+  return t.presenceLongAgo;
 }
 
 String formatBubbleTime(BuildContext context, DateTime time) {
