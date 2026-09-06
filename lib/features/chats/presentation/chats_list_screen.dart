@@ -507,7 +507,7 @@ class ChatsListScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
-    with SingleTickerProviderStateMixin, RouteAware {
+    with TickerProviderStateMixin, RouteAware {
   late final ScrollController _scrollController;
 
   /// How far the header is into its selection state, 0..1.
@@ -523,6 +523,26 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
   /// header's height changes over the same 220 ms instead of in one frame.
   late final AnimationController _select;
 
+  /// Drives the folder change as a slide, the way a tab change is one.
+  ///
+  /// The pills already move a highlight between them; this is the other half —
+  /// the list underneath arriving from the side the folder came from, so the
+  /// two bars say the same thing about the same gesture.
+  ///
+  /// A one-way slide *in*, not a cross-slide. Showing the outgoing folder
+  /// leaving as well would mean holding both lists on screen at once, which for
+  /// this screen means two of everything: two reorderable slivers, two sets of
+  /// rows, two scroll positions to keep straight. The incoming half is what the
+  /// eye follows and it is the half that costs one transform per visible row.
+  late final AnimationController _folderSlide;
+
+  /// Which way the new folder comes in from: +1 from the right, -1 from the
+  /// left. Taken from the direction of the step, so it matches the finger.
+  double _folderSlideFrom = 1;
+
+  /// The stop the list is showing, to notice when it changes.
+  int? _shownStop;
+
   @override
   void initState() {
     super.initState();
@@ -530,6 +550,11 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     _select = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
+    );
+    _folderSlide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+      value: 1,
     );
   }
 
@@ -607,6 +632,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
   void dispose() {
     appRouteObserver.unsubscribe(this);
     _select.dispose();
+    _folderSlide.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -724,7 +750,17 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     // A folder switched off while it was the one showing leaves the selection
     // pointing at nothing in the row; the pills already fall back to All, and
     // so does this rather than publishing an index of -1.
-    _publishPager(stops, stopIndex < 0 ? 0 : stopIndex);
+    final currentStop = stopIndex < 0 ? 0 : stopIndex;
+    _publishPager(stops, currentStop);
+    // A folder change is a slide, and the direction is where it came from.
+    // Started from `build` because the selection lives in providers that any
+    // number of things can write — a pill, a flick, a deep link — and this is
+    // the one place that sees the result of all of them.
+    if (_shownStop != null && _shownStop != currentStop) {
+      _folderSlideFrom = currentStop > _shownStop! ? 1 : -1;
+      _folderSlide.forward(from: 0);
+    }
+    _shownStop = currentStop;
 
     final selection = ref.watch(chatSelectionProvider);
     // Outside build, so nothing is started while the tree is being built.
@@ -1020,8 +1056,11 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                         itemBuilder: (_, i) {
                           final chat = filtered[i];
                           final picked = selection.contains(chat.id);
-                          return Padding(
+                          return _FolderSlide(
                             key: ValueKey(chat.id),
+                            animation: _folderSlide,
+                            from: _folderSlideFrom,
+                            child: Padding(
                             // The gap rides with the row: a reorderable list has no
                             // separators to keep it out of the way of a drag.
                             padding: EdgeInsets.only(
@@ -1111,6 +1150,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                                   ),
                                 ),
                               ),
+                            ),
                             ),
                           );
                         },
@@ -2137,6 +2177,56 @@ IconData folderIcon(ChatFolder folder) => switch (folder) {
       ChatFolder.favorites => Icons.star_rounded,
       ChatFolder.online => Icons.radar_rounded,
     };
+
+/// A row arriving with its folder.
+///
+/// The folder pills move a highlight between them; this is the list underneath
+/// coming in from the side the folder came from, so both bars describe the same
+/// gesture. Asked for as the folder change looking like a tab change.
+///
+/// One transform and one opacity per visible row, driven by a controller the
+/// screen owns — so a folder change costs the rows on screen and not the
+/// hundred below them. It slides *in* only: showing the outgoing folder leave
+/// as well would mean two lists on screen at once, and on this screen that is
+/// two reorderable slivers and two scroll positions to keep straight.
+class _FolderSlide extends StatelessWidget {
+  const _FolderSlide({
+    super.key,
+    required this.animation,
+    required this.from,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+
+  /// +1 to arrive from the right, -1 from the left.
+  final double from;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // A fraction of the screen rather than all of it: a row that starts a whole
+    // width out is off screen for most of the animation and arrives as a blur,
+    // and the motion reads better as a lean than as a journey.
+    final travel = MediaQuery.sizeOf(context).width * 0.22;
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, inner) {
+        final t = Curves.easeOutCubic.transform(animation.value);
+        if (t >= 1) return inner!;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset((1 - t) * from * travel, 0),
+            child: inner,
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// One stop in the folder row: All, a built-in folder, or one the user made.
 ///
