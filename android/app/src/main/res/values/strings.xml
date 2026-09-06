@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        What the doorbell says when the service sent no text of its own.
+
+        Only a fallback: the push carries the sentence in the language the phone
+        registered with, because the server cannot decrypt a message and a fixed
+        string still has to be in a language the reader has. This is what shows
+        if that field is ever missing, and it is deliberately the same words.
+    -->
+    <string name="push_default_body">New message</string>
+</resources>

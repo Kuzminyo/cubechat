@@ -900,7 +900,17 @@ class _ChatHeader extends StatelessWidget {
                             ),
                             LayoutBuilder(
                               builder: (context, constraints) {
-                                final compactRoute = constraints.maxWidth < 140;
+                                // Compact when the row is narrow *or* when the
+                                // status is long, which the width alone cannot
+                                // see. "був(ла) 15 хвилин тому" is three times
+                                // the length of "у мережі" and the badge beside
+                                // it was still spelling out "Інтернет", so the
+                                // sentence that changed came out as "…хвилин
+                                // то…". The badge has an icon-only form for
+                                // exactly this and was only ever reaching it on
+                                // a narrow phone.
+                                final compactRoute = constraints.maxWidth < 140 ||
+                                    statusText.length > 18;
                                 return Row(
                                   children: [
                                     Expanded(

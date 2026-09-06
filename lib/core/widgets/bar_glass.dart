@@ -109,21 +109,35 @@ class BarGlass extends StatelessWidget {
                     // row. Putting a permanent full-width blur back here is
                     // walking into both.
                     //
-                    // So: on full glass the bar is a pane you can nearly see
-                    // through, and the aurora moving behind it is what makes it
-                    // read as glass. On light it is solid, because a
-                    // translucent bar with no blur under it is a list scrolling
-                    // through the icons.
+                    // Which way round, and this was got backwards first time.
+                    //
+                    // What a mode *looks* like is not what it is called. On
+                    // light glass the panes drop the gaussian and keep the
+                    // tint, so the aurora shows through them sharply and they
+                    // read as see-through. On full glass they are frosted and
+                    // you do not see through them at all. Tying the bar to the
+                    // flag without looking at the result gave the opposite of
+                    // each — a solid bar beside see-through panes, and a
+                    // see-through bar beside frosted ones. Reported in exactly
+                    // those terms: on light the chats are transparent and the
+                    // bar is not, on full the bar is transparent and the glass
+                    // is milky.
+                    //
+                    // So the bar follows what the panes look like, not what the
+                    // flag is called: see-through where they are see-through,
+                    // and near-solid where they are frosted. There is still no
+                    // blur here either way — see the note above for why that is
+                    // not coming back.
                     colors: AppBlur.panes
                         ? [
-                            AppColors.pane(0.72),
-                            AppColors.pane(0.80),
-                            AppColors.pane(0.88),
-                          ]
-                        : [
                             AppColors.pane(0.97),
                             AppColors.pane(0.99),
                             AppColors.paneBase,
+                          ]
+                        : [
+                            AppColors.pane(0.72),
+                            AppColors.pane(0.80),
+                            AppColors.pane(0.88),
                           ],
                     stops: const [0, 0.35, 1],
                   ),

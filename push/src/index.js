@@ -465,27 +465,34 @@ async function sendFcm(npub, token) {
   if (!account || !access) return false;
   const url =
     `https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`;
+  // Data, not a notification block, and this is the whole of the change the
+  // phone side needed.
+  //
+  // A `notification` block is drawn by the system before any of the app's code
+  // runs, so a phone whose process was alive and about to show a proper
+  // notification — sender, face, text — showed the generic one first and had it
+  // taken away a moment later. A data message with `priority: high` wakes a
+  // swiped-away process exactly as an alert does, so nothing is lost in the
+  // case the doorbell exists for; what is gained is that the app decides.
+  //
+  // The cost, said plainly: a build older than the one that ships with this has
+  // no service to receive a data message and its default handler draws nothing,
+  // so an older install stops getting push the day this deploys. That is why it
+  // goes out with the app build that answers it.
   const payload = {
     message: {
       token,
-      notification: { body: bodyFor(npub) },
+      data: { body: bodyFor(npub) },
       android: {
         // Wake it now. The alternative is `normal`, which lets the system hold
         // the message until it next feels like waking the device — the same
         // trade Apple's priority 10 avoids.
         priority: 'high',
-        notification: {
-          // Grouped like the iOS thread id, so a stack of these reads as one
-          // conversation rather than a column.
-          //
-          // It is also the handle the app cancels this by. A phone whose
-          // process is still alive gets the real notification from the relay a
-          // moment later — sender, face, text — and takes this one down by
-          // exactly this tag (CubechatPushPlugin.DOORBELL_TAG). Change it here
-          // and the duplicate comes back with nothing failing anywhere.
-          tag: 'cubechat',
-          sound: 'default',
-        },
+        // No `android.notification` block: FCM only reads one when there is a
+        // `notification` to draw, and there is not any more. What the banner
+        // looks like — its channel, its icon, the tag the app cancels it by —
+        // is decided in `CubechatFcmService`, which is the only place that can
+        // also decide whether to draw one at all.
       },
     },
   };

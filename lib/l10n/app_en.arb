@@ -714,6 +714,13 @@
   "contactProfileNoPolls": "No polls yet",
   "presenceRecently": "last seen recently",
   "presenceJustNow": "just now",
+  "presenceHoursAgo": "{count, plural, one{{count} hour ago} other{{count} hours ago}}",
+  "@presenceHoursAgo": {
+    "description": "How long ago somebody was last in the app, for the first day after the first hour.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "presenceMinutesAgo": "{count, plural, one{{count} minute ago} other{{count} minutes ago}}",
   "@presenceMinutesAgo": {
     "description": "How long ago somebody was last in the app, for the first hour after they left. Past an hour the clock is shown instead.",

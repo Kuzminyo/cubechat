@@ -65,15 +65,29 @@ void main() {
     );
   });
 
-  testWidgets('past an hour it is the clock, not a count', (tester) async {
+  testWidgets('past an hour it counts hours', (tester) async {
     final now = DateTime.now();
-    final anHourAgo = now.subtract(const Duration(minutes: 61));
-    final label = await _label(tester, anHourAgo);
+    expect(
+      await _label(tester, now.subtract(const Duration(minutes: 61))),
+      '1 hour ago',
+    );
+    expect(
+      await _label(tester, now.subtract(const Duration(hours: 5))),
+      '5 hours ago',
+    );
+  });
 
+  testWidgets('past a day it is the clock, not a count', (tester) async {
+    // Where the count stops being the useful form: "37 hours ago" is
+    // arithmetic somebody has to do, and by then the day is what a person
+    // remembers against.
+    final label =
+        await _label(tester, DateTime.now().subtract(const Duration(days: 2)));
+
+    expect(label, isNot(contains('hour')));
     expect(label, isNot(contains('minute')));
-    // Same day, so the chat-list format gives the wall clock. Compared against
-    // the same formatter rather than a hardcoded string: what "16:00" looks
-    // like is the locale's business, and pinning it here would pin the locale.
-    expect(label, contains(':'));
+    // What the date looks like is the locale's business; pinning the string
+    // here would pin the locale.
+    expect(label.trim(), isNotEmpty);
   });
 }

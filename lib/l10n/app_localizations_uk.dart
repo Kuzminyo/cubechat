@@ -1498,6 +1498,19 @@ class AppLocalizationsUk extends AppLocalizations {
   String get presenceJustNow => 'тільки що';
 
   @override
+  String presenceHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'був(ла) $count години тому',
+      many: 'був(ла) $count годин тому',
+      few: 'був(ла) $count години тому',
+      one: 'був(ла) $count годину тому',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String presenceMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

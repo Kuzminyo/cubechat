@@ -132,6 +132,17 @@
             android:foregroundServiceType="connectedDevice|location"
             android:stopWithTask="false" />
 
+        <!-- The doorbell arrives as data now, not as a notification the system
+             draws on sight, so that this can decide whether it is worth
+             ringing at all. See CubechatFcmService. -->
+        <service
+            android:name=".CubechatFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Where a push from the doorbell lands when the app is not running.
              The channel is the same one NotificationService pre-creates at
              launch, so a message that arrives while the task is dead looks and

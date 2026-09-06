@@ -45,6 +45,10 @@ String formatLastSeen(BuildContext context, DateTime time) {
   // happened yet by a few seconds.
   if (elapsed.inMinutes < 1) return t.presenceJustNow;
   if (elapsed.inMinutes < 60) return t.presenceMinutesAgo(elapsed.inMinutes);
+  // Hours, while they are still a small number somebody can hold. Past a day
+  // the count stops being the useful form — "was 37 hours ago" is arithmetic
+  // again — and the clock with its day takes over.
+  if (elapsed.inHours < 24) return t.presenceHoursAgo(elapsed.inHours);
   return formatChatListTime(context, time);
 }
 

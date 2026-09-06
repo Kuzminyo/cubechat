@@ -98,8 +98,21 @@ class MessageIslandGlass extends StatelessWidget {
                         stops: const [0, 0.35, 1],
                       ),
                       borderRadius: radius,
+                      // Softer since the shadows came off.
+                      //
+                      // A hairline at 0.14 was the second-loudest edge on the
+                      // island while a black halo was the loudest; with the
+                      // halo gone it became the loudest, and the header was
+                      // reported as having a visibly drawn outline round it
+                      // with the boundary circled in a screenshot.
+                      //
+                      // Not removed. It is what separates the pane now that
+                      // nothing else does, and the fill alone leaves the island
+                      // dissolving into the aurora at the top where the two are
+                      // closest in tone. Halved instead: still a line where the
+                      // eye looks for one, no longer a line the eye lands on.
                       border: Border.all(
-                        color: AppColors.glass(0.14),
+                        color: AppColors.glass(0.07),
                       ),
                     ),
                   ),

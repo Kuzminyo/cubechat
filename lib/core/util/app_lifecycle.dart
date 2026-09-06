@@ -1,4 +1,7 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
+import 'platform_info.dart';
 
 /// Tiny process-wide flag for "is the app currently in the foreground".
 ///
@@ -34,7 +37,29 @@ class AppLifecycle {
       _observed ||
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
-  set isForeground(bool value) => _observed = value;
+  set isForeground(bool value) {
+    _observed = value;
+    _tellTheDoorbell(value);
+  }
+
+  /// Tell the native side, which cannot see this.
+  ///
+  /// On Android the push arrives as data and a service decides whether it is
+  /// worth ringing — the whole point being that a phone with the app on screen
+  /// gets the app's own notification, not a generic one over the conversation
+  /// it is about. That service is built by the system, once per message, and
+  /// can see nothing this app has constructed, so the one fact it needs has to
+  /// be pushed to it rather than read.
+  ///
+  /// Fire and forget, and silent when it fails: a build whose native half
+  /// predates this has no such method, and the fallback is the behaviour that
+  /// shipped before — a doorbell that rings and is taken down a moment later.
+  static const MethodChannel _push = MethodChannel('cubechat/push');
+
+  void _tellTheDoorbell(bool foreground) {
+    if (!PlatformInfo.isAndroid) return;
+    _push.invokeMethod<void>('setForeground', foreground).catchError((_) {});
+  }
 
   /// Canonical id (pubkey-hex) of the chat the user is currently viewing, or
   /// null if no chat is open. An inbound message is shown as a system

@@ -1,0 +1,770 @@
+[
+  {
+    "id": "cat-wave",
+    "label": "Привет",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-wave.png",
+    "webm_2k": "webm-2k/cat-wave.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-laugh",
+    "label": "Смех",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-laugh.png",
+    "webm_2k": "webm-2k/cat-laugh.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-love",
+    "label": "Любовь",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-love.png",
+    "webm_2k": "webm-2k/cat-love.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-sleep",
+    "label": "Сон",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-sleep.png",
+    "webm_2k": "webm-2k/cat-sleep.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-approve",
+    "label": "Одобряю",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-approve.png",
+    "webm_2k": "webm-2k/cat-approve.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-shy",
+    "label": "Смущение",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-shy.png",
+    "webm_2k": "webm-2k/cat-shy.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-sad",
+    "label": "Грусть",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-sad.png",
+    "webm_2k": "webm-2k/cat-sad.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-angry",
+    "label": "Сержусь",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-angry.png",
+    "webm_2k": "webm-2k/cat-angry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-party",
+    "label": "Праздник",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-party.png",
+    "webm_2k": "webm-2k/cat-party.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-surprise",
+    "label": "Удивление",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-surprise.png",
+    "webm_2k": "webm-2k/cat-surprise.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-matcha",
+    "label": "Перерыв с матчей",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-matcha.png",
+    "webm_2k": "webm-2k/cat-matcha.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-cool",
+    "label": "Всё под контролем",
+    "kind": "cat",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-cool.png",
+    "webm_2k": "webm-2k/cat-cool.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-thanks",
+    "label": "Спасибо",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-thanks.png",
+    "webm_2k": "webm-2k/cat-thanks.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-thinking",
+    "label": "Думаю",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-thinking.png",
+    "webm_2k": "webm-2k/cat-thinking.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-facepalm",
+    "label": "Ну вот…",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-facepalm.png",
+    "webm_2k": "webm-2k/cat-facepalm.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-hug",
+    "label": "Обнимаю",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-hug.png",
+    "webm_2k": "webm-2k/cat-hug.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-tired",
+    "label": "Устал",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-tired.png",
+    "webm_2k": "webm-2k/cat-tired.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-waiting",
+    "label": "Жду",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-waiting.png",
+    "webm_2k": "webm-2k/cat-waiting.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-victory",
+    "label": "Победа!",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-victory.png",
+    "webm_2k": "webm-2k/cat-victory.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "cat-sorry",
+    "label": "Извини",
+    "kind": "cat",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-sorry.png",
+    "webm_2k": "webm-2k/cat-sorry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-smile",
+    "label": "Улыбка",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-smile.png",
+    "webm_2k": "webm-2k/emoji-smile.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-laugh",
+    "label": "Смех",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-laugh.png",
+    "webm_2k": "webm-2k/emoji-laugh.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-heart",
+    "label": "Сердце",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-heart.png",
+    "webm_2k": "webm-2k/emoji-heart.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-kiss",
+    "label": "Поцелуй",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-kiss.png",
+    "webm_2k": "webm-2k/emoji-kiss.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-love",
+    "label": "Влюблённость",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-love.png",
+    "webm_2k": "webm-2k/emoji-love.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-surprise",
+    "label": "Удивление",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-surprise.png",
+    "webm_2k": "webm-2k/emoji-surprise.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-sad",
+    "label": "Грусть",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-sad.png",
+    "webm_2k": "webm-2k/emoji-sad.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-angry",
+    "label": "Злость",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-angry.png",
+    "webm_2k": "webm-2k/emoji-angry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-approve",
+    "label": "Лайк",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-approve.png",
+    "webm_2k": "webm-2k/emoji-approve.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-clap",
+    "label": "Аплодисменты",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-clap.png",
+    "webm_2k": "webm-2k/emoji-clap.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-fire",
+    "label": "Огонь",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-fire.png",
+    "webm_2k": "webm-2k/emoji-fire.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-party",
+    "label": "Праздник",
+    "kind": "emoji",
+    "size_webp": [
+      320,
+      320
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 4000,
+    "source_poses": 1,
+    "sampled_frames": 100,
+    "fps": 25,
+    "method": "continuous local mesh animation of the approved artwork; periodic eased motion, no crossfading between mismatched poses",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-party.png",
+    "webm_2k": "webm-2k/emoji-party.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-wink",
+    "label": "Подмигиваю",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-wink.png",
+    "webm_2k": "webm-2k/emoji-wink.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-smirk",
+    "label": "Ухмылка",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-smirk.png",
+    "webm_2k": "webm-2k/emoji-smirk.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-eyeroll",
+    "label": "Закатываю глаза",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-eyeroll.png",
+    "webm_2k": "webm-2k/emoji-eyeroll.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-sleepy",
+    "label": "Сплю",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-sleepy.png",
+    "webm_2k": "webm-2k/emoji-sleepy.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-thinking",
+    "label": "Думаю",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-thinking.png",
+    "webm_2k": "webm-2k/emoji-thinking.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-giggle",
+    "label": "Хихикаю",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-giggle.png",
+    "webm_2k": "webm-2k/emoji-giggle.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-cool",
+    "label": "Круто",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-cool.png",
+    "webm_2k": "webm-2k/emoji-cool.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  },
+  {
+    "id": "emoji-thanks",
+    "label": "Спасибо",
+    "kind": "emoji",
+    "cycle_ms": 4000,
+    "fps": 25,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-thanks.png",
+    "webm_2k": "webm-2k/emoji-thanks.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail"
+  }
+]

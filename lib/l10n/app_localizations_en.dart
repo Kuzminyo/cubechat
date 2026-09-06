@@ -1489,6 +1489,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get presenceJustNow => 'just now';
 
   @override
+  String presenceHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours ago',
+      one: '$count hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String presenceMinutesAgo(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

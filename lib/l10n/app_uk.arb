@@ -595,6 +595,7 @@
     "contactProfileNoPolls":  "Опитувань ще немає",
     "presenceRecently":  "був(ла) нещодавно",
     "presenceJustNow":  "тільки що",
+    "presenceHoursAgo":  "{count, plural, one{був(ла) {count} годину тому} few{був(ла) {count} години тому} many{був(ла) {count} годин тому} other{був(ла) {count} години тому}}",
     "presenceMinutesAgo":  "{count, plural, one{був(ла) {count} хвилину тому} few{був(ла) {count} хвилини тому} many{був(ла) {count} хвилин тому} other{був(ла) {count} хвилини тому}}",
     "chatReadByCount":  "{count, plural, one{Прочитав {count}} few{Прочитали {count}} other{Прочитали {count}}}",
     "@chatReadByCount":  {

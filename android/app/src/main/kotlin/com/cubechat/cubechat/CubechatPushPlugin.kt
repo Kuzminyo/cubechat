@@ -81,6 +81,15 @@ class CubechatPushPlugin(
                 // is nothing to set — answered rather than left to throw a
                 // MissingPluginException into the Dart log every time.
                 "setBadge" -> result.success(null)
+                // Dart tells us whether the app is on screen, because the
+                // service that decides whether to ring the doorbell is
+                // constructed by the system per message and can see nothing the
+                // app has built. See [CubechatFcmService.foreground].
+                "setForeground" -> {
+                    CubechatFcmService.foreground =
+                        call.arguments as? Boolean ?: false
+                    result.success(null)
+                }
                 // The app has just drawn the real notification for a message
                 // the doorbell also rang about. Only this side can take the
                 // placeholder down: it was posted by the Firebase SDK, not by

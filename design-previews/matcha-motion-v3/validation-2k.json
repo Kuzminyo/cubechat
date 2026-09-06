@@ -1,0 +1,442 @@
+[
+  {
+    "id": "cat-wave",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3698638,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sleep",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3111793,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-approve",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3361298,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-laugh",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3945652,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-love",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 4067065,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sad",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2874912,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-shy",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3321297,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-angry",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3443642,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-party",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 4833242,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-surprise",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3601652,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-matcha",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3427110,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-cool",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3259263,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-thanks",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3963521,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-thinking",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 4001792,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-facepalm",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3734192,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-hug",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3454650,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-tired",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2744379,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-smile",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 1709084,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-waiting",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 4256962,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-victory",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 4133824,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sorry",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3554590,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-heart",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 1257374,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-laugh",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2170600,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-kiss",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 1800834,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-love",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2428907,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-surprise",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2789225,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-angry",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2502908,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sad",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2781796,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-approve",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2941339,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-fire",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2714981,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-clap",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3696844,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-party",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3602056,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-wink",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2765454,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-smirk",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2612111,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-eyeroll",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2594022,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sleepy",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2654937,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-thinking",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3074117,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-giggle",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2983320,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-thanks",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 2466034,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-cool",
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "cycle_ms": 4000,
+    "webm_bytes": 3025047,
+    "source_upscaled": true
+  }
+]
