@@ -173,6 +173,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
   _logUncaughtErrors();
+  // Started now and awaited much later, just before runApp. It reads a flag
+  // through a platform channel, and a channel is a round trip whether or not
+  // anything else is waiting on it — so it may as well be in flight while the
+  // boxes below are opening. See the await for the measurement.
+  var seenOnboarding = true;
+  final onboardingRead = readSeenOnboardingFlag();
   // First, so that a stall in any step below still leaves a log that says which
   // build was trying to start. This used to sit after Hive and notifications,
   // where a hang meant no boot line at all.
@@ -236,13 +242,17 @@ Future<void> main() async {
   // When iOS launches us straight into the background for a BGAppRefreshTask,
   // no frame is rendered and the widget tree may never build — a handler
   // registered from inside the tree would simply never exist.
-  // One more read before the first frame, and a cheap one — the box is
-  // already open by now. It decides which screen the router opens on, which
-  // cannot be decided after the fact without showing the wrong one first.
-  var seenOnboarding = true;
+  // Awaited here, started long before. It decides which screen the router
+  // opens on, which cannot be decided after the fact without showing the wrong
+  // one first — so the *answer* has to be in hand before the first frame, and
+  // that is not the same as the *work* being done here.
+  //
+  // Measured at 265 ms on a real phone, sequentially after the boxes it does
+  // not depend on. Kicked off at the top of `main` it overlaps them and costs
+  // whatever is left when they finish, which on that phone was nothing.
   await _bootStep(
     'onboarding-flag',
-    () async => seenOnboarding = await readSeenOnboardingFlag(),
+    () async => seenOnboarding = await onboardingRead,
     limit: const Duration(seconds: 2),
   );
 
@@ -262,7 +272,22 @@ Future<void> main() async {
   // hanging, on Android only. Nothing it does decides what the first frame
   // contains — the panel switching mode a few frames later is invisible — so it
   // has no business delaying one.
-  unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
+  // After the first frame, not merely after `runApp`.
+  //
+  // It was already unawaited — it decides nothing about what the first frame
+  // contains — and it still took 751 ms on a real phone, all of it on the
+  // platform thread, which is the same thread the engine is finishing its own
+  // start-up on and every plugin channel answers from. Unawaited work is not
+  // free work; it is work nobody is waiting for, on a thread several things
+  // are.
+  //
+  // Reported as: the icon, a pause, and only then the app. Handing it the
+  // frame *after* the first one costs nothing visible — a panel changing
+  // refresh mode a few frames in is invisible — and takes it out of the
+  // window where it can contend.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_bootStep('display-mode', _matchDisplayRefreshRate));
+  });
 
   // After runApp for the same reason: a question, not a step. The answer lands
   // in the log a few frames in, which is where anybody reading it is looking.
