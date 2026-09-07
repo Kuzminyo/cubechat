@@ -50,6 +50,7 @@ import '../../../profile/data/privacy_settings_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
 import '../../../stickers/data/sticker_library.dart';
+import '../../../stickers/data/sticker_pack.dart';
 import 'emoji_picker_sheet.dart';
 import 'message_spotlight.dart';
 import '../../models/message.dart';
@@ -1285,6 +1286,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         : null;
     final bare = sticker || bareEmoji != null;
 
+    // The drawn face for a message that is one emoji and nothing else, when
+    // there is a drawing of that emoji. Null for everything else, which is
+    // most things: the pack has thirty-six faces and the keyboard has
+    // thousands, and a glyph with no drawing is drawn as a glyph.
+    final drawnFace = bareEmoji == 1
+        ? StickerPack.faceForGlyph[message.text.trim()]
+        : null;
+
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
     const inset = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
@@ -1568,6 +1577,21 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   _SharedContactBubble(
                     contact: sharedContact,
                     onTap: () => _openSharedContact(sharedContact),
+                  )
+                else if (drawnFace != null)
+                  // One emoji, and we have a drawing of that one: it moves.
+                  //
+                  // Only when it is alone. Two of them are closer to a line of
+                  // text than to a gesture, and three animations side by side
+                  // in a transcript is a decoration nobody asked for running
+                  // while somebody is trying to read. The rule is the same one
+                  // the size switch below states in points — one is the loudest
+                  // — said in movement instead.
+                  Image.asset(
+                    StickerPack.animation(drawnFace),
+                    width: 96,
+                    height: 96,
+                    filterQuality: FilterQuality.medium,
                   )
                 else
                   MentionText(

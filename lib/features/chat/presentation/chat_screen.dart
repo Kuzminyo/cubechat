@@ -3925,13 +3925,36 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
   }
 
-  static String _stickerMime(Uint8List bytes) => bytes.length >= 8 &&
-          bytes[0] == 0x89 &&
-          bytes[1] == 0x50 &&
-          bytes[2] == 0x4E &&
-          bytes[3] == 0x47
-      ? 'image/png'
-      : 'image/jpeg';
+  /// What the bytes actually are, read off the bytes.
+  ///
+  /// Three now, because the shipped pack is animated WebP. Announcing one of
+  /// those as a JPEG is not a cosmetic error: the receiver files it under that
+  /// type, and a decoder handed a WebP it was told is a JPEG draws nothing —
+  /// which would have been "the cat does not arrive" with the send reporting
+  /// success. Everything the library keeps is still PNG, and a sticker saved by
+  /// an older build is whatever the photo was.
+  static String _stickerMime(Uint8List bytes) {
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'image/png';
+    }
+    // RIFF....WEBP
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'image/webp';
+    }
+    return 'image/jpeg';
+  }
 
   /// Make a sticker out of a picture on this phone.
   ///

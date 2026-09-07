@@ -8,6 +8,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/builtin_stickers.dart';
 import '../data/sticker_library.dart';
+import '../data/sticker_pack.dart';
 
 /// Everything there is to pick from: the ones this person made or kept, and
 /// the pack that is here on a fresh install.
@@ -81,13 +82,13 @@ class StickerGrid extends ConsumerWidget {
             ),
             delegate: SliverChildBuilderDelegate(
               (context, i) {
-                final glyph = BuiltinStickers.glyphs[i];
-                return _GlyphTile(
-                  glyph: glyph,
-                  onTap: () => _pickBuiltin(context, glyph),
+                final name = BuiltinStickers.names[i];
+                return _PackTile(
+                  name: name,
+                  onTap: () => _pickBuiltin(context, name),
                 );
               },
-              childCount: BuiltinStickers.glyphs.length,
+              childCount: BuiltinStickers.names.length,
             ),
           ),
         ),
@@ -95,11 +96,11 @@ class StickerGrid extends ConsumerWidget {
     );
   }
 
-  /// Paint the glyph into a file, then hand the caller a path like any other.
-  Future<void> _pickBuiltin(BuildContext context, String glyph) async {
-    final path = await BuiltinStickers.materialize(glyph);
+  /// Copy it out of the bundle, then hand the caller a path like any other.
+  Future<void> _pickBuiltin(BuildContext context, String name) async {
+    final path = await BuiltinStickers.materialize(name);
     if (path != null) {
-      onPick(path, glyph);
+      onPick(path, BuiltinStickers.emojiFor(name));
       return;
     }
     if (!context.mounted) return;
@@ -255,22 +256,39 @@ class _KeptTile extends StatelessWidget {
   }
 }
 
-class _GlyphTile extends StatelessWidget {
-  const _GlyphTile({required this.glyph, required this.onTap});
+/// One sticker in the shipped pack, drawn as a still.
+///
+/// The still and not the animation, and that is the whole point of shipping
+/// two files. Seventy-two loops running at once so somebody can choose one is
+/// the shape of thing this codebase keeps measuring and taking back out: every
+/// frame of every cell would be decoded, uploaded and composited for as long as
+/// the sheet is open, on a screen where nothing has happened yet. The picture
+/// moves when it has been sent, which is when there is one of it and somebody
+/// is reading it.
+class _PackTile extends StatelessWidget {
+  const _PackTile({required this.name, required this.onTap});
 
-  final String glyph;
+  final String name;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    // Decoded at the size it is drawn. A cell is a third of a phone's width;
+    // the file is 176 square and would otherwise be decoded at full size into
+    // memory seventy-two times over — the cost this app has already paid once,
+    // for gallery thumbnails, and written down.
+    final side = MediaQuery.of(context).size.width / 3;
+    final pixels = (side * MediaQuery.devicePixelRatioOf(context)).round();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Center(
-        child: Text(
-          glyph,
-          style: const TextStyle(fontSize: 44),
-          textScaler: TextScaler.noScaling,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Image.asset(
+          StickerPack.still(name),
+          cacheWidth: pixels,
+          cacheHeight: pixels,
+          filterQuality: FilterQuality.medium,
         ),
       ),
     );

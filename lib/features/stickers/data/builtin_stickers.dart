@@ -1,144 +1,73 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/media_storage.dart';
+import 'sticker_pack.dart';
 
-/// The pack every install starts with.
+/// The pack every install starts with, made real on disk when one is picked.
 ///
 /// A library that begins empty is a picker that begins empty, and "keep a
 /// picture from a chat and it will appear here" is a chicken-and-egg answer:
-/// the first sticker anyone sends has to come from somewhere, and on a fresh
-/// phone there is nowhere for it to come from.
+/// the first sticker anyone sends has to come from somewhere.
 ///
-/// There is still no sticker *server* — this pack is **drawn**, not shipped.
-/// Each entry is an emoji painted onto a transparent square the first time it
-/// is picked, written next to the kept stickers as an ordinary PNG, and from
-/// that moment on it is a file like any other: it sends down the same path, it
-/// renders in the same bubble, and a build that has never heard of this list
-/// still shows it. Nothing is bundled, so the APK does not grow, and nothing is
-/// fetched, so it works with the radio off.
+/// **What changed.** This used to *paint* its pack: a list of Unicode glyphs,
+/// each rendered by the system emoji font into a transparent PNG the first time
+/// it was picked. Nothing was bundled, which kept the APK where it was, and
+/// what it produced was a big emoji rather than a sticker. There is artwork now
+/// — see [StickerPack] — so the pack is bundled and this copies a file instead
+/// of drawing one.
+///
+/// Everything after that is unchanged, and deliberately so: the copy lands in
+/// the same directory the kept stickers use, and from that moment it is a file
+/// like any other. It sends down the same media path, it draws in the same
+/// bubble, and a build that has never heard of this pack still shows what it
+/// receives.
+///
+/// The animation is what gets copied, not the still. A sticker that arrives
+/// somewhere and does not move is not the sticker that was sent, and the
+/// picture is what travels — there is no sticker server to look a name up in,
+/// and an older build on the other phone has never heard of these names.
 abstract final class BuiltinStickers {
-  /// The side of the rendered square, in pixels.
-  ///
-  /// Big enough that the bubble (148 pt) and the picker cell draw it without
-  /// softening on a 3× screen, small enough that the PNG stays a few tens of
-  /// kilobytes — which is what has to cross the mesh when one is sent.
-  static const int renderSize = 320;
-
-  /// Where the drawn ones live. The same directory the kept ones use: a
-  /// sticker is a sticker whether it was saved or drawn, and one folder means
-  /// one place for the path repair on iOS to find them again.
+  /// Where the copies live. The same directory the kept ones use: a sticker is
+  /// a sticker whether it was saved or shipped, and one folder means one place
+  /// for the path repair on iOS to find them again.
   static const String _folder = 'cubechat-stickers';
 
-  /// The pack itself, in the order it is shown.
-  ///
-  /// Ordinary, widely-drawn emoji only. Anything newer than about Emoji 12
-  /// risks landing on a phone whose system font has never heard of it, and a
-  /// sticker that renders as a blank box is worse than one that isn't offered.
-  /// Doubled on 2026-09-06 — forty-eight was reported as too few for a pack
-  /// somebody is meant to pick from rather than exhaust.
-  ///
-  /// The rule above did the choosing and nothing was added that breaks it:
-  /// every glyph here is Emoji 12 or older, which is 2019 and earlier, so a
-  /// phone old enough to be running this app has a font that draws it. `🫠`
-  /// was already the newest thing in the list and stays the newest.
-  ///
-  /// Each of these is drawn into a PNG the first time the pack is used, so the
-  /// cost of the extra rows is one round of that, once, on one launch — the
-  /// files are kept afterwards.
-  static const List<String> glyphs = <String>[
-    // Faces
-    '😀', '😂', '🥲', '😍', '😎', '🤩', '🥳', '😭',
-    '😡', '🤯', '🤔', '🤗', '🙃', '😴', '🤤', '🥴',
-    '🤒', '🥶', '🤠', '🤫', '😇', '🤪', '😱', '🫠',
-    '😉', '😘', '🥺', '😅', '😏', '🙄', '😬', '😐',
-    '🤢', '🤧', '🥵', '🤓', '🧐', '😤', '😳', '🤭',
-    // Hands and people
-    '👍', '👎', '👏', '🙏', '💪', '🤝', '✌️', '👋',
-    '🤞', '👌', '🤙', '👀', '🫶', '🤦', '🤷', '💅',
-    // Hearts and marks
-    '❤️', '💔', '💕', '🔥', '✨', '⭐', '💯', '🎉',
-    '💥', '💤', '💦', '🎊', '❓', '❗', '✅', '❌',
-    // Things
-    '🎁', '☕', '🍕', '🌚', '🌈', '⚡', '🐱', '🐶',
-    '🍺', '🍎', '🍔', '🍰', '🌙', '☀️', '🌧️', '❄️',
-    '🐻', '🦊', '🐸', '🦄', '🎂', '⚽', '🎮', '💰',
-    '📱', '💡', '🔒', '🚀', '🕐', '🎵', '📷', '🏆',
-  ];
+  /// The pack, in the order the picker shows it.
+  static const List<String> names = StickerPack.all;
 
-  /// The file a glyph is drawn into, whether or not it exists yet.
-  static Future<File> _fileFor(String glyph) async {
+  /// What a sticker is called — the emoji shown where a picture cannot be, in
+  /// a chat row or a reply quote.
+  static String? emojiFor(String name) => StickerPack.glyphFor[name];
+
+  /// The file a pack sticker is copied into, whether or not it exists yet.
+  static Future<File> _fileFor(String name) async {
     final dir = await mediaDirectory(_folder);
-    // Named by codepoint rather than by the character itself: the glyph is not
-    // a filename on every filesystem, and a variation selector is invisible in
-    // one but decisive in the other.
-    final name = glyph.runes
-        .map((r) => r.toRadixString(16).padLeft(4, '0'))
-        .join('-');
-    return File('${dir.path}${Platform.pathSeparator}builtin-$name.png');
+    return File('${dir.path}${Platform.pathSeparator}builtin-$name.webp');
   }
 
-  /// Draw [glyph] if it has not been drawn before and hand back its path.
+  /// Copy [name] out of the bundle if it is not on disk yet, and hand back its
+  /// path.
   ///
   /// Cheap on the second call and after a restart — the file is the cache, and
-  /// it is checked before anything is painted. Null when the paint failed,
-  /// which the caller reports rather than sending a sticker that is not there.
-  static Future<String?> materialize(String glyph) async {
+  /// it is checked before anything is read. Null when the copy failed, which
+  /// the caller reports rather than sending a sticker that is not there.
+  static Future<String?> materialize(String name) async {
     try {
-      final file = await _fileFor(glyph);
+      final file = await _fileFor(name);
       if (await file.exists() && await file.length() > 0) return file.path;
-      final bytes = await _paint(glyph);
-      if (bytes == null) return null;
-      await file.writeAsBytes(bytes);
+      final data = await rootBundle.load(StickerPack.animation(name));
+      await file.writeAsBytes(data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      ));
       MediaPaths.forget(file.path);
       return file.path;
     } catch (e) {
-      DebugLog.instance.log('STICKER', 'builtin "$glyph" failed: $e');
+      DebugLog.instance.log('STICKER', 'builtin "$name" failed: $e');
       return null;
-    }
-  }
-
-  /// The emoji, centred on a transparent square, as PNG bytes.
-  ///
-  /// No font family is named on purpose: leaving it to the engine's fallback
-  /// chain is what reaches the system's colour emoji font, on both platforms,
-  /// without this app carrying one.
-  static Future<Uint8List?> _paint(String glyph) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    final painter = TextPainter(
-      text: TextSpan(
-        text: glyph,
-        style: const TextStyle(fontSize: renderSize * 0.78),
-      ),
-      textDirection: TextDirection.ltr,
-      // The device's font scale must not reach this: a sticker drawn at 1.3×
-      // on one phone and 1.0× on another is a different picture, and the
-      // square it is drawn into is fixed.
-      textScaler: TextScaler.noScaling,
-    )..layout();
-    painter.paint(
-      canvas,
-      Offset(
-        (renderSize - painter.width) / 2,
-        (renderSize - painter.height) / 2,
-      ),
-    );
-    final picture = recorder.endRecording();
-    try {
-      final image = await picture.toImage(renderSize, renderSize);
-      try {
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        return data?.buffer.asUint8List();
-      } finally {
-        image.dispose();
-      }
-    } finally {
-      picture.dispose();
     }
   }
 }
