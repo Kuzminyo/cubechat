@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
+import 'package:cubechat/features/chat/data/photo_albums.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -105,5 +106,41 @@ void main() {
     expect(m.append(chat, sticker('m1', 'w1')), isTrue);
     expect(m.append(chat, sticker('m2', 'w1')), isFalse);
     expect(m.forPeer(chat), hasLength(1));
+  });
+
+  group('stickers are not photos', () {
+    // The one mechanism on the chat screen that can make one row stand for two
+    // messages, and the only remaining way two could leave together: an album
+    // hides every photo but its anchor and leaves with all of them. Stickers
+    // are excluded by name — `_isAlbumCandidate` checks `isSticker` — and this
+    // is that exclusion held in place, because what makes a message a sticker
+    // is a marker in the caption field and a caption is easy to change.
+    test('two sent seconds apart do not become an album', () {
+      final albums = groupPhotoAlbums([
+        sticker('m1', 'w1'),
+        sticker('m2', 'w2').copyWith(),
+      ]);
+      expect(albums.isEmpty, isTrue);
+      expect(albums.isFolded('m1'), isFalse);
+      expect(albums.isFolded('m2'), isFalse);
+      expect(albums.albumAt('m1'), isNull);
+    });
+
+    test('two photos sent seconds apart still do', () {
+      // The control. Without it the test above passes for the wrong reason —
+      // a grouping rule that never groups anything.
+      Message photo(String id) => Message(
+            id: id,
+            chatId: chat,
+            text: 'image/jpeg',
+            sentAt: DateTime(2026, 9, 7, 9, 31),
+            isMine: true,
+            kind: MessageKind.image,
+            imagePath: '/data/photo-$id.jpg',
+            wireId: 'w$id',
+          );
+      final albums = groupPhotoAlbums([photo('a'), photo('b')]);
+      expect(albums.isEmpty, isFalse);
+    });
   });
 }

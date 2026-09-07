@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/util/media_storage.dart';
 import '../../chats/data/saved_messages.dart';
@@ -435,6 +436,20 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (next.length == current.length) return;
     state = {...state, peerId: next};
     _persist(peerId, next);
+    // Said out loud, because until now deleting left no trace at all.
+    //
+    // Two stickers going when one was deleted was reported, and the log could
+    // not answer it: a delete for everyone shows up only as the control frame
+    // it sends, a delete for me shows up as nothing, and cancelling the dialog
+    // also shows up as nothing. Three different actions, one blank. What is
+    // needed is the count — one line saying how many rows this took — because
+    // "took 2" and "took 1, and the other went for some other reason" are
+    // different bugs in different places.
+    DebugLog.instance.log(
+      'CHAT',
+      'delete for me: took ${current.length - next.length} of '
+          '${current.length}',
+    );
   }
 
   /// The same, for a whole selection.
@@ -450,6 +465,11 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (next.length == current.length) return;
     state = {...state, peerId: next};
     _persist(peerId, next);
+    DebugLog.instance.log(
+      'CHAT',
+      'delete for me: took ${current.length - next.length} of '
+          '${current.length} for ${messageIds.length} selected',
+    );
   }
 
   /// Remove one of *our own* messages by its transport [wireId] — the local
@@ -463,6 +483,14 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   bool deleteFromPeer(String peerId, String wireId, {String? authorId}) =>
       _deleteByWireId(peerId, wireId, mine: false, authorId: authorId);
 
+  /// Enough of a wire id to recognise it in a log, however long it is.
+  ///
+  /// Clamped rather than cut at eight, because a log line that throws takes
+  /// down the thing it was added to explain — which this one did, on the first
+  /// test that used a short id, in the same build it was written in.
+  static String _shortWire(String wireId) =>
+      wireId.length <= 8 ? wireId : wireId.substring(0, 8);
+
   bool _deleteByWireId(
     String peerId,
     String wireId, {
@@ -475,10 +503,26 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         m.wireId == wireId &&
         m.isMine == mine &&
         (authorId == null || m.authorId == authorId));
-    if (idx == -1) return false;
+    if (idx == -1) {
+      DebugLog.instance.log(
+        'CHAT',
+        'delete for everyone: no ${mine ? "message of ours" : "message of "
+            "theirs"} with wire ${_shortWire(wireId)}',
+      );
+      return false;
+    }
     final next = [...current]..removeAt(idx);
     state = {...state, peerId: next};
     _persist(peerId, next);
+    // One row, named, and how many are left. The count is the point: this
+    // removes by index and can only ever take one, so a report of two going
+    // means the second went somewhere else — and that is worth being able to
+    // tell apart from this having taken both.
+    DebugLog.instance.log(
+      'CHAT',
+      'delete for everyone: took 1 (${mine ? "ours" : "theirs"}, wire '
+          '${_shortWire(wireId)}), ${next.length} left',
+    );
     return true;
   }
 
