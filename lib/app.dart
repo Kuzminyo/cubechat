@@ -135,7 +135,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     if (!mounted || !AppLifecycle.instance.isForeground) return;
     _announcedOnline = true;
     unawaited(
-      ref.read(messagingServiceProvider).announcePresence(online: true),
+      ref
+          .read(messagingServiceProvider)
+          .announcePresence(online: true, arriving: true),
     );
   }
 
@@ -317,16 +319,19 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   void _noticeTouch() {
     if (AppLifecycle.instance.isForeground) return;
     AppLifecycle.instance.isForeground = true;
-    // Deliberately not through [_announcePresenceDebounced]: that one holds
-    // `_announcedOnline`, which starts life claiming we already said so — and
-    // in this exact case we never did, because the beacon was suppressed for
-    // not being in the foreground. Going straight to the service repairs that;
-    // it throttles a repeat on its own.
+    // Deliberately not through [_announcePresenceDebounced]: that one is
+    // guarded by `_announcedOnline`, and in this exact case the flag can be
+    // set while nothing was ever sent — the beacon was suppressed for not
+    // being in the foreground. Going straight to the service repairs that; it
+    // throttles a repeat on its own. Marked as an arrival, so it may take the
+    // mesh as well as the relay.
     _goodbyeTimer?.cancel();
     _goodbyeTimer = null;
     _announcedOnline = true;
     unawaited(
-      ref.read(messagingServiceProvider).announcePresence(online: true),
+      ref
+          .read(messagingServiceProvider)
+          .announcePresence(online: true, arriving: true),
     );
   }
 
@@ -341,7 +346,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       if (_announcedOnline) return;
       _announcedOnline = true;
       unawaited(
-        ref.read(messagingServiceProvider).announcePresence(online: true),
+        ref
+            .read(messagingServiceProvider)
+            .announcePresence(online: true, arriving: true),
       );
       return;
     }

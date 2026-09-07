@@ -36,15 +36,19 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     WebSocketChannel Function(Uri)? connect,
     int? sinceSeconds,
     void Function(int seconds)? onWatermark,
+    Iterable<String>? seenIds,
+    void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
   })  : _urls = List.unmodifiable(relayUrls),
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
         _onWatermark = onWatermark,
+        _onSeenIds = onSeenIds,
         _publishAckTimeout = publishAckTimeout ?? defaultPublishAckTimeout {
     for (final url in _urls) {
       _states[url] = RelayState.idle;
     }
+    if (seenIds != null) _seenIds.addAll(seenIds);
   }
 
   /// Longest gap between reconnect attempts. Backoff doubles from 2 s up to
@@ -85,7 +89,24 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 
   /// Event ids already emitted, so N relays delivering one event yield one
   /// frame. Insertion-ordered; oldest evicted past [_seenCapacity].
+  ///
+  /// Seeded from disk and written back, because the same set answers a second
+  /// question the moment it survives a restart: the REQ deliberately asks for
+  /// ten minutes *before* the watermark, and everything in that overlap used
+  /// to be decrypted, reassembled and hashed again on every launch before the
+  /// message store recognised it. A shipped log had 1.43 MB — 61% of a
+  /// launch's inbound media — arriving, being fully rebuilt, and being thrown
+  /// away. The gate that reads this set sits above verification, so carrying
+  /// it across a restart skips all of that rather than some of it.
   final _seenIds = <String>{};
+
+  final void Function(List<String> ids)? _onSeenIds;
+
+  /// Coalesces the write-back. A relay backlog arrives in a burst and the set
+  /// is a hundred-odd kilobytes; persisting per event would spend more than
+  /// the duplicates cost.
+  static const Duration _seenFlushDelay = Duration(seconds: 5);
+  Timer? _seenFlush;
 
   bool _disposed = false;
 
@@ -215,6 +236,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// build a fresh one when the relay list changes.
   Future<void> dispose() async {
     if (_disposed) return;
+    // Before the flag, so the pending flush is not swallowed by its own guard.
+    // A teardown after a burst is exactly the case worth keeping: the phone
+    // that just took a backlog is the phone about to relaunch and be offered
+    // it again.
+    final pendingFlush = _seenFlush != null;
+    _seenFlush?.cancel();
+    _seenFlush = null;
+    if (pendingFlush) _onSeenIds?.call(_seenIds.toList(growable: false));
     _disposed = true;
     // Settle anything still waiting, or its caller is left on a future that
     // can never complete now the sockets are going away.
@@ -281,6 +310,16 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     if (_seenIds.length > _seenCapacity) {
       _seenIds.remove(_seenIds.first);
     }
+    _scheduleSeenFlush();
+  }
+
+  void _scheduleSeenFlush() {
+    if (_onSeenIds == null || _disposed || _seenFlush != null) return;
+    _seenFlush = Timer(_seenFlushDelay, () {
+      _seenFlush = null;
+      if (_disposed) return;
+      _onSeenIds.call(_seenIds.toList(growable: false));
+    });
   }
 
   String? get _subscriptionTarget => _subscribedTo;

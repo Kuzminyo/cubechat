@@ -61,7 +61,23 @@ final lastLocationFixProvider = StateProvider<StampedLocationFix?>((_) => null);
 /// nothing at all for the people who have not asked for it.
 class MapPresenceController extends Notifier<int> {
   static const _tick = Duration(seconds: 45);
-  static const _ttl = Duration(minutes: 2);
+
+  /// How long a published pin stays on a friend's map without a refresh.
+  ///
+  /// Two minutes with a 70-second repeat meant a phone standing still
+  /// republished an identical position about every 90 seconds, for ever. In a
+  /// 72-minute log that was **191 of 274 relay publishes** — 70% of everything
+  /// the radio did, and 70% of the X3DH derivations and Schnorr signatures,
+  /// to carry 55 kB. It also filled the debug buffer: 967 of 1000 lines were
+  /// this, so nothing else on that phone could be diagnosed at all.
+  ///
+  /// Six minutes, refreshed at four, is the same pin at a third of the cost.
+  /// Nothing about a *moving* phone changes: a changed position was never
+  /// throttled and still is not, so somebody being followed on the map updates
+  /// exactly as before. What gets slower is the pin of somebody who stopped —
+  /// and the case that actually matters there, switching sharing off, does not
+  /// wait for a TTL at all: `withdraw` retracts immediately.
+  static const _ttl = Duration(minutes: 6);
 
   /// How long the same position may go unrepeated.
   ///
@@ -81,7 +97,14 @@ class MapPresenceController extends Notifier<int> {
   /// out about every 90 s and still has 30 s of margin before the pin it is
   /// refreshing would have expired. A phone that is actually *moving* is
   /// unaffected — the cell changes, and a changed cell was never throttled.
-  static const _repeatSamePlaceAfter = Duration(seconds: 70);
+  ///
+  /// Raised to four minutes with [_ttl] at six, once the 90-second figure was
+  /// measured rather than reasoned about: 191 of 274 publishes in 72 minutes,
+  /// from a phone that had not moved. Four minutes against a six-minute TTL
+  /// keeps two minutes of margin — the same proportion 70 s kept against two
+  /// minutes — and cuts a standing phone's beacons from about 40 an hour to
+  /// 15. Still unchanged for a phone in motion.
+  static const _repeatSamePlaceAfter = Duration(minutes: 4);
 
   Timer? _timer;
   StreamSubscription<LocationFix>? _watch;

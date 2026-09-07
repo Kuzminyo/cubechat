@@ -533,10 +533,18 @@ class MessagingService {
       // entire off-mesh history (dedup then drops it, but we'd pay for the
       // download and the decrypt every time).
       final since = await _relayWatermark.load();
+      // And which events those were, not only how far they reached. The REQ
+      // asks for ten minutes before the watermark on purpose — see
+      // `_sinceSlack` — and everything in that overlap used to be decrypted,
+      // reassembled and hashed again on every launch. Measured at 1.43 MB and
+      // 61% of one launch's inbound media.
+      final seen = await _relayWatermark.loadSeenIds();
       final client = WebSocketNostrRelayClient(
         relayUrls: settings.urls,
         sinceSeconds: since,
         onWatermark: (seconds) => unawaited(_relayWatermark.save(seconds)),
+        seenIds: seen,
+        onSeenIds: (ids) => unawaited(_relayWatermark.saveSeenIds(ids)),
       );
       final transport = NostrTransport(signer: signer, relay: client);
       _relayClient = client;
@@ -8517,7 +8525,17 @@ class MessagingService {
   ///     transport, so nothing is sent. When it is on, the relay learns that
   ///     these two npubs are in contact — which it learns from the first message
   ///     anyway — but on a fixed cadence rather than only when you type.
-  Future<void> announcePresence({required bool online}) async {
+  /// [arriving] marks the one beacon a launch or a return to the app sends, as
+  /// against the heartbeat. It takes any road, for the same reason the goodbye
+  /// does: it is one frame, once, at the moment the answer changes — and two
+  /// phones talking over Bluetooth with no relay had no way to learn it at
+  /// all. Reported as somebody opening the app and not appearing on the other
+  /// side. The heartbeat stays relay-only; that is the part that would become
+  /// chatter.
+  Future<void> announcePresence({
+    required bool online,
+    bool arriving = false,
+  }) async {
     if (_disposed) return;
     if (_nostr == null) return;
 
@@ -8572,7 +8590,8 @@ class MessagingService {
       // discarded as a repeat. Nothing then goes out until the heartbeat
       // seventy seconds on, which is exactly the "you have to leave the app
       // and come back for it to work" this feature kept being accused of.
-      if (await _fanOutPresence(online: online, now: now)) {
+      if (await _fanOutPresence(
+          online: online, now: now, arriving: arriving)) {
         _lastPresenceOnline = online;
         _lastPresenceHidden = hidden;
         _lastPresenceAt = now;
@@ -8596,6 +8615,7 @@ class MessagingService {
   Future<bool> _fanOutPresence({
     required bool online,
     required DateTime now,
+    bool arriving = false,
   }) async {
     // The goodbye may take any road; "I am here" still takes only the relay.
     //
@@ -8614,11 +8634,22 @@ class MessagingService {
     // No new payload type and no new tag: this is the same signed
     // [InnerPayloadType.presence] an older build already reads, and which road
     // it arrived by is not something the receiving side can tell.
+    // The hello is the goodbye's twin and had none of its privileges.
+    //
+    // Everything the paragraph above says about the goodbye is true of the
+    // arrival: one frame, once, at the moment the answer changes. Reported as
+    // opening the app on one phone and not appearing on the other — and over
+    // Bluetooth with no relay reachable there was no road for it at all, so it
+    // was not slow, it was absent. The heartbeat is what stays relay-only,
+    // because that is the one that repeats.
+    final meshHello = online && arriving && _hasAnyLink;
     final meshGoodbye = !online && _hasAnyLink;
     // With no socket up and nothing to hand it to, the fan-out is ten peers of
     // guaranteed failure spaced by [relayFanoutPacing] — a second of wakeful
     // work every 45 s on exactly the phone that has no internet.
-    if (_relayClient?.isConnected != true && !meshGoodbye) return false;
+    if (_relayClient?.isConnected != true && !meshGoodbye && !meshHello) {
+      return false;
+    }
     final peers = _ref
         .read(knownPeersControllerProvider)
         .values
@@ -8626,7 +8657,7 @@ class MessagingService {
         // their pubkey and needs no such thing, so the goodbye is not limited
         // to the contacts who happen to have one on file.
         .where((p) =>
-            (p.nostrPubkey != null || meshGoodbye) &&
+            (p.nostrPubkey != null || meshGoodbye || meshHello) &&
             !p.isBlocked &&
             now.difference(p.lastSeen) < _presenceMaxPeerAge)
         .toList()
@@ -8670,9 +8701,9 @@ class MessagingService {
           peerPub: peerPub,
           type: InnerPayloadType.presence,
           innerBody: hiddenHere ? hiddenBody! : body,
-          // See [meshGoodbye]: the heartbeat keeps to the relay, the goodbye
-          // takes whatever road exists.
-          relayOnly: online,
+          // See [meshGoodbye] and [meshHello]: the heartbeat keeps to the
+          // relay; the goodbye and the arrival take whatever road exists.
+          relayOnly: online && !arriving,
         );
         if (n > 0) sent++;
       } catch (e) {

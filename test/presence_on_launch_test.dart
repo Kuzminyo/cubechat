@@ -55,13 +55,36 @@ void main() {
     final start = source.indexOf('void _announceOnLaunch()');
     expect(start, isNonNegative);
     final body = source.substring(start, start + 400);
-    expect(body, contains('announcePresence(online: true)'));
+    expect(body, contains('announcePresence(online: true'));
     expect(
       body,
       isNot(contains('_announcePresenceDebounced')),
       reason: 'the debounce is guarded by the very flag this exists to '
           'correct, so routing through it would restore the bug',
     );
+  });
+
+  test('an arrival is marked as one, so it may leave by any road', () {
+    // The heartbeat is relay-only on purpose — it repeats, and a second
+    // always-on presence channel is the chatter this app keeps trimming. The
+    // arrival is not that: one frame, once, exactly like the goodbye, which
+    // has taken any road since the report that leaving the app over Bluetooth
+    // left the other side showing "online" for two and a half minutes.
+    //
+    // Without the flag there is no road at all for two phones on Bluetooth
+    // with no relay: opening the app simply does not reach the other side.
+    for (final marker in <String>[
+      'void _announceOnLaunch()',
+      'void _noticeTouch()',
+    ]) {
+      final start = source.indexOf(marker);
+      expect(start, isNonNegative, reason: '$marker went away');
+      expect(
+        source.substring(start, start + 900),
+        contains('arriving: true'),
+        reason: '$marker is an arrival and has to say so',
+      );
+    }
   });
 
   test('it stays quiet when the launch is not into the foreground', () {
