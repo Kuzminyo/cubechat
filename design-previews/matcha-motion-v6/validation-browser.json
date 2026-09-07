@@ -1,0 +1,16 @@
+{
+  "cards": 72,
+  "pause": true,
+  "theme": true,
+  "detail": true,
+  "video": {
+    "width": 2048,
+    "height": 2048,
+    "duration": 6,
+    "alpha": 0,
+    "paused": true
+  },
+  "comparisonPairs": 6,
+  "mobileOverflow": false,
+  "errors": []
+}

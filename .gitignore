@@ -92,3 +92,19 @@ test/failures/
 # anything past 100; the frames and the manifest beside them are what the app
 # will need, and the zips are a packaging step that can be re-run.
 design-previews/**/*.zip
+
+# Derived exports of the sticker artwork.
+#
+# `png-2k` and `webm-2k` are upscales of the same drawings, and `poses` is the
+# 288 frames the animations were assembled from. Together they are more than
+# three hundred megabytes, and every one of them can be produced again from
+# what *is* kept: the phase sheets in `sources`, the stills in `masters`, and
+# the finished animations beside them.
+#
+# Which matters because these files are in LFS now, and LFS is a quota rather
+# than disk — a free account gets a gigabyte. Spending it on output rather than
+# on the sources the output comes from is how a repository ends up unable to
+# take the thing it actually needs to keep.
+design-previews/matcha-motion-v6/png-2k/
+design-previews/matcha-motion-v6/webm-2k/
+design-previews/matcha-motion-v6/poses/
