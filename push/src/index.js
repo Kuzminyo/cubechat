@@ -22,6 +22,12 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 const RECIPIENT_TAG = 'p';
 
+/// Set by the sender on the events a person would want to be woken for.
+///
+/// See `kWakeTag` in the app. Text messages and channel posts carry it; media
+/// chunks, read receipts, typing notices and presence do not.
+const WAKE_TAG = 'w';
+
 // A registration is itself a Nostr event, signed by the key it registers. Its
 // own kind, so it can never be confused with a frame — and so a relay would
 // simply ignore one if a phone ever published it by mistake.
@@ -772,6 +778,26 @@ function connectRelay(url) {
     const event = frame[2];
     if (!event || event.kind !== FRAME_KIND) return;
     if (typeof event.id !== 'string' || !Array.isArray(event.tags)) return;
+
+    // Only what the sender marked as worth waking somebody for.
+    //
+    // The app has always set this tag, and this has always ignored it: a
+    // doorbell rang for *every* event addressed to a registered npub. Most
+    // events are not news. A photo is one manifest and then five to thirty
+    // chunks, each its own relay event, so a single sticker rang the
+    // recipient's phone eight times and three of them rang it thirty — which
+    // is what "three stickers, thirty-four messages" was counting. It was
+    // counting correctly; the events were the problem.
+    //
+    // The other side of it is the machinery: read receipts, typing notices,
+    // presence, the copy-restriction note. None of them carry the tag either,
+    // and none of them should put a banner on a locked phone.
+    //
+    // An event without the tag is still delivered — the phone reads it the
+    // moment it is awake for any other reason. This decides only whether to
+    // wake it.
+    if (!event.tags.some((t) => Array.isArray(t) && t[0] === WAKE_TAG)) return;
+
     if (alreadySeen(event.id)) return;
     for (const tag of event.tags) {
       if (!Array.isArray(tag) || tag[0] !== RECIPIENT_TAG) continue;

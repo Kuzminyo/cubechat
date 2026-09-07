@@ -7435,6 +7435,8 @@ class MessagingService {
       canonicalId: canonicalId,
       relayOnly: relayOnly,
       gap: Duration.zero,
+      // The one frame of a transfer that is news. See the parameter.
+      wakesPeer: true,
     );
     if (!delivered.sent) {
       throw const MediaRouteUnavailable();
@@ -8081,6 +8083,19 @@ class MessagingService {
     required String canonicalId,
     required bool relayOnly,
     required Duration gap,
+
+    /// Whether this frame is worth ringing a closed phone for.
+    ///
+    /// One frame of a transfer is: the manifest. It is the one that says a
+    /// picture is coming and who from, and it goes first. The chunks behind it
+    /// are the picture itself, and there are five to thirty of them.
+    ///
+    /// This used to be `true` for every frame that went through here, which is
+    /// every chunk. Each one is a separate relay event carrying the wake tag,
+    /// so one sticker rang the recipient's phone eight times and three of them
+    /// rang it thirty. Reported as "three stickers, thirty-four messages" —
+    /// and the count was right, it was counting events.
+    bool wakesPeer = false,
   }) async {
     var next = gap;
     for (var attempt = 1; attempt <= _mediaChunkAttempts; attempt++) {
@@ -8089,6 +8104,7 @@ class MessagingService {
         session: session,
         canonicalId: canonicalId,
         relayOnly: relayOnly,
+        wakesPeer: wakesPeer,
       )) {
         return (sent: true, gap: next);
       }
@@ -8105,6 +8121,7 @@ class MessagingService {
     required ChatSession? session,
     required String canonicalId,
     required bool relayOnly,
+    bool wakesPeer = false,
   }) async {
     if (!relayOnly) {
       final transportId = session?.peerId;
@@ -8127,7 +8144,7 @@ class MessagingService {
         return true;
       }
     }
-    return _sendOverNostr(canonicalId, frameBytes, wakesPeer: true);
+    return _sendOverNostr(canonicalId, frameBytes, wakesPeer: wakesPeer);
   }
 
   Future<int> _fanoutAllLinks(
