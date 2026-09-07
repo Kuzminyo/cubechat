@@ -170,6 +170,7 @@
     "bleConnect":  "З\u0027єднатися",
     "bleConnected":  "З\u0027єднано",
     "bleVerified":  "Перевірено",
+    "notificationUnknownSender":  "Нове повідомлення",
     "bleUnknownPeer":  "Невідомий пристрій",
     "bleBroadcasting":  "В ефірі",
     "bleConnectedCount":  "{n, plural, =0{Немає з\u0027єднань} =1{1 центральний пристрій} few{{n} центральних пристрої} other{{n} центральних пристроїв}}",

@@ -371,14 +371,44 @@ class PushEnabled extends Notifier<bool> {
   /// back to the foreground is the moment a phone most reliably has a network
   /// again — which is exactly when a promise that did not land deserves
   /// another go.
+  /// Shortest gap between two re-assertions of the same position.
+  ///
+  /// A shared log had five registrations inside 102 seconds — 15:03:29,
+  /// 15:03:33, 15:03:39, 15:04:00, 15:05:11 — because this fires on every
+  /// return to the foreground and somebody switching apps produces one of
+  /// those every few seconds. Each is a fresh Schnorr signature over a fresh
+  /// event and a round trip to the server, to say a thing the server was told
+  /// four seconds ago.
+  ///
+  /// A minute keeps the whole reason this exists. The case it was written for
+  /// is a phone that has been away long enough for its token to have been
+  /// replaced, or for a withdrawal to have been lost to a dead network —
+  /// neither of which happens inside a minute of the last successful one.
+  static const _reassertMinInterval = Duration(minutes: 1);
+
+  DateTime? _reassertedAt;
+  bool? _reassertedState;
+
   Future<void> reassert() async {
     if (!PlatformInfo.isMobile) return;
     await _loading;
+    // The position itself is never throttled: flipping the switch has to reach
+    // the server now, and it is `set` that does that. This is only about the
+    // unprompted repeat.
+    final since = _reassertedAt;
+    if (_reassertedState == state &&
+        since != null &&
+        DateTime.now().difference(since) < _reassertMinInterval) {
+      return;
+    }
     final push = ref.read(pushRegistrationProvider);
-    if (state) {
-      await push.enable();
-    } else {
-      await push.disable();
+    final ok = state ? (await push.enable()).ok : await push.disable();
+    // Recorded only when it landed, so a re-assertion attempted with no signal
+    // does not silence the next minute of them — which on a cold start is
+    // every one there is.
+    if (ok) {
+      _reassertedAt = DateTime.now();
+      _reassertedState = state;
     }
   }
 

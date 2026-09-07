@@ -740,6 +740,12 @@ abstract class AppLocalizations {
   /// **'Verified'**
   String get bleVerified;
 
+  /// Title of a message notification from somebody who is not in the roster yet. Stands where a name would.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get notificationUnknownSender;
+
   /// No description provided for @bleUnknownPeer.
   ///
   /// In en, this message translates to:

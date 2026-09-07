@@ -119,7 +119,18 @@ class CubechatFcmService : FirebaseMessagingService() {
             )
         }
         val notification = NotificationCompat.Builder(this, MESSAGES_CHANNEL)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            // The monochrome mask, not the launcher icon.
+            //
+            // Android draws a small icon from its ALPHA CHANNEL alone and
+            // throws the colours away, so a full-colour launcher icon arrives
+            // as a solid block — reported from a Xiaomi as a black square. The
+            // drawable that fixes it was added in 977 and wired into the
+            // Flutter plugin only, which covers every notification the app
+            // draws itself and misses this one: the doorbell, drawn by this
+            // service when the app is closed, which is the only banner most
+            // people ever see.
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.push_default_title))
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)

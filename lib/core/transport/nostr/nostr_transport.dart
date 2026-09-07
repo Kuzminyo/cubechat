@@ -101,10 +101,34 @@ class PublishReceipt {
 
   static const none = PublishReceipt(sentTo: 0, accepted: 0, rejected: 0);
 
+  /// Reads as a verdict, so it has to be one.
+  ///
+  /// This printed `sent: 3, ok: 1, no: 0, silent: 2` on 304 of 310 publishes
+  /// in a shipped log, and that reads as two thirds of the relays being dead.
+  /// They are not. `_PendingPublish.record` settles the moment the first `OK`
+  /// arrives — deliberately, because waiting for the slowest relay was paid
+  /// once per chunk of every file — so the other two were never given a
+  /// chance to answer and their silence says nothing whatsoever about them.
+  ///
+  /// An hour went into being suspicious of healthy relays on the strength of
+  /// this line. A count nobody finished collecting should not be printed as
+  /// though it were.
   @override
-  String toString() =>
-      'PublishReceipt(sent: $sentTo, ok: $accepted, no: $rejected, '
-      'silent: $silent)';
+  String toString() {
+    final heard = accepted + rejected;
+    // Every relay spoke: the numbers mean what they look like.
+    if (heard >= sentTo) {
+      return 'PublishReceipt(sent: $sentTo, ok: $accepted, no: $rejected)';
+    }
+    // Stopped early on the first acceptance. The rest are unasked, not silent.
+    if (accepted > 0) {
+      return 'PublishReceipt(sent: $sentTo, ok: $accepted '
+          '(stopped at the first, ${sentTo - heard} not waited for))';
+    }
+    // Nobody answered inside the deadline. This one really is silence.
+    return 'PublishReceipt(sent: $sentTo, no answer from ${sentTo - heard} '
+        'in time${rejected > 0 ? ', no: $rejected' : ''})';
+  }
 }
 
 abstract class NostrRelayClient {

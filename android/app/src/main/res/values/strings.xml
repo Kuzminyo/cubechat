@@ -9,4 +9,12 @@
         if that field is ever missing, and it is deliberately the same words.
     -->
     <string name="push_default_body">New message</string>
+
+    <!--
+        The name on the doorbell, so a banner with no sender still says whose
+        app woke the phone.
+
+        Not localised, and not by omission: it is the product name.
+    -->
+    <string name="push_default_title">Cubechat</string>
 </resources>

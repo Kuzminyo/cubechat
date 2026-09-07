@@ -374,6 +374,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bleVerified => 'Verified';
 
   @override
+  String get notificationUnknownSender => 'New message';
+
+  @override
   String get bleUnknownPeer => 'Unidentified peer';
 
   @override

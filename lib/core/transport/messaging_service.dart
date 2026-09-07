@@ -8758,7 +8758,22 @@ class MessagingService {
   /// is: a stranger whose announcement never arrives must not be able to fill
   /// memory by talking. What is dropped here was unverifiable for a full
   /// minute, which is far longer than the two frames take to cross.
+  ///
+  /// The sweep runs on the way *in* ([_holdUnverified]) as well as on replay,
+  /// because the replay path is reached only by an announcement landing — so
+  /// the one peer whose announcement never lands was also the one peer whose
+  /// frames were never swept.
   final Map<String, List<_HeldFrame>> _heldUnverified = {};
+
+  /// Whether a frame held at [heldAt] is still worth keeping at [now].
+  ///
+  /// Static and pure so the rule can be checked without standing a transport
+  /// up. Worth pinning because the number that made the bug invisible is a
+  /// relationship, not a constant: frames arriving further apart than the TTL
+  /// should leave a queue of one, and the shipped log had seventeen.
+  @visibleForTesting
+  static bool heldFrameIsFresh(DateTime heldAt, DateTime now) =>
+      now.difference(heldAt) <= _heldUnverifiedTtl;
 
   static const int _heldUnverifiedPerOrigin = 20;
   static const Duration _heldUnverifiedTtl = Duration(minutes: 1);
@@ -8771,17 +8786,48 @@ class MessagingService {
   ) {
     final key = _hexOf(originHash);
     final held = _heldUnverified.putIfAbsent(key, () => <_HeldFrame>[]);
+    final now = DateTime.now();
+
+    // Expire on the way in, because nothing else was ever going to.
+    //
+    // [_heldUnverifiedTtl] is a minute and the sweep that enforces it lives in
+    // [_replayHeldUnverified], which runs only when an announcement arrives.
+    // For the one peer this mechanism cannot help — the one whose announcement
+    // never comes at all — that is never. A shipped log has the counter
+    // climbing 1, 2, 3 … 17 across thirty-five minutes, and not one
+    // `replaying` line beside it: every frame in there was minutes past its
+    // own deadline, and the only thing bounding the list was the per-origin
+    // cap quietly dropping the oldest.
+    //
+    // Arrival is the right moment for it. It is the only moment the list can
+    // grow, it costs a comparison per entry, and it needs no timer to keep
+    // alive on a phone that is trying not to wake up.
+    final before = held.length;
+    held.removeWhere((f) => !heldFrameIsFresh(f.at, now));
+    final expired = before - held.length;
+
     held.add(_HeldFrame(
       peerId: peerId,
       frame: frame,
       sentAt: sentAt,
-      at: DateTime.now(),
+      at: now,
     ));
-    if (held.length > _heldUnverifiedPerOrigin) held.removeAt(0);
+    final overCap = held.length > _heldUnverifiedPerOrigin;
+    if (overCap) held.removeAt(0);
+
+    // The origin, not the road it came in on.
+    //
+    // This said `from nostr:relay`, which is a transport and not a person, so
+    // a log full of held frames could not say *whose* messages were being
+    // lost — and that is the only question worth asking about them. The same
+    // confusion cost a build once already, in the forward-privacy handler.
+    final who = key.length > 8 ? key.substring(0, 8) : key;
     DebugLog.instance.log(
       'CRYPTO',
-      'holding FS body from $peerId until their announcement '
-          '(${held.length} waiting)',
+      'holding FS body from $who until their announcement '
+          '(${held.length} waiting'
+          '${expired > 0 ? ', $expired expired' : ''}'
+          '${overCap ? ', oldest dropped' : ''})',
     );
   }
 
@@ -9605,9 +9651,14 @@ class MessagingService {
         .isMuted(canonicalId)) {
       return;
     }
+    // The English constant this was is the one word on the banner that is not
+    // the sender's own name, so it was also the only word the app got to
+    // choose — and it chose English, on a phone whose every other line was
+    // Ukrainian. The preview below has been localised since it was written;
+    // the title beside it was not.
     final name = (known?.displayName.isNotEmpty ?? false)
         ? known!.displayName
-        : 'New message';
+        : _localizations.notificationUnknownSender;
     // The same line the chat list shows, in the language the app is set to: a
     // notification used to announce '📷 Photo' for a sticker and, in English,
     // to somebody using the app in Ukrainian.

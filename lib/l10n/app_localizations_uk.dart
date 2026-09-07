@@ -376,6 +376,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get bleVerified => 'Перевірено';
 
   @override
+  String get notificationUnknownSender => 'Нове повідомлення';
+
+  @override
   String get bleUnknownPeer => 'Невідомий пристрій';
 
   @override

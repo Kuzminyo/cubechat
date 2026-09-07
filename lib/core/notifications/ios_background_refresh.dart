@@ -157,7 +157,25 @@ class IosBackgroundRefresh {
       if (effectiveWindow >= mapPresenceMinimumWindow) {
         unawaited(_pokeMapPresence(container, offered));
       }
-      DebugLog.instance.log('BGFETCH', 'window open');
+      // Which of the two wake-ups this is, because they are not the same event
+      // and the log could not tell them apart.
+      //
+      // A shared log had nine windows between 13:07 and 13:19 and then none
+      // for 106 minutes, which reads as iOS spending a background-refresh
+      // budget and cutting us off. It also reads exactly like somebody walking
+      // for twelve minutes and then sitting down — a significant-location
+      // doorbell rings on cell hand-offs, as often as the cells change. Those
+      // are opposite conclusions and the line said nothing that separated
+      // them, so the throttle I nearly wrote here would have been aimed at a
+      // cause I had not established.
+      //
+      // A doorbell arrives with the coarse fix the baseband already had; a
+      // scheduled window carries no arguments at all. That is the whole tell,
+      // and it was already in scope.
+      DebugLog.instance.log(
+        'BGFETCH',
+        'window open (${offered == null ? 'scheduled' : 'location wake'})',
+      );
       await Future<void>.delayed(effectiveWindow);
       final ms = DateTime.now().difference(started).inMilliseconds;
       DebugLog.instance.log('BGFETCH', 'window closed after ${ms}ms');
