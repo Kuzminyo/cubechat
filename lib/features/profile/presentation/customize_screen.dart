@@ -241,6 +241,17 @@ class _ThemeCard extends ConsumerWidget {
 class _GlassCard extends ConsumerWidget {
   const _GlassCard();
 
+  /// One segment's label: centred, one line, and shrunk if it has to be.
+  static Widget _tierLabel(String text) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          textAlign: TextAlign.center,
+        ),
+      );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
@@ -260,18 +271,35 @@ class _GlassCard extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           SegmentedButton<GlassTier>(
+            // One line each, and shrunk to fit rather than wrapped.
+            //
+            // "Автоматично" and "Полегшене" are eleven and nine characters
+            // against a third of a phone's width, so both wrapped onto a
+            // second line — which made the control two rows tall and left
+            // "Повне", the one word short enough to fit, floating in the
+            // middle of a box sized by its neighbours. Three segments of
+            // different heights and one label sitting at a different level to
+            // the others is what was reported as not lined up.
+            //
+            // `scaleDown` only ever shrinks: a label that fits is drawn at its
+            // proper size, and the two that do not lose a point or two rather
+            // than a whole row. Tighter horizontal padding first, so most
+            // phones never reach the shrinking at all.
+            style: SegmentedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+            ),
             segments: [
               ButtonSegment(
                 value: GlassTier.auto,
-                label: Text(t.profileGlassAuto),
+                label: _tierLabel(t.profileGlassAuto),
               ),
               ButtonSegment(
                 value: GlassTier.full,
-                label: Text(t.profileGlassFull),
+                label: _tierLabel(t.profileGlassFull),
               ),
               ButtonSegment(
                 value: GlassTier.light,
-                label: Text(t.profileGlassLight),
+                label: _tierLabel(t.profileGlassLight),
               ),
             ],
             selected: {current},
