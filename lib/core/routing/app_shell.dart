@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
+import '../util/platform_info.dart';
 import '../theme/colors.dart';
 import '../widgets/aurora_background.dart';
 import '../widgets/bar_glass.dart';
@@ -126,7 +127,18 @@ class AppShell extends ConsumerWidget {
               // wrapper contributes is position. It paints nothing.
               left: 20,
               right: 20,
-              bottom: MediaQuery.paddingOf(context).bottom + 12,
+              // Twelve above the safe area, and four of those given back on
+              // iOS.
+              //
+              // The safe-area inset there is the home indicator's, and it is
+              // generous: it already reserves room for a bar that has nothing
+              // under it. Adding a full twelve on top of it left the capsule
+              // sitting visibly higher than it does on Android, which is the
+              // platform the spacing was drawn against. Asked for as "чуть
+              // чуть опусти" and it is exactly that much — a nudge, not a new
+              // number.
+              bottom: MediaQuery.paddingOf(context).bottom +
+                  (PlatformInfo.isIOS ? 8 : 12),
               // Row, not Center: with only `bottom` pinned the child gets loose
               // height, and Center would happily grow to the whole Stack. Row
               // keeps the height tight to the capsule.

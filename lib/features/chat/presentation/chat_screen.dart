@@ -73,6 +73,8 @@ import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
 import 'widgets/chat_input.dart';
 import 'widgets/emoji_picker_sheet.dart';
+import 'widgets/everyone_dialog.dart';
+import 'widgets/pin_scope.dart';
 import 'widgets/image_editor.dart';
 import 'widgets/media_picker_sheet.dart';
 import 'widgets/sticker_editor_screen.dart';
@@ -1901,82 +1903,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Future<void> _togglePinSelection(Message message) async {
     final wireId = message.wireId;
     if (wireId == null) return;
-    final pins = ref.read(pinnedControllerProvider.notifier);
-    final t = AppLocalizations.of(context);
-
-    // Unpinning asks nothing: it undoes whatever the pin was, and a pin
-    // remembers which kind it is.
-    if (pins.isPinned(widget.chatId, wireId)) {
-      if (pins.isMineOnly(widget.chatId, wireId)) {
-        await pins.unpin(widget.chatId, wireId: wireId);
-      } else {
-        await ref
-            .read(messagingServiceProvider)
-            .sendPin(widget.chatId, wireId, pinned: false);
-      }
-      if (!mounted) return;
-      ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
-      return;
-    }
-
-    // Pinning asks, because the two are different acts rather than one act
-    // with a setting. Putting a message at the top of somebody else's screen
-    // is a thing you do *to* them; keeping a note at the top of your own is
-    // not, and until now only the first was possible.
-    //
-    // A channel is not asked: there is no "just for me" reading of a pin in a
-    // room, and an option that means the same as the other one is noise.
-    final shared = widget.chatId.startsWith('#')
-        ? true
-        : await showDialog<bool>(
-            context: context,
-            builder: (ctx) => SimpleDialog(
-              backgroundColor: AppColors.bgTop,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: AppColors.glass(0.15)),
-              ),
-              title: Text(
-                t.chatPinTitle,
-                style: TextStyle(
-                  color: AppColors.textOnGlass,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              children: [
-                SimpleDialogOption(
-                  onPressed: () => Navigator.of(ctx).pop(true),
-                  child: Text(
-                    t.chatPinForBoth,
-                    style: TextStyle(color: AppColors.textOnGlass),
-                  ),
-                ),
-                SimpleDialogOption(
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: Text(
-                    t.chatPinForMe,
-                    style: TextStyle(color: AppColors.textOnGlass),
-                  ),
-                ),
-                SimpleDialogOption(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(t.cancel,
-                      style: TextStyle(color: AppColors.textOnGlassDim)),
-                ),
-              ],
-            ),
-          );
-    if (shared == null || !mounted) return;
-
-    if (shared) {
-      await ref
-          .read(messagingServiceProvider)
-          .sendPin(widget.chatId, wireId, pinned: true);
-    } else {
-      // Nothing on the wire, which is the whole difference.
-      await pins.pin(widget.chatId, wireId, mineOnly: true);
-    }
+    await togglePinWithScope(
+      context,
+      ref,
+      chatId: widget.chatId,
+      wireId: wireId,
+    );
     if (!mounted) return;
     ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
   }
@@ -2005,49 +1937,25 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     if (picked.isEmpty) return;
     final canForEveryone = picked.every((m) => m.isMine && m.wireId != null);
 
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: AppColors.glass(0.15)),
-        ),
-        title: Text(
-          t.chatDeleteSelectedTitle(picked.length),
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        children: [
-          if (canForEveryone)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop('everyone'),
-              child: Text(
-                t.chatDeleteForEveryone,
-                style: TextStyle(color: AppColors.danger),
-              ),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop('me'),
-            child: Text(
-              t.chatDeleteForMe,
-              style: TextStyle(color: AppColors.textOnGlass),
-            ),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel,
-                style: TextStyle(color: AppColors.textOnGlassDim)),
-          ),
-        ],
-      ),
+    // A tick rather than two buttons: it is one action with a reach, and the
+    // question is whether it happens on their phone too. Unticked when it is
+    // offered at all — taking a message off somebody else's phone is the
+    // larger of the two acts and should not be the one a stray tap performs.
+    //
+    // When "for everyone" does not apply to every ticked message, there is no
+    // tick and the dialog is a plain confirmation: a box that silently covers
+    // some of a selection is worse than no box.
+    final everyone = await askWithEveryoneTick(
+      context,
+      title: t.chatDeleteSelectedTitle(picked.length),
+      everyoneLabel: t.chatDeleteForEveryone,
+      confirmLabel: t.chatDeleteAction,
+      destructive: true,
+      offerEveryone: canForEveryone,
     );
-    if (choice == null || !mounted) return;
+    if (everyone == null || !mounted) return;
 
-    if (choice == 'everyone') {
+    if (everyone) {
       final messaging = ref.read(messagingServiceProvider);
       await ref.read(messageFarewellProvider(widget.chatId).notifier).dismiss(
         ids,
@@ -3137,22 +3045,20 @@ class _PinnedBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final String preview;
-    switch (message.kind) {
-      case MessageKind.image:
-        // The thumbnail carries the "it's a photo" part, so the line beside it
-        // is free for the caption — or, failing that, a plain label.
-        final caption = message.text.trim();
-        preview = _looksLikeMime(caption) ? '📷 Photo' : caption;
-      case MessageKind.audio:
-        preview = '🎤 Voice message';
-      case MessageKind.file:
-        preview = '📎 ${message.fileName ?? 'File'}';
-      case MessageKind.poll:
-        preview = '📊 ${message.text}';
-      case MessageKind.text:
-        preview = message.text.replaceAll('\n', ' ').trim();
-    }
+    // One answer to "what do you call this", and it lives in one place.
+    //
+    // This was a second switch of its own, with the labels written in English
+    // in an app that ships in Ukrainian — and no case for a sticker at all, so
+    // a pinned one showed `cubechat:sticker:v1:😺`: the marker that rides in
+    // the caption field, printed raw. Which is precisely what the shared
+    // preview exists to stop, and what the wire-protocol notes say to teach it
+    // about whenever something new travels inside a message.
+    //
+    // `messageContentPreview` rather than `messagePreview`, for the same reason
+    // a reply quote uses it: a reaction on the pinned message is not what the
+    // pinned message says.
+    final preview =
+        messageContentPreview(message, t).replaceAll('\n', ' ').trim();
 
     final path = message.imagePath;
     final thumb = (message.kind == MessageKind.image &&
@@ -3250,10 +3156,6 @@ class _PinnedBar extends StatelessWidget {
     );
   }
 
-  /// Media bubbles carry the mime type in [Message.text] when there's no real
-  /// caption, and "image/jpeg" is not a preview worth showing.
-  static bool _looksLikeMime(String s) =>
-      s.isEmpty || s.startsWith('image/') || s.startsWith('audio/');
 }
 
 /// Telegram's pin rail: one segment per pinned message, the shown one lit.

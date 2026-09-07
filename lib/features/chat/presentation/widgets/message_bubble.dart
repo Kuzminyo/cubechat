@@ -62,6 +62,8 @@ import 'file_bubble.dart';
 import 'photo_flight.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
+import 'everyone_dialog.dart';
+import 'pin_scope.dart';
 import 'voice_bubble.dart';
 
 /// How far a bubble follows a leftward drag before it stops moving, and how far
@@ -845,11 +847,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       if (!mounted) return;
       showCopiedToast(context, t.chatCopied);
     } else if (picked == 'pin' || picked == 'unpin') {
-      await ref.read(messagingServiceProvider).sendPin(
-            widget.chatId,
-            widget.message.wireId!,
-            pinned: picked == 'pin',
-          );
+      // The same question the selection toolbar asks — for both of us, or just
+      // for me. It asked in one place and not the other, and this is the path
+      // most people actually use, so the choice looked as though it had never
+      // been added. See [togglePinWithScope].
+      if (!mounted) return;
+      await togglePinWithScope(
+        context,
+        ref,
+        chatId: widget.chatId,
+        wireId: widget.message.wireId!,
+      );
     } else if (picked == 'keep-sticker') {
       await _keepSticker();
     } else if (picked == 'forward') {
@@ -1129,42 +1137,21 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // know the shared id the recipients filed it under.
     final canForEveryone = m.isMine && m.wireId != null;
 
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        backgroundColor: AppColors.bgTop,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: AppColors.glass(0.15)),
-        ),
-        title: Text(
-          t.chatDeleteTitle,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        children: [
-          if (canForEveryone)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop('everyone'),
-              child: Text(t.chatDeleteForEveryone,
-                  style: const TextStyle(color: AppColors.danger)),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop('me'),
-            child: Text(t.chatDeleteForMe,
-                style: TextStyle(color: AppColors.textOnGlass)),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(t.cancel,
-                style: TextStyle(color: AppColors.textOnGlassDim)),
-          ),
-        ],
-      ),
+    // A tick, not a second button — the same dialog the selection toolbar
+    // uses. See [askWithEveryoneTick].
+    final everyone = await askWithEveryoneTick(
+      context,
+      title: t.chatDeleteTitle,
+      everyoneLabel: t.chatDeleteForEveryone,
+      confirmLabel: t.chatDeleteAction,
+      destructive: true,
+      offerEveryone: canForEveryone,
     );
+    final choice = everyone == null
+        ? null
+        : everyone
+            ? 'everyone'
+            : 'me';
 
     if (choice == 'me') {
       // Both read *now*, before the farewell's delay. The callback runs 220 ms

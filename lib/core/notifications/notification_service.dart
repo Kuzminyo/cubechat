@@ -51,7 +51,20 @@ class NotificationService {
 
   Future<void> init() async {
     if (_ready) return;
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // The silhouette, not the launcher icon.
+    //
+    // Android draws a notification's small icon from its alpha channel alone:
+    // every opaque pixel becomes the accent colour, everything else is
+    // nothing. A launcher icon is opaque all over, so it arrives as a filled
+    // square — reported as a black square in the shade on MIUI, which is
+    // precisely what it is rather than a bug in the phone.
+    //
+    // `ic_notification` is the cube's outline with everything else
+    // transparent, at the five densities Android asks for. Built by
+    // tool/build_notification_icon.py, which is also where the reasoning about
+    // the shape lives — the facets cannot survive a silhouette, so what ships
+    // is the hexagon they sit in.
+    const android = AndroidInitializationSettings('@drawable/ic_notification');
     // Triggers the iOS system permission prompt on first launch (init() runs
     // unconditionally from main(), before runApp). Without this the app never
     // asks — local notifications are silently dropped and there is nothing for
