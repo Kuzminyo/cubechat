@@ -20,6 +20,10 @@ import WebSocket from 'ws';
 // The event kind cubechat frames travel as, and the tag a relay indexes
 // recipients by. Both come from `nostr_transport.dart` and must not drift.
 const FRAME_KIND = 1059;
+/// What `/health` reports, so a deployment can be identified rather than
+/// assumed. Bump it in the same commit as any change to this file.
+const VERSION = '2026-09-07-wake-tag';
+
 const RECIPIENT_TAG = 'p';
 
 /// Set by the sender on the events a person would want to be woken for.
@@ -901,6 +905,16 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
     return json(response, 200, {
       ok: true,
+      // Which code is actually running.
+      //
+      // Twice now a change here has been written, committed, and then had to be
+      // taken on trust — `scp` and a restart leave nothing behind that says
+      // what arrived, and the only other evidence was the order the relays
+      // happened to reconnect in. A deployment that cannot be identified is a
+      // deployment that gets debugged as if it were the source.
+      //
+      // Bumped by hand, in the same commit as whatever it describes.
+      version: VERSION,
       tokens: tokens.size,
       // Split by platform, because "tokens:1" stopped answering the question
       // the moment there were two kinds. A deployment with no FCM service
