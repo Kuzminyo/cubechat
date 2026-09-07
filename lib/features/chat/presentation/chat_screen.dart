@@ -1871,7 +1871,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     ref.read(messageReplyTargetProvider.notifier).state = MessageReplyTarget(
       chatId: widget.chatId,
       wireId: wireId,
-      preview: messagePreview(message, AppLocalizations.of(context)),
+      // The message, not the news about it: a reply to a line somebody reacted
+      // to must quote the line. See [messageContentPreview].
+      preview: messageContentPreview(message, AppLocalizations.of(context)),
       mine: message.isMine,
       authorName: message.authorName,
     );

@@ -33,6 +33,24 @@ String messagePreview(Message message, AppLocalizations t) {
   final reaction = _theirReactionTo(message);
   if (reaction != null) return '$reaction ${t.previewReacted}';
 
+  return messageContentPreview(message, t);
+}
+
+/// What the message *says*, with no news about it attached.
+///
+/// The same as [messagePreview] without the reaction line, and the difference
+/// is the whole reason it exists. "🔥 to your message" is an answer to "what
+/// last happened in this conversation", which is the question a chat row asks.
+/// A reply quote asks a different one — "what am I answering" — and there the
+/// reaction is not merely unhelpful, it replaces the thing being quoted: a
+/// reply to a line of yours that somebody had reacted to came out quoting the
+/// reaction and not the line, so the quote said nothing about what was said.
+///
+/// Reported from a screenshot of exactly that, and it only happens on your own
+/// messages, which is why it survived: [_theirReactionTo] fires for somebody
+/// else's reaction to something you wrote, so quoting *their* message always
+/// looked right.
+String messageContentPreview(Message message, AppLocalizations t) {
   if (message.isSticker) {
     final emoji = message.stickerEmoji;
     return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';

@@ -66,6 +66,57 @@ void main() {
     });
   });
 
+  group('a reaction on your own message', () {
+    // The chat row and the reply quote ask different questions of the same
+    // message. "Somebody reacted to what you said" is the newest thing that
+    // happened in the conversation, which is what a row reports. A quote is
+    // answering "what am I replying to", and there the reaction does not add
+    // to the answer, it replaces it: a reply to a line of yours that somebody
+    // had reacted to came out quoting the reaction and not the line.
+    //
+    // Reported from a screenshot of exactly that. It survived because it only
+    // happens on your own messages — quoting somebody else's always looked
+    // right, which is most of the quoting anybody does while testing.
+    Message mine() => Message(
+          id: 'm1',
+          chatId: 'peer',
+          text: 'Та ну все равно',
+          sentAt: DateTime(2026),
+          isMine: true,
+          reactions: const {
+            '🔥': {'them'},
+          },
+        );
+
+    test('is what the chat row reports', () {
+      expect(messagePreview(mine(), t), '🔥 to your message');
+    });
+
+    test('is not what a reply quotes', () {
+      expect(messageContentPreview(mine(), t), 'Та ну все равно');
+    });
+
+    test('does not change a message nobody reacted to', () {
+      final plain = _m(kind: MessageKind.text, text: 'hello');
+      expect(messageContentPreview(plain, t), messagePreview(plain, t));
+    });
+
+    test('leaves a sticker named by its emoji either way', () {
+      final sticker = Message(
+        id: 'm2',
+        chatId: 'peer',
+        text: Message.stickerMarkerFor('🐱'),
+        sentAt: DateTime(2026),
+        isMine: true,
+        kind: MessageKind.image,
+        reactions: const {
+          '🔥': {'them'},
+        },
+      );
+      expect(messageContentPreview(sticker, t), '🐱 Sticker');
+    });
+  });
+
   group('a row that kept only the text', () {
     test('still names a sticker', () {
       expect(storedTextPreview(Message.stickerMarkerFor('🐱'), t), '🐱 Sticker');

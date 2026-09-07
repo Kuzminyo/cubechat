@@ -984,7 +984,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (contact != null) return contact.displayName;
     final mapLink = MapFriendLink.tryParse(m.text);
     if (mapLink != null) return mapLink.displayName;
-    final preview = messagePreview(m, t).replaceAll('\n', ' ').trim();
+    // What it said, not what happened to it — see [messageContentPreview].
+    final preview = messageContentPreview(m, t).replaceAll('\n', ' ').trim();
     return preview.length > 80 ? '${preview.substring(0, 80)}…' : preview;
   }
 
