@@ -108,7 +108,35 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       if (payload != null && payload.isNotEmpty) _openChat(payload);
       _startDiscovery();
       _refreshPushRegistration();
+      _announceOnLaunch();
     });
+  }
+
+  /// Say we are here, once, on a launch.
+  ///
+  /// Nothing did. [_announcePresenceDebounced] is guarded by
+  /// [_announcedOnline], which starts life `true`, and the lifecycle callback
+  /// it is driven from fires on a *transition* — a cold start into the
+  /// foreground is not one. So the first beacon of a launch was whatever the
+  /// 70-second heartbeat produced, and a phone restarted more often than that
+  /// never announced itself at all.
+  ///
+  /// Two logs from the same evening: one phone published to ten contacts every
+  /// seventy seconds and the other, booting twice inside ninety seconds, sent
+  /// not a single beacon in either session — so the first read the second as
+  /// permanently offline. Not intermittently. Never.
+  ///
+  /// Straight to the service rather than through the debounce, for the reason
+  /// [_noticeTouch] does the same: the flag records what our contacts were
+  /// told, and on a launch they have been told nothing. The transport throttles
+  /// a repeat inside twenty seconds, so arriving here just after a real
+  /// announcement costs one comparison.
+  void _announceOnLaunch() {
+    if (!mounted || !AppLifecycle.instance.isForeground) return;
+    _announcedOnline = true;
+    unawaited(
+      ref.read(messagingServiceProvider).announcePresence(online: true),
+    );
   }
 
   /// Wipe if nobody has opened this app for as long as its owner said.
@@ -241,9 +269,16 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// Pending "I'm gone" beacon — see [_announcePresenceDebounced].
   Timer? _goodbyeTimer;
 
-  /// What our contacts currently believe. Starts true because the app is in the
-  /// foreground when this observer is installed.
-  bool _announcedOnline = true;
+  /// What our contacts currently believe — which on a launch is nothing.
+  ///
+  /// This started `true`, and the comment above it said "because the app is in
+  /// the foreground when this observer is installed". That conflates two
+  /// different facts: where *we* are, and what anybody has been *told*. On a
+  /// cold start both are true of the first and false of the second, and the
+  /// flag is read as the second — so the guard in
+  /// [_announcePresenceDebounced] refused the only announcement a launch was
+  /// ever going to make. See [_announceOnLaunch], which is what now makes it.
+  bool _announcedOnline = false;
 
   /// How long the app has to come back before its contacts are told it left.
   ///

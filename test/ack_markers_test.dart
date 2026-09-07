@@ -135,6 +135,79 @@ void main() {
     expect(container.read(ackMarkersControllerProvider), isEmpty);
   });
 
+  group('the exact record beside the watermark', () {
+    // The watermark alone means "older than the last thing acknowledged,
+    // therefore already acknowledged", which holds only if messages arrive in
+    // the order they were sent. Since 956 they carry the sender's clock, so
+    // anything held on a relay lands stamped older than things already
+    // acknowledged. Four stickers sent at 21:12:03 reached the other phone at
+    // 21:14:35 after two restarts: chat opened, four banners cleared, one
+    // receipt sent. The other three were not late, they were unreachable.
+
+    test('an id acknowledged is remembered across a restart', () async {
+      final wire = 'ab' * 32;
+      var container = ProviderContainer();
+      await container
+          .read(ackMarkersControllerProvider.notifier)
+          .markIdsAcked({wire: DateTime(2026, 9, 7, 21, 12, 3)});
+      await settleBackgroundStorage();
+      container.dispose();
+
+      container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
+      await acks.loaded;
+      expect(acks.hasAcked(wire), isTrue);
+    });
+
+    test('an unacknowledged id below the watermark is still reachable',
+        () async {
+      // The reported bug, in the smallest form that shows it.
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
+
+      final late = 'cd' * 32;
+      await acks.markAcked(chat, DateTime(2026, 9, 7, 21, 13, 35));
+      await acks.markIdsAcked({'ef' * 32: DateTime(2026, 9, 7, 21, 13, 35)});
+
+      expect(acks.hasAcked(late), isFalse,
+          reason: 'never sent, so it must not read as sent');
+      expect(acks.ackCoverFrom, isNull,
+          reason: 'under the cap the record answers for everything, so the '
+              'watermark never gets to overrule it');
+    });
+
+    test('the record is capped, and says how far back it still answers',
+        () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
+
+      final base = DateTime(2026, 9, 7, 12);
+      await acks.markIdsAcked({
+        for (var i = 0; i < 600; i++)
+          i.toRadixString(16).padLeft(64, '0'): base.add(Duration(minutes: i)),
+      });
+
+      // Oldest hundred evicted; the survivors start at minute 100.
+      expect(acks.hasAcked('0' * 64), isFalse);
+      expect(acks.hasAcked(599.toRadixString(16).padLeft(64, '0')), isTrue);
+      expect(acks.ackCoverFrom, base.add(const Duration(minutes: 100)),
+          reason: 'beyond this the watermark takes over, which is what keeps '
+              'the cold-start storm fixed');
+    });
+
+    test('a wipe takes the ids too', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
+      await acks.markIdsAcked({'ab' * 32: DateTime(2026)});
+      await acks.clear();
+      expect(acks.hasAcked('ab' * 32), isFalse);
+    });
+  });
+
   test('it is a different marker from the read one', () async {
     // They answer different questions and must not share storage: the read
     // marker decides the unread badge, this one decides what the other phone

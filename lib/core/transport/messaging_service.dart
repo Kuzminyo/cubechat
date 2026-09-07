@@ -2432,13 +2432,34 @@ class MessagingService {
     // freeze on cold start turned out to be.
     final ackedUpTo = _ref.read(ackMarkersControllerProvider)[canonicalId];
 
+    // How far back the exact record reaches. Null means it reaches everything.
+    final coverFrom = ackMarkers.ackCoverFrom;
+
     final fresh = <({Uint8List id, DateTime at})>[];
     for (final m in msgs) {
       if (m.isMine) continue;
       if (m.sentAt.isAfter(readUpTo)) continue;
-      if (ackedUpTo != null && !m.sentAt.isAfter(ackedUpTo)) continue;
       final w = m.wireId;
       if (w == null || _sentReadAcks.contains(w)) continue;
+      // Ask the exact record first, and only fall back on the watermark for
+      // what the record no longer covers.
+      //
+      // The watermark alone said "older than the last thing acknowledged,
+      // therefore already acknowledged", which is only true if messages arrive
+      // in the order they were sent. Since 956 they carry the sender's clock,
+      // so anything held on a relay arrives stamped *before* things already
+      // acknowledged — and a batch of media is delivered precisely that way. A
+      // shipped pair of logs had four stickers sent at 21:12:03 landing at
+      // 21:14:35 after two restarts: the chat was opened, four banners
+      // cleared, and one receipt went out. The other three were not late,
+      // they were unreachable.
+      if (ackMarkers.hasAcked(w)) continue;
+      if (coverFrom != null &&
+          !m.sentAt.isAfter(coverFrom) &&
+          ackedUpTo != null &&
+          !m.sentAt.isAfter(ackedUpTo)) {
+        continue;
+      }
       try {
         fresh.add((id: _hexDecodeBytes(w), at: m.sentAt));
       } catch (_) {/* skip malformed wireId */}
@@ -2489,11 +2510,18 @@ class MessagingService {
           );
         }
         if (fanout > 0) {
+          final landed = <String, DateTime>{};
           for (final e in slice) {
-            _sentReadAcks.add(TransportEnvelope.hashHex(e.id));
+            final hex = TransportEnvelope.hashHex(e.id);
+            _sentReadAcks.add(hex);
+            landed[hex] = e.at;
             final seen = acked;
             if (seen == null || e.at.isAfter(seen)) acked = e.at;
           }
+          // Written down across restarts, not only for this run. The in-memory
+          // set dies with the process, and the launch after it is exactly when
+          // a receipt that never went out has to be noticed.
+          await ackMarkers.markIdsAcked(landed);
           DebugLog.instance.log(
             'RECEIPT',
             'sent ${slice.length} read ack(s) to ${_short(canonicalId)} '

@@ -148,13 +148,42 @@ final readMarkersControllerProvider =
 /// A timestamp per chat rather than a set of ids, because the set grows with
 /// every message ever read and this does not.
 ///
-/// The trade is honest and worth writing down: a message that arrives *late*
-/// with a timestamp older than the marker will not have its receipt re-sent
-/// after a restart, so its sender may keep one tick. Against that, the thing
-/// being removed is every restart re-sending every receipt in the app. The
-/// in-run guard still catches the ordinary case exactly as before.
+/// **The trade this made has now been paid, so it is a watermark *and* a
+/// bounded set.** What was written here was: "a message that arrives late with
+/// a timestamp older than the marker will not have its receipt re-sent after a
+/// restart, so its sender may keep one tick" — accepted on the grounds that a
+/// late arrival is unusual. It is not. Since 956 a message carries the
+/// *sender's* clock, so anything that waited on a relay arrives stamped older
+/// than it landed, and a batch of media is delivered exactly that way.
+///
+/// Reported as "не просматривается смс хотя просмотрели", and both logs agree:
+/// four stickers sent at 21:12:03 reached the other phone at 21:14:35, after
+/// two restarts; the chat was opened, four banners were cleared, and **one**
+/// acknowledgement went out. The other three were below the watermark, which
+/// means not merely unsent — unsendable, for good.
+///
+/// So [ackedIds] answers exactly for everything it still holds, and the
+/// watermark answers for what has fallen out of it. That keeps the cold-start
+/// storm fixed — the set is capped, so history beyond it is still cut off by a
+/// single comparison — while making the case that actually happens correct.
+/// [_maxAckedIds] entries is about 40 KB.
 class AckMarkersController extends Notifier<Map<String, DateTime>> {
   static const _key = 'ack_markers';
+  static const _idsKey = 'ack_marker_ids';
+
+  /// How many acknowledged wire ids are remembered across restarts.
+  ///
+  /// Large enough that "arrived late" is always inside it in practice — a
+  /// backlog is tens of messages, not hundreds — and small enough to stay a
+  /// rounding error on disk. Beyond it the watermark takes over, which is the
+  /// behaviour this whole class was introduced to get.
+  static const int _maxAckedIds = 500;
+
+  /// Wire id to the message's own timestamp, oldest evicted first.
+  ///
+  /// The timestamps are not decoration: [ackCoverFrom] is the oldest of them,
+  /// and that is what says how far back this set can be trusted to answer.
+  final Map<String, DateTime> _ackedIds = {};
 
   Box<dynamic>? _box;
   Future<void>? _loading;
@@ -194,12 +223,69 @@ class AckMarkersController extends Notifier<Map<String, DateTime>> {
         // easily beat a disk read.
         if (loaded.isNotEmpty) state = {...loaded, ...state};
       }
+      final ids = box.get(_idsKey);
+      if (ids is Map) {
+        final restored = <String, DateTime>{};
+        ids.forEach((dynamic k, dynamic v) {
+          if (k is String && v is String) {
+            final dt = DateTime.tryParse(v);
+            if (dt != null) restored[k] = dt;
+          }
+        });
+        // Under, not over: an id acknowledged while the box was opening is
+        // newer than anything on disk and must not be dropped.
+        for (final e in restored.entries) {
+          _ackedIds.putIfAbsent(e.key, () => e.value);
+        }
+        _evictAckedIds();
+      }
     } catch (e) {
       debugPrint('AckMarkersController load failed: $e');
     }
   }
 
   DateTime? ackedUpTo(String chatId) => state[chatId];
+
+  /// Whether this exact message has already been acknowledged.
+  bool hasAcked(String wireId) => _ackedIds.containsKey(wireId);
+
+  /// How far back [hasAcked] can be trusted to answer.
+  ///
+  /// Null while the set is under its cap — nothing has been forgotten, so it
+  /// answers for everything. Once full it is the oldest timestamp still held,
+  /// and anything at or before that has to fall back on the watermark.
+  DateTime? get ackCoverFrom {
+    if (_ackedIds.length < _maxAckedIds) return null;
+    DateTime? oldest;
+    for (final at in _ackedIds.values) {
+      if (oldest == null || at.isBefore(oldest)) oldest = at;
+    }
+    return oldest;
+  }
+
+  /// Record ids whose receipt actually reached somebody.
+  Future<void> markIdsAcked(Map<String, DateTime> ids) async {
+    if (ids.isEmpty) return;
+    var added = false;
+    for (final e in ids.entries) {
+      if (_ackedIds.containsKey(e.key)) continue;
+      _ackedIds[e.key] = e.value;
+      added = true;
+    }
+    if (!added) return;
+    _evictAckedIds();
+    await _persist();
+  }
+
+  /// Drop the oldest until the set is back inside its cap.
+  void _evictAckedIds() {
+    if (_ackedIds.length <= _maxAckedIds) return;
+    final byAge = _ackedIds.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    for (var i = 0; i < byAge.length - _maxAckedIds; i++) {
+      _ackedIds.remove(byAge[i].key);
+    }
+  }
 
   /// Never moves backwards, for the same reason the read marker does not: a
   /// slice that went out cannot un-go.
@@ -219,8 +305,10 @@ class AckMarkersController extends Notifier<Map<String, DateTime>> {
   /// Used by Emergency Wipe.
   Future<void> clear() async {
     state = const <String, DateTime>{};
+    _ackedIds.clear();
     try {
       await _box?.delete(_key);
+      await _box?.delete(_idsKey);
     } catch (e) {
       debugPrint('AckMarkersController clear failed: $e');
     }
@@ -233,6 +321,9 @@ class AckMarkersController extends Notifier<Map<String, DateTime>> {
       await loaded;
       await _box?.put(_key, {
         for (final e in state.entries) e.key: e.value.toIso8601String(),
+      });
+      await _box?.put(_idsKey, {
+        for (final e in _ackedIds.entries) e.key: e.value.toIso8601String(),
       });
     } catch (e) {
       debugPrint('AckMarkersController persist failed: $e');
