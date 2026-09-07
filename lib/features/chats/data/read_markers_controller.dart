@@ -249,13 +249,23 @@ class AckMarkersController extends Notifier<Map<String, DateTime>> {
   /// Whether this exact message has already been acknowledged.
   bool hasAcked(String wireId) => _ackedIds.containsKey(wireId);
 
-  /// How far back [hasAcked] can be trusted to answer.
+  /// The oldest message this set can vouch for. Null means it vouches for
+  /// nothing, and the watermark decides everything.
   ///
-  /// Null while the set is under its cap — nothing has been forgotten, so it
-  /// answers for everything. Once full it is the oldest timestamp still held,
-  /// and anything at or before that has to fall back on the watermark.
+  /// This read "null while the set is under its cap — nothing has been
+  /// forgotten, so it answers for everything", which is backwards, and the
+  /// mistake shipped in 984. An **empty** set has forgotten nothing and knows
+  /// nothing; treating its silence as "not acknowledged" bypassed the
+  /// watermark for the entire history on the first launch after the update.
+  /// A field log caught it immediately: eighteen receipt frames of twelve ids
+  /// inside 200 ms, every one answered `0 marked` — the exact cold-start storm
+  /// the watermark exists to prevent, reintroduced by the thing meant to
+  /// refine it.
+  ///
+  /// Uniform now, with no special case: what the set holds, it answers for;
+  /// what is older than everything it holds belongs to the watermark. An empty
+  /// set therefore behaves exactly as 983 did.
   DateTime? get ackCoverFrom {
-    if (_ackedIds.length < _maxAckedIds) return null;
     DateTime? oldest;
     for (final at in _ackedIds.values) {
       if (oldest == null || at.isBefore(oldest)) oldest = at;

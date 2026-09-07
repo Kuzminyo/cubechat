@@ -173,9 +173,37 @@ void main() {
 
       expect(acks.hasAcked(late), isFalse,
           reason: 'never sent, so it must not read as sent');
+    });
+
+    test('an empty record vouches for nothing, and says so', () async {
+      // 984 had this backwards: "under the cap, nothing has been forgotten, so
+      // it answers for everything". An empty set has forgotten nothing and
+      // knows nothing, and reading its silence as "not acknowledged" bypassed
+      // the watermark for the whole history on the first launch after the
+      // update. A field log caught it at once — eighteen receipt frames of
+      // twelve ids inside 200 ms, every one `0 marked`, which is the exact
+      // cold-start storm the watermark exists to prevent.
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
       expect(acks.ackCoverFrom, isNull,
-          reason: 'under the cap the record answers for everything, so the '
-              'watermark never gets to overrule it');
+          reason: 'nothing recorded means the watermark decides everything, '
+              'which is how 983 behaved and what an upgrade must inherit');
+    });
+
+    test('a partial record vouches only from its oldest entry', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final acks = container.read(ackMarkersControllerProvider.notifier);
+      final base = DateTime(2026, 9, 7, 20);
+      await acks.markIdsAcked({
+        '1a' * 32: base.add(const Duration(minutes: 5)),
+        '2b' * 32: base,
+        '3c' * 32: base.add(const Duration(minutes: 9)),
+      });
+      expect(acks.ackCoverFrom, base,
+          reason: 'the oldest it holds, cap or no cap — anything older than '
+              'that belongs to the watermark');
     });
 
     test('the record is capped, and says how far back it still answers',
@@ -196,6 +224,28 @@ void main() {
       expect(acks.ackCoverFrom, base.add(const Duration(minutes: 100)),
           reason: 'beyond this the watermark takes over, which is what keeps '
               'the cold-start storm fixed');
+    });
+
+    test('the sweep asks the record first and the watermark only outside it',
+        () {
+      // The rule, pinned in the file that applies it, because getting the two
+      // the wrong way round is what 984 shipped.
+      final source =
+          File('lib/core/transport/messaging_service.dart').readAsStringSync();
+      expect(
+        source,
+        contains(
+            'final covered = coverFrom != null && m.sentAt.isAfter(coverFrom);'),
+        reason: 'covered means the record can answer; null coverFrom must '
+            'never mean "covers everything"',
+      );
+      expect(
+        source,
+        contains(
+            'if (!covered && ackedUpTo != null && !m.sentAt.isAfter(ackedUpTo))'),
+        reason: 'outside the record, the watermark decides — otherwise an '
+            'upgrade re-acknowledges the entire history',
+      );
     });
 
     test('a wipe takes the ids too', () async {

@@ -2440,7 +2440,9 @@ class MessagingService {
     // freeze on cold start turned out to be.
     final ackedUpTo = _ref.read(ackMarkersControllerProvider)[canonicalId];
 
-    // How far back the exact record reaches. Null means it reaches everything.
+    // The oldest message the exact record can vouch for. Null means it vouches
+    // for nothing yet, and then the watermark decides everything — which is
+    // the state of every phone on its first launch after this shipped.
     final coverFrom = ackMarkers.ackCoverFrom;
 
     final fresh = <({Uint8List id, DateTime at})>[];
@@ -2462,10 +2464,12 @@ class MessagingService {
       // cleared, and one receipt went out. The other three were not late,
       // they were unreachable.
       if (ackMarkers.hasAcked(w)) continue;
-      if (coverFrom != null &&
-          !m.sentAt.isAfter(coverFrom) &&
-          ackedUpTo != null &&
-          !m.sentAt.isAfter(ackedUpTo)) {
+      // Inside what the record covers, its silence means "not acknowledged".
+      // Outside it, silence means nothing at all and the watermark answers.
+      // Getting that the wrong way round is what 984 shipped, and it re-acked
+      // every message on the first launch after the update.
+      final covered = coverFrom != null && m.sentAt.isAfter(coverFrom);
+      if (!covered && ackedUpTo != null && !m.sentAt.isAfter(ackedUpTo)) {
         continue;
       }
       try {

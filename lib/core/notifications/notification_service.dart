@@ -260,8 +260,25 @@ class NotificationService {
       ),
     );
     try {
+      // One id per conversation on Android, one per message on iOS.
+      //
+      // Android needs the conversation's id: `MessagingStyle` above carries
+      // the whole run of messages inside that single banner, and `number:`
+      // is the count beside it — posting a second id would be a second copy
+      // of the same conversation.
+      //
+      // iOS has neither, and re-using an identifier there *replaces* the
+      // notification that had it. So five stickers posted five requests under
+      // one id and left exactly one banner standing, showing the last one —
+      // which is why the number on an iPhone never matched what arrived.
+      // Grouping is already handled: `threadIdentifier` above stacks them per
+      // conversation, which is the thing the shared id was standing in for.
+      final id = PlatformInfo.isIOS
+          ? _nextIosId(threadKey)
+          : threadKey.hashCode & 0x7fffffff;
+      thread.notePosted(id);
       await _plugin.show(
-        threadKey.hashCode & 0x7fffffff,
+        id,
         title,
         body,
         details,
@@ -315,6 +332,17 @@ class NotificationService {
   int get _unreadTotal =>
       _threads.values.fold(0, (sum, t) => sum + t.inboundCount);
 
+  /// A notification id nothing else is using.
+  ///
+  /// Seeded from the conversation so ids stay spread across chats, and stepped
+  /// per message. Kept inside 31 bits because that is what the platform
+  /// channel carries.
+  int _iosIdSeq = 0;
+  int _nextIosId(String threadKey) {
+    _iosIdSeq = (_iosIdSeq + 1) & 0xffff;
+    return ((threadKey.hashCode & 0x7fff) << 16 | _iosIdSeq) & 0x7fffffff;
+  }
+
   /// Clears any banner for a chat — called when the user opens that chat. Also
   /// forgets the thread history so a later message starts a fresh conversation.
   Future<void> clearForChat(String threadKey) async {
@@ -329,9 +357,16 @@ class NotificationService {
             ' — count was $had',
       );
     }
-    _threads.remove(threadKey);
+    final posted = _threads.remove(threadKey)?.postedIds ?? const <int>[];
     try {
+      // The conversation's own id, which is what Android posted under and what
+      // every build before per-message ids used on iOS too.
       await _plugin.cancel(threadKey.hashCode & 0x7fffffff);
+      // And every per-message id this run posted. Cancelling one iOS never
+      // showed, or already dropped, is a no-op.
+      for (final id in posted) {
+        await _plugin.cancel(id);
+      }
     } catch (_) {}
     // The badge does not follow a cancelled banner on iOS — it is a separate
     // number the app owns, and a count that only ever climbs is worse than no
@@ -377,12 +412,28 @@ class _Thread {
   Uint8List? icon;
   int inboundCount = 0;
 
+  /// Notification ids posted for this conversation, so every one of them can
+  /// be taken down when the chat is opened.
+  ///
+  /// Only iOS puts more than one here — see [NotificationService.showMessage].
+  /// Capped alongside [messages]: an id whose banner iOS has already dropped
+  /// costs nothing to cancel, and the list must not grow with the chat.
+  final List<int> postedIds = [];
+
   void add(String text, Person person, {int cap = 8}) {
     // A null person key means "me" (a sent reply); anything else is inbound.
     if (person.key != 'me') inboundCount++;
     messages.add(Message(text, DateTime.now(), person));
     if (messages.length > cap) {
       messages.removeRange(0, messages.length - cap);
+    }
+  }
+
+  void notePosted(int id, {int cap = 32}) {
+    if (postedIds.contains(id)) return;
+    postedIds.add(id);
+    if (postedIds.length > cap) {
+      postedIds.removeRange(0, postedIds.length - cap);
     }
   }
 }
