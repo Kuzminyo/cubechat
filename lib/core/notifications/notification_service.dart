@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'avatar_bitmap.dart';
 
@@ -179,6 +180,24 @@ class NotificationService {
       icon: thread.icon == null ? null : ByteArrayAndroidIcon(thread.icon!),
     );
     thread.add(body, sender, cap: _maxThreadMessages);
+    // The count, said out loud, because the number on the banner is the thing
+    // people read and nothing could explain it.
+    //
+    // "Three stickers, thirteen messages" was reported, and reading the code
+    // said it could not happen: one banner per message, duplicates refused by
+    // the store before they get here, media appended once. Either the count
+    // carried over from messages that were never read, or something calls this
+    // more often than once per message — and those are different bugs in
+    // different files, with nothing on screen to tell them apart.
+    //
+    // So: what it counted, and what it says. One line per banner, on a screen
+    // where banners are rare.
+    DebugLog.instance.log(
+      'NOTIFY',
+      'banner for ${threadKey.length > 8 ? threadKey.substring(0, 8) : threadKey}'
+          ' — count now ${thread.inboundCount}: '
+          '${body.length > 40 ? '${body.substring(0, 40)}…' : body}',
+    );
 
     final messaging = MessagingStyleInformation(
       _me,
@@ -299,6 +318,17 @@ class NotificationService {
   /// Clears any banner for a chat — called when the user opens that chat. Also
   /// forgets the thread history so a later message starts a fresh conversation.
   Future<void> clearForChat(String threadKey) async {
+    // The other half of the count: it only ever goes back to zero here, so a
+    // banner reading thirteen either counted thirteen messages or was never
+    // cleared. Both ends of that have to be visible to tell which.
+    final had = _threads[threadKey]?.inboundCount ?? 0;
+    if (had > 0) {
+      DebugLog.instance.log(
+        'NOTIFY',
+        'cleared ${threadKey.length > 8 ? threadKey.substring(0, 8) : threadKey}'
+            ' — count was $had',
+      );
+    }
     _threads.remove(threadKey);
     try {
       await _plugin.cancel(threadKey.hashCode & 0x7fffffff);
