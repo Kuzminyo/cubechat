@@ -5978,16 +5978,66 @@ class MessagingService {
       final unpacked = unpackInnerPayload(innerBytes);
       final manager = _ref.read(chatSessionManagerProvider.notifier);
       final session = manager.sessionFor(peerId);
-      // Over the Nostr relay there is no Noise session (peerId == _nostrPeerId),
-      // so remoteStaticPublicKey is null. Recover the sender's canonical pubkey
-      // from the envelope's origin hash so the message routes into their real
-      // chat — and so the blocked-peer, receipt, reaction and edit paths below
-      // can identify the sender too, instead of it vanishing into 'nostr:relay'.
-      final senderPub = session?.remoteStaticPublicKey ??
-          await _canonicalPubForVerifiedSender(
-            originPubkeyHash: env.originPubkeyHash,
-            senderEdPub: verifiedSenderEdPub,
-          );
+
+      // Who this frame claims to be from, according to the envelope alone.
+      //
+      // A claim, not a fact — the origin hash is a plaintext field anybody can
+      // write. It becomes a fact in exactly one way: a valid signature, whose
+      // context covers this hash (see [SignedPayload.contextBytes]), so a
+      // signer cannot be made to vouch for an origin they did not send from.
+      final claimedPub = await _canonicalPubForOrigin(env.originPubkeyHash);
+
+      // The signer first, the link second.
+      //
+      // It used to be the other way round, which was right when a Noise link
+      // was the only way in: the peer at the other end of it is authenticated
+      // by the handshake, so it was the better answer. It stopped being the
+      // better answer once frames could arrive having been relayed — over the
+      // mesh a neighbour hands us somebody else's frame, and taking the sender
+      // from the link files it under the neighbour.
+      final senderPub = (verifiedSenderEdPub != null
+              ? await _canonicalPubForVerifiedSender(
+                  originPubkeyHash: env.originPubkeyHash,
+                  senderEdPub: verifiedSenderEdPub,
+                )
+              : null) ??
+          session?.remoteStaticPublicKey;
+
+      // Unsigned bodies are accepted from exactly two places, and this is the
+      // fence around them.
+      //
+      // A SealedBox proves nothing about who sealed it: anyone holding the
+      // recipient's public key — which is public — can make one. So a frame
+      // whose body carries no signature is a frame with no author, and until
+      // now it was filed under whoever the envelope said, which over the relay
+      // is a field the sender chose. Text could be put in somebody else's
+      // chat in their name, and so could `conversationClear`, which erases the
+      // conversation it lands in.
+      //
+      // Two exceptions, and only two: image and audio chunks travel unsigned
+      // on purpose, because a signature per chunk does not fit in the MTU (see
+      // the note where they are sent). What identifies them is the manifest
+      // that opens the transfer, which *is* signed, and the AEAD that seals
+      // each chunk to a key derived from it.
+      //
+      // Everything else must be signed, unless it arrived over a Noise link
+      // from the very peer the envelope names — which is the direct-neighbour
+      // case, authenticated by the handshake, and the one shape older builds
+      // still send unsigned control frames in.
+      if (verifiedSenderEdPub == null &&
+          !unsignedIsAcceptable(
+            type: unpacked.type,
+            fromTheLinkItself: session?.remotePubkeyHex != null &&
+                claimedPub != null &&
+                _hexOf(claimedPub) == session!.remotePubkeyHex,
+          )) {
+        DebugLog.instance.log(
+          'CRYPTO',
+          'drop unsigned ${unpacked.type.name} from $peerId — '
+              'nothing proves who sent it',
+        );
+        return;
+      }
 
       final traversedHops = env.traversedHops;
       final directLegacy =
@@ -8195,6 +8245,38 @@ class MessagingService {
   /// receipt, reaction, edit or delete lands on a message that is already
   /// there and changes it, and an edit in particular could put back a version
   /// the sender has since replaced.
+  /// Whether a body carrying no signature may be acted on.
+  ///
+  /// A SealedBox proves nothing about who sealed it: anybody holding the
+  /// recipient's public key — which is public — can make one. So an unsigned
+  /// body has no author, and the envelope's opinion about who sent it is a
+  /// plaintext field the sender wrote. Over the relay that was enough to put
+  /// text in somebody else's chat under their name, and enough to send
+  /// `conversationClear`, which erases the conversation it lands in.
+  ///
+  /// Two exceptions, and only two. Image and audio chunks travel unsigned on
+  /// purpose — a signature per chunk does not fit in the MTU — and what
+  /// identifies them is the manifest that opens the transfer, which is signed,
+  /// plus the AEAD that seals each chunk under a key derived from it.
+  ///
+  /// [fromTheLinkItself] is the other way an unsigned body can be trusted: it
+  /// came over a Noise link from the very peer the envelope names, so the
+  /// handshake is what vouches for it. That is the direct-neighbour case, and
+  /// the shape an older build still sends unsigned control frames in. It is
+  /// deliberately not "there is a session" — a relayed frame arrives over a
+  /// session too, with somebody else's name on it.
+  @visibleForTesting
+  static bool unsignedIsAcceptable({
+    required InnerPayloadType type,
+    required bool fromTheLinkItself,
+  }) {
+    if (type == InnerPayloadType.imageChunk ||
+        type == InnerPayloadType.audioChunk) {
+      return true;
+    }
+    return fromTheLinkItself;
+  }
+
   @visibleForTesting
   static bool survivesReplayWindow(InnerPayloadType type) => switch (type) {
         InnerPayloadType.text ||

@@ -87,8 +87,20 @@ half the lesson; re-proposing it is the failure this section exists to prevent.
   gradients, the translucent panes over them, and a route transition drawing two
   of those stacks at once — 3 ms a frame times 120 frames a second is ~36% of a
   core, and that arithmetic is the whole answer to "why is it warm". The tier
-  keeps its place for the slow phone it was written for. The next GPU-side win
-  is **overdraw**, which nobody has counted yet.
+  keeps its place for the slow phone it was written for.
+- **Overdraw — counted on 2026-09-07, and there is no pile of it.**
+  `test/layer_budget_test.dart` walks the layer tree and counts the passes that
+  make the GPU render into a texture of its own: backdrop filters, opacity
+  groups, colour and image filters, shader masks. Chats list 6, contacts 5,
+  peers 6, profile 4 — and **not one blur among them**. One chat island adds
+  exactly one `BackdropFilterLayer` and nothing else, measured against the same
+  tree without it, so a conversation costs at most three gaussians: header,
+  pinned bar, composer. The nav bar has not blurred for some time.
+
+  So the raster thread's 33% of a core is not layers stacked on layers. It is
+  plain painting — full-screen gradients and translucent fills over them — and
+  the way to move that number is to draw less area, not to remove passes there
+  are not many of. The test is also the guard: it fails if the counts grow.
 - **An animation-polish branch** (2026-08-17) — written and deleted. Fix measured
   lag before any "make it feel better" pass, and animate what every touch does
   rather than what happens rarely.
