@@ -246,8 +246,43 @@ class MapPresenceController extends Notifier<int> {
   /// is a cold `getCurrentPosition` in the background, and background GPS is
   /// the largest single expense this app has ever been measured making. Stale
   /// or absent, the ordinary route runs unchanged.
-  Future<void> pokeNow({StampedLocationFix? offered}) =>
-      _sendUpdate(force: true, offered: offered);
+  /// Publish now, from a position somebody else already has.
+  ///
+  /// The iOS doorbell's path: a closed app is relaunched because the phone
+  /// moved, CoreLocation hands the position over with the wake, and this puts
+  /// it on the map.
+  ///
+  /// **Waits for the two settings it is about to read.** Both live in the
+  /// encrypted settings box and both start at their defaults — "not sharing"
+  /// and "no friends" — until it opens. In the app that is invisible, because
+  /// nothing asks in the first second of a launch anybody is looking at. On a
+  /// relaunch there is no first second: there is no UI at all, this runs
+  /// immediately, and it read "sharing is off, and with nobody" every single
+  /// time. Which is indistinguishable, from the outside, from the feature not
+  /// existing — reported as location never being sent from a closed phone,
+  /// with the permission granted and the switch on.
+  ///
+  /// Awaiting a future that has already completed costs nothing, so the
+  /// ordinary path pays nothing for this.
+  Future<void> pokeNow({StampedLocationFix? offered}) async {
+    await ref.read(privacySettingsProvider.notifier).loaded;
+    await ref.read(mapFriendsControllerProvider.notifier).loaded;
+    // Said out loud, because the silence is what hid this.
+    //
+    // `_sendUpdate` returns on its first line when sharing is off or the
+    // friend list is empty, and it says nothing when it does — which is right
+    // for a timer that fires every forty-five seconds and wrong for the one
+    // moment a closed phone gets. "Nothing in the log" and "it decided not to"
+    // looked the same from here for as long as this has existed.
+    final friends = ref.read(mapFriendsControllerProvider).length;
+    final on = ref.read(privacySettingsProvider).shareMapLocation;
+    DebugLog.instance.log(
+      'MAP',
+      'wake poke: sharing ${on ? "on" : "off"}, $friends friend(s)'
+          '${offered == null ? ", no position offered" : ""}',
+    );
+    await _sendUpdate(force: true, offered: offered);
+  }
 
   /// Take a fix and publish it. The timer's half of the job.
   Future<void> _sendUpdate({

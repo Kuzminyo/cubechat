@@ -100,6 +100,15 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   /// The box opening. Writes wait on it; see [_put].
   Future<void>? _loading;
 
+  /// Resolves once the settings on disk are in [state].
+  ///
+  /// Anything that *reads* a setting to decide whether to act has to wait on
+  /// this, and one thing did not: the map beacon. On a background relaunch —
+  /// no UI, everything cold, a poke a second in — it read "share my location"
+  /// before the box had opened, got the default, and quietly did nothing. See
+  /// `MapPresenceController.pokeNow`.
+  Future<void> get loaded => _loading ?? Future<void>.value();
+
   /// True once anything in this session has set a value.
   ///
   /// The box is opened through the platform keystore and is slow enough on a

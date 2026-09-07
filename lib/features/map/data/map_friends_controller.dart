@@ -45,6 +45,14 @@ class MapFriendsController extends Notifier<Set<String>> {
   /// The box opening. Every write waits on it — see [_persist].
   Future<void>? _loading;
 
+  /// Resolves once the list on disk is in [state].
+  ///
+  /// An empty list means "share with nobody", and an empty list is also what
+  /// this holds for the first moment of every launch. Anything deciding
+  /// whether to send has to tell those apart — see
+  /// `MapPresenceController.pokeNow`.
+  Future<void> get loaded => _loading ?? Future<void>.value();
+
   @override
   Set<String> build() {
     ref.listen<Map<String, List<Message>>>(
