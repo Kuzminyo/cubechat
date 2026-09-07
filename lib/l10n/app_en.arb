@@ -397,6 +397,9 @@
   "chatDeleteTitle": "Delete message?",
   "chatDeleteForMe": "Delete for me",
   "chatDeleteForEveryone": "Delete for everyone",
+  "chatPinTitle": "Pin message?",
+  "chatPinForBoth": "Pin for both of us",
+  "chatPinForMe": "Pin just for me",
   "chatReplyAction": "Reply",
   "chatReplyingTo": "Replying to {name}",
   "@chatReplyingTo": {

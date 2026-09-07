@@ -1514,6 +1514,24 @@ abstract class AppLocalizations {
   /// **'Delete for everyone'**
   String get chatDeleteForEveryone;
 
+  /// No description provided for @chatPinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin message?'**
+  String get chatPinTitle;
+
+  /// No description provided for @chatPinForBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin for both of us'**
+  String get chatPinForBoth;
+
+  /// No description provided for @chatPinForMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin just for me'**
+  String get chatPinForMe;
+
   /// No description provided for @chatReplyAction.
   ///
   /// In en, this message translates to:

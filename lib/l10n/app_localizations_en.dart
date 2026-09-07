@@ -823,6 +823,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDeleteForEveryone => 'Delete for everyone';
 
   @override
+  String get chatPinTitle => 'Pin message?';
+
+  @override
+  String get chatPinForBoth => 'Pin for both of us';
+
+  @override
+  String get chatPinForMe => 'Pin just for me';
+
+  @override
   String get chatReplyAction => 'Reply';
 
   @override

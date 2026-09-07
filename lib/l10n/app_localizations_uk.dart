@@ -826,6 +826,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatDeleteForEveryone => 'Видалити в усіх';
 
   @override
+  String get chatPinTitle => 'Закріпити повідомлення?';
+
+  @override
+  String get chatPinForBoth => 'Закріпити в обох';
+
+  @override
+  String get chatPinForMe => 'Закріпити лише в мене';
+
+  @override
   String get chatReplyAction => 'Відповісти';
 
   @override

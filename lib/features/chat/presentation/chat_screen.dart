@@ -1902,11 +1902,81 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final wireId = message.wireId;
     if (wireId == null) return;
     final pins = ref.read(pinnedControllerProvider.notifier);
-    await ref.read(messagingServiceProvider).sendPin(
-          widget.chatId,
-          wireId,
-          pinned: !pins.isPinned(widget.chatId, wireId),
-        );
+    final t = AppLocalizations.of(context);
+
+    // Unpinning asks nothing: it undoes whatever the pin was, and a pin
+    // remembers which kind it is.
+    if (pins.isPinned(widget.chatId, wireId)) {
+      if (pins.isMineOnly(widget.chatId, wireId)) {
+        await pins.unpin(widget.chatId, wireId: wireId);
+      } else {
+        await ref
+            .read(messagingServiceProvider)
+            .sendPin(widget.chatId, wireId, pinned: false);
+      }
+      if (!mounted) return;
+      ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+      return;
+    }
+
+    // Pinning asks, because the two are different acts rather than one act
+    // with a setting. Putting a message at the top of somebody else's screen
+    // is a thing you do *to* them; keeping a note at the top of your own is
+    // not, and until now only the first was possible.
+    //
+    // A channel is not asked: there is no "just for me" reading of a pin in a
+    // room, and an option that means the same as the other one is noise.
+    final shared = widget.chatId.startsWith('#')
+        ? true
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => SimpleDialog(
+              backgroundColor: AppColors.bgTop,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: AppColors.glass(0.15)),
+              ),
+              title: Text(
+                t.chatPinTitle,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              children: [
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: Text(
+                    t.chatPinForBoth,
+                    style: TextStyle(color: AppColors.textOnGlass),
+                  ),
+                ),
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: Text(
+                    t.chatPinForMe,
+                    style: TextStyle(color: AppColors.textOnGlass),
+                  ),
+                ),
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(t.cancel,
+                      style: TextStyle(color: AppColors.textOnGlassDim)),
+                ),
+              ],
+            ),
+          );
+    if (shared == null || !mounted) return;
+
+    if (shared) {
+      await ref
+          .read(messagingServiceProvider)
+          .sendPin(widget.chatId, wireId, pinned: true);
+    } else {
+      // Nothing on the wire, which is the whole difference.
+      await pins.pin(widget.chatId, wireId, mineOnly: true);
+    }
     if (!mounted) return;
     ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
   }
@@ -2204,10 +2274,29 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   final leaving = farewell.contains(m.id) ||
                       (album?.every((photo) => farewell.contains(photo.id)) ??
                           false);
+                  // The key belongs out here, on whatever the builder returns.
+                  //
+                  // It was on the bubble, which is one widget deeper, and a
+                  // lazy list only ever sees the outermost one: without a key
+                  // there it matched rows by *position*, so deleting a message
+                  // handed this row's element — and the collapse animation
+                  // inside it, sitting at zero — to the message that moved up
+                  // into the slot. That message then rendered as nothing until
+                  // the element happened to be rebuilt. Two rows disappearing
+                  // when one was deleted, the second coming back later.
+                  //
+                  // The comment on the bubble's own key says exactly why this
+                  // matters and it was right; the key was one layer too low to
+                  // do it.
                   if (!startsNewDay(m.sentAt, previous?.sentAt)) {
-                    return _MessageFarewellRow(leaving: leaving, child: bubble);
+                    return _MessageFarewellRow(
+                      key: ValueKey('row-${m.id}'),
+                      leaving: leaving,
+                      child: bubble,
+                    );
                   }
                   return _MessageFarewellRow(
+                    key: ValueKey('row-${m.id}'),
                     leaving: leaving,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -2512,7 +2601,11 @@ class _DaySeparator extends StatelessWidget {
 /// to the vanishing rather than to the conversation closing over it, which is
 /// the opposite of what deleting something should feel like.
 class _MessageFarewellRow extends StatefulWidget {
-  const _MessageFarewellRow({required this.leaving, required this.child});
+  const _MessageFarewellRow({
+    super.key,
+    required this.leaving,
+    required this.child,
+  });
 
   final bool leaving;
   final Widget child;
@@ -2535,6 +2628,21 @@ class _MessageFarewellRowState extends State<_MessageFarewellRow>
   void didUpdateWidget(covariant _MessageFarewellRow old) {
     super.didUpdateWidget(old);
     if (widget.leaving && !old.leaving) _c.reverse();
+    // And back, which was missing.
+    //
+    // Only the leaving edge was handled, because a row that is going away does
+    // not come back — except that the *element* does. A lazy list matches its
+    // children by position, so deleting one message hands this element to the
+    // message that moved up into its slot, and that message arrives with
+    // `leaving: false` against an animation sitting at zero. It rendered as
+    // nothing until something rebuilt the element from scratch, and then
+    // reappeared: "пропадает и появляется потом", one row below the one that
+    // was actually deleted.
+    //
+    // The row now carries the message's key as well (see the item builder), so
+    // this should not be reachable. Both, because one of them is a fix and the
+    // other is the thing that makes a bug like it visible rather than silent.
+    if (!widget.leaving && old.leaving) _c.forward();
   }
 
   @override

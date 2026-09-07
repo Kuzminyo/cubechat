@@ -10,7 +10,11 @@ import '../../../core/storage/hive_init.dart';
 /// The message a chat currently has pinned.
 @immutable
 class PinnedMessage {
-  const PinnedMessage({required this.wireId, required this.pinnedAt});
+  const PinnedMessage({
+    required this.wireId,
+    required this.pinnedAt,
+    this.mineOnly = false,
+  });
 
   /// Transport [Message.wireId] of the pinned message — the handle both sides
   /// share, so a pin travels between devices without needing local row ids.
@@ -20,14 +24,31 @@ class PinnedMessage {
   /// landed). Used to decide which of two pins wins.
   final DateTime pinnedAt;
 
+  /// Pinned on this phone and nowhere else.
+  ///
+  /// A pin is normally conversation state: both people see the same carousel,
+  /// because "the address is at the top" is only useful if it is at the top for
+  /// whoever needs the address. But a note to yourself in somebody else's
+  /// conversation is a real thing to want — and putting it in front of them is
+  /// not the same act at all, so it is a separate choice rather than a setting.
+  ///
+  /// Nothing about it reaches the wire: a mine-only pin sends no control frame
+  /// and unpinning it sends none either. Which also means an older build is
+  /// unaffected — there is nothing for it to fail to understand.
+  ///
+  /// Defaults to false so every pin written before this existed reads back as
+  /// what it was: shared.
+  final bool mineOnly;
+
   @override
   bool operator ==(Object other) =>
       other is PinnedMessage &&
       other.wireId == wireId &&
-      other.pinnedAt == pinnedAt;
+      other.pinnedAt == pinnedAt &&
+      other.mineOnly == mineOnly;
 
   @override
-  int get hashCode => Object.hash(wireId, pinnedAt);
+  int get hashCode => Object.hash(wireId, pinnedAt, mineOnly);
 }
 
 /// Pinned messages per chat, keyed the way the chat list keys chats: a peer's
@@ -92,10 +113,19 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
 
   /// Adds another pin. Re-pinning the same message moves it to the front of
   /// the banner carousel without duplicating it.
-  Future<void> pin(String chatId, String wireId, {DateTime? at}) async {
+  Future<void> pin(
+    String chatId,
+    String wireId, {
+    DateTime? at,
+    bool mineOnly = false,
+  }) async {
     final next = [...?_all[chatId]]
       ..removeWhere((pin) => pin.wireId == wireId)
-      ..add(PinnedMessage(wireId: wireId, pinnedAt: at ?? DateTime.now()));
+      ..add(PinnedMessage(
+        wireId: wireId,
+        pinnedAt: at ?? DateTime.now(),
+        mineOnly: mineOnly,
+      ));
     if (next.length > 20) next.removeAt(0);
     _all[chatId] = next;
     state = {...state, chatId: next.last};
@@ -140,8 +170,18 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
     final wireId = value['wireId'];
     final at = DateTime.tryParse((value['atIso'] as String?) ?? '');
     if (wireId is! String || at == null) return null;
-    return PinnedMessage(wireId: wireId, pinnedAt: at);
+    return PinnedMessage(
+      wireId: wireId,
+      pinnedAt: at,
+      // Absent in everything written before this existed, and absent means
+      // shared — which is what those pins were.
+      mineOnly: value['mineOnly'] == true,
+    );
   }
+
+  /// Whether this chat's pin on [wireId] is one nobody else can see.
+  bool isMineOnly(String chatId, String wireId) =>
+      _all[chatId]?.any((pin) => pin.wireId == wireId && pin.mineOnly) ?? false;
 
   Future<void> _persist() async {
     final box = _box;
@@ -154,6 +194,7 @@ class PinnedController extends Notifier<Map<String, PinnedMessage>> {
               {
                 'wireId': pin.wireId,
                 'atIso': pin.pinnedAt.toIso8601String(),
+                if (pin.mineOnly) 'mineOnly': true,
               },
           ],
       });

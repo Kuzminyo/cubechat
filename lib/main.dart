@@ -183,10 +183,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
   _logUncaughtErrors();
-  // Started now and awaited much later, just before runApp. It reads a flag
-  // through a platform channel, and a channel is a round trip whether or not
-  // anything else is waiting on it — so it may as well be in flight while the
-  // boxes below are opening. See the await for the measurement.
+  // First line of the app that touches storage, and that is the point.
+  //
+  // It reads one boolean out of the settings box, but it is the first thing to
+  // ask for the cipher — and the cipher is a round trip to the platform
+  // keystore, which is the single slowest step of a cold start. Kicking it off
+  // here means every other step below runs inside it rather than after it.
+  //
+  // Measured on a real phone at build 975: 281 ms from the boot line to the
+  // first route, of which this was 208 and everything else fitted inside it.
+  // That is the floor for an app whose storage is encrypted; the only way past
+  // it is not encrypting, which is not on the table. See the await below.
   var seenOnboarding = true;
   final onboardingRead = readSeenOnboardingFlag();
   // First, so that a stall in any step below still leaves a log that says which

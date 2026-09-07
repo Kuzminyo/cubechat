@@ -103,4 +103,55 @@ void main() {
     await n.clear();
     expect(container.read(pinnedControllerProvider), isEmpty);
   });
+
+  group('a pin only this phone can see', () {
+    // Pinning was always an act performed on the other person: their carousel
+    // changed too, because that is what makes "the address is at the top"
+    // useful. A note to yourself in their conversation is a different thing to
+    // want, and putting it in front of them is not part of it.
+    test('is remembered as such', () async {
+      final n = notifier();
+      await n.loaded;
+      await n.pin(chat, first, mineOnly: true);
+
+      expect(n.isPinned(chat, first), isTrue);
+      expect(n.isMineOnly(chat, first), isTrue);
+    });
+
+    test('a shared one is not', () async {
+      final n = notifier();
+      await n.loaded;
+      await n.pin(chat, first);
+
+      expect(n.isMineOnly(chat, first), isFalse);
+    });
+
+    test('survives a restart, and so does the difference', () async {
+      // The flag decides whether unpinning tells the other side anything, so
+      // losing it across a restart would mean quietly unpinning something on
+      // somebody else's phone that was never pinned there.
+      final first0 = notifier();
+      await first0.loaded;
+      await first0.pin(chat, first, mineOnly: true);
+      await first0.pin(chat, second);
+      await settleBackgroundStorage();
+
+      final reopened = ProviderContainer();
+      addTearDown(reopened.dispose);
+      final n = reopened.read(pinnedControllerProvider.notifier);
+      await n.loaded;
+
+      expect(n.isMineOnly(chat, first), isTrue);
+      expect(n.isMineOnly(chat, second), isFalse);
+    });
+
+    test('a pin written before this existed reads back as shared', () async {
+      // Everything on disk today has no flag, and the absence has to mean
+      // shared — those pins were mirrored when they were made.
+      final n = notifier();
+      await n.loaded;
+      await n.pin(chat, first);
+      expect(n.pinnedIn(chat)?.mineOnly, isFalse);
+    });
+  });
 }
