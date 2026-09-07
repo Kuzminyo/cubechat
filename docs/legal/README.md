@@ -12,21 +12,22 @@ behind each answer so the next person can verify instead of trusting.
 | `terms.uk.md` | Terms of use, Ukrainian | Same |
 | `store-disclosures.md` | Filled-in answers for Apple App Privacy and Google Play Data safety, plus the export-compliance situation | Nowhere public — it is the crib sheet for filling the forms |
 
-## Before any of this is published
+## Who these name
 
-**Three placeholders must be filled**, and the documents are not usable until
-they are. They are marked `[TO BE COMPLETED]` / `[ЗАПОВНИТИ]`:
+- **Controller / provider:** Kuzminyo
+- **Contact:** cubechatble@gmail.com
+- **Governing law:** Ukraine (`terms.*.md` §12)
 
-1. The **legal name** of whoever publishes the app — a person or a company.
-2. A **postal address**.
-3. A **contact email that is actually read**. `privacy@cubechat.tech` is the
-   obvious choice since the domain exists, but any working address will do.
+**No postal address, by decision.** The GDPR asks for the controller's identity
+and *contact details*; an address that is read is what that comes to, and for a
+sole developer an email satisfies it. Worth knowing anyway: **Google Play
+publishes the developer's physical address on the store listing regardless** —
+that is a requirement of the developer account, not of the policy, so leaving
+it out here does not keep it private there.
 
-A privacy policy with no identified controller and no reachable address does
-not satisfy the GDPR, the App Store Review Guidelines or Google Play policy,
-and it is the first thing a reviewer checks.
-
-`terms.*.md` §12 also needs a **governing jurisdiction**.
+**The contact address has to stay answered.** A privacy policy naming a mailbox
+nobody reads fails on the first access request, and both stores treat an
+unreachable contact as grounds for removal.
 
 **None of this is legal advice.** It is an accurate description of what the
 software does, written so that a lawyer has something true to work from. Have

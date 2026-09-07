@@ -11,10 +11,6 @@ This policy describes exactly what the app does with data, including the parts
 that are not private, because a messenger that overstates its privacy is more
 dangerous than one that has none.
 
-> **Fill in before publishing.** The data controller's legal name, postal
-> address and contact email are marked `[TO BE COMPLETED]` below. A privacy
-> policy without an identified controller and a working contact address does
-> not satisfy the GDPR, the App Store Review Guidelines or Google Play policy.
 > This document is written from the source code and is not legal advice; have
 > it reviewed before you rely on it.
 
@@ -22,9 +18,8 @@ dangerous than one that has none.
 
 ## 1. Who is responsible
 
-**Controller:** [TO BE COMPLETED — legal name]
-**Address:** [TO BE COMPLETED]
-**Contact:** [TO BE COMPLETED — e.g. privacy@cubechat.tech]
+**Controller:** Kuzminyo
+**Contact:** cubechatble@gmail.com
 
 If you are in the European Economic Area, the United Kingdom or Ukraine, you
 have the rights described in section 11.
@@ -284,4 +279,5 @@ will change. The current version is always published at
 
 ## 15. Contact
 
-[TO BE COMPLETED — contact email]
+Write to **cubechatble@gmail.com** with any question about this policy, to
+exercise a right described in section 11, or to report a security problem.

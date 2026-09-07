@@ -166,7 +166,8 @@ there; Apple's questionnaire asks about it directly.
 |---|---|---|
 | Privacy Policy URL | **To publish** | `docs/legal/privacy-policy.en.md` and `.uk.md`. Must be a public, live URL — suggested `https://cubechat.tech/privacy`. Both stores reject a 404, and Apple checks it |
 | Terms / EULA | **To publish** | `docs/legal/terms.en.md` and `.uk.md`. Apple uses its standard EULA unless you supply one; supplying one is better here because of the delivery and no-warranty sections |
-| Support URL | **To do** | A page that answers mail. Required by both stores |
+| Support URL | **To do** | A page that answers mail — `cubechatble@gmail.com` is the address the documents name. Required by both stores |
+| Developer contact | **Note** | Google Play publishes the developer's **physical address** on the listing. That is a developer-account requirement and is unaffected by its absence from the policy |
 | Account deletion | **Done, needs stating** | Google Play requires an explanation even when there is no account. Point at Privacy Policy §10 |
 | Data safety / App Privacy | Answers above | — |
 | Content rating questionnaire | **To do** | Answer *yes* to "users can communicate with each other" and to "user-generated content"; this is what sets the rating for a messenger |

@@ -2,8 +2,6 @@
 
 **Last updated: 7 September 2026**
 
-> **Fill in before publishing.** The provider's legal name, address and
-> contact, and the governing law in section 12, are marked `[TO BE COMPLETED]`.
 > This document is not legal advice; have it reviewed before you rely on it.
 
 By installing or using Cubechat you agree to these terms. If you do not agree,
@@ -17,8 +15,8 @@ Cubechat is a peer-to-peer messenger. It carries messages between devices over
 Bluetooth Low Energy and, optionally, through public relays operated by
 unrelated third parties. There is no account and no Cubechat message server.
 
-The app is provided by [TO BE COMPLETED — legal name] ("we", "us"), at
-[TO BE COMPLETED — address], reachable at [TO BE COMPLETED — email].
+The app is provided by Kuzminyo ("we", "us"), reachable at
+cubechatble@gmail.com.
 
 ---
 
@@ -139,13 +137,12 @@ running.
 
 ## 12. Governing law
 
-These terms are governed by the law of [TO BE COMPLETED — jurisdiction],
-without regard to its conflict-of-law rules. If you are a consumer, this does
-not deprive you of the protection of the mandatory law of your own country of
-residence.
+These terms are governed by the law of Ukraine, without regard to its
+conflict-of-law rules. If you are a consumer, this does not deprive you of the
+protection of the mandatory law of your own country of residence.
 
 ---
 
 ## 13. Contact
 
-[TO BE COMPLETED — email]
+**cubechatble@gmail.com**
