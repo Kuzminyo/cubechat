@@ -37,11 +37,43 @@ in the name, which is exactly the shape DNS rebinding protection blocks. On
 
 ## Getting the files there
 
-From the Windows machine, in PowerShell:
+From the Windows machine, in PowerShell. The trailing `\.` is the whole of the
+difference between a first install and every one after it:
 
 ```powershell
-scp -r D:\projects\cubechat\push root@209.38.225.225:/opt/cubechat-push
+scp -r D:\projects\cubechat\push\. root@209.38.225.225:/opt/cubechat-push
+ssh root@209.38.225.225 "systemctl restart cubechat-push"
 ```
+
+**Why the dot.** `scp -r somedir dest` copies *into* `dest` when `dest` already
+exists, so the second deploy lands the whole tree at
+`/opt/cubechat-push/push/src/index.js` while the service goes on running
+`/opt/cubechat-push/src/index.js`. Nothing fails. scp prints every file at
+100%, systemd restarts happily, and the old code keeps serving — which is
+exactly what it did on 2026-09-07, leaving build 980's half of the
+notification fix inert on the phones for a day. `\.` copies the *contents*, so
+it is right both times.
+
+If it has already happened, this repairs it:
+
+```powershell
+ssh root@209.38.225.225 "cp -r /opt/cubechat-push/push/. /opt/cubechat-push/ && rm -rf /opt/cubechat-push/push && systemctl restart cubechat-push"
+```
+
+**Then check `version`, every time.** `/health` reports the `VERSION` constant
+at the top of `src/index.js`, and it exists for this: it is the only thing that
+distinguishes "deployed" from "copied somewhere and not running".
+
+```powershell
+curl.exe -s https://push.cubechat.tech/health
+```
+
+`curl.exe`, not `curl` — in PowerShell the bare name is an alias for
+`Invoke-WebRequest`, which does not take `-s`.
+
+Nothing here overwrites `.env`, `AuthKey.p8`, `fcm-service-account.json` or
+`tokens.json`: none of them is in the repository, so none of them is in what
+gets copied. `tokens:N` in the reply should not change across a deploy.
 
 ## On the droplet
 
