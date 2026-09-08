@@ -1,0 +1,2520 @@
+[
+  {
+    "id": "cat-wave",
+    "label": "Привет",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-wave.png",
+    "webm_2k": "webm-2k/cat-wave.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 16,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 10,
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-laugh",
+    "label": "Смех",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-laugh.png",
+    "webm_2k": "webm-2k/cat-laugh.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 16,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 11,
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-love",
+    "label": "Любовь",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-love.png",
+    "webm_2k": "webm-2k/cat-love.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 16,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 12,
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-sleep",
+    "label": "Сон",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-sleep.png",
+    "webm_2k": "webm-2k/cat-sleep.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 16,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 12,
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-approve",
+    "label": "Одобряю",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-approve.png",
+    "webm_2k": "webm-2k/cat-approve.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-shy",
+    "label": "Смущение",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-shy.png",
+    "webm_2k": "webm-2k/cat-shy.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 16,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 11,
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-sad",
+    "label": "Грусть",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-sad.png",
+    "webm_2k": "webm-2k/cat-sad.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-angry",
+    "label": "Сержусь",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-angry.png",
+    "webm_2k": "webm-2k/cat-angry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-party",
+    "label": "Праздник",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-party.png",
+    "webm_2k": "webm-2k/cat-party.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-surprise",
+    "label": "Удивление",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-surprise.png",
+    "webm_2k": "webm-2k/cat-surprise.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-matcha",
+    "label": "Перерыв с матчей",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-matcha.png",
+    "webm_2k": "webm-2k/cat-matcha.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-cool",
+    "label": "Всё под контролем",
+    "kind": "cat",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/cat-cool.png",
+    "webm_2k": "webm-2k/cat-cool.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-thanks",
+    "label": "Спасибо",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-thanks.png",
+    "webm_2k": "webm-2k/cat-thanks.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-thinking",
+    "label": "Думаю",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-thinking.png",
+    "webm_2k": "webm-2k/cat-thinking.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true,
+    "render_pose_source": "original-poses"
+  },
+  {
+    "id": "cat-facepalm",
+    "label": "Ну вот…",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-facepalm.png",
+    "webm_2k": "webm-2k/cat-facepalm.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true,
+    "render_pose_source": "original-poses"
+  },
+  {
+    "id": "cat-hug",
+    "label": "Обнимаю",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-hug.png",
+    "webm_2k": "webm-2k/cat-hug.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true,
+    "render_pose_source": "original-poses"
+  },
+  {
+    "id": "cat-tired",
+    "label": "Устал",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-tired.png",
+    "webm_2k": "webm-2k/cat-tired.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true,
+    "render_pose_source": "corrected-poses"
+  },
+  {
+    "id": "cat-waiting",
+    "label": "Жду",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-waiting.png",
+    "webm_2k": "webm-2k/cat-waiting.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-victory",
+    "label": "Победа!",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-victory.png",
+    "webm_2k": "webm-2k/cat-victory.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-sorry",
+    "label": "Извини",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-sorry.png",
+    "webm_2k": "webm-2k/cat-sorry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-morning",
+    "label": "Доброе утро",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-morning.png",
+    "webm_2k": "webm-2k/cat-morning.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 3,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      1,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-cozy",
+    "label": "Уютно",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-cozy.png",
+    "webm_2k": "webm-2k/cat-cozy.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-flower",
+    "label": "Это тебе",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-flower.png",
+    "webm_2k": "webm-2k/cat-flower.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-cookie",
+    "label": "Вкусно",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-cookie.png",
+    "webm_2k": "webm-2k/cat-cookie.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-work",
+    "label": "Работаю",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-work.png",
+    "webm_2k": "webm-2k/cat-work.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-hurry",
+    "label": "Уже бегу",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-hurry.png",
+    "webm_2k": "webm-2k/cat-hurry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-birthday",
+    "label": "С днём рождения",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-birthday.png",
+    "webm_2k": "webm-2k/cat-birthday.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-nope",
+    "label": "Нет",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-nope.png",
+    "webm_2k": "webm-2k/cat-nope.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-music",
+    "label": "На своей волне",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-music.png",
+    "webm_2k": "webm-2k/cat-music.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-gaming",
+    "label": "Играю",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-gaming.png",
+    "webm_2k": "webm-2k/cat-gaming.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-rain",
+    "label": "Не мой день",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-rain.png",
+    "webm_2k": "webm-2k/cat-rain.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-peek",
+    "label": "Я тут",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-peek.png",
+    "webm_2k": "webm-2k/cat-peek.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-secret",
+    "label": "Тсс…",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-secret.png",
+    "webm_2k": "webm-2k/cat-secret.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "duration_ms": 6000,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-support",
+    "label": "Ты справишься",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-support.png",
+    "webm_2k": "webm-2k/cat-support.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-recover",
+    "label": "Поправляюсь",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-recover.png",
+    "webm_2k": "webm-2k/cat-recover.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 3,
+    "selected_source_columns": [
+      0,
+      2,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "cat-popcorn",
+    "label": "Наблюдаю",
+    "kind": "cat",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/cat-popcorn.png",
+    "webm_2k": "webm-2k/cat-popcorn.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-smile",
+    "label": "Улыбка",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-smile.png",
+    "webm_2k": "webm-2k/emoji-smile.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-laugh",
+    "label": "Смех",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-laugh.png",
+    "webm_2k": "webm-2k/emoji-laugh.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-heart",
+    "label": "Сердце",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-heart.png",
+    "webm_2k": "webm-2k/emoji-heart.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-kiss",
+    "label": "Поцелуй",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-kiss.png",
+    "webm_2k": "webm-2k/emoji-kiss.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-love",
+    "label": "Влюблённость",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-love.png",
+    "webm_2k": "webm-2k/emoji-love.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-surprise",
+    "label": "Удивление",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-surprise.png",
+    "webm_2k": "webm-2k/emoji-surprise.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-sad",
+    "label": "Грусть",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-sad.png",
+    "webm_2k": "webm-2k/emoji-sad.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-angry",
+    "label": "Злость",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-angry.png",
+    "webm_2k": "webm-2k/emoji-angry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-approve",
+    "label": "Лайк",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-approve.png",
+    "webm_2k": "webm-2k/emoji-approve.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-clap",
+    "label": "Аплодисменты",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-clap.png",
+    "webm_2k": "webm-2k/emoji-clap.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-fire",
+    "label": "Огонь",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-fire.png",
+    "webm_2k": "webm-2k/emoji-fire.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-party",
+    "label": "Праздник",
+    "kind": "emoji",
+    "size_webp": [
+      512,
+      512
+    ],
+    "size_gif": [
+      240,
+      240
+    ],
+    "cycle_ms": 6000,
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "added_in": "02",
+    "png_2k": "png-2k/emoji-party.png",
+    "webm_2k": "webm-2k/emoji-party.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-wink",
+    "label": "Подмигиваю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-wink.png",
+    "webm_2k": "webm-2k/emoji-wink.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-smirk",
+    "label": "Ухмылка",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-smirk.png",
+    "webm_2k": "webm-2k/emoji-smirk.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-eyeroll",
+    "label": "Закатываю глаза",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-eyeroll.png",
+    "webm_2k": "webm-2k/emoji-eyeroll.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-sleepy",
+    "label": "Сплю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-sleepy.png",
+    "webm_2k": "webm-2k/emoji-sleepy.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-thinking",
+    "label": "Думаю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-thinking.png",
+    "webm_2k": "webm-2k/emoji-thinking.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-giggle",
+    "label": "Хихикаю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-giggle.png",
+    "webm_2k": "webm-2k/emoji-giggle.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-cool",
+    "label": "Круто",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-cool.png",
+    "webm_2k": "webm-2k/emoji-cool.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-thanks",
+    "label": "Спасибо",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "03",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-thanks.png",
+    "webm_2k": "webm-2k/emoji-thanks.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-grin",
+    "label": "Улыбка до ушей",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-grin.png",
+    "webm_2k": "webm-2k/emoji-grin.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-rofl",
+    "label": "Не могу со смеху",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-rofl.png",
+    "webm_2k": "webm-2k/emoji-rofl.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-tongue",
+    "label": "Дразнюсь",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-tongue.png",
+    "webm_2k": "webm-2k/emoji-tongue.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-relieved",
+    "label": "Выдохнул",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-relieved.png",
+    "webm_2k": "webm-2k/emoji-relieved.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-skeptical",
+    "label": "Серьёзно?",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-skeptical.png",
+    "webm_2k": "webm-2k/emoji-skeptical.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-unamused",
+    "label": "Не впечатлён",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-unamused.png",
+    "webm_2k": "webm-2k/emoji-unamused.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-pleading",
+    "label": "Ну пожалуйста",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-pleading.png",
+    "webm_2k": "webm-2k/emoji-pleading.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-starry",
+    "label": "Восторг",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "04",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-starry.png",
+    "webm_2k": "webm-2k/emoji-starry.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-zipper",
+    "label": "Молчу",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-zipper.png",
+    "webm_2k": "webm-2k/emoji-zipper.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-shush",
+    "label": "Тсс…",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-shush.png",
+    "webm_2k": "webm-2k/emoji-shush.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 3,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      0
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-hugging",
+    "label": "Обнимаю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-hugging.png",
+    "webm_2k": "webm-2k/emoji-hugging.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-salute",
+    "label": "Есть!",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-salute.png",
+    "webm_2k": "webm-2k/emoji-salute.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-sweat",
+    "label": "Неловко",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-sweat.png",
+    "webm_2k": "webm-2k/emoji-sweat.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-mindblown",
+    "label": "Взрыв мозга",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-mindblown.png",
+    "webm_2k": "webm-2k/emoji-mindblown.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-sobbing",
+    "label": "Рыдаю",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-sobbing.png",
+    "webm_2k": "webm-2k/emoji-sobbing.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  },
+  {
+    "id": "emoji-angel",
+    "label": "Ангелочек",
+    "kind": "emoji",
+    "cycle_ms": 6000,
+    "added_in": "05",
+    "size_webp": [
+      512,
+      512
+    ],
+    "png_2k": "png-2k/emoji-angel.png",
+    "webm_2k": "webm-2k/emoji-angel.webm",
+    "resolution_note": "2048x2048 export upscaled from smaller generated source art, not native 2K detail",
+    "motion_revision": "08",
+    "method": "original key poses plus new drawn intermediate frames; no optical flow or layer rig",
+    "revision_status": "inbetweens_added",
+    "drawn_frames": 8,
+    "original_frames_unchanged": 4,
+    "new_inbetweens": 4,
+    "selected_source_columns": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "duration_ms": 6000,
+    "size_2k": [
+      2048,
+      2048
+    ],
+    "source_upscaled": true,
+    "animation_type": "held drawn poses, no optical flow",
+    "original_source_files_unchanged": true
+  }
+]

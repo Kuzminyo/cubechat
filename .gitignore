@@ -108,3 +108,23 @@ design-previews/**/*.zip
 design-previews/matcha-motion-v6/png-2k/
 design-previews/matcha-motion-v6/webm-2k/
 design-previews/matcha-motion-v6/poses/
+
+# The same rule, by shape rather than by version, because it was written for
+# v6 and there have been two more sets since — each arriving with the same
+# half-gigabyte of output beside the drawings, and each slipping past a rule
+# that named its predecessor.
+#
+# What is kept from any set: the 512 px `.webp` animations, their `.png`
+# stills, and the `.gif` beside each one — which is not a duplicate, it is
+# where the per-frame timing lives (1050 ms on the pose, 450 on the beat) and
+# the app's build script reads it from there.
+design-previews/*/png-2k/
+design-previews/*/webm-2k/
+design-previews/*/poses/
+design-previews/*/inbetweens/
+design-previews/*/original-cycles/
+design-previews/*/original-poses/
+design-previews/*/corrected-poses/
+design-previews/*/sources/
+design-previews/*/renders/
+design-previews/**/__pycache__/

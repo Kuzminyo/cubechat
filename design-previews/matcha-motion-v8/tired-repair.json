@@ -1,0 +1,7 @@
+{
+  "source_sheet": "exec-ec54c912-9602-449b-bb01-353a01d35fdd.png",
+  "problem": "fixed 256px grid cut tails into neighboring cells",
+  "fix": "extract complete connected source drawings; preserve common scale and baseline",
+  "source_key_archive_unchanged": true,
+  "corrected_pose_count": 4
+}

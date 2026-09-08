@@ -1,0 +1,372 @@
+[
+  {
+    "id": "cat-angry",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-approve",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-birthday",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-cookie",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-cool",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-cozy",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-facepalm",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-flower",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-gaming",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-hug",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-hurry",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-laugh",
+    "duration_ms": 6000,
+    "frames": 16
+  },
+  {
+    "id": "cat-love",
+    "duration_ms": 6000,
+    "frames": 16
+  },
+  {
+    "id": "cat-matcha",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-morning",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-music",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-nope",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-party",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-peek",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-popcorn",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-rain",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-recover",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-sad",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-secret",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-shy",
+    "duration_ms": 6000,
+    "frames": 15
+  },
+  {
+    "id": "cat-sleep",
+    "duration_ms": 6000,
+    "frames": 16
+  },
+  {
+    "id": "cat-sorry",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-support",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-surprise",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-thanks",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-thinking",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-tired",
+    "duration_ms": 6000,
+    "frames": 8,
+    "body_components": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  {
+    "id": "cat-victory",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-waiting",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "cat-wave",
+    "duration_ms": 6000,
+    "frames": 16
+  },
+  {
+    "id": "cat-work",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-angel",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-angry",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-approve",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-clap",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-cool",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-eyeroll",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-fire",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-giggle",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-grin",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-heart",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-hugging",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-kiss",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-laugh",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-love",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-mindblown",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-party",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-pleading",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-relieved",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-rofl",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-sad",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-salute",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-shush",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-skeptical",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-sleepy",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-smile",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-smirk",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-sobbing",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-starry",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-surprise",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-sweat",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-thanks",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-thinking",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-tongue",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-unamused",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-wink",
+    "duration_ms": 6000,
+    "frames": 8
+  },
+  {
+    "id": "emoji-zipper",
+    "duration_ms": 6000,
+    "frames": 8
+  }
+]

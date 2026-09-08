@@ -6,6 +6,7 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 import '../../../../core/routing/page_transitions.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/widgets/floating_glass.dart';
+import '../../../../l10n/app_localizations.dart';
 
 const SystemUiOverlayStyle _editorOverlayStyle = SystemUiOverlayStyle(
   statusBarColor: Colors.black,
@@ -32,82 +33,77 @@ ReactiveWidget _islandBottomBar(
   return ReactiveWidget(
     stream: rebuild,
     key: key,
-    builder: (context) => SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        child: FloatingGlass(
+    builder: (context) {
+      final t = AppLocalizations.of(context);
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          // Hugging its three icons and centred, the way the reference pill
+          // does — a bar stretched edge to edge is the shape this replaces.
+          child: Center(
+            child: FloatingGlass(
           borderRadius: 26,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _EditorTool(
-                icon: Symbols.brush,
-                label: 'Paint',
-                onTap: editor.openPaintEditor,
-              ),
-              _EditorTool(
-                icon: Symbols.text_fields,
-                label: 'Text',
-                onTap: editor.openTextEditor,
-              ),
+              // Three, in this order, and no words: crop the frame, draw on
+              // it, adjust it. The reference row this copies has a fourth —
+              // "HD" — which was asked to be left out.
               _EditorTool(
                 icon: Symbols.crop_rotate,
-                label: 'Crop',
+                tooltip: t.editorToolCrop,
                 onTap: editor.openCropRotateEditor,
               ),
               _EditorTool(
-                icon: Symbols.tune,
-                label: 'Tune',
-                onTap: editor.openTuneEditor,
+                icon: Symbols.brush,
+                tooltip: t.editorToolDraw,
+                onTap: editor.openPaintEditor,
               ),
               _EditorTool(
-                icon: Symbols.photo_filter,
-                label: 'Filter',
-                onTap: editor.openFilterEditor,
+                icon: Symbols.tune,
+                tooltip: t.editorToolAdjust,
+                onTap: editor.openTuneEditor,
               ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
-/// One tool in the island: glyph over a word, in the brand colour.
+/// One tool in the island: the glyph alone, generously spaced.
+///
+/// No caption. Three icons a person can hit without reading is the shape the
+/// reference has, and a word under each turns a row of controls into a row of
+/// labels — which is what the send screen's top bar was just cured of.
 class _EditorTool extends StatelessWidget {
   const _EditorTool({
     required this.icon,
-    required this.label,
+    required this.tooltip,
     required this.onTap,
   });
 
   final IconData icon;
-  final String label;
+  final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 22, color: AppColors.brandPrimary),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: AppColors.textOnGlassDim,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          // Wide enough that three of them read as a row rather than a cluster,
+          // and that a thumb lands on one of them and not between two.
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          child: Icon(icon, size: 26, color: AppColors.textOnGlass),
         ),
       ),
     );

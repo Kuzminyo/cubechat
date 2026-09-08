@@ -374,6 +374,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bleVerified => 'Verified';
 
   @override
+  String get editorToolCrop => 'Crop';
+
+  @override
+  String get editorToolDraw => 'Draw';
+
+  @override
+  String get editorToolAdjust => 'Adjust';
+
+  @override
   String get notificationUnknownSender => 'New message';
 
   @override

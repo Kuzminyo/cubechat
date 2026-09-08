@@ -376,6 +376,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get bleVerified => 'Перевірено';
 
   @override
+  String get editorToolCrop => 'Обрізати';
+
+  @override
+  String get editorToolDraw => 'Малюнок';
+
+  @override
+  String get editorToolAdjust => 'Налаштувати';
+
+  @override
   String get notificationUnknownSender => 'Нове повідомлення';
 
   @override

@@ -740,6 +740,24 @@ abstract class AppLocalizations {
   /// **'Verified'**
   String get bleVerified;
 
+  /// Photo editor: crop and rotate. Shown as a tooltip on an icon-only control.
+  ///
+  /// In en, this message translates to:
+  /// **'Crop'**
+  String get editorToolCrop;
+
+  /// Photo editor: draw on the picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Draw'**
+  String get editorToolDraw;
+
+  /// Photo editor: brightness, contrast and the rest.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust'**
+  String get editorToolAdjust;
+
   /// Title of a message notification from somebody who is not in the roster yet. Stands where a name would.
   ///
   /// In en, this message translates to:

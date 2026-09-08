@@ -1,0 +1,722 @@
+[
+  {
+    "id": "cat-wave",
+    "new_drawings": 10,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-laugh",
+    "new_drawings": 11,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-love",
+    "new_drawings": 12,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-sleep",
+    "new_drawings": 12,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-approve",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-shy",
+    "new_drawings": 11,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-sad",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-angry",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-party",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-surprise",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-matcha",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-cool",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-thanks",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-thinking",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-facepalm",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-hug",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-tired",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-waiting",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-victory",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-sorry",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-morning",
+    "new_drawings": 3,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-cozy",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-flower",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-cookie",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-work",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-hurry",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-birthday",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-nope",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-music",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-gaming",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-rain",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-peek",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-secret",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-support",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-recover",
+    "new_drawings": 3,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "cat-popcorn",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-smile",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-laugh",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-heart",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-kiss",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-love",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-surprise",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-sad",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-angry",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-approve",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-clap",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-fire",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-party",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-wink",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-smirk",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-eyeroll",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-sleepy",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-thinking",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-giggle",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-cool",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-thanks",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-grin",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-rofl",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-tongue",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-relieved",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-skeptical",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-unamused",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-pleading",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-starry",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-zipper",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-shush",
+    "new_drawings": 3,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-hugging",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-salute",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-sweat",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-mindblown",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-sobbing",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  },
+  {
+    "id": "emoji-angel",
+    "new_drawings": 4,
+    "duration_ms": {
+      "webp": 6000,
+      "gif": 6000
+    },
+    "formats_verified": 5,
+    "source_keys_unchanged": 4
+  }
+]

@@ -1,0 +1,794 @@
+[
+  {
+    "id": "cat-love",
+    "cycle_ms": 6000,
+    "webp_frames": 16,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-wave",
+    "cycle_ms": 6000,
+    "webp_frames": 16,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-laugh",
+    "cycle_ms": 6000,
+    "webp_frames": 16,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-approve",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sleep",
+    "cycle_ms": 6000,
+    "webp_frames": 16,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-shy",
+    "cycle_ms": 6000,
+    "webp_frames": 15,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sad",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-angry",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-party",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-surprise",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-matcha",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-cool",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-thanks",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-thinking",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-facepalm",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-tired",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-hug",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-waiting",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-victory",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-sorry",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-morning",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-cozy",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-flower",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-cookie",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-work",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-hurry",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-birthday",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-nope",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-music",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-gaming",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-rain",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-peek",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-secret",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-support",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-recover",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "cat-popcorn",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-smile",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-laugh",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-heart",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-kiss",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-love",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-surprise",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sad",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-angry",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-approve",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-clap",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-fire",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-party",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-wink",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-smirk",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-eyeroll",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sleepy",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-thinking",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-giggle",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-cool",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-thanks",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-grin",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-tongue",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-rofl",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-relieved",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-unamused",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-skeptical",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-pleading",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-starry",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-zipper",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-shush",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-salute",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-hugging",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sweat",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-mindblown",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-sobbing",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  },
+  {
+    "id": "emoji-angel",
+    "cycle_ms": 6000,
+    "webp_frames": 8,
+    "size": [
+      2048,
+      2048
+    ],
+    "alpha": true,
+    "source_upscaled": true
+  }
+]
