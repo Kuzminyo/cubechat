@@ -17,6 +17,7 @@ import '../crypto/identity_service.dart';
 import '../locale/locale_controller.dart';
 import '../transport/nostr/nostr_event.dart';
 import '../transport/nostr/nostr_signer.dart';
+import '../util/coalescer.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 
@@ -408,7 +409,19 @@ class PushEnabled extends Notifier<bool> {
   DateTime? _reassertedAt;
   bool? _reassertedState;
 
-  Future<void> reassert() async {
+  /// One re-assertion at a time.
+  ///
+  /// The minimum interval above only measures from a *finished* one, so two
+  /// calls racing each other both pass it: a cold start makes one from the
+  /// post-frame callback and one from the flag finishing its load, and every
+  /// shipped iPhone log shows `register accepted ×2` for that reason. The same
+  /// mistake the receipt sweep had, and the same fix — coalesced rather than
+  /// dropped, so a genuine change arriving mid-flight is still stated.
+  final _reasserting = Coalescer();
+
+  Future<void> reassert() => _reasserting.run('push', _reassertOnce);
+
+  Future<void> _reassertOnce() async {
     if (!PlatformInfo.isMobile) return;
     await _loading;
     // The position itself is never throttled: flipping the switch has to reach

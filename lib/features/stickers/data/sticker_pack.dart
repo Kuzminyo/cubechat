@@ -12,8 +12,8 @@
 /// the kind of thing this codebase keeps taking back out — so the still is not
 /// an optimisation, it is what that screen is for.
 ///
-/// The artwork lives in `design-previews/matcha-motion-v6` at 512 px and 57
-/// frames; `tool/build_sticker_assets.py` is what turns it into these, and the
+/// The artwork lives in `design-previews/matcha-motion-v8` at 512 px with held
+/// drawn poses; `tool/build_sticker_assets.py` is what turns it into these, and the
 /// reasoning about sizes and frame rates is written there.
 abstract final class StickerPack {
   static const String _dir = 'assets/stickers';

@@ -239,13 +239,21 @@ Future<void> main() async {
       limit: const Duration(seconds: 2),
     );
   }
-  await _bootStep(
-    'orientation',
-    () => SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]),
-    limit: const Duration(seconds: 2),
-  );
+  // Not awaited, and not a boot step.
+  //
+  // A field log has `orientation still going after 2s — starting without it`:
+  // two whole seconds of a launch spent inside a platform call that locks the
+  // screen the way it is already being held. Nothing downstream reads the
+  // result, and a lock that lands a frame or two into the first screen is not
+  // something anybody can see — the phone is portrait when the app opens
+  // because the person is holding it that way.
+  //
+  // The two-second cap was the right instinct applied to the wrong half: the
+  // question is not "how long may this take" but "why is the launch waiting
+  // for it at all".
+  unawaited(SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]));
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,

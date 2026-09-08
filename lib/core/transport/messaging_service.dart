@@ -2386,17 +2386,42 @@ class MessagingService {
   /// six sweeps of one chat inside 1.2 seconds, sending 1, 2, 3, 4, 4 and 4
   /// acknowledgements — the same handful of ids published six times over.
   ///
-  /// Dropping the overlapping call rather than queueing it, because they are
-  /// all asking the same question and the one already running will answer it
-  /// with the newer state anyway.
+  /// **Coalesced, not dropped**, and 987 got that wrong.
+  ///
+  /// It read "dropping the overlapping call rather than queueing it, because
+  /// they are all asking the same question and the one already running will
+  /// answer it with the newer state anyway". The second half is false. A sweep
+  /// awaits two box loads *before* it reads the message list, so it answers
+  /// for the state at the moment it got that far — and a call arriving during
+  /// that window carries news it has already gone past.
+  ///
+  /// Which is exactly the case that matters: four stickers land inside two
+  /// hundred milliseconds, the chat opens, the first sweep runs against
+  /// whatever had arrived when it started, and the calls for the other three
+  /// are thrown away. One acknowledgement for four messages — reported as
+  /// "не прочитуються смс", and it is this, not the watermark.
+  ///
+  /// So a request during a sweep sets a flag, and the sweep runs once more
+  /// when it finishes. Once, however many arrived: the re-run reads the list
+  /// fresh, so it covers all of them, and the loop cannot spin because a run
+  /// that nothing asked to repeat ends.
   final Set<String> _receiptSweeps = <String>{};
+  final Set<String> _receiptSweepAgain = <String>{};
 
   Future<void> sendReadReceipts(String canonicalId) async {
-    if (!_receiptSweeps.add(canonicalId)) return;
+    if (!_receiptSweeps.add(canonicalId)) {
+      _receiptSweepAgain.add(canonicalId);
+      return;
+    }
     try {
-      await _timed('sendReadReceipts', () => _sendReadReceipts(canonicalId));
+      while (true) {
+        await _timed('sendReadReceipts', () => _sendReadReceipts(canonicalId));
+        if (_disposed) return;
+        if (!_receiptSweepAgain.remove(canonicalId)) return;
+      }
     } finally {
       _receiptSweeps.remove(canonicalId);
+      _receiptSweepAgain.remove(canonicalId);
     }
   }
 
@@ -2503,11 +2528,22 @@ class MessagingService {
     final coverFrom = ackMarkers.ackCoverFrom;
 
     final fresh = <({Uint8List id, DateTime at})>[];
+    var skippedUnread = 0;
+    var skippedSession = 0;
+    var skippedAcked = 0;
+    var skippedWatermark = 0;
     for (final m in msgs) {
       if (m.isMine) continue;
-      if (m.sentAt.isAfter(readUpTo)) continue;
+      if (m.sentAt.isAfter(readUpTo)) {
+        skippedUnread++;
+        continue;
+      }
       final w = m.wireId;
-      if (w == null || _sentReadAcks.contains(w)) continue;
+      if (w == null) continue;
+      if (_sentReadAcks.contains(w)) {
+        skippedSession++;
+        continue;
+      }
       // Ask the exact record first, and only fall back on the watermark for
       // what the record no longer covers.
       //
@@ -2520,20 +2556,39 @@ class MessagingService {
       // 21:14:35 after two restarts: the chat was opened, four banners
       // cleared, and one receipt went out. The other three were not late,
       // they were unreachable.
-      if (ackMarkers.hasAcked(w)) continue;
+      if (ackMarkers.hasAcked(w)) {
+        skippedAcked++;
+        continue;
+      }
       // Inside what the record covers, its silence means "not acknowledged".
       // Outside it, silence means nothing at all and the watermark answers.
       // Getting that the wrong way round is what 984 shipped, and it re-acked
       // every message on the first launch after the update.
       final covered = coverFrom != null && m.sentAt.isAfter(coverFrom);
       if (!covered && ackedUpTo != null && !m.sentAt.isAfter(ackedUpTo)) {
+        skippedWatermark++;
         continue;
       }
       try {
         fresh.add((id: _hexDecodeBytes(w), at: m.sentAt));
       } catch (_) {/* skip malformed wireId */}
     }
-    if (fresh.isEmpty) return;
+    if (fresh.isEmpty) {
+      // Silence was the whole problem. "Nothing to acknowledge" and "four
+      // things to acknowledge and every one of them refused by a filter" left
+      // the same empty log, so a report of ticks not turning blue had nothing
+      // to work from but the absence of a line. Each filter now says how many
+      // it took.
+      if (skippedUnread + skippedAcked + skippedWatermark > 0) {
+        DebugLog.instance.log(
+          'RECEIPT',
+          'nothing to ack for ${_short(canonicalId)} — '
+              '$skippedUnread not read yet, $skippedSession sent this run, '
+              '$skippedAcked already acked, $skippedWatermark below the mark',
+        );
+      }
+      return;
+    }
 
     // The newest message whose receipt actually went somewhere. Advanced only
     // on a slice that reported a fan-out, so a run that dies halfway leaves the

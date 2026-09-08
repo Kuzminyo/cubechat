@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart' show Sha256;
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../../core/util/debug_log.dart';
@@ -43,26 +44,34 @@ abstract final class BuiltinStickers {
   static String? emojiFor(String name) => StickerPack.glyphFor[name];
 
   /// The file a pack sticker is copied into, whether or not it exists yet.
-  static Future<File> _fileFor(String name) async {
+  static Future<File> _fileFor(String name, String revision) async {
     final dir = await mediaDirectory(_folder);
-    return File('${dir.path}${Platform.pathSeparator}builtin-$name.webp');
+    return File(
+      '${dir.path}${Platform.pathSeparator}builtin-$name-$revision.webp',
+    );
   }
 
-  /// Copy [name] out of the bundle if it is not on disk yet, and hand back its
-  /// path.
+  /// Materialize the current drawing without replacing media in old messages.
   ///
-  /// Cheap on the second call and after a restart — the file is the cache, and
-  /// it is checked before anything is read. Null when the copy failed, which
-  /// the caller reports rather than sending a sticker that is not there.
+  /// The previous name-only cache kept sending the first installed artwork
+  /// after the bundle was updated. Keying by its bytes refreshes a changed
+  /// sticker automatically and lets unchanged copies keep their existing path.
   static Future<String?> materialize(String name) async {
     try {
-      final file = await _fileFor(name);
-      if (await file.exists() && await file.length() > 0) return file.path;
       final data = await rootBundle.load(StickerPack.animation(name));
-      await file.writeAsBytes(data.buffer.asUint8List(
+      final bytes = data.buffer.asUint8List(
         data.offsetInBytes,
         data.lengthInBytes,
-      ));
+      );
+      final hash = await Sha256().hash(bytes);
+      final revision = hash.bytes
+          .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+          .join();
+      final file = await _fileFor(name, revision);
+      if (await file.exists() && await file.length() == bytes.length) {
+        return file.path;
+      }
+      await file.writeAsBytes(bytes);
       MediaPaths.forget(file.path);
       return file.path;
     } catch (e) {
