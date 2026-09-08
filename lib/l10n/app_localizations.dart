@@ -776,6 +776,66 @@ abstract class AppLocalizations {
   /// **'Adjust'**
   String get editorToolAdjust;
 
+  /// Photo editor: the tab that sticks one of the pack's drawings on the picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Sticker'**
+  String get editorTabSticker;
+
+  /// Photo editor: the tab that writes on the picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Text'**
+  String get editorTabText;
+
+  /// Photo editor pen kind. Shown as a tooltip on an icon-only control.
+  ///
+  /// In en, this message translates to:
+  /// **'Pen'**
+  String get editorPenPen;
+
+  /// Photo editor pen kind: a translucent highlighter.
+  ///
+  /// In en, this message translates to:
+  /// **'Marker'**
+  String get editorPenMarker;
+
+  /// Photo editor pen kind: a glowing line.
+  ///
+  /// In en, this message translates to:
+  /// **'Neon'**
+  String get editorPenNeon;
+
+  /// Photo editor pen kind: a line that ends in a head.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrow'**
+  String get editorPenArrow;
+
+  /// Photo editor pen kind: rubs out the drawing.
+  ///
+  /// In en, this message translates to:
+  /// **'Eraser'**
+  String get editorPenEraser;
+
+  /// Placeholder in the photo editor's text field.
+  ///
+  /// In en, this message translates to:
+  /// **'Text on the photo'**
+  String get editorTextHint;
+
+  /// Photo editor: crop to no particular shape.
+  ///
+  /// In en, this message translates to:
+  /// **'Free'**
+  String get editorCropFree;
+
+  /// Photo editor: take the selected sticker or text off the picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get editorRemove;
+
   /// Title of a message notification from somebody who is not in the roster yet. Stands where a name would.
   ///
   /// In en, this message translates to:

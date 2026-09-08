@@ -198,6 +198,46 @@
   "@editorToolAdjust": {
     "description": "Photo editor: brightness, contrast and the rest."
   },
+  "editorTabSticker": "Sticker",
+  "@editorTabSticker": {
+    "description": "Photo editor: the tab that sticks one of the pack's drawings on the picture."
+  },
+  "editorTabText": "Text",
+  "@editorTabText": {
+    "description": "Photo editor: the tab that writes on the picture."
+  },
+  "editorPenPen": "Pen",
+  "@editorPenPen": {
+    "description": "Photo editor pen kind. Shown as a tooltip on an icon-only control."
+  },
+  "editorPenMarker": "Marker",
+  "@editorPenMarker": {
+    "description": "Photo editor pen kind: a translucent highlighter."
+  },
+  "editorPenNeon": "Neon",
+  "@editorPenNeon": {
+    "description": "Photo editor pen kind: a glowing line."
+  },
+  "editorPenArrow": "Arrow",
+  "@editorPenArrow": {
+    "description": "Photo editor pen kind: a line that ends in a head."
+  },
+  "editorPenEraser": "Eraser",
+  "@editorPenEraser": {
+    "description": "Photo editor pen kind: rubs out the drawing."
+  },
+  "editorTextHint": "Text on the photo",
+  "@editorTextHint": {
+    "description": "Placeholder in the photo editor's text field."
+  },
+  "editorCropFree": "Free",
+  "@editorCropFree": {
+    "description": "Photo editor: crop to no particular shape."
+  },
+  "editorRemove": "Remove",
+  "@editorRemove": {
+    "description": "Photo editor: take the selected sticker or text off the picture."
+  },
   "notificationUnknownSender": "New message",
   "@notificationUnknownSender": {
     "description": "Title of a message notification from somebody who is not in the roster yet. Stands where a name would."

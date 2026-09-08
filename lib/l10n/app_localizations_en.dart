@@ -392,6 +392,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editorToolAdjust => 'Adjust';
 
   @override
+  String get editorTabSticker => 'Sticker';
+
+  @override
+  String get editorTabText => 'Text';
+
+  @override
+  String get editorPenPen => 'Pen';
+
+  @override
+  String get editorPenMarker => 'Marker';
+
+  @override
+  String get editorPenNeon => 'Neon';
+
+  @override
+  String get editorPenArrow => 'Arrow';
+
+  @override
+  String get editorPenEraser => 'Eraser';
+
+  @override
+  String get editorTextHint => 'Text on the photo';
+
+  @override
+  String get editorCropFree => 'Free';
+
+  @override
+  String get editorRemove => 'Remove';
+
+  @override
   String get notificationUnknownSender => 'New message';
 
   @override

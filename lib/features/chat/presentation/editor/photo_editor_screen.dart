@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,11 +8,20 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/widgets/floating_glass.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../stickers/data/sticker_pack.dart';
 import 'photo_edit_model.dart';
 import 'photo_edit_render.dart';
 
 /// Which island is open. `none` is the picture with nothing over it.
 enum EditorTool { none, crop, draw, adjust }
+
+/// What the brush is doing: a pen on the picture, a sticker, or words.
+///
+/// Three tabs under one tool rather than three tools in the island, because
+/// they share everything that matters — the colour, the selection, the canvas
+/// gesture — and because that is the shape people already know from every
+/// other photo editor they have used.
+enum DrawTab { pen, sticker, text }
 
 /// cubechat's own photo editor.
 ///
@@ -36,19 +46,39 @@ class PhotoEditorScreen extends StatefulWidget {
 
 class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
   final _history = PhotoEditHistory();
+  final _text = TextEditingController();
+  final Map<String, ui.Image> _stickers = <String, ui.Image>{};
+
   ui.Image? _image;
   EditorTool _tool = EditorTool.none;
+  DrawTab _tab = DrawTab.pen;
   bool _busy = false;
 
-  // Draw settings, which are not part of the edit: changing the pen colour is
-  // not something to undo.
-  Color _penColor = const Color(0xFFFFCC00);
+  // Pen settings, which are not part of the edit: changing the colour is not
+  // something to undo.
+  Color _color = const Color(0xFFFF3B30);
   double _penWidth = 14;
-  bool _erasing = false;
+  PenKind _pen = PenKind.pen;
+  TextStyleKind _textStyle = TextStyleKind.plain;
+
+  /// Free, or a locked width/height. Not part of the edit either — it is how
+  /// the frame is being dragged, not what was cut.
+  double? _ratio;
 
   /// The stroke being drawn right now, kept out of the history until the
   /// finger lifts — otherwise every pointer move would be an undo step.
   Stroke? _live;
+
+  /// The sticker or text the finger is on.
+  int? _selected;
+  int _nextLayerId = 1;
+
+  /// What the edit was before the gesture in progress started, so that a drag
+  /// or a burst of typing commits as one undo step. See [_beginLive].
+  PhotoEdit? _before;
+
+  double _dragScale = 1;
+  double _dragRotation = 0;
 
   @override
   void initState() {
@@ -60,7 +90,11 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
   @override
   void dispose() {
     _history.removeListener(_onEdit);
+    _text.dispose();
     _image?.dispose();
+    for (final art in _stickers.values) {
+      art.dispose();
+    }
     _history.dispose();
     super.dispose();
   }
@@ -84,15 +118,55 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     );
   }
 
+  /// What the canvas shows. In crop mode that is the *whole* picture with the
+  /// frame drawn over it — showing the cut result there would leave no way to
+  /// make the frame bigger again.
+  PhotoEdit get _shown {
+    final e = _edit;
+    if (_tool != EditorTool.crop) return e;
+    return e.copyWith(crop: e.crop.copyWith(rect: PhotoCrop.full));
+  }
+
+  Size get _sourceSize {
+    final image = _image;
+    return image == null
+        ? Size.zero
+        : Size(image.width.toDouble(), image.height.toDouble());
+  }
+
+  // ---- one gesture, one undo step -----------------------------------------
+
+  /// Remember where a live gesture started. Idempotent, so a drag that turns
+  /// into a pinch mid-way still commits once.
+  void _beginLive() => _before ??= _history.value;
+
+  void _commitLive() {
+    final before = _before;
+    if (before == null) return;
+    _before = null;
+    final after = _history.value;
+    if (identical(before, after)) return;
+    // Put the stack back where it was and push the finished state, so undo
+    // steps over the whole gesture rather than over each frame of it.
+    _history.replace(before);
+    _history.push(after);
+  }
+
   // ---- drawing ------------------------------------------------------------
+
+  bool get _drawing => _tool == EditorTool.draw && _tab == DrawTab.pen;
+
+  bool get _placing =>
+      _tool == EditorTool.draw &&
+      (_tab == DrawTab.sticker || _tab == DrawTab.text);
 
   void _startStroke(Offset image) {
     setState(() {
       _live = Stroke(
         points: <Offset>[image],
-        color: _penColor,
+        color: _color,
         width: _penWidth,
-        erase: _erasing,
+        kind: _pen,
       );
     });
   }
@@ -105,7 +179,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
         points: <Offset>[...live.points, image],
         color: live.color,
         width: live.width,
-        erase: live.erase,
+        kind: live.kind,
       );
     });
   }
@@ -121,11 +195,177 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     );
   }
 
+  // ---- stickers and text --------------------------------------------------
+
+  Offset get _pictureCentre => _history.value.crop.pixels(_sourceSize).center;
+
+  Future<void> _addSticker(String name) async {
+    final path = StickerPack.still(name);
+    if (!_stickers.containsKey(path)) {
+      final art = await decodeAssetImage(path);
+      if (!mounted) {
+        art.dispose();
+        return;
+      }
+      _stickers[path] = art;
+    }
+    final layer = StickerLayer(
+      id: _nextLayerId++,
+      center: _pictureCentre,
+      asset: path,
+    );
+    setState(() => _selected = layer.id);
+    _history.push(
+      _history.value.copyWith(
+        layers: <PhotoLayer>[..._history.value.layers, layer],
+      ),
+    );
+  }
+
+  /// The text layer the field is bound to, if the selection is one.
+  TextLayer? get _activeText {
+    final id = _selected;
+    if (id == null) return null;
+    final layer = _history.value.layerById(id);
+    return layer is TextLayer ? layer : null;
+  }
+
+  void _openTextTab() {
+    final existing = _activeText;
+    if (existing != null) {
+      _text.text = existing.text;
+      return;
+    }
+    final layer = TextLayer(
+      id: _nextLayerId++,
+      center: _pictureCentre,
+      text: '',
+      color: _color,
+      style: _textStyle,
+    );
+    _text.clear();
+    _selected = layer.id;
+    _history.push(
+      _history.value.copyWith(
+        layers: <PhotoLayer>[..._history.value.layers, layer],
+      ),
+    );
+  }
+
+  /// Drop an empty text layer when the tab is left.
+  ///
+  /// Otherwise opening the tab and changing your mind leaves an invisible
+  /// thing on the picture that still catches every tap meant for whatever is
+  /// under it.
+  void _closeTextTab() {
+    final layer = _activeText;
+    if (layer == null || layer.text.trim().isNotEmpty) {
+      _commitLive();
+      return;
+    }
+    _before = null;
+    _history.push(_history.value.withoutLayer(layer.id));
+    _selected = null;
+  }
+
+  void _onTextChanged(String value) {
+    final layer = _activeText;
+    if (layer == null) return;
+    _beginLive();
+    _history.replace(_history.value.withLayer(layer.copyWith(text: value)));
+  }
+
+  void _setColor(Color c) {
+    setState(() => _color = c);
+    final layer = _activeText;
+    if (layer == null) return;
+    _beginLive();
+    _history.replace(_history.value.withLayer(layer.copyWith(color: c)));
+  }
+
+  void _setTextStyle(TextStyleKind style) {
+    setState(() => _textStyle = style);
+    final layer = _activeText;
+    if (layer == null) return;
+    _beginLive();
+    _history.replace(_history.value.withLayer(layer.copyWith(style: style)));
+  }
+
+  void _removeSelected() {
+    final id = _selected;
+    if (id == null) return;
+    _before = null;
+    setState(() => _selected = null);
+    _text.clear();
+    _history.push(_history.value.withoutLayer(id));
+  }
+
+  // ---- moving a layer -----------------------------------------------------
+
+  void _layerDown(Offset image) {
+    final hit = _hitTest(image);
+    setState(() => _selected = hit?.id);
+    if (hit is TextLayer) {
+      _text.text = hit.text;
+      _textStyle = hit.style;
+    }
+    _dragScale = hit?.scale ?? 1;
+    _dragRotation = hit?.rotation ?? 0;
+    if (hit != null) _beginLive();
+  }
+
+  void _layerMove(Offset deltaImage, double scale, double rotation) {
+    final id = _selected;
+    if (id == null) return;
+    final layer = _history.value.layerById(id);
+    if (layer == null) return;
+    _history.replace(
+      _history.value.withLayer(
+        layer.moved(
+          center: layer.center + deltaImage,
+          scale: (_dragScale * scale).clamp(0.12, 10.0),
+          rotation: _dragRotation +
+              (_history.value.crop.flipped ? -rotation : rotation),
+        ),
+      ),
+    );
+  }
+
+  /// The topmost layer under a point, un-rotating the point about each layer
+  /// so that a tilted sticker is caught where it is drawn and not by its
+  /// upright bounding box.
+  PhotoLayer? _hitTest(Offset image) {
+    final img = _image;
+    if (img == null) return null;
+    final painter = PhotoEditPainter(
+      image: img,
+      edit: _history.value,
+      stickers: _stickers,
+    );
+    for (final layer in _history.value.layers.reversed) {
+      var local = image - layer.center;
+      if (layer.rotation != 0) {
+        final c = math.cos(-layer.rotation);
+        final s = math.sin(-layer.rotation);
+        local = Offset(
+          local.dx * c - local.dy * s,
+          local.dx * s + local.dy * c,
+        );
+      }
+      final b = painter.layerBounds(layer);
+      if (local.dx.abs() <= b.width / 2 && local.dy.abs() <= b.height / 2) {
+        return layer;
+      }
+    }
+    return null;
+  }
+
   // ---- done ---------------------------------------------------------------
 
   Future<void> _confirm() async {
     final image = _image;
     if (image == null || _busy) return;
+    _commitLive();
     // Nothing was changed: hand back the bytes that came in rather than a
     // re-encode of them. A round trip through the JPEG encoder for an edit
     // nobody made costs quality for no reason, and it is the common case —
@@ -137,7 +377,11 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     setState(() => _busy = true);
     try {
       final bytes = await renderEdit(
-        PhotoEditPainter(image: image, edit: _history.value),
+        PhotoEditPainter(
+          image: image,
+          edit: _history.value,
+          stickers: _stickers,
+        ),
       );
       if (!mounted) return;
       Navigator.of(context).pop(bytes);
@@ -147,6 +391,24 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
       // frozen editor.
       if (mounted) Navigator.of(context).pop(widget.source);
     }
+  }
+
+  void _pickTool(EditorTool tool) {
+    if (_tool == EditorTool.draw && _tab == DrawTab.text) _closeTextTab();
+    setState(() {
+      _tool = _tool == tool ? EditorTool.none : tool;
+      if (_tool != EditorTool.draw) _selected = null;
+    });
+  }
+
+  void _pickTab(DrawTab tab) {
+    if (_tab == tab) return;
+    if (_tab == DrawTab.text) _closeTextTab();
+    setState(() {
+      _tab = tab;
+      if (tab == DrawTab.pen) _selected = null;
+    });
+    if (tab == DrawTab.text) setState(_openTextTab);
   }
 
   @override
@@ -181,28 +443,67 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                       onRedo: _history.redo,
                       onDone: _confirm,
                     ),
-                    Expanded(
-                      child: _Canvas(
-                        image: image,
-                        edit: _edit,
-                        drawing: _tool == EditorTool.draw,
-                        onStart: _startStroke,
-                        onMove: _extendStroke,
-                        onEnd: _endStroke,
-                      ),
-                    ),
+                    Expanded(child: _stage(image)),
                     _panel(t),
-                    _Island(
-                      tool: _tool,
-                      onPick: (tool) => setState(
-                        () => _tool = _tool == tool ? EditorTool.none : tool,
-                      ),
-                      t: t,
-                    ),
+                    _Island(tool: _tool, onPick: _pickTool, t: t),
                   ],
                 ),
               ),
       ),
+    );
+  }
+
+  Widget _stage(ui.Image image) {
+    final id = _selected;
+    final selected = id == null ? null : _history.value.layerById(id);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: _Canvas(
+            image: image,
+            edit: _shown,
+            stickers: _stickers,
+            selected: _tool == EditorTool.draw ? selected : null,
+            drawing: _drawing,
+            placing: _placing,
+            onStrokeStart: _startStroke,
+            onStrokeMove: _extendStroke,
+            onStrokeEnd: _endStroke,
+            onLayerDown: _layerDown,
+            onLayerMove: _layerMove,
+            onLayerUp: _commitLive,
+          ),
+        ),
+        if (_tool == EditorTool.crop)
+          Positioned.fill(
+            child: _CropOverlay(
+              sourceSize: _sourceSize,
+              crop: _history.value.crop,
+              ratio: _ratio,
+              onChanged: (view) {
+                _beginLive();
+                final crop = _history.value.crop;
+                _history.replace(
+                  _history.value.copyWith(
+                    crop: crop.copyWith(rect: crop.fromViewRect(view)),
+                  ),
+                );
+              },
+              onCommit: _commitLive,
+            ),
+          ),
+        if (_drawing)
+          Positioned(
+            left: 0,
+            top: 24,
+            bottom: 24,
+            child: _WidthRail(
+              value: _penWidth,
+              color: _pen == PenKind.eraser ? Colors.white : _color,
+              onChanged: (w) => setState(() => _penWidth = w),
+            ),
+          ),
+      ],
     );
   }
 
@@ -212,15 +513,20 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
         return const SizedBox(height: 8);
       case EditorTool.draw:
         return _DrawPanel(
-          color: _penColor,
-          width: _penWidth,
-          erasing: _erasing,
-          onColor: (c) => setState(() {
-            _penColor = c;
-            _erasing = false;
-          }),
-          onWidth: (w) => setState(() => _penWidth = w),
-          onErase: () => setState(() => _erasing = !_erasing),
+          t: t,
+          tab: _tab,
+          onTab: _pickTab,
+          color: _color,
+          onColor: _setColor,
+          pen: _pen,
+          onPen: (p) => setState(() => _pen = p),
+          textStyle: _textStyle,
+          onTextStyle: _setTextStyle,
+          textController: _text,
+          onText: _onTextChanged,
+          onSticker: _addSticker,
+          canRemove: _selected != null,
+          onRemove: _removeSelected,
         );
       case EditorTool.adjust:
         return _AdjustPanel(
@@ -236,9 +542,42 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
       case EditorTool.crop:
         return _CropPanel(
           value: _history.value.crop,
+          ratio: _ratio,
+          onRatio: _setRatio,
           onChanged: (c) => _history.push(_history.value.copyWith(crop: c)),
         );
     }
+  }
+
+  void _setRatio(double? r) {
+    setState(() => _ratio = r);
+    if (r == null) return;
+    // Snap the frame to the shape straight away: a ratio button that only
+    // takes effect on the next drag reads as not having worked.
+    final crop = _history.value.crop;
+    _history.push(
+      _history.value.copyWith(
+        crop: crop.copyWith(rect: crop.fromViewRect(_centredRatio(crop, r))),
+      ),
+    );
+  }
+
+  /// The largest rect of [ratio] that fits the standing-up picture, centred.
+  Rect _centredRatio(PhotoCrop crop, double ratio) {
+    final out = crop.copyWith(rect: PhotoCrop.full).outputSize(_sourceSize);
+    if (out.isEmpty) return PhotoCrop.full;
+    var w = out.width;
+    var h = w / ratio;
+    if (h > out.height) {
+      h = out.height;
+      w = h * ratio;
+    }
+    return Rect.fromLTWH(
+      (out.width - w) / 2 / out.width,
+      (out.height - h) / 2 / out.height,
+      w / out.width,
+      h / out.height,
+    );
   }
 }
 
@@ -268,20 +607,26 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
       child: Row(
         children: [
-          _CircleAction(icon: Symbols.arrow_back, onTap: onClose),
+          // Material's own icons rather than the Symbols ones, which came back
+          // from a phone as an empty circle where the arrow should be. The
+          // glyph is in the subset font the APK ships, so the tree shaker is
+          // not eating it — but a chrome control that might not draw is not
+          // worth the consistency argument, and every other back button in the
+          // app is already this icon.
+          _CircleAction(icon: Icons.arrow_back_rounded, onTap: onClose),
           const Spacer(),
           _CircleAction(
-            icon: Symbols.undo,
+            icon: Icons.undo_rounded,
             onTap: canUndo ? onUndo : null,
           ),
           const SizedBox(width: 8),
           _CircleAction(
-            icon: Symbols.redo,
+            icon: Icons.redo_rounded,
             onTap: canRedo ? onRedo : null,
           ),
           const SizedBox(width: 8),
           _CircleAction(
-            icon: Symbols.check,
+            icon: Icons.check_rounded,
             onTap: busy ? null : onDone,
             filled: true,
           ),
@@ -301,11 +646,13 @@ class _CircleAction extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.filled = false,
+    this.size = 22,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
   final bool filled;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -322,7 +669,7 @@ class _CircleAction extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           child: Icon(
             icon,
-            size: 22,
+            size: size,
             color: filled
                 ? AppColors.bgDeep
                 : Colors.white.withValues(alpha: enabled ? 1 : 0.35),
@@ -338,34 +685,76 @@ class _Canvas extends StatelessWidget {
   const _Canvas({
     required this.image,
     required this.edit,
+    required this.stickers,
+    required this.selected,
     required this.drawing,
-    required this.onStart,
-    required this.onMove,
-    required this.onEnd,
+    required this.placing,
+    required this.onStrokeStart,
+    required this.onStrokeMove,
+    required this.onStrokeEnd,
+    required this.onLayerDown,
+    required this.onLayerMove,
+    required this.onLayerUp,
   });
 
   final ui.Image image;
   final PhotoEdit edit;
+  final Map<String, ui.Image> stickers;
+  final PhotoLayer? selected;
   final bool drawing;
-  final void Function(Offset image) onStart;
-  final void Function(Offset image) onMove;
-  final VoidCallback onEnd;
+  final bool placing;
+  final void Function(Offset image) onStrokeStart;
+  final void Function(Offset image) onStrokeMove;
+  final VoidCallback onStrokeEnd;
+  final void Function(Offset image) onLayerDown;
+  final void Function(Offset delta, double scale, double rotation) onLayerMove;
+  final VoidCallback onLayerUp;
 
   @override
   Widget build(BuildContext context) {
-    final painter = PhotoEditPainter(image: image, edit: edit);
+    final painter = PhotoEditPainter(
+      image: image,
+      edit: edit,
+      stickers: stickers,
+    );
     final out = painter.outputSize;
     return LayoutBuilder(
       builder: (context, constraints) {
         final box = Size(constraints.maxWidth, constraints.maxHeight);
-        Offset map(Offset local) => toImageSpace(local, box, out);
+        final area = fittedRect(box, out);
+        final scale = out.isEmpty || area.width <= 0 ? 1.0 : area.width / out.width;
+
+        // Two conversions, and they are not the same one. A *position* goes
+        // through the crop and the rotation; a *delta* only through the
+        // rotation. Using the first for a drag would move a sticker by the
+        // crop offset on every frame.
+        Offset at(Offset local) => edit.crop.outputToImage(
+              toImageSpace(local, box, out),
+              painter.sourceSize,
+            );
+        Offset by(Offset delta) =>
+            edit.crop.viewDeltaToImage(delta / scale);
+
         return GestureDetector(
-          onPanStart: drawing ? (d) => onStart(map(d.localPosition)) : null,
-          onPanUpdate: drawing ? (d) => onMove(map(d.localPosition)) : null,
-          onPanEnd: drawing ? (_) => onEnd() : null,
+          behavior: HitTestBehavior.opaque,
+          onPanStart:
+              drawing ? (d) => onStrokeStart(at(d.localPosition)) : null,
+          onPanUpdate:
+              drawing ? (d) => onStrokeMove(at(d.localPosition)) : null,
+          onPanEnd: drawing ? (_) => onStrokeEnd() : null,
+          // Scale rather than pan for the layers, because it is one
+          // recogniser: a drag that becomes a pinch has to keep working, and
+          // two competing recognisers on one box means whichever wins the
+          // arena eats the gesture.
+          onScaleStart:
+              placing ? (d) => onLayerDown(at(d.localFocalPoint)) : null,
+          onScaleUpdate: placing
+              ? (d) => onLayerMove(by(d.focalPointDelta), d.scale, d.rotation)
+              : null,
+          onScaleEnd: placing ? (_) => onLayerUp() : null,
           child: CustomPaint(
             size: box,
-            painter: _EditPainter(painter),
+            painter: _EditPainter(painter, selected),
             isComplex: true,
           ),
         );
@@ -375,9 +764,10 @@ class _Canvas extends StatelessWidget {
 }
 
 class _EditPainter extends CustomPainter {
-  const _EditPainter(this.edit);
+  const _EditPainter(this.edit, this.selected);
 
   final PhotoEditPainter edit;
+  final PhotoLayer? selected;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -386,6 +776,7 @@ class _EditPainter extends CustomPainter {
     final scale = (size.width / out.width) < (size.height / out.height)
         ? size.width / out.width
         : size.height / out.height;
+    if (scale <= 0) return;
     canvas.save();
     canvas.translate(
       (size.width - out.width * scale) / 2,
@@ -393,13 +784,385 @@ class _EditPainter extends CustomPainter {
     );
     canvas.scale(scale);
     edit.paint(canvas);
+    final chosen = selected;
+    // Two logical pixels, whatever the picture's size.
+    if (chosen != null) edit.paintSelection(canvas, chosen, 2 / scale);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_EditPainter old) =>
       !identical(old.edit.edit, edit.edit) ||
-      !identical(old.edit.image, edit.image);
+      !identical(old.edit.image, edit.image) ||
+      !identical(old.selected, selected);
+}
+
+/// The frame that says what will be kept.
+///
+/// Dragged on the *standing-up* picture — turning a photo and then framing it
+/// is the order people work in — while the cut itself is stored against the
+/// original. Both conversions live on [PhotoCrop]; this widget only knows
+/// pixels.
+class _CropOverlay extends StatefulWidget {
+  const _CropOverlay({
+    required this.sourceSize,
+    required this.crop,
+    required this.ratio,
+    required this.onChanged,
+    required this.onCommit,
+  });
+
+  final Size sourceSize;
+  final PhotoCrop crop;
+  final double? ratio;
+  final void Function(Rect viewRect) onChanged;
+  final VoidCallback onCommit;
+
+  @override
+  State<_CropOverlay> createState() => _CropOverlayState();
+}
+
+enum _Handle { move, tl, tr, bl, br, left, right, top, bottom }
+
+class _CropOverlayState extends State<_CropOverlay> {
+  _Handle _handle = _Handle.move;
+
+  /// How close a finger has to be to an edge to grab it rather than the frame.
+  /// A hair over a fingertip: smaller and the corners are unhittable, larger
+  /// and a small frame is all corner and cannot be moved at all.
+  static const double _grab = 30;
+
+  /// Never let the frame close up to nothing — a zero-sized crop asks the
+  /// compositor for a zero-sized surface, and past that it is not a picture
+  /// any more.
+  static const double _minSide = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = Size(constraints.maxWidth, constraints.maxHeight);
+        final out = widget.crop
+            .copyWith(rect: PhotoCrop.full)
+            .outputSize(widget.sourceSize);
+        final area = fittedRect(box, out);
+        final view = widget.crop.toViewRect(widget.crop.rect);
+        final frame = Rect.fromLTRB(
+          area.left + view.left * area.width,
+          area.top + view.top * area.height,
+          area.left + view.right * area.width,
+          area.top + view.bottom * area.height,
+        );
+
+        void emit(Rect next) {
+          if (area.width <= 0 || area.height <= 0) return;
+          widget.onChanged(
+            Rect.fromLTRB(
+              (next.left - area.left) / area.width,
+              (next.top - area.top) / area.height,
+              (next.right - area.left) / area.width,
+              (next.bottom - area.top) / area.height,
+            ),
+          );
+        }
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (d) => _handle = _grabbed(d.localPosition, frame),
+          onPanUpdate: (d) =>
+              emit(_resize(frame, _handle, d.delta, area, widget.ratio)),
+          onPanEnd: (_) => widget.onCommit(),
+          child: CustomPaint(
+            size: box,
+            painter: _CropFramePainter(frame: frame, area: area),
+          ),
+        );
+      },
+    );
+  }
+
+  _Handle _grabbed(Offset p, Rect f) {
+    final nearL = (p.dx - f.left).abs() < _grab;
+    final nearR = (p.dx - f.right).abs() < _grab;
+    final nearT = (p.dy - f.top).abs() < _grab;
+    final nearB = (p.dy - f.bottom).abs() < _grab;
+    if (nearL && nearT) return _Handle.tl;
+    if (nearR && nearT) return _Handle.tr;
+    if (nearL && nearB) return _Handle.bl;
+    if (nearR && nearB) return _Handle.br;
+    final insideY = p.dy > f.top - _grab && p.dy < f.bottom + _grab;
+    final insideX = p.dx > f.left - _grab && p.dx < f.right + _grab;
+    if (nearL && insideY) return _Handle.left;
+    if (nearR && insideY) return _Handle.right;
+    if (nearT && insideX) return _Handle.top;
+    if (nearB && insideX) return _Handle.bottom;
+    return _Handle.move;
+  }
+
+  static Rect _resize(
+    Rect f,
+    _Handle h,
+    Offset d,
+    Rect bounds,
+    double? ratio,
+  ) {
+    if (h == _Handle.move) {
+      final dx = d.dx.clamp(bounds.left - f.left, bounds.right - f.right);
+      final dy = d.dy.clamp(bounds.top - f.top, bounds.bottom - f.bottom);
+      return f.shift(Offset(dx, dy));
+    }
+
+    var l = f.left;
+    var t = f.top;
+    var r = f.right;
+    var b = f.bottom;
+    switch (h) {
+      case _Handle.tl:
+        l += d.dx;
+        t += d.dy;
+      case _Handle.tr:
+        r += d.dx;
+        t += d.dy;
+      case _Handle.bl:
+        l += d.dx;
+        b += d.dy;
+      case _Handle.br:
+        r += d.dx;
+        b += d.dy;
+      case _Handle.left:
+        l += d.dx;
+      case _Handle.right:
+        r += d.dx;
+      case _Handle.top:
+        t += d.dy;
+      case _Handle.bottom:
+        b += d.dy;
+      case _Handle.move:
+        break;
+    }
+    l = l.clamp(bounds.left, r - _minSide);
+    t = t.clamp(bounds.top, b - _minSide);
+    r = r.clamp(l + _minSide, bounds.right);
+    b = b.clamp(t + _minSide, bounds.bottom);
+    final free = Rect.fromLTRB(l, t, r, b);
+    return ratio == null ? free : _lock(free, h, ratio, bounds);
+  }
+
+  /// Force [r] to [ratio], anchored on the side the finger is *not* holding,
+  /// then slide it back inside the picture if that pushed it out.
+  static Rect _lock(Rect r, _Handle h, double ratio, Rect bounds) {
+    final byHeight = h == _Handle.top || h == _Handle.bottom;
+    var w = byHeight ? r.height * ratio : r.width;
+    var hgt = byHeight ? r.height : r.width / ratio;
+    if (w > bounds.width) {
+      w = bounds.width;
+      hgt = w / ratio;
+    }
+    if (hgt > bounds.height) {
+      hgt = bounds.height;
+      w = hgt * ratio;
+    }
+    final double left;
+    final double top;
+    switch (h) {
+      case _Handle.tl:
+        left = r.right - w;
+        top = r.bottom - hgt;
+      case _Handle.tr:
+        left = r.left;
+        top = r.bottom - hgt;
+      case _Handle.bl:
+        left = r.right - w;
+        top = r.top;
+      case _Handle.br:
+      case _Handle.move:
+        left = r.left;
+        top = r.top;
+      case _Handle.left:
+        left = r.right - w;
+        top = r.center.dy - hgt / 2;
+      case _Handle.right:
+        left = r.left;
+        top = r.center.dy - hgt / 2;
+      case _Handle.top:
+        left = r.center.dx - w / 2;
+        top = r.bottom - hgt;
+      case _Handle.bottom:
+        left = r.center.dx - w / 2;
+        top = r.top;
+    }
+    return Rect.fromLTWH(
+      left.clamp(bounds.left, bounds.right - w),
+      top.clamp(bounds.top, bounds.bottom - hgt),
+      w,
+      hgt,
+    );
+  }
+}
+
+/// Dim outside, thirds inside, brackets on the corners.
+class _CropFramePainter extends CustomPainter {
+  const _CropFramePainter({required this.frame, required this.area});
+
+  final Rect frame;
+  final Rect area;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // The shade covers the picture only, not the black around it: dimming the
+    // letterbox as well makes the photo look smaller than it is.
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(area),
+        Path()..addRect(frame),
+      ),
+      Paint()..color = Colors.black.withValues(alpha: 0.55),
+    );
+
+    final hair = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    for (var i = 1; i < 3; i++) {
+      final x = frame.left + frame.width * i / 3;
+      final y = frame.top + frame.height * i / 3;
+      canvas.drawLine(Offset(x, frame.top), Offset(x, frame.bottom), hair);
+      canvas.drawLine(Offset(frame.left, y), Offset(frame.right, y), hair);
+    }
+    canvas.drawRect(
+      frame,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.85)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke,
+    );
+
+    // Brackets, so the corners look grabbable — what a finger aims at has to
+    // be visible, or the frame reads as fixed.
+    final bracket = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final arm = math.min(24.0, math.min(frame.width, frame.height) / 3);
+    for (final corner in <List<Offset>>[
+      <Offset>[frame.topLeft, Offset(arm, 0), Offset(0, arm)],
+      <Offset>[frame.topRight, Offset(-arm, 0), Offset(0, arm)],
+      <Offset>[frame.bottomLeft, Offset(arm, 0), Offset(0, -arm)],
+      <Offset>[frame.bottomRight, Offset(-arm, 0), Offset(0, -arm)],
+    ]) {
+      canvas.drawLine(corner[0], corner[0] + corner[1], bracket);
+      canvas.drawLine(corner[0], corner[0] + corner[2], bracket);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CropFramePainter old) =>
+      old.frame != frame || old.area != area;
+}
+
+/// The pen thickness, as a line down the side of the picture.
+///
+/// Down the side rather than in the panel because the panel is already three
+/// rows deep in draw mode, and because a control under your hand while you are
+/// drawing is one you can reach without looking away from the mark you just
+/// made. It sits nearly invisible until it is touched, then opens.
+class _WidthRail extends StatefulWidget {
+  const _WidthRail({
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final double value;
+  final Color color;
+  final void Function(double) onChanged;
+
+  static const double min = 4;
+  static const double max = 48;
+
+  @override
+  State<_WidthRail> createState() => _WidthRailState();
+}
+
+class _WidthRailState extends State<_WidthRail> {
+  bool _held = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const span = _WidthRail.max - _WidthRail.min;
+    final fraction = ((widget.value - _WidthRail.min) / span).clamp(0.0, 1.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragStart: (_) => setState(() => _held = true),
+          onVerticalDragEnd: (_) => setState(() => _held = false),
+          onVerticalDragCancel: () => setState(() => _held = false),
+          onVerticalDragUpdate: (d) {
+            if (height <= 0) return;
+            // Up is thicker, which is the way every size control on a phone
+            // reads, and the way the finger already moves to reach the top of
+            // the rail.
+            final next = widget.value - d.delta.dy / height * span * 1.6;
+            widget.onChanged(next.clamp(_WidthRail.min, _WidthRail.max));
+          },
+          child: SizedBox(
+            width: 46,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(width: 12),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: _held ? 10 : 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: _held ? 0.22 : 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        flex: math.max(1, 1000 - (fraction * 1000).round()),
+                        child: const SizedBox.shrink(),
+                      ),
+                      Expanded(
+                        flex: math.max(1, (fraction * 1000).round()),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_held)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Align(
+                      alignment: Alignment(0, 1 - fraction * 2),
+                      child: Container(
+                        width: widget.value,
+                        height: widget.value,
+                        decoration: BoxDecoration(
+                          color: widget.color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// The three tools, as the island the rest of the app is built from.
@@ -486,34 +1249,54 @@ class _IslandTool extends StatelessWidget {
   }
 }
 
-/// Colours, thickness and the eraser.
+/// The brush, in three tabs: pens, stickers, words.
 class _DrawPanel extends StatelessWidget {
   const _DrawPanel({
+    required this.t,
+    required this.tab,
+    required this.onTab,
     required this.color,
-    required this.width,
-    required this.erasing,
     required this.onColor,
-    required this.onWidth,
-    required this.onErase,
+    required this.pen,
+    required this.onPen,
+    required this.textStyle,
+    required this.onTextStyle,
+    required this.textController,
+    required this.onText,
+    required this.onSticker,
+    required this.canRemove,
+    required this.onRemove,
   });
 
+  final AppLocalizations t;
+  final DrawTab tab;
+  final void Function(DrawTab) onTab;
   final Color color;
-  final double width;
-  final bool erasing;
   final void Function(Color) onColor;
-  final void Function(double) onWidth;
-  final VoidCallback onErase;
+  final PenKind pen;
+  final void Function(PenKind) onPen;
+  final TextStyleKind textStyle;
+  final void Function(TextStyleKind) onTextStyle;
+  final TextEditingController textController;
+  final void Function(String) onText;
+  final void Function(String) onSticker;
+  final bool canRemove;
+  final VoidCallback onRemove;
 
-  /// Enough to mark a photograph and no more. A full picker is a second screen
-  /// for a decision nobody agonises over — these are the colours that stay
-  /// legible on both a bright sky and a dark road.
-  static const _palette = <Color>[
-    Color(0xFFFFCC00),
+  /// Evenly spread round the wheel, plus the two ends of the greyscale.
+  ///
+  /// Eight rather than six, and laid out with the space divided between them
+  /// instead of a fixed gap after each: the old row was six swatches pushed
+  /// against the left edge with a hole on the right.
+  static const palette = <Color>[
+    Color(0xFFFFFFFF),
+    Color(0xFF1C1C1E),
     Color(0xFFFF3B30),
+    Color(0xFFFF9500),
+    Color(0xFFFFCC00),
     Color(0xFF34C759),
     Color(0xFF0A84FF),
-    Color(0xFFFFFFFF),
-    Color(0xFF000000),
+    Color(0xFFAF52DE),
   ];
 
   @override
@@ -522,58 +1305,228 @@ class _DrawPanel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: FloatingGlass(
         borderRadius: 22,
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                for (final c in _palette)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: GestureDetector(
-                      onTap: () => onColor(c),
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: c,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: !erasing && c == color
-                                ? AppColors.brandPrimary
-                                : Colors.white24,
-                            width: !erasing && c == color ? 3 : 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                const Spacer(),
-                _CircleAction(
-                  icon: Symbols.ink_eraser,
-                  onTap: onErase,
-                  filled: erasing,
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                const Icon(Symbols.line_weight,
-                    size: 18, color: Colors.white54),
-                Expanded(
-                  child: Slider(
-                    value: width,
-                    min: 4,
-                    max: 48,
-                    onChanged: onWidth,
-                  ),
-                ),
-              ],
-            ),
+            _tabs(),
+            const SizedBox(height: 8),
+            switch (tab) {
+              DrawTab.pen => _pens(),
+              DrawTab.sticker => _stickerStrip(),
+              DrawTab.text => _textRow(),
+            },
+            const SizedBox(height: 8),
+            // No palette under the stickers: a colour would do nothing there,
+            // and a control that does nothing is worse than a missing one.
+            // The bin still has to be reachable, so it stays.
+            if (tab == DrawTab.sticker)
+              _stickerActions()
+            else
+              _colours(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _stickerActions() {
+    if (!canRemove) return const SizedBox(height: 4);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: <Widget>[
+        Tooltip(
+          message: t.editorRemove,
+          child: _CircleAction(
+            icon: Symbols.delete,
+            onTap: onRemove,
+            size: 18,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tabs() {
+    final labels = <DrawTab, String>{
+      DrawTab.pen: t.editorToolDraw,
+      DrawTab.sticker: t.editorTabSticker,
+      DrawTab.text: t.editorTabText,
+    };
+    return Row(
+      children: <Widget>[
+        for (final entry in labels.entries)
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onTab(entry.key),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  children: [
+                    Text(
+                      entry.value.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        letterSpacing: 0.6,
+                        fontWeight: FontWeight.w600,
+                        color: tab == entry.key
+                            ? AppColors.brandPrimary
+                            : AppColors.textOnGlassDim,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Container(
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: tab == entry.key
+                            ? AppColors.brandPrimary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _pens() {
+    final kinds = <PenKind, (IconData, String)>{
+      PenKind.pen: (Symbols.ink_pen, t.editorPenPen),
+      PenKind.marker: (Symbols.ink_highlighter, t.editorPenMarker),
+      PenKind.neon: (Symbols.stylus, t.editorPenNeon),
+      PenKind.arrow: (Symbols.arrow_outward, t.editorPenArrow),
+      PenKind.eraser: (Symbols.ink_eraser, t.editorPenEraser),
+    };
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        for (final entry in kinds.entries)
+          Tooltip(
+            message: entry.value.$2,
+            child: _CircleAction(
+              icon: entry.value.$1,
+              onTap: () => onPen(entry.key),
+              filled: pen == entry.key,
+              size: 20,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _stickerStrip() {
+    return SizedBox(
+      height: 68,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: StickerPack.all.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final name = StickerPack.all[i];
+          // Decoded at the size it is drawn, the way the picker grid does it:
+          // seventy-two full-size decodes to fill one strip is exactly the
+          // cost this codebase keeps taking back out.
+          final pixels = (64 * MediaQuery.devicePixelRatioOf(context)).round();
+          return GestureDetector(
+            onTap: () => onSticker(name),
+            child: Image.asset(
+              StickerPack.still(name),
+              width: 64,
+              height: 64,
+              cacheWidth: pixels,
+              cacheHeight: pixels,
+              filterQuality: FilterQuality.medium,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _textRow() {
+    final styles = <TextStyleKind, IconData>{
+      TextStyleKind.plain: Symbols.text_fields,
+      TextStyleKind.filled: Symbols.format_color_text,
+      TextStyleKind.outlined: Symbols.border_color,
+    };
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: TextField(
+            controller: textController,
+            onChanged: onText,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            style: TextStyle(color: AppColors.textOnGlass, fontSize: 15),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: t.editorTextHint,
+              hintStyle: TextStyle(color: AppColors.textOnGlassDim),
+              border: InputBorder.none,
+            ),
+          ),
+        ),
+        for (final entry in styles.entries)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: _CircleAction(
+              icon: entry.value,
+              onTap: () => onTextStyle(entry.key),
+              filled: textStyle == entry.key,
+              size: 18,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _colours() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        for (final c in palette)
+          GestureDetector(
+            onTap: () => onColor(c),
+            child: Container(
+              width: 30,
+              height: 30,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: c == color ? Colors.white : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                ),
+              ),
+            ),
+          ),
+        if (canRemove)
+          Tooltip(
+            message: t.editorRemove,
+            child: _CircleAction(
+              icon: Symbols.delete,
+              onTap: onRemove,
+              size: 18,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -602,12 +1555,21 @@ class _AdjustPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _slider(t.editorAdjustBrightness, value.brightness,
-                (v) => value.copyWith(brightness: v)),
-            _slider(t.editorAdjustContrast, value.contrast,
-                (v) => value.copyWith(contrast: v)),
-            _slider(t.editorAdjustSaturation, value.saturation,
-                (v) => value.copyWith(saturation: v)),
+            _slider(
+              t.editorAdjustBrightness,
+              value.brightness,
+              (v) => value.copyWith(brightness: v),
+            ),
+            _slider(
+              t.editorAdjustContrast,
+              value.contrast,
+              (v) => value.copyWith(contrast: v),
+            ),
+            _slider(
+              t.editorAdjustSaturation,
+              value.saturation,
+              (v) => value.copyWith(saturation: v),
+            ),
           ],
         ),
       ),
@@ -640,43 +1602,77 @@ class _AdjustPanel extends StatelessWidget {
   }
 }
 
-/// Turning and flipping. The frame itself is dragged on the picture.
+/// Shapes, turning and flipping. The frame itself is dragged on the picture.
 class _CropPanel extends StatelessWidget {
-  const _CropPanel({required this.value, required this.onChanged});
+  const _CropPanel({
+    required this.value,
+    required this.ratio,
+    required this.onRatio,
+    required this.onChanged,
+  });
 
   final PhotoCrop value;
+  final double? ratio;
+  final void Function(double?) onRatio;
   final void Function(PhotoCrop) onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      child: Center(
-        child: FloatingGlass(
-          borderRadius: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _CircleAction(
-                icon: Symbols.rotate_90_degrees_ccw,
-                onTap: () => onChanged(
-                  value.copyWith(quarterTurns: value.quarterTurns - 1),
-                ),
+      child: FloatingGlass(
+        borderRadius: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Tooltip(
+              message: t.editorCropFree,
+              child: _CircleAction(
+                icon: Symbols.crop_free,
+                onTap: () => onRatio(null),
+                filled: ratio == null,
+                size: 20,
               ),
-              const SizedBox(width: 10),
-              _CircleAction(
-                icon: Symbols.flip,
-                onTap: () => onChanged(value.copyWith(flipped: !value.flipped)),
-                filled: value.flipped,
+            ),
+            _CircleAction(
+              icon: Symbols.crop_square,
+              onTap: () => onRatio(1),
+              filled: ratio == 1,
+              size: 20,
+            ),
+            _CircleAction(
+              icon: Symbols.crop_portrait,
+              onTap: () => onRatio(4 / 5),
+              filled: ratio == 4 / 5,
+              size: 20,
+            ),
+            _CircleAction(
+              icon: Symbols.crop_16_9,
+              onTap: () => onRatio(16 / 9),
+              filled: ratio == 16 / 9,
+              size: 20,
+            ),
+            _CircleAction(
+              icon: Symbols.rotate_90_degrees_ccw,
+              onTap: () => onChanged(
+                value.copyWith(quarterTurns: value.quarterTurns - 1),
               ),
-              const SizedBox(width: 10),
-              _CircleAction(
-                icon: Symbols.restore,
-                onTap: () => onChanged(PhotoCrop.none),
-              ),
-            ],
-          ),
+              size: 20,
+            ),
+            _CircleAction(
+              icon: Symbols.flip,
+              onTap: () => onChanged(value.copyWith(flipped: !value.flipped)),
+              filled: value.flipped,
+              size: 20,
+            ),
+            _CircleAction(
+              icon: Symbols.restore,
+              onTap: () => onChanged(PhotoCrop.none),
+              size: 20,
+            ),
+          ],
         ),
       ),
     );

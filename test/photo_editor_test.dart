@@ -26,6 +26,18 @@ Future<Uint8List> _sourceJpeg({int w = 64, int h = 40}) async {
   return Uint8List.fromList(img.encodeJpg(image));
 }
 
+/// A flat colour, for the cases where the question is what one pixel became
+/// rather than where the picture went.
+Future<Uint8List> _solidJpeg(int r, int g, int b, {int w = 64, int h = 40}) async {
+  final image = img.Image(width: w, height: h);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      image.setPixelRgb(x, y, r, g, b);
+    }
+  }
+  return Uint8List.fromList(img.encodeJpg(image, quality: 100));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -247,6 +259,202 @@ void main() {
         expect(p.g, lessThan(90));
         expect(p.b, lessThan(90));
       });
+    });
+
+    testWidgets('a marker stains rather than covers', (tester) async {
+      await tester.runAsync(() async {
+        final image = await decodeForEditing(await _solidJpeg(255, 255, 255));
+        addTearDown(image.dispose);
+        final bytes = await renderEdit(PhotoEditPainter(
+          image: image,
+          edit: const PhotoEdit(
+            strokes: <Stroke>[
+              Stroke(
+                points: <ui.Offset>[Offset(0, 20), Offset(64, 20)],
+                color: Color(0xFFFF0000),
+                width: 12,
+                kind: PenKind.marker,
+              ),
+            ],
+          ),
+        ));
+        final p = img.decodeJpg(bytes)!.getPixel(32, 20);
+        // Red over white through a highlighter is pink: the green and blue
+        // channels come down but do not go out. A marker that covered would
+        // read the same as the pen, and the two tools would be one tool.
+        expect(p.r, greaterThan(200));
+        expect(p.g, greaterThan(110), reason: 'white still shows through');
+        expect(p.g, lessThan(200), reason: 'but it is tinted');
+      });
+    });
+
+    testWidgets('a sticker reaches the exported pixels', (tester) async {
+      await tester.runAsync(() async {
+        final image = await decodeForEditing(await _solidJpeg(255, 255, 255));
+        addTearDown(image.dispose);
+        final art = await decodeForEditing(await _solidJpeg(0, 0, 255, w: 8, h: 8));
+        addTearDown(art.dispose);
+        final bytes = await renderEdit(PhotoEditPainter(
+          image: image,
+          edit: const PhotoEdit(
+            layers: <PhotoLayer>[
+              StickerLayer(id: 1, center: Offset(32, 20), asset: 'blue'),
+            ],
+          ),
+          stickers: <String, ui.Image>{'blue': art},
+        ));
+        final p = img.decodeJpg(bytes)!.getPixel(32, 20);
+        expect(p.b, greaterThan(180));
+        expect(p.r, lessThan(90));
+      });
+    });
+
+    testWidgets('the eraser rubs out the drawing and not a sticker',
+        (tester) async {
+      await tester.runAsync(() async {
+        final image = await decodeForEditing(await _solidJpeg(255, 255, 255));
+        addTearDown(image.dispose);
+        final art = await decodeForEditing(await _solidJpeg(0, 0, 255, w: 8, h: 8));
+        addTearDown(art.dispose);
+        // A red line across the middle, a sticker on top of it, and then an
+        // eraser over both. The paint order is what protects the sticker; a
+        // check inside the eraser would be a rule the next tool forgets.
+        final bytes = await renderEdit(PhotoEditPainter(
+          image: image,
+          edit: const PhotoEdit(
+            strokes: <Stroke>[
+              Stroke(
+                points: <ui.Offset>[Offset(0, 20), Offset(64, 20)],
+                color: Color(0xFFFF0000),
+                width: 12,
+              ),
+              Stroke(
+                points: <ui.Offset>[Offset(0, 20), Offset(64, 20)],
+                color: Color(0xFF000000),
+                width: 30,
+                kind: PenKind.eraser,
+              ),
+            ],
+            layers: <PhotoLayer>[
+              StickerLayer(id: 1, center: Offset(32, 20), asset: 'blue'),
+            ],
+          ),
+          stickers: <String, ui.Image>{'blue': art},
+        ));
+        final decoded = img.decodeJpg(bytes)!;
+        expect(decoded.getPixel(32, 20).b, greaterThan(180),
+            reason: 'the sticker survived');
+        final wiped = decoded.getPixel(3, 20);
+        expect(wiped.r, greaterThan(200));
+        expect(wiped.g, greaterThan(200), reason: 'the red line is gone');
+      });
+    });
+  });
+
+  group('the frame is dragged on the picture that is shown', () {
+    // The crop is stored against the original and dragged on the standing-up
+    // preview. Getting the pair wrong does not throw — it turns the frame
+    // ninety degrees away from the finger, which reads as the crop tool being
+    // broken rather than as a missing transform.
+    const r = Rect.fromLTRB(0.1, 0.2, 0.4, 0.6);
+
+    for (final turns in <int>[0, 1, 2, 3]) {
+      for (final flipped in <bool>[false, true]) {
+        test('a round trip through the view is the identity '
+            '(turns $turns, flipped $flipped)', () {
+          final crop = PhotoCrop(quarterTurns: turns, flipped: flipped);
+          final back = crop.fromViewRect(crop.toViewRect(r));
+          expect(back.left, closeTo(r.left, 1e-9));
+          expect(back.top, closeTo(r.top, 1e-9));
+          expect(back.right, closeTo(r.right, 1e-9));
+          expect(back.bottom, closeTo(r.bottom, 1e-9));
+        });
+      }
+    }
+
+    test('a quarter turn moves the frame to where the picture went', () {
+      // The strip down the left of an upright picture is the strip across the
+      // top once it is turned a quarter clockwise.
+      const left = Rect.fromLTRB(0, 0, 0.25, 1);
+      const crop = PhotoCrop(quarterTurns: 1);
+      final view = crop.toViewRect(left);
+      expect(view.left, closeTo(0, 1e-9));
+      expect(view.top, closeTo(0, 1e-9));
+      expect(view.right, closeTo(1, 1e-9));
+      expect(view.bottom, closeTo(0.25, 1e-9));
+    });
+  });
+
+  group('a touch on the preview lands on the original', () {
+    const source = Size(100, 50);
+
+    test('with a crop, the output origin is the corner of the cut', () {
+      const crop = PhotoCrop(rect: Rect.fromLTWH(0.25, 0, 0.5, 1));
+      expect(crop.outputToImage(Offset.zero, source), const Offset(25, 0));
+      expect(
+        crop.outputToImage(const Offset(50, 50), source),
+        const Offset(75, 50),
+      );
+    });
+
+    test('with a quarter turn, the output origin is the far corner', () {
+      const crop = PhotoCrop(quarterTurns: 1);
+      // Turning a landscape picture a quarter clockwise brings its
+      // bottom-left corner to the top-left of the screen.
+      final p = crop.outputToImage(Offset.zero, source);
+      expect(p.dx, closeTo(0, 1e-9));
+      expect(p.dy, closeTo(50, 1e-9));
+    });
+
+    test('a drag is turned but not moved', () {
+      // A position goes through the crop offset; a delta must not, or a
+      // sticker jumps by the crop on every frame of the drag.
+      const crop = PhotoCrop(
+        rect: Rect.fromLTWH(0.25, 0, 0.5, 1),
+        quarterTurns: 1,
+      );
+      final d = crop.viewDeltaToImage(const Offset(10, 0));
+      expect(d.dx, closeTo(0, 1e-9));
+      expect(d.dy, closeTo(-10, 1e-9), reason: 'right on screen is up here');
+    });
+
+    test('untouched, a drag is itself', () {
+      expect(
+        PhotoCrop.none.viewDeltaToImage(const Offset(3, -7)),
+        const Offset(3, -7),
+      );
+    });
+  });
+
+  group('layers', () {
+    const a = StickerLayer(id: 1, center: Offset.zero, asset: 'a');
+    const b = TextLayer(
+      id: 2,
+      center: Offset.zero,
+      text: 'hi',
+      color: Color(0xFFFFFFFF),
+    );
+
+    test('a changed layer replaces itself and nothing else', () {
+      const edit = PhotoEdit(layers: <PhotoLayer>[a, b]);
+      final moved = a.moved(center: const Offset(5, 5));
+      final next = edit.withLayer(moved);
+      expect(next.layers, hasLength(2));
+      expect(next.layers.first.center, const Offset(5, 5));
+      expect(identical(next.layers.last, b), isTrue);
+    });
+
+    test('removal is by identity, so an index cannot shift under it', () {
+      const edit = PhotoEdit(layers: <PhotoLayer>[a, b]);
+      final next = edit.withoutLayer(1);
+      expect(next.layers, hasLength(1));
+      expect(next.layers.single.id, 2);
+      expect(next.layerById(1), isNull);
+    });
+
+    test('a picture with only a sticker on it is not untouched', () {
+      expect(const PhotoEdit(layers: <PhotoLayer>[a]).isUntouched, isFalse);
+      expect(const PhotoEdit().isUntouched, isTrue);
     });
   });
 }

@@ -394,6 +394,36 @@ class AppLocalizationsUk extends AppLocalizations {
   String get editorToolAdjust => 'Налаштувати';
 
   @override
+  String get editorTabSticker => 'Наліпка';
+
+  @override
+  String get editorTabText => 'Текст';
+
+  @override
+  String get editorPenPen => 'Ручка';
+
+  @override
+  String get editorPenMarker => 'Маркер';
+
+  @override
+  String get editorPenNeon => 'Неон';
+
+  @override
+  String get editorPenArrow => 'Стрілка';
+
+  @override
+  String get editorPenEraser => 'Гумка';
+
+  @override
+  String get editorTextHint => 'Текст на фото';
+
+  @override
+  String get editorCropFree => 'Вільно';
+
+  @override
+  String get editorRemove => 'Прибрати';
+
+  @override
   String get notificationUnknownSender => 'Нове повідомлення';
 
   @override
