@@ -124,8 +124,14 @@ ProImageEditorConfigs get _editorConfigs => ProImageEditorConfigs(
     widgets: MainEditorWidgets(bottomBar: _islandBottomBar),
     style: MainEditorStyle(
       background: AppColors.bgDeep,
-      appBarBackground: Colors.transparent,
-      appBarColor: AppColors.textOnGlass,
+      // Not fully transparent, and that was my mistake in 992.
+      //
+      // A transparent app bar over a full-bleed photo leaves white glyphs on
+      // whatever the picture happens to be — and reported as the back button
+      // simply not being there, which from the outside it is not. A dark band
+      // is what every photo editor puts behind its chrome, for this reason.
+      appBarBackground: Colors.black.withValues(alpha: 0.55),
+      appBarColor: Colors.white,
       bottomBarBackground: Colors.transparent,
       bottomBarColor: AppColors.brandPrimary,
     ),
@@ -140,6 +146,17 @@ ProImageEditorConfigs get _editorConfigs => ProImageEditorConfigs(
     ),
   ),
   paintEditor: PaintEditorConfigs(
+    // Spelled out rather than inherited. The sub-editors take the package's
+    // defaults otherwise — white on pure black — which is a different app
+    // opening on top of this one, and it is also where "there is no way back"
+    // is decided: the row carrying the back arrow is this bar.
+    style: PaintEditorStyle(
+      background: AppColors.bgDeep,
+      appBarBackground: Colors.black.withValues(alpha: 0.55),
+      appBarColor: Colors.white,
+      bottomBarBackground: Colors.black.withValues(alpha: 0.55),
+      bottomBarActiveItemColor: AppColors.brandPrimary,
+    ),
     icons: PaintEditorIcons(
       bottomNavBar: Symbols.brush,
       moveAndZoom: Symbols.open_with,
@@ -186,6 +203,13 @@ ProImageEditorConfigs get _editorConfigs => ProImageEditorConfigs(
     ),
   ),
   cropRotateEditor: CropRotateEditorConfigs(
+    style: CropRotateEditorStyle(
+      background: AppColors.bgDeep,
+      appBarBackground: Colors.black.withValues(alpha: 0.55),
+      appBarColor: Colors.white,
+      bottomBarBackground: Colors.black.withValues(alpha: 0.55),
+      bottomBarColor: Colors.white,
+    ),
     icons: CropRotateEditorIcons(
       bottomNavBar: Symbols.crop_rotate,
       rotate: Symbols.rotate_90_degrees_ccw,
@@ -199,6 +223,13 @@ ProImageEditorConfigs get _editorConfigs => ProImageEditorConfigs(
     ),
   ),
   tuneEditor: TuneEditorConfigs(
+    style: TuneEditorStyle(
+      background: AppColors.bgDeep,
+      appBarBackground: Colors.black.withValues(alpha: 0.55),
+      appBarColor: Colors.white,
+      bottomBarBackground: Colors.black.withValues(alpha: 0.55),
+      bottomBarActiveItemColor: AppColors.brandPrimary,
+    ),
     icons: TuneEditorIcons(
       bottomNavBar: Symbols.tune,
       brightness: Symbols.brightness_6,

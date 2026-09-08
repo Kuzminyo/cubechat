@@ -3,6 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import '../../../../core/util/debug_log.dart';
+import '../../../../core/util/platform_info.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/util/ui_activity.dart';
@@ -200,6 +204,21 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       //
       // On Android 12 and below one READ_EXTERNAL_STORAGE covers everything,
       // which is why the original fault only reproduced on some devices.
+      // Ask for video separately on Android, because the system will not.
+      //
+      // Since 13 photos and video are two permissions, and a phone that
+      // already granted one is not re-prompted for the other when an update
+      // starts asking for both — the aggregate request comes back "granted"
+      // on the strength of the half it already had. So an app that shipped
+      // images-only and then added video shows a gallery with no video in it
+      // and no prompt to explain why, which is exactly what happened here.
+      //
+      // Harmless everywhere else: on iOS and on Android 12 and below this is
+      // one library permission, already held, and the call returns at once.
+      if (PlatformInfo.isAndroid) {
+        final videos = await Permission.videos.status;
+        if (videos.isDenied) await Permission.videos.request();
+      }
       final perm = await PhotoManager.requestPermissionExtend(
         requestOption: const PermissionRequestOption(
           androidPermission: AndroidPermission(
@@ -250,6 +269,22 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       // with nothing older to scroll to. A page returning full is the other
       // direction: there is at least one more index worth asking for.
       _hasMore = _page * _pageSize < _total || page.length >= _pageSize;
+      // How many of what, and under which grant.
+      //
+      // "Videos are not in the gallery" has three different causes that look
+      // identical from the grid: the query never asked for them, Android
+      // granted photos but not video (the two are separate permissions since
+      // 13, and an app that already held one is not re-prompted for the
+      // other), or the album genuinely has none. Only this line separates
+      // them, and guessing between them is what it exists to stop.
+      if (_page == 1) {
+        final videos = page.where((a) => a.type == AssetType.video).length;
+        DebugLog.instance.log(
+          'GALLERY',
+          'page 1: ${page.length} of $_total, $videos video — access '
+              '${_perm?.name ?? "unknown"}',
+        );
+      }
       if (page.isNotEmpty && mounted) {
         setState(() => _assets.addAll(page));
       } else {
