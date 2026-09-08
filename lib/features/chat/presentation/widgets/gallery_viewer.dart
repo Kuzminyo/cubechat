@@ -139,10 +139,91 @@ class _GalleryViewerState extends State<GalleryViewer> {
                   ],
                 ),
                 const Spacer(),
+                // The way on. Looking at a photo full screen used to be a dead
+                // end — back to the grid, find the tick, then find send — and
+                // the two exits this screen already declared were never wired
+                // to anything. Forward goes where the send arrow in the grid
+                // goes: the screen with the caption box.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      if (_current.type != AssetType.video)
+                        _Round(
+                          icon: Icons.brush_rounded,
+                          tooltip: t.editorToolDraw,
+                          onTap: () => Navigator.of(context).pop(
+                            GalleryViewerResult(
+                              GalleryViewerExit.edit,
+                              _current,
+                            ),
+                          ),
+                        ),
+                      const Spacer(),
+                      _Round(
+                        icon: Icons.arrow_forward_rounded,
+                        tooltip: t.chatSend,
+                        filled: true,
+                        onTap: _forward,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// On to the caption screen, taking this photo whether or not it was ticked.
+  ///
+  /// Ticking it first rather than passing it separately, so the grid behind
+  /// and the selection agree — the count in the badge is the count that gets
+  /// sent, which is the whole contract of this screen's tick.
+  void _forward() {
+    if (!widget.isSelected(_current)) widget.onToggle(_current);
+    Navigator.of(context)
+        .pop(GalleryViewerResult(GalleryViewerExit.send, _current));
+  }
+}
+
+/// A glyph in a disc, over a photograph.
+class _Round extends StatelessWidget {
+  const _Round({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: filled
+            ? AppColors.brandPrimary
+            : Colors.black.withValues(alpha: 0.45),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(
+              icon,
+              size: 22,
+              color: filled ? AppColors.bgDeep : Colors.white,
+            ),
+          ),
+        ),
       ),
     );
   }

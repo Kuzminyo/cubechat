@@ -155,9 +155,14 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
 
   bool get _drawing => _tool == EditorTool.draw && _tab == DrawTab.pen;
 
-  bool get _placing =>
-      _tool == EditorTool.draw &&
-      (_tab == DrawTab.sticker || _tab == DrawTab.text);
+  /// When a finger on the picture moves a sticker or a piece of text.
+  ///
+  /// Any time except while drawing or cropping — not only inside the tab that
+  /// created it. Something you put on a photograph stays yours to move,
+  /// resize, turn or take off for as long as the photograph is open; having to
+  /// find the tab it came from first is a rule about this program's insides,
+  /// and the person is looking at a picture with a cat on it.
+  bool get _placing => _tool != EditorTool.crop && !_drawing;
 
   void _startStroke(Offset image) {
     setState(() {
@@ -396,7 +401,21 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
     if (_tool == EditorTool.draw && _tab == DrawTab.text) _closeTextTab();
     setState(() {
       _tool = _tool == tool ? EditorTool.none : tool;
-      if (_tool != EditorTool.draw) _selected = null;
+      // The selection survives closing the panel. It used to be dropped here,
+      // which is what made a sticker unreachable the moment the brush was put
+      // away — see [_placing]. Cropping is the exception: the frame owns every
+      // touch on the picture while it is up.
+      if (_tool == EditorTool.crop) _selected = null;
+    });
+  }
+
+  /// Bring the text tab back up on the piece of text that is selected.
+  void _editSelectedText() {
+    if (_activeText == null) return;
+    setState(() {
+      _tool = EditorTool.draw;
+      _tab = DrawTab.text;
+      _openTextTab();
     });
   }
 
@@ -462,7 +481,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             image: image,
             edit: _shown,
             stickers: _stickers,
-            selected: _tool == EditorTool.draw ? selected : null,
+            selected: _placing ? selected : null,
             drawing: _drawing,
             placing: _placing,
             onStrokeStart: _startStroke,
@@ -509,7 +528,19 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
   Widget _panel(AppLocalizations t) {
     switch (_tool) {
       case EditorTool.none:
-        return const SizedBox(height: 8);
+        // With no panel up, the picture is still live: tapping a sticker or a
+        // line of text selects it, and this is where what you can then do to
+        // it appears.
+        final id = _selected;
+        final layer = id == null ? null : _history.value.layerById(id);
+        if (layer == null) return const SizedBox(height: 8);
+        return _LayerActions(
+          t: t,
+          isText: layer is TextLayer,
+          onEdit: _editSelectedText,
+          onRemove: _removeSelected,
+          onDone: () => setState(() => _selected = null),
+        );
       case EditorTool.draw:
         return _DrawPanel(
           t: t,
@@ -1181,6 +1212,72 @@ class _WidthRailState extends State<_WidthRail> {
           ),
         );
       },
+    );
+  }
+}
+
+/// What you can do to the sticker or the words you just tapped.
+///
+/// Shown in the panel slot when no tool is open, so that a thing put on the
+/// picture stays reachable after the brush is put away — the alternative was
+/// re-opening the tab that made it, which is a rule about this program rather
+/// than about photographs.
+class _LayerActions extends StatelessWidget {
+  const _LayerActions({
+    required this.t,
+    required this.isText,
+    required this.onEdit,
+    required this.onRemove,
+    required this.onDone,
+  });
+
+  final AppLocalizations t;
+  final bool isText;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Center(
+        child: FloatingGlass(
+          borderRadius: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isText) ...[
+                Tooltip(
+                  message: t.editorTabText,
+                  child: _CircleAction(
+                    icon: Icons.text_fields_rounded,
+                    onTap: onEdit,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Tooltip(
+                message: t.editorRemove,
+                child: _CircleAction(
+                  icon: Icons.delete_rounded,
+                  onTap: onRemove,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              _CircleAction(
+                icon: Icons.check_rounded,
+                onTap: onDone,
+                filled: true,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

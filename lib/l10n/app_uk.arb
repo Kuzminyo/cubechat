@@ -568,6 +568,8 @@
                                      },
     "contactProfileMedia":  "Медіа",
     "contactProfileVoiceMessages":  "Голосові повідомлення",
+    "contactProfileStickers":  "Наліпки",
+    "contactProfileNoStickers":  "Наліпок ще немає",
     "contactProfileNoMedia":  "Медіа ще немає",
     "contactProfileNoVoiceMessages":  "Голосових повідомлень ще немає",
     "contactProfileOpen":  "Відкрити профіль",

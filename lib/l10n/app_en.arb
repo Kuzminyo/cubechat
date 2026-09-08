@@ -744,6 +744,14 @@
   },
   "contactProfileMedia": "Media",
   "contactProfileVoiceMessages": "Voice messages",
+  "contactProfileStickers": "Stickers",
+  "@contactProfileStickers": {
+    "description": "Tab holding the stickers exchanged in this chat, kept out of the media grid."
+  },
+  "contactProfileNoStickers": "No stickers yet",
+  "@contactProfileNoStickers": {
+    "description": "Empty state of the stickers tab."
+  },
   "contactProfileNoMedia": "No media yet",
   "contactProfileNoVoiceMessages": "No voice messages yet",
   "contactProfileOpen": "Open profile",

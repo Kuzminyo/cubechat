@@ -1465,6 +1465,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileVoiceMessages => 'Голосові повідомлення';
 
   @override
+  String get contactProfileStickers => 'Наліпки';
+
+  @override
+  String get contactProfileNoStickers => 'Наліпок ще немає';
+
+  @override
   String get contactProfileNoMedia => 'Медіа ще немає';
 
   @override

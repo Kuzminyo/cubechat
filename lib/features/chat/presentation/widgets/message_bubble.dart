@@ -59,6 +59,7 @@ import '../view_once_media_screen.dart';
 import '../../../../core/util/media_storage.dart';
 import 'auto_delete_picker.dart';
 import 'file_bubble.dart';
+import 'video_bubble.dart';
 import 'photo_flight.dart';
 import 'poll_bubble.dart';
 import 'mention_text.dart';
@@ -1521,6 +1522,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ],
                     ],
                   )
+                else if (VideoBubble.handles(message))
+                  // A clip travels as a file and used to be drawn as one: a
+                  // row with a name and a size, opened by handing it to
+                  // whatever the phone calls a video player. It plays here
+                  // now. Still a file underneath — the transport, the
+                  // transfer queue and the long-press actions are unchanged.
+                  VideoBubble(message: message)
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a

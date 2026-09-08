@@ -2660,6 +2660,18 @@ abstract class AppLocalizations {
   /// **'Voice messages'**
   String get contactProfileVoiceMessages;
 
+  /// Tab holding the stickers exchanged in this chat, kept out of the media grid.
+  ///
+  /// In en, this message translates to:
+  /// **'Stickers'**
+  String get contactProfileStickers;
+
+  /// Empty state of the stickers tab.
+  ///
+  /// In en, this message translates to:
+  /// **'No stickers yet'**
+  String get contactProfileNoStickers;
+
   /// No description provided for @contactProfileNoMedia.
   ///
   /// In en, this message translates to:

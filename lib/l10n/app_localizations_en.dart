@@ -1460,6 +1460,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileVoiceMessages => 'Voice messages';
 
   @override
+  String get contactProfileStickers => 'Stickers';
+
+  @override
+  String get contactProfileNoStickers => 'No stickers yet';
+
+  @override
   String get contactProfileNoMedia => 'No media yet';
 
   @override

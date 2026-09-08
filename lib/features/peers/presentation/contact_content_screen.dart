@@ -86,6 +86,18 @@ class ContactContentScreen extends ConsumerWidget {
             // A photo meant to be seen once does not belong in a grid of
             // everything ever shared.
             !message.viewOnce &&
+            // Nor a sticker. It is carried as an image, but a grid of
+            // "everything we sent each other" filled with the same cat six
+            // times is not a record of anything — it is the punctuation of the
+            // conversation, filed as its content. They get their own tab.
+            !message.isSticker &&
+            message.imagePath != null)
+        .toList()
+      ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
+    final stickers = messages
+        .where((message) =>
+            message.kind == MessageKind.image &&
+            message.isSticker &&
             message.imagePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
@@ -118,8 +130,8 @@ class ContactContentScreen extends ConsumerWidget {
     ]..sort((a, b) => b.$1.sentAt.compareTo(a.$1.sentAt));
 
     return DefaultTabController(
-      length: 5,
-      initialIndex: initialTab.clamp(0, 4),
+      length: 6,
+      initialIndex: initialTab.clamp(0, 5),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -140,6 +152,7 @@ class ContactContentScreen extends ConsumerWidget {
             tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: t.contactProfileMedia),
+              Tab(text: t.contactProfileStickers),
               Tab(text: t.contactProfileVoiceMessages),
               Tab(text: t.contactProfileFiles),
               Tab(text: t.contactProfileLinks),
@@ -154,6 +167,17 @@ class ContactContentScreen extends ConsumerWidget {
               images: images,
               onLongPress: (message) => _showMessageActions(context, message),
               emptyLabel: t.contactProfileNoMedia,
+            ),
+            _MediaGrid(
+              chatId: chatId,
+              images: stickers,
+              onLongPress: (message) => _showMessageActions(context, message),
+              emptyLabel: t.contactProfileNoStickers,
+              // Not openable: the full-screen browser is the photo pager, and
+              // it deliberately holds no stickers — paging into one would put
+              // it back in the place this tab exists to take it out of. A tap
+              // here does what a long press does.
+              openable: false,
             ),
             _VoiceList(
               chatId: chatId,
@@ -189,6 +213,7 @@ class _MediaGrid extends StatelessWidget {
     required this.images,
     required this.onLongPress,
     required this.emptyLabel,
+    this.openable = true,
   });
 
   final String chatId;
@@ -196,11 +221,19 @@ class _MediaGrid extends StatelessWidget {
   final ValueChanged<Message> onLongPress;
   final String emptyLabel;
 
+  /// Whether a tap opens the full-screen photo pager. False for the stickers
+  /// tab, whose contents that pager deliberately does not hold.
+  final bool openable;
+
   @override
   Widget build(BuildContext context) {
     if (images.isEmpty) {
       return _EmptyContent(
-          icon: Icons.photo_library_rounded, label: emptyLabel);
+        icon: openable
+            ? Icons.photo_library_rounded
+            : Icons.emoji_emotions_rounded,
+        label: emptyLabel,
+      );
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 32),
@@ -218,14 +251,16 @@ class _MediaGrid extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onLongPress: () => onLongPress(message),
-            onTap: () => Navigator.of(context).push(
-              mediaRoute<void>(
-                (_) => ChatMediaGalleryScreen(
-                  chatId: chatId,
-                  initialMessageId: message.id,
-                ),
-              ),
-            ),
+            onTap: openable
+                ? () => Navigator.of(context).push(
+                      mediaRoute<void>(
+                        (_) => ChatMediaGalleryScreen(
+                          chatId: chatId,
+                          initialMessageId: message.id,
+                        ),
+                      ),
+                    )
+                : () => onLongPress(message),
             child: Hero(
               tag: 'image-${message.id}',
               child: Image.file(

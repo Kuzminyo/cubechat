@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+996
+version: 1.0.0+997
 
 environment:
   sdk: ^3.6.0
@@ -95,6 +95,10 @@ dependencies:
   # See PeopleMapScreen.initState.
   google_maps_flutter_android: ^2.18.0
   google_maps_flutter_platform_interface: ^2.16.0
+  # Playing a clip where it sits: a video from the gallery, and a circle.
+  # Both are local files by the time they reach a bubble — nothing here ever
+  # streams from a URL, and no player is built for a message off screen.
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_lints: ^4.0.0

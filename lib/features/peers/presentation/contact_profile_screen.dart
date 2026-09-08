@@ -669,8 +669,13 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     final peer = ref.watch(knownPeersControllerProvider)[peerPubkeyHex];
     final messages = ref.watch(messagesControllerProvider)[peerPubkeyHex] ??
         const <Message>[];
-    final mediaCount =
-        messages.where((message) => message.kind == MessageKind.image).length;
+    // Stickers are carried as images and are not media: a card saying "Media
+    // 47" about a conversation with four photographs and forty-three cats is
+    // counting the punctuation. They have their own tab behind this card.
+    final mediaCount = messages
+        .where((message) =>
+            message.kind == MessageKind.image && !message.isSticker)
+        .length;
     final voiceCount =
         messages.where((message) => message.kind == MessageKind.audio).length;
     final fileCount =
@@ -880,9 +885,12 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                             mediaCount: mediaCount,
                             voiceCount: voiceCount,
                             fileCount: fileCount,
+                            // Tab order: media, stickers, voice, files, links,
+                            // polls. Stickers sit second because they are the
+                            // other thing a photo grid used to be full of.
                             onMedia: () => context.push(_contentRoute(0)),
-                            onVoice: () => context.push(_contentRoute(1)),
-                            onFiles: () => context.push(_contentRoute(2)),
+                            onVoice: () => context.push(_contentRoute(2)),
+                            onFiles: () => context.push(_contentRoute(3)),
                           ),
                           if (peer?.isBlocked == true) ...[
                             const SizedBox(height: 12),
