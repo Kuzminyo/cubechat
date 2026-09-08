@@ -44,9 +44,18 @@
     <uses-feature android:name="android.hardware.camera.any"
         android:required="false" />
 
-    <!-- In-app gallery: read device photos (Android 13+) with legacy fallback,
-         and write to the gallery on pre-scoped-storage devices. -->
+    <!-- In-app gallery: read device photos and videos (Android 13+) with legacy
+         fallback, and write to the gallery on pre-scoped-storage devices.
+
+         Both, and it has to be both. Android 13+ splits media permission by
+         type, and asking photo_manager about a type we have not declared drags
+         the aggregate state to "denied" — the sheet then reads "Photo access is
+         off" with photos fully granted. That is exactly what happened when the
+         picker asked for RequestType.common against an images-only manifest,
+         and it is why the picker asked for images only until videos could
+         actually be sent. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"

@@ -188,19 +188,22 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
 
   Future<void> _load() async {
     try {
-      // Ask only about images. The default is RequestType.common, which
-      // requests photos AND videos — but the manifest declares only
-      // READ_MEDIA_IMAGES (this feature sends photos, never video). On Android
-      // 13+, where media permissions are per-type, the never-granted video
-      // permission drags the aggregate state to "denied", so the sheet showed
-      // "Photo access is off" even with photos fully granted. On Android 12 and
-      // below a single READ_EXTERNAL_STORAGE covers everything, which is why it
-      // only reproduced on some devices. Querying image-only matches what we
-      // declare and what we use.
+      // Photos and videos, and the manifest now declares both.
+      //
+      // This asked for images alone, and the comment here explained why: on
+      // Android 13+ media permission is per type, so asking about a type the
+      // manifest does not declare drags the aggregate state to "denied" — the
+      // sheet read "Photo access is off" with photos fully granted. That was
+      // right while videos could not be sent. `READ_MEDIA_VIDEO` is declared
+      // now, so the request matches what we ask for and what we use, and the
+      // failure it describes cannot return.
+      //
+      // On Android 12 and below one READ_EXTERNAL_STORAGE covers everything,
+      // which is why the original fault only reproduced on some devices.
       final perm = await PhotoManager.requestPermissionExtend(
         requestOption: const PermissionRequestOption(
           androidPermission: AndroidPermission(
-            type: RequestType.image,
+            type: RequestType.common,
             mediaLocation: false,
           ),
         ),
@@ -211,7 +214,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         return;
       }
       final paths = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
+        type: RequestType.common,
         onlyAll: true,
         filterOption: _newestFirst(),
       );
@@ -774,6 +777,14 @@ class _CameraTile extends StatelessWidget {
   }
 }
 
+/// `m:ss`, or `h:mm:ss` past an hour. Long enough for a phone recording.
+String _clock(Duration d) {
+  final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+  final m = d.inMinutes.remainder(60);
+  if (d.inHours == 0) return '$m:$s';
+  return '${d.inHours}:${m.toString().padLeft(2, '0')}:$s';
+}
+
 class _Thumb extends StatefulWidget {
   const _Thumb({
     super.key,
@@ -854,6 +865,42 @@ class _ThumbState extends State<_Thumb> {
               );
             },
           ),
+          // A video says so, and says how long it is.
+          //
+          // Without it a video is a still frame in a grid of stills, and the
+          // only way to find out is to send one. The duration is the same line
+          // every gallery draws, bottom-left, over a gradient so it survives a
+          // bright frame.
+          if (widget.asset.type == AssetType.video)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.videocam_rounded,
+                          size: 12, color: Colors.white),
+                      const SizedBox(width: 3),
+                      Text(
+                        _clock(widget.asset.videoDuration),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (selected) Container(color: Colors.black.withValues(alpha: 0.35)),
           Positioned(
             top: 1,

@@ -61,6 +61,42 @@ class RelaySettings {
     'wss://nostr.mom',
   ];
 
+  /// Where media chunks go, so a burst does not throttle a conversation.
+  ///
+  /// A transfer is one publish per 32 KiB chunk — a photo is tens of events, a
+  /// video would be hundreds inside a few seconds — and public relays
+  /// rate-limit per connection, answering a burst by throttling everything
+  /// else in it. Keeping the chunks on their own sockets is what stops a
+  /// picture from delaying the sentence sent after it.
+  ///
+  /// Probed on 2026-09-08 rather than chosen by reputation, the same way the
+  /// list above was. Both answer NIP-11, neither asks for payment or AUTH, and
+  /// both are run by operators independent of the three above.
+  /// `relay.snort.social` declares `max_message_length` 524288 — the most
+  /// generous of everything probed, against a 32 KiB chunk — and 300
+  /// subscriptions. `nostr.oxtr.dev` was joint-fastest in the original probe
+  /// and was passed over then only for operator independence, which is exactly
+  /// what makes it right here.
+  static const defaultMediaUrls = <String>[
+    'wss://relay.snort.social',
+    'wss://nostr.oxtr.dev',
+  ];
+
+  /// Where map beacons go.
+  ///
+  /// Not a burst but a drumbeat: a beacon per map friend, for as long as
+  /// sharing is on. A 72-minute field log had **191 of 274 publishes** be map
+  /// beacons — 70% of everything the radio did, to carry 55 kB — so this is
+  /// the lane that most needs to be somewhere else.
+  ///
+  /// Kept apart from [defaultMediaUrls] as well as from conversation: mixing a
+  /// relentless small signal with a rare huge one puts the throttle problem
+  /// back, just between two things nobody is reading.
+  static const defaultLocationUrls = <String>[
+    'wss://offchain.pub',
+    'wss://relay.nostr.net',
+  ];
+
   /// On by default since 986, which is a deliberate reversal.
   ///
   /// It was off, and the reasoning still stands as a description of the cost:

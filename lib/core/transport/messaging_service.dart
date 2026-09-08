@@ -544,6 +544,11 @@ class MessagingService {
       final seen = await _relayWatermark.loadSeenIds();
       final client = WebSocketNostrRelayClient(
         relayUrls: settings.urls,
+        // Subscribed to like any other — see [RelayLane]. Only *publishing* is
+        // split, so a chunk or a beacon never lands somewhere the recipient is
+        // not listening.
+        mediaRelayUrls: RelaySettings.defaultMediaUrls,
+        locationRelayUrls: RelaySettings.defaultLocationUrls,
         sinceSeconds: since,
         onWatermark: (seconds) => unawaited(_relayWatermark.save(seconds)),
         seenIds: seen,
@@ -611,7 +616,9 @@ class MessagingService {
       _ref.read(relayStatusProvider.notifier).publish(client.states);
       DebugLog.instance.log(
           'NOSTR',
-          'internet fallback on — ${settings.urls.length} relay(s), '
+          'internet fallback on — ${settings.urls.length} relay(s) '
+              '+ ${RelaySettings.defaultMediaUrls.length} media '
+              '+ ${RelaySettings.defaultLocationUrls.length} location, '
               'listening as ${signer.npubHex.substring(0, 12)}…');
     } catch (e) {
       DebugLog.instance.log('NOSTR', 'failed to start relay transport: $e');
@@ -653,6 +660,7 @@ class MessagingService {
     String canonicalId,
     Uint8List frameBytes, {
     bool wakesPeer = false,
+    RelayLane lane = RelayLane.conversation,
   }) async {
     final transport = _nostr;
     // Said out loud, because the silence here is what made a phone look broken:
@@ -685,6 +693,7 @@ class MessagingService {
         recipientNpubHex: npubHex,
         frameBytes: frameBytes,
         wakesPeer: wakesPeer,
+        lane: lane,
       );
       // A write is not a send. Relays refuse events routinely — rate limits,
       // size caps, spam heuristics — and counting a refusal as delivery is how
@@ -1403,6 +1412,16 @@ class MessagingService {
             canonicalId,
             wireBytes,
             wakesPeer: !transient,
+            // `transient` is the map beacon and nothing else — the only two
+            // callers that set it are `MapPresenceController`'s publish and
+            // its retraction. So it is also the answer to which lane this
+            // belongs on, with no second flag to keep in step.
+            //
+            // Worth the split more than media is: a 72-minute field log had
+            // 191 of 274 publishes be these, 70% of everything the radio did,
+            // to carry 55 kB. That is the throttle a sentence was competing
+            // with.
+            lane: transient ? RelayLane.location : RelayLane.conversation,
           )) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
@@ -8283,6 +8302,9 @@ class MessagingService {
     required bool relayOnly,
     bool wakesPeer = false,
   }) async {
+    // Everything through here is a chunk or a manifest, which is the whole of
+    // what [RelayLane.media] means.
+    const lane = RelayLane.media;
     if (!relayOnly) {
       final transportId = session?.peerId;
       if (transportId != null) {
@@ -8304,7 +8326,8 @@ class MessagingService {
         return true;
       }
     }
-    return _sendOverNostr(canonicalId, frameBytes, wakesPeer: wakesPeer);
+    return _sendOverNostr(canonicalId, frameBytes,
+        wakesPeer: wakesPeer, lane: lane);
   }
 
   Future<int> _fanoutAllLinks(

@@ -33,13 +33,23 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// network.
   WebSocketNostrRelayClient({
     required List<String> relayUrls,
+    List<String> mediaRelayUrls = const <String>[],
+    List<String> locationRelayUrls = const <String>[],
     WebSocketChannel Function(Uri)? connect,
     int? sinceSeconds,
     void Function(int seconds)? onWatermark,
     Iterable<String>? seenIds,
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
-  })  : _urls = List.unmodifiable(relayUrls),
+  })  : _urls = List.unmodifiable(<String>{
+          ...relayUrls,
+          ...mediaRelayUrls,
+          ...locationRelayUrls,
+        }.toList()),
+        _lanes = Map.unmodifiable(<RelayLane, Set<String>>{
+          RelayLane.media: mediaRelayUrls.toSet(),
+          RelayLane.location: locationRelayUrls.toSet(),
+        }),
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
         _onWatermark = onWatermark,
@@ -68,6 +78,10 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   static const int _seenCapacity = 2048;
 
   final List<String> _urls;
+
+  /// Relays kept for a lane, and subscribed to like any other. See [RelayLane].
+  final Map<RelayLane, Set<String>> _lanes;
+
   final WebSocketChannel Function(Uri) _connect;
 
   /// Unix seconds of the newest event we've accepted, pool-wide. Sent as the
@@ -172,16 +186,30 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   final Map<String, _PendingPublish> _pending = {};
 
   @override
-  Future<PublishReceipt> publish(NostrEvent event) async {
+  Future<PublishReceipt> publish(
+    NostrEvent event, {
+    RelayLane lane = RelayLane.conversation,
+  }) async {
     if (_disposed) throw StateError('relay client disposed');
-    final live = _conns.values.where((c) => c.isOpen).toList();
-    if (live.isEmpty) {
+    final open = _conns.values.where((c) => c.isOpen).toList();
+    // The lane's relays, if any of them are up; otherwise the whole pool.
+    //
+    // Falling back is the important half: a lane relay that is down has to
+    // cost a slower transfer, never a lost message. With no lane configured —
+    // an older setting, or a user-edited list — this is every relay, exactly
+    // as it was before lanes existed.
+    final wanted = _lanes[lane] ?? const <String>{};
+    final preferred = wanted.isEmpty
+        ? const <_RelayConnection>[]
+        : open.where((c) => wanted.contains(c.url)).toList();
+    final targets = preferred.isNotEmpty ? preferred : open;
+    if (targets.isEmpty) {
       throw StateError('no relay connected (${_urls.length} configured)');
     }
     final id = event.id;
     final payload = NostrRelayProtocol.event(event);
     var sent = 0;
-    for (final c in live) {
+    for (final c in targets) {
       if (c.send(payload)) sent++;
     }
     if (sent == 0) {

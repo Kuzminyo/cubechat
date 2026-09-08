@@ -131,12 +131,38 @@ class PublishReceipt {
   }
 }
 
+/// Which set of relays a publish belongs on.
+///
+/// Public relays rate-limit **per connection**, and they do it bluntly: a burst
+/// earns a throttle that lands on everything else in the same burst. Two kinds
+/// of traffic here are bursty or relentless, and neither is conversation:
+///
+///   * [media] — one publish per 32 KiB chunk, so a video is a hundred events
+///     in a few seconds;
+///   * [location] — a map beacon per friend, for ever. A 72-minute field log
+///     had **191 of 274 publishes** be map beacons: 70% of everything the
+///     radio did, to carry 55 kB.
+///
+/// Splitting them off keeps a throttle earned by a photo or a pin away from
+/// the relay carrying somebody's sentence.
+///
+/// Every lane's relays are **subscribed to** regardless. Nostr delivery is
+/// publish-here-subscribe-here, so a chunk written to a relay the recipient
+/// does not read never arrives; the lane decides only which sockets a publish
+/// is written to.
+enum RelayLane { conversation, media, location }
+
 abstract class NostrRelayClient {
   /// Publish a fully-signed [event] and report what the relays said.
   ///
   /// Resolves once every relay has answered or the implementation's deadline
   /// passes, whichever comes first — never hangs on a relay that goes quiet.
-  Future<PublishReceipt> publish(NostrEvent event);
+  /// [lane] says which set of relays this belongs on — see [RelayLane]. A pool
+  /// with no relays configured for that lane is free to ignore it.
+  Future<PublishReceipt> publish(
+    NostrEvent event, {
+    RelayLane lane = RelayLane.conversation,
+  });
 
   /// Stream of inbound events whose recipient (`"p"`) tag equals
   /// [recipientPubkeyHex]. The relay/client is responsible for filtering by
@@ -210,10 +236,14 @@ class NostrTransport {
   /// a message, not machinery. Defaults to false so anything added later has to
   /// say it out loud rather than inheriting a doorbell it does not need. See
   /// [kWakeTag].
+  /// [lane] keeps a burst off the relays carrying conversation. Nothing about
+  /// the event changes — same kind, same tags, same signature — only which
+  /// sockets it is written to.
   Future<PublishReceipt> sendFrame({
     required String recipientNpubHex,
     required Uint8List frameBytes,
     bool wakesPeer = false,
+    RelayLane lane = RelayLane.conversation,
   }) async {
     final event = NostrEvent(
       pubkey: _signer.npubHex,
@@ -226,7 +256,7 @@ class NostrTransport {
       content: NostrFrameCodec.encodeContent(frameBytes),
     );
     final signed = await _signer.sign(event);
-    return _relay.publish(signed);
+    return _relay.publish(signed, lane: lane);
   }
 
   /// Frames addressed to us, each with the moment its sender stamped it.

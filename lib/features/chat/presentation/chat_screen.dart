@@ -4223,9 +4223,31 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     List<AssetEntity> assets, {
     String? caption,
   }) async {
+    // Video never goes near the picture path.
+    //
+    // Everything below takes a 1600px thumbnail and hands it to the preview
+    // screen, which is right for a photo and would send a video as one still
+    // frame. There is nothing to edit, downscale or view-once about a video
+    // here, so it takes the same road a photo takes when somebody chooses
+    // "send as file": the original bytes, its own name, its own mime.
+    //
+    // `sendFile` already knows the ceiling — 64 MiB over the relays, which is
+    // where publish count rather than byte count runs out — and already says
+    // so with a toast naming the limit. So a clip that is too long is refused
+    // in words instead of half-sent.
+    final videos =
+        assets.where((a) => a.type == AssetType.video).toList(growable: false);
+    if (videos.isNotEmpty) {
+      await _sendOriginals(videos, caption: caption);
+      if (!mounted) return;
+    }
+    final stills =
+        assets.where((a) => a.type != AssetType.video).toList(growable: false);
+    if (stills.isEmpty) return;
+
     final loaded = <Uint8List>[];
     final previewAssets = <AssetEntity>[];
-    for (final asset in assets) {
+    for (final asset in stills) {
       final bytes = await asset.thumbnailDataWithSize(
         const ThumbnailSize(1600, 1600),
         quality: 90,
@@ -4374,7 +4396,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
         final origin = await asset.originFile;
         if (origin == null || !mounted) continue;
         final name = await asset.titleAsync;
-        final safe = name.trim().isEmpty ? 'photo-${asset.id}.jpg' : name;
+        // The fallback extension has to match what it is, or the receiving
+        // side files a video under `.jpg` and no player will open it.
+        final fallback = asset.type == AssetType.video
+            ? 'video-${asset.id}.mp4'
+            : 'photo-${asset.id}.jpg';
+        final safe = name.trim().isEmpty ? fallback : name;
         if (isSavedChat(widget.canonicalId)) {
           await ref.read(savedMessagesControllerProvider).saveFile(
                 origin,

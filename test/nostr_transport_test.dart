@@ -18,9 +18,17 @@ class _FakeRelay implements NostrRelayClient {
   /// when it is rate-limiting.
   bool refuse = false;
 
+  /// The lane each publish asked for, in order — so a test can prove a chunk
+  /// went out on the media lane and a sentence did not.
+  final lanes = <RelayLane>[];
+
   @override
-  Future<PublishReceipt> publish(NostrEvent event) async {
+  Future<PublishReceipt> publish(
+    NostrEvent event, {
+    RelayLane lane = RelayLane.conversation,
+  }) async {
     published.add(event);
+    lanes.add(lane);
     if (refuse) {
       return const PublishReceipt(
         sentTo: 1,
