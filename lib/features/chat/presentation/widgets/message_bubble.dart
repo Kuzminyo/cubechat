@@ -1362,7 +1362,23 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             : Border.all(color: AppColors.glass(0.16)),
                       ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // Left inside a bubble, right when there is no bubble and the
+              // message is ours.
+              //
+              // Inside a bubble the box is drawn around its content, so start
+              // is the only sensible answer and always was. A bare message has
+              // no box: the column is as wide as its *widest* row, which for a
+              // sticker or a lone emoji is the reply quote above it — so the
+              // picture and the clock sat at the left of a quote-wide column
+              // and read as having drifted away from the edge every other
+              // outgoing message hugs. Reported off a screenshot, where the
+              // face and its tick float in the middle of the row.
+              //
+              // Only for ours: an incoming bare message is against the left
+              // edge already, and start is what puts it there.
+              crossAxisAlignment: bare && mine
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Passed on from somebody else, said above the message rather

@@ -33,17 +33,26 @@ void main() {
     expect(presence().freshFor(anna)?.online, isTrue);
   });
 
-  test('the window outlives one late beacon and not much else', () {
+  test('the window outlives one lost beacon, and not a dead phone', () {
     // Pinned against the heartbeat rather than against a number, because the
-    // rule is a relationship: the window has to survive a beacon that arrives
-    // late — a relay reconnect, the fan-out pacing — or a peer sitting still
-    // would blink. It used to survive a beacon lost *outright* (two whole
-    // heartbeats), and that margin was paid for by everybody watching a dot
-    // stay lit for two and a half minutes after somebody lost their network,
-    // which is what it was reported as. One cadence plus real slack, no more.
+    // rule is a relationship — and the relationship changed on 2026-09-08.
+    //
+    // Two reports pull opposite ways here. A window shorter than two beacons
+    // means one lost beacon dims somebody who is sitting right there ("пишет
+    // не в сети а только что в сети"). A window much longer than that means a
+    // phone that loses its network, and so sends no goodbye, stays lit for
+    // the whole of it — which is why the window was cut from 150 s to 100 on
+    // 2026-09-04.
+    //
+    // Both are answered by moving the *cadence*, which was refused as "radio
+    // is heat" until it was measured: an online beacon goes out only while the
+    // app is on screen, and a 99-minute log holds four rounds. So the window
+    // now fits two beacons and still expires well inside three.
     final beat = MessagingService.presenceHeartbeat.inSeconds;
-    expect(PeerPresence.ttl.inSeconds, greaterThan(beat + 20));
-    expect(PeerPresence.ttl.inSeconds, lessThan(beat * 2));
+    expect(PeerPresence.ttl.inSeconds, greaterThanOrEqualTo(beat * 2),
+        reason: 'one lost beacon must not dim a peer who is still there');
+    expect(PeerPresence.ttl.inSeconds, lessThan(beat * 3),
+        reason: 'a dot that stays lit is a lie nobody can correct');
   });
 
   test('an older beacon never overwrites a newer one', () {

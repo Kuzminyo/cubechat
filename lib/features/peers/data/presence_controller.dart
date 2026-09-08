@@ -36,17 +36,24 @@ class PeerPresence {
   /// it was reported exactly that way — "в сети через 2 минуты проходит когда
   /// вышел из сети".
   ///
-  /// 100 s still clears a *late* beacon comfortably — 70 s of cadence plus 30
-  /// of slack, which covers a relay reconnect and the fan-out pacing. What it
-  /// no longer covers is a beacon lost outright: that now shows the peer as
-  /// away for the 40 s until the next one lands. That is the trade, and it is
-  /// the right way round — a dot that goes out too early is corrected within
-  /// the minute by the person themselves, and one that stays lit is a lie
-  /// nobody can correct.
+  /// **The trade this used to describe has been paid off from the other side,
+  /// and this number did not move.** What 100 s no longer covered was a beacon
+  /// lost outright, which showed the peer as away for the 40 s until the next
+  /// one landed — reported on 2026-09-08 as the status reading "щойно" about
+  /// somebody who was plainly still there.
   ///
-  /// The other direction — beaconing more often so the window can shrink
-  /// without losing the margin — is radio, and radio is the heat three rounds
-  /// of this app have been spent removing. Not that.
+  /// The note here said the alternative — beaconing more often — was radio,
+  /// and radio is the heat three rounds of this app went into removing. That
+  /// was reasoned rather than measured, and the measurement says otherwise: an
+  /// "online" beacon only goes out while the app is on screen, so a 99-minute
+  /// field log holds four rounds. [MessagingService.presenceHeartbeat] is 45 s
+  /// now, which fits two whole beacons inside this window at a cost of about
+  /// two extra rounds an hour on a phone somebody is looking at.
+  ///
+  /// So both reports are answered at once: one lost beacon no longer dims
+  /// anybody, and a phone that dies without a goodbye still goes dark in the
+  /// same 100 s — which is the half that must not grow, because a dot that
+  /// stays lit is a lie nobody can correct.
   static const Duration ttl = Duration(seconds: 100);
 
   bool get isFresh => DateTime.now().difference(at) < ttl;

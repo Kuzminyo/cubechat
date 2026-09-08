@@ -208,9 +208,12 @@ class MessagingService {
     // its sender's announcement has landed, and the two race; the roster
     // changing is the moment the answer may have arrived, so it is the moment
     // to try what was held. See [_holdUnverified].
-    _ref.listen(
+    _ref.listen<Map<String, KnownPeer>>(
       knownPeersControllerProvider,
-      (_, __) => unawaited(_replayHeldUnverified()),
+      (previous, next) {
+        unawaited(_replayHeldUnverified());
+        _greetNewPeers(previous, next);
+      },
     );
     _startFileQueueTimer();
     _wireNostrFallback();
@@ -2348,8 +2351,29 @@ class MessagingService {
   /// "read by" possible there at all.
   ///
   /// Best-effort: a send failure rolls the ack back so the next view retries.
-  Future<void> sendReadReceipts(String canonicalId) =>
-      _timed('sendReadReceipts', () => _sendReadReceipts(canonicalId));
+  /// Chats with a receipt sweep already running.
+  ///
+  /// The sweep is triggered from several places at once — a chat opening, a
+  /// relay connecting, a message arriving into the open chat — and it awaits
+  /// two box loads and a publish per slice. Without a guard those calls
+  /// overlap, and each one snapshots the unacknowledged set before any of the
+  /// others has recorded what it sent. A field log shows the shape exactly:
+  /// six sweeps of one chat inside 1.2 seconds, sending 1, 2, 3, 4, 4 and 4
+  /// acknowledgements — the same handful of ids published six times over.
+  ///
+  /// Dropping the overlapping call rather than queueing it, because they are
+  /// all asking the same question and the one already running will answer it
+  /// with the newer state anyway.
+  final Set<String> _receiptSweeps = <String>{};
+
+  Future<void> sendReadReceipts(String canonicalId) async {
+    if (!_receiptSweeps.add(canonicalId)) return;
+    try {
+      await _timed('sendReadReceipts', () => _sendReadReceipts(canonicalId));
+    } finally {
+      _receiptSweeps.remove(canonicalId);
+    }
+  }
 
   /// How long one of these actually blocked the thread it ran on.
   ///
@@ -8491,7 +8515,29 @@ class MessagingService {
   /// sitting still with the app open, which is exactly what "it gets warm doing
   /// nothing" is made of. At 70 s two beacons still fit inside the TTL with
   /// ten seconds to spare, and the dot behaves identically.
-  static const Duration presenceHeartbeat = Duration(seconds: 70);
+  /// **45 s, down from 70 on 2026-09-08.**
+  ///
+  /// The beacon's period had crept up against its own validity.
+  /// [PeerPresence.ttl] is 100 s, so at 70 s a single lost beacon left a
+  /// thirty-second hole and the other phone fell back to "last seen recently"
+  /// about somebody who was sitting there — reported in exactly those words.
+  /// The obvious repair, widening the TTL, is the one that cannot be made:
+  /// 150 s was what it used to be, and it was cut to 100 on 2026-09-04 because
+  /// a phone that loses its network sends no goodbye and stayed lit for the
+  /// whole window. Both complaints are real and they pull opposite ways.
+  ///
+  /// What resolves them is the gap between the two numbers, and closing it
+  /// from this side costs almost nothing — which is a measurement, not a
+  /// guess, and the reason the note on [PeerPresence.ttl] refused this. An
+  /// "online" beacon is sent only while the app is on screen, so a 99-minute
+  /// field log contains **four** rounds, not the eighty-five a 70-second timer
+  /// would suggest. Going to 45 s multiplies four by about one and a half, on
+  /// the one phone whose screen is already lit.
+  ///
+  /// Two whole beacons now fit inside the window, so losing one changes
+  /// nothing, and a phone that dies without a goodbye still dims inside the
+  /// same 100 s it did yesterday.
+  static const Duration presenceHeartbeat = Duration(seconds: 45);
 
   /// Most peers one heartbeat will reach. Each beacon is a signed frame
   /// published to every configured relay, so this bounds a pathological roster
@@ -8610,6 +8656,70 @@ class MessagingService {
       }
     } finally {
       _presenceInFlight = false;
+    }
+  }
+
+  /// Say hello to somebody who has just entered the roster.
+  ///
+  /// The heartbeat only ever tells the people already in it, so a contact
+  /// added a moment ago heard nothing until the next tick — reported as a new
+  /// friend taking a minute to come online, and it was not the minute, it was
+  /// that nobody had said anything to them at all yet.
+  ///
+  /// Not through [announcePresence]: that throttles a repeat of the same
+  /// status within twenty seconds, which is right for re-stating something to
+  /// everybody and wrong here. This is not a repeat — it is the first thing
+  /// this person has ever been told, and the throttle would swallow it exactly
+  /// when contacts are added, which is in bursts.
+  void _greetNewPeers(
+    Map<String, KnownPeer>? previous,
+    Map<String, KnownPeer> next,
+  ) {
+    if (previous == null || next.length <= previous.length) return;
+    if (!AppLifecycle.instance.isForeground) return;
+    if (_nostr == null) return;
+    final arrived = <KnownPeer>[
+      for (final e in next.entries)
+        if (!previous.containsKey(e.key) && !e.value.isBlocked) e.value,
+    ];
+    if (arrived.isEmpty) return;
+    unawaited(_greetPeers(arrived));
+  }
+
+  Future<void> _greetPeers(List<KnownPeer> peers) async {
+    final body = PresenceBeacon(
+      online: true,
+      hideLastSeen: !_ref.read(privacySettingsProvider).shareLastSeen,
+    ).encode();
+    var sent = 0;
+    for (final peer in peers) {
+      if (_disposed) return;
+      final Uint8List peerPub;
+      try {
+        peerPub = _hexDecodeBytes(peer.pubkeyHex);
+      } catch (_) {
+        continue;
+      }
+      try {
+        final n = await _sendControlToPeer(
+          canonicalId: peer.pubkeyHex,
+          peerPub: peerPub,
+          type: InnerPayloadType.presence,
+          innerBody: body,
+          // Whatever road exists, like the arrival beacon it is a special case
+          // of: a contact met over Bluetooth may have no relay address at all.
+          relayOnly: false,
+        );
+        if (n > 0) sent++;
+      } catch (e) {
+        DebugLog.instance.log(
+            'PRESENCE', 'hello to ${_short(peer.pubkeyHex)}: $e');
+      }
+      await Future<void>.delayed(relayFanoutPacing);
+    }
+    if (sent > 0) {
+      DebugLog.instance
+          .log('PRESENCE', 'said hello to $sent new contact(s)');
     }
   }
 
