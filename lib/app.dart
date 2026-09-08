@@ -109,7 +109,38 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       _startDiscovery();
       _refreshPushRegistration();
       _announceOnLaunch();
+      _pushUnreadTotal();
     });
+  }
+
+  /// Keep the icon's number equal to the number of unread *messages*.
+  ///
+  /// The badge was built from the notification service's own thread map, which
+  /// lives in memory: empty on every cold start, so a phone reopened after a
+  /// night showed nothing waiting, and counting banners rather than messages —
+  /// a banner is raised only when the app is not looking at that chat.
+  ///
+  /// The chats list has always known the real answer, and this is the same sum
+  /// it draws: unread per chat against that chat's read marker, with map
+  /// beacons left out because nobody wrote them. Asked for as "счетчик смс а
+  /// не чатов".
+  void _pushUnreadTotal() {
+    if (!mounted) return;
+    final messages = ref.read(messagesControllerProvider);
+    final markers = ref.read(readMarkersControllerProvider);
+    final summaries = ref.read(messagesControllerProvider.notifier).summaries;
+    var total = 0;
+    for (final entry in messages.entries) {
+      total += unreadMessageCount(entry.value, markers[entry.key]);
+    }
+    // Conversations whose history has not been read off disk yet still have a
+    // summary, and the tile counts from it — so the badge must too, or it
+    // undercounts for the first moments of every launch.
+    for (final entry in summaries.entries) {
+      if (messages.containsKey(entry.key)) continue;
+      total += entry.value.unreadAfter(markers[entry.key]);
+    }
+    unawaited(NotificationService.instance.setUnreadTotal(total));
   }
 
   /// Say we are here, once, on a launch.
@@ -513,6 +544,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   @override
   Widget build(BuildContext context) {
+    // The badge follows the two things that decide it: what has arrived, and
+    // how far each chat has been read. Listened rather than watched — the
+    // number goes to the platform, not into this tree, so rebuilding the whole
+    // app for it would be a frame spent on nothing.
+    ref.listen(messagesControllerProvider, (_, __) => _pushUnreadTotal());
+    ref.listen(readMarkersControllerProvider, (_, __) => _pushUnreadTotal());
     final locale = ref.watch(localeControllerProvider);
     // Touch the background-mode controller so it builds at startup and applies
     // the persisted preference. (Foreground-service start is (re)triggered on

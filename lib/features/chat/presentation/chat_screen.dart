@@ -3595,7 +3595,22 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     // no-ops. Nothing about what "read" means changes.
     final history = ref.read(messagesControllerProvider)[widget.canonicalId];
     if (history == null || history.isEmpty) return;
-    final newest = history.last.sentAt;
+    // The latest stamp in the list, not the stamp of the last entry.
+    //
+    // `history.last` is the last message to *arrive*, and since 956 a message
+    // carries the **sender's** clock rather than the moment it landed. A batch
+    // delivered out of order — which is every relay backlog, and every burst
+    // spread across three relays — routinely ends on a message stamped earlier
+    // than one already in the list. The marker then sits below its own
+    // conversation, `markRead` refuses to move backwards so it is stuck there,
+    // and every message above it reads as unread for ever.
+    //
+    // Exactly the report: open the chat, one or two go blue, the rest stay
+    // unread on the tile, and only "mark as read" clears them. The sweep said
+    // so once it was asked — `nothing to ack … 4 not read yet` eight times in
+    // forty seconds, the same four each time.
+    final newest = newestSentAt(history);
+    if (newest == null) return;
     ref
         .read(readMarkersControllerProvider.notifier)
         .markRead(widget.canonicalId, at: newest);

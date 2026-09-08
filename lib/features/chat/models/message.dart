@@ -41,6 +41,31 @@ enum MessageKind { text, image, audio, file, poll }
 
 enum MessageRoute { bluetooth, mesh, internet, queued }
 
+/// The latest moment anything in [history] was *sent*.
+///
+/// Not `history.last.sentAt`, which is what the chat screen used to hand the
+/// read marker. That is the last message to **arrive**, and since 956 a message
+/// carries the sender's clock rather than the moment it landed — so a batch
+/// delivered out of order, which is every relay backlog and every burst spread
+/// across three relays, routinely ends on a message stamped earlier than one
+/// already in the list.
+///
+/// The read marker never moves backwards, by design. Set from the wrong end it
+/// therefore sticks below its own conversation, and every message above it
+/// reads as unread for ever — "open the chat, one or two go blue, the rest stay
+/// unread on the tile, and only mark-as-read clears them". That button works
+/// because it passes no timestamp at all and gets `now()`.
+///
+/// Null for an empty history, which has no newest anything.
+DateTime? newestSentAt(List<Message> history) {
+  if (history.isEmpty) return null;
+  var newest = history.first.sentAt;
+  for (final m in history) {
+    if (m.sentAt.isAfter(newest)) newest = m.sentAt;
+  }
+  return newest;
+}
+
 @immutable
 class Message {
   const Message({

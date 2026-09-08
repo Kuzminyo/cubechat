@@ -22,7 +22,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-07-wake-tag';
+const VERSION = '2026-09-08-one-doorbell-per-message';
 
 const RECIPIENT_TAG = 'p';
 
@@ -727,11 +727,25 @@ function alreadySeen(id) {
 /// help — a spammer signs with their own key quite happily — so the bound has
 /// to be on the ringing, not on the sender.
 ///
-/// Coalescing rather than dropping, and it costs nothing real: this push says
-/// "you have mail" and nothing else. Two events ten seconds apart mean one
-/// doorbell either way; the app fetches everything waiting once it is awake.
+/// **The per-message gap is gone; the hourly ceiling is what bounds a flood.**
+///
+/// It read: "coalescing rather than dropping, and it costs nothing real: this
+/// push says 'you have mail' and nothing else. Two events ten seconds apart
+/// mean one doorbell either way; the app fetches everything waiting once it is
+/// awake." True of *waking*, and the reason the ceiling stays. False of what
+/// the phone's owner is actually looking at.
+///
+/// While the app is closed, the doorbell's banners **are** the notification
+/// list — the app is not running to draw its own — so one every fifteen
+/// seconds meant six stickers appearing as two. Reported as exactly that, and
+/// it is the same complaint that removed `apns-collapse-id` on 2026-09-02: a
+/// notice that stands in for several is read as messages going missing.
+///
+/// So the bound is the ceiling alone. A burst of six rings six times, which is
+/// what happened; a burst of six hundred rings sixty and then stops, which is
+/// what the ceiling is for. The gap was a second limiter doing the first one's
+/// job badly and costing the truth.
 const lastWake = new Map();
-const WAKE_GAP_MS = 15_000;
 const WAKE_MAX_PER_HOUR = 60;
 const HOUR_MS = 3_600_000;
 
@@ -746,7 +760,6 @@ function shouldWake(npub) {
     entry.hourStart = now;
     entry.count = 0;
   }
-  if (now - entry.at < WAKE_GAP_MS) return false;
   if (entry.count >= WAKE_MAX_PER_HOUR) {
     // One line an hour, not one a message: the point of the ceiling is to stop
     // a flood, and a log that floods alongside it defeats half of that.

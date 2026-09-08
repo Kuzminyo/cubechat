@@ -328,8 +328,29 @@ class NotificationService {
     }
   }
 
+  /// The app's own count of unread messages, when it has one.
+  ///
+  /// [_unreadTotal] is built from [_threads], which lives in memory and is
+  /// empty on every cold start — so the badge counted only what arrived while
+  /// this process happened to be running, and a phone reopened after a night
+  /// showed nothing waiting. Worse, it counts *banners*, and a banner is
+  /// raised only when the app is not looking at that chat.
+  ///
+  /// The chats list already knows the real answer: unread messages, per chat,
+  /// against the read marker, with map beacons excluded because nobody wrote
+  /// them. `app.dart` pushes that sum here, and it wins whenever it has been
+  /// told one. Asked for as "счетчик смс а не чатов".
+  int? _appUnread;
+
+  Future<void> setUnreadTotal(int total) async {
+    if (_appUnread == total) return;
+    _appUnread = total;
+    await _syncBadge();
+  }
+
   /// Everything waiting across every conversation — what the iOS icon shows.
   int get _unreadTotal =>
+      _appUnread ??
       _threads.values.fold(0, (sum, t) => sum + t.inboundCount);
 
   /// A notification id nothing else is using.
