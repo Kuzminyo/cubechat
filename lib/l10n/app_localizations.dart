@@ -740,6 +740,24 @@ abstract class AppLocalizations {
   /// **'Verified'**
   String get bleVerified;
 
+  /// Photo editor slider.
+  ///
+  /// In en, this message translates to:
+  /// **'Brightness'**
+  String get editorAdjustBrightness;
+
+  /// Photo editor slider.
+  ///
+  /// In en, this message translates to:
+  /// **'Contrast'**
+  String get editorAdjustContrast;
+
+  /// Photo editor slider.
+  ///
+  /// In en, this message translates to:
+  /// **'Saturation'**
+  String get editorAdjustSaturation;
+
   /// Photo editor: crop and rotate. Shown as a tooltip on an icon-only control.
   ///
   /// In en, this message translates to:

@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+993
+version: 1.0.0+994
 
 environment:
   sdk: ^3.6.0
@@ -79,7 +79,6 @@ dependencies:
   # which is not in the 3.41.9 stable API here — the build fails to compile.
   # 11.23.0 needs only flutter >=3.35.0 and has no video editor (unneeded). Do
   # not bump to ^12 without a newer Flutter.
-  pro_image_editor: ^11.23.0
   # JPEG re-encode/downscale of camera & edited bytes to the BLE mesh budget
   # (the gallery path downscales natively via photo_manager instead).
   image: ^4.8.0

@@ -1133,14 +1133,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.0"
-  pro_image_editor:
-    dependency: "direct main"
-    description:
-      name: pro_image_editor
-      sha256: d0cc9516c52e775de4b02ece96f69dd9c5eebf1f9c3060ecec9a58042038f786
-      url: "https://pub.dev"
-    source: hosted
-    version: "11.23.0"
   proj4dart:
     dependency: transitive
     description:
