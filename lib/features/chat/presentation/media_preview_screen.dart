@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/floating_glass.dart';
@@ -215,11 +216,23 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 // Sending the original goes down the file path, which has no
                 // view-once flag and no viewer to burn it in — so the two are
                 // mutually exclusive rather than quietly contradictory.
+                // The brush sits up here with them now.
+                //
+                // It was down in the caption island on the argument that the
+                // three things you do to a photo before it leaves are edit,
+                // caption and send. True, but it left the island lopsided and
+                // the top bar with a gap in the middle — and editing is a
+                // change to the picture, which is the thing this bar is about.
+                if (!_asFile) ...[
+                  _TopAction(icon: Symbols.brush, onTap: _edit),
+                  const SizedBox(width: 8),
+                ],
                 if (widget.allowViewOnce && !_asFile) ...[
                   _OriginalToggle(
                     label: t.viewOnceSendLabel,
-                    // A "1": opened once and gone, which is the whole promise.
-                    icon: Icons.looks_one_rounded,
+                    // Opened once and gone. `looks_one` was a "1" in a box and
+                    // read as a page number; this is the promise itself.
+                    icon: Symbols.bomb,
                     active: _viewOnce,
                     onTap: () => setState(() => _viewOnce = !_viewOnce),
                   ),
@@ -228,10 +241,13 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (widget.allowOriginal && !_viewOnce)
                   _OriginalToggle(
                     label: t.mediaSendOriginal,
-                    icon: Icons.insert_drive_file_rounded,
+                    icon: Symbols.files,
                     active: _asFile,
                     onTap: () => setState(() => _asFile = !_asFile),
                   ),
+                // Off the right edge, which is where a chip pressed against it
+                // looks like it has been cropped.
+                const SizedBox(width: 4),
               ],
             ),
           ),
@@ -246,7 +262,10 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
             bottom: slot + (slot > 0 ? 0 : MediaQuery.paddingOf(context).bottom) + 10,
             child: FloatingGlass(
               borderRadius: 26,
-              padding: EdgeInsets.fromLTRB(_asFile ? 16 : 6, 6, 6, 6),
+              // The same left inset either way now that the brush has gone
+              // up: the smiley starts the row, and it wants the room the brush
+              // used to take rather than a gap where the brush used to be.
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -260,10 +279,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                   // Editing a photo you are about to send untouched is a
                   // contradiction (the edit would be the one thing that got
                   // re-encoded), so it stands down while "original" is on.
-                  if (!_asFile) ...[
-                    _CaptionAction(icon: Icons.brush_rounded, onTap: _edit),
-                    const SizedBox(width: 4),
-                  ],
+
                   // The same smiley the composer and the gallery caption have,
                   // opening the same panel in the same place — under the field,
                   // where the keyboard was.
@@ -330,6 +346,14 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 /// It is the one control up here that changes what the *recipient* gets rather
 /// than what this screen shows, and an unlabelled glyph for that is a guess. It
 /// also has a state, which a round icon has nowhere to put.
+/// One of the two switches that change what the *recipient* gets.
+///
+/// **The glyph alone, with the label moved into a tooltip.** Two chips each
+/// carrying a word left the row crowded enough that "Оригінал" ran off the
+/// edge of a 360-point screen — which is worse than no label, because a word
+/// cut in half reads as a bug. A round chip that fills with the brand colour
+/// when it is on says the same thing in the space of an icon, and the tooltip
+/// keeps the word for anyone who holds it.
 class _OriginalToggle extends StatelessWidget {
   const _OriginalToggle({
     required this.label,
@@ -338,6 +362,7 @@ class _OriginalToggle extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Kept, but as a tooltip rather than as text beside the glyph.
   final String label;
 
   /// What this toggle is *about*.
@@ -352,38 +377,55 @@ class _OriginalToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: active
+            ? AppColors.brandPrimary.withValues(alpha: 0.9)
+            : Colors.black.withValues(alpha: 0.45),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(9),
+            child: Icon(
+              // One icon, not a ternary between two identical ones — which
+              // is what stood here, so the on and off states looked the same.
+              // The chip's own fill and colour are what say which it is.
+              icon,
+              size: 20,
+              color: active ? AppColors.bgDeep : Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A round glyph button for the top bar, matching the two toggles beside it.
+///
+/// Not a [_RoundAction]: that one is the black disc the close button uses, and
+/// three discs of two different sizes in one row read as two rows. This is the
+/// toggles' shape with no on-state, because the brush does not stay pressed.
+class _TopAction extends StatelessWidget {
+  const _TopAction({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
-      color: active
-          ? AppColors.brandPrimary.withValues(alpha: 0.9)
-          : Colors.black.withValues(alpha: 0.45),
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                // One icon, not a ternary between two identical ones — which
-                // is what stood here, so the on and off states looked the same.
-                // The chip's own fill and colour are what say which it is.
-                icon,
-                size: 17,
-                color: active ? AppColors.bgDeep : Colors.white,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: active ? AppColors.bgDeep : Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.all(9),
+          child: Icon(icon, size: 20, color: Colors.white),
         ),
       ),
     );

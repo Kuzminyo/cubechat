@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 
 import '../../../../core/routing/page_transitions.dart';
+import '../../../../core/theme/colors.dart';
+import '../../../../core/widgets/floating_glass.dart';
 
 const SystemUiOverlayStyle _editorOverlayStyle = SystemUiOverlayStyle(
   statusBarColor: Colors.black,
@@ -10,95 +13,214 @@ const SystemUiOverlayStyle _editorOverlayStyle = SystemUiOverlayStyle(
   statusBarIconBrightness: Brightness.light,
   systemNavigationBarIconBrightness: Brightness.light,
 );
-const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
+/// The tool row, as an island on the app's own glass.
+///
+/// The package draws a plain bar bolted to the bottom edge, which is the one
+/// shape this interface does not have anywhere else — the nav bar, the chat
+/// header and the composer are all floating panes. Asked for as "сделай в
+/// остров так же само как и наш главный бар".
+///
+/// Built rather than themed because a colour cannot make a bar into an island:
+/// it needs its own inset, radius and fill. The five tools are the package's
+/// own public methods, so nothing here reimplements an editor — this is the
+/// row that calls them.
+ReactiveWidget _islandBottomBar(
+  ProImageEditorState editor,
+  Stream<void> rebuild,
+  Key key,
+) {
+  return ReactiveWidget(
+    stream: rebuild,
+    key: key,
+    builder: (context) => SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: FloatingGlass(
+          borderRadius: 26,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _EditorTool(
+                icon: Symbols.brush,
+                label: 'Paint',
+                onTap: editor.openPaintEditor,
+              ),
+              _EditorTool(
+                icon: Symbols.text_fields,
+                label: 'Text',
+                onTap: editor.openTextEditor,
+              ),
+              _EditorTool(
+                icon: Symbols.crop_rotate,
+                label: 'Crop',
+                onTap: editor.openCropRotateEditor,
+              ),
+              _EditorTool(
+                icon: Symbols.tune,
+                label: 'Tune',
+                onTap: editor.openTuneEditor,
+              ),
+              _EditorTool(
+                icon: Symbols.photo_filter,
+                label: 'Filter',
+                onTap: editor.openFilterEditor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// One tool in the island: glyph over a word, in the brand colour.
+class _EditorTool extends StatelessWidget {
+  const _EditorTool({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 22, color: AppColors.brandPrimary),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Built on each open rather than held as a `const`.
+///
+/// [AppColors] is a class of mutable statics that the theme controller
+/// rewrites when a palette is chosen — that is how a palette retints the
+/// interface rather than only its accents — so a `const` config would freeze
+/// whatever colours happened to be loaded when this library was first touched.
+ProImageEditorConfigs get _editorConfigs => ProImageEditorConfigs(
   mainEditor: MainEditorConfigs(
+    // The island above replaces the package's own bar; the rest of the chrome
+    // takes the app's colours so the editor stops looking like a different
+    // application opened on top of this one.
+    widgets: MainEditorWidgets(bottomBar: _islandBottomBar),
+    style: MainEditorStyle(
+      background: AppColors.bgDeep,
+      appBarBackground: Colors.transparent,
+      appBarColor: AppColors.textOnGlass,
+      bottomBarBackground: Colors.transparent,
+      bottomBarColor: AppColors.brandPrimary,
+    ),
     icons: MainEditorIcons(
-      closeEditor: Icons.close_rounded,
-      doneIcon: Icons.check_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
-      undoAction: Icons.undo_rounded,
-      redoAction: Icons.redo_rounded,
-      removeElementZone: Icons.delete_outline_rounded,
+      closeEditor: Symbols.close,
+      doneIcon: Symbols.check,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
+      undoAction: Symbols.undo,
+      redoAction: Symbols.redo,
+      removeElementZone: Symbols.delete_outline,
     ),
   ),
   paintEditor: PaintEditorConfigs(
     icons: PaintEditorIcons(
-      bottomNavBar: Icons.brush_rounded,
-      moveAndZoom: Icons.open_with_rounded,
-      changeOpacity: Icons.opacity_rounded,
-      // A mop, which is odd, but this Flutter has no eraser glyph — neither
-      // `ink_eraser` nor its rounded twin exist here — and "wipe it away" is
-      // at least the right verb.
-      eraser: Icons.cleaning_services_rounded,
-      lineWeight: Icons.line_weight_rounded,
-      freeStyle: Icons.edit_rounded,
-      freeStyleArrowStart: Icons.edit_rounded,
-      freeStyleArrowEnd: Icons.edit_rounded,
-      freeStyleArrowStartEnd: Icons.edit_rounded,
-      arrow: Icons.arrow_right_alt_rounded,
-      line: Icons.horizontal_rule_rounded,
-      fill: Icons.format_color_fill_rounded,
-      noFill: Icons.format_color_reset_rounded,
-      rectangle: Icons.crop_free_rounded,
+      bottomNavBar: Symbols.brush,
+      moveAndZoom: Symbols.open_with,
+      changeOpacity: Symbols.opacity,
+      // An actual eraser at last. The note here said "a mop, which is odd,
+      // but this Flutter has no eraser glyph — neither `ink_eraser` nor its
+      // rounded twin exist here". True of Material Icons and not of Material
+      // Symbols, which this file now draws from.
+      eraser: Symbols.ink_eraser,
+      lineWeight: Symbols.line_weight,
+      freeStyle: Symbols.edit,
+      freeStyleArrowStart: Symbols.edit,
+      freeStyleArrowEnd: Symbols.edit,
+      freeStyleArrowStartEnd: Symbols.edit,
+      arrow: Symbols.arrow_right_alt,
+      line: Symbols.horizontal_rule,
+      fill: Symbols.format_color_fill,
+      noFill: Symbols.format_color_reset,
+      rectangle: Symbols.crop_free,
       // Outline, not a filled disc: these are shapes you draw, and every other
       // one in this row — rectangle, hexagon, polygon — is drawn as an outline.
       // A solid circle among them looked like a colour swatch.
-      circle: Icons.circle_outlined,
-      dashLine: Icons.power_input_rounded,
-      dashDotLine: Icons.linear_scale_rounded,
-      hexagon: Icons.hexagon_rounded,
-      polygon: Icons.pentagon_rounded,
-      pixelate: Icons.grid_on_rounded,
-      blur: Icons.blur_on_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
-      undoAction: Icons.undo_rounded,
-      redoAction: Icons.redo_rounded,
+      circle: Symbols.circle,
+      dashLine: Symbols.power_input,
+      dashDotLine: Symbols.linear_scale,
+      hexagon: Symbols.hexagon,
+      polygon: Symbols.pentagon,
+      pixelate: Symbols.grid_on,
+      blur: Symbols.blur_on,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
+      undoAction: Symbols.undo,
+      redoAction: Symbols.redo,
     ),
   ),
   textEditor: TextEditorConfigs(
     icons: TextEditorIcons(
-      bottomNavBar: Icons.title_rounded,
-      fontScale: Icons.format_size_rounded,
-      resetFontScale: Icons.refresh_rounded,
-      backgroundMode: Icons.layers_rounded,
-      backButton: Icons.arrow_back_rounded,
-      applyChanges: Icons.check_rounded,
+      bottomNavBar: Symbols.title,
+      fontScale: Symbols.format_size,
+      resetFontScale: Symbols.refresh,
+      backgroundMode: Symbols.layers,
+      backButton: Symbols.arrow_back,
+      applyChanges: Symbols.check,
     ),
   ),
   cropRotateEditor: CropRotateEditorConfigs(
     icons: CropRotateEditorIcons(
-      bottomNavBar: Icons.crop_rotate_rounded,
-      rotate: Icons.rotate_90_degrees_ccw_rounded,
-      aspectRatio: Icons.crop_rounded,
-      flip: Icons.flip_rounded,
-      reset: Icons.restore_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
-      undoAction: Icons.undo_rounded,
-      redoAction: Icons.redo_rounded,
+      bottomNavBar: Symbols.crop_rotate,
+      rotate: Symbols.rotate_90_degrees_ccw,
+      aspectRatio: Symbols.crop,
+      flip: Symbols.flip,
+      reset: Symbols.restore,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
+      undoAction: Symbols.undo,
+      redoAction: Symbols.redo,
     ),
   ),
   tuneEditor: TuneEditorConfigs(
     icons: TuneEditorIcons(
-      bottomNavBar: Icons.tune_rounded,
-      brightness: Icons.brightness_6_rounded,
-      contrast: Icons.contrast_rounded,
+      bottomNavBar: Symbols.tune,
+      brightness: Symbols.brightness_6,
+      contrast: Symbols.contrast,
       // A water drop reads as "blur" or "opacity" everywhere else in this same
       // editor. Not a palette either — `hue` below already is one, and two
       // identical glyphs side by side is worse than one imprecise glyph.
-      saturation: Icons.invert_colors_rounded,
-      exposure: Icons.exposure_rounded,
-      hue: Icons.palette_rounded,
-      temperature: Icons.thermostat_rounded,
-      sharpness: Icons.shutter_speed_rounded,
-      fade: Icons.blur_off_rounded,
-      luminance: Icons.light_mode_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
-      undoAction: Icons.undo_rounded,
-      redoAction: Icons.redo_rounded,
+      saturation: Symbols.invert_colors,
+      exposure: Symbols.exposure,
+      hue: Symbols.palette,
+      temperature: Symbols.thermostat,
+      sharpness: Symbols.shutter_speed,
+      fade: Symbols.blur_off,
+      luminance: Symbols.light_mode,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
+      undoAction: Symbols.undo,
+      redoAction: Symbols.redo,
     ),
   ),
   filterEditor: FilterEditorConfigs(
@@ -107,33 +229,33 @@ const ProImageEditorConfigs _editorConfigs = ProImageEditorConfigs(
       // uses for narrowing rows down. Here "filter" means the other thing
       // entirely, and `photo_filter` is Material's own glyph for it: a frame
       // with a sparkle, the same shape Instagram and Telegram settled on.
-      bottomNavBar: Icons.photo_filter_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
+      bottomNavBar: Symbols.photo_filter,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
     ),
   ),
   blurEditor: BlurEditorConfigs(
     icons: BlurEditorIcons(
-      bottomNavBar: Icons.blur_on_rounded,
-      applyChanges: Icons.check_rounded,
-      backButton: Icons.arrow_back_rounded,
+      bottomNavBar: Symbols.blur_on,
+      applyChanges: Symbols.check,
+      backButton: Symbols.arrow_back,
     ),
   ),
   emojiEditor: EmojiEditorConfigs(
     icons: EmojiEditorIcons(
-      bottomNavBar: Icons.sentiment_satisfied_alt_rounded,
+      bottomNavBar: Symbols.sentiment_satisfied_alt,
     ),
   ),
   stickerEditor: StickerEditorConfigs(
     icons: StickerEditorIcons(
-      bottomNavBar: Icons.image_rounded,
+      bottomNavBar: Symbols.image,
     ),
   ),
   layerInteraction: LayerInteractionConfigs(
     icons: LayerInteractionIcons(
-      remove: Icons.close_rounded,
-      edit: Icons.edit_rounded,
-      rotateScale: Icons.sync_rounded,
+      remove: Symbols.close,
+      edit: Symbols.edit,
+      rotateScale: Symbols.sync,
     ),
   ),
 );

@@ -232,9 +232,19 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 # here rather than written into android/gradle.properties, because that file
 # is also read by CI, where the fault does not exist and the cost is a cold
 # Kotlin compile on every push.
+# Icon fonts are subset to what the app actually draws.
+#
+# The Flutter Gradle plugin only does this when the property is set, and
+# `flutter build apk` is what normally sets it — invoking gradlew directly, as
+# this script must on Windows, leaves it off. So every local APK carried the
+# *whole* MaterialIcons font while CI, which goes through `flutter build`, did
+# not: the two artifacts were never the same size and nobody had a reason to
+# look. Measured when `material_symbols_icons` arrived and the APK jumped from
+# 93.4 MB to 108.3 for fifty glyphs.
 & (Join-Path $root 'android\gradlew.bat') -p (Join-Path $root 'android') `
     '-Pkotlin.incremental=false' `
     '-Pkotlin.compiler.execution.strategy=in-process' `
+    '-Ptree-shake-icons=true' `
     $task --console=plain
 if ($LASTEXITCODE -ne 0) { throw "Gradle failed ($LASTEXITCODE)." }
 $sw.Stop()
