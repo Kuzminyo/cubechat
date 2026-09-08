@@ -42,11 +42,22 @@ void main() {
   });
 
   group('RelaySettings', () {
-    test('is inactive until the user opts in', () {
-      // The fallback touches a server; cubechat's promise is that it doesn't
-      // have to. So the default must be off.
-      expect(RelaySettings.initial.enabled, isFalse);
-      expect(RelaySettings.initial.isActive, isFalse);
+    test('starts on, and a stored choice still outranks that', () {
+      // Reversed in 986, deliberately and with the cost unchanged: a relay
+      // learns which two keys exchanged a frame and when, which the mesh never
+      // leaks. What tipped it is the other side — off, a message to somebody
+      // out of Bluetooth range does not arrive at all until one of you walks
+      // to the other, and silently not delivering is not a privacy property.
+      expect(RelaySettings.initial.enabled, isTrue);
+      expect(RelaySettings.initial.isActive, isTrue,
+          reason: 'the default list is non-empty, so on means running');
+    });
+
+    test('the switch is still a switch', () {
+      // The whole defence of the new default is that it is one tap away, so
+      // this is the assertion that matters more than the default itself.
+      const off = RelaySettings(enabled: false, urls: RelaySettings.defaultUrls);
+      expect(off.isActive, isFalse);
     });
 
     test('enabled with no relays is still inactive', () {

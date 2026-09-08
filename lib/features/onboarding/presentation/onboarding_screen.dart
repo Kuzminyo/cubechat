@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/notifications/push_registration.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/aurora_background.dart';
+import '../../../core/util/location_service.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/onboarding_controller.dart';
@@ -33,8 +37,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
+  /// Ask for what the app cannot ask for later.
+  ///
+  /// Both prompts are shown once by the system and never again: a refusal is
+  /// remembered, `requestAuthorization` then returns false without drawing
+  /// anything, and the only way back is Settings. So the moment somebody
+  /// finishes the intro — having just read what this app does — is the best
+  /// one there is to ask, and it was not being used.
+  ///
+  /// Location is the one that mattered. A field log read
+  /// `NOT armed: iOS location for cubechat is not set to Always`, which is a
+  /// line in a diagnostics screen nobody opens, and the ask only ever happened
+  /// if somebody went looking for map sharing. [ensureBackgroundPermission]
+  /// escalates a granted while-in-use into the Always prompt, which is the one
+  /// that lets a closed app be woken by movement.
+  ///
+  /// Neither answer blocks anything. A "no" to location leaves the map off, a
+  /// "no" to notifications leaves push registering nothing, and both are
+  /// exactly the state the app was in before it asked.
+  Future<void> _askForWhatCannotBeAskedTwice() async {
+    try {
+      await const LocationService().ensureBackgroundPermission();
+    } catch (_) {
+      // A prompt that fails is not a reason to hold up the first screen.
+    }
+    if (!mounted) return;
+    try {
+      await ref.read(pushEnabledProvider.notifier).reassert();
+    } catch (_) {
+      // Same: the switch is in the profile if this did not land.
+    }
+  }
+
   Future<void> _finish() async {
     await ref.read(onboardingControllerProvider.notifier).markSeen();
+    // Not awaited: the prompts are the system's own modal sheets, and holding
+    // the intro on screen behind them makes the app look stuck.
+    unawaited(_askForWhatCannotBeAskedTwice());
     if (!mounted) return;
     // Straight into the app rather than into profile setup: a nickname can be
     // set at any time from the profile tab, and a form is a poor first screen

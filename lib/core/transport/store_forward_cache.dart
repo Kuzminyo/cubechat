@@ -40,8 +40,22 @@ class StoredFrame {
 /// longer than the window the destination would reject it as stale. The
 /// messaging layer keeps the two aligned (both 1 hour).
 class StoreForwardCache {
+  /// Global frame ceiling.
+  ///
+  /// Two hundred was set when a media chunk could still land here, and the
+  /// comment on [maxFrameBytes] describes one photo filling it in about two
+  /// seconds. That door is shut: nothing over 2 kB is held at all, so the
+  /// worst case is now 1000 x 2 kB — two megabytes, against the two hundred
+  /// kilobytes the old ceiling was really protecting.
+  ///
+  /// A field log showed the old figure binding: `restored 200 held frame(s)
+  /// across 19 dest`, exactly at the ceiling, every frame under an hour old
+  /// because the import drops anything staler. A phone carrying mail for
+  /// nineteen people had ten slots each and was evicting real messages it had
+  /// agreed to carry. [perDestCap] is still what stops one chatty neighbour
+  /// taking the lot.
   StoreForwardCache({
-    this.capacity = 200,
+    this.capacity = 1000,
     this.perDestCap = 50,
     this.maxFrameBytes = 2048,
     this.ttl = const Duration(hours: 1),

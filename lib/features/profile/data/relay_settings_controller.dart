@@ -61,7 +61,23 @@ class RelaySettings {
     'wss://nostr.mom',
   ];
 
-  static const initial = RelaySettings(enabled: false, urls: defaultUrls);
+  /// On by default since 986, which is a deliberate reversal.
+  ///
+  /// It was off, and the reasoning still stands as a description of the cost:
+  /// a relay never sees plaintext, but it does learn which two Nostr keys
+  /// exchanged a frame and when — metadata the Bluetooth mesh never leaks. So
+  /// this is not a free default and it is not being presented as one.
+  ///
+  /// What changed is the other side of the ledger. Off, a message to somebody
+  /// who is not in Bluetooth range does not arrive at all until one of you
+  /// walks into range of the other, and a messenger that silently does not
+  /// deliver is not private, it is broken — which is how it kept being
+  /// reported. The switch is one tap away in the profile, Emergency Wipe still
+  /// turns it back off, and the relay list is still the user's to edit.
+  ///
+  /// Anybody who has already turned it off keeps it off: [_load] falls back on
+  /// this only when the box has no stored value at all.
+  static const initial = RelaySettings(enabled: true, urls: defaultUrls);
 
   /// True when the fallback should actually run.
   bool get isActive => enabled && urls.isNotEmpty;
@@ -128,7 +144,9 @@ class RelaySettingsController extends Notifier<RelaySettings> {
       final box =
           await hiveCipherProvider.openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
-      final enabled = box.get(_enabledKey) as bool? ?? false;
+      // `?? true` is the new-install default; a stored `false` is somebody's
+      // decision and outranks it.
+      final enabled = box.get(_enabledKey) as bool? ?? true;
       var stored = (box.get(_urlsKey) as List<dynamic>?)
           ?.map((e) => e.toString())
           .where(isValidRelayUrl)

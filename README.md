@@ -93,8 +93,8 @@ UI work but have no BLE.
   in a crowd where flooding costs most) and per-message deduplication
 - **Store-and-forward**: messages for an offline peer are held (encrypted) and
   delivered automatically when they come back into range
-- **Internet fallback (optional, off by default)** — when the mesh can't reach a
-  peer, the same sealed frame goes out over public Nostr relays
+- **Internet fallback (on by default, switchable off)** — when the mesh can't
+  reach a peer, the same sealed frame goes out over public Nostr relays
 - **Contact cards** — start a chat with someone who has *never* been in
   Bluetooth range: share a signed identity card as text through any other app,
   they paste it, and messages flow over the relay from the first tap
@@ -257,10 +257,18 @@ signed, so a relay carries ciphertext it cannot read. Lives in
   *same* dispatch as a BLE notification, so they get the same dedup, replay
   window, and signature checks.
 
-**Off by default, and it should be.** A relay never sees plaintext, but it does
-learn which two Nostr keys exchanged a message and when — metadata the BLE mesh
-never leaks. So it is opt-in per device (Profile → Internet fallback), the relay
-list is user-editable, and Emergency Wipe switches it back off.
+**On by default since build 986, and the cost is unchanged.** A relay never sees
+plaintext, but it does learn which two Nostr keys exchanged a message and when —
+metadata the BLE mesh never leaks. That was the reason it shipped off, and it is
+still true.
+
+What changed is the other side. Off, a message to somebody out of Bluetooth
+range does not arrive at all until one of you walks into range of the other, and
+a messenger that silently fails to deliver is not private — it is broken, which
+is how it kept being reported. So the default flipped: the switch is one tap
+away (Profile → Internet fallback), the relay list is user-editable, Emergency
+Wipe switches it back off, and a device that has already been switched off stays
+off — the new default applies only where nothing was ever stored.
 
 ### Contact cards — starting a chat with no BLE at all
 
@@ -570,7 +578,7 @@ dart run flutter_native_splash:create
       block/mute, favorites, floating Telegram-style UI, anonymous naming
 - [x] **M6** — Nostr internet fallback: secp256k1 signer, event framing, relay
       protocol, WebSocket relay pool, `MessagingService` bridge, and the relay
-      settings screen — opt-in, off by default
+      settings screen — on by default since 986, switchable off per device
 - [x] **M6.5** — Contact cards: share the signed announcement as text, import a
       peer you've never met on the mesh, and introduce yourself over the relay
       so the reply path exists — a chat that never touches Bluetooth

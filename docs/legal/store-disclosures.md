@@ -10,8 +10,10 @@ Two facts do most of the work:
 1. **There is no account and no message server.** Nothing about a conversation
    reaches us, ever.
 2. **One exception, and only one:** the push notification service at
-   `push.cubechat.tech`. It is opt-in, and it holds a public key and a device
-   token. That is the whole of what we collect.
+   `push.cubechat.tech`. It holds a public key and a device token, and that is
+   the whole of what we collect. Since build 986 its switch **starts on** — the
+   operating system's own notification prompt is still the gate, and declining
+   it means nothing is ever registered.
 
 ---
 
@@ -106,7 +108,9 @@ reviewers look for in a messenger:
   travel encrypted between devices and are stored in the app's private
   container.
 - **Location (approximate and precise)** — not collected. Shared only with
-  contacts the user picks, end-to-end encrypted, expiring after two minutes.
+  contacts the user picks, end-to-end encrypted, expiring after six minutes.
+  Sharing stays off until switched on; the permission is requested at the end
+  of first-run onboarding, which grants nothing by itself.
 
 ### Section 3 — Sensitive permissions that need a declaration
 
@@ -185,6 +189,11 @@ A short list, because these are the changes that would make a declaration false:
   and may add a data type. The current set is in `handleRegister`.
 - **Anything that uploads content anywhere** ends the "not collected" answer
   for User Content, which is the single most consequential line here.
+- **Flipping a privacy default** — the relay and the push switch both changed
+  from off to on in 986 — changes what the Privacy Policy says in §4.2 and §5,
+  and the README's paragraph on the fallback. All three moved in that commit;
+  keep it that way, because a default is what most people will actually be
+  running.
 - **A new third-party map tile source** belongs in Privacy Policy §6.
 - **Requesting the address book** would add Contacts, which is currently
   answerable as "not collected" only because the permission does not exist.

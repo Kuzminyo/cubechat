@@ -561,6 +561,14 @@ class MessagingService {
                 DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
           );
       _relayStateSub = client.stateChanges.listen((states) {
+        // A socket state can land after the service is gone: the relay pool
+        // lives on its own timers, and disposal cannot un-schedule a callback
+        // already on the queue. Reading a provider from a disposed container
+        // throws, and this is the one listener that does so on every state
+        // message. It surfaced the moment the fallback started on by default
+        // and tests began standing a real pool up — a shutdown race that was
+        // simply unreachable while the default was off.
+        if (_disposed) return;
         _ref.read(relayStatusProvider.notifier).publish(states);
         // A relay coming up is a media route appearing, exactly like a BLE
         // session doing so — and for a peer we only ever reach over the

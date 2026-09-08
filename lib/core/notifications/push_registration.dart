@@ -48,8 +48,11 @@ import '../util/platform_info.dart';
 /// The server learns that a given npub received something, and when — and since
 /// Nostr events carry the sender's pubkey, who wrote to whom. The relay already
 /// sees all of that, so this is a second observer of the same metadata rather
-/// than a new kind of exposure. It is still a real cost, which is why this is
-/// off until somebody turns it on.
+/// than a new kind of exposure. It is still a real cost. Since 986 the switch
+/// starts on rather than off — see [PushEnabled.build] for why, and for the
+/// two things that keep it from being a decision taken on somebody's behalf:
+/// the system permission prompt still gates every notification, and turning
+/// the switch off withdraws the token from the server.
 ///
 /// One thing the relay does *not* already see is added here: the language the
 /// app is set to, sent so the banner can be written in it. Two values are
@@ -318,10 +321,24 @@ class PushEnabled extends Notifier<bool> {
   Box<dynamic>? _box;
   Future<void>? _loading;
 
+  /// On by default since 986, and the system prompt is still the real gate.
+  ///
+  /// The cost is named rather than hidden: registering hands `push.cubechat.tech`
+  /// this device's public key and its APNs or FCM token, which is the only
+  /// personal data the project holds anywhere. Against it, off meant a phone
+  /// with the app closed learned nothing until it was opened — and a messenger
+  /// whose notifications depend on already having it open is the failure this
+  /// service was built to end.
+  ///
+  /// Defaulting to on costs nobody their choice: iOS and Android both ask
+  /// before a single notification can be shown, so a "no" there leaves this
+  /// registering nothing, and the switch in the profile withdraws the token
+  /// from the server whenever it is turned off. A stored `false` outranks this
+  /// default — see [_load].
   @override
   bool build() {
     unawaited(_loading = _load());
-    return false;
+    return true;
   }
 
   /// The same box the rest of the settings live in, so an emergency wipe takes
@@ -332,7 +349,9 @@ class PushEnabled extends Notifier<bool> {
       final box = await hiveCipherProvider
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
-      final stored = box.get(_key) as bool? ?? false;
+      // `?? true` is the new-install default; a stored `false` is somebody
+      // having turned it off, and that wins.
+      final stored = box.get(_key) as bool? ?? true;
       if (stored != state) state = stored;
       // Re-registered on every launch while it is on, because a token is not
       // forever: iOS hands out a new one after a restore or a reinstall, and

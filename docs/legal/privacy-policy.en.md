@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 7 September 2026**
+**Last updated: 8 September 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -78,19 +78,24 @@ passive observer cannot follow one device across the day by its address alone.
 Anyone within Bluetooth range can observe that a Cubechat device is present and
 that encrypted traffic is occurring. They cannot read it.
 
-### 4.2 Over Nostr relays (optional, off by default)
+### 4.2 Over Nostr relays (on by default, and you can switch it off)
 
-If you enable **Internet fallback**, a message the mesh could not deliver is
+When **Internet fallback** is on, a message the mesh could not deliver is
 published to public Nostr relays, which forward it to the recipient. The relay
 receives the message already sealed and signed; it cannot decrypt it.
 
 **A relay does learn metadata, and this is the most important disclosure in
 this policy:** it can see which two Nostr public keys exchanged a frame, when,
-and how large it was. The Bluetooth mesh does not leak this. That is precisely
-why the feature is **off by default and opt-in per device**.
+and how large it was. The Bluetooth mesh does not leak this.
+
+This feature was off by default until September 2026 for exactly that reason.
+It is now **on by default**, because with it off a message to somebody out of
+Bluetooth range simply does not arrive until you are near each other again. You
+can turn it off at any time in Profile → Internet fallback, and **Emergency
+Wipe** switches it off too.
 
 The relays are operated by unrelated third parties, not by us. The default list
-is editable in the app, and **Emergency Wipe** switches the feature back off.
+is editable in the app.
 
 ### 4.3 Group rooms
 
@@ -105,7 +110,15 @@ good as the care taken in sharing it.
 To wake a phone whose app is fully closed, Cubechat runs one small service at
 `push.cubechat.tech`. This is the only server we operate.
 
-**It is opt-in.** You turn it on in the app. It never sees message content.
+**It is on by default, and you can switch it off.** It never sees message
+content.
+
+Your phone's operating system asks separately before any notification can be
+shown, and if you decline there, nothing is registered at all. Turning the
+switch off in the app deletes your entry from the service. Before September
+2026 this feature was off until switched on; it now starts on, because a
+messenger whose notifications only work while it is already open is not doing
+the job.
 
 For each phone that registers, it stores:
 
@@ -141,13 +154,18 @@ fragments and delivery outcomes, not content.
 
 ## 6. Location
 
-Cubechat requests location permission for two separate features. Both are off
-until you turn them on.
+Cubechat requests location permission for two separate features. **Sharing is
+off until you turn it on**, whatever you answered to the permission prompt.
+
+The app asks for the permission once, at the end of the first-run introduction,
+because both iOS and Android show that prompt only once and remember a refusal.
+Granting it does not start sharing anything — it only means the switch will
+work when you reach for it.
 
 **Sharing your position on the map.** When enabled, your coordinates are sent
 **end-to-end encrypted, only to the specific contacts you added to your map**,
-and each beacon expires after two minutes. Switching the feature off retracts
-your pin immediately rather than letting it linger. We never receive your
+and each beacon expires after six minutes. Switching the feature off retracts
+your pin immediately rather than waiting for that to lapse. We never receive your
 location — it travels the same encrypted path as a message.
 
 **Background location on iOS ("Always").** This permission exists so the app
@@ -237,8 +255,10 @@ complain, use the contact address in section 1. You may also complain to your
 national supervisory authority.
 
 **Legal basis**, where one is required: consent for the push service and for
-location sharing (both opt-in and revocable), and legitimate interest for
-keeping the push service secure and operational.
+location sharing. Both are revocable at any moment from inside the app, and
+both sit behind an operating-system permission prompt that you answer yourself
+— declining it means nothing is collected, whatever the in-app switch says.
+Legitimate interest covers keeping the push service secure and operational.
 
 ---
 
