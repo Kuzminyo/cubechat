@@ -36,14 +36,30 @@ import sys
 from PIL import Image, ImageSequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "design-previews", "matcha-motion-v6")
+SRC = os.path.join(ROOT, "design-previews", "matcha-motion-v8")
 OUT = os.path.join(ROOT, "assets", "stickers")
 
 ANIM_SIZE = 224
-ANIM_STEP = 2
+# Every frame, because v8 has eight of them where v6 had fifty-seven.
+#
+# Dropping every second frame was right for a 25 fps flipbook and is wrong for
+# a pose sheet: v8 holds a drawing for a beat and then snaps, so half its
+# frames *are* the animation. Taking every other one keeps only the holds or
+# only the snaps.
+ANIM_STEP = 1
 ANIM_QUALITY = 58
 ANIM_METHOD = 4
 STILL_SIZE = 176
+
+# Where the timing actually is.
+#
+# The 512 px WebP masters carry no per-frame duration — Pillow reads None for
+# every frame — while the 256 px GIF beside each one carries the rhythm the
+# animation was drawn to: 1050 ms on the pose, 450 on the beat, for 67 of the
+# 72, and two other patterns for the rest. Collapsing that to one number, which
+# is what a single `duration=` does, flattens the pause the drawing depends on.
+# So: pixels from the WebP, timing from the GIF.
+FALLBACK_FRAME_MS = 80
 
 
 def frames_of(path, step):
@@ -54,13 +70,30 @@ def frames_of(path, step):
             continue
         out.append(frame.convert("RGBA").resize(
             (ANIM_SIZE, ANIM_SIZE), Image.LANCZOS))
-    return out, im.info.get("duration", 40) * step
+    return out
+
+
+def durations_of(gif_path, count, step):
+    """The per-frame timing, taken from the GIF beside the master."""
+    if not os.path.exists(gif_path):
+        return [FALLBACK_FRAME_MS] * count
+    im = Image.open(gif_path)
+    got = [
+        f.info.get("duration") or FALLBACK_FRAME_MS
+        for i, f in enumerate(ImageSequence.Iterator(im))
+        if i % step == 0
+    ]
+    if len(got) < count:
+        got += [FALLBACK_FRAME_MS] * (count - len(got))
+    return got[:count]
 
 
 def build(name):
     animated_src = os.path.join(SRC, name + ".webp")
     still_src = os.path.join(SRC, name + ".png")
-    frames, duration = frames_of(animated_src, ANIM_STEP)
+    frames = frames_of(animated_src, ANIM_STEP)
+    duration = durations_of(
+        os.path.join(SRC, name + ".gif"), len(frames), ANIM_STEP)
     animated_dst = os.path.join(OUT, name + ".webp")
     frames[0].save(
         animated_dst,

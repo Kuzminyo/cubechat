@@ -19,6 +19,33 @@ import 'message_visibility.dart';
 /// Backed by Hive (M4) so chat history survives app restarts. Each entry in
 /// the box is a `List<Map<String, dynamic>>` of messages — simple, schema-
 /// stable, no codegen TypeAdapter required.
+/// What a read receipt actually did, id by id.
+///
+/// [marked] moved a tick. [alreadyRead] matched a message that was already
+/// read — the ordinary shape of a receipt arriving twice from two relays, and
+/// not a fault. [unknown] matched nothing we sent, which is the only one of
+/// the three worth chasing.
+@immutable
+class MarkReadOutcome {
+  const MarkReadOutcome({
+    required this.marked,
+    required this.alreadyRead,
+    required this.unknown,
+  });
+
+  final int marked;
+  final int alreadyRead;
+  final int unknown;
+
+  MarkReadOutcome operator +(MarkReadOutcome other) => MarkReadOutcome(
+        marked: marked + other.marked,
+        alreadyRead: alreadyRead + other.alreadyRead,
+        // Two lookups of the same ids under two chat keys: an id unknown to
+        // both is unknown once, not twice.
+        unknown: unknown < other.unknown ? unknown : other.unknown,
+      );
+}
+
 class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// Where history actually lives. One record per message, so the cost of
   /// recording a tick or a reaction no longer grows with the length of the
@@ -404,26 +431,42 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// Returns how many of our messages the receipt actually moved, so the
   /// caller can say whether a receipt that arrived did anything. Zero is the
   /// interesting number: it means the ids in it matched nothing in this chat.
-  int markRead(String peerId, Set<String> wireIds) {
+  /// Mark ours as read, and say what became of every id in the receipt.
+  ///
+  /// Three outcomes, not one, because a bare count could not tell them apart
+  /// and a log line reading "2 id(s), 1 marked" was read as a delivery bug
+  /// when it is very likely the ordinary case: the same receipt arriving a
+  /// second time from a second relay finds the message already read, moves
+  /// nothing, and is completely correct. An id matching *no* message we sent
+  /// is the one that would be a real fault, and it was hidden behind the same
+  /// number.
+  MarkReadOutcome markRead(String peerId, Set<String> wireIds) {
     final current = state[peerId];
-    if (current == null || wireIds.isEmpty) return 0;
+    if (current == null || wireIds.isEmpty) {
+      return MarkReadOutcome(marked: 0, alreadyRead: 0, unknown: wireIds.length);
+    }
     var changed = 0;
+    final seen = <String>{};
     final now = DateTime.now();
     final list = [...current];
     for (var i = 0; i < list.length; i++) {
       final m = list[i];
-      if (m.isMine &&
-          m.wireId != null &&
-          m.status != MessageStatus.read &&
-          wireIds.contains(m.wireId)) {
-        list[i] = m.copyWith(status: MessageStatus.read, readAt: now);
-        changed++;
-      }
+      final w = m.wireId;
+      if (!m.isMine || w == null || !wireIds.contains(w)) continue;
+      seen.add(w);
+      if (m.status == MessageStatus.read) continue;
+      list[i] = m.copyWith(status: MessageStatus.read, readAt: now);
+      changed++;
     }
-    if (changed == 0) return 0;
+    final outcome = MarkReadOutcome(
+      marked: changed,
+      alreadyRead: seen.length - changed,
+      unknown: wireIds.length - seen.length,
+    );
+    if (changed == 0) return outcome;
     state = {...state, peerId: list};
     _persist(peerId, list);
-    return changed;
+    return outcome;
   }
 
   /// Remove one message from a chat by its local [messageId] — the "delete for

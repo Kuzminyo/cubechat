@@ -82,7 +82,7 @@ class MapPresenceController extends Notifier<int> {
   /// How long the same position may go unrepeated.
   ///
   /// A beacon carries [_ttl], so a pin that stops being refreshed disappears
-  /// after two minutes; re-sending is only ever about staying inside that. The
+  /// when that lapses; re-sending is only ever about staying inside it. The
   /// figure was 35 s against a 45 s tick, which meant a phone lying still on a
   /// desk re-published an identical position on *every* tick — a full X3DH
   /// derivation and Schnorr signature per map friend, every 45 seconds,
@@ -137,6 +137,21 @@ class MapPresenceController extends Notifier<int> {
   static const _deadRoundsBeforeIdle = 3;
 
   bool get _beaconIsLanding => _deadRounds < _deadRoundsBeforeIdle;
+
+  /// Consecutive attempts to locate this phone that produced nothing.
+  ///
+  /// Distinct from [_deadRounds], which counts rounds that reached nobody. A
+  /// phone can be perfectly able to send and completely unable to say where it
+  /// is — indoors, location services off, a chip that has lost the sky — and
+  /// that state was costing a twenty-second GPS session every other tick with
+  /// no end to it.
+  int _lostRounds = 0;
+
+  /// Three, matching [_deadRoundsBeforeIdle]: long enough to ride out a cold
+  /// start under a roof, short enough that a phone in a drawer stops paying.
+  static const _lostRoundsBeforeIdle = 3;
+
+  bool get _canLocate => _lostRounds < _lostRoundsBeforeIdle;
   DateTime? _lastSentAt;
   /// Where the last beacon that actually went out said we were.
   ///
@@ -335,8 +350,34 @@ class MapPresenceController extends Notifier<int> {
     // guard exists to avoid — and a send that succeeds from a stale fix is
     // what un-parks it.
     if (!_beaconIsLanding) return;
+    // And parked separately when the phone cannot find *itself*.
+    //
+    // [_beaconIsLanding] answers "is anybody receiving this", which is a
+    // different question from "can this phone produce a position at all", and
+    // only the first had a brake. A field log has six of these ninety seconds
+    // apart, unbroken:
+    //
+    //     [LOCATION] live fix failed (TimeoutException after 0:00:20) —
+    //     using last known
+    //
+    // Twenty seconds of GPS held on, every other tick, for ever, ending in the
+    // stale coordinate it would have used anyway. A phone indoors or with
+    // location services off is not a rare state and it does not resolve by
+    // being asked again a minute later.
+    if (!_canLocate) return;
     final (fix, _) = await const LocationService().current();
-    if (fix == null) return;
+    if (fix == null) {
+      _lostRounds++;
+      if (!_canLocate) {
+        DebugLog.instance.log(
+          'MAP',
+          'cannot get a fix after $_lostRounds tries — parking the radio '
+              'until one arrives on its own',
+        );
+      }
+      return;
+    }
+    _lostRounds = 0;
     _noteFix(fix);
     await _publish(fix, force: force);
   }
@@ -371,8 +412,15 @@ class MapPresenceController extends Notifier<int> {
   /// that arrived with a background wake-up is already several seconds old by
   /// the time Dart has booted enough to look at it, and re-dating it here
   /// would hide exactly the staleness the next reader is checking for.
-  void _noteStamped(StampedLocationFix stamped) =>
-      ref.read(lastLocationFixProvider.notifier).state = stamped;
+  void _noteStamped(StampedLocationFix stamped) {
+    // Any position at all un-parks the locating, wherever it came from — the
+    // subscription, a background wake-up, the map screen's own refresh. The
+    // park exists because asking again immediately is futile, not because the
+    // phone is written off: the moment one arrives on its own, the reason to
+    // hold back is gone.
+    _lostRounds = 0;
+    ref.read(lastLocationFixProvider.notifier).state = stamped;
+  }
 
   /// Hand one position to every map friend.
   ///

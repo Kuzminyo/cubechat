@@ -688,15 +688,40 @@ class MessagingService {
       );
       // A write is not a send. Relays refuse events routinely — rate limits,
       // size caps, spam heuristics — and counting a refusal as delivery is how
-      // a message disappears while the chat shows it delivered. A relay that
-      // simply went quiet is treated as acceptance: the event has most likely
-      // been stored, and falling back to store-and-forward for silence would
-      // strand messages behind one slow relay.
+      // a message disappears while the chat shows it delivered.
       if (receipt.isRefused) {
         DebugLog.instance.log(
             'NOSTR',
             'every relay refused the frame for $canonicalId '
                 '(${receipt.rejections.join('; ')})');
+        return false;
+      }
+      // Nor is silence from *everybody*.
+      //
+      // This used to read "a relay that simply went quiet is treated as
+      // acceptance: the event has most likely been stored, and falling back to
+      // store-and-forward for silence would strand messages behind one slow
+      // relay". The second half is right and the first half is too generous,
+      // because the two cases were not separated. One relay quiet while
+      // another said yes is exactly the straggler that argument is about, and
+      // it still counts as delivered — the publish settles on the first `OK`
+      // and does not wait for the rest.
+      //
+      // Every relay quiet is a different fact. Nobody said yes inside the
+      // two-second deadline, and a shipped log has it 16 times in 150
+      // publishes, alongside `relay.primal.net down (Connection closed before
+      // full header)` — which is the "смс не доходят" report, arriving as a
+      // message the chat showed as sent.
+      //
+      // Held rather than assumed, and the asymmetry is the whole argument: a
+      // frame published twice is dropped by the recipient's dedup on msgId, so
+      // a wrong guess here costs one duplicate write. A frame assumed
+      // delivered and never sent again is gone.
+      if (!receipt.isAccepted) {
+        DebugLog.instance.log(
+            'NOSTR',
+            'no relay confirmed the frame for $canonicalId — holding it '
+                '($receipt)');
         return false;
       }
       DebugLog.instance.log('NOSTR',
@@ -5456,17 +5481,25 @@ class MessagingService {
     final ids = r.msgIds.map(TransportEnvelope.hashHex).toSet();
     final messages = _ref.read(messagesControllerProvider.notifier);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    var moved = messages.markRead(canonical, ids);
-    if (canonical != peerId) moved += messages.markRead(peerId, ids);
+    var outcome = messages.markRead(canonical, ids);
+    if (canonical != peerId) outcome += messages.markRead(peerId, ids);
     // Said out loud, because "the tick never turns blue" has no other evidence
     // to work from: the frame arriving and the frame *meaning* something are
-    // different failures, and only this line tells them apart. Zero moved with
-    // ids present means the handles in the receipt match nothing we sent —
-    // which is a different bug from the receipt never arriving.
+    // different failures, and only this line tells them apart.
+    //
+    // Split three ways, because two of them used to look identical and one of
+    // those is not a fault at all. "2 id(s), 1 marked" cost an investigation
+    // on the assumption that a handle had gone missing; the far likelier
+    // reading is the same receipt arriving again from a second relay and
+    // finding the message already read, which is the mechanism working. Only
+    // `unknown` — an id matching nothing we ever sent — is worth chasing, and
+    // it now says so in that word.
     DebugLog.instance.log(
       'RECEIPT',
       'read ack from ${_short(canonical)}: ${ids.length} id(s), '
-      '$moved marked',
+      '${outcome.marked} marked'
+      '${outcome.alreadyRead > 0 ? ', ${outcome.alreadyRead} already read' : ''}'
+      '${outcome.unknown > 0 ? ', ${outcome.unknown} UNKNOWN' : ''}',
     );
   }
 
