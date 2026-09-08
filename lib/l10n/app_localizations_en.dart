@@ -410,7 +410,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editorPenArrow => 'Arrow';
 
   @override
+  String get editorPenBlur => 'Blur';
+
+  @override
   String get editorPenEraser => 'Eraser';
+
+  @override
+  String get editorLevel => 'Level';
 
   @override
   String get editorTextHint => 'Text on the photo';

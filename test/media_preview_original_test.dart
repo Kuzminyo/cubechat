@@ -4,7 +4,6 @@ import 'package:cubechat/features/chat/presentation/media_preview_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
 
 /// The way out of the photo encoder.
 ///
@@ -78,11 +77,11 @@ void main() {
       // The brush moved to the top bar and the two switches lost their words
       // — both are icon-only round chips now, with the label in a tooltip —
       // so this reaches for the glyph rather than for the text beside it.
-      expect(find.byIcon(Symbols.brush), findsOneWidget);
-      await tester.tap(find.byIcon(Symbols.files));
+      expect(find.byIcon(Icons.brush_rounded), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.file_copy_rounded));
       await tester.pumpAndSettle();
       expect(
-        find.byIcon(Symbols.brush),
+        find.byIcon(Icons.brush_rounded),
         findsNothing,
         reason: 'editing a photo you are about to send untouched is a '
             'contradiction — the edit is the one thing that would be re-encoded',

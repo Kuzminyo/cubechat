@@ -812,11 +812,23 @@ abstract class AppLocalizations {
   /// **'Arrow'**
   String get editorPenArrow;
 
+  /// Photo editor pen kind: smears the photo itself, to hide a face or a number.
+  ///
+  /// In en, this message translates to:
+  /// **'Blur'**
+  String get editorPenBlur;
+
   /// Photo editor pen kind: rubs out the drawing.
   ///
   /// In en, this message translates to:
   /// **'Eraser'**
   String get editorPenEraser;
+
+  /// Photo editor: put the horizon back to zero degrees.
+  ///
+  /// In en, this message translates to:
+  /// **'Level'**
+  String get editorLevel;
 
   /// Placeholder in the photo editor's text field.
   ///

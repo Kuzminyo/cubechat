@@ -2215,8 +2215,8 @@ class _MetaPill extends StatelessWidget {
   }
 }
 
-/// Row of reaction chips shown under a bubble. Each chip is `emoji ?count`
-/// (count hidden when 1); a chip the local user contributed to is tinted.
+/// Row of reaction chips shown under a bubble. Each chip carries the faces of
+/// who reacted and the emoji; a chip the local user contributed to is tinted.
 class _ReactionsRow extends StatelessWidget {
   const _ReactionsRow({required this.reactions, required this.onTap});
 
@@ -2233,11 +2233,100 @@ class _ReactionsRow extends StatelessWidget {
           if (entry.value.isNotEmpty)
             _ReactionChip(
               emoji: entry.key,
-              count: entry.value.length,
+              reactors: entry.value,
               mine: entry.value.contains('me'),
               onTap: onTap == null ? null : () => onTap!(entry.key),
             ),
       ],
+    );
+  }
+}
+
+/// The face of one person who reacted.
+///
+/// The reactor id is not a roster key — it is the first sixteen hex characters
+/// of the Ed25519 signing key, while the roster is keyed by the X25519
+/// identity key. Handing it straight to [PeerAvatar] draws a gradient for a
+/// seed nothing else in the app uses, so the same person appears in two sets
+/// of colours; [KnownPeersController.bySignFingerprint] is the bridge.
+class _ReactorFace extends ConsumerWidget {
+  const _ReactorFace({required this.reactorId, required this.size});
+
+  final String reactorId;
+  final double size;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (reactorId == 'me') {
+      // Our own face comes from our own avatar rather than from the roster,
+      // which has no card for this phone.
+      final name = ref.watch(nicknameControllerProvider);
+      return IdentityAvatar(
+        seed: name,
+        label: name,
+        size: size,
+        imageBytes: ref.watch(avatarProvider),
+      );
+    }
+    // Watched for the rebuild — a picture that arrives while the chat is open
+    // has to reach the chip too — and read through the notifier for the scan.
+    ref.watch(knownPeersControllerProvider);
+    final peer = ref
+        .read(knownPeersControllerProvider.notifier)
+        .bySignFingerprint(reactorId);
+    if (peer == null) {
+      // Somebody who left the roster, or a channel member we never met. The
+      // gradient still tells two strangers apart, which is all it has to do.
+      return IdentityAvatar(seed: reactorId, label: '?', size: size);
+    }
+    return PeerAvatar(
+      peerId: peer.pubkeyHex,
+      label: peer.displayName,
+      size: size,
+    );
+  }
+}
+
+/// The faces on a chip, overlapping the way a group of them always is drawn.
+class _ReactorFaces extends StatelessWidget {
+  const _ReactorFaces({required this.reactors, required this.size});
+
+  final List<String> reactors;
+  final double size;
+
+  /// How much of each face the next one covers. A third: enough to read as a
+  /// stack rather than a row, little enough that two people are still two.
+  static const double _overlapFraction = 0.34;
+
+  @override
+  Widget build(BuildContext context) {
+    final step = size * (1 - _overlapFraction);
+    return SizedBox(
+      width: size + step * (reactors.length - 1),
+      height: size,
+      child: Stack(
+        children: <Widget>[
+          // Later faces sit on top, so the stack reads left to right the way
+          // the list does.
+          for (var i = 0; i < reactors.length; i++)
+            Positioned(
+              left: step * i,
+              child: Container(
+                decoration: const BoxDecoration(shape: BoxShape.circle),
+                foregroundDecoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // A hairline in the chip's own colour, so overlapping faces
+                  // stay separate against each other.
+                  border: Border.all(
+                    color: AppColors.bgDeep.withValues(alpha: 0.55),
+                    width: 1,
+                  ),
+                ),
+                child: _ReactorFace(reactorId: reactors[i], size: size),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -2295,26 +2384,42 @@ class _ReadByChip extends StatelessWidget {
 class _ReactionChip extends StatelessWidget {
   const _ReactionChip({
     required this.emoji,
-    required this.count,
+    required this.reactors,
     required this.mine,
     required this.onTap,
   });
 
   final String emoji;
-  final int count;
+  final Set<String> reactors;
   final bool mine;
   final VoidCallback? onTap;
 
+  /// How many faces fit before the chip stops being a chip. Past this it is a
+  /// number, which is what a count is for — and in a one-to-one chat, the only
+  /// place most reactions happen, there can never be more than two.
+  static const int _maxFaces = 3;
+
   @override
   Widget build(BuildContext context) {
+    final count = reactors.length;
+    // Ours first, so the face you look for is always in the same place.
+    final ordered = <String>[
+      if (mine) 'me',
+      ...reactors.where((r) => r != 'me'),
+    ];
+    final faces = ordered.take(_maxFaces).toList();
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        // A rounded lozenge rather than a small square badge: it now sits on
-        // the bubble's own bottom line beside the clock, and at this size and
+        // A rounded lozenge rather than a small square badge: it sits on the
+        // bubble's own bottom line beside the clock, and at this size and
         // radius it reads as a chip on the message instead of a second bubble
         // stuck to it.
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        //
+        // Tighter than it was now that a face is inside it: the padding used
+        // to be what gave the chip its height, and the avatar does that on its
+        // own.
+        padding: const EdgeInsets.fromLTRB(4, 3, 8, 3),
         decoration: BoxDecoration(
           color: mine
               ? AppColors.brandPrimary.withValues(alpha: 0.26)
@@ -2329,15 +2434,21 @@ class _ReactionChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // The faces before the emoji, because "who" is the part that
+            // changes: the emoji is already on the chip you tapped, and in a
+            // chat between two people the whole question a reaction raises is
+            // which of them left it.
+            _ReactorFaces(reactors: faces, size: 15),
+            const SizedBox(width: 5),
             Text(
               emoji,
               style: const TextStyle(fontSize: 14),
               textScaler: TextScaler.noScaling,
             ),
-            if (count > 1) ...[
-              const SizedBox(width: 5),
+            if (count > _maxFaces) ...[
+              const SizedBox(width: 4),
               Text(
-                '$count',
+                '+${count - _maxFaces}',
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 11.5,

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/widgets/floating_glass.dart';
@@ -545,6 +544,27 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
           ratio: _ratio,
           onRatio: _setRatio,
           onChanged: (c) => _history.push(_history.value.copyWith(crop: c)),
+          // Live while the slider moves, one step when it stops — the same
+          // deal the adjustment sliders get, and for the same reason.
+          onTilt: (v) {
+            _beginLive();
+            _history.replace(
+              _history.value.copyWith(
+                crop: _history.value.crop.copyWith(tilt: v),
+              ),
+            );
+          },
+          onTiltEnd: (v) {
+            // Idempotent, so this is the drag's own start when there was one
+            // and the tap's own start when the level button was pressed cold.
+            _beginLive();
+            _history.replace(
+              _history.value.copyWith(
+                crop: _history.value.crop.copyWith(tilt: v),
+              ),
+            );
+            _commitLive();
+          },
         );
     }
   }
@@ -733,7 +753,7 @@ class _Canvas extends StatelessWidget {
               painter.sourceSize,
             );
         Offset by(Offset delta) =>
-            edit.crop.viewDeltaToImage(delta / scale);
+            edit.crop.viewDeltaToImage(delta / scale, painter.sourceSize);
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -1185,19 +1205,19 @@ class _Island extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               _IslandTool(
-                icon: Symbols.crop_rotate,
+                icon: Icons.crop_rotate_rounded,
                 tooltip: t.editorToolCrop,
                 active: tool == EditorTool.crop,
                 onTap: () => onPick(EditorTool.crop),
               ),
               _IslandTool(
-                icon: Symbols.brush,
+                icon: Icons.brush_rounded,
                 tooltip: t.editorToolDraw,
                 active: tool == EditorTool.draw,
                 onTap: () => onPick(EditorTool.draw),
               ),
               _IslandTool(
-                icon: Symbols.tune,
+                icon: Icons.tune_rounded,
                 tooltip: t.editorToolAdjust,
                 active: tool == EditorTool.adjust,
                 onTap: () => onPick(EditorTool.adjust),
@@ -1338,7 +1358,7 @@ class _DrawPanel extends StatelessWidget {
         Tooltip(
           message: t.editorRemove,
           child: _CircleAction(
-            icon: Symbols.delete,
+            icon: Icons.delete_rounded,
             onTap: onRemove,
             size: 18,
           ),
@@ -1399,11 +1419,12 @@ class _DrawPanel extends StatelessWidget {
 
   Widget _pens() {
     final kinds = <PenKind, (IconData, String)>{
-      PenKind.pen: (Symbols.ink_pen, t.editorPenPen),
-      PenKind.marker: (Symbols.ink_highlighter, t.editorPenMarker),
-      PenKind.neon: (Symbols.stylus, t.editorPenNeon),
-      PenKind.arrow: (Symbols.arrow_outward, t.editorPenArrow),
-      PenKind.eraser: (Symbols.ink_eraser, t.editorPenEraser),
+      PenKind.pen: (Icons.edit_rounded, t.editorPenPen),
+      PenKind.marker: (Icons.border_color_rounded, t.editorPenMarker),
+      PenKind.neon: (Icons.auto_awesome_rounded, t.editorPenNeon),
+      PenKind.arrow: (Icons.north_east_rounded, t.editorPenArrow),
+      PenKind.blur: (Icons.blur_on_rounded, t.editorPenBlur),
+      PenKind.eraser: (Icons.cleaning_services_rounded, t.editorPenEraser),
     };
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1453,9 +1474,9 @@ class _DrawPanel extends StatelessWidget {
 
   Widget _textRow() {
     final styles = <TextStyleKind, IconData>{
-      TextStyleKind.plain: Symbols.text_fields,
-      TextStyleKind.filled: Symbols.format_color_text,
-      TextStyleKind.outlined: Symbols.border_color,
+      TextStyleKind.plain: Icons.text_fields_rounded,
+      TextStyleKind.filled: Icons.format_color_fill_rounded,
+      TextStyleKind.outlined: Icons.format_color_text_rounded,
     };
     return Row(
       children: <Widget>[
@@ -1521,7 +1542,7 @@ class _DrawPanel extends StatelessWidget {
           Tooltip(
             message: t.editorRemove,
             child: _CircleAction(
-              icon: Symbols.delete,
+              icon: Icons.delete_rounded,
               onTap: onRemove,
               size: 18,
             ),
@@ -1602,75 +1623,129 @@ class _AdjustPanel extends StatelessWidget {
   }
 }
 
-/// Shapes, turning and flipping. The frame itself is dragged on the picture.
+/// Levelling, shapes, turning and flipping. The frame itself is dragged on the
+/// picture.
 class _CropPanel extends StatelessWidget {
   const _CropPanel({
     required this.value,
     required this.ratio,
     required this.onRatio,
     required this.onChanged,
+    required this.onTilt,
+    required this.onTiltEnd,
   });
 
   final PhotoCrop value;
   final double? ratio;
   final void Function(double?) onRatio;
   final void Function(PhotoCrop) onChanged;
+  final void Function(double) onTilt;
+  final void Function(double) onTiltEnd;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
+    final degrees = value.tilt * 180 / math.pi;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: FloatingGlass(
         borderRadius: 22,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.fromLTRB(10, 2, 10, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 44,
+                  child: Text(
+                    // One decimal: a horizon is out by fractions of a degree
+                    // and a whole-number readout would sit on 0 through the
+                    // whole first part of the drag.
+                    '${degrees >= 0 ? '+' : ''}${degrees.toStringAsFixed(1)}°',
+                    style: TextStyle(
+                      color: value.tilt == 0
+                          ? AppColors.textOnGlassDim
+                          : AppColors.brandPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const <FontFeature>[
+                        FontFeature.tabularFigures(),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Slider(
+                    value: value.tilt.clamp(-PhotoCrop.maxTilt, PhotoCrop.maxTilt),
+                    min: -PhotoCrop.maxTilt,
+                    max: PhotoCrop.maxTilt,
+                    onChanged: onTilt,
+                    onChangeEnd: onTiltEnd,
+                  ),
+                ),
+                // Back to level in one tap. Finding zero again by dragging a
+                // slider whose whole range is thirty degrees is a job.
+                Tooltip(
+                  message: t.editorLevel,
+                  child: _CircleAction(
+                    icon: Icons.straighten_rounded,
+                    onTap: value.tilt == 0 ? null : () => onTiltEnd(0),
+                    size: 18,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
             Tooltip(
               message: t.editorCropFree,
               child: _CircleAction(
-                icon: Symbols.crop_free,
+                icon: Icons.crop_free_rounded,
                 onTap: () => onRatio(null),
                 filled: ratio == null,
                 size: 20,
               ),
             ),
             _CircleAction(
-              icon: Symbols.crop_square,
+              icon: Icons.crop_square_rounded,
               onTap: () => onRatio(1),
               filled: ratio == 1,
               size: 20,
             ),
             _CircleAction(
-              icon: Symbols.crop_portrait,
+              icon: Icons.crop_portrait_rounded,
               onTap: () => onRatio(4 / 5),
               filled: ratio == 4 / 5,
               size: 20,
             ),
             _CircleAction(
-              icon: Symbols.crop_16_9,
+              icon: Icons.crop_16_9_rounded,
               onTap: () => onRatio(16 / 9),
               filled: ratio == 16 / 9,
               size: 20,
             ),
             _CircleAction(
-              icon: Symbols.rotate_90_degrees_ccw,
+              icon: Icons.rotate_90_degrees_ccw_rounded,
               onTap: () => onChanged(
                 value.copyWith(quarterTurns: value.quarterTurns - 1),
               ),
               size: 20,
             ),
             _CircleAction(
-              icon: Symbols.flip,
+              icon: Icons.flip_rounded,
               onTap: () => onChanged(value.copyWith(flipped: !value.flipped)),
               filled: value.flipped,
               size: 20,
             ),
-            _CircleAction(
-              icon: Symbols.restore,
-              onTap: () => onChanged(PhotoCrop.none),
-              size: 20,
+                _CircleAction(
+                  icon: Icons.restore_rounded,
+                  onTap: () => onChanged(PhotoCrop.none),
+                  size: 20,
+                ),
+              ],
             ),
           ],
         ),

@@ -26,6 +26,14 @@ enum PenKind {
   /// at a face in a crowd, not at the middle of an empty wall.
   arrow,
 
+  /// Smears the photograph itself wherever it is dragged.
+  ///
+  /// Not a colour but a hole onto a blurred copy of the picture, so a face, a
+  /// number plate or an address in a document goes before the photo does. The
+  /// one tool here that exists for the same reason the app does, which is why
+  /// it is a pen and not a setting: you point at the thing you want gone.
+  blur,
+
   /// Clears the drawing layer. Not the photograph, and not the stickers or
   /// text — those are painted above it, which is what makes that true by
   /// construction rather than by a check.
@@ -262,23 +270,61 @@ class PhotoCrop {
     this.rect = full,
     this.quarterTurns = 0,
     this.flipped = false,
+    this.tilt = 0,
   });
 
   static const none = PhotoCrop();
   static const full = Rect.fromLTWH(0, 0, 1, 1);
 
+  /// How far the levelling slider goes either way, in radians.
+  ///
+  /// Fifteen degrees, because straightening is what this is for and a horizon
+  /// is never more than a few degrees out. It is not free: the picture has to
+  /// be scaled up by [coverScale] to keep the corners filled, and at the far
+  /// end of this range that is already a third of the resolution.
+  static const double maxTilt = 15 * math.pi / 180;
+
   final Rect rect;
   final int quarterTurns;
   final bool flipped;
 
-  bool get isIdentity => rect == full && quarterTurns % 4 == 0 && !flipped;
+  /// A small rotation, in radians, on top of the quarter turns.
+  ///
+  /// Separate from [quarterTurns] because they are different operations: a
+  /// quarter turn costs nothing and changes the shape of the result, while
+  /// this one keeps the shape and pays for it in scale.
+  final double tilt;
 
-  PhotoCrop copyWith({Rect? rect, int? quarterTurns, bool? flipped}) =>
+  bool get isIdentity =>
+      rect == full && quarterTurns % 4 == 0 && !flipped && tilt == 0;
+
+  PhotoCrop copyWith({
+    Rect? rect,
+    int? quarterTurns,
+    bool? flipped,
+    double? tilt,
+  }) =>
       PhotoCrop(
         rect: rect ?? this.rect,
         quarterTurns: quarterTurns ?? this.quarterTurns,
         flipped: flipped ?? this.flipped,
+        tilt: tilt ?? this.tilt,
       );
+
+  /// How much the picture has to grow so that turning it by [tilt] leaves no
+  /// empty corner inside the frame.
+  ///
+  /// The frame keeps its size and the picture rotates under it, so each side
+  /// of the frame has to be spanned by the rotated rectangle: the standard
+  /// cover factor, taken as the worse of the two axes.
+  double coverScale(Size frame) {
+    if (tilt == 0 || frame.isEmpty) return 1;
+    final c = math.cos(tilt).abs();
+    final s = math.sin(tilt).abs();
+    final w = frame.width;
+    final h = frame.height;
+    return math.max((w * c + h * s) / w, (w * s + h * c) / h);
+  }
 
   /// The pixel rectangle [rect] names inside an image of [size].
   ///
@@ -331,20 +377,35 @@ class PhotoCrop {
   Offset outputToImage(Offset q, Size sourceSize) {
     final src = pixels(sourceSize);
     final out = outputSize(sourceSize);
+    final half = Offset(src.width / 2, src.height / 2);
     var v = q - Offset(out.width / 2, out.height / 2);
-    // Undo the painter's transform in reverse: mirror, then rotation.
+    // Undo the painter's transform in reverse: mirror, quarter turns, then
+    // the levelling rotation, which it applies last and about the frame's own
+    // centre rather than the output's.
     if (flipped) v = Offset(-v.dx, v.dy);
     v = _turn(v, -quarterTurns);
-    return v + Offset(src.width / 2, src.height / 2) + src.topLeft;
+    if (tilt != 0) {
+      v = _rotate(v, -tilt) / coverScale(src.size);
+    }
+    return v + half + src.topLeft;
   }
 
   /// A drag *on the preview*, as a movement of the original image.
   ///
-  /// A translation, so no centring is involved — but the rotation still is:
+  /// A translation, so no centring is involved — but the rotations still are:
   /// pushing a sticker to the right on a picture standing on its side has to
   /// move it down the original.
-  Offset viewDeltaToImage(Offset d) =>
-      _turn(flipped ? Offset(-d.dx, d.dy) : d, -quarterTurns);
+  Offset viewDeltaToImage(Offset d, Size sourceSize) {
+    var v = _turn(flipped ? Offset(-d.dx, d.dy) : d, -quarterTurns);
+    if (tilt != 0) v = _rotate(v, -tilt) / coverScale(pixels(sourceSize).size);
+    return v;
+  }
+
+  static Offset _rotate(Offset v, double radians) {
+    final c = math.cos(radians);
+    final s = math.sin(radians);
+    return Offset(v.dx * c - v.dy * s, v.dx * s + v.dy * c);
+  }
 
   static Offset _turn(Offset v, int quarterTurns) {
     final turns = ((quarterTurns % 4) + 4) % 4;

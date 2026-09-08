@@ -334,6 +334,37 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   bool isBlocked(String pubkeyHex) => state[pubkeyHex]?.isBlocked ?? false;
   bool isMuted(String pubkeyHex) => state[pubkeyHex]?.isMuted ?? false;
 
+  /// The peer whose Ed25519 *signing* key begins with [fingerprint].
+  ///
+  /// Reactions and channel posts identify their author by the first sixteen
+  /// hex characters of that key, while this roster is keyed by the X25519
+  /// identity key — two different keys, so a fingerprint is not a roster key
+  /// and never will be. Anything drawing a face for one of those authors has
+  /// to come through here first; handing the fingerprint straight to an avatar
+  /// gets the generated gradient for a *different* seed, so the same person
+  /// wears one set of colours in the header and another under the message.
+  ///
+  /// A linear scan of a roster that holds tens of entries, called once per
+  /// visible reaction chip. Sixteen hex characters is sixty-four bits, which
+  /// is not a collision anyone will meet.
+  KnownPeer? bySignFingerprint(String fingerprint) {
+    if (fingerprint.length < 16) return null;
+    for (final peer in state.values) {
+      final sign = peer.signPublicKey;
+      if (sign == null) continue;
+      if (_hex(sign).startsWith(fingerprint)) return peer;
+    }
+    return null;
+  }
+
+  static String _hex(Uint8List bytes) {
+    final sb = StringBuffer();
+    for (final b in bytes) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
+  }
+
   /// Record what a peer asked for about forwards of their own messages.
   ///
   /// Never called from the UI: this half of the setting is not ours to change,

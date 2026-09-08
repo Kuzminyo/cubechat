@@ -44,6 +44,8 @@ class PhotoEditPainter {
     final src = edit.crop.pixels(sourceSize);
     final out = outputSize;
 
+    final frame = Rect.fromLTWH(0, 0, src.width, src.height);
+
     canvas.save();
     _orient(canvas, src, out);
 
@@ -55,20 +57,23 @@ class PhotoEditPainter {
     if (!edit.adjust.isIdentity) {
       photo.colorFilter = ColorFilter.matrix(edit.adjust.matrix);
     }
-    canvas.drawImageRect(
-      image,
-      src,
-      Rect.fromLTWH(0, 0, src.width, src.height),
-      photo,
-    );
+    canvas.drawImageRect(image, src, frame, photo);
+
+    // Blur is a hole onto a blurred copy of the same photograph, punched
+    // through a mask made of the strokes. Drawn here, over the picture and
+    // under everything else, because it is part of the picture: a sticker put
+    // over a face must not be smeared, and the eraser must not be able to
+    // uncover what was hidden on purpose.
+    _paintBlur(canvas, src, frame, photo);
 
     // The drawing goes in its own layer, because an eraser has to clear the
     // marks and not the photograph under them. BlendMode.clear against the
     // page would punch a hole through to nothing.
-    if (edit.strokes.isNotEmpty) {
-      canvas.saveLayer(Rect.fromLTWH(0, 0, src.width, src.height), Paint());
+    final drawn = edit.strokes.where((s) => s.kind != PenKind.blur).toList();
+    if (drawn.isNotEmpty) {
+      canvas.saveLayer(frame, Paint());
       canvas.translate(-src.left, -src.top);
-      for (final stroke in edit.strokes) {
+      for (final stroke in drawn) {
         _paintStroke(canvas, stroke);
       }
       canvas.restore();
@@ -97,13 +102,77 @@ class PhotoEditPainter {
   /// same place as the layer it frames, and a second hand-written copy of this
   /// transform is a frame that drifts as soon as one of the two is touched.
   void _orient(ui.Canvas canvas, Rect src, Size out) {
-    if (edit.crop.quarterTurns % 4 == 0 && !edit.crop.flipped) return;
-    canvas.translate(out.width / 2, out.height / 2);
-    if (edit.crop.flipped) canvas.scale(-1, 1);
-    canvas.rotate(edit.crop.quarterTurns * math.pi / 2);
-    // Back to the *unrotated* frame, which is what the crop rect is in.
+    final crop = edit.crop;
+    if (crop.quarterTurns % 4 != 0 || crop.flipped) {
+      canvas.translate(out.width / 2, out.height / 2);
+      if (crop.flipped) canvas.scale(-1, 1);
+      canvas.rotate(crop.quarterTurns * math.pi / 2);
+      // Back to the *unrotated* frame, which is what the crop rect is in.
+      canvas.translate(-src.width / 2, -src.height / 2);
+    }
+    if (crop.tilt == 0) return;
+    // Levelling turns the picture under a frame that keeps its size, so the
+    // spill has to be cut off before the rotation rather than relied on the
+    // canvas being exactly the output size — on the preview it is not.
+    //
+    // Applied here rather than only to the photograph, so that a mark drawn
+    // on something and the something it was drawn on stay together when the
+    // horizon is straightened afterwards.
+    canvas.clipRect(Rect.fromLTWH(0, 0, src.width, src.height));
+    canvas.translate(src.width / 2, src.height / 2);
+    canvas.rotate(crop.tilt);
+    final cover = crop.coverScale(src.size);
+    canvas.scale(cover);
     canvas.translate(-src.width / 2, -src.height / 2);
   }
+
+  /// The blurred cut-outs, if any.
+  ///
+  /// Grouped by brush width because the strength of the blur follows it — a
+  /// fat brush hides a face, a thin one a line of text — and one pass per
+  /// group is one pass per width rather than one per stroke.
+  void _paintBlur(ui.Canvas canvas, Rect src, Rect frame, Paint photo) {
+    final groups = <double, List<Stroke>>{};
+    for (final stroke in edit.strokes) {
+      if (stroke.kind == PenKind.blur) {
+        groups.putIfAbsent(stroke.width, () => <Stroke>[]).add(stroke);
+      }
+    }
+    for (final entry in groups.entries) {
+      canvas.saveLayer(frame, Paint());
+      canvas.save();
+      canvas.translate(-src.left, -src.top);
+      for (final stroke in entry.value) {
+        _paintStroke(canvas, stroke);
+      }
+      canvas.restore();
+      // srcIn keeps only what the mask covers; the filter on the layer is
+      // what does the hiding. Sigma follows the brush, so a wider stroke is
+      // not just a bigger patch but a stronger smear — the alternative is a
+      // fixed sigma that is too weak on a big face and mush on a small one.
+      canvas.saveLayer(
+        frame,
+        Paint()
+          ..blendMode = BlendMode.srcIn
+          ..imageFilter = ui.ImageFilter.blur(
+            sigmaX: entry.key * _blurPerPixel,
+            sigmaY: entry.key * _blurPerPixel,
+            tileMode: TileMode.decal,
+          ),
+      );
+      canvas.drawImageRect(image, src, frame, photo);
+      canvas.restore();
+      canvas.restore();
+    }
+  }
+
+  /// Blur radius per pixel of brush width.
+  ///
+  /// Three quarters: at the default brush that is a sigma of about ten image
+  /// pixels, which on a phone photograph turns a face into a shape and leaves
+  /// nothing a crop and an upscale can bring back. Lower and it reads as a
+  /// soft focus somebody might undo.
+  static const double _blurPerPixel = 0.75;
 
   /// Outline the layer the finger is holding. **Preview only** — nothing calls
   /// this on the export path, which is why the frame cannot end up in a sent
@@ -187,7 +256,13 @@ class PhotoEditPainter {
   static Paint _strokePaint(Stroke stroke) {
     final marker = stroke.kind == PenKind.marker;
     return Paint()
-      ..color = stroke.erase
+      // A blur stroke is a mask, so its colour is only ever "opaque". Taking
+      // the palette colour instead would work until somebody added a
+      // translucent one, and then the hiding would be partial — which for
+      // this tool is the same as not working.
+      ..color = stroke.kind == PenKind.blur
+          ? const Color(0xFFFFFFFF)
+          : stroke.erase
           ? const Color(0xFF000000)
           // A highlighter stains rather than covers. Translucency is applied
           // to the whole path in one draw, not per segment, so a slow hand

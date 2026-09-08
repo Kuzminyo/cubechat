@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -309,6 +310,47 @@ void main() {
       });
     });
 
+    testWidgets('the blur pen smears the photograph itself', (tester) async {
+      await tester.runAsync(() async {
+        // A hard black/white edge down the middle. A blur is only visible
+        // against contrast, so a flat colour would pass this test whether or
+        // not anything happened.
+        final source = img.Image(width: 64, height: 40);
+        for (var y = 0; y < 40; y++) {
+          for (var x = 0; x < 64; x++) {
+            final v = x < 32 ? 0 : 255;
+            source.setPixelRgb(x, y, v, v, v);
+          }
+        }
+        final image = await decodeForEditing(
+          Uint8List.fromList(img.encodeJpg(source, quality: 100)),
+        );
+        addTearDown(image.dispose);
+
+        final bytes = await renderEdit(PhotoEditPainter(
+          image: image,
+          edit: const PhotoEdit(
+            strokes: <Stroke>[
+              Stroke(
+                points: <ui.Offset>[Offset(32, 0), Offset(32, 40)],
+                color: Color(0xFFFFFFFF),
+                width: 24,
+                kind: PenKind.blur,
+              ),
+            ],
+          ),
+        ));
+        final decoded = img.decodeJpg(bytes)!;
+        // Just inside the black half, under the stroke: white has bled in.
+        expect(decoded.getPixel(28, 20).r, greaterThan(40),
+            reason: 'the edge is smeared where the brush went');
+        // Outside the stroke the picture is untouched, which is what makes it
+        // a brush and not a filter.
+        expect(decoded.getPixel(4, 20).r, lessThan(30));
+        expect(decoded.getPixel(60, 20).r, greaterThan(225));
+      });
+    });
+
     testWidgets('the eraser rubs out the drawing and not a sticker',
         (tester) async {
       await tester.runAsync(() async {
@@ -413,16 +455,61 @@ void main() {
         rect: Rect.fromLTWH(0.25, 0, 0.5, 1),
         quarterTurns: 1,
       );
-      final d = crop.viewDeltaToImage(const Offset(10, 0));
+      final d = crop.viewDeltaToImage(const Offset(10, 0), source);
       expect(d.dx, closeTo(0, 1e-9));
       expect(d.dy, closeTo(-10, 1e-9), reason: 'right on screen is up here');
     });
 
     test('untouched, a drag is itself', () {
       expect(
-        PhotoCrop.none.viewDeltaToImage(const Offset(3, -7)),
+        PhotoCrop.none.viewDeltaToImage(const Offset(3, -7), source),
         const Offset(3, -7),
       );
+    });
+  });
+
+  group('levelling', () {
+    const source = Size(100, 50);
+
+    test('untouched is level, and level is untouched', () {
+      expect(PhotoCrop.none.tilt, 0);
+      expect(const PhotoCrop(tilt: 0.05).isIdentity, isFalse,
+          reason: 'a tilted picture is an edit, so the export must run');
+      expect(PhotoCrop.none.coverScale(source), 1);
+    });
+
+    test('the picture grows enough to leave no empty corner', () {
+      // A frame turned inside itself must still be covered: at 15 degrees on
+      // a 2:1 crop that is a third of the picture's width again. Under this
+      // number the corners come out black, which is the whole reason it
+      // exists.
+      const crop = PhotoCrop(tilt: PhotoCrop.maxTilt);
+      final k = crop.coverScale(source);
+      expect(k, greaterThan(1.3));
+      final c = math.cos(PhotoCrop.maxTilt).abs();
+      final s = math.sin(PhotoCrop.maxTilt).abs();
+      expect(k * (100 * c + 50 * s) / 100, greaterThanOrEqualTo(1));
+    });
+
+    test('a touch still lands where the finger is', () {
+      // The levelling turns about the frame's own centre, so the centre is the
+      // one point it cannot move. Everything else is checked by the round
+      // trip below.
+      const crop = PhotoCrop(tilt: 0.2);
+      final p = crop.outputToImage(const Offset(50, 25), source);
+      expect(p.dx, closeTo(50, 1e-6));
+      expect(p.dy, closeTo(25, 1e-6));
+    });
+
+    test('a drag is turned by the levelling too', () {
+      // Dragging to the right on a picture levelled by 0.2 rad has to move a
+      // sticker along the *picture*, not along the screen — otherwise it
+      // slides off whatever it was put on as soon as the horizon is fixed.
+      const crop = PhotoCrop(tilt: 0.2);
+      final d = crop.viewDeltaToImage(const Offset(10, 0), source);
+      expect(d.dy, lessThan(0), reason: 'the picture is turned under it');
+      expect(d.distance, lessThan(10), reason: 'and scaled up, so a screen '
+          'pixel is less than an image pixel');
     });
   });
 

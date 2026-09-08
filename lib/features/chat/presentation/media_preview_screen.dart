@@ -2,10 +2,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../../core/widgets/view_once_icon.dart';
 import '../../../l10n/app_localizations.dart';
 import 'widgets/emoji_sticker_panel.dart';
 import 'widgets/image_editor.dart';
@@ -224,15 +224,16 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 // the top bar with a gap in the middle — and editing is a
                 // change to the picture, which is the thing this bar is about.
                 if (!_asFile) ...[
-                  _TopAction(icon: Symbols.brush, onTap: _edit),
+                  _TopAction(icon: Icons.brush_rounded, onTap: _edit),
                   const SizedBox(width: 8),
                 ],
                 if (widget.allowViewOnce && !_asFile) ...[
                   _OriginalToggle(
                     label: t.viewOnceSendLabel,
                     // Opened once and gone. `looks_one` was a "1" in a box and
-                    // read as a page number; this is the promise itself.
-                    icon: Symbols.bomb,
+                    // read as a page number, and `Symbols.bomb` said nothing
+                    // about "once"; this one is drawn and says both.
+                    icon: (c) => ViewOnceIcon(size: 20, color: c),
                     active: _viewOnce,
                     onTap: () => setState(() => _viewOnce = !_viewOnce),
                   ),
@@ -241,7 +242,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                 if (widget.allowOriginal && !_viewOnce)
                   _OriginalToggle(
                     label: t.mediaSendOriginal,
-                    icon: Symbols.files,
+                    icon: (c) => Icon(Icons.file_copy_rounded, size: 20, color: c),
                     active: _asFile,
                     onTap: () => setState(() => _asFile = !_asFile),
                   ),
@@ -371,7 +372,11 @@ class _OriginalToggle extends StatelessWidget {
   /// this widget — so "send once" offered a document icon, which is the one
   /// thing it is not. The chip that really is about a file kept it, and the
   /// other one now says what it does.
-  final IconData icon;
+  ///
+  /// A builder rather than an [IconData], because the view-once mark is drawn
+  /// here rather than taken from a font: nothing in the icon sets is both a
+  /// bomb and a numeral, and the promise needs both halves.
+  final Widget Function(Color color) icon;
   final bool active;
   final VoidCallback onTap;
 
@@ -389,14 +394,10 @@ class _OriginalToggle extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(9),
-            child: Icon(
-              // One icon, not a ternary between two identical ones — which
-              // is what stood here, so the on and off states looked the same.
-              // The chip's own fill and colour are what say which it is.
-              icon,
-              size: 20,
-              color: active ? AppColors.bgDeep : Colors.white,
-            ),
+            // One mark, not a ternary between two identical ones — which is
+            // what stood here, so the on and off states looked the same. The
+            // chip's own fill and colour are what say which it is.
+            child: icon(active ? AppColors.bgDeep : Colors.white),
           ),
         ),
       ),

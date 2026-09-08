@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:cubechat/core/widgets/view_once_icon.dart';
 import 'package:cubechat/features/chat/presentation/media_preview_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
 
 /// A picture of the send screen, so a layout change is looked at rather than
 /// reasoned about.
@@ -43,9 +43,11 @@ void main() {
 
     // Brush, view-once, original — the three that change the picture or what
     // the recipient gets.
-    expect(find.byIcon(Symbols.brush), findsOneWidget);
-    expect(find.byIcon(Symbols.bomb), findsOneWidget);
-    expect(find.byIcon(Symbols.files), findsOneWidget);
+    expect(find.byIcon(Icons.brush_rounded), findsOneWidget);
+    // Drawn rather than an icon-font glyph: nothing in the sets is both a bomb
+    // and a numeral, and view-once has to say both.
+    expect(find.byType(ViewOnceIcon), findsOneWidget);
+    expect(find.byIcon(Icons.file_copy_rounded), findsOneWidget);
 
     // And the words are gone from the row itself.
     final t = await AppLocalizations.delegate.load(const Locale('en'));
@@ -70,8 +72,13 @@ void main() {
     await tester.pumpAndSettle();
 
     final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
-    for (final icon in [Symbols.brush, Symbols.bomb, Symbols.files]) {
-      final r = tester.getRect(find.byIcon(icon));
+    final marks = <Finder>[
+      find.byIcon(Icons.brush_rounded),
+      find.byType(ViewOnceIcon),
+      find.byIcon(Icons.file_copy_rounded),
+    ];
+    for (final mark in marks) {
+      final r = tester.getRect(mark);
       expect(r.right, lessThan(width),
           reason: 'a chip pressed against the edge reads as cropped');
       expect(r.left, greaterThan(0));

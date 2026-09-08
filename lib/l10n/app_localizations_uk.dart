@@ -412,7 +412,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get editorPenArrow => 'Стрілка';
 
   @override
+  String get editorPenBlur => 'Розмиття';
+
+  @override
   String get editorPenEraser => 'Гумка';
+
+  @override
+  String get editorLevel => 'Вирівняти';
 
   @override
   String get editorTextHint => 'Текст на фото';

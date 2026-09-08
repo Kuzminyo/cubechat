@@ -222,9 +222,17 @@
   "@editorPenArrow": {
     "description": "Photo editor pen kind: a line that ends in a head."
   },
+  "editorPenBlur": "Blur",
+  "@editorPenBlur": {
+    "description": "Photo editor pen kind: smears the photo itself, to hide a face or a number."
+  },
   "editorPenEraser": "Eraser",
   "@editorPenEraser": {
     "description": "Photo editor pen kind: rubs out the drawing."
+  },
+  "editorLevel": "Level",
+  "@editorLevel": {
+    "description": "Photo editor: put the horizon back to zero degrees."
   },
   "editorTextHint": "Text on the photo",
   "@editorTextHint": {
