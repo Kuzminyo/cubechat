@@ -252,25 +252,68 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final paths = await PhotoManager.getAssetPathList(
-        type: RequestType.common,
-        onlyAll: true,
-        filterOption: _newestFirst(),
-      );
-      if (paths.isNotEmpty) {
+      final paths = await _albums();
+      if (paths.isEmpty) {
+        // The one outcome that used to look identical to everything else: the
+        // permission is granted, the query ran, and the system says this phone
+        // has no album to show. Said out loud, because for a week it was
+        // indistinguishable from a filter that had quietly thrown.
+        DebugLog.instance.log(
+          'GALLERY',
+          'no album at all — access ${_perm?.name ?? "unknown"}',
+        );
+      } else {
         final album = paths.first;
         _album = album;
         _total = await album.assetCountAsync;
         await _loadMore();
       }
-    } catch (_) {
-      // Any failure falls through to the empty / no-access state.
+    } catch (e) {
+      // Never silent again.
+      //
+      // This was a bare `catch (_)` with a comment saying failures fall
+      // through to the empty state — and they did, into a sheet showing one
+      // camera tile and nothing else, which is also what a phone with no
+      // photos looks like, and what a revoked permission looks like. A gallery
+      // reported as empty three times running had thrown somewhere in here and
+      // said nothing about it.
+      DebugLog.instance.log('GALLERY', 'load failed: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
       // The grid only exists once _loading clears, so the check inside the
       // first _loadMore ran against a spinner and found no scroll view.
       _ensureScrollable();
     }
+  }
+
+  /// The "All" album, asked for with our filter and then without it.
+  ///
+  /// The filter exists to stop the store dropping videos whose duration column
+  /// is null — see [_newestFirst]. But a filter is also the one thing in this
+  /// call that can make a working query return nothing, or throw, and when it
+  /// did the sheet came up with a camera tile and no explanation. So it is
+  /// tried, and if it yields nothing the plain query runs instead: a gallery
+  /// with the videos possibly missing beats a gallery with everything missing,
+  /// and the log says which of the two this phone got.
+  Future<List<AssetPathEntity>> _albums() async {
+    try {
+      final filtered = await PhotoManager.getAssetPathList(
+        type: RequestType.common,
+        onlyAll: true,
+        filterOption: _newestFirst(),
+      );
+      if (filtered.isNotEmpty) return filtered;
+      DebugLog.instance
+          .log('GALLERY', 'filtered album list is empty — asking again plain');
+    } catch (e) {
+      DebugLog.instance.log('GALLERY', 'filtered album list failed: $e');
+    }
+    final plain = await PhotoManager.getAssetPathList(
+      type: RequestType.common,
+      onlyAll: true,
+    );
+    DebugLog.instance.log('GALLERY', 'plain album list: ${plain.length}');
+    return plain;
   }
 
   Future<void> _loadMore() async {
@@ -313,7 +356,11 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       } else {
         _assets.addAll(page);
       }
-    } catch (_) {
+    } catch (e) {
+      // Also named. A page that throws stops the grid where it is, and "the
+      // gallery only shows the first hundred" is another symptom that used to
+      // arrive with nothing behind it.
+      DebugLog.instance.log('GALLERY', 'page $_page failed: $e');
       _hasMore = false; // stop retrying a source that's failing
     } finally {
       _loadingMore = false;
