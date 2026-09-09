@@ -49,8 +49,17 @@ class VideoBubble extends ConsumerStatefulWidget {
   /// It grows when it starts. Not decoration: a circle at rest is one of many
   /// things in a scrolling column, and the one that is speaking should be the
   /// one your eye lands on. Telegram does the same and for the same reason.
-  static const double circleIdle = 176;
-  static const double circlePlaying = 216;
+  ///
+  /// 200 and 248, up from 176 and 216. The gap between them is kept at a
+  /// quarter rather than widened with them, because the growth has to read as
+  /// emphasis and not as the layout jumping.
+  ///
+  /// The ceiling is the narrowest phone this runs on. 248 leaves about 70
+  /// logical points beside the disc on a 320-point screen, which is enough for
+  /// the row's margins and an avatar; past roughly 260 a circle starts to
+  /// decide the width of the conversation rather than sit in it.
+  static const double circleIdle = 200;
+  static const double circlePlaying = 248;
 
   /// True when this message is a video we can actually play: a file, with a
   /// video mime, whose bytes are on this phone.

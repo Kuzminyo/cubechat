@@ -8590,8 +8590,35 @@ class MessagingService {
     required InnerPayloadType type,
     required bool fromTheLinkItself,
   }) {
+    // Three chunk types, for one reason: a signature per chunk does not fit,
+    // and what stands in for it is the signed manifest that opens the transfer.
+    //
+    // **`fileChunk` was missing, and that is why no file ever arrived over the
+    // relay.** A circle travels as a file, so every circle sent over the
+    // internet was published in full, carried, received — and then dropped one
+    // chunk at a time on the far side. Two logs from 2026-09-09 say it exactly:
+    // `[FILE] incoming file from nostr:relay — 74 chunk(s)` at 20:57:45, then
+    // `drop unsigned fileChunk … ×43` and `×31`. Forty-three and thirty-one is
+    // seventy-four. Not one of them was kept, and the sender had no way to
+    // know: nothing acknowledges a transfer end to end.
+    //
+    // Photos and voice notes were unaffected because they are their own chunk
+    // types and both were on the list. That is what made this look like a
+    // problem with circles rather than with files.
+    //
+    // **What holds an unsigned chunk up, and why it is enough.** It is sealed
+    // to a key that comes from the manifest — the forward-secret key derived
+    // through [MediaFsCipher], or a SealedBox to our own public key — so a
+    // chunk that opens at all came from somebody holding it. It is admitted
+    // only against a *cached signed* manifest under the same media id, with a
+    // matching chunk total; without one it is dropped. And the assembled file
+    // is hashed and compared to the SHA-256 the manifest committed to under
+    // that signature, so substituted or reordered chunks fail at the end even
+    // if they decrypt. The signature is on the transfer, not on each piece of
+    // it, which is the same trade image and audio chunks already made.
     if (type == InnerPayloadType.imageChunk ||
-        type == InnerPayloadType.audioChunk) {
+        type == InnerPayloadType.audioChunk ||
+        type == InnerPayloadType.fileChunk) {
       return true;
     }
     return fromTheLinkItself;

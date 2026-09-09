@@ -111,18 +111,33 @@ class CircleRecorder extends ChangeNotifier {
     return choices.first;
   }
 
-  Future<void> _stabilize(CameraController camera) async {
-    try {
-      // Level 1 avoids the larger crop/latency of cinematic stabilization.
-      // The plugin falls back to off on a sensor without stabilization support.
-      await camera.setVideoStabilizationMode(VideoStabilizationMode.level1);
-      DebugLog.instance.log(
-        'CIRCLE',
-        'lens=${camera.description.name} zoom=$_minZoom stabilization=${camera.value.videoStabilizationMode.name}',
-      );
-    } catch (e) {
-      DebugLog.instance.log('CIRCLE', 'stabilization unavailable: $e');
-    }
+  /// Stabilisation is **off**, and that is a trade rather than an oversight.
+  ///
+  /// Electronic stabilisation works by keeping a margin of frame in hand to
+  /// shift into, so it is a crop — ten per cent or so at level 1. It went in
+  /// and "the picture is too close in" came back in the same round, on a
+  /// recorder whose zoom is already pinned to the lens minimum. With nothing
+  /// else left to widen, this is the one crop that can be given back without
+  /// touching the 1080p that was asked for in the same breath.
+  ///
+  /// **What is actually making it tight is the shape of the frame, and that
+  /// cannot be fixed here.** A phone builds a 16:9 video mode by keeping the
+  /// sensor's full width and cutting its height, which in portrait means about
+  /// a quarter less across than the sensor's native 4:3 — and the disc is a
+  /// square that shows the full width, so it shows exactly that narrowed view.
+  /// The lever for that one is [ResolutionPreset], and pulling it costs the
+  /// resolution. It is a choice for whoever reads this next, not one to make
+  /// quietly.
+  ///
+  /// [widestLens] already asks for an ultra-wide where the phone has one, and
+  /// almost none have one facing the user.
+  Future<void> _logLens(CameraController camera) async {
+    DebugLog.instance.log(
+      'CIRCLE',
+      'lens=${camera.description.name} zoom=$_minZoom '
+          'stabilization=${camera.value.videoStabilizationMode.name} '
+          '(not requested — it crops)',
+    );
   }
 
   CameraController? _camera;
@@ -303,7 +318,7 @@ class CircleRecorder extends ChangeNotifier {
       _zoom = _minZoom;
       _zoomAtGestureStart = _minZoom;
       await camera.setZoomLevel(_minZoom);
-      await _stabilize(camera);
+      await _logLens(camera);
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
     } catch (e) {
       error = '$e';
@@ -399,7 +414,7 @@ class CircleRecorder extends ChangeNotifier {
       // Keep the preview's aspect ratio stable when a held phone tilts.
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
       if (generation != _generation) return false;
-      await _stabilize(camera);
+      await _logLens(camera);
       if (generation != _generation) return false;
       await camera.startVideoRecording(enablePersistentRecording: true);
       // And again: starting the recording is itself a round trip to the

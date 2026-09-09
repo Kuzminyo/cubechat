@@ -30,6 +30,26 @@ void main() {
       expect(accepted(InnerPayloadType.text, fromTheLinkItself: false), isFalse);
     });
 
+    test('the three chunk types are allowed through, files included', () {
+      // fileChunk was the one missing from this list, and it cost every file
+      // sent over the internet — a circle among them, since a circle travels
+      // as a file. A shipped log has a 74-chunk transfer arrive and all 74 be
+      // dropped here, with nothing on the sending side to say so.
+      for (final type in const [
+        InnerPayloadType.imageChunk,
+        InnerPayloadType.audioChunk,
+        InnerPayloadType.fileChunk,
+      ]) {
+        expect(
+          accepted(type, fromTheLinkItself: false),
+          isTrue,
+          reason: '${type.name} is held up by the signed manifest that opens '
+              'the transfer and by the digest it commits to, not by a '
+              'signature of its own',
+        );
+      }
+    });
+
     test('an unsigned request to erase the conversation is refused', () {
       expect(
         accepted(
@@ -50,6 +70,7 @@ void main() {
       const allowed = {
         InnerPayloadType.imageChunk,
         InnerPayloadType.audioChunk,
+        InnerPayloadType.fileChunk,
       };
       for (final type in InnerPayloadType.values) {
         if (allowed.contains(type)) continue;

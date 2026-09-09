@@ -183,7 +183,13 @@ void main() {
     expect(await recorder.start(), true);
     await recorder.flipLens();
     expect(camera.flips, 1);
-    expect(camera.stabilizations, 2);
+    // Never asked for, on either lens. Electronic stabilisation buys steadiness
+    // by keeping a margin of frame in hand to shift into, which is a crop of
+    // about a tenth — and it went in during the same round that "the picture is
+    // too close in" came back, on a recorder already pinned to the lens
+    // minimum. See the comment on `_logLens` for the crop that is left and why
+    // undoing that one costs the resolution.
+    expect(camera.stabilizations, 0);
     expect(camera.zoom, .5);
     expect(camera.stops, 0);
     expect(camera.starts, 1);
