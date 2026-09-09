@@ -64,7 +64,6 @@ import '../data/messages_controller.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
-import '../../profile/data/camera_api_controller.dart';
 import '../../profile/data/circle_lens_controller.dart';
 import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
@@ -3846,10 +3845,6 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       _showCircleOverlay();
       final lens = ref.read(circleLensProvider.notifier);
       await lens.loaded;
-      // Which camera implementation, before one is opened. Registering it
-      // after a controller exists changes nothing for that controller, so the
-      // wait belongs here rather than inside the recorder.
-      await ref.read(cameraApiProvider.notifier).loaded;
       if (!mounted || session != _circleSession) return;
       final ok = await recorder.start(front: ref.read(circleLensProvider));
       if (!mounted || session != _circleSession) return;

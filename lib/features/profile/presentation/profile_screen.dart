@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
@@ -34,7 +33,6 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
-import '../data/camera_api_controller.dart';
 import '../data/circle_lens_controller.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/app_lock_controller.dart';
@@ -1226,25 +1224,6 @@ class _PrivacyCard extends ConsumerWidget {
               ref.read(circleLensProvider.notifier).set(front),
             ),
           ),
-          // Android only, and hidden on iOS rather than shown greyed out:
-          // there is one camera implementation there and a switch between it
-          // and itself is not a setting.
-          if (Platform.isAndroid) ...[
-            const SizedBox(height: 14),
-            _SettingSwitch(
-              icon: ref.watch(cameraApiProvider)
-                  ? Icons.camera_rounded
-                  : Icons.camera_alt_rounded,
-              title: t.cameraLegacyTitle,
-              hint: ref.watch(cameraApiProvider)
-                  ? t.cameraLegacyOnHint
-                  : t.cameraLegacyOffHint,
-              value: ref.watch(cameraApiProvider),
-              onChanged: (legacy) => unawaited(
-                ref.read(cameraApiProvider.notifier).set(legacy),
-              ),
-            ),
-          ],
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareMapLocation

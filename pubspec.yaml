@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1012
+version: 1.0.0+1013
 
 environment:
   sdk: ^3.6.0
@@ -72,6 +72,26 @@ dependencies:
   file_picker: ^8.1.4
 
   # Take-a-photo-to-send: in-app camera capture screen.
+  #
+  # **Do not add `camera_android` beside this.** It was tried in build 1012 as
+  # a "use the old Camera2 API" setting, the way Telegram ships one, and it
+  # broke every camera in the app on Android. Flutter allows exactly one
+  # implementation of a platform interface per platform: `camera_android`
+  # declares `implements: camera`, so as a direct dependency it *displaces*
+  # `camera_android_camerax` — which is the plugin's own `default_package` —
+  # and the displaced one is dropped from `.flutter-plugins-dependencies`
+  # entirely. Its Android module is then never built and its plugin class
+  # never registered, so pointing `CameraPlatform.instance` back at CameraX at
+  # runtime reaches channels with nothing on the other end:
+  #
+  #   PlatformException(channel-error, Unable to establish connection on
+  #   channel: "dev.flutter.pigeon.camera_android_camerax.
+  #   ProcessCameraProvider.getInstance")
+  #
+  # Which camera Android uses is a **build-time** choice, not a setting. A
+  # native app can carry both and pick at runtime; a Flutter app cannot, and no
+  # amount of registration code changes that, because the losing plugin's Java
+  # is not in the APK to register.
   camera: ^0.12.0+2
   # JPEG re-encode/downscale of camera & edited bytes to the BLE mesh budget
   # (the gallery path downscales natively via photo_manager instead), and the
@@ -108,18 +128,6 @@ dependencies:
   # holding a platform decoder. Flutter has no built-in way to ask "is this on
   # screen", and this is Google's answer to that.
   visibility_detector: ^0.4.0+2
-  # The other Android camera, behind a setting nobody has to find.
-  #
-  # `camera` picks camera_android_camerax on Android and there is no arguing
-  # with it from a phone: CameraX is a compatibility layer over Camera2, and on
-  # some devices it is the layer that is wrong — a preview that will not open,
-  # a recording with no sound, a sensor swap that hangs. Telegram ships the
-  # same escape hatch under the same name, "use the old Camera2 API", for the
-  # same reason: the only fix available to a user is the other implementation.
-  #
-  # Declared, not registered. `CameraPlatform.instance` stays CameraX unless
-  # `CameraApiController` says otherwise — see it for what the switch costs.
-  camera_android: ^0.10.11+1
 
 # CameraX must mirror the encoded front-camera clip as well as its preview.
 # The small native patch is documented in third_party/camera_android_camerax.

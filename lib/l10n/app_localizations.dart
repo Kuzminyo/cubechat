@@ -1868,24 +1868,6 @@ abstract class AppLocalizations {
   /// **'Round video messages record with the camera facing away, for showing what you are looking at.'**
   String get circleLensBackHint;
 
-  /// Android-only setting: switch the camera plugin from CameraX to Camera2.
-  ///
-  /// In en, this message translates to:
-  /// **'Use old Camera2 API'**
-  String get cameraLegacyTitle;
-
-  /// Hint under the Camera2 setting when it is on, including what it costs.
-  ///
-  /// In en, this message translates to:
-  /// **'The older camera driver. Try it if the camera will not open or a circle records without sound. Circles you film of yourself come out mirrored, and the camera cannot be turned round mid-recording.'**
-  String get cameraLegacyOnHint;
-
-  /// Hint under the Camera2 setting when it is off.
-  ///
-  /// In en, this message translates to:
-  /// **'The standard camera driver. Leave this on unless the camera is misbehaving on this phone.'**
-  String get cameraLegacyOffHint;
-
   /// Owner-only action at the bottom of channel info.
   ///
   /// In en, this message translates to:

@@ -1037,17 +1037,6 @@ class AppLocalizationsUk extends AppLocalizations {
       'Кружечки знімаються основною камерою — щоб показати те, на що ви дивитеся.';
 
   @override
-  String get cameraLegacyTitle => 'Старий Camera2 API';
-
-  @override
-  String get cameraLegacyOnHint =>
-      'Старіший драйвер камери. Спробуйте, якщо камера не відкривається або кружечок пишеться без звуку. Кружечки з фронтальної камери виходять дзеркальними, а камеру не вийде перевернути під час запису.';
-
-  @override
-  String get cameraLegacyOffHint =>
-      'Звичайний драйвер камери. Не вимикайте, якщо камера працює нормально.';
-
-  @override
   String get channelCloseTitle => 'Закрити кімнату для всіх';
 
   @override

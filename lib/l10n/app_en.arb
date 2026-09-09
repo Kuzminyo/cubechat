@@ -567,18 +567,6 @@
   "@circleLensBackHint": {
     "description": "Hint under the circle lens setting when it is off."
   },
-  "cameraLegacyTitle": "Use old Camera2 API",
-  "@cameraLegacyTitle": {
-    "description": "Android-only setting: switch the camera plugin from CameraX to Camera2."
-  },
-  "cameraLegacyOnHint": "The older camera driver. Try it if the camera will not open or a circle records without sound. Circles you film of yourself come out mirrored, and the camera cannot be turned round mid-recording.",
-  "@cameraLegacyOnHint": {
-    "description": "Hint under the Camera2 setting when it is on, including what it costs."
-  },
-  "cameraLegacyOffHint": "The standard camera driver. Leave this on unless the camera is misbehaving on this phone.",
-  "@cameraLegacyOffHint": {
-    "description": "Hint under the Camera2 setting when it is off."
-  },
   "channelCloseTitle": "Close this room for everyone",
   "@channelCloseTitle": {
     "description": "Owner-only action at the bottom of channel info."

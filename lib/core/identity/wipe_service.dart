@@ -32,7 +32,6 @@ import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
 import '../../features/profile/data/quiet_hours_controller.dart';
-import '../../features/profile/data/camera_api_controller.dart';
 import '../../features/profile/data/circle_lens_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
@@ -125,7 +124,6 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
   await ref.read(circleLensProvider.notifier).reset();
-  await ref.read(cameraApiProvider.notifier).reset();
 
   final sessions = ref.read(chatSessionManagerProvider);
   final manager = ref.read(chatSessionManagerProvider.notifier);

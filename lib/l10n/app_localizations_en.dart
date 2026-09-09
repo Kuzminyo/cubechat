@@ -1032,17 +1032,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Round video messages record with the camera facing away, for showing what you are looking at.';
 
   @override
-  String get cameraLegacyTitle => 'Use old Camera2 API';
-
-  @override
-  String get cameraLegacyOnHint =>
-      'The older camera driver. Try it if the camera will not open or a circle records without sound. Circles you film of yourself come out mirrored, and the camera cannot be turned round mid-recording.';
-
-  @override
-  String get cameraLegacyOffHint =>
-      'The standard camera driver. Leave this on unless the camera is misbehaving on this phone.';
-
-  @override
   String get channelCloseTitle => 'Close this room for everyone';
 
   @override
