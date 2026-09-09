@@ -1055,6 +1055,14 @@
   "channelDescriptionAdminOnly": "Only an administrator can change the description",
   "channelDescriptionSave": "Save",
   "chatTyping": "typing…",
+  "chatRecordingVoice": "recording a voice message…",
+  "@chatRecordingVoice": {
+    "description": "Live status: the other person is holding the microphone."
+  },
+  "chatRecordingCircle": "recording a video message…",
+  "@chatRecordingCircle": {
+    "description": "Live status: the other person is recording a round video message."
+  },
   "onboardingMeshTitle": "Works without internet",
   "onboardingMeshBody": "Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.",
   "onboardingRelayTitle": "And with it, when there is some",

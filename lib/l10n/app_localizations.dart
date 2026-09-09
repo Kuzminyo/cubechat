@@ -3662,6 +3662,18 @@ abstract class AppLocalizations {
   /// **'typing…'**
   String get chatTyping;
 
+  /// Live status: the other person is holding the microphone.
+  ///
+  /// In en, this message translates to:
+  /// **'recording a voice message…'**
+  String get chatRecordingVoice;
+
+  /// Live status: the other person is recording a round video message.
+  ///
+  /// In en, this message translates to:
+  /// **'recording a video message…'**
+  String get chatRecordingCircle;
+
   /// No description provided for @onboardingMeshTitle.
   ///
   /// In en, this message translates to:

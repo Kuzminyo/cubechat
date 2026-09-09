@@ -44,6 +44,7 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
+import '../../peers/data/peer_activity.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
@@ -406,8 +407,8 @@ class ChatScreen extends ConsumerWidget {
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
     ref.watch(typingControllerProvider);
-    final isTyping =
-        ref.read(typingControllerProvider.notifier).isTyping(canonicalId);
+    final activity =
+        ref.read(typingControllerProvider.notifier).activityOf(canonicalId);
 
     final blocked = known?.isBlocked ?? false;
 
@@ -427,10 +428,15 @@ class ChatScreen extends ConsumerWidget {
       statusText = t.chatSessionHandshaking;
     } else if (session != null && session.status == ChatSessionStatus.failed) {
       statusText = t.chatSessionFailed;
-    } else if (isTyping) {
-      // Ahead of "online": somebody typing is online by definition, and the
-      // more specific fact is the one worth the one line there is.
-      statusText = t.chatTyping;
+    } else if (activity != null) {
+      // Ahead of "online": somebody doing any of these is online by
+      // definition, and the more specific fact is the one worth the one line
+      // there is.
+      statusText = switch (activity) {
+        PeerActivity.typing => t.chatTyping,
+        PeerActivity.recordingVoice => t.chatRecordingVoice,
+        PeerActivity.recordingCircle => t.chatRecordingCircle,
+      };
     } else if (isOnline) {
       statusText = t.presenceOnline;
     } else if (hideTimes) {
@@ -3722,11 +3728,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   }
 
   void _stopTicker() {
+    final wasRecording = _tick != null;
     _tick?.cancel();
     _tick = null;
     // The capsule's whole life is the length of a recording, and every path
     // that ends one comes through here.
     _hideLockHint();
+    // So does the indicator on the other phone, and for the same reason: sent,
+    // locked, cancelled, too short, the screen closing — six paths end a
+    // recording and every one of them is already required to call this. Put
+    // anywhere else it would be the seventh that was forgotten, and a forgotten
+    // stop leaves somebody "recording…" for the whole eight-second timeout.
+    if (wasRecording) _announceRecording(null);
     if (mounted) setState(() => _elapsed = Duration.zero);
   }
 
@@ -3846,6 +3859,23 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     _lockOverlay = null;
   }
 
+  /// Tell the other side what is being recorded, or that it has stopped.
+  ///
+  /// Same frame the composer already sends on every keystroke, with a
+  /// different byte in it — see [PeerActivity]. Not awaited and not reported
+  /// on failure: by the time anything could be retried the fact has changed,
+  /// which is the rule the typing notice has always followed.
+  ///
+  /// A channel and the notes-to-self chat have nobody to tell.
+  void _announceRecording(PeerActivity? kind) {
+    if (widget.isChannel || isSavedChat(widget.canonicalId)) return;
+    unawaited(ref.read(messagingServiceProvider).announceTyping(
+          widget.canonicalId,
+          typing: kind != null,
+          kind: kind ?? PeerActivity.typing,
+        ));
+  }
+
   Future<void> _onRecordStart() async {
     if (_recordMode == RecordMode.circle) {
       if (_circleStarting || _circleFinishing || (_circle?.isActive ?? false)) return;
@@ -3874,6 +3904,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
         return;
       }
       DebugLog.instance.log('CIRCLE', 'recording');
+      _announceRecording(PeerActivity.recordingCircle);
       _startCircleTicker();
       return;
     }
@@ -3885,6 +3916,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       showGlassToast(context, err, tone: ToastTone.danger);
       return;
     }
+    _announceRecording(PeerActivity.recordingVoice);
     _startTicker();
     _showLockHint();
   }

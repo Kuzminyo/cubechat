@@ -7,6 +7,7 @@ import '../../../peers/data/presence_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
+import '../../../peers/data/peer_activity.dart';
 import '../../../peers/data/typing_controller.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
@@ -63,11 +64,14 @@ class ChatTile extends ConsumerWidget {
     // `InnerPayloadType.typing`); their ids can never appear in the map, and
     // saying so here keeps a future room-typing feature from silently
     // half-working.
-    final typingAt = chat.isChannel
+    final notice = chat.isChannel
         ? null
         : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
-    final isTyping = typingAt != null &&
-        DateTime.now().difference(typingAt) < TypingController.ttl;
+    final activity = notice != null &&
+            DateTime.now().difference(notice.at) < TypingController.ttl
+        ? notice.kind
+        : null;
+    final isTyping = activity != null;
     // Watched here, one key at a time, rather than carried in on the row.
     //
     // Presence used to be a field on `Chat`, computed by `allChatsProvider`
@@ -243,11 +247,14 @@ class ChatTile extends ConsumerWidget {
                   // yourself that will still be there in an hour, and this is
                   // the other person doing something right now. Only one line
                   // exists, so the live fact takes it.
-                  isTyping
-                      ? t.chatTyping
-                      : chat.isDraft
-                          ? '${t.chatDraft}: ${chat.lastMessage}'
-                          : chat.lastMessage,
+                  switch (activity) {
+                    PeerActivity.typing => t.chatTyping,
+                    PeerActivity.recordingVoice => t.chatRecordingVoice,
+                    PeerActivity.recordingCircle => t.chatRecordingCircle,
+                    null => chat.isDraft
+                        ? '${t.chatDraft}: ${chat.lastMessage}'
+                        : chat.lastMessage,
+                  },
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

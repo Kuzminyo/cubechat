@@ -2,7 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Who is typing to us right now, keyed by canonical chat id (pubkey-hex).
+import 'peer_activity.dart';
+
+/// Who is doing something in a conversation right now, keyed by canonical chat
+/// id (pubkey-hex).
+///
+/// Typing was the only thing it held, which is why it is still called this.
+/// It now also carries recording a voice message and recording a circle — the
+/// same shape of fact, arriving on the same frame, expiring the same way. See
+/// [PeerActivity].
 ///
 /// Memory-only for the same reason [PresenceController] is: a typing notice is
 /// worth nothing a second after it arrives, let alone after a restart, and
@@ -14,7 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// is cleared by sending, the app is backgrounded mid-word, the link drops —
 /// so the indicator is built to time out on its own rather than to depend on
 /// being told.
-class TypingController extends Notifier<Map<String, DateTime>> {
+class TypingController extends Notifier<Map<String, PeerActivityNotice>> {
   /// How long a typing notice is believed.
   ///
   /// Comfortably longer than [MessagingService.typingMinInterval] so a steady
@@ -36,15 +44,24 @@ class TypingController extends Notifier<Map<String, DateTime>> {
   final Map<String, Timer> _expiry = <String, Timer>{};
 
   @override
-  Map<String, DateTime> build() {
+  Map<String, PeerActivityNotice> build() {
     ref.onDispose(_cancelAll);
-    return const <String, DateTime>{};
+    return const <String, PeerActivityNotice>{};
   }
 
-  /// A peer started typing. Repeated notices just push the expiry out.
-  void record(String canonicalId, {DateTime? at}) {
+  /// A peer started doing something. Repeated notices push the expiry out, and
+  /// a different kind replaces the one showing — somebody who was typing and
+  /// then held the microphone is recording, not both.
+  void record(
+    String canonicalId, {
+    DateTime? at,
+    PeerActivity kind = PeerActivity.typing,
+  }) {
     final when = at ?? DateTime.now();
-    state = {...state, canonicalId: when};
+    state = {
+      ...state,
+      canonicalId: PeerActivityNotice(kind: kind, at: when),
+    };
     _expiry.remove(canonicalId)?.cancel();
     // Clamped at zero rather than skipped: a notice that arrives already stale
     // — held in store-and-forward, or drained from a relay backlog — still has
@@ -77,21 +94,29 @@ class TypingController extends Notifier<Map<String, DateTime>> {
     _expiry.clear();
   }
 
-  /// True while [canonicalId]'s last notice is still inside [ttl].
-  bool isTyping(String canonicalId) {
-    final at = state[canonicalId];
-    if (at == null) return false;
-    return DateTime.now().difference(at) < ttl;
+  /// What [canonicalId] is doing, or null if their last notice has lapsed.
+  ///
+  /// Reads the clock as well as the map, deliberately: the expiry timer is a
+  /// promise about the future and it is not kept while the app is suspended,
+  /// so a phone woken after an hour would otherwise find a live entry waiting.
+  PeerActivity? activityOf(String canonicalId) {
+    final notice = state[canonicalId];
+    if (notice == null) return null;
+    if (DateTime.now().difference(notice.at) >= ttl) return null;
+    return notice.kind;
   }
+
+  /// True while [canonicalId] is doing anything at all.
+  bool isTyping(String canonicalId) => activityOf(canonicalId) != null;
 
   /// Emergency Wipe, and leaving a conversation for good.
   void clearAll() {
     _cancelAll();
-    state = const <String, DateTime>{};
+    state = const <String, PeerActivityNotice>{};
   }
 }
 
 final typingControllerProvider =
-    NotifierProvider<TypingController, Map<String, DateTime>>(
+    NotifierProvider<TypingController, Map<String, PeerActivityNotice>>(
   TypingController.new,
 );

@@ -2107,6 +2107,12 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatTyping => 'пише…';
 
   @override
+  String get chatRecordingVoice => 'записує голосове…';
+
+  @override
+  String get chatRecordingCircle => 'записує відеоповідомлення…';
+
+  @override
   String get onboardingMeshTitle => 'Працює без інтернету';
 
   @override

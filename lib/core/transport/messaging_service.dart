@@ -33,6 +33,7 @@ import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
+import '../../features/peers/data/peer_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
@@ -2957,7 +2958,22 @@ class MessagingService {
   /// rather than a second one. It is the same question — how much of my
   /// liveness do I leak — and the same symmetric bargain: turn it off and you
   /// stop seeing other people's typing too (see [_ingestTyping]).
-  Future<void> announceTyping(String canonicalId, {bool typing = true}) async {
+  /// [kind] says which activity, and null ends whichever was showing.
+  ///
+  /// One byte, in the body this frame always had — see [PeerActivity] for why
+  /// that is a value and not a payload type of its own, and for what a build
+  /// that predates recording does with an unfamiliar one (it takes the
+  /// indicator down, which is the right way to be wrong).
+  ///
+  /// Recording is exempt from [typingMinInterval]. The throttle exists because
+  /// the composer calls this on every keystroke; a recording announces itself
+  /// once when the finger goes down, and holding that back for three seconds
+  /// would mean the shortest voice notes never showed at all.
+  Future<void> announceTyping(
+    String canonicalId, {
+    bool typing = true,
+    PeerActivity kind = PeerActivity.typing,
+  }) async {
     if (_disposed) return;
     // Global switch and this contact's exception together: somebody who is not
     // shown our times is not shown our typing either, which is the same
@@ -2972,7 +2988,9 @@ class MessagingService {
 
     if (typing) {
       final last = _lastTypingSentAt[canonicalId];
-      if (last != null && DateTime.now().difference(last) < typingMinInterval) {
+      if (kind == PeerActivity.typing &&
+          last != null &&
+          DateTime.now().difference(last) < typingMinInterval) {
         return;
       }
       _lastTypingSentAt[canonicalId] = DateTime.now();
@@ -2989,7 +3007,7 @@ class MessagingService {
         canonicalId: canonicalId,
         peerPub: peerPub,
         type: InnerPayloadType.typing,
-        innerBody: Uint8List.fromList([typing ? 0x01 : 0x00]),
+        innerBody: Uint8List.fromList([typing ? kind.wireByte : 0x00]),
       );
     } catch (_) {
       // See above: a lost typing notice is not an error worth reporting.
@@ -3006,9 +3024,12 @@ class MessagingService {
     if (body.isEmpty) return;
     final canonicalId = senderPub != null ? _hexOf(senderPub) : peerId;
     final controller = _ref.read(typingControllerProvider.notifier);
-    if (body[0] != 0x01) {
+    final kind = PeerActivity.fromWire(body[0]);
+    if (kind == null) {
       // A stop is applied whatever its age. It can only take the indicator
-      // down, and taking it down late is better than leaving it up.
+      // down, and taking it down late is better than leaving it up. A byte a
+      // later build sends and this one does not know lands here too, on
+      // purpose — see [PeerActivity.fromWire].
       controller.clear(canonicalId);
       return;
     }
@@ -3025,7 +3046,7 @@ class MessagingService {
     final now = DateTime.now();
     final stamp = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
     if (now.difference(stamp) >= TypingController.ttl) return;
-    controller.record(canonicalId, at: stamp);
+    controller.record(canonicalId, at: stamp, kind: kind);
   }
 
   /// Peers we have already told about our copy restriction this run.

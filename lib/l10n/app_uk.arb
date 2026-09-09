@@ -791,6 +791,8 @@
     "channelDescriptionAdminOnly":  "Змінювати опис може лише адміністратор",
     "channelDescriptionSave":  "Зберегти",
     "chatTyping":  "пише…",
+    "chatRecordingVoice":  "записує голосове…",
+    "chatRecordingCircle":  "записує відеоповідомлення…",
     "onboardingMeshTitle":  "Працює без інтернету",
     "onboardingMeshBody":  "Повідомлення йдуть через Bluetooth, від телефона до телефона. Без зв’язку, без Wi-Fi, без акаунтів — лише люди поруч.",
     "onboardingRelayTitle":  "І з ним, коли він є",

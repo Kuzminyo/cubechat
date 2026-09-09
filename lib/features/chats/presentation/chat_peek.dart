@@ -15,6 +15,7 @@ import '../../chat/models/message.dart';
 import '../../chat/presentation/widgets/chat_input.dart';
 import '../../chat/presentation/widgets/message_bubble.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peer_activity.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/pinned_chats_controller.dart';
@@ -286,18 +287,22 @@ class _PeekHeader extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     // Typing beats online here for the reason it does everywhere else: it is
     // the more specific fact, and there is one line to say it in.
-    final typingAt = chat.isChannel
+    final notice = chat.isChannel
         ? null
         : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
-    final isTyping = typingAt != null &&
-        DateTime.now().difference(typingAt) < TypingController.ttl;
+    final activity =
+        notice != null && DateTime.now().difference(notice.at) < TypingController.ttl
+            ? notice.kind
+            : null;
 
     final isOnline = ref.watch(peerOnlineProvider(chat.peerId));
-    final String? status = isTyping
-        ? t.chatTyping
-        : isOnline
-            ? t.presenceOnline
-            : null;
+    final isTyping = activity != null;
+    final String? status = switch (activity) {
+      PeerActivity.typing => t.chatTyping,
+      PeerActivity.recordingVoice => t.chatRecordingVoice,
+      PeerActivity.recordingCircle => t.chatRecordingCircle,
+      null => isOnline ? t.presenceOnline : null,
+    };
 
     return SizedBox(
       height: _height,

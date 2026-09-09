@@ -2090,6 +2090,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTyping => 'typing…';
 
   @override
+  String get chatRecordingVoice => 'recording a voice message…';
+
+  @override
+  String get chatRecordingCircle => 'recording a video message…';
+
+  @override
   String get onboardingMeshTitle => 'Works without internet';
 
   @override
