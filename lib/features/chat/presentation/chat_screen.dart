@@ -3777,6 +3777,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     if (_circleOverlay != null) return;
     final recorder = _circle;
     if (recorder == null) return;
+    _keyboardBeforeCircle = MediaQuery.of(context).viewInsets.bottom > 0;
     // No measuring any more. Two builds went into cutting the glass off above
     // the composer so the real bar showed through, and both were wrong for the
     // same reason: the cut-off is a number and the composer is a moving target
@@ -3800,9 +3801,28 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     Overlay.of(context, rootOverlay: true).insert(entry);
   }
 
+  /// Whether the keyboard was up when the circle overlay went over it, so it
+  /// can be put back when the overlay goes away.
+  ///
+  /// The Dart side already keeps the composer's focus — the overlay cannot
+  /// take it ([CircleRecorderPreview] wraps itself in a `Focus` that refuses
+  /// to), and a widget test pins that. It still comes down on a phone, because
+  /// opening a camera hands the window over on the platform side and the input
+  /// method goes with it. Nothing here can stop that. What it can do is give
+  /// the keyboard back afterwards, so a sentence interrupted by a circle is
+  /// still a sentence you can finish.
+  bool _keyboardBeforeCircle = false;
+
   void _hideCircleOverlay() {
     _circleOverlay?.remove();
     _circleOverlay = null;
+    if (!_keyboardBeforeCircle) return;
+    _keyboardBeforeCircle = false;
+    // After the frame that removes the overlay, not inside it: focus asked for
+    // while the entry is still mounted lands on something on its way out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusComposerRequests.value++;
+    });
   }
 
   /// Put the lock capsule directly over the record button, wherever it is.

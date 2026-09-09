@@ -17,10 +17,17 @@ import '../../models/message.dart';
 /// the conversation to do it.
 ///
 /// Two shapes, one widget. A clip from the gallery is a rectangle you press to
-/// start. A circle is round, starts on its own when it comes into view, grows
-/// while it plays, and stops when you scroll past — which is what everyone who
-/// has used one expects of them, and is only possible because we know which
-/// one is actually on screen.
+/// start. A circle is round, grows while it plays, shows how much is left, and
+/// stops when you scroll past.
+///
+/// Both are pressed to start. A circle used to begin on its own when it came
+/// into view — which is what the messengers that have them do, and it was
+/// asked for in those words — and it was taken back out after three separate
+/// reports of the same thing: opening a conversation set every circle in view
+/// talking at once, sending one played it back at the person who had just
+/// recorded it, and one that reached its end went round again. Only the last
+/// was a defect. The other two are what autoplay means, and they are the
+/// reason it is gone.
 class VideoBubble extends StatefulWidget {
   const VideoBubble({
     super.key,
@@ -116,8 +123,17 @@ class _VideoBubbleState extends State<VideoBubble> {
         player.value.position >= player.value.duration &&
         player.value.duration > Duration.zero) {
       _playedThrough = true;
+      // Pause, and **do not seek**. The first version of this rewound to zero
+      // in the same breath, and the two are separate calls to the platform
+      // with no ordering between them: when the seek landed before the pause,
+      // the player was at the first frame and still playing, and the circle
+      // started over. That is the loop this was written to remove, arriving by
+      // a different road.
+      //
+      // Nothing needs the rewind here anyway. A resting circle draws no
+      // progress and shows its full length, so the playhead sitting at the end
+      // is invisible, and [_tap] rewinds before it starts again.
       unawaited(player.pause());
-      unawaited(player.seekTo(Duration.zero));
     }
     setState(() {});
   }
@@ -155,29 +171,26 @@ class _VideoBubbleState extends State<VideoBubble> {
     }
   }
 
-  /// Scrolled into or out of view.
+  /// Scrolled out of view — stop whatever was playing.
   ///
-  /// Circles only. A clip from the gallery is a thing you decide to watch;
-  /// starting one because it drifted past would be a video playing at somebody
-  /// in the middle of reading.
+  /// **Nothing starts by itself any more, and that is a decision taken twice.**
+  /// Autoplay was asked for, built, and then reported three times over: opening
+  /// a conversation set every circle in view talking at once, sending one
+  /// played it straight back at the person who had just recorded it, and a
+  /// circle that reached its end started again. The first two are what autoplay
+  /// *is*, not bugs in it. So a circle plays when it is tapped and at no other
+  /// moment.
+  ///
+  /// This still earns its place: a circle you started and then scrolled past
+  /// has to stop, or it goes on talking from somewhere above the screen.
   Future<void> _onVisibility(VisibilityInfo info) async {
     if (!_isCircle || !mounted) return;
-    // Half of it, so a circle half off the top of the screen does not claim
-    // the sound from the one that has just arrived below it.
-    final visible = info.visibleFraction > 0.5;
-    if (visible) {
-      // Two ways of having stopped that both mean "do not start again": a
-      // finger on it, and having already run to the end once.
-      if (_pausedByHand || _playedThrough) return;
-      final player = await _open();
-      if (player != null && !player.value.isPlaying) await player.play();
-    } else {
-      final player = _player;
-      if (player != null && player.value.isPlaying) await player.pause();
-      // Off screen is not a decision, so coming back starts it again — unless
-      // it has already been watched, which is.
-      _pausedByHand = false;
-    }
+    if (info.visibleFraction > 0.5) return;
+    final player = _player;
+    if (player != null && player.value.isPlaying) await player.pause();
+    // Scrolling away is not a decision about the circle, so it does not count
+    // as the deliberate pause that [_tap] sets.
+    _pausedByHand = false;
   }
 
   Future<void> _tap() async {
