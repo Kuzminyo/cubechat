@@ -112,13 +112,18 @@ class CircleRecorder extends ChangeNotifier {
         orElse: () => cameras.first,
       );
 
-      // Medium, not high. This is a 240-point circle on a phone screen that
-      // has to cross other people's relays: 480p is already more detail than
-      // the bubble can draw, and every step up multiplies the publish count
-      // the far end has to wait through.
+      // 720p. The circle is drawn at about 290 points and a phone is at three
+      // times that in pixels, so 480p was visibly soft on the very screen it
+      // was recorded on — which is the one place a circle is always watched.
+      //
+      // The ceiling that matters is not the byte count but the publish count:
+      // at 720p a minute is a handful of megabytes, which is a few hundred
+      // relay events, comfortably inside what [maxLength] and the media lane
+      // are sized for. `veryHigh` and up would multiply that for detail a
+      // 290-point disc cannot show.
       final camera = CameraController(
         front,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: true,
       );
       _camera = camera;

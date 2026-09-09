@@ -1026,7 +1026,10 @@ class AppLocalizationsUk extends AppLocalizations {
   String get relaysCopied => 'Скопійовано';
 
   @override
-  String get circleHint => 'Відпустіть, щоб надіслати';
+  String get circleHint => 'Відпустіть, щоб надіслати · вліво — скасувати';
+
+  @override
+  String get circleHintLocked => 'Натисніть надіслати, коли завершите';
 
   @override
   String get circleNeedsCamera => 'Кружечкам потрібні камера та мікрофон';

@@ -1850,11 +1850,17 @@ abstract class AppLocalizations {
   /// **'Copied'**
   String get relaysCopied;
 
-  /// Under the round video preview while it records.
+  /// Under the round video preview while a finger is holding the button.
   ///
   /// In en, this message translates to:
-  /// **'Let go to send'**
+  /// **'Let go to send · slide left to cancel'**
   String get circleHint;
+
+  /// Under the round video preview once the recording has been locked.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap send when you are done'**
+  String get circleHintLocked;
 
   /// Shown when camera or microphone permission was refused.
   ///

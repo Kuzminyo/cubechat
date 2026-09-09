@@ -81,7 +81,7 @@ void main() {
     await openChat(tester);
 
     expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.videocam_rounded), findsNothing);
+    expect(find.byIcon(Icons.photo_camera_front_rounded), findsNothing);
 
     await tester.tap(find.byIcon(Icons.mic_rounded));
     // Past the halfway point of the flip, where the face is edge-on and the
@@ -89,7 +89,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 260));
 
-    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.photo_camera_front_rounded), findsOneWidget);
     expect(find.byIcon(Icons.mic_rounded), findsNothing);
   });
 
@@ -99,7 +99,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.mic_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.byIcon(Icons.videocam_rounded));
+    await tester.tap(find.byIcon(Icons.photo_camera_front_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 

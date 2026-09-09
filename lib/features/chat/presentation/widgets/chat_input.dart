@@ -179,6 +179,7 @@ class ChatInput extends StatefulWidget {
     this.onRecordLock,
     this.recordMode = RecordMode.voice,
     this.onToggleRecordMode,
+    this.recordButtonKey,
     this.recordLocked = false,
     this.recording = false,
     this.recordElapsed = Duration.zero,
@@ -235,6 +236,10 @@ class ChatInput extends StatefulWidget {
   /// Null keeps the button a microphone: a chat that cannot carry a circle —
   /// a room, or saved notes — should not offer to turn into one.
   final VoidCallback? onToggleRecordMode;
+
+  /// Lets the screen find where the record button ended up, so the lock
+  /// capsule can be put directly above it in the overlay.
+  final GlobalKey? recordButtonKey;
   final bool recordLocked;
   final bool recording;
   final Duration recordElapsed;
@@ -693,6 +698,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                 const SizedBox(width: 6),
                 if (showVoice)
                   _VoiceButton(
+                    key: widget.recordButtonKey,
                     active: widget.recording,
                     locked: widget.recordLocked,
                     mode: widget.recordMode,
@@ -856,6 +862,165 @@ const double _voiceCancelTravel = 88;
 /// threshold where a delay is felt at all and still long enough to be a hold.
 const Duration _voiceArmDelay = Duration(milliseconds: 90);
 
+/// The lock, floating over the record button while a finger is on it.
+///
+/// Public because it is mounted into the screen's overlay rather than into
+/// this composer: the composer is a pane of glass with a clip on it, and
+/// anything drawn above its top edge from inside is cut off there.
+class LockHint extends StatelessWidget {
+  const LockHint({super.key, this.travel = 0});
+
+  /// How far up the finger has gone, 0 to 1. At 1 the lock takes.
+  final double travel;
+
+  /// Height, so a caller placing this above a button knows what to clear.
+  static const double height = 58;
+
+  @override
+  Widget build(BuildContext context) => _LockHint(travel: travel);
+}
+
+/// The lock, floating over the record button while a finger is on it.
+///
+/// Where the instruction belongs: the chevron used to sit at the far end of
+/// the recording strip, a screen's width from the thumb it was telling to move
+/// up. Here it is directly above what the thumb is holding, so "up" is a
+/// direction on the screen rather than a sentence to read.
+///
+/// The chevrons run upward on a loop rather than sitting still, because a
+/// static arrow over a button reads as a label and a moving one reads as a
+/// route. The loop is armed only while the capsule is on screen — which is
+/// only while a finger is down — so nothing here schedules a frame in an idle
+/// chat.
+class _LockHint extends StatefulWidget {
+  const _LockHint({required this.travel});
+
+  /// How far up the finger has gone, 0 to 1. At 1 the lock takes.
+  final double travel;
+
+  @override
+  State<_LockHint> createState() => _LockHintState();
+}
+
+class _LockHintState extends State<_LockHint>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final armed = widget.travel >= 1;
+    return IgnorePointer(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 42,
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: armed
+              ? AppColors.brandPrimary.withValues(alpha: 0.92)
+              : Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(21),
+          border: Border.all(
+            color: AppColors.brandPrimary.withValues(
+              alpha: 0.25 + 0.6 * widget.travel,
+            ),
+            width: 1.4,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandPrimary
+                  .withValues(alpha: 0.35 * widget.travel),
+              blurRadius: 18,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (context, _) => SizedBox(
+                height: 26,
+                width: 26,
+                child: CustomPaint(
+                  painter: _ChevronsPainter(
+                    phase: _pulse.value,
+                    travel: widget.travel,
+                    armed: armed,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Icon(
+              armed ? Icons.lock_rounded : Icons.lock_open_rounded,
+              size: 16,
+              color: armed ? AppColors.bgDeep : Colors.white70,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Three chevrons climbing the capsule.
+class _ChevronsPainter extends CustomPainter {
+  const _ChevronsPainter({
+    required this.phase,
+    required this.travel,
+    required this.armed,
+  });
+
+  final double phase;
+  final double travel;
+  final bool armed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const count = 3;
+    final w = size.width * 0.5;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    for (var i = 0; i < count; i++) {
+      // Each chevron brightens in turn, bottom to top, so the eye is pulled
+      // the way the finger has to go.
+      final slot = (phase * count + i) % count / count;
+      final glow = (1 - slot).clamp(0.0, 1.0);
+      final y = size.height * (0.78 - i * 0.26);
+      paint.color = armed
+          ? AppColors.bgDeep.withValues(alpha: 0.35 + 0.5 * glow)
+          : Color.lerp(
+              Colors.white.withValues(alpha: 0.22 + 0.5 * glow),
+              AppColors.brandPrimary,
+              travel,
+            )!;
+      final path = Path()
+        ..moveTo((size.width - w) / 2, y)
+        ..lineTo(size.width / 2, y - w * 0.5)
+        ..lineTo((size.width + w) / 2, y);
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ChevronsPainter old) =>
+      old.phase != phase || old.travel != travel || old.armed != armed;
+}
+
 /// Press-and-hold voice record button, with the two escapes a held button
 /// needs: slide up to keep recording without holding, slide left to bin it.
 ///
@@ -865,6 +1030,7 @@ const Duration _voiceArmDelay = Duration(milliseconds: 90);
 /// started except by sending it and deleting it afterwards.
 class _VoiceButton extends StatelessWidget {
   const _VoiceButton({
+    super.key,
     required this.active,
     required this.locked,
     required this.mode,
@@ -984,8 +1150,11 @@ class _VoiceButton extends StatelessWidget {
                 : Matrix4.identity(),
             child: _circle(
               context,
+              // A square front camera rather than a camcorder: what this
+              // records is a face, and the camcorder read as "attach a video
+              // file" next to the paperclip that does exactly that.
               icon: showCircle
-                  ? Icons.videocam_rounded
+                  ? Icons.photo_camera_front_rounded
                   : Icons.mic_rounded,
               filled: active,
             ),
@@ -1135,15 +1304,11 @@ class _RecordingIndicatorState extends State<_RecordingIndicator>
               ),
             )
           else
-            // While the finger is down, the escapes are gestures — say which.
-            Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Icon(
-                Icons.keyboard_arrow_up_rounded,
-                size: 18,
-                color: AppColors.textOnGlassFaint,
-              ),
-            ),
+            // While the finger is down, the escapes are gestures. The one
+            // that says so used to be a chevron sitting here at the end of the
+            // strip, which is nowhere near the thumb it is instructing — it is
+            // a capsule over the button now. See [_LockHint].
+            const SizedBox(width: 4),
         ],
       ),
     );

@@ -1021,7 +1021,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysCopied => 'Copied';
 
   @override
-  String get circleHint => 'Let go to send';
+  String get circleHint => 'Let go to send · slide left to cancel';
+
+  @override
+  String get circleHintLocked => 'Tap send when you are done';
 
   @override
   String get circleNeedsCamera => 'Circles need the camera and the microphone';

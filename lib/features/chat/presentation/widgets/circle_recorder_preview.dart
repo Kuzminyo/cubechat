@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -8,114 +9,182 @@ import '../../data/circle_recorder.dart';
 
 /// What a circle looks like while it is being recorded.
 ///
-/// Over the conversation rather than on a pushed route, because the finger
-/// that started this is still on the composer button below and a route would
-/// take the gesture with it. The same reason the voice strip lives inline.
+/// The whole screen, not a band above the composer. A circle is a camera
+/// pointed at your face — you are looking at yourself, not at the
+/// conversation — so the conversation goes behind glass and the circle takes
+/// the middle. The composer strip below keeps the timer, the slide-to-cancel
+/// and the send button, because the mechanics are the voice recorder's and
+/// changing them would mean learning the same gesture twice.
+///
+/// Shown through an [OverlayEntry] rather than in the composer's own column:
+/// that column is what the conversation's bottom padding is measured off, and
+/// a 280-point preview appearing inside it would shove the whole chat upward
+/// while a finger is held down on the button that started it.
 class CircleRecorderPreview extends StatelessWidget {
   const CircleRecorderPreview({
     super.key,
     required this.recorder,
     required this.hint,
+    required this.locked,
   });
 
   final CircleRecorder recorder;
 
-  /// One line under the circle: how to send it, how to drop it.
+  /// One line under the circle: what letting go does.
   final String hint;
 
-  /// How wide the circle is drawn. Big enough to see a face in, small enough
-  /// that the conversation behind it is still there.
-  static const double diameter = 232;
+  /// True once the press has ended and the recording carries on by itself.
+  final bool locked;
+
+  /// Light, not heavy. The conversation behind should still be recognisable as
+  /// the chat you are in — the blur says "later", not "gone". Deliberately
+  /// below [AppBlur.sigma]: this one runs over a live camera preview, which is
+  /// the most expensive thing on the screen already.
+  static const double backdropBlur = 9;
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    // Big enough to see a face in, and clear of the composer underneath.
+    final diameter = math.min(media.size.width * 0.66, 290.0);
     return AnimatedBuilder(
       animation: recorder,
       builder: (context, _) {
         final camera = recorder.camera;
         final ready = recorder.isReady && camera != null;
-        return IgnorePointer(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: diameter + 12,
-                height: diameter + 12,
-                child: CustomPaint(
-                  painter: _RingPainter(progress: recorder.progress),
-                  child: Center(
-                    child: ClipOval(
-                      child: SizedBox(
-                        width: diameter,
-                        height: diameter,
-                        child: ready
-                            ? FittedBox(
-                                // The camera hands back 4:3 and the bubble is
-                                // round: cover, so the circle is full of
-                                // picture instead of full of letterbox.
-                                fit: BoxFit.cover,
-                                clipBehavior: Clip.hardEdge,
-                                child: SizedBox(
-                                  width: camera.value.previewSize?.height ?? 3,
-                                  height: camera.value.previewSize?.width ?? 4,
-                                  child: CameraPreview(camera),
-                                ),
-                              )
-                            : ColoredBox(
-                                color: Colors.black.withValues(alpha: 0.75),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 30,
-                                    height: 30,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: AppColors.brandPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(
+                    sigmaX: backdropBlur,
+                    sigmaY: backdropBlur,
+                  ),
+                  child: ColoredBox(
+                    color: AppColors.bgDeep.withValues(alpha: 0.45),
                   ),
                 ),
               ),
-              // No clock here. The composer strip below already carries one,
-              // in the place voice recording puts it, and two counts of the
-              // same seconds a hand's width apart is one too many.
-              const SizedBox(height: 10),
-              _Pill(text: hint, strong: false),
-            ],
-          ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Lifted off centre by a little, because the keyboard's
+                    // half of the screen is where the composer is and a circle
+                    // dead in the middle sits low against it.
+                    const Spacer(flex: 3),
+                    _Disc(
+                      diameter: diameter,
+                      progress: recorder.progress,
+                      camera: ready ? camera : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _Pill(text: hint),
+                    const Spacer(flex: 4),
+                  ],
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
+}
 
+/// The circle itself, with the minute drawn round it.
+class _Disc extends StatelessWidget {
+  const _Disc({
+    required this.diameter,
+    required this.progress,
+    required this.camera,
+  });
+
+  final double diameter;
+  final double progress;
+  final CameraController? camera;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = camera;
+    return SizedBox(
+      width: diameter + 14,
+      height: diameter + 14,
+      child: CustomPaint(
+        painter: _RingPainter(progress: progress),
+        child: Center(
+          child: Container(
+            width: diameter,
+            height: diameter,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // A soft halo, so the circle sits on the blurred chat rather
+              // than being cut out of it.
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 34,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: live == null
+                  ? ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      child: Center(
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppColors.brandPrimary,
+                          ),
+                        ),
+                      ),
+                    )
+                  : FittedBox(
+                      // The camera hands back 4:3 and this is round: cover, so
+                      // the circle is full of picture instead of letterbox.
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: live.value.previewSize?.height ?? 3,
+                        height: live.value.previewSize?.width ?? 4,
+                        child: CameraPreview(live),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill({required this.text, required this.strong});
+  const _Pill({required this.text});
 
   final String text;
-  final bool strong;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: strong ? 1 : 0.75),
-          fontSize: strong ? 15 : 12,
-          fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
-          fontFeatures:
-              strong ? const <FontFeature>[FontFeature.tabularFigures()] : null,
+          color: Colors.white.withValues(alpha: 0.8),
+          fontSize: 12.5,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -142,7 +211,7 @@ class _RingPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
-        ..color = Colors.white.withValues(alpha: 0.22),
+        ..color = Colors.white.withValues(alpha: 0.18),
     );
     if (progress <= 0) return;
     canvas.drawArc(
@@ -152,7 +221,7 @@ class _RingPainter extends CustomPainter {
       false,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
+        ..strokeWidth = 3.5
         ..strokeCap = StrokeCap.round
         ..color = AppColors.brandPrimary,
     );

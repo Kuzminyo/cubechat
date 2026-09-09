@@ -3413,6 +3413,22 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   RecordMode _recordMode = RecordMode.voice;
   CircleRecorder? _circle;
 
+  /// The circle's preview, over the whole screen.
+  ///
+  /// An overlay entry rather than a widget in this bar's own column: that
+  /// column is what the conversation's bottom padding is measured off, so a
+  /// 290-point preview inside it would shove the chat upward while a finger is
+  /// held on the button that started it.
+  OverlayEntry? _circleOverlay;
+
+  /// The lock capsule, and the button it has to sit above.
+  ///
+  /// Also an overlay entry, and for the same reason as the circle: the
+  /// composer is a pane of glass with a clip on it, so anything drawn above
+  /// its top edge from the inside is cut off there.
+  OverlayEntry? _lockOverlay;
+  final GlobalKey _recordButtonKey = GlobalKey();
+
   /// A finished locked recording waiting to be trimmed and sent. While this is
   /// set the composer is replaced by the trim island, so there is no way to
   /// start a second recording on top of an unreviewed one.
@@ -3701,6 +3717,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   void _stopTicker() {
     _tick?.cancel();
     _tick = null;
+    // The capsule's whole life is the length of a recording, and every path
+    // that ends one comes through here.
+    _hideLockHint();
     if (mounted) setState(() => _elapsed = Duration.zero);
   }
 
@@ -3718,7 +3737,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     _stickerPanelRequests.dispose();
     _focusComposerRequests.dispose();
     // Takes the camera with it. A recorder left alive is a camera held open
-    // behind a chat nobody is looking at.
+    // behind a chat nobody is looking at, and an overlay entry left in is a
+    // blurred screen over whatever comes next.
+    _circleOverlay?.remove();
+    _circleOverlay = null;
+    _lockOverlay?.remove();
+    _lockOverlay = null;
     _circle?.dispose();
     _circle = null;
     // Only clear if we're still the active chat — guards against the
@@ -3742,21 +3766,83 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     return made;
   }
 
+  void _showCircleOverlay() {
+    if (_circleOverlay != null) return;
+    final recorder = _circle;
+    if (recorder == null) return;
+    final entry = OverlayEntry(
+      builder: (context) => CircleRecorderPreview(
+        recorder: recorder,
+        locked: _recordLocked,
+        hint: _recordLocked
+            ? AppLocalizations.of(context).circleHintLocked
+            : AppLocalizations.of(context).circleHint,
+      ),
+    );
+    _circleOverlay = entry;
+    Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
+  void _hideCircleOverlay() {
+    _circleOverlay?.remove();
+    _circleOverlay = null;
+  }
+
+  /// Put the lock capsule directly over the record button, wherever it is.
+  ///
+  /// Read off the button's own box rather than guessed from the composer's
+  /// height: the composer grows with a reply island, a multi-line draft and
+  /// the keyboard, and a fixed offset would leave the capsule floating in the
+  /// conversation on half of those.
+  void _showLockHint() {
+    if (_lockOverlay != null) return;
+    final box =
+        _recordButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final origin = box.localToGlobal(Offset.zero);
+    final centre = origin.dx + box.size.width / 2;
+    final entry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: centre - 21,
+        top: origin.dy - LockHint.height - 10,
+        child: const LockHint(),
+      ),
+    );
+    _lockOverlay = entry;
+    Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
+  void _hideLockHint() {
+    _lockOverlay?.remove();
+    _lockOverlay = null;
+  }
+
   Future<void> _onRecordStart() async {
     if (_recordMode == RecordMode.circle) {
       if (mounted) setState(() => _recordLocked = false);
       final ok = await _circleRecorder.start();
-      if (!ok && mounted) {
-        final why = _circleRecorder.error;
-        showGlassToast(
-          context,
-          why == 'camera-or-microphone-denied'
-              ? AppLocalizations.of(context).circleNeedsCamera
-              : AppLocalizations.of(context).circleFailed,
-          tone: ToastTone.danger,
+      if (!ok) {
+        _hideCircleOverlay();
+        DebugLog.instance.log(
+          'CIRCLE',
+          'not recording: ${_circleRecorder.error ?? "released before it began"}',
         );
+        if (mounted && _circleRecorder.error != null) {
+          showGlassToast(
+            context,
+            _circleRecorder.error == 'camera-or-microphone-denied'
+                ? AppLocalizations.of(context).circleNeedsCamera
+                : AppLocalizations.of(context).circleFailed,
+            tone: ToastTone.danger,
+          );
+        }
+        if (mounted) setState(() {});
+        return;
       }
-      if (ok) _startCircleTicker();
+      DebugLog.instance.log('CIRCLE', 'recording');
+      _startCircleTicker();
+      _showCircleOverlay();
+      _showLockHint();
       if (mounted) setState(() {});
       return;
     }
@@ -3769,6 +3855,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       return;
     }
     _startTicker();
+    _showLockHint();
   }
 
   /// Under this, a press was a mis-tap rather than a message.
@@ -3781,10 +3868,21 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordStop() async {
     if (_recordMode == RecordMode.circle) {
+      // Locked means the finger is gone and the recording carries on; the
+      // button under it has become "send", and this is that tap.
       final shot = await _circle?.stop();
       _stopTicker();
-      if (mounted) setState(() {});
-      if (shot == null) return;
+      _hideCircleOverlay();
+      if (mounted) setState(() => _recordLocked = false);
+      if (shot == null) {
+        DebugLog.instance.log('CIRCLE', 'nothing to send: too short or never started');
+        return;
+      }
+      DebugLog.instance.log(
+        'CIRCLE',
+        'recorded ${shot.length.inMilliseconds}ms, '
+            '${await shot.file.length()}B',
+      );
       await _sendCircle(shot.file);
       return;
     }
@@ -3945,8 +4043,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordCancel() async {
     if (_recordMode == RecordMode.circle) {
+      // A drag left, or the gesture being taken away by a system dialog.
+      // Either way the clip goes in the bin, camera and file both.
       await _circle?.cancel();
       _stopTicker();
+      _hideCircleOverlay();
+      DebugLog.instance.log('CIRCLE', 'cancelled');
       if (mounted) setState(() => _recordLocked = false);
       return;
     }
@@ -4825,11 +4927,19 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
-      // Locking is a voice idea: the finger leaves and the recording carries
-      // on. A circle is a camera pointed at a face — it ends when the hold
-      // does.
-      onRecordLock: mediaEnabled && _recordMode == RecordMode.voice
-          ? () => setState(() => _recordLocked = true)
+      // Locking works the same for both, which is the point: the gesture is
+      // learned once. The finger leaves, the recording carries on, and the
+      // button under it becomes send.
+      recordButtonKey: _recordButtonKey,
+      onRecordLock: mediaEnabled
+          ? () {
+              setState(() => _recordLocked = true);
+              // The lock has taken; the instruction that said how has done its
+              // job. The overlay is outside this element's subtree, so it does
+              // not rebuild with it.
+              _hideLockHint();
+              _circleOverlay?.markNeedsBuild();
+            }
           : null,
       recordMode: _recordMode,
       onToggleRecordMode: mediaEnabled
@@ -4956,31 +5066,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
                 ?.isBlocked ??
             false);
 
-    // The circle being recorded, above the composer where the finger is.
-    //
-    // In the composer's own column rather than floating over the conversation,
-    // because that column is what the list's bottom padding is measured off —
-    // the reply island and a multi-line draft already grow it the same way, so
-    // the conversation makes room instead of being covered.
-    final circle = _recordMode == RecordMode.circle && _circle?.isActive == true
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: CircleRecorderPreview(
-              recorder: _circle!,
-              hint: AppLocalizations.of(context).circleHint,
-            ),
-          )
-        : null;
-
     final Widget bar;
-    if (activeReply == null && !blocked && circle == null) {
+    if (activeReply == null && !blocked) {
       bar = composerWithMentions;
     } else {
       bar = Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (circle != null) circle,
           if (blocked)
             _UnblockIsland(
               onUnblock: () => ref
