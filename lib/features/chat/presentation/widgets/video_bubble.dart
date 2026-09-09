@@ -84,13 +84,6 @@ class _VideoBubbleState extends State<VideoBubble> {
   bool _loading = false;
   bool _failed = false;
 
-  /// Paused by a finger rather than by scrolling away.
-  ///
-  /// Without this a circle you deliberately paused starts itself again on the
-  /// next scroll tick, because coming back into view is indistinguishable from
-  /// arriving in view for the first time.
-  bool _pausedByHand = false;
-
   /// It has already played all the way through in this session.
   ///
   /// A circle used to loop — `setLooping(true)` and a listener that seeked
@@ -188,21 +181,16 @@ class _VideoBubbleState extends State<VideoBubble> {
     if (info.visibleFraction > 0.5) return;
     final player = _player;
     if (player != null && player.value.isPlaying) await player.pause();
-    // Scrolling away is not a decision about the circle, so it does not count
-    // as the deliberate pause that [_tap] sets.
-    _pausedByHand = false;
   }
 
   Future<void> _tap() async {
     final player = _player ?? await _open();
     if (player == null) return;
     if (player.value.isPlaying) {
-      _pausedByHand = true;
       await player.pause();
     } else {
-      // A tap is the one thing that overrides both stops, which is what makes
-      // it the way to watch a circle a second time.
-      _pausedByHand = false;
+      // A tap is the one thing that clears "already watched", which is what
+      // makes it the way to see a circle a second time.
       _playedThrough = false;
       if (player.value.position >= player.value.duration) {
         await player.seekTo(Duration.zero);
