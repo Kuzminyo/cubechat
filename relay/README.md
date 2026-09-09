@@ -53,24 +53,33 @@ server**; if a step wants to, stop and say so.
 
 ### 1. Swap, because the build needs more RAM than the droplet has
 
-strfry links a C++ binary and wants about 2 GB. A 1 GB droplet without swap gets
-through most of it and is then killed, which looks like the compiler crashing
-for no reason. Skip this only if `free -m` already shows swap.
+Measured on 2026-09-09: **961 MB of RAM and no swap at all**, with the push
+server and Caddy already holding about 390 MB of it. Linking strfry's C++ wants
+something like 2 GB on its own. Without this step the build gets most of the way
+and is then killed, which reads as the compiler crashing for no reason.
 
 ```bash
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
+
+Four rather than two, because the droplet is smaller than the usual assumption
+and swap is disk — there are 21 GB free and this is the cheapest insurance on
+the list.
 
 ### 2. Build it
 
 ```bash
 apt update && apt install -y git build-essential libyaml-perl libtemplate-perl libregexp-grammars-perl libssl-dev zlib1g-dev liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev
 git clone https://github.com/hoytech/strfry /opt/strfry-src && cd /opt/strfry-src
-git submodule update --init && make setup-golpe && make -j2
+git submodule update --init && make setup-golpe && make -j1
 ```
 
-Twenty minutes on two cores. It is done when `/opt/strfry-src/strfry` exists.
+`-j1`, not `-j2`. Parallel compilation multiplies peak memory by the number of
+jobs, and on this droplet the second job is the difference between building in
+RAM and thrashing 4 GB of swap. It is the slower way to succeed rather than the
+faster way to be killed: expect half an hour or so, and it is done when
+`/opt/strfry-src/strfry` exists.
 
 ### 3. Install it
 
