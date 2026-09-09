@@ -626,7 +626,14 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                             : child,
                       );
                     },
-                    child: widget.recording
+                    // Only voice takes the field's place. A circle draws its
+                    // own bar over the whole screen, so swapping this one as
+                    // well put two counters up — and worse, disposing the
+                    // field took the keyboard down with it, which shoves the
+                    // conversation about at the moment the screen is supposed
+                    // to hold still.
+                    child: widget.recording &&
+                            widget.recordMode == RecordMode.voice
                       ? _RecordingIndicator(
                           key: _recordingKey,
                           elapsed: widget.recordElapsed,

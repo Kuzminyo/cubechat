@@ -8,136 +8,344 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../data/circle_recorder.dart';
 
-/// What a circle looks like while it is being recorded.
+/// The screen while a circle is being recorded.
 ///
-/// The conversation goes behind glass and the circle takes the middle. A
-/// circle is a camera pointed at your own face — you are looking at yourself,
-/// not at the chat — so the chat stops competing for attention while it runs.
+/// **It owns the whole screen, bar included.** The first two attempts cut the
+/// glass off above the composer so the real one showed through, and both
+/// looked wrong for the same reason: the cut-off is measured, the composer
+/// moves with the keyboard, a reply island and a draft, and every mismatch is
+/// a bright seam across the picture or a frosted control bar. So there is no
+/// cut-off. The blur covers everything and this draws its own bar over the
+/// top — the seconds, the way out, and the button — which is what Telegram
+/// does and why theirs never has a seam in it.
 ///
-/// **The composer is not part of that.** It carries the seconds, the
-/// slide-to-cancel and the send button: the controls of the thing being
-/// blurred. Frosting them made the bar look disabled at the exact moment it is
-/// the only part of the screen you can use. So the glass stops at the top of
-/// the record button and the island below stands clear of it.
-///
-/// Shown through an [OverlayEntry] rather than in the composer's own column:
-/// that column is what the conversation's bottom padding is measured off, and
-/// a preview this size inside it would shove the whole chat upward while a
-/// finger is held on the button that started it.
+/// The button under the finger is still the composer's while a finger is on
+/// it: the pointer went down before this appeared, so the gesture belongs to
+/// the recogniser down there and the one drawn here is a picture of it.
+/// Once the recording is locked the finger is gone, and then the one here is
+/// the real one — which is why it takes callbacks.
 class CircleRecorderPreview extends StatelessWidget {
   const CircleRecorderPreview({
     super.key,
     required this.recorder,
-    required this.glassHeight,
+    required this.locked,
+    required this.hint,
+    required this.cancelLabel,
+    required this.onSend,
+    required this.onCancel,
   });
 
   final CircleRecorder recorder;
 
-  /// How tall the frosted region is, from the top of the screen.
-  ///
-  /// A height rather than a bottom inset, and that difference is the whole
-  /// bug: the overlay lives in the root overlay's coordinate space — the
-  /// window, system bars and all — while the screen height the composer knows
-  /// about is the padded one. Subtracting one from the other left the glass
-  /// reaching past the record button and over the island. Measured downward
-  /// from a shared origin, there is nothing to get wrong.
-  final double glassHeight;
+  /// True once the press has ended and the recording carries on by itself.
+  final bool locked;
+
+  /// What a held finger can do: slide left to drop it.
+  final String hint;
+
+  /// What a lifted finger can do: press this to drop it.
+  final String cancelLabel;
+
+  final VoidCallback onSend;
+  final VoidCallback onCancel;
 
   /// Light, not heavy. The conversation behind should still be recognisable as
   /// the chat you are in — the blur says "later", not "gone". Deliberately
   /// below [AppBlur.sigma]: this one runs over a live camera preview, which is
   /// the most expensive thing on the screen already.
-  static const double backdropBlur = 9;
+  static const double backdropBlur = 10;
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final diameter = math.min(media.size.width * 0.62, 270.0);
+    final diameter = math.min(media.size.width * 0.66, 300.0);
+    // Above the keyboard when there is one, above the gesture bar when there
+    // is not. The keyboard stays up while a circle records — it was being
+    // dismissed, which shoved the whole chat about at the moment the screen is
+    // supposed to hold still — so the bar has to clear it.
+    final bottom = math.max(media.padding.bottom, media.viewInsets.bottom);
     return AnimatedBuilder(
       animation: recorder,
       builder: (context, _) {
         final camera = recorder.camera;
         final ready = recorder.isReady && camera != null;
-        return Stack(
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: glassHeight,
-              child: IgnorePointer(
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(
-                    sigmaX: backdropBlur,
-                    sigmaY: backdropBlur,
-                  ),
-                  child: ColoredBox(
-                    color: AppColors.bgDeep.withValues(alpha: 0.45),
+        return Material(
+          type: MaterialType.transparency,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(
+                      sigmaX: backdropBlur,
+                      sigmaY: backdropBlur,
+                    ),
+                    child: ColoredBox(
+                      color: AppColors.bgDeep.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
               ),
-            ),
-            // The screen as a flash.
-            //
-            // A front camera has no light beside it on almost any phone, so
-            // this is the light: a warm sheet over the blur and under the
-            // circle, falling on the face rather than on the picture of it.
-            // What every camera app does for a selfie in the dark.
-            if (recorder.usesScreenLight)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                height: glassHeight,
-                child: const IgnorePointer(
-                  child: ColoredBox(color: Color(0xFFFFF1DA)),
+              // The screen as a flash. Over the blur and under the circle, so
+              // it lights the face and not the picture of it.
+              if (recorder.usesScreenLight)
+                const Positioned.fill(
+                  child: IgnorePointer(
+                    child: ColoredBox(color: Color(0xFFFFF1DA)),
+                  ),
+                ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Column(
+                    children: [
+                      const Spacer(flex: 4),
+                      _Disc(
+                        diameter: diameter,
+                        camera: ready ? camera : null,
+                        progress: recorder.progress,
+                      ),
+                      const Spacer(flex: 5),
+                    ],
+                  ),
                 ),
               ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: glassHeight,
-              child: Column(
-                children: [
-                  const Spacer(),
-                  // Pinch to zoom, let go and it goes back. Only the disc
-                  // takes the gesture, so nothing is stolen from the finger
-                  // still holding the record button below.
-                  GestureDetector(
+              // Pinch to zoom, let go and it goes back. A box the size of the
+              // circle rather than the whole screen, so a stray touch near the
+              // bar is not a zoom.
+              Positioned.fill(
+                child: Align(
+                  alignment: const Alignment(0, -0.28),
+                  child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onScaleStart: (_) => recorder.beginZoom(),
                     onScaleUpdate: (d) => unawaited(recorder.zoomBy(d.scale)),
                     onScaleEnd: (_) => unawaited(recorder.resetZoom()),
-                    child: _Disc(
-                      diameter: diameter,
-                      camera: ready ? camera : null,
-                      progress: recorder.progress,
-                    ),
+                    child: SizedBox(width: diameter, height: diameter),
                   ),
-                  const Spacer(),
-                  // Bottom left, above the timer. Beside the circle they sat
-                  // where the eye is and the thumb is not — a control you have
-                  // to reach across your own face to press.
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: _Controls(recorder: recorder),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
+                ),
               ),
-            ),
-          ],
+              // The light and the lens, left, above the bar.
+              Positioned(
+                left: 18,
+                bottom: bottom + 96,
+                child: _Controls(recorder: recorder),
+              ),
+              // Right above the button it is telling you to drag. Any higher
+              // and it is an instruction floating in the picture rather than
+              // one attached to the thing it is about.
+              if (!locked)
+                Positioned(
+                  right: 20,
+                  bottom: bottom + 74,
+                  child: const _LockCapsule(),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _Bar(
+                  bottomInset: bottom,
+                  // Read off the recorder, which this is already listening to.
+                  // Passed in from the screen it would be whatever it was when
+                  // the overlay entry last rebuilt, and an overlay entry does
+                  // not rebuild with the widget that made it — the clock would
+                  // sit at zero.
+                  elapsed: recorder.elapsed,
+                  locked: locked,
+                  hint: hint,
+                  cancelLabel: cancelLabel,
+                  onSend: onSend,
+                  onCancel: onCancel,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 }
 
-/// The light and the lens, side by side under the circle.
+/// The seconds, the way out, and the button.
+///
+/// Drawn here rather than left to the composer underneath, because the
+/// composer's position is a moving target and a frosted copy of it read as
+/// disabled at the moment it is the only usable thing on screen.
+class _Bar extends StatelessWidget {
+  const _Bar({
+    required this.bottomInset,
+    required this.elapsed,
+    required this.locked,
+    required this.hint,
+    required this.cancelLabel,
+    required this.onSend,
+    required this.onCancel,
+  });
+
+  final double bottomInset;
+  final Duration elapsed;
+  final bool locked;
+  final String hint;
+  final String cancelLabel;
+  final VoidCallback onSend;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(14, 0, 14, bottomInset + 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(27),
+              ),
+              child: Row(
+                children: [
+                  // The dot that says it is running, and the count beside it.
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _clock(elapsed),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      // Tabular, so the bar does not twitch every tenth of a
+                      // second as the digits change width.
+                      fontFeatures: <FontFeature>[
+                        FontFeature.tabularFigures(),
+                      ],
+                    ),
+                  ),
+                  // The hint while a finger is down, and the word to press
+                  // whether it is or not.
+                  if (!locked)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  // Always pressable, locked or not. It was only there once
+                  // the recording had been locked, on the reasoning that a
+                  // held finger cancels by sliding — and then a gesture broke
+                  // somewhere and the only way out of a running circle was the
+                  // system back button, which leaves the chat. A way out that
+                  // depends on the gesture working is not a way out.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onCancel,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 12,
+                      ),
+                      child: Text(
+                        cancelLabel.toUpperCase(),
+                        style: const TextStyle(
+                          color: AppColors.danger,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Under the finger while it is held, and pressable once it is not.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: locked ? onSend : null,
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.brandPrimary,
+              ),
+              child: Icon(
+                locked ? Icons.send_rounded : Icons.videocam_rounded,
+                size: 24,
+                color: AppColors.bgDeep,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _clock(Duration d) {
+    final s = d.inSeconds;
+    final tenths = (d.inMilliseconds ~/ 100) % 10;
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')},$tenths';
+  }
+}
+
+/// Drag up to lock, drawn where the thumb is rather than where there is room.
+class _LockCapsule extends StatelessWidget {
+  const _LockCapsule();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: 42,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(21),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.22),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.keyboard_double_arrow_up_rounded,
+              size: 20,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+            const SizedBox(height: 3),
+            Icon(
+              Icons.lock_open_rounded,
+              size: 15,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The light and the lens, side by side.
 class _Controls extends StatelessWidget {
   const _Controls({required this.recorder});
 
@@ -146,7 +354,7 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         _RoundButton(
           icon: recorder.torchOn
@@ -155,14 +363,13 @@ class _Controls extends StatelessWidget {
           on: recorder.torchOn,
           onTap: () => unawaited(recorder.toggleTorch()),
         ),
-        const SizedBox(width: 18),
+        const SizedBox(width: 14),
         // Turning the phone round mid-circle.
         //
         // The camera plugin cannot hand a running capture to the other sensor,
         // so this stops the recording and starts a new one on the far lens.
         // The seconds reset in front of you, which is the honest way to show
-        // that what was recorded is gone — the alternative was a button that
-        // did nothing until the next circle, and it was asked for three times.
+        // that what was recorded is gone.
         _RoundButton(
           icon: Icons.flip_camera_ios_rounded,
           on: false,
@@ -228,9 +435,7 @@ class _Disc extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // The arc, and only the arc. There is no track behind it — a full circle
-    // of grey round the picture is the outline that was asked to go, and it
-    // was drawing a second rim a hair outside the first. What is left is the
-    // part that means something: how much of the minute has gone.
+    // of grey round the picture is the outline that was asked to go.
     return SizedBox(
       width: diameter + 16,
       height: diameter + 16,
@@ -248,8 +453,6 @@ class _Disc extends StatelessWidget {
       height: diameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // A soft halo, so the circle sits on the blurred chat rather than
-        // being cut out of it.
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.45),
@@ -274,8 +477,10 @@ class _Disc extends StatelessWidget {
                 ),
               )
             : FittedBox(
-                // The camera hands back 4:3 and this is round: cover, so the
-                // circle is full of picture instead of letterbox.
+                // Cover, so the circle is full of picture instead of
+                // letterbox. Scaling by width, which keeps the whole of what
+                // the lens sees left to right and crops top and bottom — the
+                // only way a round window can be cut out of a rectangle.
                 fit: BoxFit.cover,
                 clipBehavior: Clip.hardEdge,
                 child: SizedBox(

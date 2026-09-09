@@ -3771,29 +3771,24 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     if (_circleOverlay != null) return;
     final recorder = _circle;
     if (recorder == null) return;
-    // Where the glass has to stop, read off the record button itself.
-    //
-    // Measured downward from the same origin the overlay uses rather than up
-    // from a screen height, and that is the difference between working and
-    // not: the overlay lives in the root overlay's space — the window, system
-    // bars and all — while the height the composer knows about is the padded
-    // one. Subtracting the two left the blur reaching over the island it was
-    // supposed to leave alone.
-    //
-    // Twelve points above the button, which clears the island's own padding as
-    // well as the button: while a circle records that bar carries the seconds,
-    // the cancel and the send, and frosting the controls of the thing being
-    // frosted is the one thing this must not do.
-    final box =
-        _recordButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    final glass = box == null || !box.hasSize
-        ? MediaQuery.sizeOf(context).height * 0.7
-        : (box.localToGlobal(Offset.zero).dy - 12).clamp(160.0, 4096.0);
+    // No measuring any more. Two builds went into cutting the glass off above
+    // the composer so the real bar showed through, and both were wrong for the
+    // same reason: the cut-off is a number and the composer is a moving target
+    // — the keyboard, a reply island, a draft — so every mismatch was a bright
+    // seam across the picture or a frosted control bar. The overlay covers
+    // everything and draws its own bar instead.
     final entry = OverlayEntry(
-      builder: (context) => CircleRecorderPreview(
-        recorder: recorder,
-        glassHeight: glass,
-      ),
+      builder: (context) {
+        final t = AppLocalizations.of(context);
+        return CircleRecorderPreview(
+          recorder: recorder,
+          locked: _recordLocked,
+          hint: t.circleHint,
+          cancelLabel: t.cancel,
+          onSend: () => unawaited(_onRecordStop()),
+          onCancel: () => unawaited(_onRecordCancel()),
+        );
+      },
     );
     _circleOverlay = entry;
     Overlay.of(context, rootOverlay: true).insert(entry);
