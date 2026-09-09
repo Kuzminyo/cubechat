@@ -3771,19 +3771,28 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     if (_circleOverlay != null) return;
     final recorder = _circle;
     if (recorder == null) return;
-    // Where the composer starts, read off the record button rather than
-    // guessed: everything below that line stays sharp, because while a circle
-    // records that bar is carrying the seconds, the cancel and the send.
+    // Where the glass has to stop, read off the record button itself.
+    //
+    // Measured downward from the same origin the overlay uses rather than up
+    // from a screen height, and that is the difference between working and
+    // not: the overlay lives in the root overlay's space — the window, system
+    // bars and all — while the height the composer knows about is the padded
+    // one. Subtracting the two left the blur reaching over the island it was
+    // supposed to leave alone.
+    //
+    // Twelve points above the button, which clears the island's own padding as
+    // well as the button: while a circle records that bar carries the seconds,
+    // the cancel and the send, and frosting the controls of the thing being
+    // frosted is the one thing this must not do.
     final box =
         _recordButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    final screen = MediaQuery.sizeOf(context).height;
-    final clear = box == null || !box.hasSize
-        ? 96.0
-        : (screen - box.localToGlobal(Offset.zero).dy + 10).clamp(0.0, screen);
+    final glass = box == null || !box.hasSize
+        ? MediaQuery.sizeOf(context).height * 0.7
+        : (box.localToGlobal(Offset.zero).dy - 12).clamp(160.0, 4096.0);
     final entry = OverlayEntry(
       builder: (context) => CircleRecorderPreview(
         recorder: recorder,
-        bottomClear: clear,
+        glassHeight: glass,
       ),
     );
     _circleOverlay = entry;
@@ -3896,6 +3905,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
             '${await shot.file.length()}B',
       );
       await _sendCircle(shot.file);
+      // Said on the way out as well as on the way in. Without it the log ends
+      // at "recorded", and a transfer that queued, failed inside sendFile or
+      // simply never started all look the same from here.
+      DebugLog.instance.log('CIRCLE', 'handed to the transport');
       return;
     }
     final wasLocked = _recordLocked;

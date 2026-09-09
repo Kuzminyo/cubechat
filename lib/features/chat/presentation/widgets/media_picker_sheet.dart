@@ -153,19 +153,39 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   /// the column in. The grid then shows photographs only, with the permission
   /// granted and the query asking for both.
   ///
-  /// A day is also short for a ceiling nobody asked for: it exists to exclude
-  /// nothing here, so it is set past anything a phone will hold.
+  /// **The ceiling stays at a day**, and raising it is what broke the gallery
+  /// for a week. Thirty days is 2,592,000,000 milliseconds, which is past what
+  /// a 32-bit signed integer holds — the value went over the platform channel,
+  /// overflowed, and `getAssetPathList` came back with no albums at all. Not
+  /// an error, not an exception in a form anything caught: an empty list, which
+  /// draws exactly like a phone with no photos on it.
+  ///
+  /// A day was never a restriction anyway. There is no video on a phone longer
+  /// than twenty-four hours, and the whole point of this option is the
+  /// `allowNullable` beside it.
   static FilterOptionGroup _newestFirst() => FilterOptionGroup(
         orders: const [
           OrderOption(type: OrderOptionType.createDate, asc: false),
         ],
         createTimeCond: DateTimeCond.def().copyWith(ignore: true),
         videoOption: const FilterOption(
-          durationConstraint: DurationConstraint(
-            max: Duration(days: 30),
-            allowNullable: true,
-          ),
+          durationConstraint: DurationConstraint(allowNullable: true),
         ),
+      );
+
+  /// The same ordering with nothing else on it.
+  ///
+  /// What the fallback uses when the filtered query comes back empty. Without
+  /// it the plain call carries no `orders` at all, and photo_manager applies
+  /// none of its own — so the platform's order stands, which on Android is
+  /// oldest first. That is what "the gallery opens on photos from years ago"
+  /// was, twice: once before the ordering was added, and again the moment the
+  /// fallback started running without it.
+  static FilterOptionGroup _orderOnly() => FilterOptionGroup(
+        orders: const [
+          OrderOption(type: OrderOptionType.createDate, asc: false),
+        ],
+        createTimeCond: DateTimeCond.def().copyWith(ignore: true),
       );
 
   /// One screen's worth and change. The album is paged in as the grid scrolls
@@ -308,9 +328,14 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     } catch (e) {
       DebugLog.instance.log('GALLERY', 'filtered album list failed: $e');
     }
+    // Ordering only — never a bare call. photo_manager applies no order of its
+    // own, so the plain query hands back the platform's, and on Android that
+    // is oldest first: the gallery opens on pictures from years ago and the
+    // one you just took is a thousand tiles down.
     final plain = await PhotoManager.getAssetPathList(
       type: RequestType.common,
       onlyAll: true,
+      filterOption: _orderOnly(),
     );
     DebugLog.instance.log('GALLERY', 'plain album list: ${plain.length}');
     return plain;
@@ -639,7 +664,24 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     // camera is reachable even when the gallery is empty.
     return NotificationListener<ScrollNotification>(
       onNotification: _onGalleryScroll,
-      child: GridView.builder(
+      // A handle you can drag, because a phone holds years of photographs and
+      // a flick moves three rows. Interactive rather than the decorative kind:
+      // the point is to throw the grid a year back in one gesture, not to be
+      // told where you already are.
+      //
+      // It only appears while the grid is moving and fades again, so it is not
+      // a permanent stripe down the side of the pictures.
+      child: RawScrollbar(
+        controller: _scroll,
+        thumbVisibility: false,
+        interactive: true,
+        thickness: 8,
+        radius: const Radius.circular(4),
+        thumbColor: AppColors.brandPrimary.withValues(alpha: 0.75),
+        // Big enough to hit with a thumb on a roll of ten thousand, where the
+        // proportional size would otherwise be a few pixels.
+        minThumbLength: 48,
+        child: GridView.builder(
         controller: _scroll,
         primary: false,
         physics: const AlwaysScrollableScrollPhysics(
@@ -685,6 +727,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
             onToggle: () => _toggle(asset),
           );
         },
+        ),
       ),
     );
   }

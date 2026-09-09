@@ -118,7 +118,14 @@ class CircleRecorder extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The light, hardware if there is one and the screen if there is not.
+  /// The light: the screen on a front lens, the flash on a back one.
+  ///
+  /// Decided by which way the camera points rather than by asking the hardware
+  /// and seeing what happens. Asking was the first attempt and it failed
+  /// silently: on this phone `setFlashMode(torch)` on the front camera
+  /// *succeeds* and lights nothing, so the button turned itself on, the screen
+  /// stayed dark, and there was no error to fall back from. A front camera
+  /// with a flash beside it does not exist on any phone this app will meet.
   Future<void> toggleTorch() async {
     final camera = _camera;
     if (camera == null) return;
@@ -126,14 +133,44 @@ class CircleRecorder extends ChangeNotifier {
     if (_hardwareTorch) {
       try {
         await camera.setFlashMode(_torchOn ? FlashMode.torch : FlashMode.off);
-      } catch (_) {
-        // No flash on this lens. Fall through to lighting the screen, and do
-        // not ask again for the rest of this recording.
+      } catch (e) {
+        DebugLog.instance.log('CIRCLE', 'torch refused ($e) — using the screen');
         _hardwareTorch = false;
       }
     }
     notifyListeners();
   }
+
+  /// Turn the phone round without letting go.
+  ///
+  /// The camera plugin cannot hand a running capture to the other sensor, so
+  /// this is a stop and a start: what was recorded is discarded and the count
+  /// begins again. Visible rather than hidden — the seconds reset in front of
+  /// you — which is the honest way to show it, and the alternative was a
+  /// button that did nothing until the next circle.
+  Future<void> flipLens() async {
+    final camera = _camera;
+    if (camera == null || _flipping) return;
+    _flipping = true;
+    try {
+      if (camera.value.isRecordingVideo) {
+        final shot = await camera.stopVideoRecording();
+        await _quietlyDelete(File(shot.path));
+      }
+      final wasFront = _front;
+      await _release();
+      await start(front: !wasFront);
+    } catch (e) {
+      DebugLog.instance.log('CIRCLE', 'flip failed: $e');
+    } finally {
+      _flipping = false;
+    }
+  }
+
+  bool _flipping = false;
+
+  /// Which way the open camera is pointing, so a flip knows what to ask for.
+  bool _front = true;
 
   /// True once the preview has a picture in it. The ring is drawn against
   /// this rather than against [isRecording], so the circle does not appear as
@@ -244,7 +281,10 @@ class CircleRecorder extends ChangeNotifier {
         _zoom = 1;
       }
       _torchOn = false;
-      _hardwareTorch = true;
+      // A front camera has no flash on any phone this will meet, and asking
+      // anyway is worse than not asking: the call succeeds and lights nothing.
+      _hardwareTorch = lens.lensDirection == CameraLensDirection.back;
+      _front = lens.lensDirection == CameraLensDirection.front;
 
       await camera.startVideoRecording();
       // And again: starting the recording is itself a round trip to the
