@@ -84,6 +84,16 @@ class _VideoBubbleState extends State<VideoBubble> {
   /// arriving in view for the first time.
   bool _pausedByHand = false;
 
+  /// It has already played all the way through in this session.
+  ///
+  /// A circle used to loop — `setLooping(true)` and a listener that seeked
+  /// back to zero at the end — so opening a chat left one spinning and talking
+  /// until you scrolled it off the screen. Autoplay is still right: it is what
+  /// every messenger with circles does, and the point of a circle is that you
+  /// do not have to press anything. Playing *again* is not. Once it has
+  /// finished, it stays finished until somebody taps it.
+  bool _playedThrough = false;
+
   bool get _isCircle => VideoBubble.isCircle(widget.message);
 
   @override
@@ -96,16 +106,18 @@ class _VideoBubbleState extends State<VideoBubble> {
   void _onTick() {
     if (!mounted) return;
     final player = _player;
-    // A circle runs round: reaching the end starts it again, the way a short
-    // clip in a conversation is always shown.
+    // Reaching the end is the end. Rewound so the next tap starts from the
+    // beginning rather than from a frame that is already over, and marked so
+    // scrolling it back into view does not start it again.
     if (_isCircle &&
         player != null &&
         player.value.isInitialized &&
-        !player.value.isPlaying &&
+        !_playedThrough &&
         player.value.position >= player.value.duration &&
-        !_pausedByHand) {
+        player.value.duration > Duration.zero) {
+      _playedThrough = true;
+      unawaited(player.pause());
       unawaited(player.seekTo(Duration.zero));
-      unawaited(player.play());
     }
     setState(() {});
   }
@@ -124,7 +136,8 @@ class _VideoBubbleState extends State<VideoBubble> {
         return null;
       }
       player.addListener(_onTick);
-      await player.setLooping(_isCircle);
+      // Never. A circle plays once; see [_playedThrough].
+      await player.setLooping(false);
       setState(() {
         _player = player;
         _loading = false;
@@ -153,13 +166,16 @@ class _VideoBubbleState extends State<VideoBubble> {
     // the sound from the one that has just arrived below it.
     final visible = info.visibleFraction > 0.5;
     if (visible) {
-      if (_pausedByHand) return;
+      // Two ways of having stopped that both mean "do not start again": a
+      // finger on it, and having already run to the end once.
+      if (_pausedByHand || _playedThrough) return;
       final player = await _open();
       if (player != null && !player.value.isPlaying) await player.play();
     } else {
       final player = _player;
       if (player != null && player.value.isPlaying) await player.pause();
-      // Off screen is not a decision, so coming back starts it again.
+      // Off screen is not a decision, so coming back starts it again — unless
+      // it has already been watched, which is.
       _pausedByHand = false;
     }
   }
@@ -171,7 +187,10 @@ class _VideoBubbleState extends State<VideoBubble> {
       _pausedByHand = true;
       await player.pause();
     } else {
+      // A tap is the one thing that overrides both stops, which is what makes
+      // it the way to watch a circle a second time.
       _pausedByHand = false;
+      _playedThrough = false;
       if (player.value.position >= player.value.duration) {
         await player.seekTo(Duration.zero);
       }

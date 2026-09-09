@@ -80,13 +80,18 @@ class FakeCamera extends CameraController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('cancel while permission is pending prevents the camera opening',
+  test('cancel while the camera list is pending prevents the camera opening',
       () async {
-    final permission = Completer<bool>();
+    // Was "while permission is pending", back when the recorder asked
+    // permission_handler before opening anything. It no longer does — that
+    // request was compiled out on iOS and refused every circle there — so the
+    // first await inside start() is now the camera list. Same property under
+    // test: letting go during an await that outlasts the finger must not open
+    // a camera afterwards.
+    final cameras = Completer<List<CameraDescription>>();
     var created = 0;
     final recorder = CircleRecorder(
-      requestAccess: () => permission.future,
-      listCameras: () async => [front, back],
+      listCameras: () => cameras.future,
       createCamera: (lens) {
         created++;
         return FakeCamera(lens);
@@ -97,17 +102,42 @@ void main() {
     });
     final starting = recorder.start();
     await recorder.cancel();
-    permission.complete(true);
+    cameras.complete([front, back]);
     expect(await starting, false);
     expect(created, 0);
     await recorder.cancel();
+    recorder.dispose();
+  });
+
+  test('a refused camera is reported as a refusal, not as a broken camera',
+      () async {
+    // The camera plugin asks for camera and microphone itself now, and says no
+    // by throwing. Mapping the code is what puts "circles need the camera and
+    // microphone" on screen instead of a raw platform string.
+    final recorder = CircleRecorder(
+      listCameras: () async => [front],
+      createCamera: (_) => _RefusingCamera(front),
+    );
+    expect(await recorder.start(), false);
+    expect(recorder.error, 'camera-or-microphone-denied');
+    expect(recorder.isActive, false);
+    recorder.dispose();
+  });
+
+  test('a camera that fails for another reason is not called a refusal',
+      () async {
+    final recorder = CircleRecorder(
+      listCameras: () async => [front],
+      createCamera: (_) => _RefusingCamera(front, code: 'CameraNotFound'),
+    );
+    expect(await recorder.start(), false);
+    expect(recorder.error, 'CameraNotFound');
     recorder.dispose();
   });
   test('flip keeps the current recording and never discards its file',
       () async {
     final camera = FakeCamera(front);
     final recorder = CircleRecorder(
-      requestAccess: () async => true,
       listCameras: () async => [front, back],
       createCamera: (_) => camera,
     );
@@ -128,7 +158,6 @@ void main() {
       () async {
     final camera = FakeCamera(front);
     final recorder = CircleRecorder(
-      requestAccess: () async => true,
       listCameras: () async => [front, back],
       createCamera: (_) => camera,
     );
@@ -148,19 +177,38 @@ void main() {
     recorder.dispose();
   });
 
-  test('release while permissions are pending prevents a late recording',
+  test('release while the camera list is pending prevents a late recording',
       () async {
-    final permission = Completer<bool>();
+    final cameras = Completer<List<CameraDescription>>();
     final recorder = CircleRecorder(
-      requestAccess: () => permission.future,
-      listCameras: () async => [front],
+      listCameras: () => cameras.future,
       createCamera: (_) => FakeCamera(front),
     );
     final starting = recorder.start();
     expect(await recorder.stop(), isNull);
-    permission.complete(true);
+    cameras.complete([front]);
     expect(await starting, false);
     expect(recorder.isActive, false);
     recorder.dispose();
   });
+}
+
+/// A camera that refuses to open, the way one does when the person says no to
+/// the system dialog the plugin puts up.
+class _RefusingCamera extends CameraController {
+  _RefusingCamera(CameraDescription description,
+      {this.code = 'CameraAccessDenied'})
+      : super(description, ResolutionPreset.medium);
+
+  final String code;
+
+  @override
+  Future<void> initialize() async {
+    throw CameraException(code, 'refused by the test');
+  }
+
+  // Nothing native was opened, so there is nothing to hand back.
+  @override
+  // ignore: must_call_super
+  Future<void> dispose() async {}
 }

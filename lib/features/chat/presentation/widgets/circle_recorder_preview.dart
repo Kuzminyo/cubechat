@@ -121,7 +121,6 @@ class CircleRecorderPreview extends StatelessWidget {
                             diameter: diameter,
                             camera: recorder.isReady ? recorder.camera : null,
                             progress: recorder.progress,
-                            changing: recorder.isFlipping,
                           ),
                         ),
                       ),
@@ -174,16 +173,18 @@ class CircleRecorderPreview extends StatelessWidget {
                                 _GlassButton(
                                   key: const ValueKey('circle-flip'),
                                   label: t.circleSwitchCamera,
-                                  icon: recorder.isFlipping
-                                      ? const SizedBox.square(
-                                          dimension: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.flip_camera_ios_rounded,
-                                        ),
+                                  // The same icon throughout. It used to
+                                  // become a spinner for the fraction of a
+                                  // second the sensor takes, which reads as
+                                  // something going wrong rather than as
+                                  // something happening: the recording never
+                                  // stopped, the picture just changed. The
+                                  // button is still refused while the swap is
+                                  // in flight, which is what actually needed
+                                  // saying.
+                                  icon: const Icon(
+                                    Icons.flip_camera_ios_rounded,
+                                  ),
                                   onTap: recorder.isFinishing ||
                                           recorder.isFlipping
                                       ? null
@@ -418,12 +419,10 @@ class _Disc extends StatelessWidget {
     required this.diameter,
     required this.camera,
     required this.progress,
-    required this.changing,
   });
   final double diameter;
   final CameraController? camera;
   final double progress;
-  final bool changing;
   @override
   Widget build(BuildContext context) => CustomPaint(
         painter: _ArcPainter(progress: progress),
@@ -446,7 +445,12 @@ class _Disc extends StatelessWidget {
                         child: CameraPreview(camera!),
                       ),
                     ),
-                  if (camera == null || changing)
+                  // Only while there is no picture at all. A sensor swap keeps
+                  // the last frame on screen and replaces it when the other
+                  // lens is ready, which is what a flip looks like everywhere
+                  // else; putting a spinner over the face mid-sentence was the
+                  // thing that made it feel broken.
+                  if (camera == null)
                     Center(
                       child: SizedBox.square(
                         dimension: 28,

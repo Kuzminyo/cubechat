@@ -6985,6 +6985,20 @@ class MessagingService {
       return;
     }
     final key = _hexOf(manifest.mediaId);
+    // The one line that says a transfer started coming in.
+    //
+    // Every failure on this path was already logged and every success was
+    // silent, so a log with no media lines in it read identically whether the
+    // sender never sent, the relay never carried it, or it arrived perfectly.
+    // Two reports of "circles do not arrive" were unanswerable for exactly
+    // that reason. One line per transfer, not per chunk — the buffer is 200
+    // lines and a photo batch fills it.
+    DebugLog.instance.log(
+      'FILE',
+      'incoming ${manifest.kind.name} from $peerId — '
+          '${manifest.total} chunk(s)${manifest.name == null ? '' : ' '
+              '"${manifest.name}"'}',
+    );
     _gcMediaBuffers();
 
     // Forward-secret transfer: derive the per-transfer media key so buffered

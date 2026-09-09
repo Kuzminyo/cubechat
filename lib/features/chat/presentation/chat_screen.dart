@@ -64,6 +64,7 @@ import '../data/messages_controller.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
+import '../../profile/data/camera_api_controller.dart';
 import '../../profile/data/circle_lens_controller.dart';
 import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
@@ -3845,6 +3846,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       _showCircleOverlay();
       final lens = ref.read(circleLensProvider.notifier);
       await lens.loaded;
+      // Which camera implementation, before one is opened. Registering it
+      // after a controller exists changes nothing for that controller, so the
+      // wait belongs here rather than inside the recorder.
+      await ref.read(cameraApiProvider.notifier).loaded;
       if (!mounted || session != _circleSession) return;
       final ok = await recorder.start(front: ref.read(circleLensProvider));
       if (!mounted || session != _circleSession) return;
@@ -3898,7 +3903,18 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
         if (mounted) setState(() => _recordLocked = false);
         if (shot == null) return;
         if (!mounted) { await _discardRecording(shot.file.path); return; }
-        await _sendCircle(shot.file);
+        // Not awaited, and that is the fix rather than an oversight.
+        //
+        // This gate exists to stop two recordings overlapping, and it used to
+        // be held until `_sendCircle` returned — which is the whole upload,
+        // dozens of relay publishes, tens of seconds. For all of that time
+        // `_onRecordStart` saw `_circleFinishing` and refused, so the second
+        // circle in a row simply did not record and nothing said why.
+        //
+        // Recording is finished the moment the file exists. The transfer is
+        // its own thing with its own progress and its own failure toast, and
+        // several can be in flight at once exactly as several photos can.
+        unawaited(_sendCircle(shot.file));
       } finally {
         _circleFinishing = false;
         if (mounted) setState(() {});

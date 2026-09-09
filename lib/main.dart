@@ -20,6 +20,7 @@ import 'core/util/media_storage.dart';
 import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
+import 'features/profile/data/camera_api_controller.dart';
 
 // The build stamp used to live here as a private constant, which meant the
 // boot log was the only thing that could see it. It is in
@@ -283,6 +284,20 @@ Future<void> main() async {
 
   final container = ProviderContainer();
   IosBackgroundRefresh.instance.install(container);
+
+  // Which Android camera implementation, before anything can open one.
+  //
+  // `CameraPlatform.instance` is global and a controller keeps whichever
+  // implementation it was built with, so this has to land before the first
+  // camera rather than at the screen that wants it — and there is no camera
+  // during startup, so nothing here can disagree with it. Bounded like every
+  // other boot step: a disk read that hangs must not hold the first frame,
+  // and the default it falls back to is the one the app ships with anyway.
+  await _bootStep(
+    'camera-api',
+    () => container.read(cameraApiProvider.notifier).loaded,
+    limit: const Duration(milliseconds: 400),
+  );
 
   // The one thing above that is allowed to hold the first frame for a screen's
   // worth of content rather than for a decision.

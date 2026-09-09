@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/util/debug_log.dart';
 
@@ -25,21 +24,39 @@ import '../../../core/util/debug_log.dart';
 class CircleRecorder extends ChangeNotifier {
   CircleRecorder({
     Future<List<CameraDescription>> Function()? listCameras,
-    Future<bool> Function()? requestAccess,
     CameraController Function(CameraDescription)? createCamera,
   })  : _listCameras = listCameras ?? availableCameras,
-        _requestAccess = requestAccess ?? _requestCameraAccess,
         _createCamera = createCamera ?? _makeCamera;
 
   final Future<List<CameraDescription>> Function() _listCameras;
-  final Future<bool> Function() _requestAccess;
   final CameraController Function(CameraDescription) _createCamera;
 
-  static Future<bool> _requestCameraAccess() async {
-    final grants =
-        await <Permission>[Permission.camera, Permission.microphone].request();
-    return grants.values.every((status) => status.isGranted);
-  }
+  /// Camera exception codes that mean the person said no, or was never asked.
+  ///
+  /// **This is why circles did nothing at all on iOS.** The recorder used to
+  /// ask `permission_handler` for camera and microphone before opening
+  /// anything. On iOS that package compiles each permission out unless the
+  /// Podfile defines a macro for it — `PermissionHandlerEnums.h` reads
+  /// `#ifndef PERMISSION_CAMERA / #define PERMISSION_CAMERA 0` — and this repo
+  /// has no Podfile at all, so Flutter generates the default one, which
+  /// defines nothing. The request therefore returned "not granted" without any
+  /// dialog ever appearing, every single time, and the screen showed
+  /// "circles need the camera and microphone" to someone who had never been
+  /// asked for either.
+  ///
+  /// Nothing asks ahead any more. The camera plugin requests both itself when
+  /// the controller initializes — `AVCaptureDevice.requestAccess` on iOS,
+  /// CameraX's permission manager on Android — and reports a refusal as a
+  /// [CameraException] with one of these codes. One fewer package in the path,
+  /// and no build-time switch that can silently turn it off.
+  static const _deniedCodes = {
+    'CameraAccessDenied',
+    'CameraAccessDeniedWithoutPrompt',
+    'CameraAccessRestricted',
+    'AudioAccessDenied',
+    'AudioAccessDeniedWithoutPrompt',
+    'AudioAccessRestricted',
+  };
 
   /// 720p at 1.6 Mbps, 24 fps, 64 kbps of sound.
   ///
@@ -293,16 +310,6 @@ class CircleRecorder extends ChangeNotifier {
     _starting = true;
     final generation = ++_generation;
     try {
-      // Both, and in one go: a circle without sound is a silent film, and
-      // asking for the microphone only after the camera is open means two
-      // system dialogs stacked over a held finger.
-      if (!await _requestAccess()) {
-        error = 'camera-or-microphone-denied';
-        return false;
-      }
-      // Reading a permission dialog takes longer than holding a button.
-      if (generation != _generation) return false;
-
       final cameras = await _listCameras();
       if (generation != _generation) return false;
       if (cameras.isEmpty) {
@@ -379,6 +386,20 @@ class CircleRecorder extends ChangeNotifier {
       _ceiling = Timer(maxLength, () => onCeilingReached?.call());
       _notify();
       return true;
+    } on CameraException catch (e) {
+      // Told apart so the screen can say "circles need the camera and the
+      // microphone" for a refusal and "could not record" for a camera that is
+      // simply busy or broken. They read very differently to the person
+      // holding the phone: one is a thing they can fix in Settings.
+      final denied = _deniedCodes.contains(e.code);
+      DebugLog.instance.log(
+        'CIRCLE',
+        'start failed: ${e.code} ${e.description ?? ''}'
+            '${denied ? ' (access refused)' : ''}',
+      );
+      error = denied ? 'camera-or-microphone-denied' : '${e.code}';
+      if (generation == _generation) await _release();
+      return false;
     } catch (e) {
       DebugLog.instance.log('CIRCLE', 'start failed: $e');
       error = '$e';
