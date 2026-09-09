@@ -12,6 +12,11 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.hardware.camera2.CameraCharacteristics;
+import android.util.SizeF;
+import androidx.camera.camera2.interop.Camera2CameraInfo;
+import androidx.camera.core.ZoomState;
+import androidx.lifecycle.MutableLiveData;
 import androidx.annotation.Nullable;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfo;
@@ -83,6 +88,65 @@ public class ProcessCameraProviderTest {
     when(instance.getAvailableCameraInfos()).thenReturn(value);
 
     assertEquals(value, api.getAvailableCameraInfos(instance));
+  }
+
+  @Test
+  public void cameraChoices_preferActualFieldOfViewAndDoNotMutateProviderList() {
+    final ProcessCameraProviderProxyApi api =
+        (ProcessCameraProviderProxyApi) new TestProxyApiRegistrar().getPigeonApiProcessCameraProvider();
+    final ProcessCameraProvider provider = mock(ProcessCameraProvider.class);
+    final CameraInfo tele = mock(CameraInfo.class);
+    final CameraInfo wide = mock(CameraInfo.class);
+    final CameraInfo ultra = mock(CameraInfo.class);
+    final List<CameraInfo> original = List.of(tele, wide, ultra);
+    when(provider.getAvailableCameraInfos()).thenReturn(original);
+    try (MockedStatic<Camera2CameraInfo> bridge = Mockito.mockStatic(Camera2CameraInfo.class)) {
+      cameraMetadata(bridge, tele, 12, 6, 1);
+      cameraMetadata(bridge, wide, 6, 6, 1);
+      cameraMetadata(bridge, ultra, 3, 6, 1);
+      assertEquals(List.of(ultra, wide, tele), api.getAvailableCameraInfos(provider));
+      assertEquals(List.of(tele, wide, ultra), original);
+    }
+  }
+
+  @Test
+  public void logicalCameraMinimumZoomCountsTowardsItsFieldOfView() {
+    final CameraInfo logical = mock(CameraInfo.class);
+    final CameraInfo wide = mock(CameraInfo.class);
+    try (MockedStatic<Camera2CameraInfo> bridge = Mockito.mockStatic(Camera2CameraInfo.class)) {
+      cameraMetadata(bridge, logical, 6, 6, .5f);
+      cameraMetadata(bridge, wide, 6, 6, 1);
+      assertEquals(2.0, ProcessCameraProviderProxyApi.fieldOfViewScore(logical), .001);
+      assertEquals(1.0, ProcessCameraProviderProxyApi.fieldOfViewScore(wide), .001);
+    }
+  }
+
+  @Test
+  public void missingMetadataPreservesAvailableCameraOrder() {
+    final ProcessCameraProviderProxyApi api =
+        (ProcessCameraProviderProxyApi) new TestProxyApiRegistrar().getPigeonApiProcessCameraProvider();
+    final ProcessCameraProvider provider = mock(ProcessCameraProvider.class);
+    final CameraInfo first = mock(CameraInfo.class);
+    final CameraInfo second = mock(CameraInfo.class);
+    when(provider.getAvailableCameraInfos()).thenReturn(List.of(first, second));
+    try (MockedStatic<Camera2CameraInfo> bridge = Mockito.mockStatic(Camera2CameraInfo.class)) {
+      bridge.when(() -> Camera2CameraInfo.from(first)).thenThrow(new IllegalArgumentException());
+      bridge.when(() -> Camera2CameraInfo.from(second)).thenReturn(mock(Camera2CameraInfo.class));
+      assertEquals(List.of(first, second), api.getAvailableCameraInfos(provider));
+    }
+  }
+
+  private static void cameraMetadata(MockedStatic<Camera2CameraInfo> bridge,
+      CameraInfo camera, float focal, float sensorShortEdge, float minimumZoom) {
+    final Camera2CameraInfo info = mock(Camera2CameraInfo.class);
+    bridge.when(() -> Camera2CameraInfo.from(camera)).thenReturn(info);
+    when(info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE))
+        .thenReturn(new SizeF(sensorShortEdge * 4 / 3, sensorShortEdge));
+    when(info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS))
+        .thenReturn(new float[] {focal});
+    final ZoomState zoom = mock(ZoomState.class);
+    when(zoom.getMinZoomRatio()).thenReturn(minimumZoom);
+    when(camera.getZoomState()).thenReturn(new MutableLiveData<>(zoom));
   }
 
   @Test

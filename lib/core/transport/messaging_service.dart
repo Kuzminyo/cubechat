@@ -218,6 +218,7 @@ class MessagingService {
       },
     );
     _startFileQueueTimer();
+    _startStalledMediaTimer();
     _wireNostrFallback();
     _startInBackground('relay buffer', _loadRelayBuffer());
     _startInBackground(
@@ -286,6 +287,35 @@ class MessagingService {
   Timer? _presenceTimer;
   Timer? _fileQueueTimer;
   bool _drainingFileQueue = false;
+
+  /// Watches an incoming file that has stopped arriving, and asks again.
+  ///
+  /// **A relay drops the occasional event, and a file needs every one of
+  /// them.** Measured on 2026-09-09: a 54-chunk circle went out, and the
+  /// receiver's own meter counted 54 frames on the relay — one manifest and
+  /// fifty-three chunks. Fifty-four were needed. One event in fifty-five never
+  /// turned up, and that was the whole of "circles do not arrive": the bytes
+  /// sat on disk, one piece short, for the ten minutes the reassembler waits
+  /// before throwing them away, and nothing anywhere said so. Videos went the
+  /// same way, for the same reason, because a video is a file too.
+  ///
+  /// There is no partial re-request on the wire — [requestMediaAgain] asks for
+  /// the whole file — so this is deliberately slow to fire and quick to give
+  /// up. Better a transfer that costs twice than one that silently never
+  /// finishes.
+  Timer? _stalledMediaTimer;
+
+  /// Progress last time we looked, per incoming transfer, and how many times
+  /// we have asked. Cleared when the transfer completes or the entry goes.
+  final Map<String, ({int seen, int asks})> _stalledMedia = {};
+
+  /// How often to look. Well clear of the pacing between chunks, so an
+  /// ordinary transfer is never mistaken for a stalled one.
+  static const Duration _stallCheck = Duration(seconds: 20);
+
+  /// Asks per transfer before it is left alone. Each one costs the sender the
+  /// whole file again, so this is a small number on purpose.
+  static const int _maxStallAsks = 2;
 
   /// Our rotating routing id, cached per epoch. See [PeerId] for why it moves
   /// and [_myPubkeyHash] for how far back the cache is kept.
@@ -8169,6 +8199,53 @@ class MessagingService {
   /// isn't there.
   Duration _fileQueueGap = _fileQueueBase;
 
+  /// Look at every incoming file that is still arriving, and ask again for any
+  /// that has not moved since the last look.
+  ///
+  /// Progress is the signal rather than a clock on the last chunk, because it
+  /// is the thing the transfer centre already keeps and it cannot be fooled by
+  /// a chunk that arrives but is refused. Unchanged across a whole
+  /// [_stallCheck] with pieces still missing is a transfer that has stopped.
+  void _checkStalledMedia() {
+    final tasks = _ref.read(fileTransferControllerProvider);
+    for (final task in tasks.values) {
+      if (task.direction != FileTransferDirection.incoming) continue;
+      if (task.status != FileTransferStatus.transferring) continue;
+      if (task.totalUnits <= 0) continue;
+      final was = _stalledMedia[task.id];
+      if (was == null || was.seen != task.completedUnits) {
+        // Moving, or newly seen. Either way it is alive; start its count over.
+        _stalledMedia[task.id] = (seen: task.completedUnits, asks: 0);
+        continue;
+      }
+      if (task.completedUnits >= task.totalUnits) continue;
+      if (was.asks >= _maxStallAsks) continue;
+      _stalledMedia[task.id] = (seen: task.completedUnits, asks: was.asks + 1);
+      DebugLog.instance.log(
+        'FILE',
+        'stalled at ${task.completedUnits}/${task.totalUnits} '
+            '"${task.fileName}" — asking ${task.chatId} again '
+            '(${was.asks + 1} of $_maxStallAsks)',
+      );
+      unawaited(requestMediaAgain(task.chatId, task.id));
+    }
+    // Anything that finished or vanished stops being watched.
+    _stalledMedia.removeWhere((id, _) {
+      final task = tasks[id];
+      return task == null ||
+          task.status != FileTransferStatus.transferring ||
+          task.completedUnits >= task.totalUnits;
+    });
+  }
+
+  void _startStalledMediaTimer() {
+    _stalledMediaTimer?.cancel();
+    _stalledMediaTimer = Timer.periodic(_stallCheck, (_) {
+      if (_disposed) return;
+      _checkStalledMedia();
+    });
+  }
+
   void _startFileQueueTimer() {
     _fileQueueTimer?.cancel();
     // One-shot and re-armed, rather than periodic, so the gap can change
@@ -10448,6 +10525,9 @@ class MessagingService {
     _presenceTimer = null;
     _fileQueueTimer?.cancel();
     _fileQueueTimer = null;
+    _stalledMediaTimer?.cancel();
+    _stalledMediaTimer = null;
+    _stalledMedia.clear();
     _introduceRoomsTimer?.cancel();
     _introduceRoomsTimer = null;
     // Flush any pending buffer write synchronously so a held frame isn't

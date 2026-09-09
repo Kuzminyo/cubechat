@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/typography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
@@ -177,11 +178,9 @@ class ChatTile extends ConsumerWidget {
                         chat.peerName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: AppColors.textOnGlass,
-                          fontSize: 15,
+                        style: AppTypography.rowTitle.copyWith(
                           fontWeight:
-                              unread ? FontWeight.w800 : FontWeight.w600,
+                              unread ? FontWeight.w700 : FontWeight.w600,
                         ),
                       ),
                     ),
@@ -257,8 +256,8 @@ class ChatTile extends ConsumerWidget {
                         : unread
                             ? AppColors.textOnGlass
                             : AppColors.textOnGlassDim,
-                    fontSize: 13,
-                    height: 1.3,
+                    fontSize: 14,
+                    height: 1.35,
                     fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
@@ -288,10 +287,7 @@ class ChatTile extends ConsumerWidget {
                   ],
                   Text(
                     formatChatListTime(context, chat.lastTime),
-                    style: TextStyle(
-                      color: AppColors.textOnGlassFaint,
-                      fontSize: 11,
-                    ),
+                    style: AppTypography.caption,
                   ),
                 ],
               ),

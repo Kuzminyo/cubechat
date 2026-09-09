@@ -1710,7 +1710,7 @@ class _TitleRowWithSearch extends StatelessWidget {
                             kAppTitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTypography.display(size: 27),
+                            style: AppTypography.display(),
                           ),
                           const SizedBox(height: 2),
                           Text(

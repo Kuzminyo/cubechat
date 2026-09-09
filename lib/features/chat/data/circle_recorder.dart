@@ -107,8 +107,10 @@ class CircleRecorder extends ChangeNotifier {
           CameraLensType.unknown => 2,
           CameraLensType.telephoto => 3,
         };
-    choices.sort((a, b) => rank(a).compareTo(rank(b)));
-    return choices.first;
+    // Preserve the native field-of-view order when Android reports unknown
+    // lens types; List.sort does not guarantee the order of equal elements.
+    return choices
+        .reduce((best, lens) => rank(lens) < rank(best) ? lens : best);
   }
 
   /// Stabilisation is **off**, and that is a trade rather than an oversight.

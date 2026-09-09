@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/util/motion.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/glass.dart';
@@ -45,7 +46,7 @@ class CircleRecorderPreview extends StatelessWidget {
         descendantsAreFocusable: false,
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 260),
+          duration: AppMotion.duration(context, AppMotion.entrance),
           curve: Curves.easeOutCubic,
           builder: (context, value, child) =>
               Opacity(opacity: value, child: child),
@@ -106,7 +107,7 @@ class CircleRecorderPreview extends StatelessWidget {
                         ),
                       ),
                       AnimatedPositioned(
-                        duration: const Duration(milliseconds: 280),
+                        duration: AppMotion.duration(context, AppMotion.expand),
                         curve: Curves.easeOutCubic,
                         top: discTop,
                         left: (constraints.maxWidth - diameter - 16) / 2,
@@ -133,7 +134,7 @@ class CircleRecorderPreview extends StatelessWidget {
                         ),
                       ),
                       AnimatedPositioned(
-                        duration: const Duration(milliseconds: 280),
+                        duration: AppMotion.duration(context, AppMotion.expand),
                         curve: Curves.easeOutCubic,
                         top: discTop + diameter + 28,
                         left: 24,
@@ -151,7 +152,7 @@ class CircleRecorderPreview extends StatelessWidget {
                         ),
                       ),
                       AnimatedPositioned(
-                        duration: const Duration(milliseconds: 280),
+                        duration: AppMotion.duration(context, AppMotion.expand),
                         curve: Curves.easeOutCubic,
                         left: 18,
                         right: 18,
@@ -241,7 +242,7 @@ class CircleRecorderPreview extends StatelessWidget {
                         ),
                       ),
                       AnimatedPositioned(
-                        duration: const Duration(milliseconds: 280),
+                        duration: AppMotion.duration(context, AppMotion.expand),
                         curve: Curves.easeOutCubic,
                         left: 14,
                         right: 14,
@@ -450,6 +451,10 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
   void didUpdateWidget(_Disc oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.changing == oldWidget.changing) return;
+    if (AppMotion.reduced(context)) {
+      _flip.value = widget.changing ? 1 : 0;
+      return;
+    }
     if (widget.changing) {
       _flip.forward();
     } else {
@@ -476,7 +481,7 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
             alignment: Alignment.center,
             transform: Matrix4.identity()
               ..setEntry(3, 2, .0015)
-              ..rotateY(turn * math.pi / 2),
+              ..rotateY(AppMotion.reduced(context) ? 0 : turn * math.pi / 2),
             child: Opacity(opacity: 1 - turn, child: child),
           );
         },

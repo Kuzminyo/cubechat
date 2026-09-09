@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1019
+version: 1.0.0+1020
 
 environment:
   sdk: ^3.6.0
@@ -149,6 +149,29 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
+    - family: SpaceGrotesk
+      fonts:
+        - asset: .codex/fonts/SpaceGrotesk-SemiBold.ttf
+          weight: 600
+        - asset: .codex/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: .codex/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
   assets:
     - assets/logo/
     - assets/stickers/

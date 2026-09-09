@@ -33,6 +33,12 @@ import 'package:flutter/widgets.dart';
 /// to remove every scheduled frame the app draws while nobody is touching it —
 /// which is the same win [UiActivity] chases, granted here for free.
 abstract final class AppMotion {
+  static const feedback = Duration(milliseconds: 140);
+  static const control = Duration(milliseconds: 200);
+  static const expand = Duration(milliseconds: 280);
+  static const entrance = Duration(milliseconds: 320);
+  static const curve = Curves.easeOutCubic;
+
   /// True when this device asked for less movement.
   ///
   /// `maybe`, because a widget test pumps a bare `MediaQuery`-less tree often

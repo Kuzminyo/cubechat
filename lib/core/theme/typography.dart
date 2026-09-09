@@ -1,39 +1,37 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'colors.dart';
 
 abstract final class AppTypography {
   static TextTheme build() {
-    final base = GoogleFonts.interTextTheme();
+    // Bundled Cyrillic + Latin: no network request or late font/layout swap.
+    final base = Typography.material2021().white.apply(
+          fontFamily: 'Inter',
+          bodyColor: AppColors.textOnGlass,
+          displayColor: AppColors.textPrimary,
+        );
     return base.copyWith(
       // Big screen titles use Space Grotesk (display).
-      displayLarge: GoogleFonts.spaceGrotesk(
+      displayLarge: TextStyle(
+        fontFamily: 'SpaceGrotesk',
+        fontFamilyFallback: const ['Inter'],
         color: AppColors.textPrimary,
         fontWeight: FontWeight.w700,
         fontSize: 34,
         letterSpacing: -0.8,
         height: 1.05,
       ),
-      displayMedium: GoogleFonts.spaceGrotesk(
+      displayMedium: TextStyle(
+        fontFamily: 'SpaceGrotesk',
+        fontFamilyFallback: const ['Inter'],
         color: AppColors.textPrimary,
         fontWeight: FontWeight.w600,
         fontSize: 28,
         letterSpacing: -0.5,
         height: 1.1,
       ),
-      headlineMedium: GoogleFonts.spaceGrotesk(
-        color: AppColors.textPrimary,
-        fontWeight: FontWeight.w600,
-        fontSize: 22,
-        letterSpacing: -0.3,
-      ),
-      titleLarge: GoogleFonts.spaceGrotesk(
-        color: AppColors.textPrimary,
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.2,
-      ),
+      headlineMedium: heading(size: 22),
+      titleLarge: heading(),
 
       // Body uses Inter (better at small sizes).
       titleMedium: base.titleMedium?.copyWith(
@@ -47,11 +45,13 @@ abstract final class AppTypography {
       ),
       bodyMedium: base.bodyMedium?.copyWith(
         color: AppColors.textOnGlassDim,
-        fontSize: 13,
+        fontSize: 14,
+        height: 1.4,
       ),
       bodySmall: base.bodySmall?.copyWith(
         color: AppColors.textOnGlassFaint,
-        fontSize: 11,
+        fontSize: 12,
+        height: 1.35,
       ),
       labelLarge: base.labelLarge?.copyWith(
         color: AppColors.textPrimary,
@@ -63,11 +63,13 @@ abstract final class AppTypography {
 
   /// Big page-title style (Space Grotesk). Use this for the top of every screen.
   static TextStyle display({
-    double size = 32,
+    double size = 28,
     FontWeight weight = FontWeight.w700,
     Color? color,
   }) {
-    return GoogleFonts.spaceGrotesk(
+    return TextStyle(
+      fontFamily: 'SpaceGrotesk',
+      fontFamilyFallback: const ['Inter'],
       fontSize: size,
       fontWeight: weight,
       color: color ?? AppColors.textPrimary,
@@ -76,36 +78,64 @@ abstract final class AppTypography {
     );
   }
 
-  /// Mid-weight heading (Space Grotesk). Use for sub-titles, peer names in chat header.
+  /// UI headings share the body family, including Cyrillic names.
   static TextStyle heading({
     double size = 18,
     FontWeight weight = FontWeight.w600,
     Color? color,
   }) {
-    return GoogleFonts.spaceGrotesk(
+    return TextStyle(
+      fontFamily: 'Inter',
       fontSize: size,
       fontWeight: weight,
       color: color ?? AppColors.textPrimary,
-      letterSpacing: -0.3,
+      letterSpacing: -0.2,
+      height: 1.25,
     );
   }
 
+  /// Shared roles keep lists, settings and sheets on the same scale.
+  static TextStyle get rowTitle => TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 16,
+        height: 1.3,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textOnGlass,
+      );
+  static TextStyle get control => TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 14,
+        height: 1.25,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textOnGlass,
+      );
+  static TextStyle get supporting => TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 13,
+        height: 1.4,
+        color: AppColors.textOnGlassDim,
+      );
+  static TextStyle get caption => TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 12,
+        height: 1.3,
+        color: AppColors.textOnGlassDim,
+      );
+
   /// Fingerprints, contact ids — anything read character by character.
   ///
-  /// w500, not w400, because `.codex/fonts` bundles JetBrainsMono-**Medium**
-  /// and google_fonts matches an asset by exact weight. Asking for Regular
-  /// found nothing locally and fell through to a download from
-  /// fonts.gstatic.com — on an app whose whole point is working with no
-  /// internet, so the mesh-only case silently got the system font instead, and
-  /// the online case made a request to Google to render a key fingerprint.
-  /// The other two families already line up this way: display is w700 against
-  /// SpaceGrotesk-Bold, heading w600 against SpaceGrotesk-SemiBold.
+  /// The bundled Medium is deliberate. Previously a request for Regular
+  /// missed the google_fonts asset match and made a network request to render
+  /// a fingerprint. All three families are now registered directly in pubspec;
+  /// no text role depends on a download or a late fallback-font swap.
   static TextStyle mono({
     double size = 12,
     FontWeight weight = FontWeight.w500,
     Color? color,
   }) {
-    return GoogleFonts.jetBrainsMono(
+    return TextStyle(
+      fontFamily: 'JetBrainsMono',
+      fontFamilyFallback: const ['Inter'],
       fontSize: size,
       fontWeight: weight,
       color: color ?? AppColors.textOnGlassDim,

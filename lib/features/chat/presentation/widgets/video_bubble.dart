@@ -10,6 +10,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import '../../../../core/theme/colors.dart';
 import '../../models/message.dart';
 import '../../data/voice_playback_controller.dart';
+import 'message_bubble.dart' show photoBubbleWidth;
 import 'playback_author.dart';
 
 /// Gallery clips play locally; circles share the voice-note player and island.
@@ -27,7 +28,17 @@ class VideoBubble extends ConsumerStatefulWidget {
   final String? chatId;
   final VoidCallback? onLongPress;
 
-  /// The width a clip is drawn at, matching the photo bubble beside it.
+  /// The width a clip is drawn at.
+  ///
+  /// The comment here used to say "matching the photo bubble beside it" and the
+  /// number did not: a photo is `photoBubbleWidth`, 68% of the screen clamped
+  /// to 220–300, so on any phone wider than 324 points the clip was the
+  /// narrower of the two and a conversation with both in it had two column
+  /// widths. 220 was only ever the *floor* of that range.
+  ///
+  /// Kept as a fallback for a caller with no context to measure from; the
+  /// bubble itself now asks [photoBubbleWidth] the same question the photo
+  /// does, so the two cannot drift apart again.
   static const double width = 220;
 
   /// The name a circle is sent under.
@@ -287,7 +298,9 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
-        width: VideoBubble.width,
+        // The same question the photo bubble asks, so a clip and a picture in
+        // the same conversation are one column and not two.
+        width: photoBubbleWidth(context),
         child: AspectRatio(
           aspectRatio: aspect <= 0 ? 16 / 9 : aspect,
           child: Stack(

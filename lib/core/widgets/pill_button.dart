@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../theme/colors.dart';
+import '../theme/typography.dart';
+import '../util/motion.dart';
 
-class PillButton extends StatefulWidget {
+class PillButton extends StatelessWidget {
   const PillButton({
     super.key,
     required this.label,
@@ -17,63 +19,33 @@ class PillButton extends StatefulWidget {
   final VoidCallback? onTap;
 
   @override
-  State<PillButton> createState() => _PillButtonState();
-}
-
-class _PillButtonState extends State<PillButton> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color:
-                widget.active ? AppColors.glass(0.18) : AppColors.glass(0.10),
-            border: Border.all(
-              color:
-                  widget.active ? AppColors.glass(0.30) : AppColors.glass(0.15),
-            ),
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: widget.active
-                ? [
-                    BoxShadow(
-                      color: AppColors.brandPrimary.withValues(alpha: 0.20),
-                      blurRadius: 12,
-                      spreadRadius: -2,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.icon != null) ...[
-                Icon(widget.icon, size: 14, color: AppColors.textOnGlass),
-                const SizedBox(width: 6),
-              ],
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 220),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: widget.active ? FontWeight.w600 : FontWeight.w500,
-                  color: AppColors.textOnGlass,
-                ),
-                child: Text(widget.label),
-              ),
+    return Semantics(
+      selected: active,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.textOnGlass,
+          disabledForegroundColor: AppColors.textOnGlassFaint,
+          backgroundColor: AppColors.glass(active ? 0.18 : 0.08),
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          textStyle: AppTypography.control,
+          animationDuration: AppMotion.duration(context, AppMotion.control),
+          side: BorderSide(color: AppColors.glass(active ? 0.30 : 0.15)),
+          shape: const StadiumBorder(),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16),
+              const SizedBox(width: 8),
             ],
-          ),
+            Flexible(
+                child:
+                    Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ],
         ),
       ),
     );

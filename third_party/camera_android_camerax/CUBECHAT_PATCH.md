@@ -18,3 +18,9 @@ Camera2 AE range, allowing CameraX to negotiate a supported rate at each bind.
 The unused high-FPS analysis stream no longer overrides the negotiated rate.
 Dart now forwards MediaSettings.videoBitrate to the native Recorder as intended.
 See https://developer.android.com/reference/androidx/camera/video/VideoCapture.Builder#setTargetFrameRate(android.util.Range%3Cjava.lang.Integer%3E).
+
+Camera selection: ProcessCameraProvider orders only its exposed cameras by
+sensor short edge / focal length / minimum logical zoom. Android descriptions
+otherwise all report unknown lens type, so a Dart lens preference alone cannot
+choose the widest view. Missing Camera2 metadata preserves relative order.
+This removes an arbitrary sensor choice; it cannot widen a single fixed lens.
