@@ -54,6 +54,7 @@ import '../notifications/notification_service.dart';
 import '../storage/hive_cipher.dart';
 import '../storage/hive_init.dart';
 import '../util/app_lifecycle.dart';
+import '../util/cost_meter.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
@@ -559,12 +560,21 @@ class MessagingService {
       _relayClient = client;
       _nostr = transport;
       _nostrSub = transport.inboundFramesTimed().listen(
-            (frame) => unawaited(_handleInboundBytes(
-              _nostrPeerId,
-              frame.bytes,
-              // When they said it, not when it reached us. A relay holds
-              // events for whoever subscribes next — see [InboundFrame].
-              sentAt: frame.sentAt,
+            // Timed as one block, on purpose. Everything a frame off the relay
+            // costs is inside here — opening the X3DH or SealedBox body,
+            // verifying the payload signature, and whatever the payload then
+            // does — and all of it is Dart on the UI isolate. Splitting it
+            // finer can come later; what is wanted first is whether this or
+            // `nostr-verify` is where the seconds go.
+            (frame) => unawaited(CostMeter.instance.measure(
+              'relay-frame',
+              () => _handleInboundBytes(
+                _nostrPeerId,
+                frame.bytes,
+                // When they said it, not when it reached us. A relay holds
+                // events for whoever subscribes next — see [InboundFrame].
+                sentAt: frame.sentAt,
+              ),
             )),
             onError: (Object e) =>
                 DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),

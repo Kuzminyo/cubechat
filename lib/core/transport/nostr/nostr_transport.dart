@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
+import '../../util/cost_meter.dart';
 import 'nostr_event.dart';
 import 'nostr_frame_codec.dart';
 
@@ -255,7 +256,15 @@ class NostrTransport {
       ],
       content: NostrFrameCodec.encodeContent(frameBytes),
     );
-    final signed = await _signer.sign(event);
+    // Timed because it is pure Dart on the UI isolate and there is a lot of it.
+    // Every frame that leaves over the internet is one SHA-256 of the event
+    // plus one BIP-340 signature, and `Secp256k1.sign` checks its own output,
+    // so a publish is a sign and a verify. See [CostMeter] for the measurement
+    // that made this worth counting.
+    final signed = await CostMeter.instance.measure(
+      'nostr-sign',
+      () => _signer.sign(event),
+    );
     return _relay.publish(signed, lane: lane);
   }
 

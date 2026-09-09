@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../util/cost_meter.dart';
 import '../../util/debug_log.dart';
 import 'nostr_event.dart';
 import 'nostr_relay_protocol.dart';
@@ -301,7 +302,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   Future<void> _onEvent(String url, NostrEvent event) async {
     final id = event.id;
     if (id == null || _seenIds.contains(id)) return;
-    if (!await NostrRelayProtocol.verifyInboundEvent(event)) {
+    // Counted for the same reason the signing side is: a BIP-340 verify is
+    // pure Dart on the UI isolate, and one runs for every event that is new to
+    // us. Duplicates from the other relays never reach it — the id check above
+    // is deliberately first — so this counts distinct events, not sockets.
+    if (!await CostMeter.instance.measure(
+      'nostr-verify',
+      () => NostrRelayProtocol.verifyInboundEvent(event),
+    )) {
       DebugLog.instance
           .log('NOSTR', 'drop event from $url: failed verification');
       return;

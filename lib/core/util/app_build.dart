@@ -23,4 +23,4 @@ const String appVersion = '1.0.0';
 ///
 /// Verified inside `libapp.so` after every build — see `tool/build_apk.ps1`,
 /// which is what catches a build that silently reused an old snapshot.
-const String appBuildStamp = '2026-09-09-files-arrive-at-last';
+const String appBuildStamp = '2026-09-09-naming-the-six-seconds';
