@@ -555,6 +555,18 @@
   "relaysExplainer": "Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.",
   "relaysMyAddress": "Your relay address",
   "relaysCopied": "Copied",
+  "circleLensTitle": "Front camera for circles",
+  "@circleLensTitle": {
+    "description": "Setting: which lens a round video message records with."
+  },
+  "circleLensFrontHint": "Round video messages record with the camera facing you.",
+  "@circleLensFrontHint": {
+    "description": "Hint under the circle lens setting when it is on."
+  },
+  "circleLensBackHint": "Round video messages record with the camera facing away, for showing what you are looking at.",
+  "@circleLensBackHint": {
+    "description": "Hint under the circle lens setting when it is off."
+  },
   "channelCloseTitle": "Close this room for everyone",
   "@channelCloseTitle": {
     "description": "Owner-only action at the bottom of channel info."

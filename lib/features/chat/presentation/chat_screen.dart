@@ -64,6 +64,7 @@ import '../data/messages_controller.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
+import '../../profile/data/circle_lens_controller.dart';
 import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/message_search.dart';
@@ -3826,7 +3827,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   Future<void> _onRecordStart() async {
     if (_recordMode == RecordMode.circle) {
       if (mounted) setState(() => _recordLocked = false);
-      final ok = await _circleRecorder.start();
+      // Waited for rather than read straight off: the default is the front
+      // lens, so acting before the stored answer lands would open the wrong
+      // camera and the setting would look like it had not survived a restart.
+      final lens = ref.read(circleLensProvider.notifier);
+      await lens.loaded;
+      final ok = await _circleRecorder.start(front: ref.read(circleLensProvider));
       if (!ok) {
         _hideCircleOverlay();
         DebugLog.instance.log(

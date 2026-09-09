@@ -33,6 +33,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
+import '../data/circle_lens_controller.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/app_lock_controller.dart';
 import '../data/nav_bar_controller.dart';
@@ -1204,6 +1205,25 @@ class _PrivacyCard extends ConsumerWidget {
           ],
           const SizedBox(height: 10),
           const _DeadMansRow(),
+          const SizedBox(height: 14),
+          // A setting rather than a button on the recorder, because the camera
+          // plugin cannot hand a running capture to the other sensor: a switch
+          // on the circle itself would either do nothing until the next one or
+          // throw away what had been recorded. Chosen before the finger goes
+          // down, it simply is the camera you get.
+          _SettingSwitch(
+            icon: ref.watch(circleLensProvider)
+                ? Icons.photo_camera_front_rounded
+                : Icons.photo_camera_back_rounded,
+            title: t.circleLensTitle,
+            hint: ref.watch(circleLensProvider)
+                ? t.circleLensFrontHint
+                : t.circleLensBackHint,
+            value: ref.watch(circleLensProvider),
+            onChanged: (front) => unawaited(
+              ref.read(circleLensProvider.notifier).set(front),
+            ),
+          ),
           const SizedBox(height: 14),
           _SettingSwitch(
             icon: s.shareMapLocation

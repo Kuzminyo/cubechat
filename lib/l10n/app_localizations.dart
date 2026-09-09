@@ -1850,6 +1850,24 @@ abstract class AppLocalizations {
   /// **'Copied'**
   String get relaysCopied;
 
+  /// Setting: which lens a round video message records with.
+  ///
+  /// In en, this message translates to:
+  /// **'Front camera for circles'**
+  String get circleLensTitle;
+
+  /// Hint under the circle lens setting when it is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Round video messages record with the camera facing you.'**
+  String get circleLensFrontHint;
+
+  /// Hint under the circle lens setting when it is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Round video messages record with the camera facing away, for showing what you are looking at.'**
+  String get circleLensBackHint;
+
   /// Owner-only action at the bottom of channel info.
   ///
   /// In en, this message translates to:

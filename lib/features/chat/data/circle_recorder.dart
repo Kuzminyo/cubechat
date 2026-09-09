@@ -156,7 +156,10 @@ class CircleRecorder extends ChangeNotifier {
 
   /// Open the camera and start recording. False means nothing is running and
   /// [error] says why.
-  Future<bool> start() async {
+  ///
+  /// [front] is the lens setting, read before the finger went down — see
+  /// `CircleLensController` for why it is a setting and not a button here.
+  Future<bool> start({bool front = true}) async {
     error = null;
     if (_camera != null) return false;
     final generation = ++_generation;
@@ -180,10 +183,13 @@ class CircleRecorder extends ChangeNotifier {
         error = 'no-camera';
         return false;
       }
-      final front = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-        // A phone with no front camera still gets to send one, pointing the
-        // other way, rather than a feature that is simply missing.
+      final wanted =
+          front ? CameraLensDirection.front : CameraLensDirection.back;
+      final lens = cameras.firstWhere(
+        (c) => c.lensDirection == wanted,
+        // A phone missing the lens that was asked for still gets to send a
+        // circle with the other one, rather than a feature that is simply
+        // missing on that device.
         orElse: () => cameras.first,
       );
 
@@ -204,7 +210,7 @@ class CircleRecorder extends ChangeNotifier {
       // 24 fps rather than 30 for the same reason and at no visible cost: a
       // face talking is not a panning shot.
       final camera = CameraController(
-        front,
+        lens,
         ResolutionPreset.high,
         enableAudio: true,
         fps: 24,

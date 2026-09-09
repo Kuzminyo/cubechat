@@ -1021,6 +1021,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysCopied => 'Copied';
 
   @override
+  String get circleLensTitle => 'Front camera for circles';
+
+  @override
+  String get circleLensFrontHint =>
+      'Round video messages record with the camera facing you.';
+
+  @override
+  String get circleLensBackHint =>
+      'Round video messages record with the camera facing away, for showing what you are looking at.';
+
+  @override
   String get channelCloseTitle => 'Close this room for everyone';
 
   @override

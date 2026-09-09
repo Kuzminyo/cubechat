@@ -1026,6 +1026,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get relaysCopied => 'Скопійовано';
 
   @override
+  String get circleLensTitle => 'Фронтальна камера для кружечків';
+
+  @override
+  String get circleLensFrontHint =>
+      'Кружечки знімаються камерою, спрямованою на вас.';
+
+  @override
+  String get circleLensBackHint =>
+      'Кружечки знімаються основною камерою — щоб показати те, на що ви дивитеся.';
+
+  @override
   String get channelCloseTitle => 'Закрити кімнату для всіх';
 
   @override
