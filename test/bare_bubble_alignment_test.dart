@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
+import 'package:cubechat/features/chat/presentation/widgets/video_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,5 +95,51 @@ void main() {
       reason: 'an incoming bare message is against the left edge already, and '
           'flipping it would push it away from that one instead',
     );
+  });
+  testWidgets('a circular video has no message fill, border or inset',
+      (tester) async {
+    final dir = Directory.systemTemp.createTempSync('cubechat_circle_bare_');
+    final clip = File('${dir.path}/circle.mp4')..writeAsBytesSync([0, 1, 2, 3]);
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final message = Message(
+      id: 'circle',
+      chatId: 'peer',
+      text: 'video/mp4',
+      sentAt: DateTime(2026, 9, 9),
+      isMine: true,
+      kind: MessageKind.file,
+      fileName: VideoBubble.circleFileName,
+      filePath: clip.path,
+    );
+    // Offstage keeps the video decoder out of this decoration-only check.
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Offstage(
+              child: MessageBubble(message: message, chatId: 'peer'),
+            ),
+          ),
+        ),
+      ),
+    );
+    final video = find.byType(VideoBubble, skipOffstage: false);
+    expect(video, findsOneWidget);
+    final parents = tester.widgetList<Container>(
+      find.ancestor(
+        of: video,
+        matching: find.byType(Container, skipOffstage: false),
+      ),
+    );
+    final surface =
+        parents.firstWhere((box) => box.decoration is BoxDecoration);
+    final decoration = surface.decoration! as BoxDecoration;
+    expect(decoration.color, isNull);
+    expect(decoration.gradient, isNull);
+    expect(decoration.border, isNull);
+    expect(surface.padding, EdgeInsets.zero);
+    await tester.pumpWidget(const SizedBox());
   });
 }

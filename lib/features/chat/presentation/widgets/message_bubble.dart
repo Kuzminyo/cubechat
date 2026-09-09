@@ -1273,7 +1273,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final bareEmoji = message.kind == MessageKind.text
         ? message.bareEmojiCount
         : null;
-    final bare = sticker || bareEmoji != null;
+    // Circular video is already clipped to its own shape. A normal message
+    // fill behind it turned the circle into a video sitting on a square card.
+    final circle = VideoBubble.isCircle(message) && VideoBubble.handles(message);
+    final bare = sticker || bareEmoji != null || circle;
 
     // The drawn face for a message that is one emoji and nothing else, when
     // there is a drawing of that emoji. Null for everything else, which is
@@ -1323,7 +1326,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             // width: the same photo is drawn larger without the bubble growing.
             // The rows that keep their inset — an author's name, the caption,
             // the time — ask for it themselves below.
-            padding: photo
+            padding: photo || circle
                 ? EdgeInsets.zero
                 : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             // And no border on a photo bubble, which is why its corners looked

@@ -124,4 +124,72 @@ void main() {
     await tester.tap(find.byIcon(Icons.send_rounded));
     expect(sends, 1);
   });
+  testWidgets('recording controls preserve keyboard focus and shrink above it',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final recorder = _Recorder();
+    final focus = FocusNode();
+    var overlay = false;
+    var keyboard = 0.0;
+    late StateSetter update;
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            update = setState;
+            return MediaQuery(
+              data: MediaQueryData(
+                size: const Size(390, 844),
+                viewInsets: EdgeInsets.only(bottom: keyboard),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: TextField(focusNode: focus),
+                  ),
+                  if (overlay)
+                    CircleRecorderPreview(
+                      recorder: recorder,
+                      locked: true,
+                      hint: 'Hold',
+                      cancelLabel: 'Cancel',
+                      onSend: () {},
+                      onCancel: () {},
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.showKeyboard(find.byType(TextField));
+    update(() => overlay = true);
+    await tester.pump();
+    final large =
+        tester.getRect(find.byKey(const ValueKey('circle-camera-preview')));
+    update(() => keyboard = 300);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+    final compact =
+        tester.getRect(find.byKey(const ValueKey('circle-camera-preview')));
+    expect(compact.width, lessThan(large.width));
+    expect(compact.center.dx, closeTo(195, .01));
+    await tester.tap(find.byIcon(Icons.flip_camera_ios_rounded));
+    await tester.pump();
+    expect(recorder.flips, 1);
+    expect(focus.hasFocus, true);
+    expect(tester.testTextInput.isVisible, true);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('circle-cancel'))).bottom,
+      lessThan(544),
+    );
+    await tester.pumpWidget(const SizedBox());
+    recorder.dispose();
+    focus.dispose();
+  });
 }

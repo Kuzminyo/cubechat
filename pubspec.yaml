@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1010
+version: 1.0.0+1011
 
 environment:
   sdk: ^3.6.0
@@ -108,6 +108,12 @@ dependencies:
   # holding a platform decoder. Flutter has no built-in way to ask "is this on
   # screen", and this is Google's answer to that.
   visibility_detector: ^0.4.0+2
+
+# CameraX must mirror the encoded front-camera clip as well as its preview.
+# The small native patch is documented in third_party/camera_android_camerax.
+dependency_overrides:
+  camera_android_camerax:
+    path: third_party/camera_android_camerax
 
 dev_dependencies:
   flutter_lints: ^4.0.0

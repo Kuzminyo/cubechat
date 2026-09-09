@@ -115,7 +115,7 @@ void main() {
       final flip = tester.getRect(find.byKey(const ValueKey('circle-flip')));
       final cancel =
           tester.getRect(find.byKey(const ValueKey('circle-cancel')));
-      expect(disc.width, lessThanOrEqualTo(256));
+      expect(disc.width, closeTo(width * .78 + 16, .01));
       expect(disc.overlaps(flip), false);
       expect(disc.overlaps(cancel), false);
       expect(cancel.width, greaterThanOrEqualTo(48));

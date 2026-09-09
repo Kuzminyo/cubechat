@@ -61,9 +61,18 @@ class FakeCamera extends CameraController {
     value = value.copyWith(description: description);
   }
 
-  // No platform camera was initialized by this fake.
-  // ignore: must_call_super
+  // No platform camera was initialized by this fake, and CameraController's
+  // own dispose() goes straight to the platform channel — so super is the one
+  // thing this must not call.
+  //
+  // The ignore sits *under* the annotation deliberately. A `// ignore:`
+  // comment applies to the line after it and `@override` is a line, so with
+  // the comment above the annotation the suppression lands on nothing and the
+  // warning still fires. That is what turned the Android CI gate red from
+  // build 1008 to 1010: analyze passes locally as an info-only tree, and the
+  // one warning in it fails the grep the workflow gates on.
   @override
+  // ignore: must_call_super
   Future<void> dispose() async {
     released = true;
   }

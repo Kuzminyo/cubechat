@@ -3840,9 +3840,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       final session = ++_circleSession;
       final recorder = _circleRecorder;
       setState(() { _circleStarting = true; _recordLocked = false; });
-      // Close the keyboard deliberately, before the preview opens. The held
-      // pointer stays with its original recognizer while the overlay settles.
-      FocusManager.instance.primaryFocus?.unfocus();
+      // Keep the composer's focus and keyboard. The recording overlay uses
+      // the existing viewInsets and leaves the draft field mounted.
       _showCircleOverlay();
       final lens = ref.read(circleLensProvider.notifier);
       await lens.loaded;

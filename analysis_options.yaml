@@ -1,6 +1,9 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  # Vendored Flutter plugin retains its upstream generated code and lints.
+  exclude:
+    - third_party/**
   language:
     strict-casts: true
     strict-inference: true
