@@ -141,11 +141,31 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   /// constructed** — and this used to be a `static final`, so that ceiling was
   /// frozen at the first open of the session. Every photo taken afterwards was
   /// newer than the filter's idea of "now" and was quietly excluded.
+  /// The video half needs saying out loud, and this is the third thing to
+  /// look like "videos are not in the gallery".
+  ///
+  /// `FilterOptionGroup.videoOption` defaults to a [DurationConstraint] of
+  /// zero to one day with **`allowNullable: false`**, which becomes a SQL
+  /// condition on `MediaStore.DURATION`. A NULL duration fails both halves of
+  /// a `BETWEEN`, so every video the store has no duration for is silently
+  /// dropped — and NULL is the normal case for a clip that arrived from
+  /// another app, was downloaded, or was written by a camera that did not fill
+  /// the column in. The grid then shows photographs only, with the permission
+  /// granted and the query asking for both.
+  ///
+  /// A day is also short for a ceiling nobody asked for: it exists to exclude
+  /// nothing here, so it is set past anything a phone will hold.
   static FilterOptionGroup _newestFirst() => FilterOptionGroup(
         orders: const [
           OrderOption(type: OrderOptionType.createDate, asc: false),
         ],
         createTimeCond: DateTimeCond.def().copyWith(ignore: true),
+        videoOption: const FilterOption(
+          durationConstraint: DurationConstraint(
+            max: Duration(days: 30),
+            allowNullable: true,
+          ),
+        ),
       );
 
   /// One screen's worth and change. The album is paged in as the grid scrolls
@@ -279,10 +299,13 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       // them, and guessing between them is what it exists to stop.
       if (_page == 1) {
         final videos = page.where((a) => a.type == AssetType.video).length;
+        final grant = PlatformInfo.isAndroid
+            ? (await Permission.videos.status).name
+            : 'n/a';
         DebugLog.instance.log(
           'GALLERY',
           'page 1: ${page.length} of $_total, $videos video — access '
-              '${_perm?.name ?? "unknown"}',
+              '${_perm?.name ?? "unknown"}, READ_MEDIA_VIDEO $grant',
         );
       }
       if (page.isNotEmpty && mounted) {

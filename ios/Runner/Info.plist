@@ -110,12 +110,12 @@
 	<string>Cubechat advertises itself over Bluetooth so other peers can find your device on the mesh.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Cubechat uses your local network only while transferring an encrypted profile between your phones.</string>
-	<!-- In-app camera: take a photo to send -->
+	<!-- In-app camera: take a photo to send, and record a round video message -->
 	<key>NSCameraUsageDescription</key>
-	<string>Cubechat uses the camera to take photos in chats and scan contact or channel QR codes.</string>
-	<!-- Voice messages -->
+	<string>Cubechat uses the camera to take photos, record round video messages, and scan contact or channel QR codes.</string>
+	<!-- Voice messages and the sound on a round video message -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cubechat needs the microphone to record voice messages you send in chats.</string>
+	<string>Cubechat needs the microphone to record voice messages and round video messages you send in chats.</string>
 	<!-- In-app gallery: pick photos to send, and save received photos -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cubechat needs access to your photos so you can pick images to send in chats.</string>

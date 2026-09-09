@@ -1026,7 +1026,30 @@ class AppLocalizationsUk extends AppLocalizations {
   String get relaysCopied => 'Скопійовано';
 
   @override
+  String get circleHint => 'Відпустіть, щоб надіслати';
+
+  @override
+  String get circleNeedsCamera => 'Кружечкам потрібні камера та мікрофон';
+
+  @override
+  String get circleFailed => 'Не вдалося записати кружечок';
+
+  @override
   String get relaysListLabel => 'Релеї';
+
+  @override
+  String get relaysLaneMedia => 'Релеї для медіа';
+
+  @override
+  String get relaysLaneMediaNote =>
+      'Світлини, файли та відео йдуть через них, щоб передавання не гальмувало розмову.';
+
+  @override
+  String get relaysLaneLocation => 'Релеї для геопозиції';
+
+  @override
+  String get relaysLaneLocationNote =>
+      'Маяки на карті йдуть через них, окремо від усього іншого.';
 
   @override
   String get relaysAdd => 'Додати релей';

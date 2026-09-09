@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:characters/characters.dart';
@@ -156,6 +158,14 @@ class MessageIslandGlass extends StatelessWidget {
   }
 }
 
+/// What the hold-to-record button records.
+///
+/// One button, two things, chosen by tapping it — the arrangement every
+/// messenger with circles in it arrived at. A second button beside the first
+/// would be a permanent control for a choice made once a week, on a composer
+/// that already carries five.
+enum RecordMode { voice, circle }
+
 class ChatInput extends StatefulWidget {
   const ChatInput({
     super.key,
@@ -167,6 +177,8 @@ class ChatInput extends StatefulWidget {
     this.onRecordStop,
     this.onRecordCancel,
     this.onRecordLock,
+    this.recordMode = RecordMode.voice,
+    this.onToggleRecordMode,
     this.recordLocked = false,
     this.recording = false,
     this.recordElapsed = Duration.zero,
@@ -218,6 +230,11 @@ class ChatInput extends StatefulWidget {
   final VoidCallback? onRecordStop;
   final VoidCallback? onRecordCancel;
   final VoidCallback? onRecordLock;
+  final RecordMode recordMode;
+
+  /// Null keeps the button a microphone: a chat that cannot carry a circle —
+  /// a room, or saved notes — should not offer to turn into one.
+  final VoidCallback? onToggleRecordMode;
   final bool recordLocked;
   final bool recording;
   final Duration recordElapsed;
@@ -678,6 +695,8 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                   _VoiceButton(
                     active: widget.recording,
                     locked: widget.recordLocked,
+                    mode: widget.recordMode,
+                    onToggleMode: widget.onToggleRecordMode,
                     onStart: widget.onRecordStart!,
                     onStop: widget.onRecordStop!,
                     onCancel: widget.onRecordCancel!,
@@ -848,12 +867,16 @@ class _VoiceButton extends StatelessWidget {
   const _VoiceButton({
     required this.active,
     required this.locked,
+    required this.mode,
+    required this.onToggleMode,
     required this.onStart,
     required this.onStop,
     required this.onCancel,
     required this.onLock,
   });
 
+  final RecordMode mode;
+  final VoidCallback? onToggleMode;
   final bool active;
 
   /// True once the recording has been locked: the press has ended but the
@@ -880,6 +903,19 @@ class _VoiceButton extends StatelessWidget {
     // else is the same long-press gesture.
     return RawGestureDetector(
       gestures: {
+        // A tap turns the button over; a hold records. Both live on this one
+        // recogniser set so they settle it between themselves in the arena —
+        // a quick touch is a tap, a held one never becomes one.
+        if (onToggleMode != null)
+          TapGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+            TapGestureRecognizer.new,
+            (recognizer) => recognizer.onTap = () {
+              if (active) return;
+              HapticFeedback.selectionClick();
+              onToggleMode!();
+            },
+          ),
         LongPressGestureRecognizer:
             GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
           () => LongPressGestureRecognizer(duration: _voiceArmDelay),
@@ -918,7 +954,44 @@ class _VoiceButton extends StatelessWidget {
           },
         ),
       },
-      child: _circle(context, icon: Icons.mic_rounded, filled: active),
+      child: _flip(context),
+    );
+  }
+
+  /// The button turning over, like a coin, left to right.
+  ///
+  /// A rotation about the vertical axis with a little perspective in it, and
+  /// the glyph swapped at the halfway point where the face is edge-on and
+  /// nothing is legible anyway. The far half is un-mirrored, or the icon
+  /// arrives back to front.
+  Widget _flip(BuildContext context) {
+    final circle = mode == RecordMode.circle;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: circle ? 1 : 0),
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeInOutCubic,
+      builder: (context, t, _) {
+        final showCircle = t > 0.5;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0016)
+            ..rotateY(t * math.pi),
+          child: Transform(
+            alignment: Alignment.center,
+            transform: showCircle
+                ? (Matrix4.identity()..rotateY(math.pi))
+                : Matrix4.identity(),
+            child: _circle(
+              context,
+              icon: showCircle
+                  ? Icons.videocam_rounded
+                  : Icons.mic_rounded,
+              filled: active,
+            ),
+          ),
+        );
+      },
     );
   }
 

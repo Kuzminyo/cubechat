@@ -1021,7 +1021,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysCopied => 'Copied';
 
   @override
+  String get circleHint => 'Let go to send';
+
+  @override
+  String get circleNeedsCamera => 'Circles need the camera and the microphone';
+
+  @override
+  String get circleFailed => 'That circle could not be recorded';
+
+  @override
   String get relaysListLabel => 'Relays';
+
+  @override
+  String get relaysLaneMedia => 'Media relays';
+
+  @override
+  String get relaysLaneMediaNote =>
+      'Photos, files and video go over these, so a transfer does not slow down the conversation.';
+
+  @override
+  String get relaysLaneLocation => 'Location relays';
+
+  @override
+  String get relaysLaneLocationNote =>
+      'Map beacons go over these, apart from everything else.';
 
   @override
   String get relaysAdd => 'Add relay';

@@ -555,7 +555,35 @@
   "relaysExplainer": "Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.",
   "relaysMyAddress": "Your relay address",
   "relaysCopied": "Copied",
+  "circleHint": "Let go to send",
+  "@circleHint": {
+    "description": "Under the round video preview while it records."
+  },
+  "circleNeedsCamera": "Circles need the camera and the microphone",
+  "@circleNeedsCamera": {
+    "description": "Shown when camera or microphone permission was refused."
+  },
+  "circleFailed": "That circle could not be recorded",
+  "@circleFailed": {
+    "description": "Shown when the camera or the send failed."
+  },
   "relaysListLabel": "Relays",
+  "relaysLaneMedia": "Media relays",
+  "@relaysLaneMedia": {
+    "description": "Heading over the relays that carry photo, file and video chunks."
+  },
+  "relaysLaneMediaNote": "Photos, files and video go over these, so a transfer does not slow down the conversation.",
+  "@relaysLaneMediaNote": {
+    "description": "Why the media relays are a separate list."
+  },
+  "relaysLaneLocation": "Location relays",
+  "@relaysLaneLocation": {
+    "description": "Heading over the relays that carry map beacons."
+  },
+  "relaysLaneLocationNote": "Map beacons go over these, apart from everything else.",
+  "@relaysLaneLocationNote": {
+    "description": "Why the location relays are a separate list."
+  },
   "relaysAdd": "Add relay",
   "relaysAddHint": "wss://relay.example.com",
   "relaysInvalidUrl": "Enter a wss:// or ws:// address",

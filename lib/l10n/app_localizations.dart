@@ -1850,11 +1850,53 @@ abstract class AppLocalizations {
   /// **'Copied'**
   String get relaysCopied;
 
+  /// Under the round video preview while it records.
+  ///
+  /// In en, this message translates to:
+  /// **'Let go to send'**
+  String get circleHint;
+
+  /// Shown when camera or microphone permission was refused.
+  ///
+  /// In en, this message translates to:
+  /// **'Circles need the camera and the microphone'**
+  String get circleNeedsCamera;
+
+  /// Shown when the camera or the send failed.
+  ///
+  /// In en, this message translates to:
+  /// **'That circle could not be recorded'**
+  String get circleFailed;
+
   /// No description provided for @relaysListLabel.
   ///
   /// In en, this message translates to:
   /// **'Relays'**
   String get relaysListLabel;
+
+  /// Heading over the relays that carry photo, file and video chunks.
+  ///
+  /// In en, this message translates to:
+  /// **'Media relays'**
+  String get relaysLaneMedia;
+
+  /// Why the media relays are a separate list.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos, files and video go over these, so a transfer does not slow down the conversation.'**
+  String get relaysLaneMediaNote;
+
+  /// Heading over the relays that carry map beacons.
+  ///
+  /// In en, this message translates to:
+  /// **'Location relays'**
+  String get relaysLaneLocation;
+
+  /// Why the location relays are a separate list.
+  ///
+  /// In en, this message translates to:
+  /// **'Map beacons go over these, apart from everything else.'**
+  String get relaysLaneLocationNote;
 
   /// No description provided for @relaysAdd.
   ///

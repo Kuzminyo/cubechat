@@ -462,7 +462,7 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
                       onDone: _confirm,
                     ),
                     Expanded(child: _stage(image)),
-                    _panel(t),
+                    _animatedPanel(t),
                     _Island(tool: _tool, onPick: _pickTool, t: t),
                   ],
                 ),
@@ -522,6 +522,51 @@ class _PhotoEditorScreenState extends State<PhotoEditorScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  /// The tool that just opened, rising into place.
+  ///
+  /// Two animations, and they do different jobs. [AnimatedSwitcher] fades and
+  /// lifts the new panel in; [AnimatedSize] moves the picture above it, which
+  /// is the half that stops the photograph from jumping when a two-row panel
+  /// replaces a one-row one. Without it the switch is smooth and the whole
+  /// screen still snaps.
+  ///
+  /// Keyed on what is showing rather than on the widget type: the text panel
+  /// holds a focused field, and a key that changed while somebody typed would
+  /// rebuild it and take the keyboard away mid-word.
+  Widget _animatedPanel(AppLocalizations t) {
+    final key = ValueKey<String>(
+      '${_tool.name}/${_tab.name}/${_selected != null}',
+    );
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 190),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 190),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeIn,
+        // Out first, then in. Cross-fading two panels of different heights
+        // over each other makes the taller one's bottom row appear through
+        // the shorter one, which reads as a rendering fault.
+        layoutBuilder: (current, previous) => Stack(
+          alignment: Alignment.bottomCenter,
+          children: <Widget>[...previous, if (current != null) current],
+        ),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.22),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(key: key, child: _panel(t)),
+      ),
     );
   }
 
@@ -714,16 +759,25 @@ class _CircleAction extends StatelessWidget {
           : Colors.black.withValues(alpha: 0.45),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
+      // Material animates its own colour when told how long to take, so a pen
+      // becoming the chosen one fades rather than flicks. Free: no controller,
+      // no ticker outside the transition.
+      animationDuration: const Duration(milliseconds: 160),
       child: InkWell(
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: size,
-            color: filled
-                ? AppColors.bgDeep
-                : Colors.white.withValues(alpha: enabled ? 1 : 0.35),
+          child: AnimatedScale(
+            scale: filled ? 1.1 : 1,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutBack,
+            child: Icon(
+              icon,
+              size: size,
+              color: filled
+                  ? AppColors.bgDeep
+                  : Colors.white.withValues(alpha: enabled ? 1 : 0.35),
+            ),
           ),
         ),
       ),
@@ -1350,14 +1404,28 @@ class _IslandTool extends StatelessWidget {
             : Colors.transparent,
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
+        animationDuration: const Duration(milliseconds: 190),
         child: InkWell(
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            child: Icon(
-              icon,
-              size: 26,
-              color: active ? AppColors.brandPrimary : AppColors.textOnGlass,
+            child: AnimatedScale(
+              scale: active ? 1.12 : 1,
+              duration: const Duration(milliseconds: 190),
+              curve: Curves.easeOutBack,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: active ? 1 : 0),
+                duration: const Duration(milliseconds: 190),
+                builder: (context, t, _) => Icon(
+                  icon,
+                  size: 26,
+                  color: Color.lerp(
+                    AppColors.textOnGlass,
+                    AppColors.brandPrimary,
+                    t,
+                  ),
+                ),
+              ),
             ),
           ),
         ),

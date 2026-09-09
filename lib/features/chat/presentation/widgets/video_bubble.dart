@@ -32,6 +32,27 @@ class VideoBubble extends StatefulWidget {
   /// The width a clip is drawn at, matching the photo bubble beside it.
   static const double width = 220;
 
+  /// The name a circle is sent under.
+  ///
+  /// A circle travels as an ordinary video file — same transport, same media
+  /// relay lane — and is told apart from a clip out of the gallery by this
+  /// reserved name. A media kind of its own would read better on the wire and
+  /// receive worse: an older build throws on an unknown kind and drops the
+  /// transfer, so the circle would never arrive there at all, where a reserved
+  /// name lands as a video it can play. Same reasoning as the `cubechat:*:v1:`
+  /// markers that ride inside ordinary text.
+  ///
+  /// Versioned, so a later shape for these can be told from this one without
+  /// guessing.
+  static const String circleFileName = 'cubechat-circle-v1.mp4';
+
+  /// Drawn round and square rather than as a rectangle in a card.
+  static bool isCircle(Message message) =>
+      message.fileName == circleFileName;
+
+  /// How wide a circle is drawn.
+  static const double circleDiameter = 200;
+
   /// True when this message is a video we can actually play: a file, with a
   /// video mime, whose bytes are on this phone.
   static bool handles(Message message) {
@@ -115,20 +136,40 @@ class _VideoBubbleState extends State<VideoBubble> {
     final position = ready ? player.value.position : Duration.zero;
     final total = ready ? player.value.duration : Duration.zero;
 
+    final round = VideoBubble.isCircle(widget.message);
     return GestureDetector(
       onTap: _start,
       onLongPress: widget.onLongPress,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        // A circle is a circle. Clipped rather than masked so the progress
+        // line and the chip below are clipped with the picture, which is what
+        // keeps it reading as one object.
+        borderRadius: BorderRadius.circular(
+          round ? VideoBubble.circleDiameter / 2 : 14,
+        ),
         child: SizedBox(
-          width: VideoBubble.width,
+          width: round ? VideoBubble.circleDiameter : VideoBubble.width,
           child: AspectRatio(
-            aspectRatio: aspect <= 0 ? 16 / 9 : aspect,
+            aspectRatio: round ? 1 : (aspect <= 0 ? 16 / 9 : aspect),
             child: Stack(
               fit: StackFit.expand,
               children: [
                 ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-                if (ready) VideoPlayer(player),
+                if (ready)
+                  // A circle is square and the camera is not, so the picture
+                  // is filled rather than fitted — a letterboxed round video
+                  // is a small rectangle inside a black disc.
+                  round
+                      ? FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            width: player.value.size.width,
+                            height: player.value.size.height,
+                            child: VideoPlayer(player),
+                          ),
+                        )
+                      : VideoPlayer(player),
                 if (!ready)
                   Center(
                     child: Icon(

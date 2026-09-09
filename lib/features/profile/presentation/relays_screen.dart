@@ -168,6 +168,60 @@ class RelaysScreen extends ConsumerWidget {
               return ok;
             },
           ),
+          // The other two lanes. They were connected and working and simply
+          // not on this screen, which read as "there is no relay for video" —
+          // the app was talking to seven relays and showing three.
+          //
+          // Listed rather than editable: they are not a preference, they are
+          // how a burst of media is kept off the sockets a conversation is
+          // using. Somebody who wants a different set can change the ones
+          // above, which is the lane their messages actually travel on.
+          const SizedBox(height: 18),
+          _Label(text: t.relaysLaneMedia),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              t.relaysLaneMediaNote,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ),
+          for (final url in RelaySettings.defaultMediaUrls)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _RelayRow(
+                url: url,
+                state: settings.enabled
+                    ? (statuses[url] ?? RelayState.connecting)
+                    : RelayState.idle,
+              ),
+            ),
+          const SizedBox(height: 12),
+          _Label(text: t.relaysLaneLocation),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              t.relaysLaneLocationNote,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ),
+          for (final url in RelaySettings.defaultLocationUrls)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _RelayRow(
+                url: url,
+                state: settings.enabled
+                    ? (statuses[url] ?? RelayState.connecting)
+                    : RelayState.idle,
+              ),
+            ),
         ],
       ),
     );
@@ -178,12 +232,16 @@ class _RelayRow extends StatelessWidget {
   const _RelayRow({
     required this.url,
     required this.state,
-    required this.onRemove,
+    this.onRemove,
   });
 
   final String url;
   final RelayState state;
-  final VoidCallback onRemove;
+
+  /// Null for the media and location lanes, which are not a list somebody
+  /// curates — take one away and the burst it exists to carry goes straight
+  /// back onto the sockets the conversation is using.
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -227,15 +285,16 @@ class _RelayRow extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            tooltip: t.relaysRemove,
-            icon: Icon(
-              Icons.close_rounded,
-              size: 18,
-              color: AppColors.textOnGlassFaint,
+          if (onRemove != null)
+            IconButton(
+              tooltip: t.relaysRemove,
+              icon: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: AppColors.textOnGlassFaint,
+              ),
+              onPressed: onRemove,
             ),
-            onPressed: onRemove,
-          ),
         ],
       ),
     );

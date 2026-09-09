@@ -14,6 +14,7 @@ Message _file({
   required String mime,
   String? path,
   MessageKind kind = MessageKind.file,
+  String name = 'clip.mp4',
 }) =>
     Message(
       id: 'm1',
@@ -23,7 +24,7 @@ Message _file({
       isMine: false,
       kind: kind,
       filePath: path,
-      fileName: 'clip.mp4',
+      fileName: name,
       fileBytes: 1024,
     );
 
@@ -73,6 +74,40 @@ void main() {
       isFalse,
     );
     expect(VideoBubble.handles(_file(mime: 'video/mp4')), isFalse);
+  });
+
+  group('a circle', () {
+    // Circles travel as ordinary video files and are told apart by the name
+    // they are sent under. A media kind of its own would read better on the
+    // wire and receive worse: an older build throws on an unknown kind and
+    // drops the transfer, where a reserved name lands as a video it can play.
+    test('is recognised by the name it was sent under', () {
+      final circle = _file(
+        mime: 'video/mp4',
+        path: clip.path,
+        name: VideoBubble.circleFileName,
+      );
+      expect(VideoBubble.isCircle(circle), isTrue);
+      expect(
+        VideoBubble.handles(circle),
+        isTrue,
+        reason: 'it is still a video, and still plays in the bubble',
+      );
+    });
+
+    test('an ordinary clip is not one', () {
+      expect(
+        VideoBubble.isCircle(_file(mime: 'video/mp4', path: clip.path)),
+        isFalse,
+      );
+    });
+
+    test('the marker carries a version, so a later shape is distinguishable',
+        () {
+      expect(VideoBubble.circleFileName, contains('v1'));
+      expect(VideoBubble.circleFileName, endsWith('.mp4'),
+          reason: 'an old build files it by extension and must still play it');
+    });
   });
 
   test('only the file kind is considered', () {

@@ -64,6 +64,7 @@ import '../data/messages_controller.dart';
 import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
+import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
 import '../domain/message_search.dart';
 import '../models/message.dart';
@@ -72,6 +73,8 @@ import '../domain/message_preview.dart';
 import '../../../core/util/image_encode.dart';
 import 'camera_capture_screen.dart';
 import 'widgets/chat_input.dart';
+import 'widgets/circle_recorder_preview.dart';
+import 'widgets/video_bubble.dart';
 import 'widgets/emoji_picker_sheet.dart';
 import 'widgets/everyone_dialog.dart';
 import 'widgets/pin_scope.dart';
@@ -3402,6 +3405,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   /// Cleared by whatever ends the recording, so the next hold starts held.
   bool _recordLocked = false;
 
+  /// Which of the two the hold-to-record button is recording, and the camera
+  /// that does the second one.
+  ///
+  /// The recorder is made on the first circle rather than with the screen: it
+  /// opens a camera, and most conversations never ask for one.
+  RecordMode _recordMode = RecordMode.voice;
+  CircleRecorder? _circle;
+
   /// A finished locked recording waiting to be trimmed and sent. While this is
   /// set the composer is replaced by the trim island, so there is no way to
   /// start a second recording on top of an unreviewed one.
@@ -3667,6 +3678,26 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     });
   }
 
+  /// The same 200ms count, reading the camera instead of the microphone.
+  ///
+  /// The circle's own preview redraws itself off the recorder ten times a
+  /// second without touching this screen; the composer strip is a different
+  /// widget and needs the number pushed to it, which is what the voice path
+  /// already pays for and this now matches.
+  void _startCircleTicker() {
+    _tick?.cancel();
+    _elapsed = Duration.zero;
+    _tick = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      final recorder = _circle;
+      if (recorder == null || !recorder.isRecording) {
+        _stopTicker();
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _elapsed = recorder.elapsed);
+    });
+  }
+
   void _stopTicker() {
     _tick?.cancel();
     _tick = null;
@@ -3686,6 +3717,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
     _stickerPanelRequests.dispose();
     _focusComposerRequests.dispose();
+    // Takes the camera with it. A recorder left alive is a camera held open
+    // behind a chat nobody is looking at.
+    _circle?.dispose();
+    _circle = null;
     // Only clear if we're still the active chat — guards against the
     // next chat's initState having already set itself during a transition.
     if (AppLifecycle.instance.activeChatId == widget.canonicalId) {
@@ -3694,7 +3729,37 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     super.dispose();
   }
 
+  /// The circle recorder, made the first time one is asked for.
+  CircleRecorder get _circleRecorder {
+    final existing = _circle;
+    if (existing != null) return existing;
+    final made = CircleRecorder()
+      // The minute runs out while the finger is still down. Send what was
+      // recorded rather than stopping the camera and waiting for a release
+      // that then sends nothing.
+      ..onCeilingReached = () => unawaited(_onRecordStop());
+    _circle = made;
+    return made;
+  }
+
   Future<void> _onRecordStart() async {
+    if (_recordMode == RecordMode.circle) {
+      if (mounted) setState(() => _recordLocked = false);
+      final ok = await _circleRecorder.start();
+      if (!ok && mounted) {
+        final why = _circleRecorder.error;
+        showGlassToast(
+          context,
+          why == 'camera-or-microphone-denied'
+              ? AppLocalizations.of(context).circleNeedsCamera
+              : AppLocalizations.of(context).circleFailed,
+          tone: ToastTone.danger,
+        );
+      }
+      if (ok) _startCircleTicker();
+      if (mounted) setState(() {});
+      return;
+    }
     if (mounted) setState(() => _recordLocked = false);
     final ok = await ref.read(voiceRecorderProvider.notifier).start();
     if (!ok) {
@@ -3715,6 +3780,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   static const _minVoiceMs = 500;
 
   Future<void> _onRecordStop() async {
+    if (_recordMode == RecordMode.circle) {
+      final shot = await _circle?.stop();
+      _stopTicker();
+      if (mounted) setState(() {});
+      if (shot == null) return;
+      await _sendCircle(shot.file);
+      return;
+    }
     final wasLocked = _recordLocked;
     final result = await ref.read(voiceRecorderProvider.notifier).stop();
     _stopTicker();
@@ -3871,9 +3944,57 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   }
 
   Future<void> _onRecordCancel() async {
+    if (_recordMode == RecordMode.circle) {
+      await _circle?.cancel();
+      _stopTicker();
+      if (mounted) setState(() => _recordLocked = false);
+      return;
+    }
     await ref.read(voiceRecorderProvider.notifier).cancel();
     _stopTicker();
     if (mounted) setState(() => _recordLocked = false);
+  }
+
+  /// A finished circle, on its way.
+  ///
+  /// It travels as a file with a video mime — the transport that already
+  /// carries a clip from the gallery, over the media relay lane — and is told
+  /// apart from one by the name it is sent under. A tag of its own on the wire
+  /// would be cleaner to read and worse to receive: an older build throws on
+  /// an unknown media kind and drops the transfer, so the circle would simply
+  /// never arrive there, whereas a reserved name lands as a video it can play.
+  /// The same reasoning the `cubechat:*:v1:` text markers were built on.
+  Future<void> _sendCircle(File clip) async {
+    if (!widget.canSend) {
+      await _discardRecording(clip.path);
+      return;
+    }
+    try {
+      if (isSavedChat(widget.canonicalId)) {
+        await ref.read(savedMessagesControllerProvider).saveFile(
+              clip,
+              fileName: VideoBubble.circleFileName,
+              mime: 'video/mp4',
+            );
+        return;
+      }
+      await ref.read(messagingServiceProvider).sendFile(
+            widget.canonicalId,
+            file: clip,
+            fileName: VideoBubble.circleFileName,
+            mime: 'video/mp4',
+          );
+    } catch (e) {
+      if (!mounted) return;
+      showGlassToast(
+        context,
+        AppLocalizations.of(context).circleFailed,
+        tone: ToastTone.danger,
+      );
+      DebugLog.instance.log('CIRCLE', 'send failed: $e');
+    } finally {
+      await _discardRecording(clip.path);
+    }
   }
 
   Future<void> _pickAndSendImage() async {
@@ -4704,10 +4825,24 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       onRecordStart: mediaEnabled ? _onRecordStart : null,
       onRecordStop: mediaEnabled ? _onRecordStop : null,
       onRecordCancel: mediaEnabled ? _onRecordCancel : null,
-      onRecordLock:
-          mediaEnabled ? () => setState(() => _recordLocked = true) : null,
+      // Locking is a voice idea: the finger leaves and the recording carries
+      // on. A circle is a camera pointed at a face — it ends when the hold
+      // does.
+      onRecordLock: mediaEnabled && _recordMode == RecordMode.voice
+          ? () => setState(() => _recordLocked = true)
+          : null,
+      recordMode: _recordMode,
+      onToggleRecordMode: mediaEnabled
+          ? () => setState(
+                () => _recordMode = _recordMode == RecordMode.voice
+                    ? RecordMode.circle
+                    : RecordMode.voice,
+              )
+          : null,
       recordLocked: _recordLocked,
-      recording: voiceState.isRecording,
+      recording: _recordMode == RecordMode.circle
+          ? (_circle?.isRecording ?? false)
+          : voiceState.isRecording,
       recordElapsed: _elapsed,
       recordLevels: voiceState.levels,
       onSend: (text) async {
@@ -4821,14 +4956,31 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
                 ?.isBlocked ??
             false);
 
+    // The circle being recorded, above the composer where the finger is.
+    //
+    // In the composer's own column rather than floating over the conversation,
+    // because that column is what the list's bottom padding is measured off —
+    // the reply island and a multi-line draft already grow it the same way, so
+    // the conversation makes room instead of being covered.
+    final circle = _recordMode == RecordMode.circle && _circle?.isActive == true
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: CircleRecorderPreview(
+              recorder: _circle!,
+              hint: AppLocalizations.of(context).circleHint,
+            ),
+          )
+        : null;
+
     final Widget bar;
-    if (activeReply == null && !blocked) {
+    if (activeReply == null && !blocked && circle == null) {
       bar = composerWithMentions;
     } else {
       bar = Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (circle != null) circle,
           if (blocked)
             _UnblockIsland(
               onUnblock: () => ref
