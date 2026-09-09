@@ -316,13 +316,16 @@ class FrameStats {
   /// a buffer that has evicted the evidence.
   void _reportIfSlow(int buildUs, int rasterUs, Map<String, int> thisFrame) {
     if (buildUs < _reportUs && rasterUs < _reportUs) return;
+    _slowSinceReport++;
     final now = DateTime.now();
     final last = _lastReport;
     if (last != null && now.difference(last) < const Duration(seconds: 1)) {
       return;
     }
     final since = _framesSinceReport;
+    final slow = _slowSinceReport;
     _framesSinceReport = 0;
+    _slowSinceReport = 0;
     _lastReport = now;
     // What *this* frame rebuilt, not what the last second did. The window
     // version could not tell a suspect from a bystander: "chats x17" beside a
@@ -335,7 +338,7 @@ class FrameStats {
       'slow frame — build ${(buildUs / 1000).toStringAsFixed(1)} ms, '
           'raster ${(rasterUs / 1000).toStringAsFixed(1)} ms'
           ' — ${who.isEmpty ? 'nothing counted rebuilt' : who}'
-          ' · 1 of $since frame(s) since the last report',
+          ' · $slow slow of $since frame(s) since the last report',
     );
   }
 
@@ -354,6 +357,17 @@ class FrameStats {
   /// vindication or a red herring depending on this number, and there was no
   /// way to tell which.
   int _framesSinceReport = 0;
+
+  /// Slow frames counted since the last one was printed, including the ones the
+  /// rate limit swallowed.
+  ///
+  /// The line used to open with a literal `1 of N frames`, which reads as "one
+  /// frame in N was slow" and is not what it measured: N is every frame since
+  /// the previous report and the 1 was a constant. One bad frame in a second
+  /// and forty bad frames in a second printed identically — and forty is the
+  /// difference between a hitch nobody notices and a transition that appears to
+  /// stick half way, which is what a report of one asked about.
+  int _slowSinceReport = 0;
 
   /// How many times each watched screen rebuilt since the last report.
   ///

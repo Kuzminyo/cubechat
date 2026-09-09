@@ -4270,8 +4270,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       case MediaPickerEdit(:final asset):
         source = await asset.originBytes;
       case MediaPickerCamera():
-        source = await Navigator.of(context).push<Uint8List>(
-          mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
+        source = await _keepingKeyboard<Uint8List>(
+          () => Navigator.of(context).push<Uint8List>(
+            mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
+          ),
         );
       // A sticker made out of a file, a poll, a place or another sticker is
       // not a thing; those tiles simply end the flow.
@@ -4704,10 +4706,35 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
   }
 
+  /// Was the keyboard up before a full-screen route took over, and put it back
+  /// if it was.
+  ///
+  /// The camera is a route, not an overlay, so the composer is not on screen
+  /// while it is open and the keyboard goes down with it — there is nothing to
+  /// keep up behind a viewfinder. What was actually being asked for is the
+  /// other half: that coming back leaves you where you were, mid-sentence,
+  /// rather than with a collapsed composer and a field to tap again.
+  ///
+  /// Only when it was up. Raising a keyboard for somebody who was not typing
+  /// is the same fault in the other direction.
+  Future<T?> _keepingKeyboard<T>(Future<T?> Function() body) async {
+    final hadKeyboard = MediaQuery.of(context).viewInsets.bottom > 0;
+    final result = await body();
+    if (!mounted || !hadKeyboard) return result;
+    // After the pop transition, not during it: focus asked for while the
+    // outgoing route still holds it lands on nothing.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusComposerRequests.value++;
+    });
+    return result;
+  }
+
   /// Camera tile → in-app capture → editor → send.
   Future<void> _captureEditAndSend() async {
-    final captured = await Navigator.of(context).push<Uint8List>(
-      mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
+    final captured = await _keepingKeyboard<Uint8List>(
+      () => Navigator.of(context).push<Uint8List>(
+        mediaRoute<Uint8List>((_) => const CameraCaptureScreen()),
+      ),
     );
     if (captured == null || !mounted) return;
     await _editAndSendBytes(

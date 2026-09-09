@@ -16,6 +16,7 @@ import 'core/util/app_build.dart';
 import 'core/util/build_probe.dart';
 import 'core/util/debug_log.dart';
 import 'core/util/platform_info.dart';
+import 'core/util/ui_stall_watch.dart';
 import 'core/util/media_storage.dart';
 import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
@@ -183,6 +184,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
   _logUncaughtErrors();
+  // Before anything slow, so the boot steps below are themselves watched.
+  UiStallWatch.instance.install();
   // First line of the app that touches storage, and that is the point.
   //
   // It reads one boolean out of the settings box, but it is the first thing to
