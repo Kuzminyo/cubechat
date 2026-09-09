@@ -4681,6 +4681,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Preparing {count} photos…'**
   String chatPreparingPhotos(int count);
+
+  /// No description provided for @circleSwitchCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch camera'**
+  String get circleSwitchCamera;
+
+  /// No description provided for @circleLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording light'**
+  String get circleLight;
+
+  /// No description provided for @circleCameraSwitchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch cameras. Your recording is still open.'**
+  String get circleCameraSwitchFailed;
 }
 
 class _AppLocalizationsDelegate

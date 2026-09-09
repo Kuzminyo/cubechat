@@ -1035,7 +1035,7 @@ class _ChevronsPainter extends CustomPainter {
 /// until now releasing was the *only* outcome — there was no way to send a long
 /// message without keeping a thumb planted, and no way to abandon one you had
 /// started except by sending it and deleting it afterwards.
-class _VoiceButton extends StatelessWidget {
+class _VoiceButton extends StatefulWidget {
   const _VoiceButton({
     super.key,
     required this.active,
@@ -1061,16 +1061,15 @@ class _VoiceButton extends StatelessWidget {
   final VoidCallback onLock;
 
   @override
+  State<_VoiceButton> createState() => _VoiceButtonState();
+}
+
+class _VoiceButtonState extends State<_VoiceButton> {
+  bool _holding = false;
+  bool _consumed = false;
+
+  @override
   Widget build(BuildContext context) {
-    // Locked recording is driven by taps, not by a held press: the finger is
-    // gone, so the same widget has to stop meaning "hold me" and start meaning
-    // "send".
-    if (locked) {
-      return GestureDetector(
-        onTap: onStop,
-        child: _circle(context, icon: const Icon(Icons.send_rounded), filled: true),
-      );
-    }
     // Raw recogniser rather than [GestureDetector] purely so the hold can be
     // armed at [_voiceArmDelay] instead of the stock half second — everything
     // else is the same long-press gesture.
@@ -1079,14 +1078,17 @@ class _VoiceButton extends StatelessWidget {
         // A tap turns the button over; a hold records. Both live on this one
         // recogniser set so they settle it between themselves in the arena —
         // a quick touch is a tap, a held one never becomes one.
-        if (onToggleMode != null)
+        if (widget.onToggleMode != null || widget.locked)
           TapGestureRecognizer:
               GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
             TapGestureRecognizer.new,
             (recognizer) => recognizer.onTap = () {
-              if (active) return;
-              HapticFeedback.selectionClick();
-              onToggleMode!();
+              if (widget.locked) {
+                widget.onStop();
+              } else if (!widget.active) {
+                HapticFeedback.selectionClick();
+                widget.onToggleMode?.call();
+              }
             },
           ),
         LongPressGestureRecognizer:
@@ -1099,35 +1101,50 @@ class _VoiceButton extends StatelessWidget {
               // finger cannot see, because it is on the button and the change
               // is elsewhere on the screen. They are the ones worth a tick.
               ..onLongPressStart = ((_) {
+                if (widget.locked || widget.active) return;
+                _holding = true;
+                _consumed = false;
                 HapticFeedback.mediumImpact();
-                onStart();
+                widget.onStart();
               })
               // Letting go sends it, so it gets the same light tick a typed
               // message does — the two are the same act.
               ..onLongPressEnd = ((_) {
+                if (!_holding || _consumed || widget.locked) return;
+                _holding = false;
+                _consumed = true;
                 HapticFeedback.lightImpact();
-                onStop();
+                widget.onStop();
               })
-              ..onLongPressCancel = onCancel
+              ..onLongPressCancel = () {
+                if (!_holding || _consumed || widget.locked) return;
+                _holding = false;
+                _consumed = true;
+                widget.onCancel();
+              }
               ..onLongPressMoveUpdate = (LongPressMoveUpdateDetails d) {
-                if (!active) return;
+                if (!_holding || _consumed || widget.locked) return;
                 final offset = d.localOffsetFromOrigin;
                 // Cancel wins a diagonal: a drag that reaches both thresholds
                 // was more likely aimed at the bin than at the lock, and the
                 // safe reading of an ambiguous gesture is the one that doesn't
                 // send.
                 if (offset.dx <= -_voiceCancelTravel) {
+                  _consumed = true;
                   HapticFeedback.mediumImpact();
-                  onCancel();
+                  widget.onCancel();
                 } else if (offset.dy <= -_voiceLockTravel) {
+                  _consumed = true;
                   HapticFeedback.selectionClick();
-                  onLock();
+                  widget.onLock();
                 }
               };
           },
         ),
       },
-      child: _flip(context),
+      child: widget.locked
+          ? _circle(context, icon: const Icon(Icons.send_rounded), filled: true)
+          : _flip(context),
     );
   }
 
@@ -1138,7 +1155,7 @@ class _VoiceButton extends StatelessWidget {
   /// nothing is legible anyway. The far half is un-mirrored, or the icon
   /// arrives back to front.
   Widget _flip(BuildContext context) {
-    final circle = mode == RecordMode.circle;
+    final circle = widget.mode == RecordMode.circle;
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: circle ? 1 : 0),
       duration: const Duration(milliseconds: 340),
@@ -1162,7 +1179,7 @@ class _VoiceButton extends StatelessWidget {
               icon: showCircle
                   ? const CircleVideoIcon()
                   : const Icon(Icons.mic_rounded),
-              filled: active,
+              filled: widget.active,
             ),
           ),
         );

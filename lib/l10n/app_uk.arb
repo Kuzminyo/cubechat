@@ -1008,5 +1008,8 @@
     "previewContact":  "Контакт",
     "previewUnsupported":  "Повідомлення не підтримується",
 
-    "chatPreparingPhotos":  "Готую {count} фото…"
+    "chatPreparingPhotos":  "Готую {count} фото…",
+  "circleSwitchCamera": "Перемкнути камеру",
+  "circleLight": "Підсвічування запису",
+  "circleCameraSwitchFailed": "Не вдалося перемкнути камеру. Запис залишається відкритим."
 }

@@ -77,7 +77,27 @@ class RelaySettings {
   /// subscriptions. `nostr.oxtr.dev` was joint-fastest in the original probe
   /// and was passed over then only for operator independence, which is exactly
   /// what makes it right here.
+  /// **Ours first, and the borrowed pair kept behind it.**
+  ///
+  /// `relay.cubechat.tech` is strfry on the droplet that already runs the push
+  /// doorbell — see `relay/README.md`. It exists because the limits on this
+  /// lane are the ones that bite: a photo is tens of events, a circle a few
+  /// dozen, a file hundreds, and a public relay answers that burst by
+  /// throttling everything in the connection. A field log from 2026-09-09 has
+  /// `nostr.oxtr.dev rejected publish: rate limited` three times inside one
+  /// second. On ours the limits are ours to set, and the retention outlives a
+  /// transfer instead of pruning underneath it.
+  ///
+  /// Not *instead of* the pair. One relay is one machine, and a transfer with
+  /// a single road stops when that machine reboots — which it will, because
+  /// somebody has to apply security updates to it.
+  ///
+  /// The honest cost, stated once: everything here is a gift-wrapped frame, so
+  /// what any relay sees is a ciphertext, a recipient tag and a time. Moving
+  /// the lane to our own machine means we see that instead of a stranger, not
+  /// as well as — one fewer observer, and the one that is left is us.
   static const defaultMediaUrls = <String>[
+    'wss://relay.cubechat.tech',
     'wss://relay.snort.social',
     'wss://nostr.oxtr.dev',
   ];

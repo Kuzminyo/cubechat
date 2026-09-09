@@ -3413,6 +3413,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   /// opens a camera, and most conversations never ask for one.
   RecordMode _recordMode = RecordMode.voice;
   CircleRecorder? _circle;
+  int _circleSession = 0;
+  bool _circleStarting = false;
+  bool _circleFinishing = false;
 
   /// The circle's preview, over the whole screen.
   ///
@@ -3647,6 +3650,9 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused && (_circle?.isActive ?? false)) {
+      unawaited(_onRecordCancel());
+    }
     if (state != AppLifecycleState.resumed) return;
     // Back on screen with this chat still open: everything that arrived while
     // it was away has now genuinely been seen, so the marker catches up and
@@ -3830,38 +3836,34 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordStart() async {
     if (_recordMode == RecordMode.circle) {
-      if (mounted) setState(() => _recordLocked = false);
-      // Waited for rather than read straight off: the default is the front
-      // lens, so acting before the stored answer lands would open the wrong
-      // camera and the setting would look like it had not survived a restart.
+      if (_circleStarting || _circleFinishing || (_circle?.isActive ?? false)) return;
+      final session = ++_circleSession;
+      final recorder = _circleRecorder;
+      setState(() { _circleStarting = true; _recordLocked = false; });
+      // Close the keyboard deliberately, before the preview opens. The held
+      // pointer stays with its original recognizer while the overlay settles.
+      FocusManager.instance.primaryFocus?.unfocus();
+      _showCircleOverlay();
       final lens = ref.read(circleLensProvider.notifier);
       await lens.loaded;
-      final ok = await _circleRecorder.start(front: ref.read(circleLensProvider));
+      if (!mounted || session != _circleSession) return;
+      final ok = await recorder.start(front: ref.read(circleLensProvider));
+      if (!mounted || session != _circleSession) return;
+      setState(() => _circleStarting = false);
       if (!ok) {
         _hideCircleOverlay();
-        DebugLog.instance.log(
-          'CIRCLE',
-          'not recording: ${_circleRecorder.error ?? "released before it began"}',
-        );
-        if (mounted && _circleRecorder.error != null) {
-          showGlassToast(
-            context,
-            _circleRecorder.error == 'camera-or-microphone-denied'
-                ? AppLocalizations.of(context).circleNeedsCamera
-                : AppLocalizations.of(context).circleFailed,
+        if (recorder.error != null) {
+          showGlassToast(context,
+            recorder.error == 'camera-or-microphone-denied'
+              ? AppLocalizations.of(context).circleNeedsCamera
+              : AppLocalizations.of(context).circleFailed,
             tone: ToastTone.danger,
           );
         }
-        if (mounted) setState(() {});
         return;
       }
       DebugLog.instance.log('CIRCLE', 'recording');
       _startCircleTicker();
-      // No separate lock hint: the circle's own overlay draws one, and both
-      // were on screen at once. [_showLockHint] is the voice recorder's, where
-      // there is no overlay to put it in.
-      _showCircleOverlay();
-      if (mounted) setState(() {});
       return;
     }
     if (mounted) setState(() => _recordLocked = false);
@@ -3886,26 +3888,22 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordStop() async {
     if (_recordMode == RecordMode.circle) {
-      // Locked means the finger is gone and the recording carries on; the
-      // button under it has become "send", and this is that tap.
-      final shot = await _circle?.stop();
-      _stopTicker();
-      _hideCircleOverlay();
-      if (mounted) setState(() => _recordLocked = false);
-      if (shot == null) {
-        DebugLog.instance.log('CIRCLE', 'nothing to send: too short or never started');
-        return;
+      if (_circleFinishing) return;
+      _circleSession++;
+      _circleStarting = false;
+      _circleFinishing = true;
+      try {
+        final shot = await _circle?.stop();
+        _stopTicker();
+        _hideCircleOverlay();
+        if (mounted) setState(() => _recordLocked = false);
+        if (shot == null) return;
+        if (!mounted) { await _discardRecording(shot.file.path); return; }
+        await _sendCircle(shot.file);
+      } finally {
+        _circleFinishing = false;
+        if (mounted) setState(() {});
       }
-      DebugLog.instance.log(
-        'CIRCLE',
-        'recorded ${shot.length.inMilliseconds}ms, '
-            '${await shot.file.length()}B',
-      );
-      await _sendCircle(shot.file);
-      // Said on the way out as well as on the way in. Without it the log ends
-      // at "recorded", and a transfer that queued, failed inside sendFile or
-      // simply never started all look the same from here.
-      DebugLog.instance.log('CIRCLE', 'handed to the transport');
       return;
     }
     final wasLocked = _recordLocked;
@@ -4065,13 +4063,21 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   Future<void> _onRecordCancel() async {
     if (_recordMode == RecordMode.circle) {
-      // A drag left, or the gesture being taken away by a system dialog.
-      // Either way the clip goes in the bin, camera and file both.
-      await _circle?.cancel();
-      _stopTicker();
+      if (_circleFinishing) return;
+      _circleSession++;
+      _circleStarting = false;
+      _circleFinishing = true;
+      // Acknowledge cancel immediately; release the native camera afterwards.
       _hideCircleOverlay();
-      DebugLog.instance.log('CIRCLE', 'cancelled');
+      _stopTicker();
       if (mounted) setState(() => _recordLocked = false);
+      try {
+        await _circle?.cancel();
+      } finally {
+        _circleFinishing = false;
+        if (mounted) setState(() {});
+      }
+      DebugLog.instance.log('CIRCLE', 'cancelled');
       return;
     }
     await ref.read(voiceRecorderProvider.notifier).cancel();
@@ -5114,9 +5120,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     }
 
     return PopScope<void>(
-      canPop: selectedMessages.isEmpty,
+      canPop: selectedMessages.isEmpty && !_circleStarting && !(_circle?.isActive ?? false),
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop || selectedMessages.isEmpty) return;
+        if (didPop) return;
+        if (_circleStarting || (_circle?.isActive ?? false)) {
+          unawaited(_onRecordCancel());
+          return;
+        }
+        if (selectedMessages.isEmpty) return;
         ref.read(messageSelectionProvider(widget.canonicalId).notifier).clear();
       },
       child: bar,

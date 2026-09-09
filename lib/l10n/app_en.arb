@@ -1312,5 +1312,8 @@
     "placeholders": {
       "count": { "type": "int" }
     }
-  }
+  },
+  "circleSwitchCamera": "Switch camera",
+  "circleLight": "Recording light",
+  "circleCameraSwitchFailed": "Could not switch cameras. Your recording is still open."
 }

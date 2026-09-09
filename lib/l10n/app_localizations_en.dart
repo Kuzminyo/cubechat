@@ -2680,4 +2680,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatPreparingPhotos(int count) {
     return 'Preparing $count photos…';
   }
+
+  @override
+  String get circleSwitchCamera => 'Switch camera';
+
+  @override
+  String get circleLight => 'Recording light';
+
+  @override
+  String get circleCameraSwitchFailed =>
+      'Could not switch cameras. Your recording is still open.';
 }

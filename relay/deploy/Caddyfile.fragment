@@ -3,13 +3,25 @@
 # with them.
 #
 # A relay is a WebSocket and Caddy's reverse_proxy upgrades one without being
-# told to, so there is nothing here about Connection or Upgrade headers. What
-# it does need is the real address of the client, because strfry's config asks
-# for x-forwarded-for and would otherwise see every connection arriving from
-# 127.0.0.1 — which is the same as having no rate limiting at all.
+# told to, so there is nothing here about Connection or Upgrade headers.
+#
+# **keepalive off, and that is not a preference.** strfry's HTTP side is the
+# small server built into uWebSockets, and it does not hold a connection the
+# way Caddy's pool expects. With keep-alive on, every plain HTTP request came
+# back to Caddy as an "Unsolicited response received on idle HTTP channel" and
+# was thrown away — so `curl https://relay.cubechat.tech` returned nothing at
+# all while the relay behind it was answering perfectly. The WebSocket upgrade
+# is a fresh connection either way, so nothing about the actual traffic pays
+# for this.
+#
+# X-Forwarded-For is not set here either: Caddy passes it by default and says
+# so out loud when told to do it twice.
 
 relay.cubechat.tech {
 	reverse_proxy 127.0.0.1:8081 {
-		header_up X-Forwarded-For {remote_host}
+		transport http {
+			versions 1.1
+			keepalive off
+		}
 	}
 }

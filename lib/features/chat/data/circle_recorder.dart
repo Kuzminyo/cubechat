@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/util/debug_log.dart';
@@ -22,11 +23,50 @@ import '../../../core/util/debug_log.dart';
 /// a provider outliving the widget that shows its preview is how a camera ends
 /// up held open behind a chat nobody is looking at.
 class CircleRecorder extends ChangeNotifier {
+  CircleRecorder({
+    Future<List<CameraDescription>> Function()? listCameras,
+    Future<bool> Function()? requestAccess,
+    CameraController Function(CameraDescription)? createCamera,
+  })  : _listCameras = listCameras ?? availableCameras,
+        _requestAccess = requestAccess ?? _requestCameraAccess,
+        _createCamera = createCamera ?? _makeCamera;
+
+  final Future<List<CameraDescription>> Function() _listCameras;
+  final Future<bool> Function() _requestAccess;
+  final CameraController Function(CameraDescription) _createCamera;
+
+  static Future<bool> _requestCameraAccess() async {
+    final grants =
+        await <Permission>[Permission.camera, Permission.microphone].request();
+    return grants.values.every((status) => status.isGranted);
+  }
+
+  // Keep the existing capture budget: 480p, 24fps, 1.2Mbps video / 64kbps audio.
+  static CameraController _makeCamera(CameraDescription lens) =>
+      CameraController(
+        lens,
+        ResolutionPreset.medium,
+        enableAudio: true,
+        fps: 24,
+        videoBitrate: 1200000,
+        audioBitrate: 64000,
+      );
   CameraController? _camera;
   Timer? _ticker;
   Timer? _ceiling;
   DateTime? _startedAt;
   bool _stopping = false;
+  bool _starting = false;
+  bool _disposed = false;
+  Future<void>? _lensChange;
+  Future<({File file, Duration length})?>? _ending;
+  bool get isFlipping => _flipping;
+  bool get isFinishing => _stopping;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
   String? error;
 
   /// Which attempt is the live one.
@@ -99,7 +139,7 @@ class CircleRecorder extends ChangeNotifier {
       // A camera that reports a range and then refuses it. Nothing to do and
       // nothing worth saying.
     }
-    notifyListeners();
+    _notify();
   }
 
   /// Let go and it goes back.
@@ -115,7 +155,7 @@ class CircleRecorder extends ChangeNotifier {
     try {
       await camera.setZoomLevel(_minZoom);
     } catch (_) {}
-    notifyListeners();
+    _notify();
   }
 
   /// The light: the screen on a front lens, the flash on a back one.
@@ -134,36 +174,66 @@ class CircleRecorder extends ChangeNotifier {
       try {
         await camera.setFlashMode(_torchOn ? FlashMode.torch : FlashMode.off);
       } catch (e) {
-        DebugLog.instance.log('CIRCLE', 'torch refused ($e) — using the screen');
+        DebugLog.instance
+            .log('CIRCLE', 'torch refused ($e) — using the screen');
         _hardwareTorch = false;
       }
     }
-    notifyListeners();
+    _notify();
   }
 
-  /// Turn the phone round without letting go.
-  ///
-  /// The camera plugin cannot hand a running capture to the other sensor, so
-  /// this is a stop and a start: what was recorded is discarded and the count
-  /// begins again. Visible rather than hidden — the seconds reset in front of
-  /// you — which is the honest way to show it, and the alternative was a
-  /// button that did nothing until the next circle.
-  Future<void> flipLens() async {
-    final camera = _camera;
-    if (camera == null || _flipping) return;
+  /// Camera 0.12 supports changing sensors inside a persistent recording.
+  /// Stop/delete/start lost the first part and raced with cancel during release.
+  Future<void> flipLens() {
+    if (_camera == null ||
+        !isRecording ||
+        _flipping ||
+        _stopping ||
+        _disposed) {
+      return Future<void>.value();
+    }
     _flipping = true;
+    error = null;
+    _notify();
+    final change = _flipLens();
+    _lensChange = change;
+    return change;
+  }
+
+  Future<void> _flipLens() async {
+    final camera = _camera!;
+    final generation = _generation;
     try {
-      if (camera.value.isRecordingVideo) {
-        final shot = await camera.stopVideoRecording();
-        await _quietlyDelete(File(shot.path));
+      final cameras = await _listCameras();
+      if (generation != _generation) return;
+      final wanted =
+          _front ? CameraLensDirection.back : CameraLensDirection.front;
+      final choices = cameras.where((lens) => lens.lensDirection == wanted);
+      if (choices.isEmpty) {
+        error = 'no-other-camera';
+        return;
       }
-      final wasFront = _front;
-      await _release();
-      await start(front: !wasFront);
+      try {
+        await camera.setFlashMode(FlashMode.off);
+      } catch (_) {}
+      if (generation != _generation) return;
+      await camera.setDescription(choices.first);
+      if (generation != _generation) return;
+      _front = choices.first.lensDirection == CameraLensDirection.front;
+      _hardwareTorch = !_front;
+      _torchOn = false;
+      _minZoom = await camera.getMinZoomLevel();
+      _maxZoom = await camera.getMaxZoomLevel();
+      if (generation != _generation) return;
+      _zoom = _minZoom;
+      _zoomAtGestureStart = _minZoom;
+      await camera.setZoomLevel(_minZoom);
     } catch (e) {
+      error = '$e';
       DebugLog.instance.log('CIRCLE', 'flip failed: $e');
     } finally {
       _flipping = false;
+      _notify();
     }
   }
 
@@ -200,24 +270,22 @@ class CircleRecorder extends ChangeNotifier {
   /// `CircleLensController` for why it is a setting and not a button here.
   Future<bool> start({bool front = true}) async {
     error = null;
-    if (_camera != null) return false;
+    if (_camera != null || _starting || _stopping || _disposed) return false;
+    _starting = true;
     final generation = ++_generation;
     try {
       // Both, and in one go: a circle without sound is a silent film, and
       // asking for the microphone only after the camera is open means two
       // system dialogs stacked over a held finger.
-      final grants = await <Permission>[
-        Permission.camera,
-        Permission.microphone,
-      ].request();
-      if (grants.values.any((s) => !s.isGranted)) {
+      if (!await _requestAccess()) {
         error = 'camera-or-microphone-denied';
         return false;
       }
       // Reading a permission dialog takes longer than holding a button.
       if (generation != _generation) return false;
 
-      final cameras = await availableCameras();
+      final cameras = await _listCameras();
+      if (generation != _generation) return false;
       if (cameras.isEmpty) {
         error = 'no-camera';
         return false;
@@ -232,48 +300,11 @@ class CircleRecorder extends ChangeNotifier {
         orElse: () => cameras.first,
       );
 
-      // 720p, and the bitrate said out loud.
-      //
-      // The resolution is the easy half: the disc is drawn at about 290 points
-      // and a phone is three times that in pixels, so 480p was visibly soft on
-      // the one screen a circle is always watched on.
-      //
-      // The bitrate is the half that decided whether circles worked at all.
-      // Left to the platform default, 7.8 seconds came out at **12.2 MB** —
-      // 12 Mbps, camcorder settings for a disc the size of a beer mat. Over
-      // the media relay that is 371 publishes for eight seconds of talking,
-      // and the transfer simply never finished; it is what "circles don't
-      // send" turned out to mean. At 1.2 Mbps the same clip is about 1.2 MB
-      // and 39 publishes.
-      //
-      // 24 fps rather than 30 for the same reason and at no visible cost: a
-      // face talking is not a panning shot.
-      // **Medium, for the width rather than for the sharpness.**
-      //
-      // A round window cut out of a rectangle keeps the whole of what the lens
-      // sees left to right and throws away top and bottom. At 720p that
-      // rectangle is 16:9, so the circle shows a little over half the height
-      // of the frame — which is why it reads as zoomed in on a face when
-      // nothing has been zoomed at all. Medium is 4:3 or 3:2 on the devices
-      // this will meet, and a shorter frame loses far less to the crop.
-      //
-      // The cost is real and was asked for anyway: 480 lines upscaled into a
-      // 300-point disc is softer than 720 were. Going back is one constant.
-      final camera = CameraController(
-        lens,
-        ResolutionPreset.medium,
-        enableAudio: true,
-        fps: 24,
-        // Left where it was rather than scaled down with the resolution.
-        // Fewer pixels at the same bitrate is more bits per pixel, which is
-        // exactly what buys back some of what the shorter frame costs — and a
-        // minute is still a couple of megabytes, which is what the publish
-        // count on the media lane actually cares about.
-        videoBitrate: 1200000,
-        audioBitrate: 64000,
-      );
+      // Preserve the existing 480p / 24fps / 1.2Mbps budget. A default
+      // 12Mbps clip previously cost 371 relay publishes for eight seconds.
+      final camera = _createCamera(lens);
       _camera = camera;
-      notifyListeners();
+      _notify();
       await camera.initialize();
       // Gone while the camera was opening — a finger lifted inside the second
       // it takes. Nothing was recorded, so there is nothing to send.
@@ -304,7 +335,11 @@ class CircleRecorder extends ChangeNotifier {
       _hardwareTorch = lens.lensDirection == CameraLensDirection.back;
       _front = lens.lensDirection == CameraLensDirection.front;
 
-      await camera.startVideoRecording();
+      if (generation != _generation) return false;
+      // Keep the preview's aspect ratio stable when a held phone tilts.
+      await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      if (generation != _generation) return false;
+      await camera.startVideoRecording(enablePersistentRecording: true);
       // And again: starting the recording is itself a round trip to the
       // platform, and the release can land inside it.
       if (generation != _generation) {
@@ -320,60 +355,66 @@ class CircleRecorder extends ChangeNotifier {
         // Only while a circle is being recorded, and it stops with it. The ring
         // has to move, and this is the one thing on screen that is happening.
         const Duration(milliseconds: 100),
-        (_) => notifyListeners(),
+        (_) => _notify(),
       );
       _ceiling = Timer(maxLength, () => onCeilingReached?.call());
-      notifyListeners();
+      _notify();
       return true;
     } catch (e) {
       DebugLog.instance.log('CIRCLE', 'start failed: $e');
       error = '$e';
-      await _release();
+      if (generation == _generation) await _release();
       return false;
+    } finally {
+      _starting = false;
     }
   }
 
-  /// Stop and hand back the clip, or null if there is nothing worth sending.
-  Future<({File file, Duration length})?> stop() async {
-    final camera = _camera;
-    if (camera == null || _stopping) return null;
+  /// Invalidate pending permission/open/flip work immediately, even before a
+  /// camera exists. Serialising the finish prevents two native stop requests.
+  Future<({File file, Duration length})?> stop() => _finish(discard: false);
+
+  Future<void> cancel() async {
+    await _finish(discard: true);
+  }
+
+  Future<({File file, Duration length})?> _finish({required bool discard}) {
+    final pending = _ending;
+    if (pending != null) return pending;
+    _generation++;
     _stopping = true;
+    _notify();
+    final operation = _finishCamera(discard: discard);
+    _ending = operation;
+    return operation;
+  }
+
+  Future<({File file, Duration length})?> _finishCamera({
+    required bool discard,
+  }) async {
+    final camera = _camera;
     final length = elapsed;
+    _ticker?.cancel();
+    _ceiling?.cancel();
     try {
-      if (!camera.value.isRecordingVideo) {
-        await _release();
-        return null;
-      }
+      await _lensChange;
+      if (camera == null || !camera.value.isRecordingVideo) return null;
       final shot = await camera.stopVideoRecording();
-      await _release();
       final file = File(shot.path);
-      if (length < minLength) {
+      if (discard || length < minLength) {
         await _quietlyDelete(file);
         return null;
       }
       return (file: file, length: length);
     } catch (e) {
-      DebugLog.instance.log('CIRCLE', 'stop failed: $e');
-      await _release();
+      DebugLog.instance.log('CIRCLE', 'finish failed: $e');
       return null;
     } finally {
+      await _release();
       _stopping = false;
+      _ending = null;
+      _notify();
     }
-  }
-
-  /// Throw the recording away, camera and file both.
-  Future<void> cancel() async {
-    final camera = _camera;
-    if (camera == null) return;
-    try {
-      if (camera.value.isRecordingVideo) {
-        final shot = await camera.stopVideoRecording();
-        await _quietlyDelete(File(shot.path));
-      }
-    } catch (e) {
-      DebugLog.instance.log('CIRCLE', 'cancel failed: $e');
-    }
-    await _release();
   }
 
   Future<void> _release() async {
@@ -389,7 +430,7 @@ class CircleRecorder extends ChangeNotifier {
     _startedAt = null;
     final camera = _camera;
     _camera = null;
-    notifyListeners();
+    _notify();
     // Disposed after the field is cleared, so a rebuild triggered by the
     // notify above cannot hand a disposed controller to a preview.
     if (camera != null) await _safelyDispose(camera);
@@ -409,7 +450,8 @@ class CircleRecorder extends ChangeNotifier {
 
   @override
   void dispose() {
-    unawaited(_release());
+    _disposed = true;
+    unawaited(cancel());
     super.dispose();
   }
 }

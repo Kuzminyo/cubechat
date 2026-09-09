@@ -2707,4 +2707,14 @@ class AppLocalizationsUk extends AppLocalizations {
   String chatPreparingPhotos(int count) {
     return 'Готую $count фото…';
   }
+
+  @override
+  String get circleSwitchCamera => 'Перемкнути камеру';
+
+  @override
+  String get circleLight => 'Підсвічування запису';
+
+  @override
+  String get circleCameraSwitchFailed =>
+      'Не вдалося перемкнути камеру. Запис залишається відкритим.';
 }

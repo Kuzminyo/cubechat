@@ -121,6 +121,18 @@ Then add the block from `deploy/Caddyfile.fragment` to `/etc/caddy/Caddyfile`
 systemctl reload caddy
 ```
 
+Append it **once**. Appending twice leaves two `relay.cubechat.tech` blocks;
+Caddy validates that without complaint, serves the first one, and every change
+made to the second appears to have no effect at all. If in doubt, restore
+`/etc/caddy/Caddyfile.bak` first — that is what the `cp` above is for.
+
+`keepalive off` in that fragment is the line that made this work. strfry's HTTP
+side does not hold a connection the way Caddy's pool expects, so with keep-alive
+on every plain request came back as an "Unsolicited response received on idle
+HTTP channel" and was discarded: `curl` returned an empty body while the relay
+behind it was answering perfectly. The WebSocket upgrade is a fresh connection
+either way, so live traffic pays nothing for it.
+
 ### 5. Check it from your own machine
 
 ```powershell
