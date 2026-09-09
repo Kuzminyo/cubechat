@@ -78,7 +78,6 @@ class CircleRecorderPreview extends StatelessWidget {
                     const Spacer(flex: 3),
                     _Disc(
                       diameter: diameter,
-                      progress: recorder.progress,
                       camera: ready ? camera : null,
                     ),
                     const SizedBox(height: 18),
@@ -95,27 +94,20 @@ class CircleRecorderPreview extends StatelessWidget {
   }
 }
 
-/// The circle itself, with the minute drawn round it.
+/// The circle itself.
 class _Disc extends StatelessWidget {
-  const _Disc({
-    required this.diameter,
-    required this.progress,
-    required this.camera,
-  });
+  const _Disc({required this.diameter, required this.camera});
 
   final double diameter;
-  final double progress;
   final CameraController? camera;
 
   @override
   Widget build(BuildContext context) {
     final live = camera;
-    return SizedBox(
-      width: diameter + 14,
-      height: diameter + 14,
-      child: CustomPaint(
-        painter: _RingPainter(progress: progress),
-        child: Center(
+    // No ring. It drew a second circle round the first and made the preview
+    // look like a control rather than a picture; the seconds are on the
+    // composer strip below, where the voice recorder puts them.
+    return Center(
           child: Container(
             width: diameter,
             height: diameter,
@@ -157,8 +149,6 @@ class _Disc extends StatelessWidget {
                         child: CameraPreview(live),
                       ),
                     ),
-            ),
-          ),
         ),
       ),
     );
@@ -191,42 +181,3 @@ class _Pill extends StatelessWidget {
   }
 }
 
-/// The minute, drawn round the circle.
-class _RingPainter extends CustomPainter {
-  const _RingPainter({required this.progress});
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromCircle(
-      center: Offset(size.width / 2, size.height / 2),
-      radius: size.width / 2 - 3,
-    );
-    canvas.drawArc(
-      rect,
-      0,
-      math.pi * 2,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = Colors.white.withValues(alpha: 0.18),
-    );
-    if (progress <= 0) return;
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.5
-        ..strokeCap = StrokeCap.round
-        ..color = AppColors.brandPrimary,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter old) => old.progress != progress;
-}

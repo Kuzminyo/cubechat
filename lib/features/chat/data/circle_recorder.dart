@@ -112,19 +112,29 @@ class CircleRecorder extends ChangeNotifier {
         orElse: () => cameras.first,
       );
 
-      // 720p. The circle is drawn at about 290 points and a phone is at three
-      // times that in pixels, so 480p was visibly soft on the very screen it
-      // was recorded on — which is the one place a circle is always watched.
+      // 720p, and the bitrate said out loud.
       //
-      // The ceiling that matters is not the byte count but the publish count:
-      // at 720p a minute is a handful of megabytes, which is a few hundred
-      // relay events, comfortably inside what [maxLength] and the media lane
-      // are sized for. `veryHigh` and up would multiply that for detail a
-      // 290-point disc cannot show.
+      // The resolution is the easy half: the disc is drawn at about 290 points
+      // and a phone is three times that in pixels, so 480p was visibly soft on
+      // the one screen a circle is always watched on.
+      //
+      // The bitrate is the half that decided whether circles worked at all.
+      // Left to the platform default, 7.8 seconds came out at **12.2 MB** —
+      // 12 Mbps, camcorder settings for a disc the size of a beer mat. Over
+      // the media relay that is 371 publishes for eight seconds of talking,
+      // and the transfer simply never finished; it is what "circles don't
+      // send" turned out to mean. At 1.2 Mbps the same clip is about 1.2 MB
+      // and 39 publishes.
+      //
+      // 24 fps rather than 30 for the same reason and at no visible cost: a
+      // face talking is not a panning shot.
       final camera = CameraController(
         front,
         ResolutionPreset.high,
         enableAudio: true,
+        fps: 24,
+        videoBitrate: 1200000,
+        audioBitrate: 64000,
       );
       _camera = camera;
       notifyListeners();

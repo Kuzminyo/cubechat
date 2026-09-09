@@ -3,11 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/widgets/circle_video_icon.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../../core/theme/glass.dart';
 import 'emoji_sticker_panel.dart';
@@ -1061,7 +1061,7 @@ class _VoiceButton extends StatelessWidget {
     if (locked) {
       return GestureDetector(
         onTap: onStop,
-        child: _circle(context, icon: Icons.send_rounded, filled: true),
+        child: _circle(context, icon: const Icon(Icons.send_rounded), filled: true),
       );
     }
     // Raw recogniser rather than [GestureDetector] purely so the hold can be
@@ -1150,12 +1150,11 @@ class _VoiceButton extends StatelessWidget {
                 : Matrix4.identity(),
             child: _circle(
               context,
-              // A square front camera rather than a camcorder: what this
-              // records is a face, and the camcorder read as "attach a video
-              // file" next to the paperclip that does exactly that.
+              // The round camera distinguishes video messages from gallery
+              // attachments and shares the view-once icon's outline weight.
               icon: showCircle
-                  ? Icons.photo_camera_front_rounded
-                  : Icons.mic_rounded,
+                  ? const CircleVideoIcon()
+                  : const Icon(Icons.mic_rounded),
               filled: active,
             ),
           ),
@@ -1166,7 +1165,7 @@ class _VoiceButton extends StatelessWidget {
 
   Widget _circle(
     BuildContext context, {
-    required IconData icon,
+    required Widget icon,
     required bool filled,
   }) {
     return AnimatedContainer(
@@ -1193,10 +1192,12 @@ class _VoiceButton extends StatelessWidget {
               ]
             : null,
       ),
-      child: Icon(
-        icon,
-        color: filled ? Colors.white : AppColors.textOnGlass,
-        size: 20,
+      child: IconTheme.merge(
+        data: IconThemeData(
+          color: filled ? Colors.white : AppColors.textOnGlass,
+          size: 20,
+        ),
+        child: Center(child: icon),
       ),
     );
   }

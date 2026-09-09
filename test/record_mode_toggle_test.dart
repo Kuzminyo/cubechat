@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/core/widgets/circle_video_icon.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
@@ -81,7 +82,7 @@ void main() {
     await openChat(tester);
 
     expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.photo_camera_front_rounded), findsNothing);
+    expect(find.byType(CircleVideoIcon), findsNothing);
 
     await tester.tap(find.byIcon(Icons.mic_rounded));
     // Past the halfway point of the flip, where the face is edge-on and the
@@ -89,7 +90,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 260));
 
-    expect(find.byIcon(Icons.photo_camera_front_rounded), findsOneWidget);
+    expect(find.byType(CircleVideoIcon), findsOneWidget);
     expect(find.byIcon(Icons.mic_rounded), findsNothing);
   });
 
@@ -99,7 +100,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.mic_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.byIcon(Icons.photo_camera_front_rounded));
+    await tester.tap(find.byType(CircleVideoIcon));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
