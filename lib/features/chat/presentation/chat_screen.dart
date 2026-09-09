@@ -3857,8 +3857,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       }
       DebugLog.instance.log('CIRCLE', 'recording');
       _startCircleTicker();
+      // No separate lock hint: the circle's own overlay draws one, and both
+      // were on screen at once. [_showLockHint] is the voice recorder's, where
+      // there is no overlay to put it in.
       _showCircleOverlay();
-      _showLockHint();
       if (mounted) setState(() {});
       return;
     }

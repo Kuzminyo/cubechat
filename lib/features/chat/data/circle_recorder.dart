@@ -169,8 +169,10 @@ class CircleRecorder extends ChangeNotifier {
 
   bool _flipping = false;
 
-  /// Which way the open camera is pointing, so a flip knows what to ask for.
+  /// Which way the open camera is pointing, so a flip knows what to ask for —
+  /// and so the preview can turn over when it changes.
   bool _front = true;
+  bool get isFront => _front;
 
   /// True once the preview has a picture in it. The ring is drawn against
   /// this rather than against [isRecording], so the circle does not appear as
@@ -246,11 +248,27 @@ class CircleRecorder extends ChangeNotifier {
       //
       // 24 fps rather than 30 for the same reason and at no visible cost: a
       // face talking is not a panning shot.
+      // **Medium, for the width rather than for the sharpness.**
+      //
+      // A round window cut out of a rectangle keeps the whole of what the lens
+      // sees left to right and throws away top and bottom. At 720p that
+      // rectangle is 16:9, so the circle shows a little over half the height
+      // of the frame — which is why it reads as zoomed in on a face when
+      // nothing has been zoomed at all. Medium is 4:3 or 3:2 on the devices
+      // this will meet, and a shorter frame loses far less to the crop.
+      //
+      // The cost is real and was asked for anyway: 480 lines upscaled into a
+      // 300-point disc is softer than 720 were. Going back is one constant.
       final camera = CameraController(
         lens,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: true,
         fps: 24,
+        // Left where it was rather than scaled down with the resolution.
+        // Fewer pixels at the same bitrate is more bits per pixel, which is
+        // exactly what buys back some of what the shorter frame costs — and a
+        // minute is still a couple of megabytes, which is what the publish
+        // count on the media lane actually cares about.
         videoBitrate: 1200000,
         audioBitrate: 64000,
       );

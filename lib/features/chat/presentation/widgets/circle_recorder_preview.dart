@@ -64,51 +64,67 @@ class CircleRecorderPreview extends StatelessWidget {
     // dismissed, which shoved the whole chat about at the moment the screen is
     // supposed to hold still — so the bar has to clear it.
     final bottom = math.max(media.padding.bottom, media.viewInsets.bottom);
-    return AnimatedBuilder(
-      animation: recorder,
-      builder: (context, _) {
-        final camera = recorder.camera;
-        final ready = recorder.isReady && camera != null;
-        return Material(
-          type: MaterialType.transparency,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: backdropBlur,
-                      sigmaY: backdropBlur,
-                    ),
-                    child: ColoredBox(
-                      color: AppColors.bgDeep.withValues(alpha: 0.55),
-                    ),
-                  ),
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          // **Outside every listener on purpose.**
+          //
+          // A full-screen gaussian over a live camera preview is the most
+          // expensive thing this app ever draws, and it was inside a builder
+          // that fires ten times a second with the recorder's clock. The
+          // screen crawled and touches went missing with it — a saturated UI
+          // thread drops taps as readily as frames. Nothing about the blur
+          // changes while a circle records, so nothing about it rebuilds.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(
+                  sigmaX: backdropBlur,
+                  sigmaY: backdropBlur,
+                ),
+                child: ColoredBox(
+                  color: AppColors.bgDeep.withValues(alpha: 0.55),
                 ),
               ),
-              // The screen as a flash. Over the blur and under the circle, so
-              // it lights the face and not the picture of it.
-              if (recorder.usesScreenLight)
-                const Positioned.fill(
-                  child: IgnorePointer(
-                    child: ColoredBox(color: Color(0xFFFFF1DA)),
-                  ),
-                ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Column(
-                    children: [
-                      const Spacer(flex: 4),
-                      _Disc(
+            ),
+          ),
+          // The screen as a flash. Over the blur and under the circle, so it
+          // lights the face and not the picture of it. Its own listener, so
+          // turning it on repaints a rectangle and not the gaussian.
+          AnimatedBuilder(
+            animation: recorder,
+            builder: (context, _) => recorder.usesScreenLight
+                ? const Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(color: Color(0xFFFFF1DA)),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Column(
+                children: [
+                  const Spacer(flex: 4),
+                  AnimatedBuilder(
+                    animation: recorder,
+                    builder: (context, _) {
+                      final camera = recorder.camera;
+                      final ready = recorder.isReady && camera != null;
+                      return _Disc(
                         diameter: diameter,
                         camera: ready ? camera : null,
                         progress: recorder.progress,
-                      ),
-                      const Spacer(flex: 5),
-                    ],
+                        front: recorder.isFront,
+                      );
+                    },
                   ),
-                ),
+                  const Spacer(flex: 5),
+                ],
               ),
+            ),
+          ),
               // Pinch to zoom, let go and it goes back. A box the size of the
               // circle rather than the whole screen, so a stray touch near the
               // bar is not a zoom.
@@ -128,7 +144,12 @@ class CircleRecorderPreview extends StatelessWidget {
               Positioned(
                 left: 18,
                 bottom: bottom + 96,
-                child: _Controls(recorder: recorder),
+                // Its own listener too: the torch turning on is two circles
+                // changing colour, not a reason to redraw the blur.
+                child: AnimatedBuilder(
+                  animation: recorder,
+                  builder: (context, _) => _Controls(recorder: recorder),
+                ),
               ),
               // Right above the button it is telling you to drag. Any higher
               // and it is an instruction floating in the picture rather than
@@ -139,29 +160,31 @@ class CircleRecorderPreview extends StatelessWidget {
                   bottom: bottom + 74,
                   child: const _LockCapsule(),
                 ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _Bar(
-                  bottomInset: bottom,
-                  // Read off the recorder, which this is already listening to.
-                  // Passed in from the screen it would be whatever it was when
-                  // the overlay entry last rebuilt, and an overlay entry does
-                  // not rebuild with the widget that made it — the clock would
-                  // sit at zero.
-                  elapsed: recorder.elapsed,
-                  locked: locked,
-                  hint: hint,
-                  cancelLabel: cancelLabel,
-                  onSend: onSend,
-                  onCancel: onCancel,
-                ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            // Its own listener, so the clock ticking repaints a bar and not a
+            // full-screen gaussian.
+            child: AnimatedBuilder(
+              animation: recorder,
+              builder: (context, _) => _Bar(
+                bottomInset: bottom,
+                // Read off the recorder rather than passed in from the screen:
+                // an overlay entry does not rebuild with the widget that made
+                // it, so a number handed over at insert time is the number it
+                // would still be showing a minute later.
+                elapsed: recorder.elapsed,
+                locked: locked,
+                hint: hint,
+                cancelLabel: cancelLabel,
+                onSend: onSend,
+                onCancel: onCancel,
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -230,17 +253,24 @@ class _Bar extends StatelessWidget {
                     ),
                   ),
                   // The hint while a finger is down, and the word to press
-                  // whether it is or not.
+                  // whether it is or not. Flexible rather than Expanded and
+                  // allowed to disappear: on a narrow phone the sentence was
+                  // squeezing the word next to it into "СКАСУВА…", and of the
+                  // two the one you can press matters more than the one that
+                  // describes a gesture.
                   if (!locked)
-                    Expanded(
-                      child: Center(
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: Text(
                           hint,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          overflow: TextOverflow.fade,
+                          softWrap: false,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 13.5,
+                            color: Colors.white.withValues(alpha: 0.65),
+                            fontSize: 12.5,
                           ),
                         ),
                       ),
@@ -277,10 +307,16 @@ class _Bar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          // Under the finger while it is held, and pressable once it is not.
+          // Pressable whether the finger is still down or not.
+          //
+          // It was pressable only once locked, on the reasoning that letting
+          // go is what sends — and then letting go stopped working and there
+          // was no second way to finish a circle. Same lesson as the cancel
+          // beside it: a control that depends on a gesture behaving is not a
+          // control.
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: locked ? onSend : null,
+            onTap: onSend,
             child: Container(
               width: 54,
               height: 54,
@@ -426,11 +462,18 @@ class _Disc extends StatelessWidget {
     required this.diameter,
     required this.camera,
     required this.progress,
+    required this.front,
   });
 
   final double diameter;
   final CameraController? camera;
   final double progress;
+
+  /// Which way the lens points. Only used to turn the picture over when it
+  /// changes — the same coin flip the composer button does between the
+  /// microphone and the camera, because it is the same act: this side, that
+  /// side.
+  final bool front;
 
   @override
   Widget build(BuildContext context) {
@@ -441,7 +484,30 @@ class _Disc extends StatelessWidget {
       height: diameter + 16,
       child: CustomPaint(
         painter: _ArcPainter(progress: progress),
-        child: Center(child: _face()),
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: front ? 0 : 1),
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOutCubic,
+            builder: (context, t, child) => Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0012)
+                ..rotateY(t * math.pi),
+              // Past halfway the picture is arriving back to front, so it is
+              // mirrored back. Without this the far side of the coin shows a
+              // reversed camera.
+              child: Transform(
+                alignment: Alignment.center,
+                transform: t > 0.5
+                    ? (Matrix4.identity()..rotateY(math.pi))
+                    : Matrix4.identity(),
+                child: child,
+              ),
+            ),
+            child: _face(),
+          ),
+        ),
       ),
     );
   }
