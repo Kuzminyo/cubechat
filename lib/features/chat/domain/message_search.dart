@@ -35,7 +35,7 @@ String searchableMessageText(Message message) {
       MessageKind.audio => '',
       MessageKind.file => '',
     },
-    if (message.fileName != null) message.fileName!,
+    if (!message.isCircle && message.fileName != null) message.fileName!,
   ];
   return parts.where((part) => part.isNotEmpty).join(' ');
 }

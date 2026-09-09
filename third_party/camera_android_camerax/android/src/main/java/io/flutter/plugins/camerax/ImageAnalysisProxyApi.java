@@ -45,7 +45,9 @@ class ImageAnalysisProxyApi extends PigeonApiImageAnalysis {
       builder.setOutputImageFormat(outputImageFormat.intValue());
     }
 
-    if (targetFpsRange != null) {
+    // Preview/VideoCapture negotiate high-FPS sessions. A raw AE override from
+    // this analysis stream would force 60 even on a 30-fps-only replacement lens.
+    if (targetFpsRange != null && ((Range<Integer>) targetFpsRange).getUpper() <= 30) {
       Camera2Interop.Extender<ImageAnalysis> extender = new Camera2Interop.Extender<>(builder);
       extender.setCaptureRequestOption(
           CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, (Range<Integer>) targetFpsRange);

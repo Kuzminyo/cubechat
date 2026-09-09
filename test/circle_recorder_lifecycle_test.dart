@@ -21,6 +21,8 @@ class FakeCamera extends CameraController {
   int starts = 0;
   int stops = 0;
   int flips = 0;
+  int stabilizations = 0;
+  double? zoom;
   bool released = false;
   Completer<void>? changing;
   @override
@@ -29,11 +31,23 @@ class FakeCamera extends CameraController {
   }
 
   @override
-  Future<double> getMinZoomLevel() async => 1;
+  Future<double> getMinZoomLevel() async => .5;
   @override
   Future<double> getMaxZoomLevel() async => 4;
   @override
-  Future<void> setZoomLevel(double zoom) async {}
+  Future<void> setZoomLevel(double zoom) async {
+    this.zoom = zoom;
+  }
+
+  @override
+  Future<void> setVideoStabilizationMode(
+    VideoStabilizationMode mode, {
+    bool allowFallback = true,
+  }) async {
+    stabilizations++;
+    value = value.copyWith(videoStabilizationMode: mode);
+  }
+
   @override
   Future<void> setFlashMode(FlashMode mode) async {}
   @override
@@ -80,6 +94,28 @@ class FakeCamera extends CameraController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('widest available lens is preferred to telephoto and standard', () {
+    const ultra = CameraDescription(
+      name: 'ultra',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 90,
+      lensType: CameraLensType.ultraWide,
+    );
+    expect(
+      CircleRecorder.widestLens(
+        [front, back, ultra],
+        CameraLensDirection.back,
+      ),
+      ultra,
+    );
+    expect(
+      CircleRecorder.widestLens(
+        [front, back, ultra],
+        CameraLensDirection.front,
+      ),
+      front,
+    );
+  });
   test('cancel while the camera list is pending prevents the camera opening',
       () async {
     // Was "while permission is pending", back when the recorder asked
@@ -147,6 +183,8 @@ void main() {
     expect(await recorder.start(), true);
     await recorder.flipLens();
     expect(camera.flips, 1);
+    expect(camera.stabilizations, 2);
+    expect(camera.zoom, .5);
     expect(camera.stops, 0);
     expect(camera.starts, 1);
     expect(recorder.isFront, false);
@@ -196,9 +234,10 @@ void main() {
 /// A camera that refuses to open, the way one does when the person says no to
 /// the system dialog the plugin puts up.
 class _RefusingCamera extends CameraController {
-  _RefusingCamera(CameraDescription description,
-      {this.code = 'CameraAccessDenied'})
-      : super(description, ResolutionPreset.medium);
+  _RefusingCamera(
+    CameraDescription description, {
+    this.code = 'CameraAccessDenied',
+  }) : super(description, ResolutionPreset.medium);
 
   final String code;
 

@@ -597,6 +597,9 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                   const SizedBox(width: 4),
                 ],
                 Expanded(
+                  // Siblings disappear when recording starts. An unkeyed Expanded
+                  // was replaced, disposing EditableText and its keyboard connection.
+                  key: const ValueKey('composer-editable-slot'),
                   // The strip and the field used to cut straight to each
                   // other, which made the most physical gesture in the app —
                   // hold, speak, let go — end in a blink.

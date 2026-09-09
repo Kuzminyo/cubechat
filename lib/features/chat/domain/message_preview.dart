@@ -55,6 +55,7 @@ String messageContentPreview(Message message, AppLocalizations t) {
     final emoji = message.stickerEmoji;
     return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';
   }
+  if (message.isCircle) return '◉ ${t.circleMessage}';
   switch (message.kind) {
     case MessageKind.image:
       // A caption is a better preview than the word "photo", when there is one.

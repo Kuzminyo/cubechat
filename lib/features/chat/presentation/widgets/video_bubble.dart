@@ -3,39 +3,28 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../models/message.dart';
+import '../../data/voice_playback_controller.dart';
+import 'playback_author.dart';
 
-/// A clip that plays where it sits.
-///
-/// A video arrives through the file transport and used to be drawn as a row
-/// with a name and a size — a document that happened to be a film. Opening it
-/// meant handing it to whatever the phone considers a video player, leaving
-/// the conversation to do it.
-///
-/// Two shapes, one widget. A clip from the gallery is a rectangle you press to
-/// start. A circle is round, grows while it plays, shows how much is left, and
-/// stops when you scroll past.
-///
-/// Both are pressed to start. A circle used to begin on its own when it came
-/// into view — which is what the messengers that have them do, and it was
-/// asked for in those words — and it was taken back out after three separate
-/// reports of the same thing: opening a conversation set every circle in view
-/// talking at once, sending one played it back at the person who had just
-/// recorded it, and one that reached its end went round again. Only the last
-/// was a defect. The other two are what autoplay means, and they are the
-/// reason it is gone.
-class VideoBubble extends StatefulWidget {
+/// Gallery clips play locally; circles share the voice-note player and island.
+/// Playback starts only on tap and never loops. The shared circle survives
+/// scrolling and navigation, while a gallery clip pauses when it leaves view.
+class VideoBubble extends ConsumerStatefulWidget {
   const VideoBubble({
     super.key,
     required this.message,
     this.onLongPress,
+    this.chatId,
   });
 
   final Message message;
+  final String? chatId;
   final VoidCallback? onLongPress;
 
   /// The width a clip is drawn at, matching the photo bubble beside it.
@@ -50,11 +39,10 @@ class VideoBubble extends StatefulWidget {
   /// transfer, so the circle would never arrive there at all, where a reserved
   /// name lands as a video it can play. Same reasoning as the `cubechat:*:v1:`
   /// markers that ride inside ordinary text.
-  static const String circleFileName = 'cubechat-circle-v1.mp4';
+  static const String circleFileName = Message.circleFileName;
 
   /// Drawn round and square rather than as a rectangle in a card.
-  static bool isCircle(Message message) =>
-      message.fileName == circleFileName;
+  static bool isCircle(Message message) => message.isCircle;
 
   /// Resting, and playing.
   ///
@@ -76,23 +64,13 @@ class VideoBubble extends StatefulWidget {
   }
 
   @override
-  State<VideoBubble> createState() => _VideoBubbleState();
+  ConsumerState<VideoBubble> createState() => _VideoBubbleState();
 }
 
-class _VideoBubbleState extends State<VideoBubble> {
+class _VideoBubbleState extends ConsumerState<VideoBubble> {
   VideoPlayerController? _player;
   bool _loading = false;
   bool _failed = false;
-
-  /// It has already played all the way through in this session.
-  ///
-  /// A circle used to loop — `setLooping(true)` and a listener that seeked
-  /// back to zero at the end — so opening a chat left one spinning and talking
-  /// until you scrolled it off the screen. Autoplay is still right: it is what
-  /// every messenger with circles does, and the point of a circle is that you
-  /// do not have to press anything. Playing *again* is not. Once it has
-  /// finished, it stays finished until somebody taps it.
-  bool _playedThrough = false;
 
   bool get _isCircle => VideoBubble.isCircle(widget.message);
 
@@ -105,29 +83,6 @@ class _VideoBubbleState extends State<VideoBubble> {
 
   void _onTick() {
     if (!mounted) return;
-    final player = _player;
-    // Reaching the end is the end. Rewound so the next tap starts from the
-    // beginning rather than from a frame that is already over, and marked so
-    // scrolling it back into view does not start it again.
-    if (_isCircle &&
-        player != null &&
-        player.value.isInitialized &&
-        !_playedThrough &&
-        player.value.position >= player.value.duration &&
-        player.value.duration > Duration.zero) {
-      _playedThrough = true;
-      // Pause, and **do not seek**. The first version of this rewound to zero
-      // in the same breath, and the two are separate calls to the platform
-      // with no ordering between them: when the seek landed before the pause,
-      // the player was at the first frame and still playing, and the circle
-      // started over. That is the loop this was written to remove, arriving by
-      // a different road.
-      //
-      // Nothing needs the rewind here anyway. A resting circle draws no
-      // progress and shows its full length, so the playhead sitting at the end
-      // is invisible, and [_tap] rewinds before it starts again.
-      unawaited(player.pause());
-    }
     setState(() {});
   }
 
@@ -145,7 +100,7 @@ class _VideoBubbleState extends State<VideoBubble> {
         return null;
       }
       player.addListener(_onTick);
-      // Never. A circle plays once; see [_playedThrough].
+      // Explicit replay only.
       await player.setLooping(false);
       setState(() {
         _player = player;
@@ -164,26 +119,28 @@ class _VideoBubbleState extends State<VideoBubble> {
     }
   }
 
-  /// Scrolled out of view — stop whatever was playing.
-  ///
-  /// **Nothing starts by itself any more, and that is a decision taken twice.**
-  /// Autoplay was asked for, built, and then reported three times over: opening
-  /// a conversation set every circle in view talking at once, sending one
-  /// played it straight back at the person who had just recorded it, and a
-  /// circle that reached its end started again. The first two are what autoplay
-  /// *is*, not bugs in it. So a circle plays when it is tapped and at no other
-  /// moment.
-  ///
-  /// This still earns its place: a circle you started and then scrolled past
-  /// has to stop, or it goes on talking from somewhere above the screen.
   Future<void> _onVisibility(VisibilityInfo info) async {
-    if (!_isCircle || !mounted) return;
-    if (info.visibleFraction > 0.5) return;
-    final player = _player;
-    if (player != null && player.value.isPlaying) await player.pause();
+    // A circle belongs to the shared player and survives scrolling/leaving chat.
+    if (_isCircle || !mounted || info.visibleFraction > 0.5) return;
+    if (_player?.value.isPlaying ?? false) await _player?.pause();
   }
 
   Future<void> _tap() async {
+    if (_isCircle) {
+      await ref.read(voicePlaybackControllerProvider.notifier).toggleCircle(
+            messageId: widget.message.id,
+            path: widget.message.filePath!,
+            chatId: widget.chatId ?? widget.message.chatId,
+            chatTitle: playbackAuthor(
+              context,
+              ref,
+              widget.message,
+              chatId: widget.chatId,
+            ),
+            sentAt: widget.message.sentAt,
+          );
+      return;
+    }
     final player = _player ?? await _open();
     if (player == null) return;
     if (player.value.isPlaying) {
@@ -191,7 +148,6 @@ class _VideoBubbleState extends State<VideoBubble> {
     } else {
       // A tap is the one thing that clears "already watched", which is what
       // makes it the way to see a circle a second time.
-      _playedThrough = false;
       if (player.value.position >= player.value.duration) {
         await player.seekTo(Duration.zero);
       }
@@ -216,7 +172,11 @@ class _VideoBubbleState extends State<VideoBubble> {
   // ---- the round one ------------------------------------------------------
 
   Widget _circle() {
-    final player = _player;
+    final playback = ref.watch(voicePlaybackControllerProvider);
+    final current = playback.isCurrent(widget.message.id);
+    final player = current
+        ? ref.read(voicePlaybackControllerProvider.notifier).video
+        : null;
     final ready = player != null && player.value.isInitialized;
     final playing = ready && player.value.isPlaying;
     final total = ready ? player.value.duration : Duration.zero;
@@ -256,7 +216,7 @@ class _VideoBubbleState extends State<VideoBubble> {
                   ),
                 if (!ready)
                   Center(
-                    child: _loading
+                    child: (current && !ready)
                         ? SizedBox(
                             width: 28,
                             height: 28,
@@ -270,6 +230,19 @@ class _VideoBubbleState extends State<VideoBubble> {
                             size: 30,
                             color: Colors.white.withValues(alpha: 0.4),
                           ),
+                  ),
+                if (!widget.message.isMine && !widget.message.voicePlayed)
+                  Positioned(
+                    right: 26,
+                    bottom: 18,
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.brandPrimary,
+                      ),
+                    ),
                   ),
                 // How much is left to watch, in the corner where a voice note
                 // puts its length.

@@ -7,3 +7,14 @@ Only functional patch: VideoCaptureProxyApi sets MirrorMode.MIRROR_MODE_ON_FRONT
 The VideoCaptureTest asserts the capture mode. To upgrade, update the vendored package and reapply this small patch. iOS camera_avfoundation 0.10.2 already sets isVideoMirrored on the front video-data connection used by the preview and writer.
 
 CameraX API reference: https://developer.android.com/reference/androidx/camera/video/VideoCapture.Builder#setMirrorMode(int)
+
+Preview correction now uses the locked capture orientation, matching CameraPreview,
+rather than subtracting the live device orientation during a portrait recording.
+Correction state is keyed by sensor and orientation lock so a lens swap cannot
+retain the previous sensor's correction. Front mirroring remains native.
+
+60 fps uses Preview/VideoCapture.setTargetFrameRate instead of forcing a raw
+Camera2 AE range, allowing CameraX to negotiate a supported rate at each bind.
+The unused high-FPS analysis stream no longer overrides the negotiated rate.
+Dart now forwards MediaSettings.videoBitrate to the native Recorder as intended.
+See https://developer.android.com/reference/androidx/camera/video/VideoCapture.Builder#setTargetFrameRate(android.util.Range%3Cjava.lang.Integer%3E).

@@ -10,7 +10,8 @@ import 'package:camera_platform_interface/camera_platform_interface.dart';
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/services.dart'
     show DeviceOrientation, PlatformException;
-import 'package:flutter/widgets.dart' show Texture, Widget, visibleForTesting;
+import 'package:flutter/widgets.dart'
+    show Texture, Widget, ValueKey, visibleForTesting;
 import 'package:stream_transform/stream_transform.dart';
 import 'camerax_library.dart';
 import 'rotated_preview_delegate.dart';
@@ -204,6 +205,7 @@ class AndroidCameraCameraX extends CameraPlatform {
   /// [lockCaptureOrientation].
   @visibleForTesting
   bool captureOrientationLocked = false;
+  DeviceOrientation? _lockedPreviewOrientation;
 
   /// Whether or not the default rotation for [UseCase]s needs to be set
   /// manually because the capture orientation was previously locked.
@@ -427,7 +429,10 @@ class AndroidCameraCameraX extends CameraPlatform {
     );
 
     // Configure VideoCapture and Recorder instances.
-    recorder = Recorder(qualitySelector: presetQualitySelector);
+    recorder = Recorder(
+      qualitySelector: presetQualitySelector,
+      targetVideoEncodingBitRate: mediaSettings?.videoBitrate,
+    );
     videoCapture = VideoCapture.withOutput(
       videoOutput: recorder!,
       targetFpsRange: _targetFpsRange,
@@ -583,6 +588,7 @@ class AndroidCameraCameraX extends CameraPlatform {
     // and should not be changed until unlocked.
     shouldSetDefaultRotation = true;
     captureOrientationLocked = true;
+    _lockedPreviewOrientation = orientation;
 
     // Get target rotation based on locked orientation.
     final int targetLockedRotation = _getRotationConstantFromDeviceOrientation(
@@ -600,6 +606,7 @@ class AndroidCameraCameraX extends CameraPlatform {
   Future<void> unlockCaptureOrientation(int cameraId) async {
     // Flag that default rotation should be set for UseCases as needed.
     captureOrientationLocked = false;
+    _lockedPreviewOrientation = null;
   }
 
   /// Sets the exposure point for automatically determining the exposure values for
@@ -991,7 +998,6 @@ class AndroidCameraCameraX extends CameraPlatform {
     // Save CameraSelector that matches cameraDescription.
     final LensFacing cameraSelectorLensDirection =
         _getCameraSelectorLensDirection(description.lensDirection);
-    cameraIsFrontFacing = cameraSelectorLensDirection == LensFacing.front;
     cameraSelector = CameraSelector(cameraInfoForFilter: chosenCameraInfo);
 
     // Unbind all use cases and rebind to new CameraSelector
@@ -1014,6 +1020,9 @@ class AndroidCameraCameraX extends CameraPlatform {
     );
 
     // Retrieve info required for correcting the rotation of the camera preview
+    // Publish facing and sensor rotation together, after rebinding. Publishing
+    // facing before the awaits mirrored the old sensor with the new lens rules.
+    cameraIsFrontFacing = cameraSelectorLensDirection == LensFacing.front;
     sensorOrientationDegrees = description.sensorOrientation.toDouble();
 
     await _updateCameraInfoAndLiveCameraState(_flutterSurfaceTextureId);
@@ -1044,13 +1053,22 @@ class AndroidCameraCameraX extends CameraPlatform {
 
     final Stream<DeviceOrientation> deviceOrientationStream =
         onDeviceOrientationChanged().map(
-          (DeviceOrientationChangedEvent e) => e.orientation,
+          (DeviceOrientationChangedEvent e) =>
+              _lockedPreviewOrientation ?? e.orientation,
         );
     final Widget preview = Texture(textureId: cameraId);
 
     return RotatedPreviewDelegate(
       handlesCropAndRotation: _handlesCropAndRotation,
-      initialDeviceOrientation: _initialDeviceOrientation,
+      // Recreate correction state only for a sensor/lock change, not each
+      // recording timer tick. It must undo CameraPreview's locked rotation.
+      key: ValueKey((
+        cameraIsFrontFacing,
+        sensorOrientationDegrees,
+        _lockedPreviewOrientation,
+      )),
+      initialDeviceOrientation:
+          _lockedPreviewOrientation ?? _initialDeviceOrientation,
       initialDefaultDisplayRotation: _initialDefaultDisplayRotation,
       deviceOrientationStream: deviceOrientationStream,
       sensorOrientationDegrees: sensorOrientationDegrees,
@@ -1171,6 +1189,9 @@ class AndroidCameraCameraX extends CameraPlatform {
       // See https://developer.android.com/media/camera/camerax/architecture#combine-use-cases
       // for details.
       await _unbindUseCaseFromLifecycle(imageAnalysis!);
+      // Still capture is rebound on demand by takePicture. Keeping its full-size
+      // stream bound can restrict the session's supported high-FPS combinations.
+      await _unbindUseCaseFromLifecycle(imageCapture!);
     }
 
     await _bindUseCaseToLifecycle(videoCapture!, options.cameraId);

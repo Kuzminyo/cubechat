@@ -3801,16 +3801,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     Overlay.of(context, rootOverlay: true).insert(entry);
   }
 
-  /// Whether the keyboard was up when the circle overlay went over it, so it
-  /// can be put back when the overlay goes away.
-  ///
-  /// The Dart side already keeps the composer's focus — the overlay cannot
-  /// take it ([CircleRecorderPreview] wraps itself in a `Focus` that refuses
-  /// to), and a widget test pins that. It still comes down on a phone, because
-  /// opening a camera hands the window over on the platform side and the input
-  /// method goes with it. Nothing here can stop that. What it can do is give
-  /// the keyboard back afterwards, so a sentence interrupted by a circle is
-  /// still a sentence you can finish.
+  /// Restore typing after a system permission dialog, if one was necessary.
+  /// During normal capture the keyed composer's input connection stays mounted.
   bool _keyboardBeforeCircle = false;
 
   void _hideCircleOverlay() {

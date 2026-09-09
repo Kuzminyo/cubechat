@@ -9,6 +9,9 @@ class AppLocalizationsUk extends AppLocalizations {
   AppLocalizationsUk([String locale = 'uk']) : super(locale);
 
   @override
+  String get circleMessage => 'Відеоповідомлення';
+
+  @override
   String get appName => 'Cubechat';
 
   @override

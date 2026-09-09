@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/util/audio_session.dart';
 import 'messages_controller.dart';
@@ -20,6 +21,7 @@ class VoicePlayback {
     this.duration = Duration.zero,
     this.playing = false,
     this.speed = 1.0,
+    this.isCircle = false,
   });
 
   static const idle = VoicePlayback();
@@ -39,6 +41,7 @@ class VoicePlayback {
   final Duration duration;
   final bool playing;
   final double speed;
+  final bool isCircle;
 
   bool get isActive => messageId != null;
 
@@ -57,6 +60,7 @@ class VoicePlayback {
     Duration? duration,
     bool? playing,
     double? speed,
+    bool? isCircle,
   }) =>
       VoicePlayback(
         messageId: messageId ?? this.messageId,
@@ -67,6 +71,7 @@ class VoicePlayback {
         duration: duration ?? this.duration,
         playing: playing ?? this.playing,
         speed: speed ?? this.speed,
+        isCircle: isCircle ?? this.isCircle,
       );
 }
 
@@ -84,6 +89,95 @@ class VoicePlayback {
 /// is the clearest possible way of saying you are done with the first.
 class VoicePlaybackController extends Notifier<VoicePlayback> {
   AudioPlayer? _player;
+  VideoPlayerController? _video;
+  VideoPlayerController? get video => _video;
+  int _generation = 0;
+  bool _disposed = false;
+
+  @visibleForTesting
+  VideoPlayerController createVideo(String path) => VideoPlayerController.file(
+        File(path),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+
+  Future<void> _releaseVideo() async {
+    final old = _video;
+    _video = null;
+    old?.removeListener(_videoTick);
+    await old?.dispose();
+  }
+
+  void _videoTick() {
+    final player = _video;
+    if (_disposed || player == null || !state.isCircle) return;
+    final value = player.value;
+    if (value.isCompleted || value.hasError) {
+      state = VoicePlayback(speed: state.speed);
+      unawaited(_releaseVideo());
+      return;
+    }
+    if (state.position != value.position ||
+        state.duration != value.duration ||
+        state.playing != value.isPlaying) {
+      state = state.copyWith(
+        position: value.position,
+        duration: value.duration,
+        playing: value.isPlaying,
+      );
+    }
+  }
+
+  Future<void> toggleCircle({
+    required String messageId,
+    required String path,
+    required String chatId,
+    required String chatTitle,
+    DateTime? sentAt,
+  }) async {
+    if (!File(path).existsSync()) return;
+    if (state.isCurrent(messageId) && _video != null) {
+      await togglePlayPause();
+      return;
+    }
+    final generation = ++_generation;
+    state = VoicePlayback(
+      messageId: messageId,
+      chatId: chatId,
+      chatTitle: chatTitle,
+      sentAt: sentAt,
+      speed: state.speed,
+      isCircle: true,
+    );
+    await _player?.stop();
+    if (_disposed || generation != _generation) return;
+    await _releaseVideo();
+    if (_disposed || generation != _generation) return;
+    final player = createVideo(path);
+    _video = player;
+    try {
+      await AudioSession.applyPlaybackPolicy();
+      if (_disposed || generation != _generation || _video != player) return;
+      await player.initialize();
+      if (_disposed || generation != _generation || _video != player) return;
+      await player.setLooping(false);
+      if (_disposed || generation != _generation) return;
+      await player.setPlaybackSpeed(state.speed);
+      if (_disposed || generation != _generation) return;
+      player.addListener(_videoTick);
+      await player.play();
+      if (_disposed || generation != _generation) return;
+      ref
+          .read(messagesControllerProvider.notifier)
+          .markVoicePlayed(chatId, messageId);
+      _videoTick();
+    } catch (_) {
+      if (!_disposed && generation == _generation) {
+        state = VoicePlayback(speed: state.speed);
+        await _releaseVideo();
+      }
+    }
+  }
+
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
   StreamSubscription<void>? _doneSub;
@@ -95,6 +189,9 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
   @override
   VoicePlayback build() {
     ref.onDispose(() {
+      _disposed = true;
+      _generation++;
+      unawaited(_releaseVideo());
       _posSub?.cancel();
       _durSub?.cancel();
       _doneSub?.cancel();
@@ -113,12 +210,17 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     unawaited(AudioSession.applyPlaybackPolicy());
     final player = AudioPlayer();
     _posSub = player.onPositionChanged.listen((d) {
-      state = state.copyWith(position: d);
+      if (!state.isCircle && state.isActive) {
+        state = state.copyWith(position: d);
+      }
     });
     _durSub = player.onDurationChanged.listen((d) {
-      if (d > Duration.zero) state = state.copyWith(duration: d);
+      if (!state.isCircle && state.isActive && d > Duration.zero) {
+        state = state.copyWith(duration: d);
+      }
     });
     _doneSub = player.onPlayerComplete.listen((_) {
+      if (state.isCircle) return;
       // Finished means finished: the bar goes away on its own.
       //
       // It first stayed put, on the theory that you might want to replay it.
@@ -142,6 +244,9 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     Duration? knownDuration,
   }) async {
     if (!File(path).existsSync()) return;
+    final generation = ++_generation;
+    await _releaseVideo();
+    if (_disposed || generation != _generation) return;
     final player = _ensurePlayer();
 
     if (state.isCurrent(messageId)) {
@@ -165,6 +270,7 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
 
     // A different message: replace rather than layer.
     await player.stop();
+    if (_disposed || generation != _generation) return;
     state = VoicePlayback(
       messageId: messageId,
       chatId: chatId,
@@ -183,6 +289,16 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
   /// Separate from [toggle] because the mini player has no message to name —
   /// it never starts anything, it only works the thing already going.
   Future<void> togglePlayPause() async {
+    final video = _video;
+    if (state.isCircle && video != null) {
+      if (!video.value.isInitialized) return;
+      if (video.value.isPlaying) {
+        await video.pause();
+      } else {
+        await video.play();
+      }
+      return;
+    }
     final player = _player;
     if (!state.isActive || player == null) return;
     if (state.playing) {
@@ -196,26 +312,38 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
 
   Future<void> seekTo(Duration position) async {
     if (!state.isActive) return;
-    await _player?.seek(position);
+    if (state.isCircle) {
+      await _video?.seekTo(position);
+    } else {
+      await _player?.seek(position);
+    }
     state = state.copyWith(position: position);
   }
 
-  Future<void> seekFraction(double fraction) =>
-      seekTo(Duration(
-        milliseconds:
-            (state.duration.inMilliseconds * fraction.clamp(0.0, 1.0)).round(),
-      ));
+  Future<void> seekFraction(double fraction) => seekTo(
+        Duration(
+          milliseconds:
+              (state.duration.inMilliseconds * fraction.clamp(0.0, 1.0))
+                  .round(),
+        ),
+      );
 
   Future<void> cycleSpeed() async {
     final next = speeds[(speeds.indexOf(state.speed) + 1) % speeds.length];
     state = state.copyWith(speed: next);
-    await _player?.setPlaybackRate(next);
+    if (state.isCircle) {
+      await _video?.setPlaybackSpeed(next);
+    } else {
+      await _player?.setPlaybackRate(next);
+    }
   }
 
   /// Dismiss the bar entirely.
   Future<void> stop() async {
-    await _player?.stop();
+    _generation++;
     state = VoicePlayback(speed: state.speed);
+    await _releaseVideo();
+    await _player?.stop();
   }
 }
 

@@ -1,4 +1,5 @@
 {
+  "circleMessage": "Video message",
   "@@locale": "en",
   "appName": "Cubechat",
   "navChats": "Chats",

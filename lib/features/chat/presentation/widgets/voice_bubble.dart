@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/identity/anon_name.dart';
-import '../../../../core/identity/nickname_controller.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/time_format.dart';
-import '../../../../l10n/app_localizations.dart';
 import '../../../../core/util/media_storage.dart';
-import '../../../peers/data/contact_aliases_controller.dart';
-import '../../../peers/data/known_peers_controller.dart';
 import '../../data/voice_playback_controller.dart';
 import '../../models/message.dart';
+import 'playback_author.dart';
 
 /// Renders a voice message: play/pause button + progress bar + duration.
 ///
@@ -82,31 +78,6 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
   ///  * mine — my own nickname;
   ///  * a channel — the author name the signature resolved to;
   ///  * a 1:1 — the contact filed under this chat's pubkey.
-  String _authorName(BuildContext context) {
-    final message = widget.message;
-    if (message.isMine) {
-      final mine = ref.read(nicknameControllerProvider).trim();
-      if (mine.isNotEmpty) return mine;
-      return AppLocalizations.of(context).chatReplyYou;
-    }
-    final author = message.authorName?.trim();
-    if (author != null && author.isNotEmpty) return author;
-    final peers = ref.read(knownPeersControllerProvider);
-    // The rendered bucket first, the message's own id second: the former is
-    // the canonical pubkey wherever the caller knows it, the latter is only
-    // right for a message that came in over the relay.
-    final peer = peers[widget.chatId ?? ''] ?? peers[message.chatId];
-    if (peer != null) {
-      return contactDisplayName(
-        alias: ref.read(contactAliasesControllerProvider)[peer.pubkeyHex],
-        rawBroadcastName: peer.displayName,
-        pubkeyHex: peer.pubkeyHex,
-      );
-    }
-    final given = widget.chatTitle?.trim();
-    if (given != null && given.isNotEmpty) return given;
-    return AppLocalizations.of(context).bleUnknownPeer;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +106,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
           // The rendered bucket, so tapping the bar returns to the right chat
           // even for a note that arrived over a Bluetooth transport id.
           chatId: widget.chatId ?? widget.message.chatId,
-          chatTitle: _authorName(context),
+          chatTitle: playbackAuthor(context, ref, widget.message, chatId: widget.chatId, chatTitle: widget.chatTitle),
           sentAt: widget.message.sentAt,
           knownDuration: declared > Duration.zero ? declared : null,
         );
@@ -257,7 +228,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                _authorName(context),
+                playbackAuthor(context, ref, widget.message, chatId: widget.chatId, chatTitle: widget.chatTitle),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

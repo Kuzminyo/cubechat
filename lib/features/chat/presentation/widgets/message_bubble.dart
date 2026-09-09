@@ -1531,7 +1531,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // whatever the phone calls a video player. It plays here
                   // now. Still a file underneath — the transport, the
                   // transfer queue and the long-press actions are unchanged.
-                  VideoBubble(message: message)
+                  VideoBubble(message: message, chatId: widget.chatId)
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a

@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1016
+version: 1.0.0+1017
 
 environment:
   sdk: ^3.6.0
@@ -134,6 +134,8 @@ dependencies:
 dependency_overrides:
   camera_android_camerax:
     path: third_party/camera_android_camerax
+  camera_avfoundation:
+    path: third_party/camera_avfoundation
 
 dev_dependencies:
   flutter_lints: ^4.0.0

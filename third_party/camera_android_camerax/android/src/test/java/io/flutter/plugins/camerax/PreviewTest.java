@@ -60,7 +60,8 @@ public class PreviewTest {
 
       assertEquals(mockResolutionSelector, instance.getResolutionSelector());
       assertEquals(Surface.ROTATION_0, instance.getTargetRotation());
-      assertEquals(1, mockCamera2InteropExtender.constructed().size());
+      assertEquals(targetFpsRange, instance.getTargetFrameRate());
+      assertEquals(0, mockCamera2InteropExtender.constructed().size());
     }
   }
 

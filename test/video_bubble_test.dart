@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/widgets/video_bubble.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:cubechat/features/chat/domain/message_preview.dart';
+import 'package:cubechat/features/chat/domain/message_search.dart';
+import 'package:cubechat/l10n/app_localizations_en.dart';
 
 /// Which messages become a player and which stay a document row.
 ///
@@ -40,6 +43,18 @@ void main() {
 
   tearDown(() {
     if (dir.existsSync()) dir.deleteSync(recursive: true);
+  });
+
+  test('circle belongs to voice notes without exposing the reserved filename',
+      () {
+    final circle =
+        _file(mime: 'video/mp4', path: clip.path, name: Message.circleFileName);
+    expect(circle.isVoiceNote, true);
+    expect(circle.voiceNotePath, clip.path);
+    expect(
+        messageContentPreview(circle, AppLocalizationsEn()), '◉ Video message');
+    expect(searchableMessageText(circle), isEmpty);
+    expect(_file(mime: 'video/mp4', path: clip.path).isVoiceNote, false);
   });
 
   test('a video file on disk plays here', () {

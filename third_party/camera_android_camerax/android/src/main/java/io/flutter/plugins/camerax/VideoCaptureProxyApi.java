@@ -4,13 +4,9 @@
 
 package io.flutter.plugins.camerax;
 
-import android.hardware.camera2.CaptureRequest;
 import android.util.Range;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.OptIn;
-import androidx.camera.camera2.interop.Camera2Interop;
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.video.VideoCapture;
 import androidx.camera.core.MirrorMode;
 import androidx.camera.video.VideoOutput;
@@ -27,7 +23,6 @@ class VideoCaptureProxyApi extends PigeonApiVideoCapture {
 
   // Range<?> is defined as Range<Integer> in pigeon.
   @SuppressWarnings("unchecked")
-  @OptIn(markerClass = ExperimentalCamera2Interop.class)
   @NonNull
   @Override
   public VideoCapture<?> withOutput(
@@ -38,10 +33,9 @@ class VideoCaptureProxyApi extends PigeonApiVideoCapture {
     builder.setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY);
 
     if (targetFpsRange != null) {
-      Camera2Interop.Extender<VideoCapture<VideoOutput>> extender =
-          new Camera2Interop.Extender<>(builder);
-      extender.setCaptureRequestOption(
-          CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, (Range<Integer>) targetFpsRange);
+      // Use CameraX negotiation so unsupported 60 fps falls back to a viable
+      // device rate, also when a persistent recording changes cameras.
+      builder.setTargetFrameRate((Range<Integer>) targetFpsRange);
     }
 
     return builder.build();

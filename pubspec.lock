@@ -153,12 +153,11 @@ packages:
     source: path
     version: "0.7.2"
   camera_avfoundation:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: camera_avfoundation
-      sha256: "866e9cd8370f8055d005c0413937a52dc1d7a472687f0ee3ce02392955aababa"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/camera_avfoundation"
+      relative: true
+    source: path
     version: "0.10.2"
   camera_platform_interface:
     dependency: transitive

@@ -668,7 +668,7 @@ class _PinnedRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _preview(message),
+                    _preview(message, AppLocalizations.of(context)),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -696,7 +696,8 @@ class _PinnedRow extends StatelessWidget {
 
   /// Same rules as the pinned bar's one-liner: a media message says what it is
   /// when it has no caption worth showing.
-  static String _preview(Message m) {
+  static String _preview(Message m, AppLocalizations t) {
+    if (m.isCircle) return '◉ ${t.circleMessage}';
     final text = m.text.trim();
     switch (m.kind) {
       case MessageKind.image:

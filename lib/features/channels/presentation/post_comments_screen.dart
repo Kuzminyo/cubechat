@@ -96,6 +96,7 @@ class _PostCommentsScreenState extends ConsumerState<_PostCommentsScreen> {
   }
 
   static String _preview(Message m) {
+    if (m.isCircle) return '◉';
     final text = m.text.trim();
     return switch (m.kind) {
       MessageKind.image =>

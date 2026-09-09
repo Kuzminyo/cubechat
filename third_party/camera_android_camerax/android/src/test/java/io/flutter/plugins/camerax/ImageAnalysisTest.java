@@ -63,6 +63,16 @@ public class ImageAnalysisTest {
   }
 
   @Test
+  public void sixtyFps_doesNotForceUnsupportedAeRange() {
+    final PigeonApiImageAnalysis api = new TestProxyApiRegistrar().getPigeonApiImageAnalysis();
+    try (MockedConstruction<Camera2Interop.Extender> raw =
+        Mockito.mockConstruction(Camera2Interop.Extender.class)) {
+      api.pigeon_defaultConstructor(null, null, new Range<>(60, 60), null);
+      assertEquals(0, raw.constructed().size());
+    }
+  }
+
+  @Test
   public void resolutionSelector_returnsExpectedResolutionSelector() {
     final PigeonApiImageAnalysis api = new TestProxyApiRegistrar().getPigeonApiImageAnalysis();
 

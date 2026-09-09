@@ -58,35 +58,73 @@ class CircleRecorder extends ChangeNotifier {
     'AudioAccessRestricted',
   };
 
-  /// 720p at 1.6 Mbps, 24 fps, 64 kbps of sound.
+  /// Request 1080p60, with native negotiation down for sensors that cannot.
   ///
-  /// **The resolution is about how sharp the disc is, and I had it backwards
-  /// once.** A round window is a square cut out of the frame, so what reaches
-  /// the screen is the shorter side of the capture: 720 pixels from a 720p
-  /// frame, 480 from a 480p one. The disc is drawn at about 200 points and a
-  /// phone is three times that, so 480 was being upscaled and looked it. The
-  /// price of going back up is field of view — a 16:9 frame gives the square
-  /// 56% of its height where a 4:3-ish one gives 67% — and of the two
-  /// complaints, soft was the one that kept coming back.
+  /// **The resolution is asked for, and it is oversampling.** A circle is a
+  /// square cut from the frame, so what reaches the screen is the shorter
+  /// side: 1080 pixels from a 1080p capture. The disc is drawn at 216 logical
+  /// points, which on a 1080×2340 phone at 3× is about 650 physical pixels —
+  /// so 720 was already above what is displayed and 1080 is roughly 1.7× it.
+  /// The visible gain over 720p is small. It is here because it was asked for,
+  /// and because the one place it does show is a face filling the disc on a
+  /// tablet or a future larger crop.
   ///
-  /// The bitrate is about whether it arrives at all. Left to the platform,
-  /// 7.8 seconds came out at 12.2 MB — 12 Mbps, camcorder settings for a disc
-  /// the size of a beer mat, and 371 relay publishes for one sentence. At
-  /// 1.6 Mbps the same clip is about 1.5 MB and fifty publishes, and the extra
-  /// 400 kbps over the first attempt is there to feed the extra pixels rather
-  /// than starve them.
+  /// **The bitrate is what decides whether it arrives.** Left to the platform
+  /// a clip came out at 12 Mbps — camcorder settings for a disc the size of a
+  /// beer mat, and 371 relay publishes for eight seconds. Over the internet
+  /// every chunk is one publish and one round trip, so bytes are time.
   ///
-  /// 24 fps rather than 30 for the same budget reason and at no visible cost:
-  /// a face talking is not a panning shot, and the bits saved go into detail.
+  /// 5 Mbps rather than the 7.2 that would hold 720p60's bits per pixel across
+  /// 2.25× the pixels. A talking head is nearly still, which is the case an
+  /// encoder handles best, so the shortfall costs little; the alternative
+  /// costs 2.25× the transfer on a phone uplink. Eight seconds is about 5 MB
+  /// and 80 publishes at [kRelayMediaChunkData], against 51 before.
+  ///
+  /// If sending becomes slow, **lower this number, not the resolution** — the
+  /// pixels are nearly free on the wire and the bits are not.
   static CameraController _makeCamera(CameraDescription lens) =>
       CameraController(
         lens,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh,
         enableAudio: true,
-        fps: 24,
-        videoBitrate: 1600000,
+        fps: 60,
+        videoBitrate: 5000000,
         audioBitrate: 64000,
       );
+
+  /// Prefer the widest advertised lens; unknown logical cameras still expose
+  /// their full range through getMinZoomLevel. No extra digital zoom is added.
+  @visibleForTesting
+  static CameraDescription widestLens(
+    List<CameraDescription> cameras,
+    CameraLensDirection direction,
+  ) {
+    final choices = cameras.where((c) => c.lensDirection == direction).toList();
+    if (choices.isEmpty) return cameras.first;
+    int rank(CameraDescription c) => switch (c.lensType) {
+          CameraLensType.ultraWide => 0,
+          CameraLensType.wide => 1,
+          CameraLensType.unknown => 2,
+          CameraLensType.telephoto => 3,
+        };
+    choices.sort((a, b) => rank(a).compareTo(rank(b)));
+    return choices.first;
+  }
+
+  Future<void> _stabilize(CameraController camera) async {
+    try {
+      // Level 1 avoids the larger crop/latency of cinematic stabilization.
+      // The plugin falls back to off on a sensor without stabilization support.
+      await camera.setVideoStabilizationMode(VideoStabilizationMode.level1);
+      DebugLog.instance.log(
+        'CIRCLE',
+        'lens=${camera.description.name} zoom=$_minZoom stabilization=${camera.value.videoStabilizationMode.name}',
+      );
+    } catch (e) {
+      DebugLog.instance.log('CIRCLE', 'stabilization unavailable: $e');
+    }
+  }
+
   CameraController? _camera;
   Timer? _ticker;
   Timer? _ceiling;
@@ -253,9 +291,10 @@ class CircleRecorder extends ChangeNotifier {
         await camera.setFlashMode(FlashMode.off);
       } catch (_) {}
       if (generation != _generation) return;
-      await camera.setDescription(choices.first);
+      final lens = widestLens(choices.toList(), wanted);
+      await camera.setDescription(lens);
       if (generation != _generation) return;
-      _front = choices.first.lensDirection == CameraLensDirection.front;
+      _front = lens.lensDirection == CameraLensDirection.front;
       _hardwareTorch = !_front;
       _torchOn = false;
       _minZoom = await camera.getMinZoomLevel();
@@ -264,6 +303,8 @@ class CircleRecorder extends ChangeNotifier {
       _zoom = _minZoom;
       _zoomAtGestureStart = _minZoom;
       await camera.setZoomLevel(_minZoom);
+      await _stabilize(camera);
+      await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
     } catch (e) {
       error = '$e';
       DebugLog.instance.log('CIRCLE', 'flip failed: $e');
@@ -318,16 +359,9 @@ class CircleRecorder extends ChangeNotifier {
       }
       final wanted =
           front ? CameraLensDirection.front : CameraLensDirection.back;
-      final lens = cameras.firstWhere(
-        (c) => c.lensDirection == wanted,
-        // A phone missing the lens that was asked for still gets to send a
-        // circle with the other one, rather than a feature that is simply
-        // missing on that device.
-        orElse: () => cameras.first,
-      );
+      final lens = widestLens(cameras, wanted);
 
-      // Preserve the existing 480p / 24fps / 1.2Mbps budget. A default
-      // 12Mbps clip previously cost 371 relay publishes for eight seconds.
+      // Keep the bounded recording budget from _makeCamera.
       final camera = _createCamera(lens);
       _camera = camera;
       _notify();
@@ -364,6 +398,8 @@ class CircleRecorder extends ChangeNotifier {
       if (generation != _generation) return false;
       // Keep the preview's aspect ratio stable when a held phone tilts.
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      if (generation != _generation) return false;
+      await _stabilize(camera);
       if (generation != _generation) return false;
       await camera.startVideoRecording(enablePersistentRecording: true);
       // And again: starting the recording is itself a round trip to the

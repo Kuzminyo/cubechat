@@ -1,3 +1,4 @@
+import 'circle_playback_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -99,6 +100,7 @@ class _Bar extends ConsumerWidget {
                       onPressed: controller.togglePlayPause,
                     ),
                     const SizedBox(width: 10),
+                    if (playback.isCircle) const CirclePlaybackThumbnail(),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

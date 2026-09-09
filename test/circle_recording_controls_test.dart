@@ -7,6 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 class _Recorder extends CircleRecorder {
   int flips = 0;
+  bool changing = false;
+  @override
+  bool get isFlipping => changing;
+  void setChanging(bool value) {
+    changing = value;
+    notifyListeners();
+  }
+
   @override
   Future<void> flipLens() async {
     flips++;
@@ -21,6 +29,79 @@ Widget host(Widget child) => MaterialApp(
     );
 
 void main() {
+  testWidgets(
+      'starting a circle keeps the same editable text and input connection',
+      (tester) async {
+    var recording = false;
+    late StateSetter update;
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            update = setState;
+            return ChatInput(
+              hint: 'Message',
+              sendTooltip: 'Send',
+              onSend: (_) {},
+              onAttach: () {},
+              recordMode: RecordMode.circle,
+              recording: recording,
+              onRecordStart: () {},
+              onRecordStop: () {},
+              onRecordCancel: () {},
+            );
+          },
+        ),
+      ),
+    );
+    await tester.showKeyboard(find.byType(TextField));
+    final before = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(tester.testTextInput.isVisible, isTrue);
+    update(() => recording = true);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      tester.state<EditableTextState>(find.byType(EditableText)),
+      same(before),
+    );
+    expect(before.widget.focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('sensor transition turns sideways and settles upright',
+      (tester) async {
+    final recorder = _Recorder();
+    await tester.pumpWidget(
+      host(
+        CircleRecorderPreview(
+          recorder: recorder,
+          locked: true,
+          hint: '',
+          cancelLabel: 'Cancel',
+          onSend: () {},
+          onCancel: () {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    recorder.setChanging(true);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    final transform = tester
+        .widget<Transform>(find.byKey(const ValueKey('circle-flip-transform')))
+        .transform;
+    expect(transform.entry(0, 0), lessThan(1));
+    expect(transform.entry(1, 1), 1);
+    recorder.setChanging(false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    final settled = tester
+        .widget<Transform>(find.byKey(const ValueKey('circle-flip-transform')))
+        .transform;
+    expect(settled.entry(0, 0), 1);
+    await tester.pumpWidget(const SizedBox());
+    recorder.dispose();
+  });
+
   testWidgets('cancel, send and flip remain tappable above the keyboard',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);

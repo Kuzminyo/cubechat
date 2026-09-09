@@ -146,6 +146,13 @@ class Message {
   final Map<String, int> pollVotes;
   final MessageKind kind;
 
+  // Classification is shared by playback, previews and the contact media tabs.
+  // The existing file payload stays compatible with older installations.
+  static const circleFileName = 'cubechat-circle-v1.mp4';
+  bool get isCircle => kind == MessageKind.file && fileName == circleFileName;
+  bool get isVoiceNote => kind == MessageKind.audio || isCircle;
+  String? get voiceNotePath => isCircle ? filePath : audioPath;
+
   /// True when this message was encrypted with a per-message forward-secret
   /// key (X3DH), as opposed to the long-term-key SealedBox path. Surfaced in
   /// the bubble as a small shield so the user can see the stronger guarantee.

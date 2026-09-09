@@ -16,6 +16,7 @@ import '../../chat/models/message.dart';
 import '../../chat/presentation/chat_media_gallery_screen.dart';
 import '../../chat/presentation/widgets/file_bubble.dart';
 import '../../chat/presentation/widgets/voice_bubble.dart';
+import '../../chat/presentation/widgets/video_bubble.dart';
 
 @visibleForTesting
 String routeForMessageInChat({
@@ -103,12 +104,12 @@ class ContactContentScreen extends ConsumerWidget {
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     final voices = messages
         .where((message) =>
-            message.kind == MessageKind.audio && message.audioPath != null)
+            message.isVoiceNote && message.voiceNotePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     final files = messages
         .where((message) =>
-            message.kind == MessageKind.file && message.filePath != null)
+            message.kind == MessageKind.file && !message.isCircle && message.filePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     // Polls get their own tab rather than sitting in with the photos and
@@ -318,7 +319,11 @@ class _VoiceList extends StatelessWidget {
           // With the header: stripped of the conversation, a voice note has
           // nothing left saying who it is from or when — which is most of what
           // anybody opens this list to find out.
-          child: VoiceBubble(
+          child: voices[index].isCircle
+              ? Align(alignment: Alignment.centerLeft, child: VideoBubble(
+                  message: voices[index], chatId: chatId,
+                ))
+              : VoiceBubble(
             message: voices[index],
             chatId: chatId,
             showHeader: true,

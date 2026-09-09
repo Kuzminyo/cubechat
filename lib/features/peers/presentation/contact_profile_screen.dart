@@ -677,9 +677,9 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
             message.kind == MessageKind.image && !message.isSticker)
         .length;
     final voiceCount =
-        messages.where((message) => message.kind == MessageKind.audio).length;
+        messages.where((message) => message.isVoiceNote).length;
     final fileCount =
-        messages.where((message) => message.kind == MessageKind.file).length;
+        messages.where((message) => message.kind == MessageKind.file && !message.isCircle).length;
     final chats = ref.watch(chatsProvider);
     Chat? contact;
     for (final chat in chats) {

@@ -34,19 +34,20 @@ public class VideoCaptureTest {
     final VideoOutput videoOutput = mock(VideoOutput.class);
     final Range<Integer> targetFpsRange = new Range<>(30, 30);
 
-    try (MockedConstruction<Camera2Interop.Extender> mockCamera2InteropExtender =
-        Mockito.mockConstruction(
-            Camera2Interop.Extender.class,
-            (mock, context) -> {
-              when(mock.setCaptureRequestOption(
-                      CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, targetFpsRange))
-                  .thenReturn(mock);
-            })) {
-      final VideoCapture videoCapture = api.withOutput(videoOutput, targetFpsRange);
+    final VideoCapture<?> videoCapture = api.withOutput(videoOutput, targetFpsRange);
+    assertEquals(targetFpsRange, videoCapture.getTargetFrameRate());
+    assertEquals(videoOutput, videoCapture.getOutput());
+    assertEquals(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY, videoCapture.getMirrorMode());
+  }
 
-      assertEquals(1, mockCamera2InteropExtender.constructed().size());
-      assertEquals(videoOutput, videoCapture.getOutput());
-      assertEquals(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY, videoCapture.getMirrorMode());
+  @Test
+  public void sixtyFps_usesNegotiatedTargetWithoutRawAeOverride() {
+    final PigeonApiVideoCapture api = new TestProxyApiRegistrar().getPigeonApiVideoCapture();
+    try (MockedConstruction<Camera2Interop.Extender> raw =
+        Mockito.mockConstruction(Camera2Interop.Extender.class)) {
+      final VideoCapture<?> video = api.withOutput(mock(VideoOutput.class), new Range<>(60, 60));
+      assertEquals(new Range<>(60, 60), video.getTargetFrameRate());
+      assertEquals(0, raw.constructed().size());
     }
   }
 

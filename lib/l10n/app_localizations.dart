@@ -98,6 +98,12 @@ abstract class AppLocalizations {
     Locale('uk')
   ];
 
+  /// No description provided for @circleMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Video message'**
+  String get circleMessage;
+
   /// No description provided for @appName.
   ///
   /// In en, this message translates to:
