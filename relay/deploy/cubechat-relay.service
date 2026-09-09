@@ -1,0 +1,28 @@
+[Unit]
+Description=cubechat relay (strfry)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cubechat-relay
+WorkingDirectory=/opt/cubechat-relay
+ExecStart=/usr/local/bin/strfry --config=/opt/cubechat-relay/strfry.conf relay
+Restart=always
+RestartSec=5
+
+# LMDB keeps a lot of file handles open and the default is 1024, which a relay
+# reaches with a few dozen sockets and its own database. The config asks for
+# 65536; this is what lets it have them.
+LimitNOFILE=65536
+
+# It reads a config and writes a database. Nothing else on this box is any of
+# its business — and the push server's APNs key is on this box.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-relay
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# Append this to /etc/caddy/Caddyfile. Do not replace the file: the push
+# server's blocks are already in there, and losing them takes the iOS doorbell
+# with them.
+#
+# A relay is a WebSocket and Caddy's reverse_proxy upgrades one without being
+# told to, so there is nothing here about Connection or Upgrade headers. What
+# it does need is the real address of the client, because strfry's config asks
+# for x-forwarded-for and would otherwise see every connection arriving from
+# 127.0.0.1 — which is the same as having no rate limiting at all.
+
+relay.cubechat.tech {
+	reverse_proxy 127.0.0.1:8081 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}
