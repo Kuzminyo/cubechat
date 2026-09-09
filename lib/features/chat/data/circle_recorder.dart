@@ -41,14 +41,33 @@ class CircleRecorder extends ChangeNotifier {
     return grants.values.every((status) => status.isGranted);
   }
 
-  // Keep the existing capture budget: 480p, 24fps, 1.2Mbps video / 64kbps audio.
+  /// 720p at 1.6 Mbps, 24 fps, 64 kbps of sound.
+  ///
+  /// **The resolution is about how sharp the disc is, and I had it backwards
+  /// once.** A round window is a square cut out of the frame, so what reaches
+  /// the screen is the shorter side of the capture: 720 pixels from a 720p
+  /// frame, 480 from a 480p one. The disc is drawn at about 200 points and a
+  /// phone is three times that, so 480 was being upscaled and looked it. The
+  /// price of going back up is field of view — a 16:9 frame gives the square
+  /// 56% of its height where a 4:3-ish one gives 67% — and of the two
+  /// complaints, soft was the one that kept coming back.
+  ///
+  /// The bitrate is about whether it arrives at all. Left to the platform,
+  /// 7.8 seconds came out at 12.2 MB — 12 Mbps, camcorder settings for a disc
+  /// the size of a beer mat, and 371 relay publishes for one sentence. At
+  /// 1.6 Mbps the same clip is about 1.5 MB and fifty publishes, and the extra
+  /// 400 kbps over the first attempt is there to feed the extra pixels rather
+  /// than starve them.
+  ///
+  /// 24 fps rather than 30 for the same budget reason and at no visible cost:
+  /// a face talking is not a panning shot, and the bits saved go into detail.
   static CameraController _makeCamera(CameraDescription lens) =>
       CameraController(
         lens,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: true,
         fps: 24,
-        videoBitrate: 1200000,
+        videoBitrate: 1600000,
         audioBitrate: 64000,
       );
   CameraController? _camera;

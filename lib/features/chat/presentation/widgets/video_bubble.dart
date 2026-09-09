@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../models/message.dart';
@@ -13,12 +16,11 @@ import '../../models/message.dart';
 /// meant handing it to whatever the phone considers a video player, leaving
 /// the conversation to do it.
 ///
-/// **No player is built until the clip is tapped.** `VideoPlayerController`
-/// holds a platform decoder, and a conversation with a dozen clips in it would
-/// otherwise hold a dozen of them open while somebody scrolls past — the exact
-/// shape of cost this codebase has taken out twice already (uncapped image
-/// decodes, ungrouped blurs). The first tap loads and plays; until then this
-/// is a card with a play button on it, which costs nothing.
+/// Two shapes, one widget. A clip from the gallery is a rectangle you press to
+/// start. A circle is round, starts on its own when it comes into view, grows
+/// while it plays, and stops when you scroll past — which is what everyone who
+/// has used one expects of them, and is only possible because we know which
+/// one is actually on screen.
 class VideoBubble extends StatefulWidget {
   const VideoBubble({
     super.key,
@@ -41,17 +43,19 @@ class VideoBubble extends StatefulWidget {
   /// transfer, so the circle would never arrive there at all, where a reserved
   /// name lands as a video it can play. Same reasoning as the `cubechat:*:v1:`
   /// markers that ride inside ordinary text.
-  ///
-  /// Versioned, so a later shape for these can be told from this one without
-  /// guessing.
   static const String circleFileName = 'cubechat-circle-v1.mp4';
 
   /// Drawn round and square rather than as a rectangle in a card.
   static bool isCircle(Message message) =>
       message.fileName == circleFileName;
 
-  /// How wide a circle is drawn.
-  static const double circleDiameter = 200;
+  /// Resting, and playing.
+  ///
+  /// It grows when it starts. Not decoration: a circle at rest is one of many
+  /// things in a scrolling column, and the one that is speaking should be the
+  /// one your eye lands on. Telegram does the same and for the same reason.
+  static const double circleIdle = 176;
+  static const double circlePlaying = 216;
 
   /// True when this message is a video we can actually play: a file, with a
   /// video mime, whose bytes are on this phone.
@@ -71,168 +75,284 @@ class VideoBubble extends StatefulWidget {
 class _VideoBubbleState extends State<VideoBubble> {
   VideoPlayerController? _player;
   bool _loading = false;
-  Object? _failed;
+  bool _failed = false;
+
+  /// Paused by a finger rather than by scrolling away.
+  ///
+  /// Without this a circle you deliberately paused starts itself again on the
+  /// next scroll tick, because coming back into view is indistinguishable from
+  /// arriving in view for the first time.
+  bool _pausedByHand = false;
+
+  bool get _isCircle => VideoBubble.isCircle(widget.message);
 
   @override
   void dispose() {
+    _player?.removeListener(_onTick);
     _player?.dispose();
     super.dispose();
   }
 
-  Future<void> _start() async {
-    final existing = _player;
-    if (existing != null) {
-      // Second tap: pause or carry on. A clip that restarts from the top every
-      // time it is touched cannot be paused to look at something.
-      if (existing.value.isPlaying) {
-        await existing.pause();
-      } else {
-        await existing.play();
-      }
-      setState(() {});
-      return;
+  void _onTick() {
+    if (!mounted) return;
+    final player = _player;
+    // A circle runs round: reaching the end starts it again, the way a short
+    // clip in a conversation is always shown.
+    if (_isCircle &&
+        player != null &&
+        player.value.isInitialized &&
+        !player.value.isPlaying &&
+        player.value.position >= player.value.duration &&
+        !_pausedByHand) {
+      unawaited(player.seekTo(Duration.zero));
+      unawaited(player.play());
     }
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _failed = null;
-    });
+    setState(() {});
+  }
+
+  /// Open the file. Costs a platform decoder, so it happens once and only for
+  /// a bubble that is actually on screen.
+  Future<VideoPlayerController?> _open() async {
+    if (_player != null) return _player;
+    if (_loading || _failed) return null;
+    setState(() => _loading = true);
     final player = VideoPlayerController.file(File(widget.message.filePath!));
     try {
       await player.initialize();
       if (!mounted) {
         await player.dispose();
-        return;
+        return null;
       }
-      // Rebuilds on the position, which is what draws the progress line. The
-      // listener goes with the controller, so nothing ticks once this bubble
-      // is gone.
       player.addListener(_onTick);
-      await player.setLooping(false);
-      await player.play();
+      await player.setLooping(_isCircle);
       setState(() {
         _player = player;
         _loading = false;
       });
-    } catch (e) {
+      return player;
+    } catch (_) {
       await player.dispose();
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _failed = e;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
+      return null;
     }
   }
 
-  void _onTick() {
+  /// Scrolled into or out of view.
+  ///
+  /// Circles only. A clip from the gallery is a thing you decide to watch;
+  /// starting one because it drifted past would be a video playing at somebody
+  /// in the middle of reading.
+  Future<void> _onVisibility(VisibilityInfo info) async {
+    if (!_isCircle || !mounted) return;
+    // Half of it, so a circle half off the top of the screen does not claim
+    // the sound from the one that has just arrived below it.
+    final visible = info.visibleFraction > 0.5;
+    if (visible) {
+      if (_pausedByHand) return;
+      final player = await _open();
+      if (player != null && !player.value.isPlaying) await player.play();
+    } else {
+      final player = _player;
+      if (player != null && player.value.isPlaying) await player.pause();
+      // Off screen is not a decision, so coming back starts it again.
+      _pausedByHand = false;
+    }
+  }
+
+  Future<void> _tap() async {
+    final player = _player ?? await _open();
+    if (player == null) return;
+    if (player.value.isPlaying) {
+      _pausedByHand = true;
+      await player.pause();
+    } else {
+      _pausedByHand = false;
+      if (player.value.position >= player.value.duration) {
+        await player.seekTo(Duration.zero);
+      }
+      await player.play();
+    }
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    return VisibilityDetector(
+      key: Key('video-${widget.message.id}'),
+      onVisibilityChanged: (info) => unawaited(_onVisibility(info)),
+      child: GestureDetector(
+        onTap: () => unawaited(_tap()),
+        onLongPress: widget.onLongPress,
+        child: _isCircle ? _circle() : _rectangle(),
+      ),
+    );
+  }
+
+  // ---- the round one ------------------------------------------------------
+
+  Widget _circle() {
+    final player = _player;
+    final ready = player != null && player.value.isInitialized;
+    final playing = ready && player.value.isPlaying;
+    final total = ready ? player.value.duration : Duration.zero;
+    final left = ready ? total - player.value.position : Duration.zero;
+    final progress = ready && total.inMilliseconds > 0
+        ? player.value.position.inMilliseconds / total.inMilliseconds
+        : 0.0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      width: playing ? VideoBubble.circlePlaying : VideoBubble.circleIdle,
+      height: playing ? VideoBubble.circlePlaying : VideoBubble.circleIdle,
+      child: CustomPaint(
+        // The ring is the only chrome. No card, no border, no play button: a
+        // circle is a circle, and the one thing worth drawing round it is how
+        // much of it is left.
+        foregroundPainter: _RingPainter(progress: playing ? progress : 0),
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: ClipOval(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: Colors.black.withValues(alpha: 0.45)),
+                if (ready)
+                  FittedBox(
+                    // A circle is square and the camera is not, so the picture
+                    // is filled rather than fitted.
+                    fit: BoxFit.cover,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      width: player.value.size.width,
+                      height: player.value.size.height,
+                      child: VideoPlayer(player),
+                    ),
+                  ),
+                if (!ready)
+                  Center(
+                    child: _loading
+                        ? SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: AppColors.brandPrimary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.videocam_rounded,
+                            size: 30,
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                  ),
+                // How much is left to watch, in the corner where a voice note
+                // puts its length.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 10,
+                  child: Center(
+                    child: _Chip(
+                      label: ready
+                          ? _clock(playing ? left : total)
+                          : _size(widget.message.fileBytes),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---- the rectangular one ------------------------------------------------
+
+  Widget _rectangle() {
     final player = _player;
     final ready = player != null && player.value.isInitialized;
     final aspect = ready ? player.value.aspectRatio : 16 / 9;
     final position = ready ? player.value.position : Duration.zero;
     final total = ready ? player.value.duration : Duration.zero;
 
-    final round = VideoBubble.isCircle(widget.message);
-    return GestureDetector(
-      onTap: _start,
-      onLongPress: widget.onLongPress,
-      child: ClipRRect(
-        // A circle is a circle. Clipped rather than masked so the progress
-        // line and the chip below are clipped with the picture, which is what
-        // keeps it reading as one object.
-        borderRadius: BorderRadius.circular(
-          round ? VideoBubble.circleDiameter / 2 : 14,
-        ),
-        child: SizedBox(
-          width: round ? VideoBubble.circleDiameter : VideoBubble.width,
-          child: AspectRatio(
-            aspectRatio: round ? 1 : (aspect <= 0 ? 16 / 9 : aspect),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-                if (ready)
-                  // A circle is square and the camera is not, so the picture
-                  // is filled rather than fitted — a letterboxed round video
-                  // is a small rectangle inside a black disc.
-                  round
-                      ? FittedBox(
-                          fit: BoxFit.cover,
-                          clipBehavior: Clip.hardEdge,
-                          child: SizedBox(
-                            width: player.value.size.width,
-                            height: player.value.size.height,
-                            child: VideoPlayer(player),
-                          ),
-                        )
-                      : VideoPlayer(player),
-                if (!ready)
-                  Center(
-                    child: Icon(
-                      Icons.movie_rounded,
-                      size: 34,
-                      color: Colors.white.withValues(alpha: 0.35),
-                    ),
-                  ),
-                // The button disappears while it is running, so a clip playing
-                // is not covered by a control that says "play".
-                if (!ready || !player.value.isPlaying)
-                  Center(
-                    child: _loading
-                        ? SizedBox(
-                            width: 34,
-                            height: 34,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: AppColors.brandPrimary,
-                            ),
-                          )
-                        : Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              size: 34,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
-                if (ready)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: LinearProgressIndicator(
-                      value: total.inMilliseconds == 0
-                          ? 0
-                          : position.inMilliseconds / total.inMilliseconds,
-                      minHeight: 3,
-                      backgroundColor: Colors.white24,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
-                    ),
-                  ),
-                Positioned(
-                  left: 8,
-                  bottom: 10,
-                  child: _Chip(
-                    label: _failed != null
-                        ? '—'
-                        : ready
-                            ? _clock(total - position)
-                            : _size(widget.message.fileBytes),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: VideoBubble.width,
+        child: AspectRatio(
+          aspectRatio: aspect <= 0 ? 16 / 9 : aspect,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
+              if (ready) VideoPlayer(player),
+              if (!ready)
+                Center(
+                  child: Icon(
+                    Icons.movie_rounded,
+                    size: 34,
+                    color: Colors.white.withValues(alpha: 0.35),
                   ),
                 ),
-              ],
-            ),
+              // The button disappears while it is running, so a clip playing is
+              // not covered by a control that says "play".
+              if (!ready || !player.value.isPlaying)
+                Center(
+                  child: _loading
+                      ? SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppColors.brandPrimary,
+                          ),
+                        )
+                      : Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            size: 34,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              if (ready)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: LinearProgressIndicator(
+                    value: total.inMilliseconds == 0
+                        ? 0
+                        : position.inMilliseconds / total.inMilliseconds,
+                    minHeight: 3,
+                    backgroundColor: Colors.white24,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
+                  ),
+                ),
+              Positioned(
+                left: 8,
+                bottom: 10,
+                child: _Chip(
+                  label: ready
+                      ? _clock(total - position)
+                      : _size(widget.message.fileBytes),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -252,6 +372,39 @@ class _VideoBubbleState extends State<VideoBubble> {
   }
 }
 
+/// How much of a circle is left, drawn round it.
+///
+/// Only the part that has played, with no track behind it — a full grey ring
+/// round every circle in the conversation is an outline on a shape that does
+/// not need one.
+class _RingPainter extends CustomPainter {
+  const _RingPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width / 2, size.height / 2),
+        radius: size.width / 2 - 1.6,
+      ),
+      -math.pi / 2,
+      math.pi * 2 * progress.clamp(0.0, 1.0),
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.white.withValues(alpha: 0.9),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.progress != progress;
+}
+
 class _Chip extends StatelessWidget {
   const _Chip({required this.label});
 
@@ -261,7 +414,7 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (label.isEmpty) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(9),

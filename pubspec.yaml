@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1008
+version: 1.0.0+1009
 
 environment:
   sdk: ^3.6.0
@@ -99,6 +99,15 @@ dependencies:
   # Both are local files by the time they reach a bubble — nothing here ever
   # streams from a URL, and no player is built for a message off screen.
   video_player: ^2.11.1
+  # Which circle is actually on screen.
+  #
+  # Circles play by themselves, the way they do in every messenger that has
+  # them, and "by itself" has to mean *the one you are looking at*. A list
+  # builds its neighbours as well as its visible rows, so starting playback in
+  # `initState` runs three videos at once — two of them off screen, all three
+  # holding a platform decoder. Flutter has no built-in way to ask "is this on
+  # screen", and this is Google's answer to that.
+  visibility_detector: ^0.4.0+2
 
 dev_dependencies:
   flutter_lints: ^4.0.0
