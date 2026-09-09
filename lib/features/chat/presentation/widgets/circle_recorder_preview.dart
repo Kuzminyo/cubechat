@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -75,26 +76,53 @@ class CircleRecorderPreview extends StatelessWidget {
                 ),
               ),
             ),
+            // The screen as a flash.
+            //
+            // Almost no phone has a light beside the selfie lens, so the
+            // hardware torch refuses and this takes over: a white sheet behind
+            // the circle, which is what every camera app does for a
+            // front-facing shot in the dark. It is over the blur and under the
+            // circle, so it lights the face and not the picture of it.
+            if (recorder.usesScreenLight)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: bottomClear,
+                child: const IgnorePointer(
+                  child: ColoredBox(color: Color(0xFFFFF4E2)),
+                ),
+              ),
             Positioned(
               left: 0,
               right: 0,
               top: 0,
               bottom: bottomClear,
-              child: IgnorePointer(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Lifted off centre by a little, because the composer's
-                    // half of the screen is the busy one and a circle dead in
-                    // the middle sits low against it.
-                    const Spacer(flex: 3),
-                    _Disc(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Lifted off centre by a little, because the composer's
+                  // half of the screen is the busy one and a circle dead in
+                  // the middle sits low against it.
+                  const Spacer(flex: 3),
+                  // Pinch to zoom, let go and it goes back. Only the disc
+                  // takes the gesture; the rest of the overlay stays
+                  // transparent to touch so nothing is stolen from the finger
+                  // still holding the record button below.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onScaleStart: (_) => recorder.beginZoom(),
+                    onScaleUpdate: (d) => unawaited(recorder.zoomBy(d.scale)),
+                    onScaleEnd: (_) => unawaited(recorder.resetZoom()),
+                    child: _Disc(
                       diameter: diameter,
                       camera: ready ? camera : null,
                     ),
-                    const Spacer(flex: 4),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 20),
+                  _TorchButton(recorder: recorder),
+                  const Spacer(flex: 4),
+                ],
               ),
             ),
           ],
@@ -169,4 +197,44 @@ class _Disc extends StatelessWidget {
 // "slide left to cancel" while a finger is down, and a second sentence a
 // hand's width above it was one instruction too many for a screen whose whole
 // content is your own face.
+
+/// The light, under the circle where a thumb can reach it.
+///
+/// Reachable with the *other* hand: the one holding the record button cannot
+/// leave it without ending the recording, so this sits where a second thumb
+/// lands rather than where a control usually goes.
+class _TorchButton extends StatelessWidget {
+  const _TorchButton({required this.recorder});
+
+  final CircleRecorder recorder;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = recorder.torchOn;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(recorder.toggleTorch()),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: on
+              ? const Color(0xFFFFF4E2)
+              : Colors.black.withValues(alpha: 0.5),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: on ? 0.9 : 0.25),
+            width: 1.4,
+          ),
+        ),
+        child: Icon(
+          on ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
+          size: 22,
+          color: on ? const Color(0xFF17110A) : Colors.white,
+        ),
+      ),
+    );
+  }
+}
 

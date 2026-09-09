@@ -60,6 +60,81 @@ class CircleRecorder extends ChangeNotifier {
   /// finger goes down rather than a beat later.
   bool get isActive => _camera != null;
 
+  double _minZoom = 1;
+  double _maxZoom = 1;
+  double _zoom = 1;
+  double _zoomAtGestureStart = 1;
+  bool _torchOn = false;
+
+  /// True when the light is on, whichever kind of light this phone has.
+  bool get torchOn => _torchOn;
+
+  /// False once the hardware torch has refused, which is the normal answer on
+  /// a front camera: almost no phone has a flash beside the selfie lens.
+  ///
+  /// Not a reason to hide the button — see [toggleTorch], which lights the
+  /// screen instead. It is the same thing to the person holding it, and it is
+  /// what every camera app does for a front-facing shot in the dark.
+  bool _hardwareTorch = true;
+  bool get usesScreenLight => _torchOn && !_hardwareTorch;
+
+  /// How far this camera can be zoomed. Equal when it cannot be.
+  double get minZoom => _minZoom;
+  double get maxZoom => _maxZoom;
+  bool get canZoom => _maxZoom > _minZoom + 0.01;
+
+  /// Remember where a pinch started from, so the gesture is relative.
+  void beginZoom() => _zoomAtGestureStart = _zoom;
+
+  /// Apply a pinch. [scale] is cumulative from the start of the gesture.
+  Future<void> zoomBy(double scale) async {
+    final camera = _camera;
+    if (camera == null || !canZoom) return;
+    final next = (_zoomAtGestureStart * scale).clamp(_minZoom, _maxZoom);
+    if ((next - _zoom).abs() < 0.01) return;
+    _zoom = next;
+    try {
+      await camera.setZoomLevel(next);
+    } catch (_) {
+      // A camera that reports a range and then refuses it. Nothing to do and
+      // nothing worth saying.
+    }
+    notifyListeners();
+  }
+
+  /// Let go and it goes back.
+  ///
+  /// A circle is a few seconds of your own face; a zoom held between one and
+  /// the next would be a setting nobody set. This is a magnifying glass, not a
+  /// lens choice.
+  Future<void> resetZoom() async {
+    final camera = _camera;
+    if (camera == null || _zoom == _minZoom) return;
+    _zoom = _minZoom;
+    _zoomAtGestureStart = _minZoom;
+    try {
+      await camera.setZoomLevel(_minZoom);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// The light, hardware if there is one and the screen if there is not.
+  Future<void> toggleTorch() async {
+    final camera = _camera;
+    if (camera == null) return;
+    _torchOn = !_torchOn;
+    if (_hardwareTorch) {
+      try {
+        await camera.setFlashMode(_torchOn ? FlashMode.torch : FlashMode.off);
+      } catch (_) {
+        // No flash on this lens. Fall through to lighting the screen, and do
+        // not ask again for the rest of this recording.
+        _hardwareTorch = false;
+      }
+    }
+    notifyListeners();
+  }
+
   /// True once the preview has a picture in it. The ring is drawn against
   /// this rather than against [isRecording], so the circle does not appear as
   /// a black hole while the camera opens.
@@ -145,6 +220,26 @@ class CircleRecorder extends ChangeNotifier {
         await _safelyDispose(camera);
         return false;
       }
+      // What this camera can do, asked once, before anything needs it.
+      //
+      // The minimum is set explicitly rather than assumed to be where the
+      // camera opens: some phones start a front lens part-way in, which came
+      // back as the preview being zoomed hard on a face with nobody having
+      // touched it.
+      try {
+        _minZoom = await camera.getMinZoomLevel();
+        _maxZoom = await camera.getMaxZoomLevel();
+        _zoom = _minZoom;
+        _zoomAtGestureStart = _minZoom;
+        await camera.setZoomLevel(_minZoom);
+      } catch (_) {
+        _minZoom = 1;
+        _maxZoom = 1;
+        _zoom = 1;
+      }
+      _torchOn = false;
+      _hardwareTorch = true;
+
       await camera.startVideoRecording();
       // And again: starting the recording is itself a round trip to the
       // platform, and the release can land inside it.
@@ -220,6 +315,9 @@ class CircleRecorder extends ChangeNotifier {
   Future<void> _release() async {
     // Ends whatever [start] is in the middle of, as well as what is running.
     _generation++;
+    // The light does not survive the camera it belongs to.
+    _torchOn = false;
+    _zoom = _minZoom;
     _ticker?.cancel();
     _ticker = null;
     _ceiling?.cancel();
