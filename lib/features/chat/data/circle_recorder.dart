@@ -14,7 +14,7 @@ import '../../../core/util/debug_log.dart';
 /// because over Bluetooth a few seconds of video is 1500-plus chunks — it
 /// swamped the write queue and starved announcements and text of airtime. The
 /// removal note said they would need a different transport if they ever came
-/// back. They have one now: the media relay lane, where a chunk is 32 KiB and
+/// back. They have one now: the media relay lane, where a chunk is 63 KiB and
 /// one publish rather than 4 KiB and a radio write.
 ///
 /// A plain [ChangeNotifier] rather than a Riverpod notifier, unlike the voice

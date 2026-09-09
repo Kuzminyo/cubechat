@@ -46,6 +46,19 @@ doorbell on `127.0.0.1:8080`. The relay is the same shape one port along.
 a retention policy. A relay carrying media chunks fills a disk, and this is the
 only one of the usual choices that expires them without a cron job of our own.
 
+### Two numbers in `strfry.conf` the app depends on
+
+`maxEventSize = 131072` and `maxWebsocketPayloadSize = 131072`. strfry ships
+65536 for both, and 65536 is what the app assumed every relay enforced — which
+is why a media chunk was 32 KiB until 2026-09-09 and a transfer cost twice the
+publishes it needed to. The chunk is now 63 KiB (`kRelayMediaChunkData`), which
+reaches the wire as an ~87 KB event.
+
+Lowering either of these back to the default makes this relay refuse **every**
+media chunk, with an `OK false` the sender logs and nothing else to see. The
+two public relays behind ours declare 524288 and 131072 in their own NIP-11
+documents, so they carry it; ours has to be told to.
+
 ## Putting it there
 
 Every command runs on the droplet as root. **Nothing here touches the push

@@ -490,21 +490,32 @@ class ImageChunk {
 
   static const int idLen = 16;
 
-  /// Max raw image bytes per chunk. Over BLE the sender sizes each chunk down
-  /// to the link MTU (≈136 B, one chunk per notify), so this ceiling is only
-  /// reached on the Nostr relay path — where a frame is a single event with no
-  /// fragmentation and a 140 B ceiling would have meant thousands of publishes
-  /// per image. The receiver's memory is bounded by the reassembler's
-  /// total-byte cap (4 MiB), not by this value, so a larger ceiling does not
-  /// widen the DoS surface. Must stay ≤ 65535 (the u16 chunk-length field).
+  /// Largest chunk a **receiver** will take, which is the whole range the
+  /// length field can express and deliberately not a byte less.
   ///
-  /// 32 KiB rather than 16: the relay event count is what caps what can be sent
-  /// over the internet, since every chunk is one publish and one round trip.
-  /// The ceiling above it is the relay's, not ours — a chunk goes out as
-  /// `"cc1:" + base64(frame)`, so 32 KiB of payload lands at ~44 KB of event,
-  /// comfortably inside the 64 KiB most relays (strfry's default included)
-  /// accept and refuse just past. Doubling again would not be.
-  static const int maxDataBytes = 32768;
+  /// This is not the size anything sends. Over BLE the sender sizes each chunk
+  /// to [kBleMediaChunkData]; over the relay it sizes to
+  /// [kRelayMediaChunkData]. Both are well under this, and both are free to
+  /// move without another wire change — which is the entire reason this number
+  /// is the field's maximum rather than a chosen value. A receiver that
+  /// accepts everything the header can describe never has to be upgraded again
+  /// for a sender to send bigger pieces.
+  ///
+  /// It was 32 KiB until 2026-09-09, and that was a real ceiling: the comment
+  /// here said 64 KiB was where relays refuse an event and that doubling was
+  /// therefore not available. It is now — see [kRelayMediaChunkData] for the
+  /// NIP-11 limits actually declared by the three relays on the media lane —
+  /// but raising a *receive* limit is what costs a compatibility break, so it
+  /// goes all the way in one move and never again.
+  ///
+  /// The receiver's memory is bounded by the reassembler's byte caps, not by
+  /// this value, so a larger ceiling does not widen the DoS surface.
+  ///
+  /// **Builds before 1010 refuse anything above 32768 with a FormatException**
+  /// and drop the chunk, so a transfer from a new sender to an old receiver
+  /// stalls rather than failing. Nothing in the protocol lets a sender detect
+  /// that; the answer is that everyone updates.
+  static const int maxDataBytes = 65535;
 
   /// Hard protocol cap on the chunk *count* for one transfer (also the u16
   /// seq/total range). Total transfer size is bounded separately by the
@@ -642,10 +653,10 @@ class AudioChunk {
 
   static const int idLen = 16;
 
-  /// Max raw audio bytes per chunk. Like [ImageChunk.maxDataBytes] this is only
-  /// reached on the Nostr relay path; over BLE the sender sizes chunks down to
-  /// the link MTU. Must stay ≤ 65535 (the u16 chunk-length field).
-  static const int maxDataBytes = 32768;
+  /// Max raw audio bytes per chunk — the u16 length field's full range, for
+  /// the reasons written out at [ImageChunk.maxDataBytes]. One number for all
+  /// three chunk types, because one transport path sizes them all.
+  static const int maxDataBytes = 65535;
 
   /// Hard protocol cap on the chunk *count* for one transfer; total size is
   /// bounded separately by the receiver's reassembler byte cap (4 MiB).
@@ -791,9 +802,10 @@ class FileChunk {
 
   static const int idLen = 16;
 
-  /// Must stay ≤ 65535 (the u16 length field). Same ceiling as the other
-  /// chunk types so one transport path sizes them all.
-  static const int maxDataBytes = 32768;
+  /// The u16 length field's full range. Same ceiling as the other chunk types
+  /// so one transport path sizes them all; see [ImageChunk.maxDataBytes] for
+  /// why a receive limit is set to the maximum rather than to a chosen size.
+  static const int maxDataBytes = 65535;
 
   static const int maxChunks = 8192;
 

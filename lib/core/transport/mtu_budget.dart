@@ -60,6 +60,47 @@ const int kMinMediaChunkData = 40;
 /// fragment header the only thing replacing it.
 const int kBleMediaChunkData = 4096;
 
+/// Target data bytes per media chunk when the transfer is going over the Nostr
+/// relay instead of a BLE link.
+///
+/// The relay path has no fragmenter: one chunk is one event, one publish and
+/// one round trip, so the chunk count *is* the transfer time. A seven-second
+/// circle is about 1.2 MB, which at the old 32 KiB was 38 publishes waiting on
+/// 38 acknowledgements.
+///
+/// **What the relays actually allow, read from their own NIP-11 documents on
+/// 2026-09-09** — this replaces an assumption that had stood since the chunk
+/// size was first chosen, which was that 64 KiB is where a relay refuses an
+/// event because that is strfry's shipped default:
+///
+/// | relay | `max_message_length` |
+/// |---|---|
+/// | relay.cubechat.tech (ours) | 131072 |
+/// | relay.snort.social | 524288 |
+/// | nostr.oxtr.dev | 131072 |
+///
+/// That is the whole `["EVENT",{…}]` websocket message, and a chunk reaches it
+/// as `"cc1:" + base64(frame)` — a third larger, plus ~490 bytes of event JSON.
+/// 63 KiB of payload lands at about 87 KB of message, so the smallest limit on
+/// the lane still has 40 KB of room. Our own relay's 131072 is set in
+/// `relay/deploy/strfry.conf` and is load-bearing for this number.
+///
+/// 63 KiB rather than the 65535 the length field could carry: 1023 bytes of
+/// slack — ten times the frame a chunk is wrapped in — means a later header
+/// field cannot silently push a chunk past the u16 and make every transfer
+/// unencodable. The ceiling that stops this going higher is now ours, not
+/// anyone else's.
+const int kRelayMediaChunkData = 63 * 1024;
+
+/// Media-chunk `data` size for the Nostr relay path, clamped to the chunk
+/// type's own protocol cap.
+///
+/// A separate function from [bleMediaChunkData] because the two paths are
+/// sized by different things entirely: BLE by how many fragments a chunk may
+/// occupy, the relay by what one event may weigh.
+int relayMediaChunkData({required int ceiling}) =>
+    kRelayMediaChunkData > ceiling ? ceiling : kRelayMediaChunkData;
+
 /// Fragments one media chunk may occupy, well under the protocol's
 /// [kMaxFragments].
 ///

@@ -63,8 +63,8 @@ class RelaySettings {
 
   /// Where media chunks go, so a burst does not throttle a conversation.
   ///
-  /// A transfer is one publish per 32 KiB chunk — a photo is tens of events, a
-  /// video would be hundreds inside a few seconds — and public relays
+  /// A transfer is one publish per 63 KiB chunk — a photo is a handful of
+  /// events, a video dozens inside a few seconds — and public relays
   /// rate-limit per connection, answering a burst by throttling everything
   /// else in it. Keeping the chunks on their own sockets is what stops a
   /// picture from delaying the sentence sent after it.
@@ -73,8 +73,11 @@ class RelaySettings {
   /// list above was. Both answer NIP-11, neither asks for payment or AUTH, and
   /// both are run by operators independent of the three above.
   /// `relay.snort.social` declares `max_message_length` 524288 — the most
-  /// generous of everything probed, against a 32 KiB chunk — and 300
-  /// subscriptions. `nostr.oxtr.dev` was joint-fastest in the original probe
+  /// generous of everything probed — and 300 subscriptions; `nostr.oxtr.dev`
+  /// declares 131072. Those two numbers are load-bearing: they are half of why
+  /// a chunk could be doubled to 63 KiB, and re-probing them is the first
+  /// thing to do if this list ever changes. See [kRelayMediaChunkData].
+  /// `nostr.oxtr.dev` was joint-fastest in the original probe
   /// and was passed over then only for operator independence, which is exactly
   /// what makes it right here.
   /// **Ours first, and the borrowed pair kept behind it.**

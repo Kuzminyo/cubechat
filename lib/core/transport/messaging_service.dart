@@ -1533,9 +1533,11 @@ class MessagingService {
   ///
   /// The number that matters here is the publish count, not the byte count:
   /// public relays rate-limit, and that limit lands on ordinary messages too.
-  /// At 32 KiB a chunk (see [FileChunk.maxDataBytes] for why that is the
-  /// ceiling) 64 MiB is 2048 publishes per relay — minutes of transfer you can
-  /// watch and pause, and comfortably inside [FileChunk.maxChunks].
+  /// At 63 KiB a chunk (see [kRelayMediaChunkData] for where that came from)
+  /// 64 MiB is 1040 publishes per relay — minutes of transfer you can watch and
+  /// pause, and comfortably inside [FileChunk.maxChunks]. It was 2048 while a
+  /// chunk was 32 KiB; the same file now costs half the events, which is the
+  /// whole point of the bigger chunk.
   ///
   /// This is where the ceiling stops being arithmetic and starts being other
   /// people's servers. A relay is not a file host: it prunes, it caps event
@@ -1673,6 +1675,16 @@ class MessagingService {
         );
       }
       transfers.setProgress(transferId, 0, total);
+      // One line per transfer, not per chunk — the log holds 200 lines and a
+      // single photo batch can fill it. This is the line that answers "why was
+      // that slow": over the relay every chunk is a publish and a round trip,
+      // so the count *is* the time, and the count is the only thing here that
+      // a size change moves.
+      DebugLog.instance.log(
+        'FILE',
+        'sending "$safe" — $size B as $total × $chunkData B '
+            '(${relayOnly ? 'relay' : 'mesh'})',
+      );
 
       // Streamed, so the digest costs one buffer rather than the whole file.
       final sink = Sha256().newHashSink();
@@ -8292,15 +8304,20 @@ class MessagingService {
   /// any other BLE link uses the conservative MTU (both keep one chunk ≈ one
   /// notify, which the peripheral fragmenter + 15 ms pacing rely on to not drop
   /// packets). With **no** BLE link the transfer will go over the Nostr relay as
-  /// whole frames — one event each, no fragmentation — so use the full
-  /// [ceiling] to keep the relay event count sane (140 B chunks would be
-  /// thousands of publishes per image).
+  /// whole frames — one event each, no fragmentation — so the size comes from
+  /// what one event may weigh instead ([relayMediaChunkData]), which is what
+  /// keeps the publish count sane: 140 B chunks would be thousands of publishes
+  /// per image.
+  ///
+  /// The two paths never mix. [_deliverMediaFrame] short-circuits a
+  /// relay-chunked transfer straight to the relay, so a 63 KiB chunk is never
+  /// handed to the fragmenter as a thousand unpaced BLE notifies.
   int _mediaChunkData(
     BleGattClient? direct, {
     required bool relayOnly,
     required int ceiling,
   }) {
-    if (relayOnly) return ceiling;
+    if (relayOnly) return relayMediaChunkData(ceiling: ceiling);
     // BLE chunks are sized for the fragmenter, not for one write. See
     // [bleMediaChunkData] for why matching the MTU was the wrong instinct —
     // it spent more airtime on packaging than on the photo.

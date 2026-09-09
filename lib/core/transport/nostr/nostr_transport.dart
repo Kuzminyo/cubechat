@@ -137,8 +137,8 @@ class PublishReceipt {
 /// earns a throttle that lands on everything else in the same burst. Two kinds
 /// of traffic here are bursty or relentless, and neither is conversation:
 ///
-///   * [media] — one publish per 32 KiB chunk, so a video is a hundred events
-///     in a few seconds;
+///   * [media] — one publish per chunk ([kRelayMediaChunkData], 63 KiB), so a
+///     video is dozens of events in a few seconds;
 ///   * [location] — a map beacon per friend, for ever. A 72-minute field log
 ///     had **191 of 274 publishes** be map beacons: 70% of everything the
 ///     radio did, to carry 55 kB.
