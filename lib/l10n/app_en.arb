@@ -555,6 +555,22 @@
   "relaysExplainer": "Messages stay end-to-end encrypted — a relay only carries the same sealed frame Bluetooth would. It does learn which two keys are talking, and when. Off by default.",
   "relaysMyAddress": "Your relay address",
   "relaysCopied": "Copied",
+  "channelCloseTitle": "Close this room for everyone",
+  "@channelCloseTitle": {
+    "description": "Owner-only action at the bottom of channel info."
+  },
+  "channelCloseSubtitle": "Removes it from every member's phone. Only you can do this.",
+  "@channelCloseSubtitle": {
+    "description": "Explains the owner-only close action."
+  },
+  "channelCloseConfirm": "The room, its messages and its members go from every phone that has it. Nobody is locked out: the key comes from the name, so anyone who remembers it can open an empty room again.",
+  "@channelCloseConfirm": {
+    "description": "Confirmation before closing a room, stating honestly what it does and does not do."
+  },
+  "channelCloseAction": "Close the room",
+  "@channelCloseAction": {
+    "description": "Confirm button for closing a room."
+  },
   "circleHint": "Let go to send · slide left to cancel",
   "@circleHint": {
     "description": "Under the round video preview while a finger is holding the button."

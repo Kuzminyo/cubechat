@@ -1021,6 +1021,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relaysCopied => 'Copied';
 
   @override
+  String get channelCloseTitle => 'Close this room for everyone';
+
+  @override
+  String get channelCloseSubtitle =>
+      'Removes it from every member\'s phone. Only you can do this.';
+
+  @override
+  String get channelCloseConfirm =>
+      'The room, its messages and its members go from every phone that has it. Nobody is locked out: the key comes from the name, so anyone who remembers it can open an empty room again.';
+
+  @override
+  String get channelCloseAction => 'Close the room';
+
+  @override
   String get circleHint => 'Let go to send · slide left to cancel';
 
   @override

@@ -279,7 +279,17 @@ enum InnerPayloadType {
 
   /// A room's backlog, handed over in one signed frame so somebody who has just
   /// joined can see what was said before they arrived. See [ChannelHistory].
-  channelHistory(0xE5);
+  channelHistory(0xE5),
+
+  /// The owner closing a room for everybody in it. See [ChannelDelete].
+  ///
+  /// Honoured only from the member each phone records as the room's owner, and
+  /// only when the name inside matches the room the frame arrived in. An older
+  /// build has no case for this and drops it, so the room goes from every phone
+  /// that understands the message and stays on the ones that do not — which is
+  /// the right failure for something irreversible, and is worth saying out loud
+  /// rather than discovering.
+  channelDelete(0xE6);
 
   const InnerPayloadType(this.tag);
   final int tag;

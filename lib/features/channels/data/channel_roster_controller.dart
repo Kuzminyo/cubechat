@@ -20,6 +20,7 @@ class ChannelMember {
     this.mutedUntil,
     this.removedAt,
     this.provisionalAdmin = false,
+    this.isOwner = false,
   });
 
   final String id;
@@ -58,6 +59,21 @@ class ChannelMember {
   /// where two guesses are resolved the same way on both phones.
   final bool provisionalAdmin;
 
+  /// The one member who may close the room for everybody.
+  ///
+  /// **This is a record, not a proof.** The protocol has no creation event to
+  /// attach ownership to — joining is deriving a key from a name, and the
+  /// first person to type it is indistinguishable from the tenth — so there is
+  /// nothing to check a claim against. What this records is the first *settled*
+  /// administrator each phone saw: the seat somebody took and everyone else
+  /// accepted. In a room made by one person and joined by others that is the
+  /// person who made it, on every phone, because the claim spreads from one
+  /// place.
+  ///
+  /// Written once and never moved. Ownership does not follow the admin list,
+  /// or an owner could appoint an administrator and be deleted by them.
+  final bool isOwner;
+
   bool get isRemoved => removedAt != null;
 
   bool get isMutedNow =>
@@ -74,6 +90,7 @@ class ChannelMember {
     DateTime? removedAt,
     bool clearModeration = false,
     bool? provisionalAdmin,
+    bool? isOwner,
   }) =>
       ChannelMember(
         id: id,
@@ -83,6 +100,7 @@ class ChannelMember {
         mutedUntil: clearModeration ? null : (mutedUntil ?? this.mutedUntil),
         removedAt: clearModeration ? null : (removedAt ?? this.removedAt),
         provisionalAdmin: provisionalAdmin ?? this.provisionalAdmin,
+        isOwner: isOwner ?? this.isOwner,
       );
 }
 
@@ -259,6 +277,13 @@ class ChannelRosterController
           lastSeen: DateTime.now(),
         );
     if (member.isAdmin == admin && current.containsKey(memberId)) return;
+    // The first settled seat in a room is its owner, and stays its owner.
+    //
+    // Not "the current administrator": ownership that followed the admin list
+    // would let an owner appoint somebody and be deleted by them an hour
+    // later. Written once, when there is nobody to displace.
+    final claimsRoom =
+        admin && !current.values.any((m) => m.isOwner) && member.isOwner != true;
     state = {
       ...state,
       channel: {
@@ -266,11 +291,32 @@ class ChannelRosterController
         // Settled either way: somebody said so out loud. A seat granted here
         // is no longer a guess, and one taken away leaves nothing to be
         // provisional about.
-        memberId: member.copyWith(isAdmin: admin, provisionalAdmin: false),
+        memberId: member.copyWith(
+          isAdmin: admin,
+          provisionalAdmin: false,
+          isOwner: claimsRoom ? true : null,
+        ),
       },
     };
     await _persist();
   }
+
+  /// Who may close this room for everybody, or null when nobody is recorded.
+  ///
+  /// Null is the normal answer for a room that existed before ownership did,
+  /// and for one whose seat is still a guess. The caller decides what to do
+  /// about it — see the channel delete ingest, which will not act on a room
+  /// with no owner rather than falling back to "any administrator".
+  String? ownerOf(String channel) {
+    for (final member in (state[channel] ?? const <String, ChannelMember>{})
+        .values) {
+      if (member.isOwner) return member.id;
+    }
+    return null;
+  }
+
+  bool isOwner(String channel, String memberId) =>
+      ownerOf(channel) == memberId;
 
   /// Apply an administrator's decision about one member.
   ///
@@ -359,6 +405,10 @@ class ChannelRosterController
             // provisional, because that is what those seats were: every one of
             // them was handed out by an empty roster.
             provisionalAdmin: data['confirmedAdmin'] != true,
+            // Absent for every roster stored before ownership existed. Those
+            // rooms have no owner until somebody's seat settles again, which
+            // is the honest answer: nothing recorded who made them.
+            isOwner: data['owner'] == true,
           );
         }
         loaded[channelEntry.key as String] = members;
@@ -389,6 +439,7 @@ class ChannelRosterController
               // read back as provisional on the next launch — which is also
               // exactly what every seat stored before this existed was.
               if (!member.value.provisionalAdmin) 'confirmedAdmin': true,
+              if (member.value.isOwner) 'owner': true,
             },
         },
     });

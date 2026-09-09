@@ -3770,13 +3770,19 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     if (_circleOverlay != null) return;
     final recorder = _circle;
     if (recorder == null) return;
+    // Where the composer starts, read off the record button rather than
+    // guessed: everything below that line stays sharp, because while a circle
+    // records that bar is carrying the seconds, the cancel and the send.
+    final box =
+        _recordButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final screen = MediaQuery.sizeOf(context).height;
+    final clear = box == null || !box.hasSize
+        ? 96.0
+        : (screen - box.localToGlobal(Offset.zero).dy + 10).clamp(0.0, screen);
     final entry = OverlayEntry(
       builder: (context) => CircleRecorderPreview(
         recorder: recorder,
-        locked: _recordLocked,
-        hint: _recordLocked
-            ? AppLocalizations.of(context).circleHintLocked
-            : AppLocalizations.of(context).circleHint,
+        bottomClear: clear,
       ),
     );
     _circleOverlay = entry;

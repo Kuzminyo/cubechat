@@ -1850,6 +1850,30 @@ abstract class AppLocalizations {
   /// **'Copied'**
   String get relaysCopied;
 
+  /// Owner-only action at the bottom of channel info.
+  ///
+  /// In en, this message translates to:
+  /// **'Close this room for everyone'**
+  String get channelCloseTitle;
+
+  /// Explains the owner-only close action.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes it from every member\'s phone. Only you can do this.'**
+  String get channelCloseSubtitle;
+
+  /// Confirmation before closing a room, stating honestly what it does and does not do.
+  ///
+  /// In en, this message translates to:
+  /// **'The room, its messages and its members go from every phone that has it. Nobody is locked out: the key comes from the name, so anyone who remembers it can open an empty room again.'**
+  String get channelCloseConfirm;
+
+  /// Confirm button for closing a room.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the room'**
+  String get channelCloseAction;
+
   /// Under the round video preview while a finger is holding the button.
   ///
   /// In en, this message translates to:

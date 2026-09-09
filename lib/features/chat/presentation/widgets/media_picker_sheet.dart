@@ -538,6 +538,56 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         onSecondaryAction: () => _close(const MediaPickerCamera()),
       );
     }
+    // Partial access, which is not the same as no access and does not look
+    // like it either.
+    //
+    // Since Android 14 the media permission dialog offers "Select photos and
+    // videos" beside "Allow all", and choosing it grants
+    // READ_MEDIA_VISUAL_USER_SELECTED instead of the whole library. The state
+    // that comes back is `limited`, and `hasAccess` is **true** for it — so
+    // this fell straight through to the grid, which then drew the camera tile
+    // and nothing else. Reported, correctly, as "the gallery is empty": the
+    // permission was granted, the query was right, and the system was handing
+    // us the pictures the user had picked, which was none of them.
+    //
+    // The way out is not the settings app, it is the system's own picker, and
+    // it is one tap.
+    if (_perm == PermissionState.limited && _assets.isEmpty) {
+      return _message(
+        'Only selected photos are shared',
+        'Cubechat can see the photos you picked in the system dialog, and you '
+            'picked none. Choose some, or allow all photos.',
+        action: 'Choose photos',
+        onAction: () async {
+          await PhotoManager.presentLimited(type: RequestType.common);
+          if (!mounted) return;
+          // Start over rather than page on: the selection changed underneath
+          // us, so the album, the count and the first page are all different
+          // things now.
+          setState(() {
+            _assets.clear();
+            _album = null;
+            _page = 0;
+            _hasMore = true;
+            _loading = true;
+          });
+          await _load();
+        },
+        secondaryAction: 'Take a photo',
+        onSecondaryAction: () => _close(const MediaPickerCamera()),
+      );
+    }
+    if (_assets.isEmpty) {
+      // Access granted and the library really is empty. Said out loud rather
+      // than drawn as a blank sheet with one camera tile on it, which is the
+      // same picture as every failure above.
+      return _message(
+        'No photos here',
+        'This phone has no pictures to send yet.',
+        action: 'Take a photo',
+        onAction: () => _close(const MediaPickerCamera()),
+      );
+    }
     // itemCount is assets + 1: the first cell is always the camera tile, so the
     // camera is reachable even when the gallery is empty.
     return NotificationListener<ScrollNotification>(

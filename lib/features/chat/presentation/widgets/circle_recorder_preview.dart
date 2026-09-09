@@ -24,17 +24,21 @@ class CircleRecorderPreview extends StatelessWidget {
   const CircleRecorderPreview({
     super.key,
     required this.recorder,
-    required this.hint,
-    required this.locked,
+    required this.bottomClear,
   });
 
   final CircleRecorder recorder;
 
-  /// One line under the circle: what letting go does.
-  final String hint;
-
-  /// True once the press has ended and the recording carries on by itself.
-  final bool locked;
+  /// How much of the bottom of the screen the glass must leave alone.
+  ///
+  /// The composer is down there, and while a circle records it is carrying the
+  /// seconds, the slide-to-cancel and the send button — the controls of the
+  /// thing being blurred. Frosting them made the bar look disabled at the
+  /// exact moment it is the only part of the screen you can use.
+  ///
+  /// Measured off the record button rather than assumed, because the composer
+  /// grows with a reply island, a draft and the keyboard.
+  final double bottomClear;
 
   /// Light, not heavy. The conversation behind should still be recognisable as
   /// the chat you are in — the blur says "later", not "gone". Deliberately
@@ -54,7 +58,11 @@ class CircleRecorderPreview extends StatelessWidget {
         final ready = recorder.isReady && camera != null;
         return Stack(
           children: [
-            Positioned.fill(
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: bottomClear,
               child: IgnorePointer(
                 child: BackdropFilter(
                   filter: ui.ImageFilter.blur(
@@ -67,21 +75,23 @@ class CircleRecorderPreview extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned.fill(
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: bottomClear,
               child: IgnorePointer(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Lifted off centre by a little, because the keyboard's
-                    // half of the screen is where the composer is and a circle
-                    // dead in the middle sits low against it.
+                    // Lifted off centre by a little, because the composer's
+                    // half of the screen is the busy one and a circle dead in
+                    // the middle sits low against it.
                     const Spacer(flex: 3),
                     _Disc(
                       diameter: diameter,
                       camera: ready ? camera : null,
                     ),
-                    const SizedBox(height: 18),
-                    _Pill(text: hint),
                     const Spacer(flex: 4),
                   ],
                 ),
@@ -155,29 +165,8 @@ class _Disc extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.8),
-          fontSize: 12.5,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-}
+// The caption under the circle is gone. The composer strip below already says
+// "slide left to cancel" while a finger is down, and a second sentence a
+// hand's width above it was one instruction too many for a screen whose whole
+// content is your own face.
 

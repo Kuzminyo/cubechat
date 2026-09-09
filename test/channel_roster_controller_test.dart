@@ -79,4 +79,77 @@ void main() {
     expect(restored.membersFor('#team').single.name, 'Alice');
     expect(restored.isAdmin('#team', '1111111111111111'), isTrue);
   });
+
+  /// Who may close the room, and why it cannot move.
+  ///
+  /// There is no creation event in this protocol, so ownership is a record of
+  /// the first settled administrator rather than a proof of anything. What
+  /// matters is that the record does not follow the admin list around: an
+  /// owner who appoints an administrator must not become deletable by them.
+  group('ownership', () {
+    const first = '1111111111111111';
+    const second = '2222222222222222';
+
+    test('a fresh room has no owner to name', () async {
+      final roster = container.read(channelRosterControllerProvider.notifier);
+      await roster.loaded;
+      await roster.record(
+        '#team',
+        ChannelMember(
+          id: first,
+          name: 'Alice',
+          isAdmin: false,
+          lastSeen: DateTime(2026, 9, 9),
+        ),
+      );
+      expect(roster.ownerOf('#team'), isNull);
+      expect(roster.isOwner('#team', first), isFalse);
+    });
+
+    test('the first settled seat takes the room', () async {
+      final roster = container.read(channelRosterControllerProvider.notifier);
+      await roster.loaded;
+      await roster.setAdmin('#team', first, true);
+      expect(roster.ownerOf('#team'), first);
+    });
+
+    test('a second administrator does not take it', () async {
+      final roster = container.read(channelRosterControllerProvider.notifier);
+      await roster.loaded;
+      await roster.setAdmin('#team', first, true);
+      await roster.setAdmin('#team', second, true);
+      expect(
+        roster.ownerOf('#team'),
+        first,
+        reason: 'an owner appointing an admin must not hand them the room',
+      );
+      expect(roster.isOwner('#team', second), isFalse);
+    });
+
+    test('and standing down as administrator does not hand it over', () async {
+      // The room keeps its owner even when they are no longer running it.
+      // Ownership that followed the admin flag would make "close this room"
+      // reachable by whoever happened to hold a seat this week.
+      final roster = container.read(channelRosterControllerProvider.notifier);
+      await roster.loaded;
+      await roster.setAdmin('#team', first, true);
+      await roster.setAdmin('#team', second, true);
+      await roster.setAdmin('#team', first, false);
+      expect(roster.ownerOf('#team'), first);
+    });
+
+    test('it survives a restart', () async {
+      final roster = container.read(channelRosterControllerProvider.notifier);
+      await roster.loaded;
+      await roster.setAdmin('#team', first, true);
+      await settleBackgroundStorage();
+
+      final second = ProviderContainer();
+      addTearDown(second.dispose);
+      final restored =
+          second.read(channelRosterControllerProvider.notifier);
+      await restored.loaded;
+      expect(restored.ownerOf('#team'), first);
+    });
+  });
 }

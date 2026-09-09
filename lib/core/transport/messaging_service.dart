@@ -74,6 +74,7 @@ import 'inner_payload.dart';
 import 'channel_poll.dart';
 import '../util/media_storage.dart';
 import 'channel_admin.dart';
+import 'channel_delete.dart';
 import 'channel_history.dart';
 import 'peer_id.dart';
 import 'nostr/nostr_signer.dart';
@@ -4816,6 +4817,58 @@ class MessagingService {
   /// key, prepend the public channel tag + cipher tag, and wrap in a
   /// broadcast [TransportEnvelope]. Pre-records the msgId in the dedup cache
   /// so our own copy bouncing back over a relay is ignored.
+  /// Close a room for everybody in it. Owner only.
+  ///
+  /// Sent first and wiped second, in that order: the frame is built from the
+  /// channel's key, and forgetting the key before broadcasting would leave
+  /// nothing to sign with — the room would go from this phone and stay on
+  /// every other one, which is the worst of both.
+  ///
+  /// What this can do and what it cannot: the key is derived from the name, so
+  /// nobody is locked out and anyone who remembers the name can type it again
+  /// into an empty room. What it does is take the room off every phone that
+  /// has it. That is what deleting a group means to the person asking, and it
+  /// is achievable here; "nobody can ever come back" is not, and the interface
+  /// says so.
+  Future<void> sendChannelDeleteForEveryone(String channelName) async {
+    final channel =
+        _ref.read(channelControllerProvider.notifier).byName(channelName);
+    if (channel == null) throw StateError('not a member of $channelName');
+    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final me = await roster.selfMemberId();
+    if (!roster.isOwner(channel.name, me)) {
+      throw StateError('only the owner can close $channelName');
+    }
+    final frame = await _buildChannelFrame(
+      channel,
+      InnerPayloadType.channelDelete,
+      ChannelDelete(channelName: channel.name).encode(),
+      TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+    );
+    await _broadcastChannelFrame(frame);
+    DebugLog.instance.log('CHAN', 'closed ${channel.name} for everyone');
+    await wipeChannelLocally(channel.name);
+  }
+
+  /// Forget a room: its key, its messages, its roster, its picture, its topic.
+  ///
+  /// Public because both ends need it — the owner after broadcasting, and
+  /// every member on receiving. Deliberately not the chat-list's own delete,
+  /// which is a UI function holding a container and asking questions; this is
+  /// the same sequence from the transport's side, and it asks nothing because
+  /// the decision was made by somebody with the authority to make it.
+  Future<void> wipeChannelLocally(String name) async {
+    await _ref.read(messagesControllerProvider.notifier).clearForChat(name);
+    await _ref.read(pinnedControllerProvider.notifier).forget(name);
+    await _ref.read(readMarkersControllerProvider.notifier).forget(name);
+    await _ref.read(channelRosterControllerProvider.notifier).forget(name);
+    await _ref.read(channelDescriptionsControllerProvider.notifier).forget(name);
+    await _ref.read(channelAvatarsControllerProvider.notifier).forget(name);
+    // Last, because everything above is keyed on the room still being one.
+    await _ref.read(channelControllerProvider.notifier).leave(name);
+    DebugLog.instance.log('CHAN', 'wiped $name locally');
+  }
+
   Future<Uint8List> _buildChannelFrame(
     Channel channel,
     InnerPayloadType type,
@@ -5351,6 +5404,39 @@ class MessagingService {
                   option: poll.option!,
                 );
           }
+        case InnerPayloadType.channelDelete:
+          final ask = ChannelDelete.decode(unpacked.body);
+          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          // The name inside the signed body has to be the room the frame
+          // arrived in. The signature covers the body, so this is what stops a
+          // delete lifted from one room being replayed into another — and for
+          // an instruction with no undo that check is worth two bytes.
+          if (normalizeChannelName(ask.channelName) != channel.name) {
+            DebugLog.instance.log(
+              'CHAN',
+              'drop close: signed for ${ask.channelName}, arrived in '
+                  '${channel.name}',
+            );
+            break;
+          }
+          final owner = roster.ownerOf(channel.name);
+          // No owner recorded, no delete. Deliberately not "fall back to any
+          // administrator": a room that predates ownership has nobody it can
+          // name, and the safe reading of an irreversible instruction from an
+          // unidentified sender is to ignore it.
+          if (owner == null || owner != reactorId) {
+            DebugLog.instance.log(
+              'CHAN',
+              'drop close of ${channel.name}: $reactorId is not the owner '
+                  '(${owner ?? "none recorded"})',
+            );
+            break;
+          }
+          DebugLog.instance
+              .log('CHAN', '${channel.name} closed by its owner — wiping');
+          await wipeChannelLocally(channel.name);
+          return;
+
         case InnerPayloadType.channelAdmin:
           final change = ChannelAdminChange.decode(unpacked.body);
           final roster = _ref.read(channelRosterControllerProvider.notifier);
@@ -6345,6 +6431,9 @@ class MessagingService {
         case InnerPayloadType.channelAdmin:
         case InnerPayloadType.channelModeration:
         case InnerPayloadType.channelHistory:
+        // Room business, and this is the one-to-one path: a close arrives in a
+        // channel frame or it does not arrive.
+        case InnerPayloadType.channelDelete:
           break;
 
         case InnerPayloadType.forwardPrivacy:

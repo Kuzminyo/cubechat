@@ -727,10 +727,67 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                             !member.isAdmin,
                           ),
                 ),
+            // The last thing on the screen, and only for one person in the
+            // room. Below the member list rather than up with the settings,
+            // because it is not a setting — it is the end of the room.
+            if (_myId != null && roster.isOwner(widget.channelName, _myId!)) ...[
+              const SizedBox(height: 24),
+              GlassCard(
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.delete_forever_rounded,
+                    color: AppColors.danger,
+                  ),
+                  title: Text(
+                    t.channelCloseTitle,
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    t.channelCloseSubtitle,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                  onTap: _closeForEveryone,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// End the room, on every phone that has it.
+  ///
+  /// Two sentences in the confirmation and both of them true: everything goes
+  /// from everyone, and nobody is locked out — the key comes from the name, so
+  /// anyone who remembers it can type it again into an empty room. Promising
+  /// otherwise would be the one lie this screen could tell that somebody would
+  /// find out the hard way.
+  Future<void> _closeForEveryone() async {
+    final t = AppLocalizations.of(context);
+    final sure = await confirmAction(
+      context,
+      title: t.channelCloseTitle,
+      message: t.channelCloseConfirm,
+      confirmLabel: t.channelCloseAction,
+    );
+    if (!sure || !mounted) return;
+    try {
+      await ref
+          .read(messagingServiceProvider)
+          .sendChannelDeleteForEveryone(widget.channelName);
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (mounted) showGlassToast(context, '$e', tone: ToastTone.danger);
+    }
   }
 }
 

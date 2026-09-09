@@ -1026,6 +1026,20 @@ class AppLocalizationsUk extends AppLocalizations {
   String get relaysCopied => 'Скопійовано';
 
   @override
+  String get channelCloseTitle => 'Закрити кімнату для всіх';
+
+  @override
+  String get channelCloseSubtitle =>
+      'Прибере її з телефона кожного учасника. Це можете лише ви.';
+
+  @override
+  String get channelCloseConfirm =>
+      'Кімната, її повідомлення та учасники зникнуть з кожного телефона, де вона є. Нікого не заблоковано: ключ походить від назви, тож хто її пам\'ятає, той відкриє порожню кімнату знову.';
+
+  @override
+  String get channelCloseAction => 'Закрити кімнату';
+
+  @override
   String get circleHint => 'Відпустіть, щоб надіслати · вліво — скасувати';
 
   @override
