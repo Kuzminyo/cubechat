@@ -274,6 +274,27 @@ final class DefaultCamera: NSObject, Camera {
       }
       fallthrough
     case .veryHigh:
+      // CubeChat: 4:3 before 16:9, for the round video message.
+      //
+      // A round window is a square cut from the middle, so it takes the
+      // frame's short side: 1440x1080 and 1920x1080 put the same 1080 pixels
+      // on the disc, and a 16:9 frame's extra columns fall outside the circle.
+      // What differs is how much of the room is in them - a phone builds 16:9
+      // by keeping the sensor's full width and cutting its height, which in
+      // portrait is about a quarter narrower than the native 4:3.
+      //
+      // AVFoundation has no 4:3 session preset above VGA, so this picks a
+      // format directly the way `.max` above already does, and falls through
+      // to the old preset when the device has no 4:3 format near 1080.
+      if let wideFormat = fourThreeFormat(forCaptureDevice: captureDevice) {
+        videoCaptureSession.sessionPreset = .inputPriority
+        do {
+          try captureDevice.lockForConfiguration()
+          captureDevice.flutterActiveFormat = wideFormat
+          captureDevice.unlockForConfiguration()
+          break
+        }
+      }
       if videoCaptureSession.canSetSessionPreset(.hd1920x1080) {
         videoCaptureSession.sessionPreset = .hd1920x1080
         break
@@ -356,6 +377,61 @@ final class DefaultCamera: NSObject, Camera {
       {
         bestFormat = format
         maxPixelCount = pixelCount
+        isBestSubTypePreferred = isSubTypePreferred
+      }
+    }
+    return bestFormat
+  }
+
+  /// CubeChat: the tallest 4:3 video format at or under 1080 on the short side.
+  ///
+  /// Bounded rather than "the biggest 4:3 there is", because the biggest is a
+  /// stills format on most iPhones - twelve megapixels the encoder would then
+  /// have to scale down every frame, for a disc drawn at a few hundred points.
+  /// 1080 on the short side is what the round message needs and no more.
+  ///
+  /// Returns nil when the device has no 4:3 video format in range, and the
+  /// caller falls back to the 16:9 preset it always used.
+  private func fourThreeFormat(forCaptureDevice captureDevice: CaptureDevice)
+    -> CaptureDeviceFormat?
+  {
+    let preferredSubType = CMFormatDescriptionGetMediaSubType(
+      captureDevice.flutterActiveFormat.formatDescription)
+    var bestFormat: CaptureDeviceFormat? = nil
+    var bestShortEdge: UInt = 0
+    var isBestSubTypePreferred = false
+
+    // Same list the highest-resolution picker skips: compressed and lossy, and
+    // unsupported by the Flutter Engine.
+    let unsupportedSubTypes: [FourCharCode] = [
+      1_651_798_066  // Hex for 'btp2', or kCVPixelFormatType_96VersatileBayerPacked12
+    ]
+
+    for format in captureDevice.flutterFormats {
+      let subType = CMFormatDescriptionGetMediaSubType(format.formatDescription)
+      if unsupportedSubTypes.contains(subType) {
+        continue
+      }
+
+      let resolution = videoDimensionsConverter(format)
+      let height = UInt(resolution.height)
+      let width = UInt(resolution.width)
+      if height == 0 || width == 0 || height == width {
+        continue
+      }
+
+      // 4:3 within a pixel or two, whichever way round the format reports it.
+      let longEdge = max(width, height)
+      let shortEdge = min(width, height)
+      guard abs(Int(longEdge * 3) - Int(shortEdge * 4)) <= 8 else { continue }
+      guard shortEdge <= 1080 else { continue }
+
+      let isSubTypePreferred = subType == preferredSubType
+      if shortEdge > bestShortEdge
+        || (shortEdge == bestShortEdge && isSubTypePreferred && !isBestSubTypePreferred)
+      {
+        bestFormat = format
+        bestShortEdge = shortEdge
         isBestSubTypePreferred = isSubTypePreferred
       }
     }

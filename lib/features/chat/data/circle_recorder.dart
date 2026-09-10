@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -80,6 +81,20 @@ class CircleRecorder extends ChangeNotifier {
   /// costs 2.25× the transfer on a phone uplink. Eight seconds is about 5 MB
   /// and 80 publishes at [kRelayMediaChunkData], against 51 before.
   ///
+  /// **3.75 Mbps, down from 5, and nothing visible is lost.** `veryHigh` now
+  /// asks for 4:3 rather than 16:9 (see the vendored plugin's preset table), so
+  /// the frame is 1440×1080 where it was 1920×1080 — three quarters of the
+  /// pixels, and the quarter that went are the columns outside the circle that
+  /// were being encoded for nothing. Scaling the bitrate by the same three
+  /// quarters keeps the bits-per-pixel identical: the disc is as sharp as it
+  /// was, and the file is a quarter smaller.
+  ///
+  /// Frame rate is untouched at 60, deliberately, because that is the part a
+  /// person sees immediately.
+  ///
+  /// Eight seconds now lands near 3.75 MB and 60 publishes at
+  /// [kRelayMediaChunkData], against 5 MB and 80.
+  ///
   /// If sending becomes slow, **lower this number, not the resolution** — the
   /// pixels are nearly free on the wire and the bits are not.
   static CameraController _makeCamera(CameraDescription lens) =>
@@ -88,7 +103,7 @@ class CircleRecorder extends ChangeNotifier {
         ResolutionPreset.veryHigh,
         enableAudio: true,
         fps: 60,
-        videoBitrate: 5000000,
+        videoBitrate: 3750000,
         audioBitrate: 64000,
       );
 
@@ -238,15 +253,90 @@ class CircleRecorder extends ChangeNotifier {
   /// A circle is a few seconds of your own face; a zoom held between one and
   /// the next would be a setting nobody set. This is a magnifying glass, not a
   /// lens choice.
+  ///
+  /// Eased back rather than snapped. One `setZoomLevel` to the minimum is a
+  /// cut: the picture is at 3x in one frame and at 1x in the next, which reads
+  /// as the camera flinching when you let go. The pinch itself is smooth
+  /// because a finger moves smoothly, and the release was the only part of the
+  /// gesture that was not.
+  ///
+  /// 220 ms of ease-out in 16 ms steps, which is a frame each at 60 Hz. The
+  /// platform call is awaited inside the loop, so a camera that cannot keep up
+  /// falls behind into fewer, larger steps instead of queueing a hundred of
+  /// them behind the finger.
+  static const Duration _zoomEase = Duration(milliseconds: 220);
+  static const Duration _zoomStep = Duration(milliseconds: 16);
+
+  /// Which reset is the live one, so a second pinch cancels the first's ride
+  /// home instead of fighting it frame by frame.
+  int _zoomGeneration = 0;
+
   Future<void> resetZoom() async {
     final camera = _camera;
     if (camera == null || _zoom == _minZoom) return;
-    _zoom = _minZoom;
+    final generation = ++_zoomGeneration;
+    final from = _zoom;
+    final span = from - _minZoom;
     _zoomAtGestureStart = _minZoom;
+    final steps = _zoomEase.inMilliseconds ~/ _zoomStep.inMilliseconds;
+    for (var i = 1; i <= steps; i++) {
+      if (generation != _zoomGeneration || _camera != camera || _disposed) {
+        return;
+      }
+      // Ease-out cubic: most of the distance early, the last of it slowly, so
+      // the picture settles rather than arrives.
+      final t = i / steps;
+      final eased = 1 - math.pow(1 - t, 3);
+      _zoom = from - span * eased;
+      try {
+        await camera.setZoomLevel(_zoom);
+      } catch (_) {
+        // A camera that reports a range and then refuses it. Stop rather than
+        // spend the rest of the ride throwing.
+        break;
+      }
+      _notify();
+      await Future<void>.delayed(_zoomStep);
+    }
+    if (generation != _zoomGeneration) return;
+    _zoom = _minZoom;
     try {
       await camera.setZoomLevel(_minZoom);
     } catch (_) {}
     _notify();
+  }
+
+  /// How much brighter than the meter says, in stops.
+  ///
+  /// **A face is not the average of the room, and a camera meters the room.**
+  /// A phone held at arm's length indoors puts a head against a wall, a window
+  /// or a ceiling light, and automatic exposure balances all of it — which
+  /// lands the face a stop under, in shadow, every time. Compared against
+  /// Telegram's round video on the same phone on 2026-09-10: same room, same
+  /// lens, theirs visibly brighter.
+  ///
+  /// Two thirds of a stop. Enough to lift a face out of shadow, small enough
+  /// that a bright room does not blow out — this is a correction to metering,
+  /// not a brightness setting, and there is nobody to turn it back down.
+  static const double _exposureStops = 0.67;
+
+  /// Nudge the exposure, if this camera has any to give.
+  ///
+  /// The range is asked for rather than assumed: it is in stops on Android and
+  /// in stops on iOS, but the bounds differ per device, and a value outside
+  /// them throws. Clamped, and a camera that offers no range at all is left
+  /// exactly as it was.
+  Future<void> _brighten(CameraController camera) async {
+    try {
+      final min = await camera.getMinExposureOffset();
+      final max = await camera.getMaxExposureOffset();
+      if (max <= min) return;
+      final offset = _exposureStops.clamp(min, max);
+      await camera.setExposureOffset(offset);
+      DebugLog.instance.log('CIRCLE', 'exposure +$offset EV (of $min..$max)');
+    } catch (e) {
+      DebugLog.instance.log('CIRCLE', 'exposure not adjustable: $e');
+    }
   }
 
   /// The light: the screen on a front lens, the flash on a back one.
@@ -320,6 +410,9 @@ class CircleRecorder extends ChangeNotifier {
       _zoom = _minZoom;
       _zoomAtGestureStart = _minZoom;
       await camera.setZoomLevel(_minZoom);
+      // The other sensor has its own metering and its own range, so the
+      // correction is applied again rather than assumed to have carried over.
+      await _brighten(camera);
       await _logLens(camera);
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
     } catch (e) {
@@ -341,7 +434,16 @@ class CircleRecorder extends ChangeNotifier {
   /// True once the preview has a picture in it. The ring is drawn against
   /// this rather than against [isRecording], so the circle does not appear as
   /// a black hole while the camera opens.
-  bool get isReady => _camera?.value.isInitialized ?? false;
+  ///
+  /// **A sensor swap does not count as not-ready.** `setDescription` takes the
+  /// controller through a moment where `isInitialized` is false, and the disc
+  /// was drawn against this directly — so flipping the camera made the picture
+  /// vanish and come back, on top of the turn animation that was there to
+  /// cover exactly that gap. The controller is the same object throughout and
+  /// its texture keeps showing the last frame, so holding it here is showing
+  /// what the screen already has rather than pretending.
+  bool get isReady =>
+      _flipping ? _camera != null : (_camera?.value.isInitialized ?? false);
 
   Duration get elapsed {
     final at = _startedAt;
@@ -406,6 +508,7 @@ class CircleRecorder extends ChangeNotifier {
         _maxZoom = 1;
         _zoom = 1;
       }
+      await _brighten(camera);
       _torchOn = false;
       // A front camera has no flash on any phone this will meet, and asking
       // anyway is worse than not asking: the call succeeds and lights nothing.
