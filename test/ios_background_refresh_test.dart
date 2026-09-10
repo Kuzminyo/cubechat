@@ -37,6 +37,13 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('cubechat_bgfetch_');
     Hive.init(tempDir.path);
+    // The refresh is a singleton with an in-flight flag, and every test here
+    // shares it. A window opened by an earlier test outlives that test whenever
+    // the machine is slower than the millisecond budget it chose, so the next
+    // one was told "refresh already running — ignoring" and then asserted
+    // against a poke that never came. Green on a workstation, red on a CI
+    // runner, at random. Each test starts from a closed window now.
+    IosBackgroundRefresh.instance.releaseWindowForTest();
   });
 
   tearDown(() async {

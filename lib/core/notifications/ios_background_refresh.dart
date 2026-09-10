@@ -75,6 +75,22 @@ class IosBackgroundRefresh {
   /// achieve nothing but spend battery.
   bool _running = false;
 
+  /// Let go of the in-flight guard, for a test that is about to open its own
+  /// window.
+  ///
+  /// This is a singleton with a boolean in it, and the tests in one file share
+  /// both. A window opened by an earlier test outlives the test that opened it
+  /// whenever the machine is slower than the millisecond budget that test
+  /// chose — so the next one called [refreshNow], was told "already running",
+  /// and asserted against a poke that never happened. It passed on a
+  /// workstation and failed on a CI runner, which is the shape of every flake
+  /// that survives long enough to be annoying.
+  ///
+  /// Only the flag. Nothing is cancelled, because the previous window's work is
+  /// harmless and finishing it is not this method's business.
+  @visibleForTesting
+  void releaseWindowForTest() => _running = false;
+
   /// Wire the native channel to [container]. Called from `main()` before
   /// `runApp` so the handler exists even when iOS launches us straight into the
   /// background, where no frame is ever rendered and the widget tree may never
