@@ -94,26 +94,64 @@ class FakeCamera extends CameraController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('widest available lens is preferred to telephoto and standard', () {
-    const ultra = CameraDescription(
+  test('widest facing you, main lens facing away', () {
+    // Two different questions wearing one name. An ultra-wide is the only way
+    // to get more than a face into a disc held at arm's length, so facing you
+    // it wins. Facing away it loses: a phone's ultra-wide is its cheapest
+    // sensor, smaller and softer than the main one, and somebody pointing the
+    // camera at a subject wants the sharp lens, not the roomy one. Reported as
+    // "the rear camera is not sharp" after the front-facing rule was applied
+    // to both.
+    const ultraBack = CameraDescription(
       name: 'ultra',
       lensDirection: CameraLensDirection.back,
       sensorOrientation: 90,
       lensType: CameraLensType.ultraWide,
     );
+    const wideBack = CameraDescription(
+      name: 'wide',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 90,
+      lensType: CameraLensType.wide,
+    );
+    const teleBack = CameraDescription(
+      name: 'tele',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 90,
+      lensType: CameraLensType.telephoto,
+    );
+    const ultraFront = CameraDescription(
+      name: 'ultra-front',
+      lensDirection: CameraLensDirection.front,
+      sensorOrientation: 90,
+      lensType: CameraLensType.ultraWide,
+    );
+
     expect(
       CircleRecorder.widestLens(
-        [front, back, ultra],
+        [front, wideBack, ultraBack, teleBack],
         CameraLensDirection.back,
       ),
-      ultra,
+      wideBack,
+      reason: 'the main lens, not the ultra-wide and not the telephoto',
     );
     expect(
       CircleRecorder.widestLens(
-        [front, back, ultra],
+        [front, ultraFront],
         CameraLensDirection.front,
       ),
-      front,
+      ultraFront,
+      reason: 'facing you, wider is the whole point',
+    );
+    expect(
+      CircleRecorder.widestLens(
+        [front, back, ultraBack],
+        CameraLensDirection.back,
+      ),
+      back,
+      reason: 'Android reports every lens as unknown, and the unknown one is '
+          'the camera the platform listed first — still a better guess than '
+          'an ultra-wide that admitted what it was',
     );
   });
   test('cancel while the camera list is pending prevents the camera opening',

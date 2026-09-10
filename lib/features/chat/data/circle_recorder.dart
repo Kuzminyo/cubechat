@@ -81,34 +81,50 @@ class CircleRecorder extends ChangeNotifier {
   /// costs 2.25× the transfer on a phone uplink. Eight seconds is about 5 MB
   /// and 80 publishes at [kRelayMediaChunkData], against 51 before.
   ///
-  /// **3.75 Mbps, down from 5, and nothing visible is lost.** `veryHigh` now
-  /// asks for 4:3 rather than 16:9 (see the vendored plugin's preset table), so
-  /// the frame is 1440×1080 where it was 1920×1080 — three quarters of the
-  /// pixels, and the quarter that went are the columns outside the circle that
-  /// were being encoded for nothing. Scaling the bitrate by the same three
-  /// quarters keeps the bits-per-pixel identical: the disc is as sharp as it
-  /// was, and the file is a quarter smaller.
+  /// **Back to 5 Mbps. Cutting it to 3.75 was measured on a phone and it cost
+  /// the smoothness, which is not what the arithmetic predicted.**
   ///
-  /// Frame rate is untouched at 60, deliberately, because that is the part a
-  /// person sees immediately.
+  /// The arithmetic said: 4:3 is 1440×1080 against 16:9's 1920×1080, three
+  /// quarters of the pixels, so three quarters of the bitrate holds
+  /// bits-per-pixel steady and the file is a quarter smaller for nothing. The
+  /// pixel maths is right and the conclusion was wrong, because bits per pixel
+  /// is not what the eye is reading here. At 60 frames a second the encoder has
+  /// sixty keyframe-and-motion budgets to fill every second, 3.75 Mbps leaves
+  /// about 62 kbit for each, and below some floor a moving face stops being
+  /// smooth and starts being a slideshow of blocks. 5 Mbps was already lean for
+  /// 1080p60; it had no quarter to give.
   ///
-  /// Eight seconds now lands near 3.75 MB and 60 publishes at
-  /// [kRelayMediaChunkData], against 5 MB and 80.
+  /// **The lever for file size at a fixed frame rate is resolution, not
+  /// bitrate.** The disc is drawn at about 650 physical pixels on a 1080-wide
+  /// phone, so 1080 of capture is already 1.7× what is displayed; 960×720 would
+  /// still be above it and would carry a proportionally smaller bitrate at the
+  /// same quality. That is a real option and it is not taken here, because
+  /// "make it sharper" and "make it smaller" have been asked for in that order
+  /// and this is the one that was asked for last.
   ///
-  /// If sending becomes slow, **lower this number, not the resolution** — the
-  /// pixels are nearly free on the wire and the bits are not.
+  /// Frame rate stays at 60. It is the part a person sees immediately, and it
+  /// is the part that was explicitly not to be touched.
   static CameraController _makeCamera(CameraDescription lens) =>
       CameraController(
         lens,
         ResolutionPreset.veryHigh,
         enableAudio: true,
         fps: 60,
-        videoBitrate: 3750000,
+        videoBitrate: 5000000,
         audioBitrate: 64000,
       );
 
   /// Prefer the widest advertised lens; unknown logical cameras still expose
   /// their full range through getMinZoomLevel. No extra digital zoom is added.
+  ///
+  /// **Widest, except on the back, where it is the main lens.** An ultra-wide
+  /// is the right answer facing you: it is the only way to get more than a
+  /// face into a disc held at arm's length, and on the front there is rarely
+  /// more than one lens anyway. Facing away it is the wrong answer, and
+  /// reported as such — a phone's ultra-wide is its cheapest sensor, smaller,
+  /// slower and softer than the main one, and nobody pointing the camera at
+  /// something wants the soft lens for the sake of fitting more in. Behind you
+  /// there is a subject; in front of you there is you.
   @visibleForTesting
   static CameraDescription widestLens(
     List<CameraDescription> cameras,
@@ -116,10 +132,11 @@ class CircleRecorder extends ChangeNotifier {
   ) {
     final choices = cameras.where((c) => c.lensDirection == direction).toList();
     if (choices.isEmpty) return cameras.first;
+    final rear = direction == CameraLensDirection.back;
     int rank(CameraDescription c) => switch (c.lensType) {
-          CameraLensType.ultraWide => 0,
-          CameraLensType.wide => 1,
-          CameraLensType.unknown => 2,
+          CameraLensType.ultraWide => rear ? 2 : 0,
+          CameraLensType.wide => rear ? 0 : 1,
+          CameraLensType.unknown => rear ? 1 : 2,
           CameraLensType.telephoto => 3,
         };
     // Preserve the native field-of-view order when Android reports unknown
@@ -149,9 +166,19 @@ class CircleRecorder extends ChangeNotifier {
   /// [widestLens] already asks for an ultra-wide where the phone has one, and
   /// almost none have one facing the user.
   Future<void> _logLens(CameraController camera) async {
+    // The capture size is in here because "the smoothness is gone" and "it is
+    // too tight" are both questions about what the sensor actually gave us,
+    // and neither could be answered from a log that only named the lens. A
+    // 4:3 request that a device could not honour shows up as a 16:9 preview
+    // size; a frame rate that fell back shows up as neither, which is the next
+    // thing this line needs.
+    final size = camera.value.previewSize;
     DebugLog.instance.log(
       'CIRCLE',
-      'lens=${camera.description.name} zoom=$_minZoom '
+      'lens=${camera.description.name} '
+          '${size == null ? 'size unknown' : '${size.width.toInt()}x'
+              '${size.height.toInt()}'} '
+          'zoom=$_minZoom '
           'stabilization=${camera.value.videoStabilizationMode.name} '
           '(not requested — it crops)',
     );
@@ -264,12 +291,24 @@ class CircleRecorder extends ChangeNotifier {
   /// platform call is awaited inside the loop, so a camera that cannot keep up
   /// falls behind into fewer, larger steps instead of queueing a hundred of
   /// them behind the finger.
-  static const Duration _zoomEase = Duration(milliseconds: 220);
+  static const Duration _zoomEase = Duration(milliseconds: 260);
   static const Duration _zoomStep = Duration(milliseconds: 16);
 
   /// Which reset is the live one, so a second pinch cancels the first's ride
   /// home instead of fighting it frame by frame.
   int _zoomGeneration = 0;
+
+  /// A `setZoomLevel` is still on its way to the platform.
+  ///
+  /// This is what makes the ride even, and the first version did not have it.
+  /// That one awaited each call and then slept 16 ms, so every step really
+  /// took 16 ms *plus* however long the platform took — a hundred microseconds
+  /// sometimes and thirty milliseconds others — and the picture arrived home in
+  /// visible lurches. The animation is driven by the clock now and the camera
+  /// is asked to keep up: a tick that finds the previous call unfinished skips
+  /// its own rather than queueing behind it, so a slow camera drops frames of
+  /// the ride instead of stretching it.
+  bool _zoomBusy = false;
 
   Future<void> resetZoom() async {
     final camera = _camera;
@@ -278,27 +317,38 @@ class CircleRecorder extends ChangeNotifier {
     final from = _zoom;
     final span = from - _minZoom;
     _zoomAtGestureStart = _minZoom;
-    final steps = _zoomEase.inMilliseconds ~/ _zoomStep.inMilliseconds;
-    for (var i = 1; i <= steps; i++) {
+    final started = DateTime.now();
+    final done = Completer<void>();
+    Timer.periodic(_zoomStep, (timer) {
       if (generation != _zoomGeneration || _camera != camera || _disposed) {
+        timer.cancel();
+        if (!done.isCompleted) done.complete();
         return;
       }
+      // Position from elapsed wall time, never from the tick count. A timer
+      // that fires late must not make the animation longer, only coarser.
+      final elapsed = DateTime.now().difference(started).inMicroseconds;
+      final t = (elapsed / _zoomEase.inMicroseconds).clamp(0.0, 1.0);
       // Ease-out cubic: most of the distance early, the last of it slowly, so
       // the picture settles rather than arrives.
-      final t = i / steps;
       final eased = 1 - math.pow(1 - t, 3);
-      _zoom = from - span * eased;
-      try {
-        await camera.setZoomLevel(_zoom);
-      } catch (_) {
-        // A camera that reports a range and then refuses it. Stop rather than
-        // spend the rest of the ride throwing.
-        break;
-      }
+      _zoom = t >= 1 ? _minZoom : from - span * eased;
       _notify();
-      await Future<void>.delayed(_zoomStep);
-    }
-    if (generation != _zoomGeneration) return;
+      if (!_zoomBusy) {
+        _zoomBusy = true;
+        camera.setZoomLevel(_zoom).catchError((_) {}).whenComplete(() {
+          _zoomBusy = false;
+        });
+      }
+      if (t >= 1) {
+        timer.cancel();
+        if (!done.isCompleted) done.complete();
+      }
+    });
+    await done.future;
+    if (generation != _zoomGeneration || _disposed) return;
+    // The last tick may have been the one that was skipped for being busy, and
+    // the ride has to end exactly at the minimum rather than near it.
     _zoom = _minZoom;
     try {
       await camera.setZoomLevel(_minZoom);
