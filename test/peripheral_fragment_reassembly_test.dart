@@ -78,12 +78,22 @@ void main() {
   });
 
   tearDown(() async {
-    await settleBackgroundStorage();
+    // **Dispose before settling, not after.** Settling first waited 250 ms
+    // while the container was still alive, and a handshake this test dispatched
+    // was still working its way through the service — long enough for it to
+    // reach `messagesControllerProvider`, whose build fires off a summary load
+    // that nobody holds. The delete at the end of this function then took the
+    // directory away mid-open, and the failure surfaced as an unhandled
+    // `PathNotFoundException` charged to a test that had already passed. That
+    // is what turned iOS CI red on build 1033 while Android passed the same
+    // commit — the window is a race, so it opens on one runner and not another.
+    // Disposing first means no provider can begin building during the wait.
     debugPrint = originalDebugPrint;
     container.dispose();
     // The service's dispose is async and Riverpod doesn't await it; give it a
     // turn to let go of its Hive boxes before closing them underneath it.
     await Future<void>.delayed(Duration.zero);
+    await settleBackgroundStorage();
     await peripheral.dispose();
     await Hive.close();
     try {

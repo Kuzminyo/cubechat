@@ -1033,11 +1033,36 @@ class AndroidCameraCameraX extends CameraPlatform {
       useCases,
     );
 
+    // **CubeChat: the new sensor gets a new surface, so no frame is ever shown
+    // under another sensor's rules.**
+    //
+    // Rebinding hands the *same* Surface to the other camera. Between the bind
+    // returning and the first frame arriving from the new sensor — tens of
+    // milliseconds, longer on a cold lens — the texture still holds the last
+    // frame of the old one, while the correction below has already switched to
+    // the new one's facing and sensor rotation. A front frame under rear rules
+    // is that frame mirrored and turned, which is exactly what "the picture
+    // turns upside down on a flip" looks like from the outside.
+    //
+    // Releasing the old producer and taking a new one makes the worst case an
+    // empty texture instead of a wrong one, and the two happen after the bind
+    // so the old frame stays paired with the old correction for as long as it
+    // is on screen. Release first: `setSurfaceProvider` overwrites the native
+    // map entry, so setting before releasing leaks the old producer.
+    await preview?.releaseSurfaceProvider();
+    final int? swapped = await preview?.setSurfaceProvider(
+      systemServicesManager,
+    );
+
     // Retrieve info required for correcting the rotation of the camera preview
-    // Publish facing and sensor rotation together, after rebinding. Publishing
-    // facing before the awaits mirrored the old sensor with the new lens rules.
+    // Publish facing, sensor rotation and the surface together, after
+    // rebinding. Publishing facing before the awaits mirrored the old sensor
+    // with the new lens rules.
     cameraIsFrontFacing = cameraSelectorLensDirection == LensFacing.front;
     sensorOrientationDegrees = description.sensorOrientation.toDouble();
+    if (swapped != null) {
+      _flutterSurfaceTextureId = swapped;
+    }
 
     await _updateCameraInfoAndLiveCameraState(_flutterSurfaceTextureId);
   }
@@ -1070,16 +1095,25 @@ class AndroidCameraCameraX extends CameraPlatform {
           (DeviceOrientationChangedEvent e) =>
               _lockedPreviewOrientation ?? e.orientation,
         );
-    final Widget preview = Texture(textureId: cameraId);
+    // **CubeChat: the current surface, not the one handed out at create.**
+    // [setDescriptionWhileRecording] takes a new producer for the new sensor,
+    // so the id the caller is holding names a texture that has been released.
+    // There is exactly one camera open at a time here — `preview`,
+    // `imageCapture` and `videoCapture` are all single fields — so the
+    // plugin's own id is the whole truth about which texture is live.
+    final Widget preview = Texture(textureId: _flutterSurfaceTextureId);
 
     return RotatedPreviewDelegate(
       handlesCropAndRotation: _handlesCropAndRotation,
       // Recreate correction state only for a sensor/lock change, not each
       // recording timer tick. It must undo CameraPreview's locked rotation.
+      // The surface is in the key because it changes with the sensor: a new
+      // texture under the old correction is the pairing this exists to keep.
       key: ValueKey((
         cameraIsFrontFacing,
         sensorOrientationDegrees,
         _lockedPreviewOrientation,
+        _flutterSurfaceTextureId,
       )),
       initialDeviceOrientation:
           _lockedPreviewOrientation ?? _initialDeviceOrientation,
