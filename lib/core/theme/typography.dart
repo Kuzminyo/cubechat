@@ -12,11 +12,18 @@ abstract final class AppTypography {
         );
     return base.copyWith(
       // Big screen titles use Space Grotesk (display).
+      // **Every weight here is one step lighter than it was.** The scale was
+      // set while the text was still being drawn by google_fonts; bundling the
+      // families changed what actually rasterises, and the same nominal weight
+      // came out heavier on the phone than it had. Reported as the interface
+      // looking too bold. Lighter is also the safer direction on a dark
+      // background, where a stroke blooms against the glass rather than sitting
+      // on it.
       displayLarge: TextStyle(
         fontFamily: 'SpaceGrotesk',
         fontFamilyFallback: const ['Inter'],
         color: AppColors.textPrimary,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         fontSize: 34,
         letterSpacing: -0.8,
         height: 1.05,
@@ -25,7 +32,7 @@ abstract final class AppTypography {
         fontFamily: 'SpaceGrotesk',
         fontFamilyFallback: const ['Inter'],
         color: AppColors.textPrimary,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         fontSize: 28,
         letterSpacing: -0.5,
         height: 1.1,
@@ -37,7 +44,7 @@ abstract final class AppTypography {
       titleMedium: base.titleMedium?.copyWith(
         color: AppColors.textPrimary,
         fontSize: 15,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
       ),
       bodyLarge: base.bodyLarge?.copyWith(
         color: AppColors.textPrimary,
@@ -56,7 +63,7 @@ abstract final class AppTypography {
       labelLarge: base.labelLarge?.copyWith(
         color: AppColors.textPrimary,
         fontSize: 14,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w400,
       ),
     );
   }
@@ -64,7 +71,7 @@ abstract final class AppTypography {
   /// Big page-title style (Space Grotesk). Use this for the top of every screen.
   static TextStyle display({
     double size = 28,
-    FontWeight weight = FontWeight.w700,
+    FontWeight weight = FontWeight.w600,
     Color? color,
   }) {
     return TextStyle(
@@ -81,7 +88,7 @@ abstract final class AppTypography {
   /// UI headings share the body family, including Cyrillic names.
   static TextStyle heading({
     double size = 18,
-    FontWeight weight = FontWeight.w600,
+    FontWeight weight = FontWeight.w500,
     Color? color,
   }) {
     return TextStyle(
@@ -99,14 +106,14 @@ abstract final class AppTypography {
         fontFamily: 'Inter',
         fontSize: 16,
         height: 1.3,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: AppColors.textOnGlass,
       );
   static TextStyle get control => TextStyle(
         fontFamily: 'Inter',
         fontSize: 14,
         height: 1.25,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         color: AppColors.textOnGlass,
       );
   static TextStyle get supporting => TextStyle(

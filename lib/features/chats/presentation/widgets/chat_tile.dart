@@ -183,8 +183,13 @@ class ChatTile extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.rowTitle.copyWith(
+                          // A step lighter on both sides, keeping the one step
+                          // between them. What marks a chat unread is the
+                          // difference, not the absolute weight — and the row
+                          // that is *not* unread is most of the list, so it is
+                          // the one that decides how heavy the screen looks.
                           fontWeight:
-                              unread ? FontWeight.w700 : FontWeight.w600,
+                              unread ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
                     ),
