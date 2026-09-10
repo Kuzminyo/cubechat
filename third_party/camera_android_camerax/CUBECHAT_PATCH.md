@@ -19,6 +19,23 @@ The unused high-FPS analysis stream no longer overrides the negotiated rate.
 Dart now forwards MediaSettings.videoBitrate to the native Recorder as intended.
 See https://developer.android.com/reference/androidx/camera/video/VideoCapture.Builder#setTargetFrameRate(android.util.Range%3Cjava.lang.Integer%3E).
 
+Field of view (2026-09-10): `ResolutionPreset.veryHigh` now asks for 4:3 at
+1440x1080 instead of 16:9 at 1920x1080, and the Recorder is told the same
+aspect ratio because CameraX qualities are 16:9 by definition and would
+otherwise record a different shape than the preview showed. Only the round
+video message uses this preset; the in-app photo camera is on `high` and is
+untouched.
+
+It costs nothing. A round window is a square cut from the middle, so it takes
+the frame's short side: both modes put 1080 pixels on the disc, and a 16:9
+frame's extra 480 columns fall outside the circle and are encoded for nothing.
+What changes is how much of the room is in those pixels — a phone builds 16:9
+by keeping the sensor's full width and cutting its height, which in portrait is
+about a quarter narrower than the native 4:3. Compared side by side against
+Telegram's round video on the same phone: theirs showed the shoulders, ours
+stopped at the jaw. `AspectRatioStrategy` keeps `fallbackRule: auto`, so a
+sensor with no 4:3 video mode gets the nearest thing rather than failing.
+
 Camera selection: ProcessCameraProvider orders only its exposed cameras by
 sensor short edge / focal length / minimum logical zoom. Android descriptions
 otherwise all report unknown lens type, so a Dart lens preference alone cannot

@@ -429,9 +429,23 @@ class AndroidCameraCameraX extends CameraPlatform {
     );
 
     // Configure VideoCapture and Recorder instances.
+    //
+    // **CubeChat: the recorder is told the same aspect ratio the preview was.**
+    // A ResolutionSelector shapes the preview and the still capture; the
+    // Recorder picks its own resolution from the quality selector, and CameraX
+    // qualities (SD, HD, FHD, UHD) are 16:9 by definition. Without this the
+    // round message would be framed one way on screen and recorded another,
+    // which is worse than either — you would compose a shot and get a
+    // different one. The value is AndroidX `AspectRatio.RATIO_4_3`, which is 0.
+    // See the veryHigh case in [_getResolutionSelectorFromPreset] for why 4:3.
+    const int androidAspectRatio4To3 = 0;
     recorder = Recorder(
       qualitySelector: presetQualitySelector,
       targetVideoEncodingBitRate: mediaSettings?.videoBitrate,
+      aspectRatio:
+          mediaSettings?.resolutionPreset == ResolutionPreset.veryHigh
+              ? androidAspectRatio4To3
+              : null,
     );
     videoCapture = VideoCapture.withOutput(
       videoOutput: recorder!,
@@ -1616,8 +1630,26 @@ class AndroidCameraCameraX extends CameraPlatform {
         boundSize = CameraSize(width: 1280, height: 720);
         aspectRatio = AspectRatio.ratio16To9;
       case ResolutionPreset.veryHigh:
-        boundSize = CameraSize(width: 1920, height: 1080);
-        aspectRatio = AspectRatio.ratio16To9;
+        // **CubeChat: 4:3, not 16:9, and it costs nothing.**
+        //
+        // This preset is used by exactly one thing here, the round video
+        // message, and a round window is a square cut out of the middle. The
+        // square takes the frame's *short* side, so 1440x1080 and 1920x1080
+        // put the same 1080 pixels on the disc — the extra 480 columns of a
+        // 16:9 frame fall outside the circle and are encoded for nothing.
+        //
+        // What differs is how much of the room is in those 1080. A phone makes
+        // a 16:9 video mode by keeping the sensor's full width and cutting its
+        // height, which in portrait is about a quarter less across than the
+        // native 4:3 — so asking for 16:9 was asking for a tighter shot of the
+        // same face at the same cost. Compared against Telegram's round video
+        // on the same phone on 2026-09-10, side by side: theirs showed the
+        // shoulders, ours stopped at the jaw.
+        //
+        // `fallbackRule: auto` below means a sensor with no 4:3 video mode
+        // still gets the nearest thing rather than failing to open.
+        boundSize = CameraSize(width: 1440, height: 1080);
+        aspectRatio = AspectRatio.ratio4To3;
       case ResolutionPreset.ultraHigh:
         boundSize = CameraSize(width: 3840, height: 2160);
         aspectRatio = AspectRatio.ratio16To9;
