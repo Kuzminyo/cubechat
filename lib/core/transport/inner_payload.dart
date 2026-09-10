@@ -289,7 +289,17 @@ enum InnerPayloadType {
   /// that understands the message and stays on the ones that do not — which is
   /// the right failure for something irreversible, and is worth saying out loud
   /// rather than discovering.
-  channelDelete(0xE6);
+  channelDelete(0xE6),
+
+  /// One frame of call signalling: an invite, its acknowledgement, an accept,
+  /// a decline, a busy or a hangup. See [CallSignal] in `call_signal.dart`.
+  ///
+  /// 0xE7 was verified free against this enum before it was taken; the range
+  /// 0xE7-0xEF is still empty after it. An older build drops an unknown inner
+  /// type silently, so the caller does not treat a call as ringing until the
+  /// explicit acknowledgement arrives — otherwise calling an old build would
+  /// ring forever against a phone that never heard anything.
+  callSignal(0xE7);
 
   const InnerPayloadType(this.tag);
   final int tag;

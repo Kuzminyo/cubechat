@@ -5680,6 +5680,7 @@ class MessagingService {
         case InnerPayloadType.voiceLevels:
         case InnerPayloadType.forwardedFrom:
         case InnerPayloadType.conversationClear:
+        case InnerPayloadType.callSignal:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -5690,6 +5691,10 @@ class MessagingService {
           // member cannot decide for a room what everyone else may keep. That
           // is true of a member and false of the room's admin, who decides its
           // picture and its topic already — so it is handled above instead.
+          //
+          // callSignal joins the list for the same reason as an invite: calls
+          // are 1:1 in this first version (see the design spec), so a signal
+          // arriving inside a channel frame names no call anyone could answer.
           break;
       }
     } catch (e) {
@@ -6708,6 +6713,13 @@ class MessagingService {
           // its members, and only the channel path knows which room a frame
           // belongs to. Arriving on a 1:1 link they name no channel at all, so
           // there is nothing to apply them to.
+          break;
+
+        case InnerPayloadType.callSignal:
+          // The codec lives in call_signal.dart as of this task; nothing here
+          // decodes or dispatches it yet, so a frame is dropped exactly as an
+          // unrecognised inner type is dropped today. The state machine that
+          // turns this into a ring or a hangup is a later task on this plan.
           break;
       }
     } catch (e, st) {
