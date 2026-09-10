@@ -383,12 +383,17 @@ final class DefaultCamera: NSObject, Camera {
     return bestFormat
   }
 
-  /// CubeChat: the tallest 4:3 video format at or under 1080 on the short side.
+  /// CubeChat: the tallest 4:3 video format at or under 720 on the short side.
   ///
   /// Bounded rather than "the biggest 4:3 there is", because the biggest is a
   /// stills format on most iPhones - twelve megapixels the encoder would then
   /// have to scale down every frame, for a disc drawn at a few hundred points.
-  /// 1080 on the short side is what the round message needs and no more.
+  ///
+  /// 720 rather than 1080, matching the Android side: the disc is 248 logical
+  /// points, which is 744 physical pixels at 3x and fewer on anything else, so
+  /// 720 through a square crop is what the screen shows. 1080 was 1.44x that,
+  /// encoded and sent and then discarded by the scaler, and on a weak phone the
+  /// encode was the part that could not keep up.
   ///
   /// Returns nil when the device has no 4:3 video format in range, and the
   /// caller falls back to the 16:9 preset it always used.
@@ -424,7 +429,7 @@ final class DefaultCamera: NSObject, Camera {
       let longEdge = max(width, height)
       let shortEdge = min(width, height)
       guard abs(Int(longEdge * 3) - Int(shortEdge * 4)) <= 8 else { continue }
-      guard shortEdge <= 1080 else { continue }
+      guard shortEdge <= 720 else { continue }
 
       let isSubTypePreferred = subType == preferredSubType
       if shortEdge > bestShortEdge

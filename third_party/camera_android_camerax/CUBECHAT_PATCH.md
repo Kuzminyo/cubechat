@@ -19,8 +19,16 @@ The unused high-FPS analysis stream no longer overrides the negotiated rate.
 Dart now forwards MediaSettings.videoBitrate to the native Recorder as intended.
 See https://developer.android.com/reference/androidx/camera/video/VideoCapture.Builder#setTargetFrameRate(android.util.Range%3Cjava.lang.Integer%3E).
 
-Field of view (2026-09-10): `ResolutionPreset.veryHigh` now asks for 4:3 at
-1440x1080 instead of 16:9 at 1920x1080, and the Recorder is told the same
+Size (2026-09-10, second pass): `veryHigh` went from 1440x1080 to 960x720. The
+disc a round message is drawn in is 248 logical points, 744 physical pixels at
+3x, so 720 through a square crop is what the screen shows and 1080 was 1.44x
+that in each direction — encoded, sent, and discarded by the scaler. Reported
+from a weak phone as the recorder lagging: 1080p60 is a demanding encode, and a
+minute of it at the matching bitrate is 37 MB and some six hundred relay
+publishes. The same minute is now 16 MB and 270. Frame rate untouched at 60.
+
+Field of view (2026-09-10): `ResolutionPreset.veryHigh` now asks for 4:3 rather
+than 16:9, and the Recorder is told the same
 aspect ratio because CameraX qualities are 16:9 by definition and would
 otherwise record a different shape than the preview showed. Only the round
 video message uses this preset; the in-app photo camera is on `high` and is

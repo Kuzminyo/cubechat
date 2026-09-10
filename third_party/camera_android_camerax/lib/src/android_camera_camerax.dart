@@ -1648,7 +1648,20 @@ class AndroidCameraCameraX extends CameraPlatform {
         //
         // `fallbackRule: auto` below means a sensor with no 4:3 video mode
         // still gets the nearest thing rather than failing to open.
-        boundSize = CameraSize(width: 1440, height: 1080);
+        // **960x720, down from 1440x1080, because 1080 was never displayed.**
+        //
+        // The disc a round message is drawn in is 248 logical points, which is
+        // 744 physical pixels on a 1080-wide phone at 3x and fewer on anything
+        // else. A 720-tall capture puts 720 pixels through a square crop, so it
+        // is what the screen shows and not a pixel is wasted; 1080 was 1.44x
+        // that, encoded and transmitted and then thrown away by the scaler.
+        //
+        // What it cost was not sharpness, it was the phone. Reported from a
+        // weak device: the recorder lagged. 1080p60 is a demanding encode, and
+        // a minute of it at the matching bitrate is 37 MB and some six hundred
+        // relay publishes — a transfer nobody watches finish. At 960x720 the
+        // same minute is 16 MB and 270. Frame rate is untouched at 60.
+        boundSize = CameraSize(width: 960, height: 720);
         aspectRatio = AspectRatio.ratio4To3;
       case ResolutionPreset.ultraHigh:
         boundSize = CameraSize(width: 3840, height: 2160);

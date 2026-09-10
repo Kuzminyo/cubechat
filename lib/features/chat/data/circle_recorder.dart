@@ -81,26 +81,30 @@ class CircleRecorder extends ChangeNotifier {
   /// costs 2.25× the transfer on a phone uplink. Eight seconds is about 5 MB
   /// and 80 publishes at [kRelayMediaChunkData], against 51 before.
   ///
-  /// **Back to 5 Mbps. Cutting it to 3.75 was measured on a phone and it cost
-  /// the smoothness, which is not what the arithmetic predicted.**
+  /// **2.2 Mbps at 960×720, and the resolution is the lever that moved.**
   ///
-  /// The arithmetic said: 4:3 is 1440×1080 against 16:9's 1920×1080, three
-  /// quarters of the pixels, so three quarters of the bitrate holds
-  /// bits-per-pixel steady and the file is a quarter smaller for nothing. The
-  /// pixel maths is right and the conclusion was wrong, because bits per pixel
-  /// is not what the eye is reading here. At 60 frames a second the encoder has
-  /// sixty keyframe-and-motion budgets to fill every second, 3.75 Mbps leaves
-  /// about 62 kbit for each, and below some floor a moving face stops being
-  /// smooth and starts being a slideshow of blocks. 5 Mbps was already lean for
-  /// 1080p60; it had no quarter to give.
+  /// The comment here previously said the lever for file size at a fixed frame
+  /// rate is resolution rather than bitrate, named 960×720 as the option, and
+  /// did not take it because sharpness had been asked for more recently than
+  /// size. A report from a weak phone settled it: the recorder lagged, and
+  /// 1080p60 is why.
   ///
-  /// **The lever for file size at a fixed frame rate is resolution, not
-  /// bitrate.** The disc is drawn at about 650 physical pixels on a 1080-wide
-  /// phone, so 1080 of capture is already 1.7× what is displayed; 960×720 would
-  /// still be above it and would carry a proportionally smaller bitrate at the
-  /// same quality. That is a real option and it is not taken here, because
-  /// "make it sharper" and "make it smaller" have been asked for in that order
-  /// and this is the one that was asked for last.
+  /// **The pixels were never displayed.** The disc is 248 logical points, which
+  /// is 744 physical pixels on a 1080-wide phone at 3× and fewer on anything
+  /// else. A 720-tall capture through a square crop is exactly what the screen
+  /// shows; 1440×1080 was 1.44× that in each direction, encoded, transmitted,
+  /// and then thrown away by the scaler. Sharpness on the disc is unchanged
+  /// because the disc never had more than 744 pixels to give.
+  ///
+  /// **What it cost was the phone and the transfer.** A minute at 1080p60 and
+  /// 5 Mbps is 37 MB and some six hundred relay publishes, each a round trip —
+  /// a transfer nobody watches finish, on top of an encode a weak device cannot
+  /// keep up with. The same minute is now 16 MB and 270 publishes.
+  ///
+  /// Bits per pixel are held: 960×720 is 44% of 1440×1080's pixels, and
+  /// 2.2 Mbps is 44% of 5. That matters because the last time this number moved
+  /// without the pixel count moving with it — 5 down to 3.75 in 1024 — the
+  /// smoothness went with it and had to be put back.
   ///
   /// Frame rate stays at 60. It is the part a person sees immediately, and it
   /// is the part that was explicitly not to be touched.
@@ -110,7 +114,7 @@ class CircleRecorder extends ChangeNotifier {
         ResolutionPreset.veryHigh,
         enableAudio: true,
         fps: 60,
-        videoBitrate: 5000000,
+        videoBitrate: 2200000,
         audioBitrate: 64000,
       );
 
