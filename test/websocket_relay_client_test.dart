@@ -1,10 +1,11 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/core/transport/frame.dart';
+import 'package:cubechat/core/crypto/secp256k1.dart';
 import 'package:cubechat/core/transport/nostr/nostr_event.dart';
+import 'package:cubechat/core/transport/nostr/nostr_relay_protocol.dart';
 import 'package:cubechat/core/transport/nostr/nostr_frame_codec.dart';
 import 'package:cubechat/core/transport/nostr/nostr_signer.dart';
 import 'package:cubechat/core/transport/nostr/nostr_transport.dart';
@@ -21,6 +22,9 @@ class _FakeRelayServer {
   final List<Map<String, dynamic>> received = [];
   final List<Map<String, dynamic>> _toReplay = [];
   final List<String> reqs = [];
+  bool requireAuth = false;
+  bool rejectAuth = false;
+  final List<NostrEvent> authentications = [];
 
   /// How this relay answers an EVENT: true for `OK true`, false for a refusal,
   /// null to say nothing at all — the relay that has gone quiet, which is the
@@ -43,24 +47,74 @@ class _FakeRelayServer {
         return;
       }
       final ws = await WebSocketTransformer.upgrade(req);
-      ws.listen((data) {
+      final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
+      String? authenticatedKey;
+      if (relay.requireAuth) ws.add(jsonEncode(['AUTH', challenge]));
+      ws.listen((data) async {
         final msg = jsonDecode(data as String) as List<dynamic>;
         switch (msg[0]) {
+          case 'AUTH':
+            final event =
+                NostrEvent.fromJson((msg[1] as Map).cast<String, dynamic>());
+            relay.authentications.add(event);
+            Uint8List unhex(String value) => Uint8List.fromList([
+                  for (var i = 0; i < value.length; i += 2)
+                    int.parse(value.substring(i, i + 2), radix: 16),
+                ]);
+            final valid = !relay.rejectAuth &&
+                event.kind == 22242 &&
+                event.content.isEmpty &&
+                event.tags.any(
+                  (t) =>
+                      t.length == 2 && t[0] == 'challenge' && t[1] == challenge,
+                ) &&
+                event.tags.any(
+                  (t) => t.length == 2 && t[0] == 'relay' && t[1] == relay.url,
+                ) &&
+                await event.hasValidId() &&
+                await Secp256k1.verify(
+                  publicKey: unhex(event.pubkey),
+                  message: unhex(event.id!),
+                  signature: unhex(event.sig!),
+                );
+            if (valid) authenticatedKey = event.pubkey;
+            ws.add(
+              jsonEncode([
+                'OK',
+                event.id,
+                valid,
+                valid ? '' : 'restricted: invalid authentication',
+              ]),
+            );
           case 'EVENT':
             final ev = (msg[1] as Map).cast<String, dynamic>();
             relay.received.add(ev);
             final answer = relay.okAnswer;
             if (answer != null) {
-              ws.add(jsonEncode([
-                'OK',
-                ev['id'],
-                answer,
-                answer ? '' : relay.refusalMessage,
-              ]));
+              ws.add(
+                jsonEncode([
+                  'OK',
+                  ev['id'],
+                  answer,
+                  answer ? '' : relay.refusalMessage,
+                ]),
+              );
             }
           case 'REQ':
             final subId = msg[1] as String;
             relay.reqs.add(data);
+            final filter = (msg[2] as Map).cast<String, dynamic>();
+            if (relay.requireAuth &&
+                !(filter['#p'] as List).contains(authenticatedKey)) {
+              ws.add(
+                jsonEncode([
+                  'CLOSED',
+                  subId,
+                  'auth-required: requested filter requires authentication',
+                ]),
+              );
+              break;
+            }
             for (final ev in relay._toReplay) {
               ws.add(jsonEncode(['EVENT', subId, ev]));
             }
@@ -105,21 +159,76 @@ void main() {
     required String recipientNpubHex,
     int? createdAt,
   }) {
-    return signer.sign(NostrEvent(
-      pubkey: signer.npubHex,
-      createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      kind: kCubechatFrameKind,
-      tags: [
-        [kRecipientTag, recipientNpubHex],
-      ],
-      content: NostrFrameCodec.encodeContent(frameBytes),
-    ));
+    return signer.sign(
+      NostrEvent(
+        pubkey: signer.npubHex,
+        createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        kind: kCubechatFrameKind,
+        tags: [
+          [kRecipientTag, recipientNpubHex],
+        ],
+        content: NostrFrameCodec.encodeContent(frameBytes),
+      ),
+    );
   }
 
   final frame = Frame(
     type: FrameType.transport,
     payload: Uint8List.fromList(List<int>.generate(40, (i) => i)),
   ).encode();
+
+  group('authenticated inbox', () {
+    test('kind 1059 backlog arrives after AUTH and a renewed REQ', () async {
+      final relay = await _FakeRelayServer.start();
+      relay.requireAuth = true;
+      addTearDown(relay.stop);
+      final event =
+          await signedFrameEvent(frame, recipientNpubHex: signer.npubHex);
+      relay.willDeliver(event);
+      final client =
+          WebSocketNostrRelayClient(relayUrls: [relay.url], authSigner: signer);
+      addTearDown(client.dispose);
+      final received = <NostrEvent>[];
+      final sub = client
+          .subscribe(recipientPubkeyHex: signer.npubHex)
+          .listen(received.add);
+      addTearDown(sub.cancel);
+      client.start();
+      await _until(() => received.length == 1, reason: 'authenticated inbox');
+      expect(relay.authentications, hasLength(1));
+      expect(relay.reqs.length, greaterThanOrEqualTo(2));
+      expect(
+        relay.received,
+        isEmpty,
+        reason: 'AUTH is not a published message',
+      );
+      expect(received.single.id, event.id);
+    });
+
+    test('refused authentication cannot deliver or repeatedly sign', () async {
+      final relay = await _FakeRelayServer.start();
+      relay.requireAuth = true;
+      relay.rejectAuth = true;
+      addTearDown(relay.stop);
+      relay.willDeliver(
+        await signedFrameEvent(frame, recipientNpubHex: signer.npubHex),
+      );
+      final client =
+          WebSocketNostrRelayClient(relayUrls: [relay.url], authSigner: signer);
+      addTearDown(client.dispose);
+      final received = <NostrEvent>[];
+      final sub = client
+          .subscribe(recipientPubkeyHex: signer.npubHex)
+          .listen(received.add);
+      addTearDown(sub.cancel);
+      client.start();
+      await _until(() => relay.authentications.isNotEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(received, isEmpty);
+      expect(relay.authentications, hasLength(1));
+      expect(client.states[relay.url], RelayState.failed);
+    });
+  });
 
   group('publish acceptance', () {
     // Short deadline so the silent-relay case doesn't sit out a real timeout.
@@ -189,8 +298,11 @@ void main() {
           .timeout(const Duration(seconds: 3));
 
       expect(receipt.silent, 1);
-      expect(receipt.isRefused, isFalse,
-          reason: 'silence is not a refusal — the event was probably stored');
+      expect(
+        receipt.isRefused,
+        isFalse,
+        reason: 'silence is not a refusal — the event was probably stored',
+      );
       expect(receipt.isAccepted, isFalse);
     });
 
@@ -209,15 +321,24 @@ void main() {
       client.start();
       await _until(() => client.isConnected, reason: 'connect');
       // Both sockets have to be up, or this measures a one-relay pool.
-      await _until(() => client.states.values.where((s) => s == RelayState.connected).length == 2,
-          reason: 'both relays connected');
+      await _until(
+        () =>
+            client.states.values
+                .where((s) => s == RelayState.connected)
+                .length ==
+            2,
+        reason: 'both relays connected',
+      );
 
       final receipt = await NostrTransport(signer: signer, relay: client)
           .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
 
       expect(receipt.accepted, 1);
-      expect(receipt.isAccepted, isTrue,
-          reason: 'the recipient reads every relay in their own list');
+      expect(
+        receipt.isAccepted,
+        isTrue,
+        reason: 'the recipient reads every relay in their own list',
+      );
       expect(receipt.isRefused, isFalse);
       // Deliberately not asserting `rejected`: a publish settles the moment one
       // relay accepts, so whether the refusal arrived before that is a race.
@@ -301,6 +422,46 @@ void main() {
     expect(frames, hasLength(1));
   });
 
+  test(
+      'overlapping copies verify once and a forged first copy cannot hide mail',
+      () async {
+    final relay = await _FakeRelayServer.start();
+    addTearDown(relay.stop);
+    final event =
+        await signedFrameEvent(frame, recipientNpubHex: signer.npubHex);
+    relay.willDeliver(event.copyWith(sig: 'ff' * 64));
+    relay.willDeliver(event);
+    relay.willDeliver(event);
+    var calls = 0;
+    var active = 0;
+    var peak = 0;
+    final client = WebSocketNostrRelayClient(
+      relayUrls: [relay.url],
+      verifyInbound: (candidate) async {
+        calls++;
+        active++;
+        if (active > peak) peak = active;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final valid = await NostrRelayProtocol.verifyInboundEvent(candidate);
+        active--;
+        return valid;
+      },
+    );
+    addTearDown(client.dispose);
+    final received = <NostrEvent>[];
+    final sub = client
+        .subscribe(recipientPubkeyHex: signer.npubHex)
+        .listen(received.add);
+    addTearDown(sub.cancel);
+    client.start();
+    await _until(() => received.isNotEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(received, hasLength(1));
+    expect(received.single.sig, event.sig);
+    expect(calls, 2, reason: 'one forged candidate and one valid candidate');
+    expect(peak, 1, reason: 'a backlog must not spawn concurrent workers');
+  });
+
   test('drops an event whose signature does not verify', () async {
     final relay = await _FakeRelayServer.start();
     addTearDown(relay.stop);
@@ -372,11 +533,13 @@ void main() {
       final relay = await _FakeRelayServer.start();
       addTearDown(relay.stop);
       final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      relay.willDeliver(await signedFrameEvent(
-        frame,
-        recipientNpubHex: signer.npubHex,
-        createdAt: createdAt,
-      ));
+      relay.willDeliver(
+        await signedFrameEvent(
+          frame,
+          recipientNpubHex: signer.npubHex,
+          createdAt: createdAt,
+        ),
+      );
 
       final marks = <int>[];
       final client = WebSocketNostrRelayClient(
@@ -399,11 +562,13 @@ void main() {
       addTearDown(relay.stop);
       // Validly signed, but stamped a year out: a signature says who wrote an
       // event, not when. Honouring it as `since` would blind the subscription.
-      relay.willDeliver(await signedFrameEvent(
-        frame,
-        recipientNpubHex: signer.npubHex,
-        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 31536000,
-      ));
+      relay.willDeliver(
+        await signedFrameEvent(
+          frame,
+          recipientNpubHex: signer.npubHex,
+          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000 + 31536000,
+        ),
+      );
 
       final marks = <int>[];
       final client = WebSocketNostrRelayClient(

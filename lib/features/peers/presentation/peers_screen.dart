@@ -11,7 +11,6 @@ import '../../../core/ble/bluetooth_power.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/ui_activity.dart';
-import '../../../core/util/motion.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -218,6 +217,7 @@ class _Header extends StatelessWidget {
               const CubeLogo(size: 32),
               const SizedBox(width: 12),
               Expanded(child: Text(title, style: AppTypography.display())),
+              if (scanning) _ScanningPulse(label: t.bleScanning),
             ],
           ),
           const SizedBox(height: 4),
@@ -226,32 +226,18 @@ class _Header extends StatelessWidget {
             style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
           ),
           AnimatedSwitcher(
-            duration: AppMotion.duration(context, AppMotion.control),
+            duration: const Duration(milliseconds: 240),
             transitionBuilder: (child, anim) => FadeTransition(
               opacity: anim,
-              child: AppMotion.reduced(context)
-                  ? child
-                  : SizeTransition(sizeFactor: anim, child: child),
+              child: SizeTransition(sizeFactor: anim, child: child),
             ),
-            // Status chips wrap below the heading so large text never breaks
-            // the screen title in the middle of a word on a narrow phone.
-            child: scanning || broadcasting
+            child: broadcasting
                 ? Padding(
-                    key: ValueKey('$scanning-$broadcasting'),
+                    key: const ValueKey('broadcast-on'),
                     padding: const EdgeInsets.only(top: 10),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (scanning) _ScanningPulse(label: t.bleScanning),
-                        if (broadcasting)
-                          _BroadcastChip(
-                            label: t.bleBroadcasting,
-                            detail:
-                                t.bleConnectedCount(peripheral.connectedCount),
-                          ),
-                      ],
+                    child: _BroadcastChip(
+                      label: t.bleBroadcasting,
+                      detail: t.bleConnectedCount(peripheral.connectedCount),
                     ),
                   )
                 : const SizedBox.shrink(key: ValueKey('broadcast-off')),
@@ -283,19 +269,21 @@ class _BroadcastChip extends StatelessWidget {
         children: [
           Icon(Icons.radar_rounded, color: AppColors.brandPrimary, size: 14),
           const SizedBox(width: 8),
-          Flexible(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(
-                    text: label,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                TextSpan(
-                    text: '  ·  $detail',
-                    style: TextStyle(color: AppColors.textOnGlassDim)),
-              ]),
-              style:
-                  AppTypography.caption.copyWith(color: AppColors.textOnGlass),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
+          ),
+          Text(
+            '  ·  ',
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          ),
+          Text(
+            detail,
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
         ],
       ),
@@ -319,15 +307,6 @@ class _ScanningPulseState extends State<_ScanningPulse>
     duration: const Duration(milliseconds: 1400),
   );
 
-  bool _reduced = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _reduced = AppMotion.reduced(context);
-    _applyActivity();
-  }
-
   @override
   void initState() {
     super.initState();
@@ -343,7 +322,7 @@ class _ScanningPulseState extends State<_ScanningPulse>
   /// glow only ranges over 0.35–0.70, so a frozen frame reads as a lit chip.
   void _applyActivity() {
     if (!mounted) return;
-    if (_reduced || UiActivity.instance.isQuiet.value) {
+    if (UiActivity.instance.isQuiet.value) {
       _c.stop();
     } else if (!_c.isAnimating) {
       _c.repeat(reverse: true);
@@ -665,12 +644,11 @@ Future<void> _connectWithFeedback(
       // The address this identity is answering on now. The row can be a few
       // seconds old, and on Android a few seconds is enough to be a rotation
       // behind.
-      deviceId:
-          (identity == null ? null : discovery.addressOf(identity)) ?? peer.id,
+      deviceId: (identity == null ? null : discovery.addressOf(identity)) ??
+          peer.id,
       displayName: label,
-      refreshId: () => identity == null
-          ? Future.value(null)
-          : discovery.awaitAddressOf(identity),
+      refreshId: () =>
+          identity == null ? Future.value(null) : discovery.awaitAddressOf(identity),
     );
   } catch (_) {
     // The per-attempt cause is already in the debug log; the user gets the
@@ -731,7 +709,11 @@ class _PeerCard extends StatelessWidget {
                   displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.rowTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -743,7 +725,11 @@ class _PeerCard extends StatelessWidget {
                       : '· ${peer.id}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.mono(),
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ],
             ),

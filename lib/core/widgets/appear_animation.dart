@@ -8,7 +8,7 @@ class AppearAnimation extends StatefulWidget {
     super.key,
     required this.child,
     this.delay = Duration.zero,
-    this.duration = AppMotion.entrance,
+    this.duration = const Duration(milliseconds: 360),
     this.beginOffset = const Offset(0, 0.08),
     this.curve = Curves.easeOutCubic,
     this.enabled = true,
@@ -66,24 +66,20 @@ class _AppearAnimationState extends State<AppearAnimation>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
+    if (_started) return;
+    _started = true;
     // Straight to the end state: no ticker, no delayed callback, and the row
     // is simply there. Either because the caller said so — a list past its
     // first frame — or because the phone asked for less movement.
     if (!widget.enabled || AppMotion.reduced(context)) {
       _c.value = 1;
-      _started = true;
       return;
     }
-    if (_started) return;
-    _started = true;
     if (widget.delay == Duration.zero) {
       _c.forward();
     } else {
       Future<void>.delayed(widget.delay, () {
-        if (mounted && _c.value < 1 && !AppMotion.reduced(context)) {
-          _c.forward();
-        }
+        if (mounted) _c.forward();
       });
     }
   }

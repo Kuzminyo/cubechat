@@ -72,6 +72,23 @@ class VideoBubble extends ConsumerStatefulWidget {
   static const double circleIdle = 200;
   static const double circlePlaying = 248;
 
+  /// How tall a clip is drawn, given the width a photo would take and the
+  /// shape the camera recorded.
+  ///
+  /// The width was shared with the photo bubble already; the height was not,
+  /// and only a clip out of a phone camera showed it. A 9:16 portrait at the
+  /// 300-point ceiling came out 533 points tall — a bubble that fills a screen
+  /// on its own and has to be scrolled past. A photo has been capped at 1.25x
+  /// its width since the panorama report and is cropped rather than
+  /// letterboxed when it hits the cap; this is the same rule, and `BoxFit.cover`
+  /// in the bubble does the same cropping.
+  ///
+  /// The floor is the ceiling's mirror: a cinema-wide clip is still something
+  /// to look at, and below about half the width it is a strip.
+  static double rectangleHeight(double width, double aspect) =>
+      (width / (aspect <= 0 ? 16 / 9 : aspect))
+          .clamp(width * 0.5, width * 1.25);
+
   /// True when this message is a video we can actually play: a file, with a
   /// video mime, whose bytes are on this phone.
   static bool handles(Message message) {
@@ -295,81 +312,97 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     final position = ready ? player.value.position : Duration.zero;
     final total = ready ? player.value.duration : Duration.zero;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: SizedBox(
-        // The same question the photo bubble asks, so a clip and a picture in
-        // the same conversation are one column and not two.
-        width: photoBubbleWidth(context),
-        child: AspectRatio(
-          aspectRatio: aspect <= 0 ? 16 / 9 : aspect,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-              if (ready) VideoPlayer(player),
-              if (!ready)
-                Center(
-                  child: Icon(
-                    Icons.movie_rounded,
-                    size: 34,
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
-                ),
-              // The button disappears while it is running, so a clip playing is
-              // not covered by a control that says "play".
-              if (!ready || !player.value.isPlaying)
-                Center(
-                  child: _loading
-                      ? SizedBox(
-                          width: 34,
-                          height: 34,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: AppColors.brandPrimary,
-                          ),
-                        )
-                      : Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            size: 34,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-              if (ready)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: LinearProgressIndicator(
-                    value: total.inMilliseconds == 0
-                        ? 0
-                        : position.inMilliseconds / total.inMilliseconds,
-                    minHeight: 3,
-                    backgroundColor: Colors.white24,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
-                  ),
-                ),
-              Positioned(
-                left: 8,
-                bottom: 10,
-                child: _Chip(
-                  label: ready
-                      ? _clock(total - position)
-                      : _size(widget.message.fileBytes),
-                ),
+    // The same two numbers a photo is drawn at — the width asked of the photo
+    // bubble's own helper, the height of [VideoBubble.rectangleHeight].
+    final width = photoBubbleWidth(context);
+    final height = VideoBubble.rectangleHeight(width, aspect);
+
+    // No rounding of its own. The bubble clips to its own corners now that a
+    // clip reaches them, and a second, tighter radius inside that one drew a
+    // visible sliver of bubble in each corner — the same note [_ImagePayload]
+    // carries, for the same reason.
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
+          if (ready)
+            // Filled, not fitted: the box is the photo's shape, not the
+            // camera's, and letterbox bars inside a bubble read as part of
+            // the message.
+            FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: player.value.size.width,
+                height: player.value.size.height,
+                child: VideoPlayer(player),
               ),
-            ],
+            ),
+          if (!ready)
+            Center(
+              child: Icon(
+                Icons.movie_rounded,
+                size: 34,
+                color: Colors.white.withValues(alpha: 0.35),
+              ),
+            ),
+          // The button disappears while it is running, so a clip playing is
+          // not covered by a control that says "play".
+          if (!ready || !player.value.isPlaying)
+            Center(
+              child: _loading
+                  ? SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: AppColors.brandPrimary,
+                      ),
+                    )
+                  : Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        size: 34,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          if (ready)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: LinearProgressIndicator(
+                value: total.inMilliseconds == 0
+                    ? 0
+                    : position.inMilliseconds / total.inMilliseconds,
+                minHeight: 3,
+                backgroundColor: Colors.white24,
+                valueColor:
+                    AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
+              ),
+            ),
+          // Bottom left, because bottom right is where the bubble now floats
+          // the clock and the ticks — the corner a photo puts them in.
+          Positioned(
+            left: 8,
+            bottom: 10,
+            child: _Chip(
+              label: ready
+                  ? _clock(total - position)
+                  : _size(widget.message.fileBytes),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

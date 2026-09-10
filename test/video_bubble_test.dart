@@ -125,6 +125,32 @@ void main() {
     });
   });
 
+  group('how tall a clip is drawn', () {
+    // A photo is capped at 1.25x its width and cropped past that. A clip was
+    // capped at nothing: a 9:16 portrait out of a phone camera, at the
+    // 300-point ceiling the width clamps to, came out 533 points tall — one
+    // bubble filling a screen. Same rule for both now.
+    test('a landscape clip keeps its own shape', () {
+      expect(VideoBubble.rectangleHeight(300, 16 / 9), closeTo(168.75, 0.01));
+    });
+
+    test('a portrait clip stops where a portrait photo stops', () {
+      expect(
+        VideoBubble.rectangleHeight(300, 9 / 16),
+        375,
+        reason: '300 / (9/16) is 533 without the cap',
+      );
+    });
+
+    test('a cinema-wide clip does not become a strip', () {
+      expect(VideoBubble.rectangleHeight(300, 21 / 9), 150);
+    });
+
+    test('a player that reports no shape yet is drawn as 16:9', () {
+      expect(VideoBubble.rectangleHeight(300, 0), closeTo(168.75, 0.01));
+    });
+  });
+
   test('only the file kind is considered', () {
     expect(
       VideoBubble.handles(

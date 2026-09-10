@@ -67,8 +67,7 @@ class _SlidePage<T> extends Page<T> {
 PageRoute<T> screenRoute<T>(WidgetBuilder builder) =>
     _SlideRoute<T>(builder: builder);
 
-class _SlideRoute<T> extends PageRoute<T>
-    with CupertinoRouteTransitionMixin<T> {
+class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> {
   _SlideRoute({required WidgetBuilder builder, super.settings})
       : _builder = builder;
 
@@ -286,9 +285,7 @@ PageRoute<T> mediaRoute<T>(WidgetBuilder builder) {
       return FadeTransition(
         opacity: curved,
         child: ScaleTransition(
-          scale: Tween<double>(
-                  begin: AppMotion.reduced(context) ? 1 : 0.96, end: 1)
-              .animate(curved),
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
           child: child,
         ),
       );

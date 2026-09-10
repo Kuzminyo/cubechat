@@ -21,41 +21,10 @@ abstract final class AppTheme {
       fontFamily: 'Inter',
       fontFamilyFallback: const ['Inter'],
       textTheme: textTheme,
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          textStyle: AppTypography.control,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          elevation: 0,
-          textStyle: AppTypography.control,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          textStyle: AppTypography.control,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          textStyle: AppTypography.control,
-          side: BorderSide(color: AppColors.glass(0.20)),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
+      // The button themes that stood here came in with a layout pass and went
+      // out with it; the two font lines above are what was kept. Nothing else
+      // in the app asks Material for a button shape, so this is a gap on
+      // purpose rather than one to fill in again.
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,

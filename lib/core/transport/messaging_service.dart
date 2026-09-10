@@ -577,6 +577,7 @@ class MessagingService {
       final seen = await _relayWatermark.loadSeenIds();
       final client = WebSocketNostrRelayClient(
         relayUrls: settings.urls,
+        authSigner: signer,
         // Subscribed to like any other — see [RelayLane]. Only *publishing* is
         // split, so a chunk or a beacon never lands somewhere the recipient is
         // not listening.
@@ -7168,6 +7169,15 @@ class MessagingService {
       }
       final senderPub = manager.sessionFor(pc.peerId)?.remoteStaticPublicKey;
       switch (unpacked.type) {
+        // A circle is a file. Dropping a chunk that overtook its manifest
+        // leaves the whole transfer waiting forever even though the relay
+        // accepted every event.
+        case InnerPayloadType.fileChunk:
+          await _ingestFileChunk(
+            peerId: pc.peerId,
+            senderPub: senderPub,
+            chunkBytes: unpacked.body,
+          );
         case InnerPayloadType.imageChunk:
           await _ingestImageChunk(
             peerId: pc.peerId,

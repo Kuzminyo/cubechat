@@ -162,3 +162,37 @@ part that failed is the part that answered.
 with the public pair kept behind it. Not replaced by it: one relay is one
 machine, and a media transfer that can only go one way is a transfer that stops
 when that machine reboots.
+
+
+## Authentication and geo lane (2026-09-10)
+
+The installed strfry requires NIP-42 AUTH for kind-1059 reads. Its default
+`serviceUrl` is empty, which rejects even valid proofs. Configure
+`relay.auth.serviceUrl = "wss://relay.cubechat.tech"` as in the deployment
+config; keep `restrictedReadKinds` and `restrictReadToInvolvedPubkey` enabled.
+The Flutter client responds to AUTH using its recipient key and renews the
+subscription after a successful OK. A CLOSED subscription is a read failure,
+not evidence that the stored events disappeared.
+
+The September 9 failed circle comprised 55 events (manifest plus 54 chunks).
+All 55 were confirmed inserted in the owned server journal, while an empty
+unauthenticated kind-1059 subscription was refused. After setting serviceUrl,
+both the root and `/geo` endpoints accepted a proof and returned EOSE to a
+fresh diagnostic key. No user event IDs or private keys are needed for this
+probe:
+
+```powershell
+& 'C:/Users/kuzme/flutter/bin/flutter.bat' test --no-pub --dart-define=CUBECHAT_RELAY_PROBE=true test/relay_auth_live_test.dart
+```
+
+The probe is skipped by default and never publishes a message. `/geo` uses a
+separate WebSocket connection to the same backend, not an independent server.
+The geo lane keeps `relay.nostr.net` as its independent fallback; `offchain.pub`
+was removed because both supplied device logs show web-of-trust refusals.
+
+The app also restores buffered forward-secret file chunks that arrive before
+the manifest, and serializes incoming signature verification off the UI
+isolate on Android/iOS. The supplied log measured 204 ms of UI signature work
+for 54 events in five seconds. This is not a GPU frame measurement: build/raster
+improvement still needs a new device trace. No refresh-rate or blur setting was
+changed in this fix.

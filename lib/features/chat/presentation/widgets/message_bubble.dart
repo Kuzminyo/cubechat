@@ -537,6 +537,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// drawn — as if it described that one picture. Any member's caption is the
   /// album's, because there is only ever one.
   String? get _caption {
+    // Only a picture has one. `imageCaption` is the caption *field*, and for a
+    // message that is not an image that field holds the mime type — so a clip
+    // reported a caption of "video/mp4" and was never drawn one. Harmless
+    // until the clock moved onto the media, which asks this the question "is
+    // there another line in this bubble already" and got yes.
+    if (widget.message.kind != MessageKind.image) return null;
     final album = widget.album;
     if (album == null) return widget.message.imageCaption;
     for (final message in album) {
@@ -1273,9 +1279,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final bareEmoji = message.kind == MessageKind.text
         ? message.bareEmojiCount
         : null;
+    // A video whose bytes are on this phone, so it plays in the bubble rather
+    // than being handed to whatever the phone calls a video player.
+    //
+    // Asked once and passed down. `handles` stats the file, and three things
+    // in this build need the answer — this is the scrolling path, and a
+    // synchronous stat per bubble per frame is the kind of cost this tree has
+    // measured and removed before.
+    final playableVideo = VideoBubble.handles(message);
     // Circular video is already clipped to its own shape. A normal message
     // fill behind it turned the circle into a video sitting on a square card.
-    final circle = VideoBubble.isCircle(message) && VideoBubble.handles(message);
+    final circle = playableVideo && VideoBubble.isCircle(message);
     final bare = sticker || bareEmoji != null || circle;
 
     // The drawn face for a message that is one emoji and nothing else, when
@@ -1288,9 +1302,22 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
+    // A clip out of the gallery is a picture that moves, and it is now drawn
+    // as one. It used to sit in fourteen points of tinted glass on every side
+    // with its own fourteen-point radius inside the bubble's eighteen: the
+    // bubble came out 28 points wider than the clip, so a chat holding both a
+    // photo and a video had two column widths, and the mismatched radii left a
+    // sliver of glass in each corner — the same frame the photo bubble spent a
+    // release removing, put back around the other medium. Reported off a
+    // screenshot of a clip beside a photo.
+    //
+    // The round one is not included: it is clipped to a circle already, and it
+    // takes [bare] instead, which removes the whole card behind it.
+    final clip = playableVideo && !circle;
+    final media = photo || clip;
     const inset = EdgeInsets.symmetric(horizontal: 14, vertical: 10);
     Widget inBubble(Widget child) =>
-        photo ? Padding(padding: inset, child: child) : child;
+        media ? Padding(padding: inset, child: child) : child;
 
     final reacted = message.reactions.values.any((by) => by.isNotEmpty);
     // The clock rides *on* a picture that has nothing else to say — the way
@@ -1298,7 +1325,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // four characters is the frame this design spent a release removing, put
     // back one edge at a time. As soon as there is something else on that line
     // (a caption, a reaction) the row comes back and the clock joins it.
-    final metaOnMedia = photo && !reacted && _caption == null;
+    final metaOnMedia = media && !reacted && _caption == null;
     final meta = _BubbleMeta(
       message: message,
       pinned: pinned,
@@ -1318,7 +1345,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         child: ClipRRect(
           borderRadius: radius,
           child: Container(
-            // A photo fills its bubble; everything else sits inside padding.
+            // A photo or a clip fills its bubble; everything else sits inside
+            // padding.
             //
             // A picture framed by fourteen points of tinted glass on every side
             // reads as a picture *of* a message. Letting it run to the rounded
@@ -1326,7 +1354,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             // width: the same photo is drawn larger without the bubble growing.
             // The rows that keep their inset — an author's name, the caption,
             // the time — ask for it themselves below.
-            padding: photo || circle
+            padding: media || circle
                 ? EdgeInsets.zero
                 : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             // And no border on a photo bubble, which is why its corners looked
@@ -1338,8 +1366,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             //
             // Telegram draws no frame around a photo at all, and the reason
             // carries over — a border exists to give a pane of glass an edge,
-            // and a picture already has one. Everything that is not a photo
-            // keeps its border.
+            // and a picture already has one. A clip is a picture that moves and
+            // takes the same answer. Everything else keeps its border.
             decoration: bare
                 ? const BoxDecoration()
                 : mine
@@ -1354,14 +1382,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         ),
                         borderRadius: radius,
                         // No frame around a photo — see the note by `padding`.
-                        border: photo
+                        border: media
                             ? null
                             : Border.all(color: AppColors.glass(0.18)),
                       )
                     : BoxDecoration(
                         color: AppColors.glass(0.10),
                         borderRadius: radius,
-                        border: photo
+                        border: media
                             ? null
                             : Border.all(color: AppColors.glass(0.16)),
                       ),
@@ -1439,7 +1467,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ],
                     ),
                   ),
-                  if (!photo) const SizedBox(height: 2),
+                  if (!media) const SizedBox(height: 2),
                 ],
                 if (message.replyToWireId != null)
                   inBubble(_quotedBox(message.replyToWireId!)),
@@ -1525,13 +1553,44 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       ],
                     ],
                   )
-                else if (VideoBubble.handles(message))
+                else if (playableVideo)
                   // A clip travels as a file and used to be drawn as one: a
                   // row with a name and a size, opened by handing it to
                   // whatever the phone calls a video player. It plays here
                   // now. Still a file underneath — the transport, the
                   // transfer queue and the long-press actions are unchanged.
-                  VideoBubble(message: message, chatId: widget.chatId)
+                  //
+                  // The same Stack the picture above gets, for the same
+                  // reasons: the clock in the corner rather than on a strip of
+                  // bubble below, and our own upload counted out on the clip
+                  // instead of the word "sending" for the whole of a transfer
+                  // that is minutes long over Bluetooth.
+                  //
+                  // A circle takes neither: `metaOnMedia` is false for it,
+                  // because it is round and already carries its own ring and
+                  // its own countdown — a rectangular pill would hang off the
+                  // shape at the corner.
+                  Stack(
+                    children: [
+                      VideoBubble(message: message, chatId: widget.chatId),
+                      if (metaOnMedia)
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          // Inert, so the pill cannot swallow the tap that
+                          // starts the clip underneath it.
+                          child: IgnorePointer(child: _MetaPill(child: meta)),
+                        ),
+                      if (clip &&
+                          message.isMine &&
+                          message.status == MessageStatus.sending)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: _SendProgressRing(messageId: message.id),
+                          ),
+                        ),
+                    ],
+                  )
                 else if (message.kind == MessageKind.file)
                   // Restricted means "do not take this elsewhere", not "do not
                   // look at it". Wrapping the row in an IgnorePointer made a
@@ -1624,7 +1683,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     },
                   ),
                 if (!metaOnMedia) ...[
-                  if (!photo) const SizedBox(height: 4),
+                  if (!media) const SizedBox(height: 4),
                   // Reactions and the clock on one line, inside the bubble.
                   //
                   // They used to be a second row hanging *below* the bubble,

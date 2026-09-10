@@ -52,7 +52,9 @@ class NostrRelayProtocol {
       if (decoded is! List || decoded.isEmpty) return RelayUnknown(raw);
       switch (decoded[0]) {
         case 'EVENT':
-          if (decoded.length < 3 || decoded[2] is! Map) return RelayUnknown(raw);
+          if (decoded.length < 3 || decoded[2] is! Map) {
+            return RelayUnknown(raw);
+          }
           return RelayEvent(
             decoded[1] as String,
             NostrEvent.fromJson((decoded[2] as Map).cast<String, dynamic>()),
@@ -67,6 +69,14 @@ class NostrRelayProtocol {
             decoded[2] as bool,
             decoded.length > 3 ? decoded[3] as String : '',
           );
+        case 'AUTH':
+          if (decoded.length != 2 || decoded[1] is! String) {
+            return RelayUnknown(raw);
+          }
+          return RelayAuth(decoded[1] as String);
+        case 'CLOSED':
+          if (decoded.length < 3) return RelayUnknown(raw);
+          return RelayClosed(decoded[1] as String, decoded[2] as String);
         case 'NOTICE':
           if (decoded.length < 2) return RelayUnknown(raw);
           return RelayNotice(decoded[1] as String);
@@ -152,4 +162,17 @@ class RelayNotice extends RelayMessage {
 class RelayUnknown extends RelayMessage {
   const RelayUnknown(this.raw);
   final String raw;
+}
+
+/// NIP-42 challenge: reply on this connection, never publish as an EVENT.
+class RelayAuth extends RelayMessage {
+  const RelayAuth(this.challenge);
+  final String challenge;
+}
+
+/// A socket can be connected while its subscription has been refused.
+class RelayClosed extends RelayMessage {
+  const RelayClosed(this.subscriptionId, this.message);
+  final String subscriptionId;
+  final String message;
 }

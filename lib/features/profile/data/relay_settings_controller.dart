@@ -116,7 +116,10 @@ class RelaySettings {
   /// relentless small signal with a rare huge one puts the throttle problem
   /// back, just between two things nobody is reading.
   static const defaultLocationUrls = <String>[
-    'wss://offchain.pub',
+    // offchain.pub rejected our keys by web-of-trust policy in both field
+    // logs (2026-09-09). Use a separate connection to our own relay; NIP-42
+    // authenticates the recipient before either socket can read kind 1059.
+    'wss://relay.cubechat.tech/geo',
     'wss://relay.nostr.net',
   ];
 

@@ -20,11 +20,23 @@ NostrEvent _frameEvent(String npub) => NostrEvent(
     );
 
 void main() {
+  test('parses authentication challenges and denied subscriptions', () {
+    final auth =
+        NostrRelayProtocol.parse('["AUTH","challenge-1"]') as RelayAuth;
+    expect(auth.challenge, 'challenge-1');
+    final denied =
+        NostrRelayProtocol.parse('["CLOSED","sub","auth-required: denied"]')
+            as RelayClosed;
+    expect(denied.subscriptionId, 'sub');
+    expect(denied.message, startsWith('auth-required:'));
+    expect(NostrRelayProtocol.parse('["AUTH",{}]'), isA<RelayUnknown>());
+  });
+
   group('client -> relay framing', () {
     test('req builds a kind + #p filter, optionally with since', () {
-      final decoded =
-          jsonDecode(NostrRelayProtocol.req('sub1', recipientPubkeyHex: 'aa' * 32))
-              as List;
+      final decoded = jsonDecode(
+        NostrRelayProtocol.req('sub1', recipientPubkeyHex: 'aa' * 32),
+      ) as List;
       expect(decoded[0], 'REQ');
       expect(decoded[1], 'sub1');
       final filter = decoded[2] as Map;
@@ -70,9 +82,9 @@ void main() {
             .subscriptionId,
         'sub1',
       );
-      final ok =
-          NostrRelayProtocol.parse(jsonEncode(['OK', 'ff' * 32, true, 'stored']))
-              as RelayOk;
+      final ok = NostrRelayProtocol.parse(
+        jsonEncode(['OK', 'ff' * 32, true, 'stored']),
+      ) as RelayOk;
       expect(ok.accepted, isTrue);
       expect(ok.message, 'stored');
       expect(
@@ -85,8 +97,14 @@ void main() {
     test('malformed / unknown messages become RelayUnknown', () {
       expect(NostrRelayProtocol.parse('not json'), isA<RelayUnknown>());
       expect(NostrRelayProtocol.parse('{}'), isA<RelayUnknown>());
-      expect(NostrRelayProtocol.parse(jsonEncode(['WAT', 1])), isA<RelayUnknown>());
-      expect(NostrRelayProtocol.parse(jsonEncode(['EOSE'])), isA<RelayUnknown>());
+      expect(
+        NostrRelayProtocol.parse(jsonEncode(['WAT', 1])),
+        isA<RelayUnknown>(),
+      );
+      expect(
+        NostrRelayProtocol.parse(jsonEncode(['EOSE'])),
+        isA<RelayUnknown>(),
+      );
     });
   });
 

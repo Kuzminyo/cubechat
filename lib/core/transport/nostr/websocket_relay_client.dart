@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../util/cost_meter.dart';
@@ -34,6 +36,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// network.
   WebSocketNostrRelayClient({
     required List<String> relayUrls,
+    NostrEventSigner? authSigner,
+    Future<bool> Function(NostrEvent)? verifyInbound,
     List<String> mediaRelayUrls = const <String>[],
     List<String> locationRelayUrls = const <String>[],
     WebSocketChannel Function(Uri)? connect,
@@ -42,11 +46,15 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     Iterable<String>? seenIds,
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
-  })  : _urls = List.unmodifiable(<String>{
-          ...relayUrls,
-          ...mediaRelayUrls,
-          ...locationRelayUrls,
-        }.toList()),
+  })  : _authSigner = authSigner,
+        _verifyInbound = verifyInbound ?? _verifyOffThread,
+        _urls = List.unmodifiable(
+          <String>{
+            ...relayUrls,
+            ...mediaRelayUrls,
+            ...locationRelayUrls,
+          }.toList(),
+        ),
         _lanes = Map.unmodifiable(<RelayLane, Set<String>>{
           RelayLane.media: mediaRelayUrls.toSet(),
           RelayLane.location: locationRelayUrls.toSet(),
@@ -79,6 +87,18 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   static const int _seenCapacity = 2048;
 
   final List<String> _urls;
+  final NostrEventSigner? _authSigner;
+  final Future<bool> Function(NostrEvent) _verifyInbound;
+  Future<void> _verificationTail = Future<void>.value();
+
+  // The 2026-09-09 circle log measured 204 ms of UI-isolate signature work
+  // for 54 chunks in 5 s. Move that arithmetic off UI on Android/iOS, with
+  // only one worker per pool so a backlog cannot create dozens of isolates.
+  static Future<bool> _verifyOffThread(NostrEvent event) => compute(
+        NostrRelayProtocol.verifyInboundEvent,
+        event,
+        debugLabel: 'nostr-verify',
+      );
 
   /// Relays kept for a lane, and subscribed to like any other. See [RelayLane].
   final Map<RelayLane, Set<String>> _lanes;
@@ -299,25 +319,34 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// Gate an inbound event and hand it to the merged stream. Everything that
   /// fails verification is dropped silently — a shared public relay carries
   /// plenty of traffic that isn't ours, and that isn't an error.
-  Future<void> _onEvent(String url, NostrEvent event) async {
-    final id = event.id;
-    if (id == null || _seenIds.contains(id)) return;
-    // Counted for the same reason the signing side is: a BIP-340 verify is
-    // pure Dart on the UI isolate, and one runs for every event that is new to
-    // us. Duplicates from the other relays never reach it — the id check above
-    // is deliberately first — so this counts distinct events, not sockets.
-    if (!await CostMeter.instance.measure(
-      'nostr-verify',
-      () => NostrRelayProtocol.verifyInboundEvent(event),
-    )) {
-      DebugLog.instance
-          .log('NOSTR', 'drop event from $url: failed verification');
-      return;
-    }
-    _remember(id);
-    _advanceWatermark(event.createdAt);
-    final c = _inbound;
-    if (c != null && !c.isClosed) c.add(event);
+  Future<void> _onEvent(String url, NostrEvent event) {
+    _verificationTail = _verificationTail.then((_) async {
+      final id = event.id;
+      if (_disposed || id == null || _seenIds.contains(id)) return;
+      try {
+        final valid = await CostMeter.instance.measure(
+          'nostr-verify',
+          () => _verifyInbound(event),
+        );
+        if (_disposed) return;
+        if (!valid) {
+          DebugLog.instance
+              .log('NOSTR', 'drop event from $url: failed verification');
+          return;
+        }
+        // Dedup after verification, in the same serial queue: concurrent relay
+        // copies used to pass the seen check together. A forged first copy
+        // must never reserve an id and suppress the authentic copy behind it.
+        _remember(id);
+        _advanceWatermark(event.createdAt);
+        final c = _inbound;
+        if (c != null && !c.isClosed) c.add(event);
+      } catch (e) {
+        // A worker failure must not poison the queue for every later message.
+        DebugLog.instance.log('NOSTR', 'verification failed on $url: $e');
+      }
+    });
+    return _verificationTail;
   }
 
   /// Move the watermark up to [createdAt]. Clamped to now: a relay can hand us
@@ -432,6 +461,9 @@ class _RelayConnection {
   /// from `_channel != null`, which is true the instant the factory returns and
   /// says nothing about whether anything is on the other end.
   bool _connected = false;
+  String? _authChallenge;
+  String? _authEventId;
+  bool _authInFlight = false;
 
   final String _subId = 'cc-${Random().nextInt(1 << 32).toRadixString(16)}';
 
@@ -475,8 +507,8 @@ class _RelayConnection {
       );
       await channel.ready;
       if (_closed) return;
-      // A relay accepts REQ/EVENT the moment the socket is writable; there is
-      // no handshake beyond the WebSocket upgrade itself.
+      // Writable is not subscribed: kind 1059 reads may require NIP-42 AUTH.
+      // A CLOSED response below records that distinction and AUTH retries REQ.
       _connected = true;
       _pool._setState(url, RelayState.connected);
       _backoff = WebSocketNostrRelayClient._initialBackoff;
@@ -517,6 +549,46 @@ class _RelayConnection {
     }
   }
 
+  /// On 2026-09-09 our relay stored all 55 events of a circle, but denied
+  /// unauthenticated kind-1059 reads. Ignoring AUTH/CLOSED made "connected"
+  /// indistinguishable from a working inbox. Bind proofs to this socket,
+  /// challenge and URL; an old signing future must not authenticate a new one.
+  Future<void> _authenticate(String challenge) async {
+    final signer = _pool._authSigner;
+    final channel = _channel;
+    if (signer == null || channel == null || _closed) return;
+    if (_authChallenge == challenge) return;
+    _authChallenge = challenge;
+    _authInFlight = true;
+    try {
+      final event = await signer.sign(
+        NostrEvent(
+          pubkey: signer.npubHex,
+          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          kind: 22242,
+          tags: [
+            ['relay', url],
+            ['challenge', challenge],
+          ],
+          content: '',
+        ),
+      );
+      if (_closed ||
+          !identical(channel, _channel) ||
+          _authChallenge != challenge) {
+        return;
+      }
+      _authEventId = event.id;
+      send(jsonEncode(['AUTH', event.toJson()]));
+    } catch (e) {
+      if (identical(channel, _channel) && _authChallenge == challenge) {
+        _authInFlight = false;
+        _pool._setState(url, RelayState.failed);
+        DebugLog.instance.log('NOSTR', '$url authentication failed: $e');
+      }
+    }
+  }
+
   void _onMessage(dynamic raw) {
     if (raw is! String) return;
     final msg = NostrRelayProtocol.parse(raw);
@@ -527,10 +599,36 @@ class _RelayConnection {
         // able to push our subscription past real messages.
         unawaited(_pool._onEvent(url, event));
       case RelayOk(:final eventId, :final accepted, :final message):
+        if (eventId == _authEventId) {
+          _authEventId = null;
+          _authInFlight = false;
+          DebugLog.instance.log(
+            'NOSTR',
+            accepted
+                ? '$url authenticated — renewing inbox subscription'
+                : '$url authentication refused: $message',
+          );
+          if (accepted) {
+            _pool._setState(url, RelayState.connected);
+            sendReqIfOpen();
+          } else {
+            _pool._setState(url, RelayState.failed);
+          }
+          break;
+        }
         if (!accepted) {
           DebugLog.instance.log('NOSTR', '$url rejected publish: $message');
         }
         _pool._onOk(eventId, accepted, message);
+      case RelayAuth(:final challenge):
+        unawaited(_authenticate(challenge));
+      case RelayClosed(:final subscriptionId, :final message):
+        DebugLog.instance
+            .log('NOSTR', '$url subscription $subscriptionId closed: $message');
+        if (subscriptionId == _subId && !_authInFlight) {
+          // An open socket alone must not appear healthy after read refusal.
+          _pool._setState(url, RelayState.failed);
+        }
       case RelayNotice(:final message):
         DebugLog.instance.log('NOSTR', '$url notice: $message');
       case RelayEose():
@@ -562,6 +660,9 @@ class _RelayConnection {
 
   void _teardownSocket() {
     _connected = false;
+    _authChallenge = null;
+    _authEventId = null;
+    _authInFlight = false;
     unawaited(_sub?.cancel());
     _sub = null;
     try {
