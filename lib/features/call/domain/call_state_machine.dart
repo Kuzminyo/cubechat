@@ -79,7 +79,8 @@ class CallStateMachine extends ChangeNotifier {
   }
 
   void startOutgoing({required Uint8List callId, required String sdp}) {
-    if (_phase != CallPhase.idle) return;
+    if (_phase != CallPhase.idle && _phase != CallPhase.ended) return;
+    _talkingSince = null;
     _callId = callId;
     _outgoing = true;
     _move(CallPhase.dialing);
@@ -114,10 +115,48 @@ class CallStateMachine extends ChangeNotifier {
       case CallSignalKind.hangup:
         _end(CallEndCause.hungUp);
       case CallSignalKind.invite:
-        // Incoming calls arrive in the next task; an invite for a call we are
-        // already running is a repeat delivery and changes nothing.
+        // A repeat delivery of the invite we are already running.
         return;
     }
+  }
+
+  /// An invite that is not for the call we are already running.
+  ///
+  /// Kept separate from [handleSignal] because it is the only path that may
+  /// legitimately replace the current call, and mixing "answer this frame"
+  /// with "abandon what you were doing" in one switch is how a state machine
+  /// grows a hole.
+  void handleInvite(CallSignal invite) {
+    // sentAtMs is only carried by an invite, so any other kind arriving here
+    // would be a null dereference below rather than a refusal.
+    if (invite.kind != CallSignalKind.invite) return;
+    if (_isOurs(invite)) return;
+    // Relays hold events and hand them over on connect, so an invite from an
+    // hour ago arrives looking new. Answering one rings the caller back for a
+    // call they gave up on, which is worse than dropping it.
+    if (!inviteIsFresh(sentAtMs: invite.sentAtMs!, now: now())) return;
+
+    if (_phase == CallPhase.dialing || _phase == CallPhase.ringing) {
+      // Both dialled at once. Both sides run the same comparison over the same
+      // two ids, so neither has to ask the other what happened.
+      if (winsGlare(mine: _callId!, theirs: invite.callId)) {
+        unawaited(send(CallSignal.busy(invite.callId)));
+        return;
+      }
+      _end(CallEndCause.glareLost);
+    } else if (_phase != CallPhase.idle && _phase != CallPhase.ended) {
+      unawaited(send(CallSignal.busy(invite.callId)));
+      return;
+    }
+
+    _callId = invite.callId;
+    _outgoing = false;
+    _talkingSince = null;
+    _move(CallPhase.incoming);
+    // Acknowledged before anything else: without this the caller cannot tell
+    // a phone that is ringing from a build that never understood the frame.
+    unawaited(send(CallSignal.ringing(invite.callId)));
+    _arm(CallTimings.noAnswer, () => _end(CallEndCause.noAnswer));
   }
 
   void accept({required String sdp}) {
