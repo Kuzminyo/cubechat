@@ -2697,6 +2697,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get previewUnsupported => 'Unsupported message';
 
   @override
+  String get previewCallOutgoing => 'Outgoing call';
+
+  @override
+  String get previewCallIncoming => 'Incoming call';
+
+  @override
+  String get previewCallMissed => 'Missed call';
+
+  @override
   String chatPreparingPhotos(int count) {
     return 'Preparing $count photos…';
   }

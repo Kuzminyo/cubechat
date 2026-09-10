@@ -1013,6 +1013,9 @@
     "previewMapInvite":  "Запрошення на мапу",
     "previewContact":  "Контакт",
     "previewUnsupported":  "Повідомлення не підтримується",
+    "previewCallOutgoing":  "Вихідний дзвінок",
+    "previewCallIncoming":  "Вхідний дзвінок",
+    "previewCallMissed":  "Пропущений дзвінок",
 
     "chatPreparingPhotos":  "Готую {count} фото…",
   "circleSwitchCamera": "Перемкнути камеру",

@@ -2725,6 +2725,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get previewUnsupported => 'Повідомлення не підтримується';
 
   @override
+  String get previewCallOutgoing => 'Вихідний дзвінок';
+
+  @override
+  String get previewCallIncoming => 'Вхідний дзвінок';
+
+  @override
+  String get previewCallMissed => 'Пропущений дзвінок';
+
+  @override
   String chatPreparingPhotos(int count) {
     return 'Готую $count фото…';
   }

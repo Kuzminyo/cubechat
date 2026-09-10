@@ -4712,6 +4712,24 @@ abstract class AppLocalizations {
   /// **'Unsupported message'**
   String get previewUnsupported;
 
+  /// No description provided for @previewCallOutgoing.
+  ///
+  /// In en, this message translates to:
+  /// **'Outgoing call'**
+  String get previewCallOutgoing;
+
+  /// No description provided for @previewCallIncoming.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming call'**
+  String get previewCallIncoming;
+
+  /// No description provided for @previewCallMissed.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed call'**
+  String get previewCallMissed;
+
   /// No description provided for @chatPreparingPhotos.
   ///
   /// In en, this message translates to:

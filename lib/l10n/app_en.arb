@@ -1327,6 +1327,9 @@
   "previewMapInvite": "Map invitation",
   "previewContact": "Contact",
   "previewUnsupported": "Unsupported message",
+  "previewCallOutgoing": "Outgoing call",
+  "previewCallIncoming": "Incoming call",
+  "previewCallMissed": "Missed call",
 
   "chatPreparingPhotos": "Preparing {count} photos…",
   "@chatPreparingPhotos": {

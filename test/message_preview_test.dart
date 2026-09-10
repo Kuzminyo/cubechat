@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:cubechat/features/call/domain/call_record.dart';
+import 'package:cubechat/features/call/domain/call_state_machine.dart';
 import 'package:cubechat/features/chat/domain/message_preview.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
@@ -125,6 +129,72 @@ void main() {
 
     test('leaves anything it cannot be sure about alone', () {
       expect(storedTextPreview('see you at six', t), 'see you at six');
+    });
+  });
+
+  group('a finished call in a chat row', () {
+    Message call(CallOutcome outcome) => _m(
+          kind: MessageKind.text,
+          text: encodeCallRecord(outcome),
+        );
+
+    CallOutcome outcome({
+      required bool outgoing,
+      required CallEndCause cause,
+      Duration talkedFor = Duration.zero,
+    }) =>
+        CallOutcome(
+          callId: Uint8List(16),
+          outgoing: outgoing,
+          cause: cause,
+          talkedFor: talkedFor,
+        );
+
+    test('an answered outgoing call is named, not shown as base64', () {
+      final preview = messagePreview(
+        call(outcome(
+          outgoing: true,
+          cause: CallEndCause.hungUp,
+          talkedFor: const Duration(minutes: 2, seconds: 31),
+        )),
+        t,
+      );
+      expect(preview, '📞 Outgoing call');
+      expect(preview, isNot(contains('cubechat:')));
+    });
+
+    test('an answered incoming call says so', () {
+      expect(
+        messagePreview(
+          call(outcome(
+            outgoing: false,
+            cause: CallEndCause.hungUp,
+            talkedFor: const Duration(seconds: 12),
+          )),
+          t,
+        ),
+        '📞 Incoming call',
+      );
+    });
+
+    test('a call nobody picked up is a missed call in either direction', () {
+      for (final outgoing in [true, false]) {
+        expect(
+          messagePreview(
+            call(outcome(outgoing: outgoing, cause: CallEndCause.noAnswer)),
+            t,
+          ),
+          '📞 Missed call',
+        );
+      }
+    });
+
+    test('somebody typing the scheme by hand is still unsupported, not a call',
+        () {
+      expect(
+        messagePreview(_m(kind: MessageKind.text, text: 'cubechat:call:v1:zz'), t),
+        t.previewUnsupported,
+      );
     });
   });
 }

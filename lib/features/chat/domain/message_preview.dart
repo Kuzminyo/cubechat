@@ -1,6 +1,7 @@
 import '../../../core/transport/shared_contact.dart';
 import '../../../core/transport/shared_location.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../call/domain/call_record.dart';
 import '../../map/data/map_friend_link.dart';
 import '../models/message.dart';
 
@@ -104,6 +105,13 @@ String _textPreview(String text, AppLocalizations t) {
   // Cheap gate first — every one of these starts with the same scheme, and
   // almost no message does.
   if (!trimmed.startsWith('cubechat:')) return text;
+  final call = tryParseCallRecord(trimmed);
+  if (call != null) {
+    if (!call.answered) return '📞 ${t.previewCallMissed}';
+    return call.outgoing
+        ? '📞 ${t.previewCallOutgoing}'
+        : '📞 ${t.previewCallIncoming}';
+  }
   if (SharedLocation.tryParse(trimmed) != null) return '📍 ${t.previewLocation}';
   if (MapFriendLink.tryParse(trimmed) != null) return '🗺 ${t.previewMapInvite}';
   if (SharedContact.tryParse(trimmed) != null) return '👤 ${t.previewContact}';
