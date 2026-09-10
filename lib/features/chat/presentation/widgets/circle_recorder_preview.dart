@@ -44,13 +44,32 @@ class CircleRecorderPreview extends StatelessWidget {
       child: Focus(
         canRequestFocus: false,
         descendantsAreFocusable: false,
+        // **Nothing wraps the whole overlay in an Opacity any more.**
+        //
+        // It used to, and that is one widget doing two unhelpful things at
+        // once. An `Opacity` below 1 forces everything under it into an
+        // offscreen texture, and what was under it here is a full-screen
+        // `BackdropFilter` — so every frame of the entrance rendered the blur
+        // into a buffer and then composited the buffer, which is the most
+        // expensive way to fade the most expensive thing on the screen. On top
+        // of that it faded the disc and the blur together, so the picture
+        // arrived as a wash rather than as something opening.
+        //
+        // The parts move separately now: the dim behind the blur lerps its
+        // alpha, which is a colour and costs nothing, and the disc scales up
+        // from nine tenths inside its own small layer. The blur itself is not
+        // animated at all — a blur whose sigma changes is re-rendered every
+        // frame, and nobody has ever noticed it arriving.
+        //
+        // The subtree rebuilds each frame of the entrance instead of being
+        // cached behind `child:`, and that is the cheaper half of the trade: a
+        // build here measured about a millisecond, against re-rendering a
+        // full-screen gaussian into a texture sixty times a second.
         child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: 1),
+          tween: Tween(begin: 0.0, end: 1.0),
           duration: AppMotion.duration(context, AppMotion.entrance),
           curve: Curves.easeOutCubic,
-          builder: (context, value, child) =>
-              Opacity(opacity: value, child: child),
-          child: SizedBox.expand(
+          builder: (context, entrance, _) => SizedBox.expand(
             child: Material(
               type: MaterialType.transparency,
               child: LayoutBuilder(
@@ -88,8 +107,11 @@ class CircleRecorderPreview extends StatelessWidget {
                               sigmaX: backdropBlur,
                               sigmaY: backdropBlur,
                             ),
+                            // The dim carries the fade. Changing a colour's
+                            // alpha is a paint parameter, not a layer.
                             child: ColoredBox(
-                              color: AppColors.bgDeep.withValues(alpha: .38),
+                              color: AppColors.bgDeep
+                                  .withValues(alpha: .38 * entrance),
                             ),
                           ),
                         ),
@@ -122,13 +144,29 @@ class CircleRecorderPreview extends StatelessWidget {
                             }
                           },
                           onScaleEnd: (_) => unawaited(recorder.resetZoom()),
-                          child: AnimatedBuilder(
-                            animation: recorder,
-                            builder: (context, _) => _Disc(
-                              diameter: diameter,
-                              changing: recorder.isFlipping,
-                              camera: recorder.isReady ? recorder.camera : null,
-                              progress: recorder.progress,
+                          // The disc is what opens. Nine tenths to full, on the
+                          // same curve the dim behind it is using, so the
+                          // picture grows into place instead of appearing at
+                          // full size and merely getting brighter. Scale on a
+                          // circle costs one transform and no layer at all.
+                          child: Transform.scale(
+                            scale: 0.9 + 0.1 * entrance,
+                            child: Opacity(
+                              // Small, round, and the only opacity left. It is
+                              // the disc's own layer rather than the whole
+                              // screen's, which is the difference this change
+                              // is about.
+                              opacity: entrance,
+                              child: AnimatedBuilder(
+                                animation: recorder,
+                                builder: (context, _) => _Disc(
+                                  diameter: diameter,
+                                  changing: recorder.isFlipping,
+                                  camera:
+                                      recorder.isReady ? recorder.camera : null,
+                                  progress: recorder.progress,
+                                ),
+                              ),
                             ),
                           ),
                         ),

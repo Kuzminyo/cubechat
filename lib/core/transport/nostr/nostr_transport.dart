@@ -265,7 +265,35 @@ class NostrTransport {
       'nostr-sign',
       () => _signer.sign(event),
     );
-    return _relay.publish(signed, lane: lane);
+    final receipt = await _relay.publish(signed, lane: lane);
+    // **A frame that rings a doorbell goes on the conversation lane as well.**
+    //
+    // The push service watches a fixed list of public relays and knows nothing
+    // about lanes. Conversation traffic goes to relays on that list, so a text
+    // message wakes a sleeping phone; a media manifest goes to the media lane —
+    // our own relay and two others, none of them watched — so the one frame of
+    // a transfer that carries the wake tag was published where nothing was
+    // listening for it. Reported as circles arriving with no notification,
+    // which is exactly what that is: the file lands, and nobody is told.
+    //
+    // The same signed event, so this costs one more write and no second
+    // signature, and the recipient drops the duplicate on event id. One frame
+    // per transfer, not per chunk — the media lane exists to keep a burst of
+    // chunks off the conversation relays, and a manifest is not a burst.
+    //
+    // Fixing it here rather than by adding the media relays to the push
+    // service's environment: that list is on a server, this one is in the app,
+    // and a doorbell that only rings while two lists agree is a doorbell that
+    // stops working the next time either changes.
+    if (wakesPeer && lane != RelayLane.conversation) {
+      try {
+        await _relay.publish(signed, lane: RelayLane.conversation);
+      } catch (_) {
+        // The transfer itself already published successfully; a doorbell that
+        // could not be rung is not a reason to fail the file behind it.
+      }
+    }
+    return receipt;
   }
 
   /// Frames addressed to us, each with the moment its sender stamped it.
