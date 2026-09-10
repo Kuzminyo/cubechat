@@ -175,7 +175,17 @@ void main() {
     );
     final clock = tester.getRect(find.text('10:11', skipOffstage: false));
 
-    expect(circle.width, VideoBubble.circleIdle);
+    // **The slot is the playing size and it does not change.**
+    //
+    // It used to be `circleIdle` and to grow to `circlePlaying` with an
+    // `AnimatedContainer` — a box changing size inside a scrolling list, so
+    // every frame of the 260 ms re-laid-out the row, its padding and
+    // everything below it, to make one disc bigger. The disc scales inside a
+    // fixed slot now: the same movement on screen, no layout at all, and the
+    // conversation underneath never shifts while you are reading it. The cost
+    // is the whitespace around a resting circle, which is the cheaper half.
+    expect(circle.width, VideoBubble.circlePlaying);
+    expect(circle.height, circle.width, reason: 'a circle is square');
     expect(
       circle.contains(clock.center),
       isFalse,

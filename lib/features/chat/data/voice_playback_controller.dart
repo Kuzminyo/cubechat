@@ -51,6 +51,39 @@ class VoicePlayback {
       ? 0
       : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
 
+  /// Compared by value, so a tick that changes nothing rebuilds nothing.
+  ///
+  /// Without this every `copyWith` was a new identity and every listener woke
+  /// on every emission, whether or not the thing it draws had moved. It also
+  /// makes `select` honest: a bubble that asks only "am I the current one" now
+  /// really does sleep through a whole playback, because the boolean it
+  /// selected is equal to the one before it.
+  @override
+  bool operator ==(Object other) =>
+      other is VoicePlayback &&
+      other.messageId == messageId &&
+      other.chatId == chatId &&
+      other.chatTitle == chatTitle &&
+      other.sentAt == sentAt &&
+      other.position == position &&
+      other.duration == duration &&
+      other.playing == playing &&
+      other.speed == speed &&
+      other.isCircle == isCircle;
+
+  @override
+  int get hashCode => Object.hash(
+        messageId,
+        chatId,
+        chatTitle,
+        sentAt,
+        position,
+        duration,
+        playing,
+        speed,
+        isCircle,
+      );
+
   VoicePlayback copyWith({
     String? messageId,
     String? chatId,
@@ -107,24 +140,47 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     await old?.dispose();
   }
 
+  /// When the position last went out to anybody watching.
+  ///
+  /// A `VideoPlayerController` notifies on every decoded frame, so this ran
+  /// sixty times a second, and each run published a new position that woke
+  /// every widget watching playback — the island and its glass, the mini
+  /// player, the thumbnail, and once upon a time every bubble in the
+  /// conversation. What those actually draw is an arc and a countdown of whole
+  /// seconds. Neither can show sixty distinct values a second, and the picture
+  /// itself does not come from here at all: the video is a platform texture and
+  /// keeps its own frame rate whatever this does.
+  DateTime? _lastPositionAt;
+
+  /// Fifteen a second. Four times cheaper than the frame rate and still four
+  /// times finer than the smallest thing on screen changes.
+  static const Duration _positionCadence = Duration(milliseconds: 66);
+
   void _videoTick() {
     final player = _video;
     if (_disposed || player == null || !state.isCircle) return;
     final value = player.value;
     if (value.isCompleted || value.hasError) {
+      _lastPositionAt = null;
       state = VoicePlayback(speed: state.speed);
       unawaited(_releaseVideo());
       return;
     }
-    if (state.position != value.position ||
-        state.duration != value.duration ||
-        state.playing != value.isPlaying) {
-      state = state.copyWith(
-        position: value.position,
-        duration: value.duration,
-        playing: value.isPlaying,
-      );
-    }
+    // Starting, stopping and the length arriving are news and go at once. Only
+    // the position is paced — it is the one that changes every frame.
+    final changedOtherwise =
+        state.duration != value.duration || state.playing != value.isPlaying;
+    final now = DateTime.now();
+    final last = _lastPositionAt;
+    final due = last == null || now.difference(last) >= _positionCadence;
+    if (!changedOtherwise && !due) return;
+    if (state.position == value.position && !changedOtherwise) return;
+    _lastPositionAt = now;
+    state = state.copyWith(
+      position: value.position,
+      duration: value.duration,
+      playing: value.isPlaying,
+    );
   }
 
   Future<void> toggleCircle({

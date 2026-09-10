@@ -81,19 +81,34 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
 
   @override
   Widget build(BuildContext context) {
-    final playback = ref.watch(voicePlaybackControllerProvider);
-    final isCurrent = playback.isCurrent(widget.message.id);
+    // Only this note's own share of the playback, and nothing at all when it is
+    // not the one playing.
+    //
+    // `ref.watch(provider)` woke every voice note in the conversation on every
+    // position update, many times a second, while one of them played — a dozen
+    // waveforms repainting to show a bar that had not moved. Selected down to a
+    // record that is `null` unless this is the current message: records compare
+    // by value, `null` equals `null`, so a note that is not playing rebuilds
+    // exactly zero times for the whole of another one.
+    final tick = ref.watch(
+      voicePlaybackControllerProvider.select(
+        (s) => s.isCurrent(widget.message.id)
+            ? (playing: s.playing, position: s.position, duration: s.duration)
+            : null,
+      ),
+    );
+    final isCurrent = tick != null;
     final hasFile = MediaPaths.existsOrNull(widget.message.audioPath);
 
     final declared =
         Duration(milliseconds: widget.message.audioDurationMs ?? 0);
     // The decoder's own duration is better than the declared one, but only
     // exists for the message actually loaded.
-    final total = isCurrent && playback.duration > Duration.zero
-        ? playback.duration
+    final total = isCurrent && tick.duration > Duration.zero
+        ? tick.duration
         : declared;
-    final position = isCurrent ? playback.position : Duration.zero;
-    final playing = isCurrent && playback.playing;
+    final position = isCurrent ? tick.position : Duration.zero;
+    final playing = isCurrent && tick.playing;
     final progress = total > Duration.zero
         ? (position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;

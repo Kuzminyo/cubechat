@@ -209,24 +209,91 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   // ---- the round one ------------------------------------------------------
 
   Widget _circle() {
-    final playback = ref.watch(voicePlaybackControllerProvider);
-    final current = playback.isCurrent(widget.message.id);
+    // **Only this bubble's own share of the playback, and nothing when it is
+    // not the one playing.**
+    //
+    // `ref.watch(provider)` woke every circle and every voice note in the
+    // conversation on every position update — a dozen bubbles rebuilding many
+    // times a second while one of them played, which is most of what "the
+    // animations judder" was. Selected down to a record that is `null` unless
+    // this is the current message: records compare by value, `null` equals
+    // `null`, and a bubble that is not playing now rebuilds exactly zero times
+    // for the whole of somebody else's circle.
+    final tick = ref.watch(
+      voicePlaybackControllerProvider.select(
+        (s) => s.isCurrent(widget.message.id)
+            ? (playing: s.playing, position: s.position, duration: s.duration)
+            : null,
+      ),
+    );
+    final current = tick != null;
+    // Unpacked before anything reads them. A `bool ready` cannot carry the
+    // record's promotion to the lines below it, and repeating `tick != null`
+    // at each one to satisfy that is noise around three fields.
+    final position = tick?.position ?? Duration.zero;
+    final length = tick?.duration ?? Duration.zero;
+    final started = tick?.playing ?? false;
+    // Read, not watched: the widget needs the texture, and what decides when to
+    // repaint came from the select above.
     final player = current
         ? ref.read(voicePlaybackControllerProvider.notifier).video
         : null;
     final ready = player != null && player.value.isInitialized;
-    final playing = ready && player.value.isPlaying;
-    final total = ready ? player.value.duration : Duration.zero;
-    final left = ready ? total - player.value.position : Duration.zero;
+    final playing = ready && started;
+    final total = ready ? length : Duration.zero;
+    final left = ready ? total - position : Duration.zero;
     final progress = ready && total.inMilliseconds > 0
-        ? player.value.position.inMilliseconds / total.inMilliseconds
+        ? position.inMilliseconds / total.inMilliseconds
         : 0.0;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      width: playing ? VideoBubble.circlePlaying : VideoBubble.circleIdle,
-      height: playing ? VideoBubble.circlePlaying : VideoBubble.circleIdle,
+    // **The box does not change size; the disc inside it does.**
+    //
+    // It was an `AnimatedContainer` growing from 200 to 248, and a box that
+    // changes size inside a scrolling list relayouts the row on every frame of
+    // the 260 ms — the list, its padding and everything below the bubble, sixty
+    // times, for a decoration. `AnimatedScale` is a transform applied when the
+    // disc is painted: same movement on screen, no layout at all, and the
+    // conversation underneath never shifts.
+    //
+    // The slot stays at the playing size and the resting disc sits inside it,
+    // which also means the row does not jump when playback starts.
+    return SizedBox(
+      width: VideoBubble.circlePlaying,
+      height: VideoBubble.circlePlaying,
+      child: AnimatedScale(
+        scale: playing ? 1 : VideoBubble.circleIdle / VideoBubble.circlePlaying,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        // The disc repaints with the ring and the countdown while it plays.
+        // Its own layer, so that repaint does not drag the bubble, the row and
+        // the conversation behind it into the same dirty rect.
+        child: RepaintBoundary(
+          child: _disc(
+            ready: ready,
+            current: current,
+            playing: playing,
+            player: player,
+            progress: progress,
+            left: left,
+            total: total,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _disc({
+    required bool ready,
+    required bool current,
+    required bool playing,
+    required VideoPlayerController? player,
+    required double progress,
+    required Duration left,
+    required Duration total,
+  }) {
+    return SizedBox(
+      width: VideoBubble.circlePlaying,
+      height: VideoBubble.circlePlaying,
       child: CustomPaint(
         // The ring is the only chrome. No card, no border, no play button: a
         // circle is a circle, and the one thing worth drawing round it is how
@@ -239,7 +306,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
               fit: StackFit.expand,
               children: [
                 ColoredBox(color: Colors.black.withValues(alpha: 0.45)),
-                if (ready)
+                if (ready && player != null)
                   FittedBox(
                     // A circle is square and the camera is not, so the picture
                     // is filled rather than fitted.
