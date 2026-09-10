@@ -53,6 +53,19 @@ const String kRecipientTag = 'p';
 /// than ringing it wrongly.
 const String kWakeTag = 'w';
 
+/// Marks an event as a call invite, so the push service sends it down the VoIP
+/// path instead of the ordinary silent wake.
+///
+/// A flag, exactly like [kWakeTag]: the recipient still travels in
+/// [kRecipientTag], and the push service reads it from there as it always did.
+///
+/// The cost is named rather than hidden. Beside `p`, this flag tells our relays
+/// — and anyone else reading the same relays — that the npub in `p` is being
+/// called, where before they could only tell that it had mail. It does not
+/// reveal who is calling: the sender is behind an ephemeral key, and the
+/// contents are inside the envelope.
+const String kCallTag = 'c';
+
 /// The network seam: publishes signed events to relays and streams back events
 /// addressed to us. A production implementation manages a pool of relay
 /// WebSocket connections (`wss://…`), REQ/EVENT/EOSE framing, and reconnection.
@@ -237,6 +250,8 @@ class NostrTransport {
   /// a message, not machinery. Defaults to false so anything added later has to
   /// say it out loud rather than inheriting a doorbell it does not need. See
   /// [kWakeTag].
+  /// [wakesCall] marks this as a call invite, so the push service routes it
+  /// down the VoIP path rather than a silent wake. See [kCallTag].
   /// [lane] keeps a burst off the relays carrying conversation. Nothing about
   /// the event changes — same kind, same tags, same signature — only which
   /// sockets it is written to.
@@ -244,6 +259,7 @@ class NostrTransport {
     required String recipientNpubHex,
     required Uint8List frameBytes,
     bool wakesPeer = false,
+    bool wakesCall = false,
     RelayLane lane = RelayLane.conversation,
   }) async {
     final event = NostrEvent(
@@ -253,6 +269,7 @@ class NostrTransport {
       tags: [
         [kRecipientTag, recipientNpubHex],
         if (wakesPeer) [kWakeTag, '1'],
+        if (wakesCall) [kCallTag, '1'],
       ],
       content: NostrFrameCodec.encodeContent(frameBytes),
     );

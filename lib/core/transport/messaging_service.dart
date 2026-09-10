@@ -11,6 +11,7 @@ import 'package:hive/hive.dart';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../features/call/domain/call_rules.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
@@ -60,6 +61,7 @@ import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
+import 'call_signal.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'contact_card.dart';
@@ -288,6 +290,18 @@ class MessagingService {
   Timer? _presenceTimer;
   Timer? _fileQueueTimer;
   bool _drainingFileQueue = false;
+
+  /// Call signalling as it arrives off the wire, decoded but not interpreted —
+  /// this service knows the envelope, not what an invite or a hangup means.
+  /// No listener attaches to it in this plan; the state machine that will is a
+  /// later task, and a broadcast stream with nobody listening is a well-formed
+  /// seam, not a bug.
+  final _callSignals =
+      StreamController<({String chatId, CallSignal signal})>.broadcast();
+
+  /// Call signalling as it arrives, for whoever is running a call.
+  Stream<({String chatId, CallSignal signal})> get callSignals =>
+      _callSignals.stream;
 
   /// Watches an incoming file that has stopped arriving, and asks again.
   ///
@@ -699,10 +713,13 @@ class MessagingService {
   /// asked, because the doorbell used to ring for everything: the presence
   /// heartbeat alone put a "New message" banner on a closed phone every 70
   /// seconds with nothing behind it.
+  /// [wakesCall] marks the frame as a call invite for the push service's VoIP
+  /// path — see [kCallTag].
   Future<bool> _sendOverNostr(
     String canonicalId,
     Uint8List frameBytes, {
     bool wakesPeer = false,
+    bool wakesCall = false,
     RelayLane lane = RelayLane.conversation,
   }) async {
     final transport = _nostr;
@@ -736,6 +753,7 @@ class MessagingService {
         recipientNpubHex: npubHex,
         frameBytes: frameBytes,
         wakesPeer: wakesPeer,
+        wakesCall: wakesCall,
         lane: lane,
       );
       // A write is not a send. Relays refuse events routinely — rate limits,
@@ -2940,6 +2958,27 @@ class MessagingService {
     }
   }
 
+  /// Put one frame of call signalling on the wire.
+  ///
+  /// Rides the same envelope as text, so the sdp inside is encrypted under the
+  /// session already established with this peer, and the DTLS fingerprint it
+  /// carries is protected by that same envelope. Nothing new is introduced
+  /// here cryptographically, which is the point.
+  Future<void> sendCallSignal({
+    required String canonicalId,
+    required Uint8List peerPub,
+    required CallSignal signal,
+  }) async {
+    await _sendControlToPeer(
+      canonicalId: canonicalId,
+      peerPub: peerPub,
+      type: InnerPayloadType.callSignal,
+      innerBody: signal.encode(),
+      wakesPeer: callWakesPeer(signal.kind),
+      wakesCall: callIsVoipWake(signal.kind),
+    );
+  }
+
   /// Shortest gap between two "still typing" frames.
   ///
   /// The composer calls [announceTyping] on every keystroke, so without this a
@@ -4805,12 +4844,20 @@ class MessagingService {
   /// [relayOnly] skips the mesh entirely and publishes over Nostr alone — for
   /// the presence heartbeat, whose whole job is covering peers the mesh can't
   /// see, and which must not spend BLE airtime on the ones it can.
+  ///
+  /// [wakesPeer] and [wakesCall] default to false for the same reason they did
+  /// before either parameter existed: everything that used to travel this path
+  /// — the presence heartbeat, typing notices, read receipts, copy-restriction
+  /// notes, the conversation clear — is machinery, and none of it is news to a
+  /// person. Call signalling is the first caller that opts in.
   Future<int> _sendControlToPeer({
     required String canonicalId,
     required Uint8List peerPub,
     required InnerPayloadType type,
     required Uint8List innerBody,
     bool relayOnly = false,
+    bool wakesPeer = false,
+    bool wakesCall = false,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final myHash = await _myPubkeyHash();
@@ -4841,15 +4888,15 @@ class MessagingService {
     final frameBytes =
         Frame(type: FrameType.transport, payload: env.encode()).encode();
 
-    // No `wakesPeer` on this path or the one below, and that is the fix rather
-    // than an omission. Everything that travels as a control frame is
-    // machinery — the presence heartbeat every 70 seconds, typing notices,
-    // read receipts, copy-restriction notes, the conversation clear — and none
-    // of it is news to a person. Waking a closed phone for all of it put a
-    // "New message" banner on the lock screen about once a minute with no
-    // message behind it, which teaches the owner to ignore the real ones.
     if (relayOnly) {
-      return await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
+      return await _sendOverNostr(
+        canonicalId,
+        frameBytes,
+        wakesPeer: wakesPeer,
+        wakesCall: wakesCall,
+      )
+          ? 1
+          : 0;
     }
 
     final session = _findSessionByPubkeyHex(canonicalId);
@@ -4882,7 +4929,14 @@ class MessagingService {
     // free: both copies carry the same msgId, and the receiver dedups.
     final direct = transportId != null;
     if (fanout > 0 && direct) return fanout;
-    final viaRelay = await _sendOverNostr(canonicalId, frameBytes) ? 1 : 0;
+    final viaRelay = await _sendOverNostr(
+      canonicalId,
+      frameBytes,
+      wakesPeer: wakesPeer,
+      wakesCall: wakesCall,
+    )
+        ? 1
+        : 0;
     return fanout + viaRelay;
   }
 
@@ -6716,11 +6770,15 @@ class MessagingService {
           break;
 
         case InnerPayloadType.callSignal:
-          // The codec lives in call_signal.dart as of this task; nothing here
-          // decodes or dispatches it yet, so a frame is dropped exactly as an
-          // unrecognised inner type is dropped today. The state machine that
-          // turns this into a ring or a hangup is a later task on this plan.
-          break;
+          // Decoded here and handed on; the machine that decides what it means
+          // lives in features/call and knows nothing about transport.
+          try {
+            _callSignals.add(
+              (chatId: peerId, signal: CallSignal.decode(unpacked.body)),
+            );
+          } on FormatException catch (e) {
+            debugPrint('[CALL] undecodable call signal from $peerId: $e');
+          }
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
@@ -10589,6 +10647,7 @@ class MessagingService {
       await c.dispose();
     }
     _clients.clear();
+    await _callSignals.close();
   }
 }
 

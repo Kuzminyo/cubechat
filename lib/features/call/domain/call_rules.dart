@@ -49,3 +49,30 @@ bool winsGlare({required Uint8List mine, required Uint8List theirs}) {
   // both sides claiming victory would leave two half-calls. Both lose instead.
   return false;
 }
+
+/// Whether this frame should wake a sleeping phone at all.
+///
+/// A ringing acknowledgement and an accept travel to somebody who is by
+/// definition awake — they are in a call screen. A hangup and a decline do
+/// not: the phone at the other end may be ringing in a pocket, and a phone
+/// that missed the hangup goes on ringing after the caller gave up.
+bool callWakesPeer(CallSignalKind kind) => switch (kind) {
+      CallSignalKind.invite ||
+      CallSignalKind.hangup ||
+      CallSignalKind.decline =>
+        true,
+      CallSignalKind.ringing ||
+      CallSignalKind.accept ||
+      CallSignalKind.busy =>
+        false,
+    };
+
+/// Whether this frame should be delivered as a VoIP push rather than an
+/// ordinary silent wake.
+///
+/// **Only the invite, and this is not a detail.** iOS terminates an app that
+/// accepts a VoIP push without immediately reporting a new incoming call. A
+/// hangup has no call to report, so a VoIP push carrying one would kill the
+/// app; and it needs none, because the app is awake by then — it reported the
+/// incoming call moments earlier and still holds its relay subscription.
+bool callIsVoipWake(CallSignalKind kind) => kind == CallSignalKind.invite;
