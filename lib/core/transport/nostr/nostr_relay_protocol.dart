@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
-import '../../crypto/secp256k1.dart';
+import '../../crypto/signature_worker.dart';
 import 'nostr_event.dart';
 import 'nostr_transport.dart';
 
@@ -105,25 +104,22 @@ class NostrRelayProtocol {
     if (id.length != 64 || sig.length != 128 || event.pubkey.length != 64) {
       return false;
     }
-    if (!await event.hasValidId()) return false;
-    try {
-      return await Secp256k1.verify(
-        publicKey: _unhex(event.pubkey),
-        message: _unhex(id),
-        signature: _unhex(sig),
-      );
-    } catch (_) {
-      return false;
-    }
+    // Both checks in one crossing to another isolate.
+    //
+    // They used to run here, on the thread that draws. Measured on a phone
+    // receiving a circle: just under four milliseconds of *synchronous* Dart
+    // per event, and a file is one event per chunk — hundreds in a row, none
+    // of them yielding, because a BIP-340 scalar multiplication in Dart has no
+    // suspension point in it. See [SignatureWorker] for where they went and
+    // what happens on a phone that cannot spawn an isolate.
+    return SignatureWorker.instance.verifyEvent(
+      serialized: event.serializeForId(),
+      idHex: id,
+      pubkeyHex: event.pubkey,
+      sigHex: sig,
+    );
   }
 
-  static Uint8List _unhex(String s) {
-    final out = Uint8List(s.length ~/ 2);
-    for (var i = 0; i < out.length; i++) {
-      out[i] = int.parse(s.substring(i * 2, i * 2 + 2), radix: 16);
-    }
-    return out;
-  }
 }
 
 /// A parsed relay→client message.

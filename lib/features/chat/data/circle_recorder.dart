@@ -279,6 +279,22 @@ class CircleRecorder extends ChangeNotifier {
     _notify();
   }
 
+  /// Where a lens opens, which is not always as wide as it can go.
+  ///
+  /// **Facing you, the minimum. Facing away, 1.0.** A modern phone presents its
+  /// rear cameras as one logical device whose zoom range starts at 0.5 — that
+  /// half is the ultra-wide, and opening there is what the log was showing as
+  /// `zoom=0.5`. It is the right place to start a selfie, where the whole
+  /// difficulty is fitting more than a face into a disc at arm's length, and
+  /// the wrong place to start a shot of something: 1.0 is the main lens's own
+  /// framing, which is what a person expects the camera to show and the
+  /// sharpest thing the phone has.
+  ///
+  /// Clamped, because a phone whose range does not reach 1.0 exists and should
+  /// get the closest thing rather than a refused call.
+  double _openingZoom() =>
+      _front ? _minZoom : 1.0.clamp(_minZoom, _maxZoom).toDouble();
+
   /// Let go and it goes back.
   ///
   /// A circle is a few seconds of your own face; a zoom held between one and
@@ -316,11 +332,15 @@ class CircleRecorder extends ChangeNotifier {
 
   Future<void> resetZoom() async {
     final camera = _camera;
-    if (camera == null || _zoom == _minZoom) return;
+    // Home is where the lens opened, not the bottom of its range — see
+    // [_openingZoom]. On the back those are different numbers, and letting go
+    // of a pinch used to slide past the main lens into the ultra-wide.
+    final home = _openingZoom();
+    if (camera == null || _zoom == home) return;
     final generation = ++_zoomGeneration;
     final from = _zoom;
-    final span = from - _minZoom;
-    _zoomAtGestureStart = _minZoom;
+    final span = from - home;
+    _zoomAtGestureStart = home;
     final started = DateTime.now();
     final done = Completer<void>();
     Timer.periodic(_zoomStep, (timer) {
@@ -352,10 +372,10 @@ class CircleRecorder extends ChangeNotifier {
     await done.future;
     if (generation != _zoomGeneration || _disposed) return;
     // The last tick may have been the one that was skipped for being busy, and
-    // the ride has to end exactly at the minimum rather than near it.
-    _zoom = _minZoom;
+    // the ride has to end exactly where it started rather than near it.
+    _zoom = home;
     try {
-      await camera.setZoomLevel(_minZoom);
+      await camera.setZoomLevel(home);
     } catch (_) {}
     _notify();
   }
@@ -435,11 +455,22 @@ class CircleRecorder extends ChangeNotifier {
     return change;
   }
 
+  /// The lenses this phone has, asked for once.
+  ///
+  /// `availableCameras()` is a platform round trip and the answer cannot change
+  /// while a recording is running — a phone does not grow a lens mid-sentence.
+  /// It was being asked on every flip, in front of the swap, so the wait was
+  /// paid on the one path where the wait is the complaint.
+  List<CameraDescription>? _lenses;
+
+  Future<List<CameraDescription>> _cameras() async =>
+      _lenses ??= await _listCameras();
+
   Future<void> _flipLens() async {
     final camera = _camera!;
     final generation = _generation;
     try {
-      final cameras = await _listCameras();
+      final cameras = await _cameras();
       if (generation != _generation) return;
       final wanted =
           _front ? CameraLensDirection.back : CameraLensDirection.front;
@@ -448,9 +479,10 @@ class CircleRecorder extends ChangeNotifier {
         error = 'no-other-camera';
         return;
       }
-      try {
-        await camera.setFlashMode(FlashMode.off);
-      } catch (_) {}
+      // Not awaited, and ahead of the swap rather than blocking it. Turning a
+      // light off is not something the next frame depends on, and this was one
+      // more round trip in front of the thing being waited for.
+      unawaited(camera.setFlashMode(FlashMode.off).catchError((_) {}));
       if (generation != _generation) return;
       final lens = widestLens(choices.toList(), wanted);
       await camera.setDescription(lens);
@@ -458,21 +490,34 @@ class CircleRecorder extends ChangeNotifier {
       _front = lens.lensDirection == CameraLensDirection.front;
       _hardwareTorch = !_front;
       _torchOn = false;
+      // **The flip is over here, and the housekeeping is not on its path.**
+      //
+      // Everything below used to be awaited before `_flipping` cleared, so the
+      // button stayed dead and the turn animation kept spinning through six
+      // more platform round trips — two to read the zoom range, one to set it,
+      // two for the exposure, one for the orientation lock — after the picture
+      // had already changed. The swap is what the eye is waiting for; the rest
+      // is settings on a lens that is already showing.
+      _flipping = false;
+      _notify();
       _minZoom = await camera.getMinZoomLevel();
       _maxZoom = await camera.getMaxZoomLevel();
       if (generation != _generation) return;
-      _zoom = _minZoom;
-      _zoomAtGestureStart = _minZoom;
-      await camera.setZoomLevel(_minZoom);
+      _zoom = _openingZoom();
+      _zoomAtGestureStart = _zoom;
+      await camera.setZoomLevel(_zoom);
       // The other sensor has its own metering and its own range, so the
       // correction is applied again rather than assumed to have carried over.
       await _brighten(camera);
-      await _logLens(camera);
+      if (generation != _generation) return;
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      await _logLens(camera);
     } catch (e) {
       error = '$e';
       DebugLog.instance.log('CIRCLE', 'flip failed: $e');
     } finally {
+      // Idempotent: cleared above on the path that got that far, and here for
+      // the one that threw before it.
       _flipping = false;
       _notify();
     }
@@ -554,9 +599,9 @@ class CircleRecorder extends ChangeNotifier {
       try {
         _minZoom = await camera.getMinZoomLevel();
         _maxZoom = await camera.getMaxZoomLevel();
-        _zoom = _minZoom;
-        _zoomAtGestureStart = _minZoom;
-        await camera.setZoomLevel(_minZoom);
+        _zoom = _openingZoom();
+        _zoomAtGestureStart = _zoom;
+        await camera.setZoomLevel(_zoom);
       } catch (_) {
         _minZoom = 1;
         _maxZoom = 1;

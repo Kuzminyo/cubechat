@@ -228,7 +228,15 @@ void main() {
     // minimum. See the comment on `_logLens` for the crop that is left and why
     // undoing that one costs the resolution.
     expect(camera.stabilizations, 0);
-    expect(camera.zoom, .5);
+    // **1.0 on the back, though the fake reports a minimum of 0.5.**
+    //
+    // A modern phone presents its rear cameras as one logical device whose
+    // range starts at 0.5, and that half is the ultra-wide. Opening there is
+    // right facing you — fitting more than a face into a disc at arm's length
+    // is the whole difficulty of a selfie — and wrong facing away, where 1.0 is
+    // the main lens's own framing and the sharpest thing the phone has.
+    // Reported as the rear camera sitting at half zoom by default.
+    expect(camera.zoom, 1.0);
     expect(camera.stops, 0);
     expect(camera.starts, 1);
     expect(recorder.isFront, false);
