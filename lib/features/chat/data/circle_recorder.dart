@@ -392,7 +392,25 @@ class CircleRecorder extends ChangeNotifier {
   /// Two thirds of a stop. Enough to lift a face out of shadow, small enough
   /// that a bright room does not blow out — this is a correction to metering,
   /// not a brightness setting, and there is nobody to turn it back down.
-  static const double _exposureStops = 0.67;
+  /// **A full stop, and the number is not a taste call — it is what 60 fps
+  /// costs.** A frame rate sets a ceiling on how long the sensor may be open:
+  /// 60 frames a second is at most 1/60 s of light per frame where 30 allows
+  /// 1/30, which is exactly half. The recorder asks for 60 and now gets it,
+  /// because 960×720 is a mode phones can actually run at that rate — at
+  /// 1440×1080 many fell back to 30 and were, without anybody choosing it, a
+  /// stop brighter. Reported straight after that change as a very dark picture.
+  ///
+  /// So one stop back. It is a correction for a known loss rather than a
+  /// brightness preference, which is why it is not larger: past this it stops
+  /// compensating and starts overexposing anything that was already well lit.
+  ///
+  /// It was 0.67 — chosen against Telegram's round video before the frame rate
+  /// entered the arithmetic.
+  ///
+  /// **If it is still dark, the lever is the frame rate, not this number.**
+  /// Gain is the only other thing a sensor can offer and gain is noise. 30 fps
+  /// would hand back the stop for real, and it has been explicitly ruled out.
+  static const double _exposureStops = 1.0;
 
   /// Nudge the exposure, if this camera has any to give.
   ///

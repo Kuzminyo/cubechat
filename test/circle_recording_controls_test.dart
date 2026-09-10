@@ -143,12 +143,24 @@ void main() {
     // A pump with a duration advances the clock and *then* builds, so the time
     // would be spent before the controller had begun.
     await tester.pump();
-    // Into the second half, past the edge, where the counter-turn has to be
-    // doing its work.
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(outer().entry(0, 0), lessThan(0),
-        reason: 'past ninety degrees the outer rotation is negative, which is '
-            'the far side of the turn rather than the way it came in');
+
+    // **The back of the picture is never shown, and that is the whole of what
+    // keeps it upright.** A rotation past ninety degrees is looking at the
+    // reverse of what it turns, which is the image mirrored — the first attempt
+    // did that and counter-rotated the child to undo it, and the preview
+    // arrived on its head on a real phone. The second half starts from the
+    // other edge instead, so the magnitude never exceeds ninety and there is
+    // nothing to undo.
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      final m = outer();
+      expect(m.entry(0, 0), greaterThanOrEqualTo(-0.001),
+          reason: 'a negative cosine is the far side of the disc, which is the '
+              'picture mirrored');
+      expect(m.entry(1, 1), 1,
+          reason: 'nothing here rotates about X, so it can never be upside '
+              'down');
+    }
 
     await tester.pump(const Duration(milliseconds: 400));
     expect(outer().entry(0, 0), 1, reason: 'flat again, and upright');

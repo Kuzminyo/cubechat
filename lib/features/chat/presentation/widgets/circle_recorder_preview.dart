@@ -575,7 +575,23 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
 
   Widget _turned(BuildContext context, Widget child) {
     final t = _flip.value;
-    final angle = t * math.pi;
+    // **The disc never rotates past its own edge, and that is the fix for a
+    // picture that came back upside down.**
+    //
+    // The first attempt turned a full half revolution and counter-rotated the
+    // child to undo the mirroring that shows past ninety degrees. On paper the
+    // two cancel; on a phone they did not, and the reported result was the
+    // preview arriving on its head. Composing a counter-rotation with a
+    // perspective matrix and whatever `CameraPreview` does to orient a sensor
+    // is three transforms deep, and being right about it from here is guessing.
+    //
+    // So the back face is never shown at all. The first half turns from flat to
+    // edge-on; the second starts at the *other* edge and turns back to flat.
+    // The magnitude never exceeds ninety degrees, so there is nothing to mirror
+    // and nothing to undo — and because a disc at either edge is invisible, the
+    // jump between them cannot be seen. The apparent motion is one continuous
+    // turn, which is what was asked for.
+    final angle = t <= 0.5 ? t * math.pi : t * math.pi - math.pi;
     // Softened while it turns, strongest as it passes the edge. This is what
     // covers the instant the texture is between two sensors.
     //
@@ -584,7 +600,10 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
     // for one. The `Transform` around it stays either way, at identity — the
     // settled state is better expressed as a matrix that does nothing than as
     // a widget that is not there.
-    final blur = math.sin(angle) * 6;
+    // From `t`, not from `angle` — the angle now runs 0 to 90 and then −90
+    // back to 0, so its sine is negative for the whole second half and a
+    // negative sigma is not a blur. `sin(t·π)` peaks once, at the handover.
+    final blur = math.sin(t * math.pi) * 6;
     final face = blur <= 0.01
         ? child
         : ImageFiltered(
@@ -597,13 +616,7 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
       transform: Matrix4.identity()
         ..setEntry(3, 2, .0015)
         ..rotateY(angle),
-      child: Transform(
-        alignment: Alignment.center,
-        // Past the edge we are looking at the back of the picture, which is
-        // the picture mirrored. Turn it again and it reads the right way round.
-        transform: Matrix4.identity()..rotateY(t > 0.5 ? math.pi : 0),
-        child: face,
-      ),
+      child: face,
     );
   }
 
