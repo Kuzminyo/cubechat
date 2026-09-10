@@ -102,6 +102,62 @@ void main() {
     recorder.dispose();
   });
 
+  testWidgets('the disc turns all the way over rather than back the way it came',
+      (tester) async {
+    // The first version rotated to ninety degrees and reversed, which is a card
+    // shown and withdrawn — the picture left and returned on the same face. A
+    // flip is one continuous half revolution: the old lens going in, the new
+    // one coming out. Past the edge the outer rotation is showing the back of
+    // the picture, so the child carries a second half turn to cancel the
+    // mirroring; both together is what keeps the face upright and unmirrored.
+    final recorder = _Recorder();
+    await tester.pumpWidget(
+      host(
+        CircleRecorderPreview(
+          recorder: recorder,
+          locked: true,
+          hint: '',
+          cancelLabel: 'Cancel',
+          onSend: () {},
+          onCancel: () {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    Matrix4 outer() => tester
+        .widget<Transform>(find.byKey(const ValueKey('circle-flip-transform')))
+        .transform;
+
+    recorder.setChanging(true);
+    await tester.pump();
+    // All the way to the edge and held there: the sensor has not come back, and
+    // opening on a texture that has not restarted is the thing this waits for.
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(outer().entry(0, 0), closeTo(0, 0.05),
+        reason: 'edge-on is a cosine of zero, and it stays there while the '
+            'lens is still changing');
+
+    recorder.setChanging(false);
+    // A bare pump first, to deliver the change and let the second half start.
+    // A pump with a duration advances the clock and *then* builds, so the time
+    // would be spent before the controller had begun.
+    await tester.pump();
+    // Into the second half, past the edge, where the counter-turn has to be
+    // doing its work.
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(outer().entry(0, 0), lessThan(0),
+        reason: 'past ninety degrees the outer rotation is negative, which is '
+            'the far side of the turn rather than the way it came in');
+
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(outer().entry(0, 0), 1, reason: 'flat again, and upright');
+    expect(outer().entry(1, 1), 1, reason: 'never rolled onto its head');
+
+    await tester.pumpWidget(const SizedBox());
+    recorder.dispose();
+  });
+
   testWidgets('cancel, send and flip remain tappable above the keyboard',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);

@@ -2671,6 +2671,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'What a double tap on a message leaves. Using another one moves it here.';
 
   @override
+  String get customizeCircleAudioTitle => 'Pause music for video messages';
+
+  @override
+  String get customizeCircleAudioOn =>
+      'Recording or watching one stops whatever else is playing. It does not start again on its own.';
+
+  @override
+  String get customizeCircleAudioOff =>
+      'Your music keeps playing underneath, quieter while a video message is on.';
+
+  @override
   String get previewReacted => 'to your message';
 
   @override

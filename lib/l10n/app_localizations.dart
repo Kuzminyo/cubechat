@@ -4664,6 +4664,24 @@ abstract class AppLocalizations {
   /// **'What a double tap on a message leaves. Using another one moves it here.'**
   String get customizeQuickReactionHint;
 
+  /// Customise: whether recording or watching a round video message takes the speaker to itself.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause music for video messages'**
+  String get customizeCircleAudioTitle;
+
+  /// Hint under the circle audio switch when it is on, including the cost.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording or watching one stops whatever else is playing. It does not start again on its own.'**
+  String get customizeCircleAudioOn;
+
+  /// Hint under the circle audio switch when it is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Your music keeps playing underneath, quieter while a video message is on.'**
+  String get customizeCircleAudioOff;
+
   /// No description provided for @previewReacted.
   ///
   /// In en, this message translates to:

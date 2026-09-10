@@ -21,6 +21,7 @@ import 'core/util/media_storage.dart';
 import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
+import 'features/profile/data/audio_focus_controller.dart';
 
 // The build stamp used to live here as a private constant, which meant the
 // boot log was the only thing that could see it. It is in
@@ -286,6 +287,13 @@ Future<void> main() async {
 
   final container = ProviderContainer();
   IosBackgroundRefresh.instance.install(container);
+
+  // Whether a round message stops the phone's music, read before anything can
+  // make a sound. Not awaited by playback itself — a chat that cannot reach
+  // settings must still play a message — so this is where the answer arrives
+  // in time. Nothing here opens a session; it only sets a boolean the audio
+  // layer reads when one is finally needed.
+  container.read(audioFocusProvider.notifier);
 
   // The one thing above that is allowed to hold the first frame for a screen's
   // worth of content rather than for a decision.

@@ -35,12 +35,16 @@ class AudioSession {
   /// their music being cut in half.
   ///
   /// `allowBluetoothA2DP` stays, so playback still goes to the headphones.
-  static const IosRecordConfig iosRecord = IosRecordConfig(
-    categoryOptions: [
-      IosAudioCategoryOption.defaultToSpeaker,
-      IosAudioCategoryOption.allowBluetoothA2DP,
-    ],
-  );
+  /// `mixWithOthers` follows the same switch as playback does. Recording and
+  /// playing are the same question asked twice: if music should stop while you
+  /// watch a round message, it should stop while you record one.
+  static IosRecordConfig get iosRecord => IosRecordConfig(
+        categoryOptions: [
+          IosAudioCategoryOption.defaultToSpeaker,
+          IosAudioCategoryOption.allowBluetoothA2DP,
+          if (!takesFocus) IosAudioCategoryOption.mixWithOthers,
+        ],
+      );
 
   /// Play a voice note *alongside* whatever else is going on.
   ///
@@ -52,18 +56,50 @@ class AudioSession {
   ///
   /// `mixWithOthers` also means we never take the session exclusively, so
   /// nothing has to be handed back afterwards.
+  /// **True when the person has asked us to stop their music.**
+  ///
+  /// Set from `AudioFocusController`, which reads it out of settings at launch
+  /// and writes it when the switch moves. A field rather than a lookup because
+  /// this file is deliberately free of Riverpod: it is the boundary with the
+  /// platform's audio, and one boolean crossing inwards is cheaper to reason
+  /// about than a provider crossing outwards.
+  ///
+  /// A round message is the case that asked for it. Mixing is right for a voice
+  /// note and wrong for a face talking to you over somebody's playlist, and
+  /// which one a person wants is not knowable from here.
+  static bool takesFocus = false;
+
+  /// Change it and re-apply, so the switch takes effect on the next sound
+  /// rather than the next launch.
+  static Future<void> setTakesFocus(bool value) async {
+    if (takesFocus == value) return;
+    takesFocus = value;
+    if (!_applied) return;
+    _applied = false;
+    await applyPlaybackPolicy();
+  }
+
   static AudioContext get playback => AudioContext(
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
-          options: const {AVAudioSessionOptions.mixWithOthers},
+          // Without `mixWithOthers` a `playback` session stops everyone else's
+          // audio when it activates, and does not bring it back. That is the
+          // whole of what the switch buys and the whole of what it costs.
+          options: takesFocus
+              ? const <AVAudioSessionOptions>{}
+              : const {AVAudioSessionOptions.mixWithOthers},
         ),
-        android: const AudioContextAndroid(
+        android: AudioContextAndroid(
           isSpeakerphoneOn: false,
           stayAwake: false,
           contentType: AndroidContentType.speech,
           usageType: AndroidUsageType.media,
-          // Ducking rather than stopping, for the same reason.
-          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          // Ducking rather than stopping, for the same reason — unless asked
+          // for the other one, where a plain `gain` pauses the other app
+          // properly and hands the focus back when we stop.
+          audioFocus: takesFocus
+              ? AndroidAudioFocus.gain
+              : AndroidAudioFocus.gainTransientMayDuck,
         ),
       );
 

@@ -2698,6 +2698,18 @@ class AppLocalizationsUk extends AppLocalizations {
       'Що залишає подвійний тап на повідомленні. Якщо скористатися іншою — вона стане тут.';
 
   @override
+  String get customizeCircleAudioTitle =>
+      'Ставити музику на паузу для відеоповідомлень';
+
+  @override
+  String get customizeCircleAudioOn =>
+      'Запис чи перегляд зупиняє все інше, що грає. Само воно потім не відновиться.';
+
+  @override
+  String get customizeCircleAudioOff =>
+      'Ваша музика грає далі, тихіше поки триває відеоповідомлення.';
+
+  @override
   String get previewReacted => 'на ваше повідомлення';
 
   @override

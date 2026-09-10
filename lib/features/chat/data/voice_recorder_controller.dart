@@ -120,8 +120,11 @@ class VoiceRecorderController extends Notifier<VoiceRecordingState> {
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final path = '${dir.path}/rec-$stamp.m4a';
       _currentPath = path;
+      // No longer `const`: the iOS session options now depend on a setting —
+      // whether a recording is allowed to mix with the phone's music — and a
+      // constant cannot read one. See [AudioSession.takesFocus].
       await _recorder.start(
-        const RecordConfig(
+        RecordConfig(
           // Bluetooth stays on A2DP: see [AudioSession.iosRecord]. Without
           // this, starting a recording drags the listener's headphones down to
           // mono HFP and cuts whatever they were playing in half.

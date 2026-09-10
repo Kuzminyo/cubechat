@@ -211,6 +211,12 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     final player = createVideo(path);
     _video = player;
     try {
+      // The policy is read off [AudioSession.takesFocus], a plain static that
+      // `AudioFocusController` writes when the setting loads and whenever it
+      // moves. Deliberately *not* awaited here: playback would then depend on
+      // a Hive box opening, and a chat that cannot reach settings must still
+      // be able to play a message. Boot warms that controller so the answer is
+      // in place long before anybody taps anything.
       await AudioSession.applyPlaybackPolicy();
       if (_disposed || generation != _generation || _video != player) return;
       await player.initialize();

@@ -479,29 +479,89 @@ class _Disc extends StatefulWidget {
   State<_Disc> createState() => _DiscState();
 }
 
+/// The disc turning over when the sensor changes.
+///
+/// **A half turn, not a turn and a turn back.** The first version rotated to
+/// ninety degrees and reversed, so the picture went edge-on and came back the
+/// way it left — which is a card being shown and withdrawn, not a card being
+/// turned over. This runs one continuous half revolution: the old lens on the
+/// way in, the new one on the way out, and the moment they change hands is the
+/// moment nothing is visible anyway.
+///
+/// **Held at the edge until the sensor is ready.** `setDescription` takes as
+/// long as the platform takes, and a fixed animation that outran it would open
+/// on a texture that had not started again. So the turn stops at the edge while
+/// `changing` is true — capped, because a stalled camera must not leave a disc
+/// standing on its side forever.
+///
+/// **The counter-turn is what keeps the face upright.** Past ninety degrees a
+/// `rotateY` shows the back of what it is rotating, which is the picture
+/// mirrored; the child is rotated a further half turn to cancel it. Front-camera
+/// mirroring belongs to the camera and to the encoder — see the vendored plugin
+/// patches — and none of it may come from here.
 class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
+  /// Half of the turn. Two of these is the 400–500 ms the whole move should
+  /// take, before any wait on the sensor.
+  static const Duration _half = Duration(milliseconds: 230);
+
+  /// Longest the disc will stand on its side waiting for a lens that has not
+  /// come back. Past this it opens on whatever the texture holds, which is the
+  /// last frame of the old camera — a stale picture for an instant beats a disc
+  /// that appears to have stopped.
+  static const Duration _patience = Duration(milliseconds: 500);
+
   late final AnimationController _flip = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 240),
-    reverseDuration: const Duration(milliseconds: 300),
+    duration: _half,
   );
+
+  Timer? _giveUp;
+
   @override
   void didUpdateWidget(_Disc oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.changing == oldWidget.changing) return;
     if (AppMotion.reduced(context)) {
-      _flip.value = widget.changing ? 1 : 0;
+      // No turn at all: the picture simply becomes the other camera's. Motion
+      // was asked to be reduced, and a spin is the whole of what this is.
+      _flip.value = 0;
       return;
     }
     if (widget.changing) {
-      _flip.forward();
+      _giveUp?.cancel();
+      _giveUp = Timer(_half + _patience, _open);
+      // The duration is given explicitly, and that is not decoration.
+      // `animateTo` without one scales the controller's duration by the
+      // distance left to travel — half the way is half the time — so both
+      // halves ran in 115 ms and the whole turn took 230 instead of the 460 it
+      // was written for. Caught by a test that expected to be past the edge
+      // and found the animation already finished.
+      unawaited(
+        _flip.animateTo(0.5, duration: _half, curve: Curves.easeInCubic),
+      );
     } else {
-      _flip.reverse();
+      _open();
     }
+  }
+
+  /// Finish the turn and land flat again.
+  void _open() {
+    _giveUp?.cancel();
+    _giveUp = null;
+    if (!mounted || _flip.value >= 1) return;
+    _flip
+        .animateTo(1, duration: _half, curve: Curves.easeOutCubic)
+        .whenComplete(() {
+      // Zero and one are the same picture — face-on, unrotated — so resetting
+      // is invisible, and it leaves the next flip a clean run rather than a
+      // second half-turn from where the last one stopped.
+      if (mounted) _flip.value = 0;
+    });
   }
 
   @override
   void dispose() {
+    _giveUp?.cancel();
     _flip.dispose();
     super.dispose();
   }
@@ -510,26 +570,57 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _flip,
         child: _picture(),
-        builder: (context, child) {
-          final turn = Curves.easeInOutCubic.transform(_flip.value);
-          // Turn edge-on while the native sensor is being rebound. Never expose
-          // the back of the texture: saved/front mirroring belongs to the camera.
-          return Transform(
-            key: const ValueKey('circle-flip-transform'),
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, .0015)
-              ..rotateY(AppMotion.reduced(context) ? 0 : turn * math.pi / 2),
-            child: Opacity(opacity: 1 - turn, child: child),
-          );
-        },
+        builder: (context, child) => _turned(context, child!),
       );
 
+  Widget _turned(BuildContext context, Widget child) {
+    final t = _flip.value;
+    final angle = t * math.pi;
+    // Softened while it turns, strongest as it passes the edge. This is what
+    // covers the instant the texture is between two sensors.
+    //
+    // Applied only while it is actually turning: an `ImageFiltered` with a
+    // sigma of zero is still a filter, and a resting disc should not be paying
+    // for one. The `Transform` around it stays either way, at identity — the
+    // settled state is better expressed as a matrix that does nothing than as
+    // a widget that is not there.
+    final blur = math.sin(angle) * 6;
+    final face = blur <= 0.01
+        ? child
+        : ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            child: child,
+          );
+    return Transform(
+      key: const ValueKey('circle-flip-transform'),
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, .0015)
+        ..rotateY(angle),
+      child: Transform(
+        alignment: Alignment.center,
+        // Past the edge we are looking at the back of the picture, which is
+        // the picture mirrored. Turn it again and it reads the right way round.
+        transform: Matrix4.identity()..rotateY(t > 0.5 ? math.pi : 0),
+        child: face,
+      ),
+    );
+  }
+
+  /// The ring, and inside it the face that turns.
+  ///
+  /// The arc is painted here rather than inside [_face] on purpose: it counts
+  /// out the recording, and a countdown that rolls over onto its side with the
+  /// picture would be reporting the animation instead of the time. Same for the
+  /// timer and the buttons, which are the overlay's and never came near this.
   Widget _picture() => CustomPaint(
         painter: _ArcPainter(progress: widget.progress),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: ClipOval(
+        child: _face(),
+      );
+
+  Widget _face() => Padding(
+        padding: const EdgeInsets.all(8),
+        child: ClipOval(
             child: SizedBox.square(
               dimension: widget.diameter,
               child: Stack(
@@ -567,8 +658,7 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
               ),
             ),
           ),
-        ),
-      );
+        );
 }
 
 class _ArcPainter extends CustomPainter {

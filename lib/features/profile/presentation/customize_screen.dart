@@ -18,6 +18,7 @@ import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
 import '../../chats/data/archive_visibility_controller.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
+import '../data/audio_focus_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
 
@@ -80,6 +81,8 @@ class CustomizeScreen extends ConsumerWidget {
             const _ArchiveRowCard(),
             const SizedBox(height: 12),
             const _QuickReactionCard(),
+            const SizedBox(height: 12),
+            const _CircleAudioCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
@@ -589,6 +592,69 @@ class _SwipeCard extends ConsumerWidget {
                       ref.read(chatSwipeActionProvider.notifier).select(action),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Whether a round message stops the phone's music.
+///
+/// One switch for recording and for watching, because they are the same
+/// question asked twice — if music should stop while you watch a circle, it
+/// should stop while you record one. Off by default, which is what every build
+/// so far has done: the music keeps playing, ducked on Android. See
+/// [AudioSession.takesFocus] for what each answer does to the session.
+class _CircleAudioCard extends ConsumerWidget {
+  const _CircleAudioCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final exclusive = ref.watch(audioFocusProvider);
+
+    return GlassCard(
+      child: Row(
+        children: [
+          Icon(
+            exclusive ? Icons.music_off_rounded : Icons.music_note_rounded,
+            size: 20,
+            color: AppColors.textOnGlass,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.customizeCircleAudioTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  exclusive
+                      ? t.customizeCircleAudioOn
+                      : t.customizeCircleAudioOff,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: exclusive,
+            activeColor: AppColors.brandPrimary,
+            onChanged: (next) =>
+                unawaited(ref.read(audioFocusProvider.notifier).set(next)),
           ),
         ],
       ),

@@ -1310,6 +1310,18 @@
   "customizeHighRefreshHint": "Smoother, and the phone draws twice as many frames. Turn it off if it runs warm — nothing changes how the app looks, only how often it is redrawn.",
   "customizeQuickReaction": "Double-tap reaction",
   "customizeQuickReactionHint": "What a double tap on a message leaves. Using another one moves it here.",
+  "customizeCircleAudioTitle": "Pause music for video messages",
+  "@customizeCircleAudioTitle": {
+    "description": "Customise: whether recording or watching a round video message takes the speaker to itself."
+  },
+  "customizeCircleAudioOn": "Recording or watching one stops whatever else is playing. It does not start again on its own.",
+  "@customizeCircleAudioOn": {
+    "description": "Hint under the circle audio switch when it is on, including the cost."
+  },
+  "customizeCircleAudioOff": "Your music keeps playing underneath, quieter while a video message is on.",
+  "@customizeCircleAudioOff": {
+    "description": "Hint under the circle audio switch when it is off."
+  },
   "previewReacted": "to your message",
   "previewLocation": "Location",
   "previewMapInvite": "Map invitation",
