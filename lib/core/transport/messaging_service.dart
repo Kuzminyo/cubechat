@@ -6772,9 +6772,19 @@ class MessagingService {
         case InnerPayloadType.callSignal:
           // Decoded here and handed on; the machine that decides what it means
           // lives in features/call and knows nothing about transport.
+          //
+          // chatId must be the canonical (hex pubkey) id, not the raw
+          // transport peerId: every relayed call arrives with peerId ==
+          // _nostrPeerId, the literal string "nostr:relay", for every call,
+          // and over BLE peerId is a rotating id that the wire protocol
+          // forbids treating as a stable key. sendCallSignal already sends
+          // canonicalId, so this resolves the receive side to match it.
           try {
             _callSignals.add(
-              (chatId: peerId, signal: CallSignal.decode(unpacked.body)),
+              (
+                chatId: senderPub != null ? _hexOf(senderPub) : peerId,
+                signal: CallSignal.decode(unpacked.body),
+              ),
             );
           } on FormatException catch (e) {
             debugPrint('[CALL] undecodable call signal from $peerId: $e');

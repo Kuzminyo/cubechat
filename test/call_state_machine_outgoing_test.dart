@@ -54,14 +54,22 @@ void main() {
     });
   });
 
-  test('no acknowledgement means unavailable, not an endless ringback', () {
+  test(
+      'no acknowledgement means unavailable, not an endless ringback, and '
+      'the callee is told to stop ringing', () {
     fakeAsync((async) {
       final t = build(async);
       t.machine.startOutgoing(callId: id(1), sdp: 'offer');
       async.elapse(CallTimings.ringingAck + const Duration(milliseconds: 1));
+      async.flushMicrotasks();
       expect(t.machine.phase, CallPhase.ended);
       expect(t.outcomes.single.cause, CallEndCause.unavailable);
       expect(t.outcomes.single.outgoing, isTrue);
+      // The ack may have been lost rather than never sent — if so, the callee
+      // is still ringing for a call this end just filed as unavailable, and a
+      // hangup is the only way to tell them to stop.
+      expect(t.sent.last.kind, CallSignalKind.hangup);
+      expect(t.sent.last.reason, CallEndReason.noAnswer);
       t.machine.dispose();
     });
   });

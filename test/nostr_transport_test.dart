@@ -198,5 +198,33 @@ void main() {
 
       expect(await received, payload);
     });
+
+    test('a frame carries no call tag unless it is asked for', () async {
+      // Same default as the wake tag, for the same reason: most frames on
+      // this transport are not a call, and an unasked-for 'c' would send
+      // every one of them down the VoIP path.
+      await alice.sendFrame(
+        recipientNpubHex: bob.npubHex,
+        frameBytes: _frameBytes('housekeeping'),
+      );
+
+      expect(relay.published.single.firstTagValue(kCallTag), isNull);
+    });
+
+    test('a frame that wakes the phone for a call says so in the clear, '
+        'and still carries the recipient', () async {
+      // In the clear like the wake tag: the push service holds no key, so
+      // the only way it routes an event down the VoIP path instead of the
+      // silent one is if the sender marks it out here.
+      await alice.sendFrame(
+        recipientNpubHex: bob.npubHex,
+        frameBytes: _frameBytes('ring ring'),
+        wakesCall: true,
+      );
+
+      final ev = relay.published.single;
+      expect(ev.firstTagValue(kCallTag), '1');
+      expect(ev.firstTagValue(kRecipientTag), bob.npubHex);
+    });
   });
 }

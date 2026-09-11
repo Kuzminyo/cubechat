@@ -90,7 +90,20 @@ class CallStateMachine extends ChangeNotifier {
       sentAtMs: now().millisecondsSinceEpoch,
     )));
     // The acknowledgement, not the invite, is what turns a dial into a ring.
-    _arm(CallTimings.ringingAck, () => _end(CallEndCause.unavailable));
+    //
+    // A hangup goes out here rather than nothing, because the silence this
+    // deadline is built on is not proven: the ack can be lost the same way any
+    // relay event can be (measured at 1 in 55, see MessagingService), and if
+    // it was the ack that got lost rather than never sent, the callee is still
+    // ringing for a call this machine is about to file as unavailable. If they
+    // then answer, their accept lands on a machine already in `ended` and is
+    // dropped — which would otherwise leave them in `connecting` with no
+    // deadline of their own. One extra frame, ignored harmlessly by an older
+    // build that never asked for it, buys the callee's phone stopping too.
+    _arm(CallTimings.ringingAck, () {
+      _sendHangup(CallEndReason.noAnswer);
+      _end(CallEndCause.unavailable);
+    });
   }
 
   void handleSignal(CallSignal signal) {

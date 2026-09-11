@@ -47,6 +47,21 @@ void main() {
     }
   });
 
+  test('a hangup with no talk time at all is not an answered call', () {
+    // The boundary itself: `talkedFor > Duration.zero` is what decides
+    // `answered`, so a hangup at exactly zero must land on the unanswered
+    // side. Flipping that `>` to `>=` would turn every unanswered hungUp
+    // call into an answered one, and nothing else here would catch it.
+    final text = encodeCallRecord(outcome(
+      outgoing: true,
+      cause: CallEndCause.hungUp,
+      talkedFor: Duration.zero,
+    ));
+    final back = tryParseCallRecord(text)!;
+    expect(back.answered, isFalse);
+    expect(back.talkedFor, Duration.zero);
+  });
+
   test('a call lost to a simultaneous dial leaves no record at all', () {
     // Both people are about to be in the very call that replaced it. Two lines
     // for one conversation is the confusing outcome, not the tidy one.
