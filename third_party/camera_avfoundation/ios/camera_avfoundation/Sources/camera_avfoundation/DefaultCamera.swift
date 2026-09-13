@@ -1210,8 +1210,22 @@ final class DefaultCamera: NSObject, Camera {
       let fpsNominator = floor(framesPerSecond * 10.0)
       let duration = CMTimeMake(value: 10, timescale: Int32(fpsNominator))
 
+      // **CubeChat: a ceiling, not a lock — the same change as the CameraX
+      // plugin's fps range.** The minimum frame duration is the fastest rate
+      // and the maximum is the slowest. Setting both to 1/60 s meant no frame
+      // could ever gather light for longer than 1/60 s, so in a dim room
+      // auto-exposure had nothing left but gain: a very dark picture, reported
+      // more than once. The fastest stays as asked; the slowest may fall to
+      // 30 fps in low light, one stop brighter, and only there. A requested
+      // rate already at or under 30 is left locked exactly as it was.
       mediaSettingsAVWrapper.setMinFrameDuration(duration, on: captureDevice)
-      mediaSettingsAVWrapper.setMaxFrameDuration(duration, on: captureDevice)
+      let lowLightFloorFps = 30.0
+      if framesPerSecond > lowLightFloorFps {
+        mediaSettingsAVWrapper.setMaxFrameDuration(
+          CMTimeMake(value: 1, timescale: Int32(lowLightFloorFps)), on: captureDevice)
+      } else {
+        mediaSettingsAVWrapper.setMaxFrameDuration(duration, on: captureDevice)
+      }
     }
   }
 
