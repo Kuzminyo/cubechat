@@ -107,7 +107,7 @@ String _textPreview(String text, AppLocalizations t) {
   if (!trimmed.startsWith('cubechat:')) return text;
   final call = tryParseCallRecord(trimmed);
   if (call != null) {
-    if (!call.answered) return '📞 ${t.previewCallMissed}';
+    if (!call.answered) return '📞 ${call.outgoing ? t.previewCallOutgoing : t.previewCallMissed}';
     return call.outgoing
         ? '📞 ${t.previewCallOutgoing}'
         : '📞 ${t.previewCallIncoming}';
@@ -129,6 +129,7 @@ String _textPreview(String text, AppLocalizations t) {
 /// hand.
 String storedTextPreview(String stored, AppLocalizations t) {
   final trimmed = stored.trim();
+  if (trimmed.startsWith(callMarker)) return _textPreview(trimmed, t);
   if (!trimmed.startsWith(Message.stickerMarker)) return stored;
   final rest = trimmed.substring(Message.stickerMarker.length);
   final emoji = rest.startsWith(':') ? rest.substring(1).trim() : '';

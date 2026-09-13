@@ -33,6 +33,7 @@ import '../../../core/widgets/identity_avatar.dart';
 import '../../../core/widgets/pill_button.dart';
 import '../../../l10n/app_localizations.dart';
 import 'avatar_screen.dart';
+import '../data/call_routing_controller.dart';
 import '../data/circle_lens_controller.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/app_lock_controller.dart';
@@ -1235,6 +1236,24 @@ class _PrivacyCard extends ConsumerWidget {
                 : t.profileMapLocationOffHint,
             value: s.shareMapLocation,
             onChanged: n.setShareMapLocation,
+          ),
+          const SizedBox(height: 14),
+          // With the map pin and last seen, because it is the same kind of
+          // question: what the other person is told about you. A direct call
+          // tells them your IP address; the relayed one, the default, tells
+          // them nothing.
+          _SettingSwitch(
+            icon: ref.watch(callAllowsDirectProvider)
+                ? Icons.call_split_rounded
+                : Icons.shield_rounded,
+            title: t.callDirectTitle,
+            hint: ref.watch(callAllowsDirectProvider)
+                ? t.callDirectOnHint
+                : t.callDirectOffHint,
+            value: ref.watch(callAllowsDirectProvider),
+            onChanged: (on) => unawaited(
+              ref.read(callAllowsDirectProvider.notifier).set(on),
+            ),
           ),
           const SizedBox(height: 14),
           _SettingSwitch(

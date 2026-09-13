@@ -189,6 +189,17 @@ void main() {
     });
   });
 
+  test('an accept can arrive before its ringing acknowledgement', () {
+    fakeAsync((async) {
+      final t = build(async);
+      t.machine.startOutgoing(callId: id(1), sdp: 'offer');
+      t.machine.handleSignal(CallSignal.accept(callId: id(1), sdp: 'answer'));
+      async.flushMicrotasks();
+      expect(t.machine.phase, CallPhase.connecting);
+      t.machine.dispose();
+    });
+  });
+
   test('the same acknowledgement twice does not restart anything', () {
     fakeAsync((async) {
       final t = build(async);
@@ -227,6 +238,46 @@ void main() {
       t.machine.dispose();
       async.elapse(const Duration(minutes: 5));
       expect(async.pendingTimers, isEmpty);
+    });
+  });
+
+  group('connecting has a deadline', () {
+    // Every other waiting phase is armed. Without this one, a call whose media
+    // never came up would sit on "Connecting" until somebody gave up by hand,
+    // and on a phone in a pocket nobody does.
+    test('media that never connects ends the call and tells the other end', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.startOutgoing(callId: id(1), sdp: 'offer');
+        t.machine.handleSignal(CallSignal.ringing(id(1)));
+        t.machine.handleSignal(CallSignal.accept(callId: id(1), sdp: 'answer'));
+        async.elapse(CallTimings.connecting - const Duration(milliseconds: 1));
+        expect(t.machine.phase, CallPhase.connecting,
+            reason: 'not a moment early');
+        async.elapse(const Duration(milliseconds: 2));
+        async.flushMicrotasks();
+        expect(t.machine.phase, CallPhase.ended);
+        expect(t.outcomes.single.cause, CallEndCause.failed);
+        expect(t.sent.last.kind, CallSignalKind.hangup);
+        t.machine.dispose();
+      });
+    });
+
+    test('media that connects in time disarms it for good', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.startOutgoing(callId: id(1), sdp: 'offer');
+        t.machine.handleSignal(CallSignal.ringing(id(1)));
+        t.machine.handleSignal(CallSignal.accept(callId: id(1), sdp: 'answer'));
+        async.elapse(const Duration(seconds: 5));
+        t.machine.mediaConnected();
+        async.elapse(CallTimings.connecting * 3);
+        async.flushMicrotasks();
+        expect(t.machine.phase, CallPhase.talking,
+            reason: 'a conversation is not cut off by a deadline it outran');
+        expect(t.outcomes, isEmpty);
+        t.machine.dispose();
+      });
     });
   });
 }

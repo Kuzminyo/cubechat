@@ -117,9 +117,12 @@ class CallStateMachine extends ChangeNotifier {
           _end(CallEndCause.noAnswer);
         });
       case CallSignalKind.accept:
-        if (_phase != CallPhase.ringing) return;
+        // The ringing acknowledgement is a convenience, not a prerequisite:
+        // it can be lost while the answer still reaches us.
+        if (_phase != CallPhase.ringing && _phase != CallPhase.dialing) return;
         _disarm();
         _move(CallPhase.connecting);
+        _arm(CallTimings.connecting, mediaFailed);
       case CallSignalKind.decline:
         // The other end has already stopped. Telling it to stop is noise.
         _end(CallEndCause.declined);
@@ -177,6 +180,7 @@ class CallStateMachine extends ChangeNotifier {
     _disarm();
     unawaited(send(CallSignal.accept(callId: _callId!, sdp: sdp)));
     _move(CallPhase.connecting);
+    _arm(CallTimings.connecting, mediaFailed);
   }
 
   void decline() {
@@ -196,6 +200,7 @@ class CallStateMachine extends ChangeNotifier {
 
   void mediaConnected() {
     if (_phase != CallPhase.connecting) return;
+    _disarm();
     _talkingSince = now();
     _move(CallPhase.talking);
   }

@@ -33,6 +33,7 @@ import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
 import '../../features/profile/data/quiet_hours_controller.dart';
 import '../../features/profile/data/audio_focus_controller.dart';
+import '../../features/profile/data/call_routing_controller.dart';
 import '../../features/profile/data/circle_lens_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
@@ -126,6 +127,10 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(privacySettingsProvider.notifier).reset();
   await ref.read(circleLensProvider.notifier).reset();
   await ref.read(audioFocusProvider.notifier).reset();
+  // Back to relay-only: a wiped phone that still offered its IP address to
+  // whoever it called next would be a setting surviving the one action whose
+  // whole promise is that none do.
+  await ref.read(callAllowsDirectProvider.notifier).reset();
 
   final sessions = ref.read(chatSessionManagerProvider);
   final manager = ref.read(chatSessionManagerProvider.notifier);

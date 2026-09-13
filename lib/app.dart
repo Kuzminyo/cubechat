@@ -2,6 +2,7 @@
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
+import 'features/call/presentation/call_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -615,7 +616,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           // The router lives below this builder, so the bar is handed the
           // one push it needs rather than looking one up it cannot see.
           onOpenChat: (chatId, _) => _openChat(chatId),
-          child: child ?? const SizedBox.shrink(),
+          child: CallHost(child: child ?? const SizedBox.shrink()),
         ),
       ),
       ),
@@ -733,4 +734,3 @@ class _ClampedTextScale extends ConsumerWidget {
     );
   }
 }
-

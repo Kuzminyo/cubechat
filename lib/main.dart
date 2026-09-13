@@ -22,6 +22,7 @@ import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 import 'features/profile/data/audio_focus_controller.dart';
+import 'features/profile/data/call_routing_controller.dart';
 
 // The build stamp used to live here as a private constant, which meant the
 // boot log was the only thing that could see it. It is in
@@ -294,6 +295,12 @@ Future<void> main() async {
   // in time. Nothing here opens a session; it only sets a boolean the audio
   // layer reads when one is finally needed.
   container.read(audioFocusProvider.notifier);
+
+  // Whether calls may go direct, read at launch for the same reason: a call
+  // placed in the first second must not be built on the default while the
+  // stored answer is still on its way off the disk. The default is the private
+  // one, so a slow read errs toward the relay, never away from it.
+  container.read(callAllowsDirectProvider.notifier);
 
   // The one thing above that is allowed to hold the first frame for a screen's
   // worth of content rather than for a decision.

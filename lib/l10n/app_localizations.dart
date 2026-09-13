@@ -98,6 +98,114 @@ abstract class AppLocalizations {
     Locale('uk')
   ];
 
+  /// No description provided for @callVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice call'**
+  String get callVoice;
+
+  /// No description provided for @callPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing microphone…'**
+  String get callPreparing;
+
+  /// No description provided for @callDialing.
+  ///
+  /// In en, this message translates to:
+  /// **'Calling…'**
+  String get callDialing;
+
+  /// No description provided for @callRinging.
+  ///
+  /// In en, this message translates to:
+  /// **'Ringing…'**
+  String get callRinging;
+
+  /// No description provided for @callConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get callConnecting;
+
+  /// No description provided for @callMicrophoneRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow microphone access in system settings to make calls.'**
+  String get callMicrophoneRequired;
+
+  /// No description provided for @callRelayUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Call server unavailable. Please try again later.'**
+  String get callRelayUnavailable;
+
+  /// No description provided for @callBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Busy'**
+  String get callBusy;
+
+  /// No description provided for @callNoAnswer.
+  ///
+  /// In en, this message translates to:
+  /// **'No answer'**
+  String get callNoAnswer;
+
+  /// No description provided for @callFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not connect the call'**
+  String get callFailed;
+
+  /// No description provided for @callDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Call declined'**
+  String get callDeclined;
+
+  /// No description provided for @callEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Call ended'**
+  String get callEnded;
+
+  /// No description provided for @callMicrophone.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone'**
+  String get callMicrophone;
+
+  /// No description provided for @callSpeaker.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaker'**
+  String get callSpeaker;
+
+  /// No description provided for @callAnswer.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer'**
+  String get callAnswer;
+
+  /// No description provided for @callDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get callDecline;
+
+  /// No description provided for @callEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'End call'**
+  String get callEnd;
+
+  /// No description provided for @callClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get callClose;
+
   /// No description provided for @circleMessage.
   ///
   /// In en, this message translates to:
@@ -469,6 +577,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Chat'**
   String get contactProfileChat;
+
+  /// No description provided for @contactProfileCall.
+  ///
+  /// In en, this message translates to:
+  /// **'Call'**
+  String get contactProfileCall;
 
   /// No description provided for @contactProfileSecurity.
   ///
@@ -2239,6 +2353,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The app does not request location and your pin stays hidden'**
   String get profileMapLocationOffHint;
+
+  /// No description provided for @callDirectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct calls'**
+  String get callDirectTitle;
+
+  /// No description provided for @callDirectOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Faster, but the person you call learns your IP address'**
+  String get callDirectOnHint;
+
+  /// No description provided for @callDirectOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls go through our relay: the person you call never sees your IP, and the relay cannot hear the call'**
+  String get callDirectOffHint;
 
   /// No description provided for @profileReadReceipts.
   ///

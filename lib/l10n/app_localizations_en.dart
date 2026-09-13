@@ -9,6 +9,62 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get callVoice => 'Voice call';
+
+  @override
+  String get callPreparing => 'Preparing microphone…';
+
+  @override
+  String get callDialing => 'Calling…';
+
+  @override
+  String get callRinging => 'Ringing…';
+
+  @override
+  String get callConnecting => 'Connecting…';
+
+  @override
+  String get callMicrophoneRequired =>
+      'Allow microphone access in system settings to make calls.';
+
+  @override
+  String get callRelayUnavailable =>
+      'Call server unavailable. Please try again later.';
+
+  @override
+  String get callBusy => 'Busy';
+
+  @override
+  String get callNoAnswer => 'No answer';
+
+  @override
+  String get callFailed => 'Could not connect the call';
+
+  @override
+  String get callDeclined => 'Call declined';
+
+  @override
+  String get callEnded => 'Call ended';
+
+  @override
+  String get callMicrophone => 'Microphone';
+
+  @override
+  String get callSpeaker => 'Speaker';
+
+  @override
+  String get callAnswer => 'Answer';
+
+  @override
+  String get callDecline => 'Decline';
+
+  @override
+  String get callEnd => 'End call';
+
+  @override
+  String get callClose => 'Close';
+
+  @override
   String get circleMessage => 'Video message';
 
   @override
@@ -226,6 +282,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactProfileChat => 'Chat';
+
+  @override
+  String get contactProfileCall => 'Call';
 
   @override
   String get contactProfileSecurity => 'Security';
@@ -1233,6 +1292,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileMapLocationOffHint =>
       'The app does not request location and your pin stays hidden';
+
+  @override
+  String get callDirectTitle => 'Direct calls';
+
+  @override
+  String get callDirectOnHint =>
+      'Faster, but the person you call learns your IP address';
+
+  @override
+  String get callDirectOffHint =>
+      'Calls go through our relay: the person you call never sees your IP, and the relay cannot hear the call';
 
   @override
   String get profileReadReceipts => 'Share read receipts';

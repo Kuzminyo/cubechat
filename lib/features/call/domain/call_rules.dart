@@ -24,6 +24,15 @@ abstract final class CallTimings {
   /// How old an invite may be and still ring a phone.
   static const Duration inviteFreshness = Duration(seconds: 60);
 
+  /// How long an answered call may take to carry sound before it is given up.
+  ///
+  /// Both SDPs are complete by the time either side is here — each carries
+  /// its one relay candidate — so what is left is a TURN allocation on each
+  /// phone and a connectivity check through the relay, measured on the
+  /// droplet at well under a second. Thirty seconds is for a phone on a
+  /// network that is failing, not a phone on a slow one.
+  static const Duration connecting = Duration(seconds: 30);
+
   /// How far ahead of us a sender's clock may be before the timestamp is
   /// nonsense rather than drift.
   static const Duration clockSkew = Duration(seconds: 30);

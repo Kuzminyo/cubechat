@@ -33,6 +33,9 @@
 
     <!-- Declare hardware requirement (but don't fail on absence вЂ” phones may emulate) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Calls use the same microphone, but need to own the audio route while
+         a live peer is speaking. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Voice messages (mic capture for press-and-hold recording) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

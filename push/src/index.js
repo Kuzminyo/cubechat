@@ -11,7 +11,8 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { connect as http2Connect } from 'node:http2';
-import { createSign, randomUUID } from 'node:crypto';
+import { createSign, createHmac, randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { schnorr } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
@@ -22,7 +23,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-08-one-doorbell-per-message';
+const VERSION = '2026-09-13-turn-access';
 
 const RECIPIENT_TAG = 'p';
 
@@ -225,6 +226,16 @@ function languageOf(event) {
 function handleRegister(event) {
   if (!verifyEvent(event)) return { ok: false, reason: 'signature' };
   if (event.kind !== REGISTER_KIND) return { ok: false, reason: 'kind' };
+  // A TURN request is this same kind, signed by the same key, with empty
+  // content — and empty content is how a phone asks to be forgotten. Without
+  // this, one phone's TURN request replayed here would switch that phone's
+  // notifications off, silently. /turn already refuses a registration; this
+  // is the other direction, and it was the dangerous one. A real registration
+  // never carries a purpose tag (see push_registration.dart), so any tag of
+  // that name means the proof was minted for something else.
+  if (event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action')) {
+    return { ok: false, reason: 'purpose' };
+  }
   const age = Math.abs(Math.floor(Date.now() / 1000) - event.created_at);
   if (age > REGISTER_MAX_AGE_SECONDS) return { ok: false, reason: 'stale' };
 
@@ -914,7 +925,7 @@ function readBody(request, limit = 8 * 1024) {
   });
 }
 
-const server = createServer(async (request, response) => {
+export const server = createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
     return json(response, 200, {
       ok: true,
@@ -938,6 +949,17 @@ const server = createServer(async (request, response) => {
       fcm: fcmAccountRead ? (fcmAccount?.project_id ?? null) : 'not read yet',
       relays: [...sockets.keys()],
     });
+  }
+  if (request.method === 'POST' && request.url === '/turn') {
+    let event;
+    try {
+      event = JSON.parse(await readBody(request));
+    } catch {
+      return json(response, 400, { ok: false, reason: 'body' });
+    }
+    const result = handleTurn(event);
+    response.setHeader('cache-control', 'no-store');
+    return json(response, result.status, result.body);
   }
   if (request.method === 'POST' && request.url === '/register') {
     let event;
@@ -995,4 +1017,46 @@ async function main() {
   server.listen(PORT, () => log('http', `listening on ${PORT}`));
 }
 
-void main();
+// Importing the HTTP handler in tests must not connect to production relays,
+// load device tokens, or start sending notifications.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}
+
+export function turnCredentials({ secret, ttlSeconds, nowSeconds }) {
+  if (!secret || !Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0 ||
+      !Number.isSafeInteger(nowSeconds) || nowSeconds < 0) {
+    throw new Error('TURN credentials are not configured');
+  }
+  const username = String(nowSeconds + ttlSeconds);
+  const password = createHmac('sha1', secret).update(username).digest('base64');
+  return { username, password, ttl: ttlSeconds };
+}
+
+export function handleTurn(event, {
+  nowSeconds = Math.floor(Date.now() / 1000),
+  secret = process.env.TURN_SECRET,
+  urls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean),
+} = {}) {
+  // A registration signature must not be reusable to obtain TURN access.
+  // The purpose is signed too; the client uses the same identity key.
+  if (!verifyEvent(event) || event.kind !== REGISTER_KIND ||
+      !event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action' && tag[1] === 'turn')) {
+    return { status: 401, body: { ok: false, reason: 'signature' } };
+  }
+  if (!Number.isSafeInteger(event.created_at) ||
+      Math.abs(nowSeconds - event.created_at) > REGISTER_MAX_AGE_SECONDS) {
+    return { status: 401, body: { ok: false, reason: 'stale' } };
+  }
+  // Publish only listeners the operator actually configured. In particular,
+  // a turns: URL is not usable until a certificate has been installed.
+  if (!urls.length || urls.some((url) => !/^turns?:[^\s]+$/.test(url))) {
+    return { status: 503, body: { ok: false, reason: 'unconfigured' } };
+  }
+  try {
+    return { status: 200, body: { ok: true,
+      ...turnCredentials({ secret, ttlSeconds: 600, nowSeconds }), urls } };
+  } catch {
+    return { status: 503, body: { ok: false, reason: 'unconfigured' } };
+  }
+}

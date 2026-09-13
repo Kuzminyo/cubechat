@@ -2964,12 +2964,21 @@ class MessagingService {
   /// session already established with this peer, and the DTLS fingerprint it
   /// carries is protected by that same envelope. Nothing new is introduced
   /// here cryptographically, which is the point.
-  Future<void> sendCallSignal({
+  ///
+  /// The key is looked up here rather than handed in, the way every other
+  /// sender in this file does it. The first caller decoded the chat id's hex
+  /// itself — equivalent today, because a chat id is the peer's X25519 key in
+  /// hex — but [_resolvePeerPub] prefers an established session's static key,
+  /// and two copies of "which key is this person" is how one of them goes
+  /// stale. Zero links when there is no key, which a caller already reads as
+  /// "nobody heard this".
+  Future<int> sendCallSignal({
     required String canonicalId,
-    required Uint8List peerPub,
     required CallSignal signal,
   }) async {
-    await _sendControlToPeer(
+    final peerPub = _resolvePeerPub(canonicalId);
+    if (peerPub == null) return 0;
+    return _sendControlToPeer(
       canonicalId: canonicalId,
       peerPub: peerPub,
       type: InnerPayloadType.callSignal,

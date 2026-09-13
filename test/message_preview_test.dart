@@ -177,16 +177,24 @@ void main() {
       );
     });
 
-    test('a call nobody picked up is a missed call in either direction', () {
-      for (final outgoing in [true, false]) {
-        expect(
-          messagePreview(
-            call(outcome(outgoing: outgoing, cause: CallEndCause.noAnswer)),
-            t,
-          ),
-          '📞 Missed call',
-        );
-      }
+    // A call you placed and nobody answered is not one you missed. The first
+    // version called both "Missed call", which puts a red-letter word on the
+    // caller's own row for something they did.
+    test('an unanswered call is missed only by the person it rang', () {
+      expect(
+        messagePreview(
+          call(outcome(outgoing: false, cause: CallEndCause.noAnswer)),
+          t,
+        ),
+        '📞 Missed call',
+      );
+      expect(
+        messagePreview(
+          call(outcome(outgoing: true, cause: CallEndCause.noAnswer)),
+          t,
+        ),
+        '📞 Outgoing call',
+      );
     });
 
     test('somebody typing the scheme by hand is still unsupported, not a call',

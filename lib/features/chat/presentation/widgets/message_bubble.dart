@@ -40,6 +40,7 @@ import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../domain/message_preview.dart';
+import '../../../call/domain/call_record.dart';
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
@@ -646,7 +647,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ? MapFriendLink.tryParse(widget.message.text)
       : null;
 
-  bool get _canCopy => widget.message.text.trim().isNotEmpty;
+  bool get _canCopy => widget.message.text.trim().isNotEmpty &&
+      tryParseCallRecord(widget.message.text) == null;
 
   /// Forwarding re-sends the text into another chat, so it needs text for the
   /// same reason [_canCopy] does. Media isn't forwarded: the bytes live in a
@@ -1652,6 +1654,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     contact: sharedContact,
                     onTap: () => _openSharedContact(sharedContact),
                   )
+                else if (tryParseCallRecord(message.text) != null)
+                  Text(messageContentPreview(message, AppLocalizations.of(context)),
+                    style: TextStyle(color: AppColors.textPrimary))
                 else if (drawnFace != null)
                   // One emoji, and we have a drawing of that one: it moves.
                   //

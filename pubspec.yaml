@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1035
+version: 1.0.0+1036
 
 environment:
   sdk: ^3.6.0
@@ -62,6 +62,9 @@ dependencies:
   # Voice messages (audio capture + playback)
   record: ^6.0.0
   audioplayers: ^6.1.0
+  # Audio calls use WebRTC for echo cancellation, loss recovery and routing.
+  # Signalling remains inside our authenticated message envelopes.
+  flutter_webrtc: ^0.12.0
 
   # Local notifications (incoming-message alerts)
   flutter_local_notifications: ^17.2.3

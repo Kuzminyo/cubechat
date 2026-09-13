@@ -20,6 +20,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import 'widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../call/data/call_controller.dart';
 import '../../chat/data/conversation_settings_controller.dart';
 import '../../chat/presentation/widgets/auto_delete_picker.dart';
 import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
@@ -793,10 +794,16 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           onBack: () => Navigator.of(context).maybePop(),
                           onMore: () => setMenuState(() => actionsOpen = true),
                           onChat: () => context.push(_chatRoute()),
+                          onCall: peer == null || peer.isBlocked
+                              ? null
+                              : () => unawaited(ref
+                                  .read(callControllerProvider)
+                                  .dial(peerPubkeyHex)),
                           onMute: () => _setMuted(ref, peer),
                           onVerify: () => context.push(_verifyRoute()),
                           onBlock: () => _setBlocked(ref, peer),
                           chatLabel: t.contactProfileChat,
+                          callLabel: t.contactProfileCall,
                           muteLabel:
                               peer?.isMuted == true ? t.peerUnmute : t.peerMute,
                           verifyLabel: t.contactProfileVerify,
@@ -1075,10 +1082,12 @@ class _ProfileHero extends ConsumerWidget {
     required this.onBack,
     required this.onMore,
     required this.onChat,
+    required this.onCall,
     required this.onMute,
     required this.onVerify,
     required this.onBlock,
     required this.chatLabel,
+    required this.callLabel,
     required this.muteLabel,
     required this.verifyLabel,
     required this.blockLabel,
@@ -1120,10 +1129,16 @@ class _ProfileHero extends ConsumerWidget {
   final VoidCallback onBack;
   final VoidCallback onMore;
   final VoidCallback onChat;
+
+  /// Null when this person cannot be called — blocked, or not somebody we
+  /// hold a key for — and then the button is not drawn at all. A button that
+  /// does nothing when pressed is worse than one that is not there.
+  final VoidCallback? onCall;
   final VoidCallback onMute;
   final VoidCallback onVerify;
   final VoidCallback onBlock;
   final String chatLabel;
+  final String callLabel;
   final String muteLabel;
   final String verifyLabel;
   final String blockLabel;
@@ -1391,6 +1406,15 @@ class _ProfileHero extends ConsumerWidget {
                       label: chatLabel,
                       onTap: onChat,
                     ),
+                    // Beside the chat, where every messenger with calls puts
+                    // it. The first version hid it in the overflow sheet, one
+                    // tap and a scroll away from the thing it was asked for.
+                    if (onCall != null)
+                      _QuickAction(
+                        icon: Icons.call_rounded,
+                        label: callLabel,
+                        onTap: onCall!,
+                      ),
                     _QuickAction(
                       icon: muted
                           ? Icons.notifications_active_rounded
@@ -1470,15 +1494,24 @@ class _QuickAction extends StatelessWidget {
               children: [
                 Icon(icon, color: tone, size: 25),
                 const SizedBox(height: 7),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: tone,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                // Shrunk to its cell rather than cut. Measured in Inter Bold
+                // at 11 px against the cell a 360 px phone gives five buttons
+                // (63 px): "Підтвердити" is 70, "Заблокувати" 72, and
+                // "Увімкнути звук" 86 — the last was already cut with four
+                // buttons (80 px), before the call button arrived. An ellipsis
+                // turns a word into a guess; a label a size smaller is still
+                // the word. English fits at full size everywhere.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: tone,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

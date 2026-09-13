@@ -9,6 +9,62 @@ class AppLocalizationsUk extends AppLocalizations {
   AppLocalizationsUk([String locale = 'uk']) : super(locale);
 
   @override
+  String get callVoice => 'Голосовий дзвінок';
+
+  @override
+  String get callPreparing => 'Підготовка мікрофона…';
+
+  @override
+  String get callDialing => 'Виклик…';
+
+  @override
+  String get callRinging => 'Очікування відповіді…';
+
+  @override
+  String get callConnecting => 'З’єднання…';
+
+  @override
+  String get callMicrophoneRequired =>
+      'Дозвольте доступ до мікрофона в системних налаштуваннях.';
+
+  @override
+  String get callRelayUnavailable =>
+      'Сервер дзвінків недоступний. Спробуйте пізніше.';
+
+  @override
+  String get callBusy => 'Зайнято';
+
+  @override
+  String get callNoAnswer => 'Немає відповіді';
+
+  @override
+  String get callFailed => 'Не вдалося з’єднати дзвінок';
+
+  @override
+  String get callDeclined => 'Дзвінок відхилено';
+
+  @override
+  String get callEnded => 'Дзвінок завершено';
+
+  @override
+  String get callMicrophone => 'Мікрофон';
+
+  @override
+  String get callSpeaker => 'Динамік';
+
+  @override
+  String get callAnswer => 'Відповісти';
+
+  @override
+  String get callDecline => 'Відхилити';
+
+  @override
+  String get callEnd => 'Завершити';
+
+  @override
+  String get callClose => 'Закрити';
+
+  @override
   String get circleMessage => 'Відеоповідомлення';
 
   @override
@@ -227,6 +283,9 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get contactProfileChat => 'Чат';
+
+  @override
+  String get contactProfileCall => 'Дзвінок';
 
   @override
   String get contactProfileSecurity => 'Безпека';
@@ -1237,6 +1296,17 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get profileMapLocationOffHint =>
       'Застосунок не запитує геолокацію, а ваша точка прихована';
+
+  @override
+  String get callDirectTitle => 'Прямі дзвінки';
+
+  @override
+  String get callDirectOnHint =>
+      'Швидше, але співрозмовник дізнається вашу IP-адресу';
+
+  @override
+  String get callDirectOffHint =>
+      'Дзвінки йдуть через наш ретранслятор: співрозмовник не бачить вашу IP-адресу, а ретранслятор не чує розмову';
 
   @override
   String get profileReadReceipts => 'Показувати час прочитання';
