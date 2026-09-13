@@ -182,7 +182,10 @@ class CircleRecorder extends ChangeNotifier {
       'lens=${camera.description.name} '
           '${size == null ? 'size unknown' : '${size.width.toInt()}x'
               '${size.height.toInt()}'} '
-          'zoom=$_minZoom '
+          // The zoom actually set, and the range it sits in. This used to print
+          // the minimum alone, so "the back camera is not at 1x" could not be
+          // checked against a log that only ever said 0.5.
+          'zoom=$_zoom of $_minZoom..$_maxZoom '
           'stabilization=${camera.value.videoStabilizationMode.name} '
           '(not requested — it crops)',
     );
@@ -370,7 +373,12 @@ class CircleRecorder extends ChangeNotifier {
       // Ease-out cubic: most of the distance early, the last of it slowly, so
       // the picture settles rather than arrives.
       final eased = 1 - math.pow(1 - t, 3);
-      _zoom = t >= 1 ? _minZoom : from - span * eased;
+      // `home`, not `_minZoom`, on the last tick. The ride was aimed at home
+      // and then landed on the bottom of the range, which on a back camera is
+      // the ultra-wide at 0.5 — a flick out to the fisheye on every release,
+      // corrected a frame later by the exact set below. That was the half of
+      // the "rear opens at 1.0" fix that never got made.
+      _zoom = t >= 1 ? home : from - span * eased;
       _notify();
       if (!_zoomBusy) {
         _zoomBusy = true;
@@ -445,7 +453,12 @@ class CircleRecorder extends ChangeNotifier {
       if (!current()) return;
       final max = await camera.getMaxExposureOffset();
       if (!current()) return;
-      if (max <= min) return;
+      if (max <= min) {
+        // Said, because "the picture is very dark" on a camera that cannot be
+        // brightened at all is a different problem from one that can.
+        DebugLog.instance.log('CIRCLE', 'exposure fixed on this camera ($min)');
+        return;
+      }
       final offset = _exposureStops.clamp(min, max);
       await camera.setExposureOffset(offset);
       DebugLog.instance.log('CIRCLE', 'exposure +$offset EV (of $min..$max)');
@@ -466,6 +479,11 @@ class CircleRecorder extends ChangeNotifier {
     final camera = _camera;
     if (camera == null) return;
     _torchOn = !_torchOn;
+    DebugLog.instance.log(
+      'CIRCLE',
+      'torch ${_torchOn ? 'on' : 'off'} on ${camera.description.name} '
+          '(${_hardwareTorch ? 'flash' : 'screen'})',
+    );
     if (_hardwareTorch) {
       try {
         await camera.setFlashMode(_torchOn ? FlashMode.torch : FlashMode.off);
@@ -673,6 +691,18 @@ class CircleRecorder extends ChangeNotifier {
       // Keep the bounded recording budget from _makeCamera.
       final camera = _createCamera(lens);
       _camera = camera;
+      // Every error the camera plugin reports, into the log. The CameraX
+      // plugin does not throw for a torch, a zoom or an exposure change that
+      // fails natively; it posts the reason to an error stream and returns as
+      // if it had worked. "The torch does not light" survived a fix because
+      // the one line that would have named the cause went nowhere.
+      String? lastError;
+      camera.addListener(() {
+        final error = camera.value.errorDescription;
+        if (error == null || error == lastError) return;
+        lastError = error;
+        DebugLog.instance.log('CIRCLE', 'camera reported: $error');
+      });
       _notify();
       await camera.initialize();
       mark('initialized');

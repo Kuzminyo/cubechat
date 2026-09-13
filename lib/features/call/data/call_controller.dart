@@ -91,12 +91,31 @@ class CallController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// One line per step of a call, under `[CALL]`.
+  ///
+  /// The first device test of calls failed with "could not connect the call"
+  /// and two logs that did not contain a single line about it: every failure
+  /// here was caught and reduced to a word, and the exception that said why was
+  /// thrown away. Enough is written now that one attempt names the step it died
+  /// on. Never the TURN password, never an SDP body — lengths and counts only.
+  static void _log(String line) => DebugLog.instance.log('CALL', line);
+
+  static String _short(String? peer) =>
+      peer == null ? '?' : peer.substring(0, min(8, peer.length));
+
+  static String _hex(Uint8List id) => id
+      .take(4)
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
+
   Future<void> _send(CallSignal signal) async {
     final peer = peerId;
     final generation = _generation;
     if (peer == null) return;
     try {
       final links = await send(peer, signal);
+      _log('sent ${signal.kind.name} ${_hex(signal.callId)} to '
+          '${_short(peer)}: $links link(s)');
       if (links == 0 &&
           generation == _generation &&
           active &&
@@ -104,7 +123,8 @@ class CallController extends ChangeNotifier {
           signal.kind != CallSignalKind.decline) {
         _fail('unavailable');
       }
-    } catch (_) {
+    } catch (e) {
+      _log('sending ${signal.kind.name} failed: $e');
       if (generation == _generation && active) _fail('unavailable');
     }
   }
@@ -112,7 +132,14 @@ class CallController extends ChangeNotifier {
   bool _current(int generation) => !_disposed && generation == _generation;
 
   Future<void> dial(String peer) async {
-    if (active || !allowed(peer)) return;
+    if (active) {
+      _log('dial ${_short(peer)} ignored: a call is already on');
+      return;
+    }
+    if (!allowed(peer)) {
+      _log('dial ${_short(peer)} refused: not a known, unblocked contact');
+      return;
+    }
     peerId = peer;
     error = null;
     preparing = true;
@@ -121,30 +148,57 @@ class CallController extends ChangeNotifier {
     elapsed = Duration.zero;
     final generation = ++_generation;
     _changed();
+    final watch = Stopwatch()..start();
+    _log('dial ${_short(peer)}');
     try {
       final media = await _prepare(generation);
       if (media == null) return;
       final access = await obtainTurn();
+      _log('relay access: ${access.urls.length} url(s), '
+          '${access.expiresAt.difference(DateTime.now()).inSeconds} s left '
+          '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
+      final direct = allowDirect();
       final sdp =
-          await media.offer(access.configuration(allowDirect: allowDirect()));
+          await media.offer(access.configuration(allowDirect: direct));
+      _log('offer ready: ${sdp.length} B, ${describeCandidates(sdp)}, '
+          '${direct ? 'direct allowed' : 'relay only'} '
+          '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       preparing = false;
       final random = Random.secure();
       final id = Uint8List.fromList(
           List.generate(callIdLen, (_) => random.nextInt(256)));
       _machine.startOutgoing(callId: id, sdp: sdp);
-    } on TurnUnavailable {
+    } on TurnUnavailable catch (e) {
+      _log('relay access refused: ${e.reason}');
       if (_current(generation)) _fail('turn');
-    } catch (_) {
+    } catch (e) {
+      _log('could not prepare the call after ${watch.elapsedMilliseconds} ms: '
+          '$e');
       if (_current(generation)) _fail('media');
     }
+  }
+
+  /// How many candidates of each kind an SDP carries, e.g. `relay 1, host 0`.
+  ///
+  /// The call design depends on exactly one relay candidate being in the
+  /// offer, so this is the single most useful fact about an SDP to have in a
+  /// log — and it says nothing about anybody's address.
+  static String describeCandidates(String sdp) {
+    final counts = <String, int>{};
+    for (final m in RegExp(r' typ (host|srflx|prflx|relay)\b').allMatches(sdp)) {
+      counts.update(m.group(1)!, (n) => n + 1, ifAbsent: () => 1);
+    }
+    return 'relay ${counts['relay'] ?? 0}, srflx ${counts['srflx'] ?? 0}, '
+        'host ${counts['host'] ?? 0}';
   }
 
   Future<CallMedia?> _prepare(int generation) async {
     await _released;
     if (!_current(generation)) return null;
     if (!await microphone()) {
+      _log('microphone refused');
       if (_current(generation)) _fail('microphone');
       return null;
     }
@@ -154,6 +208,7 @@ class CallController extends ChangeNotifier {
     final media = _media = createMedia();
     _mediaEvents = media.events.listen((event) {
       if (!_current(generation)) return;
+      _log('media ${event.name}');
       if (event == CallMediaEvent.connected) {
         _connected = true;
         _disconnected?.cancel();
@@ -171,11 +226,20 @@ class CallController extends ChangeNotifier {
   }
 
   void _receive(ReceivedCallSignal event) {
-    if (_disposed || !allowed(event.chatId)) return;
+    if (_disposed) return;
     final signal = event.signal;
+    _log('received ${signal.kind.name} ${_hex(signal.callId)} from '
+        '${_short(event.chatId)}');
+    if (!allowed(event.chatId)) {
+      _log('ignored: ${_short(event.chatId)} is not a known, unblocked contact');
+      return;
+    }
     if (signal.kind == CallSignalKind.invite) {
-      if (!inviteIsFresh(sentAtMs: signal.sentAtMs!, now: DateTime.now()))
+      if (!inviteIsFresh(sentAtMs: signal.sentAtMs!, now: DateTime.now())) {
+        _log('invite dropped as stale: sent '
+            '${DateTime.now().millisecondsSinceEpoch - signal.sentAtMs!} ms ago');
         return;
+      }
       if (active && (peerId != event.chatId || preparing)) {
         unawaited(send(event.chatId, CallSignal.busy(signal.callId))
             .catchError((Object _) => 0));
@@ -208,9 +272,11 @@ class CallController extends ChangeNotifier {
   }
 
   Future<void> _acceptRemote(String sdp, int generation) async {
+    _log('answer received: ${sdp.length} B, ${describeCandidates(sdp)}');
     try {
       await _media?.accept(sdp);
-    } catch (_) {
+    } catch (e) {
+      _log('could not apply the answer: $e');
       if (_current(generation)) _fail('media');
     }
   }
@@ -220,25 +286,35 @@ class CallController extends ChangeNotifier {
     preparing = true;
     final generation = ++_generation;
     _changed();
+    final watch = Stopwatch()..start();
+    _log('answering ${_short(peerId)}: offer ${_remoteOffer?.length ?? 0} B, '
+        '${describeCandidates(_remoteOffer ?? '')}');
     try {
       final media = await _prepare(generation);
       if (media == null) return;
       final access = await obtainTurn();
+      _log('relay access: ${access.urls.length} url(s) '
+          '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       final sdp = await media.answer(
           access.configuration(allowDirect: allowDirect()), _remoteOffer!);
+      _log('answer ready: ${sdp.length} B, ${describeCandidates(sdp)} '
+          '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       preparing = false;
       _machine.accept(sdp: sdp);
       if (_connected) _machine.mediaConnected();
-    } on TurnUnavailable {
+    } on TurnUnavailable catch (e) {
+      _log('relay access refused: ${e.reason}');
       if (_current(generation)) _fail('turn');
-    } catch (_) {
+    } catch (e) {
+      _log('could not answer after ${watch.elapsedMilliseconds} ms: $e');
       if (_current(generation)) _fail('media');
     }
   }
 
   void _fail(String reason) {
+    _log('failed: $reason (phase ${phase.name})');
     error = reason;
     preparing = false;
     if (phase != CallPhase.idle && phase != CallPhase.ended) {
@@ -251,6 +327,9 @@ class CallController extends ChangeNotifier {
   }
 
   void _outcome(CallOutcome outcome) {
+    _log('ended ${_hex(outcome.callId)}: ${outcome.cause.name}, '
+        '${outcome.outgoing ? 'outgoing' : 'incoming'}, '
+        'talked ${outcome.talkedFor.inSeconds} s');
     ++_generation;
     preparing = false;
     error ??= outcome.cause.name;

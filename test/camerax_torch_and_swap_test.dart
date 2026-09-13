@@ -202,6 +202,43 @@ void main() {
     });
   });
 
+  // "Very dark", reported after a full stop of exposure compensation. At a
+  // locked 60 fps no frame can gather light for longer than 1/60 s; a range
+  // lets auto-exposure slow to 30 in a dim room and stay at 60 in a bright one.
+  test('asking for 60 fps allows 30 in the dark rather than locking 60',
+      () async {
+    final ranges = <(int, int)>[];
+    PigeonOverrides.cameraIntegerRange_new = ({required lower, required upper}) {
+      ranges.add((lower, upper));
+      return CameraIntegerRange.pigeon_detached(lower: lower, upper: upper);
+    };
+    final fresh = AndroidCameraCameraX()..processCameraProvider = provider;
+    await fresh.createCameraWithSettings(
+      back,
+      // No preset: a preset builds a dozen native resolution objects this
+      // harness does not fake, and the frame rate does not depend on it.
+      const MediaSettings(fps: 60),
+    );
+    expect(ranges, contains((30, 60)));
+    expect(ranges, isNot(contains((60, 60))),
+        reason: 'a lock at 60 is what left no room to expose');
+  });
+
+  test('a rate already at or under the floor is left exactly as asked',
+      () async {
+    final ranges = <(int, int)>[];
+    PigeonOverrides.cameraIntegerRange_new = ({required lower, required upper}) {
+      ranges.add((lower, upper));
+      return CameraIntegerRange.pigeon_detached(lower: lower, upper: upper);
+    };
+    final fresh = AndroidCameraCameraX()..processCameraProvider = provider;
+    await fresh.createCameraWithSettings(
+      back,
+      const MediaSettings(fps: 24),
+    );
+    expect(ranges, contains((24, 24)));
+  });
+
   test('a lens swap builds the capture session once, not twice', () async {
     camera.recording = _Recording();
     events.clear();

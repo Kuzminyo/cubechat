@@ -142,6 +142,10 @@ class AndroidCameraCameraX extends CameraPlatform {
   @visibleForTesting
   bool torchEnabled = false;
 
+  /// **CubeChat:** the slowest a requested frame rate may fall to in low light.
+  /// See the fps range in [createCameraWithSettings].
+  static const int _lowLightFloorFps = 30;
+
   /// The [ImageAnalysis] instance that can be configured to analyze individual
   /// frames.
   ImageAnalysis? imageAnalysis;
@@ -402,7 +406,19 @@ class AndroidCameraCameraX extends CameraPlatform {
 
     final int? targetFps = mediaSettings?.fps;
     if (targetFps != null) {
-      _targetFpsRange = CameraIntegerRange(lower: targetFps, upper: targetFps);
+      // **CubeChat: a ceiling, not a lock.** A frame rate caps how long each
+      // frame may gather light — at 60 fps no frame can be exposed for longer
+      // than 1/60 s — so a range of exactly [60, 60] leaves auto-exposure
+      // nowhere to go in a dim room but gain, which is noise, and then not even
+      // that. Reported repeatedly as a very dark picture, surviving an exposure
+      // bump of a full stop. With [30, 60] the camera holds 60 wherever there
+      // is light to do it and slows to 30 only when there is not, which is a
+      // stop brighter, and is what the phone's own camera app does. Nothing
+      // below 30: under that, motion in a face starts to smear.
+      final int floor = targetFps > _lowLightFloorFps
+          ? _lowLightFloorFps
+          : targetFps;
+      _targetFpsRange = CameraIntegerRange(lower: floor, upper: targetFps);
     }
 
     final QualitySelector? presetQualitySelector =
