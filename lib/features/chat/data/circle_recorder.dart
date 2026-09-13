@@ -231,6 +231,18 @@ class CircleRecorder extends ChangeNotifier {
   /// floor the voice recorder uses, for the same reason.
   static const Duration minLength = Duration(milliseconds: 700);
 
+  /// The longest a single native camera call may take before the recorder
+  /// stops waiting for it.
+  ///
+  /// Stopping a circle waits on up to three of them in a row — the start still
+  /// in flight, the clip being finalised, the camera being released — and on a
+  /// weak phone each is slow but finite: opening is the worst, one to three
+  /// seconds. A call that never returns is a wedged camera, and waiting on it
+  /// held the chat screen's finishing gate shut, so no circle could start again
+  /// until the app was killed. Past this, the clip is lost, the reason is
+  /// logged, and the next circle can open a fresh camera.
+  static const Duration nativeCallCeiling = Duration(seconds: 6);
+
   CameraController? get camera => _camera;
   bool get isRecording => _camera?.value.isRecordingVideo ?? false;
 
@@ -518,7 +530,16 @@ class CircleRecorder extends ChangeNotifier {
       unawaited(camera.setFlashMode(FlashMode.off).catchError((_) {}));
       if (generation != _generation) return;
       final lens = widestLens(choices.toList(), wanted);
+      // Timed, because "switching cameras is slow" had no number behind it.
+      // The swap is one native call: unbind, a new preview surface, one bind.
+      // It was two session rebuilds until the surface moved ahead of the bind
+      // in the CameraX plugin; if it is still slow, this line says so.
+      final swap = Stopwatch()..start();
       await camera.setDescription(lens);
+      DebugLog.instance.log(
+        'CIRCLE',
+        'flip to ${lens.lensDirection.name}: ${swap.elapsedMilliseconds} ms',
+      );
       if (generation != _generation) return;
       _front = lens.lensDirection == CameraLensDirection.front;
       _hardwareTorch = !_front;
@@ -604,6 +625,28 @@ class CircleRecorder extends ChangeNotifier {
     _starting = true;
     final operation = _start(front: front);
     _startup = operation;
+    // Cleared by whichever start is still the current one, and only by it.
+    //
+    // This used to be a `finally` inside the start itself, which is right
+    // until a start never returns: a camera that never finishes opening left
+    // "a start is in progress" set for the life of the app, and every circle
+    // after it was refused — measured in test, a cancel released everything
+    // and the next start still said no. The stop now gives up on a start like
+    // that and clears the flags itself (see [_finishCamera]); this identity
+    // check is what stops the abandoned one, returning much later, from
+    // clearing them out from under a circle that has started since.
+    //
+    // Registered here, before anyone else can await [operation], so it runs
+    // first: a caller that awaits start sees the flags already settled, as it
+    // did when this was a `finally`.
+    void settle() {
+      if (identical(_startup, operation)) {
+        _starting = false;
+        _startup = null;
+      }
+    }
+
+    unawaited(operation.then((_) => settle(), onError: (Object _) => settle()));
     return operation;
   }
 
@@ -710,9 +753,6 @@ class CircleRecorder extends ChangeNotifier {
       error = '$e';
       if (generation == _generation) await _release();
       return false;
-    } finally {
-      _starting = false;
-      _startup = null;
     }
   }
 
@@ -742,13 +782,29 @@ class CircleRecorder extends ChangeNotifier {
     final length = elapsed;
     _ticker?.cancel();
     _ceiling?.cancel();
+    // Timed in stages, the way start already is. "The circle takes ages to
+    // come off after recording" had no line in the log to answer it; this is
+    // that line, and it names which native call the time went into.
+    final watch = Stopwatch()..start();
+    var waited = 0;
+    var stopped = 0;
     try {
       // Never release the controller while native initialize/start is pending.
       // A release during start could previously dispose twice and stop twice.
-      if (camera != null) await _startup;
-      await _lensChange;
+      final startup = _startup;
+      if (camera != null && !await _bounded(startup, 'start')) {
+        // Given up on, so nothing else will ever clear these for it. Only if
+        // they are still that start's: see [start].
+        if (identical(_startup, startup)) {
+          _starting = false;
+          _startup = null;
+        }
+      }
+      await _bounded(_lensChange, 'lens change');
+      waited = watch.elapsedMilliseconds;
       if (camera == null || !camera.value.isRecordingVideo) return null;
-      final shot = await camera.stopVideoRecording();
+      final shot = await camera.stopVideoRecording().timeout(nativeCallCeiling);
+      stopped = watch.elapsedMilliseconds - waited;
       final file = File(shot.path);
       if (discard || length < minLength) {
         await _quietlyDelete(file);
@@ -759,11 +815,43 @@ class CircleRecorder extends ChangeNotifier {
       DebugLog.instance.log('CIRCLE', 'finish failed: $e');
       return null;
     } finally {
+      final releasing = watch.elapsedMilliseconds;
       await _release();
+      DebugLog.instance.log(
+        'CIRCLE',
+        '${discard ? 'cancel' : 'stop'}: waited $waited ms, '
+            'stopped $stopped ms, '
+            'released ${watch.elapsedMilliseconds - releasing} ms, '
+            'total ${watch.elapsedMilliseconds} ms',
+      );
       _stopping = false;
       _ending = null;
       _notify();
     }
+  }
+
+  /// Wait for [pending], but never longer than [nativeCallCeiling].
+  ///
+  /// What is waited on here is housekeeping the stop has to let finish, not a
+  /// result it needs; so a timeout is logged and the stop goes on, and an error
+  /// is swallowed for the same reason — a lens change that failed is no reason
+  /// to leave the recording running.
+  ///
+  /// False only when it was given up on, which the caller needs to know: an
+  /// abandoned start will never clear its own flags.
+  static Future<bool> _bounded(Future<void>? pending, String what) async {
+    if (pending == null) return true;
+    try {
+      await pending.timeout(nativeCallCeiling);
+    } on TimeoutException {
+      DebugLog.instance.log(
+        'CIRCLE',
+        '$what did not return in ${nativeCallCeiling.inSeconds} s; '
+            'stopping without it',
+      );
+      return false;
+    } catch (_) {}
+    return true;
   }
 
   Future<void> _release() async {
@@ -787,7 +875,15 @@ class CircleRecorder extends ChangeNotifier {
 
   static Future<void> _safelyDispose(CameraController camera) async {
     try {
-      await camera.dispose();
+      // Bounded for the same reason as [_bounded]: the field is already
+      // cleared, so the next circle opens a fresh controller whether or not
+      // this one ever finishes letting go.
+      await camera.dispose().timeout(nativeCallCeiling);
+    } on TimeoutException {
+      DebugLog.instance.log(
+        'CIRCLE',
+        'camera release did not return in ${nativeCallCeiling.inSeconds} s',
+      );
     } catch (_) {}
   }
 

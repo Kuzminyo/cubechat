@@ -543,6 +543,12 @@ class AndroidCameraCameraX extends CameraPlatform {
   /// Releases the resources of the accessed camera with ID [cameraId].
   @override
   Future<void> dispose(int cameraId) async {
+    // **CubeChat: a released camera is a dark one.** This instance is the
+    // app-wide platform singleton, so the flag outlives the camera it described.
+    // Left set, the next camera's torch press returned early in [setFlashMode]
+    // believing it was already lit — reported as the torch not working on the
+    // back camera, which is the lens a circle with the torch on is recorded on.
+    torchEnabled = false;
     await preview?.releaseSurfaceProvider();
     await liveCameraState?.removeObservers();
     await processCameraProvider?.unbindAll();
@@ -1028,36 +1034,43 @@ class AndroidCameraCameraX extends CameraPlatform {
       useCases.add(imageAnalysis!);
     }
     await processCameraProvider?.unbindAll();
-    camera = await processCameraProvider?.bindToLifecycle(
-      cameraSelector!,
-      useCases,
-    );
 
     // **CubeChat: the new sensor gets a new surface, so no frame is ever shown
     // under another sensor's rules.**
     //
-    // Rebinding hands the *same* Surface to the other camera. Between the bind
-    // returning and the first frame arriving from the new sensor — tens of
-    // milliseconds, longer on a cold lens — the texture still holds the last
-    // frame of the old one, while the correction below has already switched to
-    // the new one's facing and sensor rotation. A front frame under rear rules
-    // is that frame mirrored and turned, which is exactly what "the picture
-    // turns upside down on a flip" looks like from the outside.
+    // Rebinding would otherwise hand the *same* Surface to the other camera,
+    // whose texture still holds the old sensor's last frame while the
+    // correction below switches to the new sensor's facing and rotation. A
+    // front frame under rear rules is that frame mirrored and turned — "the
+    // picture turns upside down on a flip".
     //
-    // Releasing the old producer and taking a new one makes the worst case an
-    // empty texture instead of a wrong one, and the two happen after the bind
-    // so the old frame stays paired with the old correction for as long as it
-    // is on screen. Release first: `setSurfaceProvider` overwrites the native
-    // map entry, so setting before releasing leaks the old producer.
+    // **Set while unbound, so the bind is the only session rebuild.** This was
+    // first done after the bind, and CameraX answers a new surface on a bound
+    // Preview by rebuilding the whole capture session again — two rebuilds per
+    // flip where one would do, reported as switching cameras being slow. The
+    // rebuild also cancels a torch request that lands inside it. Release first:
+    // `setSurfaceProvider` overwrites the native map entry, so setting before
+    // releasing leaks the old producer.
     await preview?.releaseSurfaceProvider();
     final int? swapped = await preview?.setSurfaceProvider(
       systemServicesManager,
     );
 
+    camera = await processCameraProvider?.bindToLifecycle(
+      cameraSelector!,
+      useCases,
+    );
+
+    // A freshly bound camera is dark, whatever the last one was doing — see
+    // [dispose] for why this flag outlives the camera it describes.
+    torchEnabled = false;
+
     // Retrieve info required for correcting the rotation of the camera preview
     // Publish facing, sensor rotation and the surface together, after
-    // rebinding. Publishing facing before the awaits mirrored the old sensor
-    // with the new lens rules.
+    // rebinding. The texture id the screen draws is swapped here rather than
+    // above: during the bind the old id names a released producer and draws
+    // nothing, under the old correction, so what is shown and the rules it is
+    // shown by still change in the same instant.
     cameraIsFrontFacing = cameraSelectorLensDirection == LensFacing.front;
     sensorOrientationDegrees = description.sensorOrientation.toDouble();
     if (swapped != null) {
@@ -1187,8 +1200,12 @@ class AndroidCameraCameraX extends CameraPlatform {
           return;
         }
 
-        await _enableTorchMode(true);
-        torchEnabled = true;
+        // **CubeChat: only believed lit once it has actually lit.** This set
+        // `torchEnabled` whether or not enabling worked, and the failure is
+        // swallowed into the error stream — so a torch request cancelled by a
+        // session rebuild left the flag true with the light off, and every
+        // later press returned early above without reaching the camera.
+        torchEnabled = await _enableTorchMode(true);
     }
   }
 
@@ -1964,13 +1981,18 @@ class AndroidCameraCameraX extends CameraPlatform {
     ];
   }
 
-  Future<void> _enableTorchMode(bool value) async {
+  /// Whether the torch change went through. False is still reported on the
+  /// error stream, as before; the result is for [setFlashMode], which needs to
+  /// know rather than assume.
+  Future<bool> _enableTorchMode(bool value) async {
     try {
       await cameraControl.enableTorch(value);
+      return true;
     } on PlatformException catch (e) {
       cameraErrorStreamController.add(
         e.message ?? 'The camera was unable to change torch modes.',
       );
+      return false;
     }
   }
 

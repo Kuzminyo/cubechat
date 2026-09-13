@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:cubechat/features/chat/data/circle_recorder.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,6 +33,8 @@ class FakeCamera extends CameraController {
   Completer<void>? starting;
   Completer<void>? exposure;
   Completer<void>? changing;
+  Completer<void>? stopping;
+  Completer<void>? disposing;
   @override
   Future<void> initialize() async {
     await opening?.future;
@@ -85,6 +90,7 @@ class FakeCamera extends CameraController {
   @override
   Future<XFile> stopVideoRecording() async {
     stops++;
+    await stopping?.future;
     value = value.copyWith(isRecordingVideo: false);
     return XFile('missing-test-clip.mp4');
   }
@@ -110,6 +116,7 @@ class FakeCamera extends CameraController {
   // ignore: must_call_super
   Future<void> dispose() async {
     disposals++;
+    await disposing?.future;
     released = true;
   }
 }
@@ -372,6 +379,94 @@ void main() {
     expect(await starting, false);
     expect(recorder.isActive, false);
     recorder.dispose();
+  });
+
+  group('a camera that never answers does not end circles for good', () {
+    // "Sometimes a circle just freezes." Every stop waits on native calls —
+    // the start still in flight, the mp4 being finalised, the camera being
+    // released — and a stop that never finishes holds the screen's finishing
+    // gate shut, so no circle can start again until the app is killed. These
+    // calls are bounded now: a wedged camera costs one lost clip and a log
+    // line, not every circle after it.
+    test('a stop that never returns still releases the camera', () {
+      fakeAsync((async) {
+        final first = FakeCamera(front)..stopping = Completer<void>();
+        final second = FakeCamera(front);
+        var made = 0;
+        final recorder = CircleRecorder(
+          listCameras: () async => [front],
+          createCamera: (_) => made++ == 0 ? first : second,
+        );
+        bool? started;
+        recorder.start().then((ok) => started = ok);
+        async.flushMicrotasks();
+        expect(started, isTrue);
+
+        ({File file, Duration length})? shot = (file: File('x'), length: Duration.zero);
+        var stopped = false;
+        recorder.stop().then((s) {
+          shot = s;
+          stopped = true;
+        });
+        async.elapse(CircleRecorder.nativeCallCeiling - const Duration(milliseconds: 1));
+        expect(stopped, isFalse, reason: 'not a moment early');
+        async.elapse(const Duration(milliseconds: 2));
+        async.flushMicrotasks();
+        expect(stopped, isTrue);
+        expect(shot, isNull, reason: 'no finished file came back to send');
+        expect(first.released, isTrue);
+        expect(recorder.isActive, isFalse);
+
+        bool? again;
+        recorder.start().then((ok) => again = ok);
+        async.flushMicrotasks();
+        expect(again, isTrue, reason: 'the next circle is not locked out');
+        recorder.cancel();
+        async.flushMicrotasks();
+        recorder.dispose();
+      });
+    });
+
+    // The worst camera there is: it never finishes opening, and once asked to
+    // let go it never finishes that either. The open that never returns is
+    // the dangerous half — the recorder's "a start is in progress" flag was
+    // only cleared when that start returned, so even after the cancel had
+    // released everything, every later circle was refused as "already
+    // starting", for as long as the app stayed open.
+    test('a camera that never opens and never lets go does not lock circles out',
+        () {
+      fakeAsync((async) {
+        final first = FakeCamera(front)
+          ..opening = Completer<void>()
+          ..disposing = Completer<void>();
+        final second = FakeCamera(front);
+        var made = 0;
+        final recorder = CircleRecorder(
+          listCameras: () async => [front],
+          createCamera: (_) => made++ == 0 ? first : second,
+        );
+        recorder.start();
+        async.flushMicrotasks();
+        expect(recorder.isActive, isTrue, reason: 'stuck opening');
+
+        var stopped = false;
+        recorder.cancel().then((_) => stopped = true);
+        // One ceiling for the open it gave up on, one for the release.
+        async.elapse(CircleRecorder.nativeCallCeiling * 2 +
+            const Duration(milliseconds: 1));
+        async.flushMicrotasks();
+        expect(stopped, isTrue);
+        expect(recorder.isActive, isFalse);
+
+        bool? again;
+        recorder.start().then((ok) => again = ok);
+        async.flushMicrotasks();
+        expect(again, isTrue);
+        recorder.cancel();
+        async.flushMicrotasks();
+        recorder.dispose();
+      });
+    });
   });
 }
 

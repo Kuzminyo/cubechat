@@ -3935,11 +3935,23 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       _circleSession++;
       _circleStarting = false;
       _circleFinishing = true;
+      // Acknowledged the moment the finger lifts, the way cancel already was.
+      //
+      // This used to await the stop first and only then take the circle off
+      // the screen — and the stop is up to three native calls in a row: the
+      // start still in flight, the clip being finalised, the camera being
+      // released. On a weak phone that is seconds of a frozen circle, a lit
+      // record button and "recording…" on the other phone, all after the
+      // recording had already ended. Reported as the circle taking ages to come
+      // off. The stop is begun first so the clip's length is read at the lift,
+      // then everything a person can see is dropped, then the camera finishes
+      // in its own time behind the finishing gate.
+      final stopping = _circle?.stop();
+      _stopTicker();
+      _hideCircleOverlay();
+      if (mounted) setState(() => _recordLocked = false);
       try {
-        final shot = await _circle?.stop();
-        _stopTicker();
-        _hideCircleOverlay();
-        if (mounted) setState(() => _recordLocked = false);
+        final shot = await stopping;
         if (shot == null) return;
         if (!mounted) { await _discardRecording(shot.file.path); return; }
         // Not awaited, and that is the fix rather than an oversight.
@@ -5060,7 +5072,10 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
           : null,
       recordLocked: _recordLocked,
       recording: _recordMode == RecordMode.circle
-          ? (_circle?.isRecording ?? false)
+          // Not while finishing: the native camera still reports recording
+          // until the clip is finalised, and that is the green button left
+          // lit after the finger had already lifted.
+          ? (_circle?.isRecording ?? false) && !_circleFinishing
           : voiceState.isRecording,
       recordElapsed: _elapsed,
       recordLevels: voiceState.levels,
