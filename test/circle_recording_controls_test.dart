@@ -29,6 +29,42 @@ Widget host(Widget child) => MaterialApp(
     );
 
 void main() {
+  testWidgets('record mode button accepts corner taps during its flip',
+      (tester) async {
+    var toggles = 0;
+    late StateSetter update;
+    var mode = RecordMode.voice;
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            update = setState;
+            return ChatInput(
+              hint: 'Message',
+              sendTooltip: 'Send',
+              onSend: (_) {},
+              onAttach: () {},
+              recordMode: mode,
+              onRecordStart: () {},
+              onRecordStop: () {},
+              onRecordCancel: () {},
+              onToggleRecordMode: () => toggles++,
+            );
+          },
+        ),
+      ),
+    );
+    final center = tester.getCenter(find.byIcon(Icons.mic_rounded));
+    await tester.tapAt(center + const Offset(20, 20));
+    expect(toggles, 1);
+    update(() => mode = RecordMode.circle);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tapAt(center + const Offset(20, 20));
+    expect(toggles, 2);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
       'starting a circle keeps the same editable text and input connection',
       (tester) async {
@@ -102,7 +138,8 @@ void main() {
     recorder.dispose();
   });
 
-  testWidgets('the disc turns all the way over rather than back the way it came',
+  testWidgets(
+      'the disc turns all the way over rather than back the way it came',
       (tester) async {
     // The first version rotated to ninety degrees and reversed, which is a card
     // shown and withdrawn — the picture left and returned on the same face. A
@@ -134,9 +171,12 @@ void main() {
     // All the way to the edge and held there: the sensor has not come back, and
     // opening on a texture that has not restarted is the thing this waits for.
     await tester.pump(const Duration(milliseconds: 400));
-    expect(outer().entry(0, 0), closeTo(0, 0.05),
-        reason: 'edge-on is a cosine of zero, and it stays there while the '
-            'lens is still changing');
+    expect(
+      outer().entry(0, 0),
+      closeTo(0, 0.05),
+      reason: 'edge-on is a cosine of zero, and it stays there while the '
+          'lens is still changing',
+    );
 
     recorder.setChanging(false);
     // A bare pump first, to deliver the change and let the second half start.
@@ -154,12 +194,18 @@ void main() {
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 20));
       final m = outer();
-      expect(m.entry(0, 0), greaterThanOrEqualTo(-0.001),
-          reason: 'a negative cosine is the far side of the disc, which is the '
-              'picture mirrored');
-      expect(m.entry(1, 1), 1,
-          reason: 'nothing here rotates about X, so it can never be upside '
-              'down');
+      expect(
+        m.entry(0, 0),
+        greaterThanOrEqualTo(-0.001),
+        reason: 'a negative cosine is the far side of the disc, which is the '
+            'picture mirrored',
+      );
+      expect(
+        m.entry(1, 1),
+        1,
+        reason: 'nothing here rotates about X, so it can never be upside '
+            'down',
+      );
     }
 
     await tester.pump(const Duration(milliseconds: 400));

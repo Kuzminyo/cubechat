@@ -194,6 +194,8 @@ class CircleRecorder extends ChangeNotifier {
   DateTime? _startedAt;
   bool _stopping = false;
   bool _starting = false;
+  Future<bool>? _startup;
+  int _exposureEpoch = 0;
   bool _disposed = false;
   Future<void>? _lensChange;
   Future<({File file, Duration length})?>? _ending;
@@ -418,10 +420,19 @@ class CircleRecorder extends ChangeNotifier {
   /// in stops on iOS, but the bounds differ per device, and a value outside
   /// them throws. Clamped, and a camera that offers no range at all is left
   /// exactly as it was.
-  Future<void> _brighten(CameraController camera) async {
+  Future<void> _brighten(CameraController camera, {int? generation}) async {
+    final epoch = _exposureEpoch;
+    bool current() =>
+        epoch == _exposureEpoch &&
+        !_stopping &&
+        !_disposed &&
+        identical(camera, _camera) &&
+        (generation == null || generation == _generation);
     try {
       final min = await camera.getMinExposureOffset();
+      if (!current()) return;
       final max = await camera.getMaxExposureOffset();
+      if (!current()) return;
       if (max <= min) return;
       final offset = _exposureStops.clamp(min, max);
       await camera.setExposureOffset(offset);
@@ -461,16 +472,20 @@ class CircleRecorder extends ChangeNotifier {
     if (_camera == null ||
         !isRecording ||
         _flipping ||
+        _lensChange != null ||
         _stopping ||
         _disposed) {
       return Future<void>.value();
     }
     _flipping = true;
+    _exposureEpoch++;
     error = null;
     _notify();
     final change = _flipLens();
     _lensChange = change;
-    return change;
+    return change.whenComplete(() {
+      if (identical(_lensChange, change)) _lensChange = null;
+    });
   }
 
   /// The lenses this phone has, asked for once.
@@ -581,13 +596,27 @@ class CircleRecorder extends ChangeNotifier {
   ///
   /// [front] is the lens setting, read before the finger went down — see
   /// `CircleLensController` for why it is a setting and not a button here.
-  Future<bool> start({bool front = true}) async {
+  Future<bool> start({bool front = true}) {
+    if (_camera != null || _starting || _stopping || _disposed) {
+      return Future<bool>.value(false);
+    }
     error = null;
-    if (_camera != null || _starting || _stopping || _disposed) return false;
     _starting = true;
+    final operation = _start(front: front);
+    _startup = operation;
+    return operation;
+  }
+
+  Future<bool> _start({required bool front}) async {
     final generation = ++_generation;
+    final startupWatch = Stopwatch()..start();
+    void mark(String stage) => DebugLog.instance.log(
+          'CIRCLE',
+          'start $stage: ${startupWatch.elapsedMilliseconds} ms',
+        );
     try {
-      final cameras = await _listCameras();
+      final cameras = await _cameras();
+      mark('lenses');
       if (generation != _generation) return false;
       if (cameras.isEmpty) {
         error = 'no-camera';
@@ -596,18 +625,19 @@ class CircleRecorder extends ChangeNotifier {
       final wanted =
           front ? CameraLensDirection.front : CameraLensDirection.back;
       final lens = widestLens(cameras, wanted);
+      _front = lens.lensDirection == CameraLensDirection.front;
 
       // Keep the bounded recording budget from _makeCamera.
       final camera = _createCamera(lens);
       _camera = camera;
       _notify();
       await camera.initialize();
+      mark('initialized');
       // Gone while the camera was opening — a finger lifted inside the second
       // it takes. Nothing was recorded, so there is nothing to send.
-      if (generation != _generation) {
-        await _safelyDispose(camera);
-        return false;
-      }
+      // Finish owns disposal and waits for this future. Disposing here too
+      // races a native initialization/start and can tear down the next attempt.
+      if (generation != _generation) return false;
       // What this camera can do, asked once, before anything needs it.
       //
       // The minimum is set explicitly rather than assumed to be where the
@@ -615,8 +645,13 @@ class CircleRecorder extends ChangeNotifier {
       // back as the preview being zoomed hard on a face with nobody having
       // touched it.
       try {
-        _minZoom = await camera.getMinZoomLevel();
-        _maxZoom = await camera.getMaxZoomLevel();
+        final range = await Future.wait([
+          camera.getMinZoomLevel(),
+          camera.getMaxZoomLevel(),
+        ]);
+        if (generation != _generation) return false;
+        _minZoom = range[0];
+        _maxZoom = range[1];
         _zoom = _openingZoom();
         _zoomAtGestureStart = _zoom;
         await camera.setZoomLevel(_zoom);
@@ -625,7 +660,6 @@ class CircleRecorder extends ChangeNotifier {
         _maxZoom = 1;
         _zoom = 1;
       }
-      await _brighten(camera);
       _torchOn = false;
       // A front camera has no flash on any phone this will meet, and asking
       // anyway is worse than not asking: the call succeeds and lights nothing.
@@ -636,19 +670,14 @@ class CircleRecorder extends ChangeNotifier {
       // Keep the preview's aspect ratio stable when a held phone tilts.
       await camera.lockCaptureOrientation(DeviceOrientation.portraitUp);
       if (generation != _generation) return false;
+      mark('configured');
       await _logLens(camera);
       if (generation != _generation) return false;
       await camera.startVideoRecording(enablePersistentRecording: true);
       // And again: starting the recording is itself a round trip to the
       // platform, and the release can land inside it.
-      if (generation != _generation) {
-        try {
-          final shot = await camera.stopVideoRecording();
-          await _quietlyDelete(File(shot.path));
-        } catch (_) {}
-        await _safelyDispose(camera);
-        return false;
-      }
+      if (generation != _generation) return false;
+      mark('recording');
       _startedAt = DateTime.now();
       _ticker = Timer.periodic(
         // Only while a circle is being recorded, and it stops with it. The ring
@@ -658,6 +687,9 @@ class CircleRecorder extends ChangeNotifier {
       );
       _ceiling = Timer(maxLength, () => onCeilingReached?.call());
       _notify();
+      // Exposure is optional: three native calls used to delay the first
+      // recorded frame. Cancel invalidates this task before any late write.
+      unawaited(_brighten(camera, generation: generation));
       return true;
     } on CameraException catch (e) {
       // Told apart so the screen can say "circles need the camera and the
@@ -680,6 +712,7 @@ class CircleRecorder extends ChangeNotifier {
       return false;
     } finally {
       _starting = false;
+      _startup = null;
     }
   }
 
@@ -710,6 +743,9 @@ class CircleRecorder extends ChangeNotifier {
     _ticker?.cancel();
     _ceiling?.cancel();
     try {
+      // Never release the controller while native initialize/start is pending.
+      // A release during start could previously dispose twice and stop twice.
+      if (camera != null) await _startup;
       await _lensChange;
       if (camera == null || !camera.value.isRecordingVideo) return null;
       final shot = await camera.stopVideoRecording();

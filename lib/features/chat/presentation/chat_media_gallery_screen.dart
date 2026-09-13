@@ -24,6 +24,8 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../stickers/data/sticker_library.dart';
 import 'widgets/emoji_picker_sheet.dart';
 import 'widgets/photo_flight.dart';
+import 'widgets/media_photo_surface.dart';
+import '../../../core/util/motion.dart';
 
 /// Telegram-style media browser: every image in a conversation, full-screen and
 /// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
@@ -68,16 +70,44 @@ class _ChatMediaGalleryScreenState
   /// conversation showing through says where it is going.
   double get _dragProgress => (_dragY.abs() / 400).clamp(0.0, 1.0);
 
-  void _onDragUpdate(DragUpdateDetails d) =>
-      setState(() => _dragY = (_dragY + d.delta.dy).clamp(0.0, 1000.0));
+  void _onDragUpdate(double dy) =>
+      setState(() => _dragY = (_dragY + dy).clamp(0.0, 1000.0));
 
-  void _onDragEnd(DragEndDetails d) {
-    final velocity = d.velocity.pixelsPerSecond.dy;
+  void _onDragEnd(double velocity) {
     if (_dragY > _dismissAfter || velocity > _dismissVelocity) {
       Navigator.of(context).maybePop();
       return;
     }
     setState(() => _dragY = 0);
+  }
+
+  double? _pageDragOrigin;
+
+  void _onPageDrag(double dx) {
+    _pageDragOrigin ??= _controller.page ?? _index.toDouble();
+    final position = _controller.position;
+    _controller.jumpTo(
+      (position.pixels - dx).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
+  void _onPageEnd(double velocity) {
+    final origin = _pageDragOrigin;
+    _pageDragOrigin = null;
+    if (origin == null || !_controller.hasClients) return;
+    final target = velocity.abs() > 500
+        ? origin.round() + (velocity < 0 ? 1 : -1)
+        : (_controller.page ?? origin).round();
+    unawaited(
+      _controller.animateToPage(
+        target.clamp(0, _images.length - 1),
+        duration: AppMotion.duration(context, AppMotion.control),
+        curve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   /// Snapshot the image list once so paging isn't disturbed if a new message
@@ -189,8 +219,10 @@ class _ChatMediaGalleryScreenState
         fileName: 'cubechat_${msg.id}$ext',
         skipIfExists: false,
       );
-      _toast(result.isSuccess ? 'Saved to gallery' : 'Save failed',
-          ok: result.isSuccess);
+      _toast(
+        result.isSuccess ? 'Saved to gallery' : 'Save failed',
+        ok: result.isSuccess,
+      );
     } catch (e) {
       _toast('Save failed: $e', ok: false);
     } finally {
@@ -260,7 +292,9 @@ class _ChatMediaGalleryScreenState
                               ? '${formatMessageDetailsTime(context, current.sentAt)}'
                                   '  ·  ${_index + 1}/$count'
                               : formatMessageDetailsTime(
-                                  context, current.sentAt),
+                                  context,
+                                  current.sentAt,
+                                ),
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.65),
                             fontSize: 12,
@@ -295,10 +329,9 @@ class _ChatMediaGalleryScreenState
                               .withValues(alpha: sharingRestricted ? 0.3 : 1),
                         ),
                   tooltip: t.chatMediaSaveToGallery,
-                  onPressed:
-                      current == null || sharingRestricted || _saving
-                          ? null
-                          : () => unawaited(_save()),
+                  onPressed: current == null || sharingRestricted || _saving
+                      ? null
+                      : () => unawaited(_save()),
                 ),
                 if (!sharingRestricted)
                   IconButton(
@@ -317,7 +350,10 @@ class _ChatMediaGalleryScreenState
                             color: Colors.white,
                           ),
                         )
-                      : const Icon(Icons.more_vert_rounded, color: Colors.white),
+                      : const Icon(
+                          Icons.more_vert_rounded,
+                          color: Colors.white,
+                        ),
                   color: AppColors.bgTop,
                   onSelected: (value) {
                     if (value == 'save') {
@@ -338,12 +374,16 @@ class _ChatMediaGalleryScreenState
                       PopupMenuItem(
                         value: 'save',
                         child: _menuRow(
-                            Icons.download_rounded, t.chatMediaSaveToGallery),
+                          Icons.download_rounded,
+                          t.chatMediaSaveToGallery,
+                        ),
                       ),
                     PopupMenuItem(
                       value: 'chat',
-                      child: _menuRow(Icons.chat_bubble_outline_rounded,
-                          t.chatMediaShowInChat),
+                      child: _menuRow(
+                        Icons.chat_bubble_outline_rounded,
+                        t.chatMediaShowInChat,
+                      ),
                     ),
                     // Kept inside the app rather than exported, so this one
                     // stays offered even when sharing is restricted: the
@@ -351,8 +391,8 @@ class _ChatMediaGalleryScreenState
                     // and becomes reusable.
                     PopupMenuItem(
                       value: 'sticker',
-                      child: _menuRow(
-                          Icons.emoji_emotions_rounded, t.stickerKeep),
+                      child:
+                          _menuRow(Icons.emoji_emotions_rounded, t.stickerKeep),
                     ),
                   ],
                 ),
@@ -364,26 +404,26 @@ class _ChatMediaGalleryScreenState
               // Tap anywhere to get the chrome out of the way, the way every
               // photo viewer works.
               onTap: () => setState(() => _chromeVisible = !_chromeVisible),
-              // Vertical only: the horizontal axis belongs to the PageView, and
-              // pinch-zoom belongs to the InteractiveViewer inside it. A drag
-              // that starts as a scale gesture never reaches here, so a
-              // two-finger zoom cannot close the picture by accident.
-              onVerticalDragUpdate: _onDragUpdate,
-              onVerticalDragEnd: _onDragEnd,
-              onVerticalDragCancel: () => setState(() => _dragY = 0),
+              // The photo owns scale/pan and routes a one-finger gesture to
+              // close or page. Competing parent drag recognizers lost touches.
               child: Transform.translate(
                 offset: Offset(0, _dragY),
                 child: Transform.scale(
                   scale: 1 - 0.15 * _dragProgress,
                   child: PageView.builder(
                     controller: _controller,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: count,
                     onPageChanged: (i) => setState(() => _index = i),
                     itemBuilder: (_, i) {
                       final m = _images[i];
-                      return InteractiveViewer(
-                        minScale: 0.8,
-                        maxScale: 8,
+                      return MediaPhotoSurface(
+                        key: ValueKey(m.id),
+                        onDismissUpdate: _onDragUpdate,
+                        onDismissEnd: _onDragEnd,
+                        onDismissCancel: () => setState(() => _dragY = 0),
+                        onPageUpdate: _onPageDrag,
+                        onPageEnd: _onPageEnd,
                         child: Center(
                           child: Hero(
                             tag: 'image-${m.id}',

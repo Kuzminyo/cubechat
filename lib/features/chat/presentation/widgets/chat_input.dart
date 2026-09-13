@@ -1077,6 +1077,9 @@ class _VoiceButtonState extends State<_VoiceButton> {
     // armed at [_voiceArmDelay] instead of the stock half second — everything
     // else is the same long-press gesture.
     return RawGestureDetector(
+      // The target stays a full square while the icon turns edge-on. Hit
+      // testing the transformed circular decoration alone dropped edge taps.
+      behavior: HitTestBehavior.opaque,
       gestures: {
         // A tap turns the button over; a hold records. Both live on this one
         // recogniser set so they settle it between themselves in the arena —

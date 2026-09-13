@@ -24,14 +24,34 @@ class FakeCamera extends CameraController {
   int stabilizations = 0;
   double? zoom;
   bool released = false;
+  int disposals = 0;
+  int exposureWrites = 0;
+  Completer<void>? opening;
+  Completer<void>? starting;
+  Completer<void>? exposure;
   Completer<void>? changing;
   @override
   Future<void> initialize() async {
+    await opening?.future;
     value = value.copyWith(isInitialized: true);
   }
 
   @override
   Future<double> getMinZoomLevel() async => .5;
+  @override
+  Future<double> getMinExposureOffset() async {
+    await exposure?.future;
+    return 0;
+  }
+
+  @override
+  Future<double> getMaxExposureOffset() async => 2;
+  @override
+  Future<double> setExposureOffset(double offset) async {
+    exposureWrites++;
+    return offset;
+  }
+
   @override
   Future<double> getMaxZoomLevel() async => 4;
   @override
@@ -58,6 +78,7 @@ class FakeCamera extends CameraController {
     bool enablePersistentRecording = true,
   }) async {
     starts++;
+    await starting?.future;
     value = value.copyWith(isRecordingVideo: true);
   }
 
@@ -88,12 +109,83 @@ class FakeCamera extends CameraController {
   @override
   // ignore: must_call_super
   Future<void> dispose() async {
+    disposals++;
     released = true;
   }
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  for (final duringStart in [false, true]) {
+    test(
+        'cancel waits for native ${duringStart ? 'recording start' : 'initialization'} before disposal',
+        () async {
+      final gate = Completer<void>();
+      final camera = FakeCamera(front);
+      if (duringStart) {
+        camera.starting = gate;
+      } else {
+        camera.opening = gate;
+      }
+      final recorder = CircleRecorder(
+        listCameras: () async => [front, back],
+        createCamera: (_) => camera,
+      );
+      final start = recorder.start();
+      await Future<void>.delayed(Duration.zero);
+      final cancel = recorder.cancel();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        camera.released,
+        isFalse,
+        reason: 'native calls must not race dispose',
+      );
+      gate.complete();
+      expect(await start, isFalse);
+      await cancel;
+      expect(camera.disposals, 1);
+      expect(camera.stops, duringStart ? 1 : 0);
+      expect(recorder.isActive, isFalse);
+      recorder.dispose();
+    });
+  }
+  test('recording starts before optional exposure queries complete', () async {
+    final camera = FakeCamera(front)..exposure = Completer<void>();
+    final recorder = CircleRecorder(
+      listCameras: () async => [front, back],
+      createCamera: (_) => camera,
+    );
+    final start = recorder.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(camera.starts, 1);
+    camera.exposure!.complete();
+    expect(await start, isTrue);
+    await recorder.cancel();
+    recorder.dispose();
+  });
+
+  test('cancel prevents a late exposure write and a fresh recording can start',
+      () async {
+    final first = FakeCamera(front)..exposure = Completer<void>();
+    final second = FakeCamera(front);
+    var created = 0;
+    final recorder = CircleRecorder(
+      listCameras: () async => [front, back],
+      createCamera: (_) => created++ == 0 ? first : second,
+    );
+    expect(await recorder.start(), isTrue);
+    await recorder.cancel();
+    expect(await recorder.start(), isTrue);
+    first.exposure!.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(first.exposureWrites, 0);
+    expect(first.disposals, 1);
+    expect(second.starts, 1);
+    expect(second.released, isFalse);
+    await recorder.cancel();
+    recorder.dispose();
+  });
+
   test('widest facing you, main lens facing away', () {
     // Two different questions wearing one name. An ultra-wide is the only way
     // to get more than a face into a disc held at arm's length, so facing you
