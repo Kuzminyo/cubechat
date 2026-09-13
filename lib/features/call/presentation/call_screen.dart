@@ -7,17 +7,76 @@ import '../../../l10n/app_localizations.dart';
 import '../data/call_controller.dart';
 import '../domain/call_state_machine.dart';
 
+/// The call, drawn over whatever the router is showing.
+///
 /// Kept inside the app lock: incoming calls never bypass the lock screen.
-class CallHost extends ConsumerWidget {
-  const CallHost({super.key, required this.child});
+///
+/// **This lives above the router, and that constrains everything under it.**
+/// It is mounted in `MaterialApp.router`'s `builder` so a call survives
+/// navigation, which means there is no Router, no Navigator and no Overlay
+/// above anything it draws. A widget that looks one of those up throws while
+/// building, and a release build paints that as an empty rectangle — here the
+/// size of the screen. That shipped once: `BackButtonListener` asks for the
+/// Router, and tapping Call on a real phone turned the screen white and left it
+/// there. So back is taken from the router's own dispatcher, handed in from
+/// app.dart, and the controls carry no tooltips (a tooltip needs an Overlay).
+/// `test/call_screen_mount_test.dart` mounts this exactly as the app does; it
+/// is the check that anything added here can actually be built.
+class CallHost extends ConsumerStatefulWidget {
+  const CallHost({
+    super.key,
+    required this.child,
+    required this.backButtonDispatcher,
+  });
   final Widget child;
 
+  /// The router's root dispatcher. While a call is on screen a child of it
+  /// takes priority, so the back key answers the call screen instead of
+  /// popping the page hidden underneath it.
+  final BackButtonDispatcher backButtonDispatcher;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CallHost> createState() => _CallHostState();
+}
+
+class _CallHostState extends ConsumerState<CallHost> {
+  ChildBackButtonDispatcher? _back;
+
+  Future<bool> _onBack() async {
+    final call = ref.read(callControllerProvider);
+    // A finished call is dismissed by back; a live one is not ended by it —
+    // hanging up is a button, not a gesture somebody makes by accident.
+    if (!call.active) call.dismiss();
+    return true;
+  }
+
+  void _holdBack(bool showing) {
+    if (showing && _back == null) {
+      _back = widget.backButtonDispatcher.createChildBackButtonDispatcher()
+        ..addCallback(_onBack)
+        ..takePriority();
+    } else if (!showing && _back != null) {
+      // Removing its last callback makes a child dispatcher step back from
+      // its parent on its own, so the router has back again.
+      _back!.removeCallback(_onBack);
+      _back = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _holdBack(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final call = ref.watch(callControllerProvider);
+    final showing = call.peerId != null;
+    _holdBack(showing);
     return Stack(children: [
-      ExcludeFocus(excluding: call.peerId != null, child: child),
-      if (call.peerId != null) Positioned.fill(child: CallScreen(call: call)),
+      ExcludeFocus(excluding: showing, child: widget.child),
+      if (showing) Positioned.fill(child: CallScreen(call: call)),
     ]);
   }
 }
@@ -51,12 +110,7 @@ class CallScreen extends StatelessWidget {
                 _ => t.callEnded,
               },
           };
-    return BackButtonListener(
-      onBackButtonPressed: () async {
-        if (!call.active) call.dismiss();
-        return true;
-      },
-      child: Material(
+    return Material(
         color: AppColors.bgDeep,
         child: SafeArea(
           child: LayoutBuilder(
@@ -135,18 +189,23 @@ class CallScreen extends StatelessWidget {
                     ),
                   )),
         ),
-      ),
-    );
+      );
   }
 
+  // No tooltip: a tooltip needs an Overlay, and there is none above this
+  // screen (see [CallHost]). The label is drawn under the button, and the
+  // Semantics wrapper gives a screen reader the same word the tooltip did.
   Widget _control(IconData icon, String label, VoidCallback action,
           {bool selected = false}) =>
       SizedBox(
           width: 90,
           child: Column(children: [
-            IconButton.filledTonal(
+            Semantics(
+              button: true,
+              label: label,
+              excludeSemantics: true,
+              child: IconButton.filledTonal(
               onPressed: action,
-              tooltip: label,
               isSelected: selected,
               style: IconButton.styleFrom(
                 minimumSize: const Size(64, 64),
@@ -157,6 +216,7 @@ class CallScreen extends StatelessWidget {
                     selected ? AppColors.bgDeep : AppColors.textPrimary,
               ),
               icon: Icon(icon, size: 28),
+            ),
             ),
             const SizedBox(height: 8),
             Text(label,

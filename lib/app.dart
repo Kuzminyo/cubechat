@@ -616,7 +616,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           // The router lives below this builder, so the bar is handed the
           // one push it needs rather than looking one up it cannot see.
           onOpenChat: (chatId, _) => _openChat(chatId),
-          child: CallHost(child: child ?? const SizedBox.shrink()),
+          child: CallHost(
+            backButtonDispatcher: _router.backButtonDispatcher,
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
       ),
