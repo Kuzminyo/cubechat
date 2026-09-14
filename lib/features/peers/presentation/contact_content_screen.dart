@@ -1,4 +1,6 @@
 import 'dart:io';
+import '../../chat/presentation/widgets/playback_author.dart';
+import '../../../core/utils/time_format.dart';
 
 import 'package:flutter/material.dart';
 
@@ -320,16 +322,64 @@ class _VoiceList extends StatelessWidget {
           // nothing left saying who it is from or when — which is most of what
           // anybody opens this list to find out.
           child: voices[index].isCircle
-              ? Align(alignment: Alignment.centerLeft, child: VideoBubble(
-                  message: voices[index], chatId: chatId,
-                ))
+              // A circle said nothing about who sent it or when - only the
+              // voice notes beside it had that line, and "circles too should
+              // say who they are from and when" was the report.
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _AuthorLine(message: voices[index], chatId: chatId),
+                    const SizedBox(height: 8),
+                    VideoBubble(message: voices[index], chatId: chatId),
+                  ],
+                )
               : VoiceBubble(
-            message: voices[index],
-            chatId: chatId,
-            showHeader: true,
-          ),
+                  message: voices[index],
+                  chatId: chatId,
+                  showHeader: true,
+                ),
         ),
       ),
+    );
+  }
+}
+
+/// Who sent it and when, the same line a voice note in this list carries.
+class _AuthorLine extends ConsumerWidget {
+  const _AuthorLine({required this.message, required this.chatId});
+
+  final Message message;
+  final String chatId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      children: [
+        Icon(
+          message.isMine ? Icons.north_east_rounded : Icons.south_west_rounded,
+          size: 13,
+          color: AppColors.textOnGlassFaint,
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            playbackAuthor(context, ref, message, chatId: chatId),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          formatMessageDetailsTime(context, message.sentAt),
+          style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 11.5),
+        ),
+      ],
     );
   }
 }

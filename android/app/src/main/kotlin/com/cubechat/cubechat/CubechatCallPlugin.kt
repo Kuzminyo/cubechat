@@ -42,7 +42,15 @@ class CubechatCallPlugin(
                         answer = call.argument<String>("answer").orEmpty(),
                         decline = call.argument<String>("decline").orEmpty(),
                     )
-                    result.success(IncomingCall.show(context, key, name, labels))
+                    result.success(
+                        IncomingCall.show(
+                            context,
+                            key,
+                            name,
+                            labels,
+                            decodeAvatar(call.argument<ByteArray>("avatar")),
+                        ),
+                    )
                 }
                 "dismiss" -> {
                     IncomingCall.dismiss(context, call.argument<String>("key"))
@@ -54,8 +62,48 @@ class CubechatCallPlugin(
                         "overlay" to IncomingCall.canDrawOverlays(context),
                         "fullScreenIntent" to IncomingCall.canUseFullScreen(context),
                         "xiaomi" to IncomingCall.isXiaomiFamily(),
+                        "xiaomiLockScreen" to IncomingCall.miuiAllows(
+                            context,
+                            IncomingCall.MIUI_SHOW_WHEN_LOCKED,
+                        ),
+                        "xiaomiBackgroundStart" to IncomingCall.miuiAllows(
+                            context,
+                            IncomingCall.MIUI_BACKGROUND_START,
+                        ),
                     ),
                 )
+                "ringStart" -> {
+                    CallRinger.start(context)
+                    result.success(null)
+                }
+                "ringStop" -> {
+                    CallRinger.stop()
+                    result.success(null)
+                }
+                "ongoing" -> {
+                    val key = call.argument<String>("key")
+                    if (key == null) {
+                        result.error("args", "key is required", null)
+                        return@setMethodCallHandler
+                    }
+                    CallService.show(
+                        context,
+                        CallService.State(
+                            key = key,
+                            name = call.argument<String>("name").orEmpty(),
+                            avatar = decodeAvatar(call.argument<ByteArray>("avatar")),
+                            since = call.argument<Number>("since")?.toLong()
+                                ?: System.currentTimeMillis(),
+                            title = call.argument<String>("title").orEmpty(),
+                            hangUp = call.argument<String>("hangUp").orEmpty(),
+                        ),
+                    )
+                    result.success(null)
+                }
+                "ongoingStop" -> {
+                    CallService.stop(context)
+                    result.success(null)
+                }
                 "openOverlaySettings" -> result.success(
                     openSettings(
                         android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -80,6 +128,23 @@ class CubechatCallPlugin(
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /** A JPEG from Dart, scaled down to what a notification icon can use. */
+    private fun decodeAvatar(bytes: ByteArray?): android.graphics.Bitmap? {
+        if (bytes == null || bytes.isEmpty()) return null
+        return try {
+            val raw = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return null
+            val side = 256
+            if (raw.width <= side && raw.height <= side) {
+                raw
+            } else {
+                android.graphics.Bitmap.createScaledBitmap(raw, side, side, true)
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 

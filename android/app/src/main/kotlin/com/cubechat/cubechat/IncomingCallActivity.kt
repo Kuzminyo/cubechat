@@ -174,6 +174,18 @@ class IncomingCallActivity : Activity() {
 
     /** The first letter of the name in a circle, the app's avatar fallback. */
     private fun avatar(name: String): View {
+        IncomingCall.avatar?.let { picture ->
+            // The caller's own face, clipped round like everywhere in the app.
+            return ImageView(this).apply {
+                setImageBitmap(picture)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                clipToOutline = true
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.rgb(125, 217, 160))
+                }
+            }
+        }
         val initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
         return TextView(this).apply {
             text = initial

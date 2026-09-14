@@ -68,6 +68,18 @@ class AppLocalizationsUk extends AppLocalizations {
   String get callMinimize => 'Згорнути';
 
   @override
+  String get callAudioOutput => 'Звук дзвінка';
+
+  @override
+  String get callRoutePhone => 'Телефон';
+
+  @override
+  String get callRouteBluetooth => 'Bluetooth';
+
+  @override
+  String get callRouteHeadphones => 'Навушники';
+
+  @override
   String get callFullScreenTitle => 'Дзвінки на весь екран';
 
   @override

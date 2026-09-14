@@ -96,6 +96,11 @@
          lets the incoming-call screen open on a phone that is unlocked and in
          use, instead of Android turning it into a heads-up. See IncomingCall. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- The call in progress, as a foreground service of the microphone type.
+         Without it Android 11+ silences the microphone the moment the app is
+         not on screen - a call answered from the lock screen would be heard by
+         nobody. See CallService. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -162,6 +167,10 @@
         <receiver
             android:name=".IncomingCallReceiver"
             android:exported="false" />
+        <service
+            android:name=".CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <!-- Keeps BLE mesh alive in the background (see MeshForegroundService). -->
         <service
             android:name=".MeshForegroundService"

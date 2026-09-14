@@ -135,6 +135,25 @@ the **test's** clock, and anything reading `DateTime.now()` — the warm-up filt
 in `FrameStats`, every freshness window in the app — does not see it. Real time
 needs `await tester.runAsync(() => Future.delayed(...))`.
 
+### A phone-sized capture needs the view resized, not the surface
+
+`tester.binding.setSurfaceSize(Size(390, 844))` shrinks what is drawn but
+leaves `MediaQuery.sizeOf` at the 800x600 test default. Anything sized from
+the screen width — the bubble's `0.75 * width` cap — then lays out for an
+800-wide screen inside a 390-wide one and draws overflow stripes the phone
+never shows. Cost a false "RenderFlex overflowed by 168 pixels" on the 1046
+text-scale captures. Set the view instead:
+
+```dart
+tester.view.physicalSize = const Size(1170, 2532);
+tester.view.devicePixelRatio = 3;
+addTearDown(tester.view.reset);
+```
+
+A capture with tofu boxes for text also lies about widths: load `Inter` from
+`assets/fonts/`, and `SpaceGrotesk`/`JetBrainsMono` from `.codex/fonts/`, with
+`FontLoader` before judging any alignment.
+
 ## Analyze
 
 ```bash

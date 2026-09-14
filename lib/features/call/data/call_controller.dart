@@ -19,6 +19,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chat/data/voice_playback_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peer_avatars_controller.dart';
 import '../../profile/data/call_routing_controller.dart';
 import '../domain/call_record.dart';
 import '../domain/call_rules.dart';
@@ -44,6 +45,7 @@ class CallController extends ChangeNotifier {
     required this.prepareAudio,
     this.tones = const SilentCallTones(),
     this.surface = const NoIncomingCallSurface(),
+    this.peerAvatar,
     bool Function()? foreground,
   }) : _foreground = foreground ?? _alwaysForeground {
     _machine =
@@ -76,6 +78,11 @@ class CallController extends ChangeNotifier {
 
   /// The phone's own incoming-call screen, for while the app is not on screen.
   final IncomingCallSurface surface;
+
+  /// The other person's picture, when they have shared one. Put on the
+  /// phone's own call screen and on the call in the shade; the app's screens
+  /// read it themselves.
+  final Uint8List? Function(String peer)? peerAvatar;
   late final CallStateMachine _machine;
   late final StreamSubscription<ReceivedCallSignal> _signals;
   late final StreamSubscription<IncomingCallAction> _surfaceActions;
@@ -124,6 +131,22 @@ class CallController extends ChangeNotifier {
   bool get active =>
       preparing || (phase != CallPhase.idle && phase != CallPhase.ended);
   String get name => peerId == null ? '' : peerName(peerId!);
+  Uint8List? get avatar => peerId == null ? null : peerAvatar?.call(peerId!);
+
+  /// Where the sound can go, as last asked. See [refreshAudioRoutes].
+  List<CallAudioRoute> audioRoutes = const [];
+
+  /// Where it goes now, when a route was chosen by name rather than by the
+  /// speaker switch.
+  CallAudioRouteKind? audioRoute;
+
+  /// A headset is there to choose, so the speaker button opens a list instead
+  /// of flipping between two places.
+  bool get hasHeadsetRoute => audioRoutes.any(
+        (r) =>
+            r.kind == CallAudioRouteKind.bluetooth ||
+            r.kind == CallAudioRouteKind.wired,
+      );
 
   void _changed() {
     if (phase == CallPhase.talking && _elapsedTimer == null && !_disposed) {
@@ -134,7 +157,48 @@ class CallController extends ChangeNotifier {
       });
     }
     _updateRinging();
+    _updateOngoing();
     if (!_disposed) notifyListeners();
+  }
+
+  String? _ongoingKey;
+  bool _ongoingTalking = false;
+
+  /// Keep the call in the phone's own list of calls in progress - on Android,
+  /// the notification shade with its running time and Hang up, the way
+  /// Telegram shows one - from the moment it is placed or answered until it
+  /// is over. Put up again when the call connects, so the clock starts from
+  /// the conversation rather than from the dialling.
+  void _updateOngoing() {
+    final id = _machine.callId;
+    final key = id == null ? null : _key(id);
+    final on = !_disposed &&
+        key != null &&
+        _machine.isLive &&
+        phase != CallPhase.incoming;
+    if (!on) {
+      final shown = _ongoingKey;
+      if (shown == null) return;
+      _ongoingKey = null;
+      _ongoingTalking = false;
+      _queueSurface(() => surface.dismiss(shown));
+      return;
+    }
+    final talking = phase == CallPhase.talking;
+    if (_ongoingKey == key && _ongoingTalking == talking) return;
+    _ongoingKey = key;
+    _ongoingTalking = talking;
+    final caller = name;
+    final picture = avatar;
+    final since = _talkingSince ?? DateTime.now();
+    _queueSurface(
+      () => surface.ongoing(
+        key: key,
+        name: caller,
+        avatar: picture,
+        since: since,
+      ),
+    );
   }
 
   /// Ring while this phone is being called and nobody has touched Answer —
@@ -200,7 +264,10 @@ class CallController extends ChangeNotifier {
       _surfaceKey = key;
       _surfaceAnswered = false;
       final caller = name;
-      _queueSurface(() => surface.show(key: key, name: caller));
+      final picture = avatar;
+      _queueSurface(
+        () => surface.show(key: key, name: caller, avatar: picture),
+      );
       return;
     }
     if (shown == null) return;
@@ -373,6 +440,8 @@ class CallController extends ChangeNotifier {
     preparing = true;
     micMuted = false;
     speakerOn = false;
+    audioRoute = null;
+    audioRoutes = const [];
     elapsed = Duration.zero;
     final generation = ++_generation;
     _changed();
@@ -447,6 +516,10 @@ class CallController extends ChangeNotifier {
         _disconnected?.cancel();
         _disconnected = null;
         _machine.mediaConnected();
+        // The route the button shows, applied now the audio is really on:
+        // Android would otherwise start a call on the loudspeaker.
+        unawaited(media.setSpeaker(speakerOn).catchError((Object _) {}));
+        unawaited(refreshAudioRoutes());
       } else if (event == CallMediaEvent.failed) {
         _fail('media');
       } else {
@@ -492,6 +565,8 @@ class CallController extends ChangeNotifier {
         error = null;
         micMuted = false;
         speakerOn = false;
+        audioRoute = null;
+        audioRoutes = const [];
         elapsed = Duration.zero;
       }
       _machine.handleInvite(signal);
@@ -724,8 +799,41 @@ class CallController extends ChangeNotifier {
     }
   }
 
+  /// Ask the platform where the sound can go now. A headset can arrive in the
+  /// middle of a call, so this is asked again whenever the list is opened.
+  Future<void> refreshAudioRoutes() async {
+    final media = _media;
+    if (media == null) return;
+    try {
+      final routes = await media.routes();
+      if (_disposed || !identical(media, _media)) return;
+      audioRoutes = routes;
+      _changed();
+    } catch (e) {
+      _log('audio routes: $e');
+    }
+  }
+
+  Future<void> selectAudioRoute(CallAudioRoute route) async {
+    final media = _media;
+    if (media == null || !_machine.isLive || phase == CallPhase.incoming) {
+      return;
+    }
+    try {
+      await media.selectRoute(route);
+      if (_disposed || !identical(media, _media)) return;
+      audioRoute = route.kind;
+      speakerOn = route.kind == CallAudioRouteKind.speaker;
+      _log('audio to ${route.kind.name}');
+      _changed();
+    } catch (e) {
+      _log('could not move the audio to ${route.kind.name}: $e');
+    }
+  }
+
   Future<void> toggleSpeaker() async {
-    if (phase != CallPhase.talking || _media == null || _changingSpeaker) return;
+    if (_media == null || _changingSpeaker) return;
+    if (phase != CallPhase.talking && phase != CallPhase.connecting) return;
     _changingSpeaker = true;
     final generation = _generation;
     final next = !speakerOn;
@@ -733,6 +841,7 @@ class CallController extends ChangeNotifier {
       await _media!.setSpeaker(next);
       if (!_current(generation)) return;
       speakerOn = next;
+      audioRoute = null;
       _changed();
     } catch (_) {
       if (_current(generation)) _fail('media');
@@ -777,27 +886,27 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
-    tones: AudioCallTones(),
+    tones: PlatformInfo.isAndroid
+        ? const AndroidSystemCallTones()
+        : AudioCallTones(),
     // The phone's own incoming-call screen: a full-screen notification on
     // Android, CallKit on an iPhone. CallKit also needs the VoIP token in the
     // push registration, so a new one sends the registration again.
-    surface: PlatformInfo.isAndroid
-        ? AndroidIncomingCallSurface(
-            labels: () {
-              final t = lookupAppLocalizations(ref.read(localeControllerProvider));
-              return (
-                title: t.previewCallIncoming,
-                answer: t.callAnswer,
-                decline: t.callDecline,
-              );
-            },
-          )
-        : PlatformInfo.isIOS
-            ? IosCallKitSurface(
-                onVoipToken: () =>
-                    unawaited(ref.read(pushEnabledProvider.notifier).reassertForVoip()),
-              )
-            : const NoIncomingCallSurface(),
+    surface: platformCallSurface(
+      labels: () {
+        final t = lookupAppLocalizations(ref.read(localeControllerProvider));
+        return (
+          title: t.previewCallIncoming,
+          answer: t.callAnswer,
+          decline: t.callDecline,
+          ongoing: t.callVoice,
+          hangUp: t.callEnd,
+        );
+      },
+      onVoipToken: () =>
+          unawaited(ref.read(pushEnabledProvider.notifier).reassertForVoip()),
+    ),
+    peerAvatar: (peer) => ref.read(peerAvatarsControllerProvider)[peer],
     // The framework's own lifecycle, which it updates before any observer is
     // told. `inactive` counts as on screen: it is the notification shade or a
     // permission dialog passing over the app, and the app is still what the

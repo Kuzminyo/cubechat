@@ -46,8 +46,15 @@ class FakeMedia implements CallMedia {
 
   @override
   Future<void> setMuted(bool muted) async {}
+  final speaker = <bool>[];
+  List<CallAudioRoute> available = const [];
+  CallAudioRoute? selected;
   @override
-  Future<void> setSpeaker(bool speaker) async {}
+  Future<void> setSpeaker(bool on) async => speaker.add(on);
+  @override
+  Future<List<CallAudioRoute>> routes() async => available;
+  @override
+  Future<void> selectRoute(CallAudioRoute route) async => selected = route;
   @override
   Future<void> close() async {
     closed = true;
@@ -76,8 +83,21 @@ class FakeSurface implements IncomingCallSurface {
   @override
   Stream<IncomingCallAction> get actions => pressed.stream;
   @override
-  Future<void> show({required String key, required String name}) async =>
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  }) async =>
       log.add('screen show $name');
+  final ongoingLog = <String>[];
+  @override
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  }) async =>
+      ongoingLog.add('ongoing $name');
   @override
   Future<void> answered(String key) async => log.add('screen answered');
   @override
@@ -686,6 +706,73 @@ void main() {
       receive(CallSignal.hangup(callId: id(34), reason: CallEndReason.noAnswer));
       await Future<void>.delayed(Duration.zero);
       expect(events, ['screen show peer', 'screen dismiss']);
+    });
+  });
+
+  group('sound and the call in the shade', () {
+    // "Speaker on and normal sound the same": the audio switch started every
+    // call on the loudspeaker while the button said off.
+    test('the route the button shows is applied once the call connects',
+        () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.talking);
+      expect(media.speaker, [false]);
+      call.hangUp();
+    });
+
+    test('a Bluetooth headset is chosen by name, and the speaker switch goes '
+        'off', () async {
+      const headset = CallAudioRoute(
+        id: 'bluetooth',
+        label: 'Pixel Buds',
+        kind: CallAudioRouteKind.bluetooth,
+      );
+      media.available = const [
+        CallAudioRoute(id: 'earpiece', label: '', kind: CallAudioRouteKind.earpiece),
+        CallAudioRoute(id: 'speaker', label: '', kind: CallAudioRouteKind.speaker),
+        headset,
+      ];
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      await call.refreshAudioRoutes();
+      expect(call.hasHeadsetRoute, isTrue);
+      await call.toggleSpeaker();
+      expect(call.speakerOn, isTrue);
+      await call.selectAudioRoute(headset);
+      expect(media.selected, headset);
+      expect(call.audioRoute, CallAudioRouteKind.bluetooth);
+      expect(call.speakerOn, isFalse);
+      call.hangUp();
+    });
+
+    test('a placed call is in the shade from dialling, restarted when it '
+        'connects, and gone when it ends', () async {
+      await call.dial('peer');
+      await Future<void>.delayed(Duration.zero);
+      expect(surface.ongoingLog, ['ongoing peer']);
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(surface.ongoingLog, ['ongoing peer', 'ongoing peer'],
+          reason: 'the clock starts from the conversation, not the dialling');
+      events.clear();
+      call.hangUp();
+      await Future<void>.delayed(Duration.zero);
+      expect(events, contains('screen dismiss'));
+    });
+
+    test('a call ringing here is not in the shade until it is answered',
+        () async {
+      media.connectOnAccept = false;
+      receive(inviteFor(id(40)));
+      await Future<void>.delayed(Duration.zero);
+      expect(surface.ongoingLog, isEmpty);
+      await call.answer();
+      await Future<void>.delayed(Duration.zero);
+      expect(surface.ongoingLog, ['ongoing peer']);
+      call.hangUp();
     });
   });
 }

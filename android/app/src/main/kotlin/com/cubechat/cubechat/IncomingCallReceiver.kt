@@ -13,9 +13,17 @@ import android.content.Intent
  */
 class IncomingCallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != IncomingCall.ACTION_DECLINE) return
         val key = intent.getStringExtra(IncomingCall.EXTRA_KEY) ?: return
-        CubechatCallPlugin.instance?.deliver("decline", key)
-        IncomingCall.dismiss(context, key)
+        when (intent.action) {
+            IncomingCall.ACTION_DECLINE -> {
+                CubechatCallPlugin.instance?.deliver("decline", key)
+                IncomingCall.dismiss(context, key)
+            }
+            // Hang up from the call in the notification shade.
+            CallService.ACTION_HANGUP -> {
+                CubechatCallPlugin.instance?.deliver("end", key)
+                CallService.stop(context)
+            }
+        }
     }
 }

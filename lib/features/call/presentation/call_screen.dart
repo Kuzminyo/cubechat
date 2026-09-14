@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
-import '../../../core/widgets/identity_avatar.dart';
+import '../../../core/widgets/bar_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/util/platform_info.dart';
+import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/call_controller.dart';
+import '../data/call_media.dart';
 import '../data/call_screen_access.dart';
 import '../domain/call_state_machine.dart';
 
@@ -211,93 +213,85 @@ class CallIsland extends StatelessWidget {
                 CallPhase.connecting => t.callConnecting,
                 _ => '',
               };
+    // The nav bar's own pane of glass. It was a green gradient with a wide
+    // soft shadow of its own, which painted a dark band round the capsule -
+    // reported as "there is a background, a shadow or a border behind it, and
+    // there should not be; make it like the bar's island". [BarGlass] is that
+    // island, with its tight shadows and hairline, so the two cannot drift.
     return Semantics(
       container: true,
       button: true,
       label: '${call.name}, $status',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onExpand,
-          borderRadius: BorderRadius.circular(height / 2),
-          child: Ink(
-            height: height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(height / 2),
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.brandPrimary,
-                  AppColors.brandSecondary,
+      child: BarGlass(
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onExpand,
+            customBorder: const StadiumBorder(),
+            child: SizedBox(
+              height: height,
+              child: Row(
+                children: [
+                  const SizedBox(width: 6),
+                  PeerAvatar(
+                    peerId: call.peerId ?? '',
+                    label: call.name,
+                    size: 40,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          call.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          status,
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: AppColors.brandPrimary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (talking)
+                    _IslandButton(
+                      icon: call.micMuted
+                          ? Icons.mic_off_rounded
+                          : Icons.mic_rounded,
+                      label: t.callMicrophone,
+                      background: call.micMuted
+                          ? AppColors.textOnGlass
+                          : AppColors.glass(0.14),
+                      foreground: call.micMuted
+                          ? AppColors.bgDeep
+                          : AppColors.textOnGlass,
+                      onTap: () => unawaited(call.toggleMute()),
+                    ),
+                  const SizedBox(width: 6),
+                  _IslandButton(
+                    icon: Icons.call_end_rounded,
+                    label: t.callEnd,
+                    background: AppColors.danger,
+                    foreground: Colors.white,
+                    onTap: () => call.hangUp(),
+                  ),
+                  const SizedBox(width: 6),
                 ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.30),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 6),
-                IdentityAvatar(
-                  seed: call.peerId ?? '',
-                  label: call.name,
-                  size: 40,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        call.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: AppColors.bgDeep,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        status,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: AppColors.bgDeep.withValues(alpha: 0.78),
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (talking)
-                  _IslandButton(
-                    icon: call.micMuted
-                        ? Icons.mic_off_rounded
-                        : Icons.mic_rounded,
-                    label: t.callMicrophone,
-                    background: call.micMuted
-                        ? AppColors.bgDeep
-                        : AppColors.bgDeep.withValues(alpha: 0.16),
-                    foreground:
-                        call.micMuted ? AppColors.brandPrimary : AppColors.bgDeep,
-                    onTap: () => unawaited(call.toggleMute()),
-                  ),
-                const SizedBox(width: 6),
-                _IslandButton(
-                  icon: Icons.call_end_rounded,
-                  label: t.callEnd,
-                  background: AppColors.danger,
-                  foreground: Colors.white,
-                  onTap: () => call.hangUp(),
-                ),
-                const SizedBox(width: 6),
-              ],
             ),
           ),
         ),
@@ -353,7 +347,7 @@ String callClock(Duration elapsed) {
   return '$minutes:$seconds';
 }
 
-class CallScreen extends ConsumerWidget {
+class CallScreen extends ConsumerStatefulWidget {
   const CallScreen({super.key, required this.call, this.onMinimize});
 
   /// Folds the screen into [CallIsland]. Null while that is not allowed — a
@@ -362,9 +356,65 @@ class CallScreen extends ConsumerWidget {
   final CallController call;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CallScreen> createState() => _CallScreenState();
+}
+
+class _CallScreenState extends ConsumerState<CallScreen> {
+  /// The list of places the sound can go, open over the controls.
+  bool _routesOpen = false;
+
+  CallController get call => widget.call;
+
+  Future<void> _onSpeaker() async {
+    await call.refreshAudioRoutes();
+    if (!mounted) return;
+    // Two places to choose between is a switch; three or more is a list.
+    if (call.hasHeadsetRoute) {
+      setState(() => _routesOpen = true);
+    } else {
+      await call.toggleSpeaker();
+    }
+  }
+
+  /// The route the sound is on, as far as this screen can tell: chosen by
+  /// name, or the speaker switch.
+  CallAudioRouteKind get _route =>
+      call.audioRoute ??
+      (call.speakerOn
+          ? CallAudioRouteKind.speaker
+          : call.hasHeadsetRoute
+              ? call.audioRoutes
+                  .firstWhere(
+                    (r) =>
+                        r.kind == CallAudioRouteKind.bluetooth ||
+                        r.kind == CallAudioRouteKind.wired,
+                  )
+                  .kind
+              : CallAudioRouteKind.earpiece);
+
+  static IconData routeIcon(CallAudioRouteKind kind) => switch (kind) {
+        CallAudioRouteKind.earpiece => Icons.phone_in_talk_rounded,
+        CallAudioRouteKind.speaker => Icons.volume_up_rounded,
+        CallAudioRouteKind.bluetooth => Icons.bluetooth_audio_rounded,
+        CallAudioRouteKind.wired => Icons.headphones_rounded,
+      };
+
+  static String routeLabel(AppLocalizations t, CallAudioRoute route) =>
+      switch (route.kind) {
+        CallAudioRouteKind.earpiece => t.callRoutePhone,
+        CallAudioRouteKind.speaker => t.callSpeaker,
+        // The device's own name when it has one: "AirPods Pro" says which
+        // headset, where "Bluetooth" does not.
+        CallAudioRouteKind.bluetooth =>
+          route.label.isEmpty ? t.callRouteBluetooth : route.label,
+        CallAudioRouteKind.wired => t.callRouteHeadphones,
+      };
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final talking = call.phase == CallPhase.talking;
+    final connecting = call.phase == CallPhase.connecting;
     final incoming = call.phase == CallPhase.incoming && !call.preparing;
     final access = ref.watch(callScreenAccessProvider);
     // Not over an incoming call: the answer button is what that screen is for.
@@ -390,13 +440,22 @@ class CallScreen extends ConsumerWidget {
                 _ => t.callEnded,
               },
           };
+    if (_routesOpen && !(talking || connecting)) _routesOpen = false;
+
+    final route = _route;
+    final routeName = switch (route) {
+      CallAudioRouteKind.earpiece => t.callRoutePhone,
+      CallAudioRouteKind.speaker => t.callSpeaker,
+      CallAudioRouteKind.bluetooth => t.callRouteBluetooth,
+      CallAudioRouteKind.wired => t.callRouteHeadphones,
+    };
 
     // One row, spread across the width. The controls used to be a centred
     // `Wrap` of fixed 90-point cells, so two buttons huddled in the middle and
     // four wrapped onto a second line on a narrow phone. Asked for as "align
     // the icons across the width": every button gets an equal share of it.
     final controls = <Widget>[
-      if (talking) ...[
+      if (talking || connecting) ...[
         _control(
           call.micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
           t.callMicrophone,
@@ -404,10 +463,10 @@ class CallScreen extends ConsumerWidget {
           selected: call.micMuted,
         ),
         _control(
-          Icons.volume_up_rounded,
-          t.callSpeaker,
-          () => unawaited(call.toggleSpeaker()),
-          selected: call.speakerOn,
+          routeIcon(route),
+          call.hasHeadsetRoute ? routeName : t.callSpeaker,
+          () => unawaited(_onSpeaker()),
+          selected: route != CallAudioRouteKind.earpiece,
         ),
       ],
       if (call.active)
@@ -430,116 +489,138 @@ class CallScreen extends ConsumerWidget {
 
     return Material(
       color: AppColors.bgDeep,
-      child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, bounds) => SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: bounds.maxHeight),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(
-                      height: 48,
-                      child: Row(
-                        children: [
-                          if (onMinimize != null)
-                            Semantics(
-                              button: true,
-                              label: t.callMinimize,
-                              excludeSemantics: true,
-                              child: IconButton(
-                                onPressed: onMinimize,
-                                icon: Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  size: 30,
-                                  color: AppColors.textPrimary,
+      child: Stack(
+        children: [
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, bounds) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: bounds.maxHeight),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        SizedBox(
+                          height: 48,
+                          child: Row(
+                            children: [
+                              if (widget.onMinimize != null)
+                                Semantics(
+                                  button: true,
+                                  label: t.callMinimize,
+                                  excludeSemantics: true,
+                                  child: IconButton(
+                                    onPressed: widget.onMinimize,
+                                    icon: Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 30,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                )
+                              else
+                                const SizedBox(width: 48),
+                              Expanded(
+                                child: Text(
+                                  t.callVoice,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
-                            )
-                          else
-                            const SizedBox(width: 48),
-                          Expanded(
-                            child: Text(
-                              t.callVoice,
+                              const SizedBox(width: 48),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 36,
+                            horizontal: 12,
+                          ),
+                          child: Column(children: [
+                            // Their picture when they have shared one, the same
+                            // face the chat list shows; initials otherwise.
+                            PeerAvatar(
+                              peerId: call.peerId ?? '',
+                              label: call.name,
+                              size: 120,
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              call.name,
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 16,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 48),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 36,
-                        horizontal: 12,
-                      ),
-                      child: Column(children: [
-                        IdentityAvatar(
-                          seed: call.peerId ?? '',
-                          label: call.name,
-                          size: 112,
+                            const SizedBox(height: 12),
+                            Semantics(
+                              liveRegion: !talking,
+                              child: Text(
+                                status,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ]),
                         ),
-                        const SizedBox(height: 24),
-                        Text(
-                          call.name,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Semantics(
-                          liveRegion: !talking,
-                          child: Text(
-                            status,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 16,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
+                        Column(
+                          children: [
+                            if (askForScreen) ...[
+                              _ScreenAccessBanner(
+                                access: access,
+                                onAllow: () => unawaited(ref
+                                    .read(callScreenAccessProvider.notifier)
+                                    .openSettings()),
+                                onLater: () => ref
+                                    .read(callScreenAccessDismissedProvider
+                                        .notifier)
+                                    .state = true,
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                            Row(
+                              children: [
+                                for (final control in controls)
+                                  Expanded(child: control),
                               ],
                             ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                    Column(
-                      children: [
-                        if (askForScreen) ...[
-                          _ScreenAccessBanner(
-                            access: access,
-                            onAllow: () => unawaited(ref
-                                .read(callScreenAccessProvider.notifier)
-                                .openSettings()),
-                            onLater: () => ref
-                                .read(callScreenAccessDismissedProvider.notifier)
-                                .state = true,
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                        Row(
-                          children: [
-                            for (final control in controls)
-                              Expanded(child: control),
                           ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          if (_routesOpen)
+            Positioned.fill(
+              child: _RoutePicker(
+                routes: call.audioRoutes,
+                current: route,
+                label: (r) => routeLabel(t, r),
+                icon: routeIcon,
+                title: t.callAudioOutput,
+                onPick: (r) {
+                  setState(() => _routesOpen = false);
+                  unawaited(call.selectAudioRoute(r));
+                },
+                onClose: () => setState(() => _routesOpen = false),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -587,6 +668,110 @@ class CallScreen extends ConsumerWidget {
           style: TextStyle(color: AppColors.textPrimary),
         ),
       ],
+    );
+  }
+}
+
+/// Where the call's sound goes: the phone, the loudspeaker, a wired headset,
+/// each Bluetooth one by its own name.
+///
+/// Drawn inside the call screen rather than as a bottom sheet, because there is
+/// no Navigator above it to push one onto (see [CallHost]).
+class _RoutePicker extends StatelessWidget {
+  const _RoutePicker({
+    required this.routes,
+    required this.current,
+    required this.label,
+    required this.icon,
+    required this.title,
+    required this.onPick,
+    required this.onClose,
+  });
+
+  final List<CallAudioRoute> routes;
+  final CallAudioRouteKind current;
+  final String Function(CallAudioRoute) label;
+  final IconData Function(CallAudioRouteKind) icon;
+  final String title;
+  final ValueChanged<CallAudioRoute> onPick;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onClose,
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.45),
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: GestureDetector(
+              onTap: () {},
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDeep,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.glass(0.14)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    for (final route in routes)
+                      Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => onPick(route),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(icon(route.kind),
+                                    color: AppColors.textPrimary),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    label(route),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                if (route.kind == current)
+                                  Icon(Icons.check_rounded,
+                                      color: AppColors.brandPrimary),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -212,6 +212,30 @@ abstract class AppLocalizations {
   /// **'Minimize'**
   String get callMinimize;
 
+  /// No description provided for @callAudioOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Call audio'**
+  String get callAudioOutput;
+
+  /// No description provided for @callRoutePhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get callRoutePhone;
+
+  /// No description provided for @callRouteBluetooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth'**
+  String get callRouteBluetooth;
+
+  /// No description provided for @callRouteHeadphones.
+  ///
+  /// In en, this message translates to:
+  /// **'Headphones'**
+  String get callRouteHeadphones;
+
   /// No description provided for @callFullScreenTitle.
   ///
   /// In en, this message translates to:

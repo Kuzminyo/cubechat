@@ -1571,7 +1571,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // shape at the corner.
                   Stack(
                     children: [
-                      VideoBubble(message: message, chatId: widget.chatId),
+                      VideoBubble(
+                        message: message,
+                        chatId: widget.chatId,
+                        // The dots in a clip's corner open what a long press
+                        // opens, where they were tapped.
+                        onMore: clip && !selecting
+                            ? (at) => unawaited(_showActions(at))
+                            : null,
+                      ),
                       if (metaOnMedia)
                         Positioned(
                           right: 8,

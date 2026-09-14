@@ -28,6 +28,10 @@ class _Media implements CallMedia {
   @override
   Future<void> setSpeaker(bool speaker) async {}
   @override
+  Future<List<CallAudioRoute>> routes() async => const [];
+  @override
+  Future<void> selectRoute(CallAudioRoute route) async {}
+  @override
   Future<void> close() => _events.close();
 }
 

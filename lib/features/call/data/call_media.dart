@@ -8,6 +8,25 @@ import 'call_candidate_wait.dart';
 
 enum CallMediaEvent { connected, disconnected, failed }
 
+/// Where a call's sound comes out.
+enum CallAudioRouteKind { earpiece, speaker, bluetooth, wired }
+
+/// One place the sound can go, as the platform names it.
+class CallAudioRoute {
+  const CallAudioRoute({
+    required this.id,
+    required this.label,
+    required this.kind,
+  });
+
+  /// What the platform wants back to select it.
+  final String id;
+
+  /// The device's own name - "Pixel Buds", "AirPods Pro" - when it has one.
+  final String label;
+  final CallAudioRouteKind kind;
+}
+
 abstract interface class CallMedia {
   Stream<CallMediaEvent> get events;
   Future<String> offer(Map<String, dynamic> configuration);
@@ -15,6 +34,12 @@ abstract interface class CallMedia {
   Future<void> accept(String remoteSdp);
   Future<void> setMuted(bool muted);
   Future<void> setSpeaker(bool speaker);
+
+  /// Every place the sound can go right now: the earpiece, the loudspeaker, a
+  /// wired headset, a Bluetooth one.
+  Future<List<CallAudioRoute>> routes();
+
+  Future<void> selectRoute(CallAudioRoute route);
   Future<void> close();
 }
 
@@ -113,6 +138,8 @@ class WebRtcCallMedia implements CallMedia {
       ));
     }
     _checkOpen();
+    // Earpiece, stated rather than assumed - see [setSpeaker].
+    await Helper.setSpeakerphoneOn(false);
     for (final track in local.getAudioTracks()) {
       await peer.addTrack(track, local);
       _checkOpen();
@@ -167,8 +194,96 @@ class WebRtcCallMedia implements CallMedia {
     }
   }
 
+  /// On or off, and actually applied either way.
+  ///
+  /// **"Speaker on and normal sound exactly the same" was the report, and on
+  /// Android it was true.** flutter_webrtc's audio switch ranks the loudspeaker
+  /// above the earpiece in its default preference list, so every call started
+  /// on the loudspeaker while the button said it was off - pressing it turned
+  /// on what was already on. Nothing ever asked for the earpiece. The call now
+  /// states its route when the microphone opens and again when media connects,
+  /// so the button and the sound agree from the first second. Off still
+  /// prefers a headset over the earpiece when one is connected.
   @override
   Future<void> setSpeaker(bool speaker) => Helper.setSpeakerphoneOn(speaker);
+
+  @override
+  Future<List<CallAudioRoute>> routes() async {
+    try {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      if (Platform.isAndroid) return _androidRoutes(devices);
+      if (Platform.isIOS) return _iosRoutes(devices);
+    } catch (e) {
+      _log('could not list audio routes: $e');
+    }
+    return const [];
+  }
+
+  /// Android names its outputs by kind: `earpiece`, `speaker`, `wired-headset`,
+  /// `bluetooth` - and selecting one is selecting that name.
+  static List<CallAudioRoute> _androidRoutes(List<MediaDeviceInfo> devices) {
+    final routes = <CallAudioRoute>[];
+    for (final device in devices.where((d) => d.kind == 'audiooutput')) {
+      final kind = switch (device.deviceId) {
+        'earpiece' => CallAudioRouteKind.earpiece,
+        'speaker' => CallAudioRouteKind.speaker,
+        'wired-headset' => CallAudioRouteKind.wired,
+        'bluetooth' => CallAudioRouteKind.bluetooth,
+        _ => null,
+      };
+      if (kind == null) continue;
+      routes.add(CallAudioRoute(
+        id: device.deviceId,
+        label: device.label,
+        kind: kind,
+      ));
+    }
+    return routes;
+  }
+
+  /// iOS has no list of outputs to pick from, only inputs, and the output
+  /// follows the input: choosing a headset's microphone routes the call to that
+  /// headset. The loudspeaker is the one output that is chosen directly.
+  static List<CallAudioRoute> _iosRoutes(List<MediaDeviceInfo> devices) {
+    final routes = <CallAudioRoute>[];
+    for (final device in devices.where((d) => d.kind == 'audioinput')) {
+      final kind = switch (device.groupId) {
+        'MicrophoneBuiltIn' => CallAudioRouteKind.earpiece,
+        'BluetoothHFP' => CallAudioRouteKind.bluetooth,
+        'HeadsetMic' || 'USBAudio' => CallAudioRouteKind.wired,
+        _ => null,
+      };
+      if (kind == null) continue;
+      routes.add(CallAudioRoute(
+        id: device.deviceId,
+        label: device.label,
+        kind: kind,
+      ));
+    }
+    routes.add(const CallAudioRoute(
+      id: 'Speaker',
+      label: 'Speaker',
+      kind: CallAudioRouteKind.speaker,
+    ));
+    return routes;
+  }
+
+  @override
+  Future<void> selectRoute(CallAudioRoute route) async {
+    _checkOpen();
+    if (Platform.isAndroid) {
+      await Helper.selectAudioOutput(route.id);
+      return;
+    }
+    if (route.kind == CallAudioRouteKind.speaker) {
+      await Helper.selectAudioOutput('Speaker');
+      return;
+    }
+    // Loudspeaker override off first, or the chosen headset stays silent
+    // behind it.
+    await Helper.selectAudioOutput('none');
+    await Helper.selectAudioInput(route.id);
+  }
 
   @override
   Future<void> close() => _closing ??= _close();

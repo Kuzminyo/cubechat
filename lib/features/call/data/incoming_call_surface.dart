@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../../../core/util/platform_info.dart';
+
 import '../../../core/util/debug_log.dart';
+import 'call_tones.dart';
 
 /// `end` comes from iOS, where CallKit's red button means decline while the
 /// call rings and hang up once it is answered.
@@ -13,7 +16,13 @@ enum IncomingCallActionKind { answer, decline, end }
 typedef IncomingCallAction = ({IncomingCallActionKind kind, String key});
 
 /// The words that screen shows, in the app's language rather than the phone's.
-typedef IncomingCallLabels = ({String title, String answer, String decline});
+typedef IncomingCallLabels = ({
+  String title,
+  String answer,
+  String decline,
+  String ongoing,
+  String hangUp,
+});
 
 /// The incoming call drawn by the phone rather than by the app.
 ///
@@ -30,7 +39,21 @@ abstract interface class IncomingCallSurface {
   /// not, and the app's own call screen rings instead.
   bool get ringsInForeground;
 
-  Future<void> show({required String key, required String name});
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  });
+
+  /// The call is on: keep it where the phone shows calls in progress - the
+  /// notification shade on Android, with the running time and Hang up. Called
+  /// again when anything on it changes. CallKit shows its own.
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  });
 
   /// The call was answered, from anywhere. A notification is taken down; a
   /// CallKit call stays up, because it now carries the conversation's audio.
@@ -53,7 +76,19 @@ class NoIncomingCallSurface implements IncomingCallSurface {
   bool get ringsInForeground => false;
 
   @override
-  Future<void> show({required String key, required String name}) async {}
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  }) async {}
+
+  @override
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  }) async {}
 
   @override
   Future<void> answered(String key) async {}
@@ -81,16 +116,49 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
   @override
   bool get ringsInForeground => false;
 
+  /// The ringing notification comes down; the call moves to the one in the
+  /// shade, which [ongoing] puts up.
   @override
-  Future<void> answered(String key) => dismiss(key);
+  Future<void> answered(String key) async {
+    try {
+      await _channel.invokeMethod<void>('dismiss', {'key': key});
+    } catch (_) {}
+  }
 
   @override
-  Future<void> show({required String key, required String name}) async {
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  }) async {
+    final words = labels();
+    try {
+      await _channel.invokeMethod<void>('ongoing', {
+        'key': key,
+        'name': name,
+        'avatar': avatar,
+        'since': since.millisecondsSinceEpoch,
+        'title': words.ongoing,
+        'hangUp': words.hangUp,
+      });
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'could not show the call in the shade: $e');
+    }
+  }
+
+  @override
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  }) async {
     final words = labels();
     try {
       final fullScreen = await _channel.invokeMethod<bool>('show', {
         'key': key,
         'name': name,
+        'avatar': avatar,
         'title': words.title,
         'answer': words.answer,
         'decline': words.decline,
@@ -109,6 +177,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
   Future<void> dismiss(String? key) async {
     try {
       await _channel.invokeMethod<void>('dismiss', {'key': key});
+      await _channel.invokeMethod<void>('ongoingStop');
     } catch (e) {
       DebugLog.instance.log('CALL', 'could not take the incoming call down: $e');
     }
@@ -180,8 +249,22 @@ class IosCallKitSurface implements IncomingCallSurface {
   @override
   bool get ringsInForeground => true;
 
+  /// CallKit keeps an answered call on its own screen and in the status bar.
   @override
-  Future<void> show({required String key, required String name}) async {
+  Future<void> ongoing({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+    required DateTime since,
+  }) async {}
+
+  /// No avatar: CallKit draws only a name, whatever the app has.
+  @override
+  Future<void> show({
+    required String key,
+    required String name,
+    Uint8List? avatar,
+  }) async {
     try {
       final shown = await _channel.invokeMethod<bool>('show', {
         'key': key,
@@ -241,4 +324,42 @@ class IosCallKitSurface implements IncomingCallSurface {
     if (kind == null) return;
     _actions.add((kind: kind, key: key));
   }
+}
+
+/// The phone's own ringtone and vibration, through `CallRinger.kt`.
+///
+/// For a call ringing while the app is on screen. It replaced a sound file
+/// played through the media plugin, which could stay silent - "no sound when
+/// it rings" was reported twice - and which ignored the ringer switch.
+class AndroidSystemCallTones implements CallTones {
+  const AndroidSystemCallTones();
+
+  static const _channel = MethodChannel('cubechat/incoming_call');
+
+  @override
+  Future<void> play(CallTone tone) async {
+    try {
+      await _channel.invokeMethod<void>('ringStart');
+      DebugLog.instance.log('CALL', 'system ringtone on');
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'system ringtone could not start: $e');
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    try {
+      await _channel.invokeMethod<void>('ringStop');
+    } catch (_) {}
+  }
+}
+
+/// The phone's own call surface for this platform, or none.
+IncomingCallSurface platformCallSurface({
+  required IncomingCallLabels Function() labels,
+  void Function()? onVoipToken,
+}) {
+  if (PlatformInfo.isAndroid) return AndroidIncomingCallSurface(labels: labels);
+  if (PlatformInfo.isIOS) return IosCallKitSurface(onVoipToken: onVoipToken);
+  return const NoIncomingCallSurface();
 }

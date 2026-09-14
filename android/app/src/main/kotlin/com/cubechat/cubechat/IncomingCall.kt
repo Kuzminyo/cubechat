@@ -1,17 +1,20 @@
 package com.cubechat.cubechat
 
+import android.app.AppOpsManager
 import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import java.lang.ref.WeakReference
 
 /**
@@ -64,6 +67,14 @@ object IncomingCall {
 
     private var screen: WeakReference<IncomingCallActivity>? = null
 
+    /**
+     * The caller's picture for the screen, held here rather than in the intent:
+     * an avatar is tens of kilobytes and an intent is not where that goes.
+     */
+    @Volatile
+    var avatar: Bitmap? = null
+        private set
+
     fun attach(activity: IncomingCallActivity) {
         screen = WeakReference(activity)
     }
@@ -76,12 +87,23 @@ object IncomingCall {
      * Ring. Returns whether the system will let the full-screen screen appear;
      * false means the heads-up alone, which still answers and declines.
      */
-    fun show(context: Context, key: String, name: String, labels: Labels): Boolean {
+    fun show(
+        context: Context,
+        key: String,
+        name: String,
+        labels: Labels,
+        picture: Bitmap? = null,
+    ): Boolean {
         ensureChannel(context, labels.title)
         shownKey = key
+        avatar = picture
         val manager = NotificationManagerCompat.from(context)
         val fullScreen = canUseFullScreen(context)
-        val caller = Person.Builder().setName(name).setImportant(true).build()
+        val caller = Person.Builder()
+            .setName(name)
+            .setImportant(true)
+            .apply { picture?.let { setIcon(IconCompat.createWithBitmap(it)) } }
+            .build()
         val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)
@@ -137,7 +159,11 @@ object IncomingCall {
         // screen is opened directly, and without it the heads-up is what is
         // left. The notification stays either way: it carries the ringtone, and
         // it is what the lock screen uses.
-        val opened = canDrawOverlays(context) && openScreen(context, key, name, labels)
+        // On MIUI its own "pop-up windows in the background" switch is what lets
+        // that start through, with or without Android's.
+        val mayOpen = canDrawOverlays(context) ||
+            (isXiaomiFamily() && miuiAllows(context, MIUI_BACKGROUND_START))
+        val opened = mayOpen && openScreen(context, key, name, labels)
         return posted && fullScreen || opened
     }
 
@@ -167,10 +193,40 @@ object IncomingCall {
         return listOf("xiaomi", "redmi", "poco").any { brand.contains(it) }
     }
 
+    /**
+     * MIUI's own switches, read where MIUI keeps them: two app-ops Android has
+     * no names for. 10020 is "show on lock screen", 10021 "open new windows
+     * while running in the background". Off by default for an app that did not
+     * come from Xiaomi's store, and with either off the call screen never opens
+     * over a locked phone - which is how "when the screen is locked, the call
+     * screen should open" was reported. True when this is not MIUI or the
+     * value cannot be read, so nobody is nagged about a switch they do not have.
+     */
+    fun miuiAllows(context: Context, op: Int): Boolean {
+        if (!isXiaomiFamily()) return true
+        return try {
+            val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            val check = AppOpsManager::class.java.getMethod(
+                "checkOpNoThrow",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java,
+            )
+            val mode = check.invoke(ops, op, android.os.Process.myUid(), context.packageName) as Int
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    const val MIUI_SHOW_WHEN_LOCKED = 10020
+    const val MIUI_BACKGROUND_START = 10021
+
     /** Take the call off screen: answered, declined, or over elsewhere. */
     fun dismiss(context: Context, key: String?) {
         if (key != null && shownKey != null && key != shownKey) return
         shownKey = null
+        avatar = null
         NotificationManagerCompat.from(context).cancel(TAG, ID)
         screen?.get()?.finishRinging()
     }

@@ -68,6 +68,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callMinimize => 'Minimize';
 
   @override
+  String get callAudioOutput => 'Call audio';
+
+  @override
+  String get callRoutePhone => 'Phone';
+
+  @override
+  String get callRouteBluetooth => 'Bluetooth';
+
+  @override
+  String get callRouteHeadphones => 'Headphones';
+
+  @override
   String get callFullScreenTitle => 'Calls full screen';
 
   @override

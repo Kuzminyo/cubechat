@@ -288,6 +288,16 @@ class _GlassCard extends ConsumerWidget {
             // proper size, and the two that do not lose a point or two rather
             // than a whole row. Tighter horizontal padding first, so most
             // phones never reach the shrinking at all.
+            //
+            // The full width of the card, in equal thirds. Sized by its labels
+            // the control was a different width at every interface size: at
+            // 85% it stopped well short of the card's right edge, so the
+            // three words sat bunched to the left, and at 130% "Полегшене"
+            // ran past the edge. Captured at 0.85/1.0/1.3 with the real font
+            // before the change - "when the scale changes the text floats
+            // left" was the report. With a fixed width `scaleDown` has a bound
+            // to shrink into.
+            expandedInsets: EdgeInsets.zero,
             style: SegmentedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 6),
             ),

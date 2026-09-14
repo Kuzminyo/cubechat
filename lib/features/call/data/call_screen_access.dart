@@ -21,6 +21,8 @@ class CallScreenAccess {
     required this.overlay,
     required this.fullScreenIntent,
     required this.xiaomi,
+    this.xiaomiLockScreen = true,
+    this.xiaomiBackgroundStart = true,
   });
 
   /// Nothing to ask for: not Android, or everything already granted.
@@ -41,7 +43,16 @@ class CallScreenAccess {
   /// that no app can read — only point at.
   final bool xiaomi;
 
-  bool get complete => overlay && fullScreenIntent;
+  /// MIUI's "show on lock screen". Read from MIUI's own app-op; true when this
+  /// is not MIUI or it could not be read.
+  final bool xiaomiLockScreen;
+
+  /// MIUI's "open new windows while running in the background".
+  final bool xiaomiBackgroundStart;
+
+  bool get vendorComplete => xiaomiLockScreen && xiaomiBackgroundStart;
+
+  bool get complete => overlay && fullScreenIntent && vendorComplete;
 }
 
 class CallScreenAccessController extends Notifier<CallScreenAccess> {
@@ -64,6 +75,8 @@ class CallScreenAccessController extends Notifier<CallScreenAccess> {
         overlay: map['overlay'] ?? true,
         fullScreenIntent: map['fullScreenIntent'] ?? true,
         xiaomi: map['xiaomi'] ?? false,
+        xiaomiLockScreen: map['xiaomiLockScreen'] ?? true,
+        xiaomiBackgroundStart: map['xiaomiBackgroundStart'] ?? true,
       );
     } catch (_) {
       // No plugin on this engine: a test, or a build without one.
@@ -77,6 +90,12 @@ class CallScreenAccessController extends Notifier<CallScreenAccess> {
     try {
       if (!state.fullScreenIntent &&
           await _channel.invokeMethod<bool>('openFullScreenSettings') == true) {
+        return;
+      }
+      // MIUI before Android's own page: on a Xiaomi the lock-screen switch is
+      // the one that decides whether a locked phone shows the call at all.
+      if (state.xiaomi && !state.vendorComplete) {
+        await _channel.invokeMethod<bool>('openVendorSettings');
         return;
       }
       if (!state.overlay) {

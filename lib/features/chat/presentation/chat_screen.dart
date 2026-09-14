@@ -693,13 +693,23 @@ class _HeaderPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _headerPillHeight,
-      child: MessageIslandGlass(
-        key: const ValueKey('chat-header-message-island'),
-        borderRadius: _headerPillHeight / 2,
-        padding: padding,
-        child: Center(child: child),
+    // A floor, not a fixed height. Inside the 12 pixels of padding there are
+    // 44 for the name and the status line, and at the largest interface size
+    // (130%) those two lines need 46 - the status line was cut along its
+    // bottom and the flutter overflow stripe showed through, captured with
+    // the real font at 0.85/1.0/1.3. At every smaller size the capsule is the
+    // 56 it always was. The list below measures the header rather than
+    // assuming it, so a taller one pushes nothing under it.
+    return MessageIslandGlass(
+      key: const ValueKey('chat-header-message-island'),
+      borderRadius: _headerPillHeight / 2,
+      padding: padding,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: _headerPillHeight - padding.vertical,
+        ),
+        // Sized by its content from that floor up, and still centred in it.
+        child: Center(heightFactor: 1, child: child),
       ),
     );
   }
