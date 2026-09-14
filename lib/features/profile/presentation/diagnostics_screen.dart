@@ -366,7 +366,23 @@ class _FramePanelState extends State<_FramePanel> {
     // screen, and a fresh baseline here would zero the measurement at the exact
     // moment it is being collected — the walk to the warm screen and back is
     // the whole experiment, and this is the last line of it.
-    if (!FrameStats.instance.isHolding) unawaited(CpuProbe.instance.begin());
+    //
+    // A restart, not a begin: the window a previous visit left open would
+    // otherwise be what the first reading measures - see [CpuProbe.restart],
+    // and the "38200 ms" that came from opening this screen after the app had
+    // been in the background. That old window is still worth a log line: it
+    // is what the process did between two visits.
+    if (!FrameStats.instance.isHolding) {
+      unawaited(
+        CpuProbe.instance.restart().then((previous) {
+          if (previous == null) return;
+          DebugLog.instance.log(
+            'CPU',
+            'since Diagnostics was last open — ${previous.summary}',
+          );
+        }),
+      );
+    }
     // The stats update per frame; redrawing them per frame would make this
     // panel part of what it is measuring.
     _tick = Timer.periodic(
@@ -600,11 +616,10 @@ class _CpuPanelState extends State<_CpuPanel> with WidgetsBindingObserver {
   }
 
   Future<void> _restartAfterBackground() async {
-    final away = await CpuProbe.instance.report();
+    final away = await CpuProbe.instance.restart();
     if (away != null) {
       DebugLog.instance.log('CPU', 'while away — ${away.summary}');
     }
-    await CpuProbe.instance.begin();
   }
 
   /// A reset or a newly armed hold starts the window again, and the numbers on

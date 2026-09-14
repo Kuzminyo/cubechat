@@ -127,6 +127,11 @@ class CpuProbe {
     final snap = await _sample();
     if (snap == null) return null;
 
+    // The window was restarted while this sample was being taken: what it
+    // would measure is the old window, which is exactly the stale reading
+    // [restart] exists to stop.
+    if (!identical(base, _baseline)) return null;
+
     final elapsedMs = DateTime.now().difference(since).inMilliseconds;
     // A second, not a millisecond. Ticks are 10 ms wide, so one landing inside
     // a window three milliseconds long reads as 333% of a core — the shape of
@@ -135,11 +140,58 @@ class CpuProbe {
     // answer: there is nothing measured yet.
     if (elapsedMs < 1000) return null;
 
+    // A thread that did not exist at baseline counts from zero, which is
+    // exactly right: it did all of its work inside the window.
+    return _reportBetween(base, snap, elapsedMs, _baselineMerged);
+  }
+
+  void reset() {
+    _baseline = null;
+    _baselineAt = null;
+    _baselineMerged = false;
+    revision.value++;
+  }
+
+  /// End the window that is open, if any, and start a new one. Returns what
+  /// the old window measured, for the caller to log.
+  ///
+  /// **The old baseline is dropped before anything waits.** Diagnostics opened
+  /// after the app had sat in the background showed "38200" and "9800" ms on
+  /// its first reading. Nothing was busy just then: the screen asked for a new
+  /// baseline and for a report at the same moment, both asynchronous, and the
+  /// report won - so it measured from the baseline the previous visit had left
+  /// behind, minutes or hours earlier. With the baseline cleared first, a
+  /// report asked for meanwhile has nothing to measure from and shows nothing
+  /// until the new window is a second old.
+  Future<CpuReport?> restart() async {
+    final base = _baseline;
+    final since = _baselineAt;
+    final merged = _baselineMerged;
+    _baseline = null;
+    _baselineAt = null;
+    CpuReport? previous;
+    if (base != null && since != null) {
+      final snap = await _sample();
+      if (snap != null) {
+        final elapsedMs = DateTime.now().difference(since).inMilliseconds;
+        if (elapsedMs >= 1000) {
+          previous = _reportBetween(base, snap, elapsedMs, merged);
+        }
+      }
+    }
+    await begin();
+    return previous;
+  }
+
+  CpuReport _reportBetween(
+    Map<String, int> base,
+    _Snapshot snap,
+    int elapsedMs,
+    bool baseMerged,
+  ) {
     final rows = <CpuThread>[];
     var totalMs = 0;
     snap.micros.forEach((name, us) {
-      // A thread that did not exist at baseline counts from zero, which is
-      // exactly right: it did all of its work inside the window.
       final delta = us - (base[name] ?? 0);
       if (delta <= 0) return;
       final ms = delta ~/ 1000;
@@ -152,15 +204,8 @@ class CpuProbe {
       threads: rows,
       totalCpuMs: totalMs,
       wallMs: elapsedMs,
-      mergedUiThread: snap.merged || _baselineMerged,
+      mergedUiThread: snap.merged || baseMerged,
     );
-  }
-
-  void reset() {
-    _baseline = null;
-    _baselineAt = null;
-    _baselineMerged = false;
-    revision.value++;
   }
 
   /// Microseconds per thread, grouped by [_label]. Null when there is no
