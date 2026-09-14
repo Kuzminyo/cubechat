@@ -48,7 +48,16 @@ void main() {
 
   tearDown(() async {
     await settleBackgroundStorage();
-    await Hive.close();
+    try {
+      await Hive.close();
+    } on FileSystemException {
+      // The window's MessagingService closes its own boxes on dispose, which
+      // is unawaited, so it can finish a box a moment before this does. Hive
+      // then fails to delete a lock file that is already gone —
+      // `PathNotFoundException: cubechat.prekeys.lock` — and that turned
+      // Android CI red on 1042 with every assertion passing. The box is closed
+      // either way.
+    }
     try {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
     } on FileSystemException {

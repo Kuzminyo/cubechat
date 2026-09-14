@@ -239,8 +239,7 @@ Media you receive is stored inside the app's private container.
   the Android advertising ID.
 - **No tracking as Apple's App Tracking Transparency defines it.** Nothing is
   linked to you or your device for advertising, and nothing is shared with a
-  data broker. The app's `PrivacyInfo.xcprivacy` declares zero collected data
-  types, and that declaration is accurate.
+  data broker.
 - **No selling or sharing of personal data.** There is nothing to sell.
 - **No content scanning.** We cannot read your messages; the design makes it
   impossible rather than merely forbidden.
