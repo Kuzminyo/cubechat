@@ -23,7 +23,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-13-turn-access';
+const VERSION = '2026-09-14-call-kind';
 
 const RECIPIENT_TAG = 'p';
 
@@ -32,6 +32,10 @@ const RECIPIENT_TAG = 'p';
 /// See `kWakeTag` in the app. Text messages and channel posts carry it; media
 /// chunks, read receipts, typing notices and presence do not.
 const WAKE_TAG = 'w';
+
+/// Set by the sender beside WAKE_TAG on a call invite. See `kCallTag` in the
+/// app. It says a call is ringing, never who is calling.
+const CALL_TAG = 'c';
 
 // A registration is itself a Nostr event, signed by the key it registers. Its
 // own kind, so it can never be confused with a frame — and so a relay would
@@ -204,7 +208,23 @@ const ALERT_BODY = {
   uk: 'Нове повідомлення',
 };
 
+/// The same, for an event the sender marked as a call invite (`CALL_TAG`).
+///
+/// Said as a call so the words are right on a phone that cannot ring properly
+/// — an iPhone with no CallKit yet, an Android whose app could not start in
+/// time. Same languages as `ALERT_BODY`, and the keys must stay the same set.
+const CALL_BODY = {
+  en: 'Incoming call',
+  uk: 'Вхідний дзвінок',
+};
+
 const DEFAULT_LANG = 'en';
+
+/// The banner text for a language and a kind of event. Exported for the test.
+export function pushBody(lang, { call = false } = {}) {
+  const table = call ? CALL_BODY : ALERT_BODY;
+  return table[lang] || table[DEFAULT_LANG];
+}
 
 /// The language tag from a registration, or the default.
 ///
@@ -480,7 +500,7 @@ async function fcmAccessToken() {
 ///
 /// The body is the same fixed string APNs carries. This service decrypts
 /// nothing and has nothing else to say.
-async function sendFcm(npub, token) {
+async function sendFcm(npub, token, { call = false } = {}) {
   const account = await fcmServiceAccount();
   const access = await fcmAccessToken();
   if (!account || !access) return false;
@@ -503,7 +523,12 @@ async function sendFcm(npub, token) {
   const payload = {
     message: {
       token,
-      data: { body: bodyFor(npub) },
+      // `kind` tells CubechatFcmService to wait for the app's own call screen
+      // rather than drawing "new message" over it. Absent for a message, so a
+      // build that predates it reads exactly what it always did.
+      data: call
+        ? { body: bodyFor(npub, { call }), kind: 'call' }
+        : { body: bodyFor(npub) },
       android: {
         // Wake it now. The alternative is `normal`, which lets the system hold
         // the message until it next feels like waking the device — the same
@@ -547,15 +572,15 @@ async function sendFcm(npub, token) {
   }
 }
 
-async function sendPush(npub, token) {
+async function sendPush(npub, token, { call = false } = {}) {
   // Android goes to Google, everything else to Apple. The two networks share
   // nothing but this doorbell's intent, so the split is here rather than
   // threaded through the APNs code below.
   if (tokens.get(npub)?.platform === 'android') {
-    return sendFcm(npub, token);
+    return sendFcm(npub, token, { call });
   }
   const [first, second] = hostsFor(npub);
-  const attempt = await pushTo(npub, token, first);
+  const attempt = await pushTo(npub, token, first, { call });
   logAttempt(npub, token, first, attempt);
   if (attempt.status === 200) {
     rememberHost(npub, first);
@@ -565,7 +590,7 @@ async function sendPush(npub, token) {
   // final: a rejected payload or a retired token says the same thing on both
   // hosts, and trying twice would only double the log.
   if (attempt.reason === 'BadDeviceToken') {
-    const retry = await pushTo(npub, token, second);
+    const retry = await pushTo(npub, token, second, { call });
     logAttempt(npub, token, second, retry);
     if (retry.status === 200) {
       log('apns', `${short(npub)} is a ${envName(second)} token`);
@@ -598,9 +623,8 @@ async function sendPush(npub, token) {
 /// A registry entry written before languages existed has no `lang`, and so does
 /// one from a phone running an older build. Both get English rather than an
 /// empty banner.
-function bodyFor(npub) {
-  const lang = tokens.get(npub)?.lang;
-  return ALERT_BODY[lang] || ALERT_BODY[DEFAULT_LANG];
+function bodyFor(npub, { call = false } = {}) {
+  return pushBody(tokens.get(npub)?.lang, { call });
 }
 
 function envName(host) {
@@ -623,7 +647,7 @@ function forgetToken(npub, why) {
 
 /// One attempt against one host. Returns what Apple said rather than deciding
 /// what it means, because the meaning depends on which attempt this was.
-function pushTo(npub, token, host) {
+function pushTo(npub, token, host, { call = false } = {}) {
   const payload = JSON.stringify({
     aps: {
       // The text itself, not a `loc-key`. That is what this sent until
@@ -633,7 +657,7 @@ function pushTo(npub, token, host) {
       // to displaying the key. Every banner would have read
       // "PUSH_NEW_MESSAGE". Shipping the string from here needs no iOS
       // resource at all, and the language rides in the signed registration.
-      alert: { body: bodyFor(npub) },
+      alert: { body: bodyFor(npub, { call }) },
       sound: 'default',
       // Grouped, not collapsed. `thread-id` stacks the banners together in
       // Notification Centre; it does not replace one with the next, which is
@@ -827,14 +851,15 @@ function connectRelay(url) {
     if (!event.tags.some((t) => Array.isArray(t) && t[0] === WAKE_TAG)) return;
 
     if (alreadySeen(event.id)) return;
+    const call = event.tags.some((t) => Array.isArray(t) && t[0] === CALL_TAG);
     for (const tag of event.tags) {
       if (!Array.isArray(tag) || tag[0] !== RECIPIENT_TAG) continue;
       if (typeof tag[1] !== 'string') continue;
       const entry = tokens.get(tag[1]);
       if (!entry) continue;
       if (!shouldWake(tag[1])) continue;
-      log('wake', `${short(tag[1])} has mail`);
-      void sendPush(tag[1], entry.token);
+      log('wake', `${short(tag[1])} has ${call ? 'a call' : 'mail'}`);
+      void sendPush(tag[1], entry.token, { call });
     }
   });
 

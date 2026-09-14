@@ -128,6 +128,32 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        answerFromIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        answerFromIntent(intent)
+    }
+
+    /**
+     * Answer pressed on the incoming-call heads-up. The notification opens this
+     * Activity rather than a receiver because answering should bring the app
+     * forward, and Android 12 forbids a receiver from starting an Activity on a
+     * notification's behalf. See [IncomingCall.answerIntent].
+     */
+    private fun answerFromIntent(intent: Intent?) {
+        if (intent?.action != IncomingCall.ACTION_ANSWER) return
+        val key = intent.getStringExtra(IncomingCall.EXTRA_KEY) ?: return
+        // Spent, so a recreate — a rotation, a theme change — does not answer
+        // the same call a second time.
+        intent.action = null
+        CubechatCallPlugin.instance?.deliver("answer", key)
+        IncomingCall.dismiss(this, key)
+    }
+
     /**
      * The notification permission's answer, on its way back to the Dart side
      * that asked for it. Everything else here is somebody else's request code

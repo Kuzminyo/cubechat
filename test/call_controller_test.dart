@@ -9,6 +9,7 @@ import 'package:cubechat/core/transport/control_delivery.dart';
 import 'package:cubechat/features/call/data/call_controller.dart';
 import 'package:cubechat/features/call/data/call_media.dart';
 import 'package:cubechat/features/call/data/call_tones.dart';
+import 'package:cubechat/features/call/data/incoming_call_surface.dart';
 import 'package:cubechat/features/call/data/turn_credentials_controller.dart';
 import 'package:cubechat/features/call/domain/call_rules.dart';
 import 'package:cubechat/features/call/domain/call_state_machine.dart';
@@ -65,6 +66,20 @@ class FakeTones implements CallTones {
   Future<void> stop() async => log.add('ring stop');
 }
 
+/// The phone's own incoming-call screen, writing into the same list.
+class FakeSurface implements IncomingCallSurface {
+  FakeSurface(this.log);
+  final List<String> log;
+  final pressed = StreamController<IncomingCallAction>.broadcast(sync: true);
+  @override
+  Stream<IncomingCallAction> get actions => pressed.stream;
+  @override
+  Future<void> show({required String key, required String name}) async =>
+      log.add('screen show $name');
+  @override
+  Future<void> dismiss(String? key) async => log.add('screen dismiss');
+}
+
 const confirmed =
     ControlDelivery(links: 1, certainty: DeliveryCertainty.confirmed);
 
@@ -83,6 +98,8 @@ void main() {
   late Future<TurnAccess> Function() turn;
   late bool direct;
   late bool disposedByTest;
+  late bool onScreen;
+  late FakeSurface surface;
 
   /// What each send reports. A completer here holds that kind of signal in
   /// flight until the test settles it, which is how a publish still waiting
@@ -108,6 +125,8 @@ void main() {
         allowDirect: () => direct,
         prepareAudio: () async {},
         tones: FakeTones(events),
+        surface: surface,
+        foreground: () => onScreen,
       );
 
   setUp(() {
@@ -120,6 +139,8 @@ void main() {
     permission = () async => true;
     direct = false;
     disposedByTest = false;
+    onScreen = true;
+    surface = FakeSurface(events);
     turn = () async => TurnAccess(
         urls: ['turn:test'],
         username: 'u',
@@ -507,6 +528,92 @@ void main() {
       receive(CallSignal.ringing(dialledId()));
       await Future<void>.delayed(Duration.zero);
       expect(events.where((e) => e.startsWith('ring')), isEmpty);
+      call.hangUp();
+    });
+  });
+
+  group('with the app off screen, the phone shows the call', () {
+    String keyOf(Uint8List callId) =>
+        callId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+    test("a ringing call goes to the phone's screen, not the app's tone",
+        () async {
+      onScreen = false;
+      receive(inviteFor(id(20)));
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['screen show peer']);
+      call.decline();
+    });
+
+    test('the caller giving up takes it down', () async {
+      onScreen = false;
+      receive(inviteFor(id(21)));
+      receive(CallSignal.hangup(callId: id(21), reason: CallEndReason.noAnswer));
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['screen show peer', 'screen dismiss']);
+    });
+
+    test('Answer there answers, and the screen is gone before the microphone '
+        'opens', () async {
+      onScreen = false;
+      media.connectOnAccept = false;
+      receive(inviteFor(id(22)));
+      await Future<void>.delayed(Duration.zero);
+      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(22))));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(call.phase, CallPhase.connecting);
+      expect(sent.last.kind, CallSignalKind.accept);
+      expect(events.take(3), ['screen show peer', 'screen dismiss', 'microphone']);
+      call.hangUp();
+    });
+
+    test('Decline there declines and tells the caller', () async {
+      onScreen = false;
+      receive(inviteFor(id(23)));
+      await Future<void>.delayed(Duration.zero);
+      surface.pressed.add((kind: IncomingCallActionKind.decline, key: keyOf(id(23))));
+      expect(outcomes.single.cause, CallEndCause.declined);
+      expect(sent.last.kind, CallSignalKind.decline);
+    });
+
+    test('a button for a call that already stopped ringing does nothing', () async {
+      onScreen = false;
+      receive(inviteFor(id(24)));
+      receive(CallSignal.hangup(callId: id(24), reason: CallEndReason.hungUp));
+      sent.clear();
+      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(24))));
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, isEmpty);
+      expect(events, isNot(contains('microphone')));
+    });
+
+    test('opening the app while it rings moves the ring into the app, and '
+        'leaving moves it back', () async {
+      onScreen = false;
+      receive(inviteFor(id(25)));
+      await Future<void>.delayed(Duration.zero);
+      onScreen = true;
+      call.noteLifecycle(AppLifecycleState.resumed);
+      onScreen = false;
+      call.noteLifecycle(AppLifecycleState.paused);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, [
+        'screen show peer',
+        'ring incoming',
+        'screen dismiss',
+        'ring stop',
+        'screen show peer',
+      ]);
+      call.decline();
+    });
+
+    test("an outgoing call never puts anything on the phone's screen",
+        () async {
+      onScreen = false;
+      await call.dial('peer');
+      receive(CallSignal.ringing(dialledId()));
+      await Future<void>.delayed(Duration.zero);
+      expect(events.where((e) => e.startsWith('screen')), isEmpty);
       call.hangUp();
     });
   });

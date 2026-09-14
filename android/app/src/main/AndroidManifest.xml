@@ -87,6 +87,11 @@
          has already answered by turning map sharing on. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- An incoming call over the lock screen, the way the dialler shows one.
+         See IncomingCall. Android 14 may take this away from an app that is
+         not a dialler; IncomingCall asks before relying on it and falls back
+         to a heads-up with the same two buttons. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -137,6 +142,22 @@
                 android:resource="@xml/openin_paths" />
         </provider>
 
+        <!-- The incoming call when the app is not on screen. Its own task and
+             kept out of recents: it is a moment, not a place to come back to.
+             See IncomingCallActivity. -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.cubechat.cubechat.incoming_call"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <receiver
+            android:name=".IncomingCallReceiver"
+            android:exported="false" />
         <!-- Keeps BLE mesh alive in the background (see MeshForegroundService). -->
         <service
             android:name=".MeshForegroundService"

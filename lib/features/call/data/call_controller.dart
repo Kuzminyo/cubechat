@@ -1,17 +1,19 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/transport/call_signal.dart';
 import '../../../core/transport/control_delivery.dart';
 import '../../../core/transport/messaging_service.dart';
+import '../../../core/locale/locale_controller.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/voice_playback_controller.dart';
 import '../../chat/models/message.dart';
@@ -22,6 +24,7 @@ import '../domain/call_rules.dart';
 import '../domain/call_state_machine.dart';
 import 'call_media.dart';
 import 'call_tones.dart';
+import 'incoming_call_surface.dart';
 import 'turn_credentials_controller.dart';
 
 typedef ReceivedCallSignal = ({String chatId, CallSignal signal});
@@ -39,11 +42,14 @@ class CallController extends ChangeNotifier {
     required this.allowDirect,
     required this.prepareAudio,
     this.tones = const SilentCallTones(),
-  }) {
+    this.surface = const NoIncomingCallSurface(),
+    bool Function()? foreground,
+  }) : _foreground = foreground ?? _alwaysForeground {
     _machine =
         CallStateMachine(send: _send, onOutcome: _outcome, now: DateTime.now)
           ..addListener(_changed);
     _signals = signals.listen(_receive);
+    _surfaceActions = surface.actions.listen(_onSurfaceAction);
   }
 
   /// Puts one signal on the wire and says what is known about it afterwards.
@@ -66,8 +72,29 @@ class CallController extends ChangeNotifier {
   final bool Function() allowDirect;
   final Future<void> Function() prepareAudio;
   final CallTones tones;
+
+  /// The phone's own incoming-call screen, for while the app is not on screen.
+  final IncomingCallSurface surface;
   late final CallStateMachine _machine;
   late final StreamSubscription<ReceivedCallSignal> _signals;
+  late final StreamSubscription<IncomingCallAction> _surfaceActions;
+
+  /// Whether the app is on screen, asked at the moment it matters.
+  ///
+  /// Decides where a ringing call is shown: on the app's own call screen with
+  /// its tone, or on the phone's, with the system ringtone. Never both — two
+  /// ringtones at once is the one thing worse than none.
+  ///
+  /// A question rather than a flag kept from lifecycle callbacks, because on
+  /// Android the engine starts headless and a transition can go unseen — see
+  /// `AppLifecycle.isForeground` for the phone that stayed "offline" all day
+  /// that way. [noteLifecycle] only says when to ask again.
+  final bool Function() _foreground;
+  static bool _alwaysForeground() => true;
+
+  /// The call the phone's own screen is showing, by [_key].
+  String? _surfaceKey;
+  Future<void> _surfaceWork = Future<void>.value();
   StreamSubscription<CallMediaEvent>? _mediaEvents;
   CallMedia? _media;
   Future<void> _released = Future<void>.value();
@@ -105,20 +132,26 @@ class CallController extends ChangeNotifier {
         if (!_disposed) notifyListeners();
       });
     }
-    _updateTone();
+    _updateRinging();
     if (!_disposed) notifyListeners();
   }
 
-  /// Ring while this phone is being called and nobody has touched Answer.
+  /// Ring while this phone is being called and nobody has touched Answer —
+  /// in the app when it is on screen, on the phone's own call screen when not.
   ///
   /// Driven off the phase rather than from each place a call starts or stops,
   /// because a call stops ringing in seven ways — answered, declined, the
   /// caller hanging up, the timer, a glare, a dispose, the app closing — and a
   /// ringtone left running by the seventh is worse than no ringtone.
-  void _updateTone() {
-    final wanted = !_disposed && phase == CallPhase.incoming && !preparing
-        ? CallTone.incoming
-        : null;
+  void _updateRinging() {
+    final ringing = !_disposed && phase == CallPhase.incoming && !preparing;
+    final id = _machine.callId;
+    final onScreen = ringing && _foreground();
+    _updateTone(ringing && onScreen ? CallTone.incoming : null);
+    _updateSurface(ringing && !onScreen && id != null ? _key(id) : null);
+  }
+
+  void _updateTone(CallTone? wanted) {
     if (wanted == _tone) return;
     _tone = wanted;
     final previous = _toneWork;
@@ -134,6 +167,54 @@ class CallController extends ChangeNotifier {
         _log('ringtone: $e');
       }
     })();
+  }
+
+  void _updateSurface(String? wanted) {
+    if (wanted == _surfaceKey) return;
+    final shown = _surfaceKey;
+    _surfaceKey = wanted;
+    final caller = name;
+    final previous = _surfaceWork;
+    _surfaceWork = (() async {
+      await previous;
+      try {
+        if (wanted == null) {
+          await surface.dismiss(shown);
+        } else {
+          await surface.show(key: wanted, name: caller);
+        }
+      } catch (e) {
+        _log('incoming-call screen: $e');
+      }
+    })();
+  }
+
+  static String _key(Uint8List callId) =>
+      callId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  /// Answer or Decline pressed on the phone's own incoming-call screen.
+  ///
+  /// Checked against the call that is ringing now, because the button can be
+  /// pressed on a screen that outlived its call by a moment — the caller gave
+  /// up while a finger was on the way.
+  void _onSurfaceAction(IncomingCallAction action) {
+    final id = _machine.callId;
+    if (_disposed ||
+        id == null ||
+        _key(id) != action.key ||
+        phase != CallPhase.incoming) {
+      _log('${action.kind.name} on the phone\'s call screen ignored: '
+          'that call is no longer ringing');
+      unawaited(surface.dismiss(action.key));
+      return;
+    }
+    _log('${action.kind.name} pressed on the phone\'s call screen');
+    switch (action.kind) {
+      case IncomingCallActionKind.answer:
+        unawaited(answer());
+      case IncomingCallActionKind.decline:
+        decline();
+    }
   }
 
   /// One line per step of a call, under `[CALL]`.
@@ -297,7 +378,8 @@ class CallController extends ChangeNotifier {
     // The ringtone gives the audio session back before the microphone asks
     // for it. Bounded, because a plugin that never answers must not be able
     // to stop a call from being answered.
-    await _toneWork.timeout(const Duration(seconds: 1), onTimeout: () {});
+    await Future.wait([_toneWork, _surfaceWork])
+        .timeout(const Duration(seconds: 1), onTimeout: () => const []);
     if (!_current(generation)) return null;
     if (!await microphone()) {
       _log('microphone refused');
@@ -410,7 +492,7 @@ class CallController extends ChangeNotifier {
       case CallSignalKind.ringing:
       case CallSignalKind.accept:
         if (!_machine.hasEnded(id)) return;
-        final key = id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        final key = _key(id);
         if (_staleReplies.length > 64) _staleReplies.clear();
         if (!_staleReplies.add(key)) return;
         _log('${signal.kind.name} ${_hex(id)} is for a call already over — '
@@ -557,12 +639,16 @@ class CallController extends ChangeNotifier {
   /// is a bug. Closing is the one state that also ends the call: the process is
   /// going, and the other phone should stop ringing now rather than when its
   /// own timer runs out.
+  ///
+  /// It also moves a ringing call between the two screens that can show it.
   void noteLifecycle(AppLifecycleState state) {
     if (!active) return;
     _log('app ${state.name} during ${preparing ? 'preparing' : phase.name}');
     if (state == AppLifecycleState.detached) {
       hangUp(source: CallEndSource.lifecycle);
+      return;
     }
+    _changed();
   }
 
   void dismiss() {
@@ -620,8 +706,9 @@ class CallController extends ChangeNotifier {
       _machine.hangUp(source: CallEndSource.dispose);
     }
     ++_generation;
-    _updateTone();
+    _updateRinging();
     unawaited(_signals.cancel());
+    unawaited(_surfaceActions.cancel());
     _machine.dispose();
     _release();
     super.dispose();
@@ -642,6 +729,31 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
     tones: AudioCallTones(),
+    // Android only for now. iOS draws an incoming call over the lock screen
+    // through CallKit alone, and CallKit needs a VoIP push to reach an app
+    // that is not running — a server path and a native side that do not exist
+    // yet. Until they do, iOS keeps ringing inside the app.
+    surface: PlatformInfo.isAndroid
+        ? AndroidIncomingCallSurface(
+            labels: () {
+              final t = lookupAppLocalizations(ref.read(localeControllerProvider));
+              return (
+                title: t.previewCallIncoming,
+                answer: t.callAnswer,
+                decline: t.callDecline,
+              );
+            },
+          )
+        : const NoIncomingCallSurface(),
+    // The framework's own lifecycle, which it updates before any observer is
+    // told. `inactive` counts as on screen: it is the notification shade or a
+    // permission dialog passing over the app, and the app is still what the
+    // person is looking at. Null — the engine pre-warmed with no Activity —
+    // is not on screen.
+    foreground: () => switch (WidgetsBinding.instance.lifecycleState) {
+          AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+          _ => false,
+        },
     peerName: (peer) =>
         ref.read(knownPeersControllerProvider)[peer]?.displayName ??
         peer.substring(0, 8),

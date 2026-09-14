@@ -52,6 +52,10 @@ class CubechatFcmService : FirebaseMessagingService() {
         /// is optimistic; much over two is a doorbell that arrives late enough
         /// to feel like a second message.
         private const val GRACE_MS = 2200L
+
+        /// A call's grace: inside the ten seconds FCM allows this thread.
+        private const val CALL_GRACE_MS = 9000L
+        private const val POLL_MS = 500L
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -69,8 +73,22 @@ class CubechatFcmService : FirebaseMessagingService() {
         //
         // Blocking is allowed here: onMessageReceived runs on a background
         // thread the library owns, and it gives us ten seconds.
+        //
+        // A call waits longer, and watches rather than sleeps. A process this
+        // push had to start from nothing boots the Dart side, connects to the
+        // relays and decrypts the invite before it can ring with a name — more
+        // than the message grace — and a generic "new message" banner landing
+        // on top of an incoming call screen is the wrong words at the worst
+        // moment. `kind` is absent from a server older than this build, and
+        // then it is an ordinary doorbell exactly as before.
+        val call = message.data["kind"] == "call"
+        val deadline = System.currentTimeMillis() + if (call) CALL_GRACE_MS else GRACE_MS
         try {
-            Thread.sleep(GRACE_MS)
+            do {
+                Thread.sleep(if (call) POLL_MS else GRACE_MS)
+                if (foreground) return
+                if (call && IncomingCall.shownKey != null) return
+            } while (call && System.currentTimeMillis() < deadline)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             return
@@ -97,8 +115,10 @@ class CubechatFcmService : FirebaseMessagingService() {
             as? NotificationManager ?: return false
         return try {
             manager.activeNotifications.any { posted ->
-                posted.notification?.channelId == MESSAGES_CHANNEL &&
-                    posted.tag != DOORBELL_TAG
+                val channel = posted.notification?.channelId
+                // A ringing call is the app having said the most it can.
+                channel == IncomingCall.CHANNEL ||
+                    (channel == MESSAGES_CHANNEL && posted.tag != DOORBELL_TAG)
             }
         } catch (_: Exception) {
             false
