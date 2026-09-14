@@ -12,18 +12,16 @@ import 'package:hive/hive.dart';
 import 'support/hive_settle.dart';
 
 class _FakeMapPresenceController extends MapPresenceController {
-  static bool touched = false;
+  static bool poked = false;
+  static StampedLocationFix? offered;
 
   @override
-  DateTime? build() {
-    touched = true;
-    return null;
-  }
+  int build() => 0;
 
   @override
-  Future<CheckInResult> checkIn() async {
-    touched = true;
-    return CheckInResult.done;
+  Future<void> pokeNow({StampedLocationFix? offered}) async {
+    poked = true;
+    _FakeMapPresenceController.offered = offered;
   }
 }
 
@@ -106,41 +104,55 @@ void main() {
     expect(built, isTrue);
   });
 
-  // The opposite of what these two tests used to pin. A background window —
-  // scheduled, or a relaunch because the phone moved, carrying a position —
-  // republished the map pin, and App Store review rejected that under
-  // guideline 5.1.2(i): a location is shown on a map only after a person
-  // checks in, by hand, each time. The window must not so much as build the
-  // check-in controller.
-  for (final woke in <StampedLocationFix?>[
-    null,
-    StampedLocationFix(
+  test('the window also gives live map presence a chance to publish', () async {
+    _FakeMapPresenceController.poked = false;
+    final container = ProviderContainer(
+      overrides: [
+        mapPresenceControllerProvider.overrideWith(
+          _FakeMapPresenceController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    IosBackgroundRefresh.instance.install(container);
+
+    await IosBackgroundRefresh.instance.refreshNow(
+      window: const Duration(milliseconds: 1100),
+    );
+
+    expect(_FakeMapPresenceController.poked, isTrue);
+    expect(_FakeMapPresenceController.offered, isNull,
+        reason: 'a scheduled window brings no position of its own');
+  });
+
+  test("a doorbell's own position is carried through to the pin", () async {
+    // The significant-change wake-up arrives holding the coarse fix that
+    // decided the phone had moved. Handing it on is what lets the pin be
+    // republished without asking CoreLocation for a cold one — background GPS
+    // being the largest measured expense this app has.
+    _FakeMapPresenceController.poked = false;
+    _FakeMapPresenceController.offered = null;
+    final container = ProviderContainer(
+      overrides: [
+        mapPresenceControllerProvider.overrideWith(
+          _FakeMapPresenceController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    IosBackgroundRefresh.instance.install(container);
+
+    final woke = StampedLocationFix(
       const LocationFix(latitude: 50.0, longitude: 36.2, accuracyMetres: 480),
       DateTime.now(),
-    ),
-  ]) {
-    test(
-        'a ${woke == null ? 'scheduled window' : 'wake that brings a position'} '
-        'never touches the map', () async {
-      _FakeMapPresenceController.touched = false;
-      final container = ProviderContainer(
-        overrides: [
-          mapPresenceControllerProvider.overrideWith(
-            _FakeMapPresenceController.new,
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
-      IosBackgroundRefresh.instance.install(container);
+    );
+    await IosBackgroundRefresh.instance.refreshNow(
+      window: const Duration(milliseconds: 1100),
+      offered: woke,
+    );
 
-      await IosBackgroundRefresh.instance.refreshNow(
-        window: const Duration(milliseconds: 1100),
-        offered: woke,
-      );
-
-      expect(_FakeMapPresenceController.touched, isFalse);
-    });
-  }
+    expect(_FakeMapPresenceController.offered, same(woke));
+  });
 
   group('the position a wake-up arrives with', () {
     Map<String, Object> wake({

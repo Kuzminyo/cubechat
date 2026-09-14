@@ -46,6 +46,8 @@ import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
 import '../../../channels/data/channel_roster_controller.dart';
 import '../../../map/data/map_friends_controller.dart';
+import '../../../map/data/map_presence_controller.dart';
+import '../../../map/presentation/map_sharing_consent.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
@@ -1621,15 +1623,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         await ref
                             .read(mapFriendsControllerProvider.notifier)
                             .activate(widget.chatId);
-                        // Accepting pairs two people on the map and nothing
-                        // more. It used to switch location sharing on and
-                        // publish a pin in the same tap, on the reasoning that
-                        // accepting was agreeing — and App Store review
-                        // rejected exactly that under guideline 5.1.2(i): a
-                        // person is asked, with a way to decline, before their
-                        // location is shown, and then checks in by hand each
-                        // time. Both happen on the map now, behind its check-in
-                        // button. See `MapPresenceController`.
                         await ref.read(messagingServiceProvider).sendText(
                               widget.chatId,
                               MapFriendLink.accepted(
@@ -1637,6 +1630,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                     ref.read(nicknameControllerProvider),
                               ).encode(),
                             );
+                        // Accepting pairs two people on the map; showing your
+                        // own location is asked separately. It used to switch
+                        // sharing on in the same tap, on the reasoning that
+                        // accepting was agreeing — App Store review rejected
+                        // that under guideline 5.1.2(i), which wants a person
+                        // asked, with the option to decline. A "no" still
+                        // leaves the pairing: they see the friend, the friend
+                        // does not see them until they choose Show me.
+                        if (!context.mounted) return;
+                        if (await confirmMapSharing(context, ref)) {
+                          await ref
+                              .read(mapPresenceControllerProvider.notifier)
+                              .pokeNow();
+                        }
                       }
                       if (!context.mounted) return;
                       context.go('/map');

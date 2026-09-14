@@ -33,18 +33,16 @@ import '../data/map_address_service.dart';
 import '../data/map_clusters.dart';
 import '../data/map_focus_request.dart';
 import '../data/map_layer_controller.dart';
+import 'map_sharing_consent.dart';
 import '../data/map_presence_controller.dart';
-// The location reader moved to the data layer with the check-in that uses it;
-// re-exported so everything that reached it through this screen still does.
-export '../data/map_presence_controller.dart'
-    show MapLocationReader, mapLocationReaderProvider;
 import '../data/shared_map_locations_provider.dart';
 import 'map_cluster_sheet.dart';
 import 'map_friends_sheet.dart';
 import 'map_layer_sheet.dart';
 import '../../../core/util/debug_log.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/platform_info.dart';
-import '../../../core/widgets/glass_toast.dart';
 
 // Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
 // the production screen ignores it and mounts native Google Maps instead.
@@ -54,12 +52,16 @@ final mapTileProviderProvider = Provider<Object?>((ref) => null);
 // intentionally a no-op now, but main.dart still calls it during startup.
 Future<void> initMapTileCache() async {}
 
+typedef MapLocationReader = Future<(LocationFix?, LocationFailure?)> Function();
 typedef MapAddressReader = Future<String?> Function(
   double latitude,
   double longitude,
   Locale locale,
 );
 
+final mapLocationReaderProvider = Provider<MapLocationReader>(
+  (ref) => const LocationService().current,
+);
 final mapAddressReaderProvider = Provider<MapAddressReader>(
   (ref) => const MapAddressService().read,
 );
@@ -149,63 +151,40 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
   double get _markerBox => 72 * _markerScale;
 
-  // There used to be a banner here asking for Location "Always", so a live
-  // map could keep a pin current with the app closed. The live map is gone —
-  // App Store review rejected automatic check-ins under guideline 5.1.2(i) —
-  // so there is nothing a background permission would be for, and asking a
-  // person for one would be asking for more than the app uses.
-
-  /// Ask, check in, and say what came of it.
+  /// Map sharing is on, this is iOS, and Location is only "While Using".
   ///
-  /// Consent first, in words, with a way to say no: Apple requires that a
-  /// person is asked before their location is shown on a map and can decline.
-  /// Agreeing turns on the Privacy switch that means exactly that, and the
-  /// check-in itself is still this one tap — every time.
-  Future<void> _checkIn() async {
-    final t = AppLocalizations.of(context);
-    if (!ref.read(privacySettingsProvider).shareMapLocation) {
-      final allowed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(t.mapCheckInConsentTitle),
-          content: Text(t.mapCheckInConsentBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(t.mapCheckInDecline),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(t.mapCheckInAllow),
-            ),
-          ],
-        ),
-      );
-      if (allowed != true || !mounted) return;
-      await ref.read(privacySettingsProvider.notifier).setShareMapLocation(true);
-    }
+  /// The one combination where everything looks correct and nothing works: the
+  /// switch is on, the pin moves while you watch it, and the moment the app is
+  /// closed iOS stops delivering anything at all. The app deliberately never
+  /// asks for Always — somebody who has not turned the live map on should not
+  /// be asked for their location by a messenger — and the price of that
+  /// restraint was a day spent looking for a bug that was a setting.
+  ///
+  /// So it is said here instead, on the screen it is about, at the moment it
+  /// matters. Not a prompt: a sentence and a way to Settings.
+  bool _needsAlways = false;
+
+  Future<void> _checkAlways() async {
+    if (!PlatformInfo.isIOS) return;
+    final sharing = ref.read(privacySettingsProvider).shareMapLocation;
+    // `start` never prompts and is idempotent — it reports whether Always is
+    // already granted, which is exactly the question.
+    final armed = sharing && await IosSignificantLocation.instance.start();
     if (!mounted) return;
-    setState(() => _checkingIn = true);
-    final result =
-        await ref.read(mapPresenceControllerProvider.notifier).checkIn();
-    if (!mounted) return;
-    setState(() => _checkingIn = false);
-    final message = switch (result) {
-      CheckInResult.done => null,
-      CheckInResult.noConsent => null,
-      CheckInResult.nobodyToShow => t.mapCheckInNobody,
-      CheckInResult.noFix => t.mapLocationUnavailable,
-      CheckInResult.unreachable => t.mapCheckInUnreachable,
-    };
-    if (message != null) showGlassToast(context, message);
-    if (result == CheckInResult.done) unawaited(_locate(recenter: true));
+    final needs = sharing && !armed;
+    if (needs != _needsAlways) setState(() => _needsAlways = needs);
   }
 
-  bool _checkingIn = false;
+  /// Ask, then go on the map. Hiding is the pill's other half and asks nothing.
+  Future<void> _showMe() async {
+    if (!await confirmMapSharing(context, ref) || !mounted) return;
+    unawaited(_locate(recenter: true));
+  }
 
   @override
   void initState() {
     super.initState();
+    unawaited(_checkAlways());
     // Texture layer, not hybrid composition — stated rather than left to the
     // default, because it was the other way round for one build and the
     // reasoning is worth keeping.
@@ -262,6 +241,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Before the Android guard below: coming back from Settings is exactly how
+    // this answer changes, and that happens on iOS.
+    if (state == AppLifecycleState.resumed) unawaited(_checkAlways());
     if (!PlatformInfo.isAndroid || !mounted) return;
     // `paused` is the one that means the Activity stopped and the surface with
     // it. `inactive` is the transient step through the shade or the recents
@@ -339,10 +321,9 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
       _failure = failure;
       if (fix != null) _me = fix;
     });
-    // Finding yourself on your own map shows the dot on this phone and sends
-    // nothing. It used to publish the pin as a side effect of opening the map —
-    // an automatic check-in, which App Store review rejected. Only the check-in
-    // button publishes.
+    if (fix != null) {
+      unawaited(ref.read(mapPresenceControllerProvider.notifier).pokeNow());
+    }
     if (fix != null && (recenter || !_centered)) {
       final point = LatLng(fix.latitude, fix.longitude);
       _focusOn(point);
@@ -415,12 +396,6 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final shared = ref.watch(sharedMapLocationsProvider);
     final mapSharing =
         ref.watch(privacySettingsProvider.select((s) => s.shareMapLocation));
-    final checkedInUntil = ref.watch(mapPresenceControllerProvider);
-    // Past its hour, a check-in is not showing anywhere any more, whatever the
-    // controller last recorded. The screen's own refresh rebuilds within
-    // ninety seconds of that.
-    final checkedIn =
-        checkedInUntil != null && checkedInUntil.isAfter(DateTime.now());
 
     ref.listen(privacySettingsProvider.select((s) => s.shareMapLocation),
         (_, sharing) {
@@ -439,12 +414,11 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     final nickname = ref.watch(nicknameControllerProvider);
     final ownPhoto = ref.watch(avatarProvider);
     final nodes = <_Node>[
-      // Shown only while current, and never for somebody blocked. A live pin
-      // used to outlast its own expiry as "last known", for up to three days;
-      // with a check-in that says "for an hour", drawing it after the hour
-      // would be showing a person's location they did not choose to show.
       for (final entry in shared.entries)
-        if (!entry.value.location.expired &&
+        // A blocked contact is not drawn, whatever they last sent. Beacons
+        // from them are refused on arrival too, but one that landed before the
+        // block would otherwise stand for the rest of its six minutes.
+        if ((entry.value.live || !entry.value.location.expired) &&
             peers[entry.key] != null &&
             !peers[entry.key]!.isBlocked)
           _Node(
@@ -564,6 +538,18 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
               ),
             ),
           ),
+          if (_needsAlways)
+            Positioned(
+              top: profileTop +
+                  (selectedNode == null || selectedDetail == null ? 0 : 82) +
+                  (_failure == null ? 0 : 52),
+              left: 24,
+              right: 24,
+              child: _StatusPill(
+                text: t.mapAlwaysNeeded,
+                onTap: () => unawaited(openAppSettings()),
+              ),
+            ),
           if (_failure != null)
             Positioned(
               top: profileTop +
@@ -577,12 +563,13 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
             // Clear of the column of round buttons on the right.
             right: 84,
             bottom: overlayBottom,
-            child: _CheckInPill(
-              checkedInUntil: checkedIn ? checkedInUntil : null,
-              busy: _checkingIn,
-              onCheckIn: () => unawaited(_checkIn()),
-              onRemove: () => unawaited(
-                ref.read(mapPresenceControllerProvider.notifier).withdraw(),
+            child: _VisibilityPill(
+              visible: mapSharing,
+              onShow: () => unawaited(_showMe()),
+              onHide: () => unawaited(
+                ref
+                    .read(privacySettingsProvider.notifier)
+                    .setShareMapLocation(false),
               ),
             ),
           ),
@@ -1623,95 +1610,59 @@ class _RoundIcon extends StatelessWidget {
       );
 }
 
-/// The one way a position gets onto a friend's map: this button, pressed.
+/// Whether this phone is on its friends' maps, and one tap to change it.
 ///
-/// Not checked in, it offers to. Checked in, it says until when, with a way to
-/// take it back sooner. There is deliberately no "keep me checked in" — App
-/// Store review requires a manual check-in each time and no automatic ones.
-class _CheckInPill extends StatelessWidget {
-  const _CheckInPill({
-    required this.checkedInUntil,
-    required this.busy,
-    required this.onCheckIn,
-    required this.onRemove,
+/// Ghost mode, in the words other friend-map apps use: hiding is always one
+/// tap away on the map itself rather than a switch in Profile somebody has to
+/// know about. Showing goes through [confirmMapSharing] first.
+class _VisibilityPill extends StatelessWidget {
+  const _VisibilityPill({
+    required this.visible,
+    required this.onShow,
+    required this.onHide,
   });
 
-  final DateTime? checkedInUntil;
-  final bool busy;
-  final VoidCallback onCheckIn;
-  final VoidCallback onRemove;
+  final bool visible;
+  final VoidCallback onShow;
+  final VoidCallback onHide;
 
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final until = checkedInUntil;
-    if (until == null) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: FloatingGlass(
-          key: const ValueKey('map-check-in'),
-          onTap: busy ? null : onCheckIn,
-          blur: false,
-          borderRadius: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (busy)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Icon(
-                  Icons.where_to_vote_rounded,
-                  color: AppColors.brandPrimary,
-                  size: 20,
-                ),
-              const SizedBox(width: 10),
-              Text(
-                t.mapCheckIn,
-                style: TextStyle(
-                  color: AppColors.textOnGlass,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final time = MaterialLocalizations.of(context).formatTimeOfDay(
-      TimeOfDay.fromDateTime(until),
-      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-    );
     return Align(
       alignment: Alignment.centerLeft,
       child: FloatingGlass(
-        key: const ValueKey('map-checked-in'),
+        key: ValueKey(visible ? 'map-hide-me' : 'map-show-me'),
+        onTap: visible ? onHide : onShow,
         blur: false,
         borderRadius: 22,
-        padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.where_to_vote_rounded,
-              color: AppColors.brandPrimary,
-              size: 20,
+              visible
+                  ? Icons.location_on_rounded
+                  : Icons.visibility_off_rounded,
+              color: visible ? AppColors.brandPrimary : AppColors.textOnGlassDim,
+              size: 18,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(
-                t.mapCheckedInUntil(time),
-                style: TextStyle(color: AppColors.textOnGlass, fontSize: 13),
+                visible ? t.mapVisibleToFriends : t.mapHiddenFromFriends,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 12.5),
               ),
             ),
-            TextButton(
-              onPressed: onRemove,
-              child: Text(t.mapCheckInRemove),
+            const SizedBox(width: 10),
+            Text(
+              visible ? t.mapHideMe : t.mapShowMe,
+              style: TextStyle(
+                color: AppColors.brandPrimary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -1721,13 +1672,18 @@ class _CheckInPill extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.text});
+  const _StatusPill({required this.text, this.onTap});
 
   final String text;
+
+  /// Optional, because most of these only report. The one that can be acted on
+  /// — Location set to While Using — leads to Settings.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Center(
         child: FloatingGlass(
+          onTap: onTap,
           blur: false,
           borderRadius: 18,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

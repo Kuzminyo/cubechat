@@ -174,35 +174,36 @@ instead, and then the other person's phone can see your IP address.
 ## 6. Location
 
 Cubechat uses your location for two things, and only when you ask for them:
-sending a location into a chat, and checking in on the map. **Nothing is shared
-until you do one of those by hand.**
+sending a location into a chat, and showing yourself on the map to friends.
+**Nothing is shared until you choose to.** The app does not ask for location
+during the first-run introduction.
 
-The app asks for location only **while it is in use**. It never asks for
-background ("Always") location, never tracks you while it is closed or out of
-sight, and does not ask for location during the first-run introduction.
+**Showing yourself on the map.** This is off until you turn it on. Before it
+turns on, the app asks whether you allow your location to be shown on the map,
+and you can decline. It asks again if you turn it off and later back on.
 
-**Checking in on the map.** Your position appears on the map only when you tap
-**Check in** on the Map tab. The first time, the app asks whether you allow
-your position to be shown on the map, and you can decline. Each check-in:
+- Your location is shown **only to the contacts on your map**: people you
+  invited, or whose invitation you accepted. It is never shown to strangers,
+  to people nearby, or publicly.
+- It is sent **end-to-end encrypted**, the same way as a message. We never
+  receive it, and neither do the relays that carry it.
+- While it is on, your pin **keeps updating**, including while Cubechat is in
+  the background, so friends see where you are rather than where you last
+  opened the app. Each update expires on their map after six minutes if no
+  newer one arrives.
+- **Hide** on the Map tab, or the switch in Profile, turns it off in one tap
+  and withdraws your pin from every friend's map at once.
 
-- reads your position **once**;
-- is sent **end-to-end encrypted, only to the contacts you added to your map**,
-  and never to a contact you have blocked;
-- is visible for **one hour** and then disappears from their map on its own.
+**Background location ("Always").** Only requested once you have agreed to be
+shown on the map, and only used to keep that pin current. Granting it is
+optional: without it, your pin updates only while Cubechat is open.
 
-There are **no automatic check-ins**: the app never repeats a check-in, never
-refreshes it as you move, and never checks you in from the background. To be
-on the map again after the hour, you tap Check in again. **Remove** takes your
-position off their maps at once, and so do switching map sharing off in your
-profile and blocking a contact. We never receive your location — it travels
-the same encrypted path as a message.
+**Blocking.** You can block any contact from their profile. A blocked contact
+receives no location from you, a pin you had already shown them is withdrawn at
+once, and their location is not drawn on your map.
 
 **Sending a location in a chat** reads your position once and sends it, like a
 message, to the chat you chose, for the time you choose.
-
-**Blocking.** You can block any contact from their profile. A blocked contact
-receives no check-ins from you, a position you had already shown them is
-withdrawn, and their position is not drawn on your map.
 
 **Third parties who see something:**
 

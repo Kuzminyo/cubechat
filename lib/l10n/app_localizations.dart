@@ -2345,7 +2345,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileMapLocationOnHint.
   ///
   /// In en, this message translates to:
-  /// **'You can check in on the map; each check-in is shown to your map friends for one hour'**
+  /// **'Location is available for manual sharing and your pin is shown on the map'**
   String get profileMapLocationOnHint;
 
   /// No description provided for @profileMapLocationOffHint.
@@ -4328,59 +4328,59 @@ abstract class AppLocalizations {
   /// **'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.'**
   String get profileGlassHint;
 
-  /// No description provided for @mapCheckIn.
+  /// No description provided for @mapAlwaysNeeded.
   ///
   /// In en, this message translates to:
-  /// **'Check in'**
-  String get mapCheckIn;
+  /// **'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.'**
+  String get mapAlwaysNeeded;
 
-  /// No description provided for @mapCheckedInUntil.
-  ///
-  /// In en, this message translates to:
-  /// **'Your map friends see you until {time}'**
-  String mapCheckedInUntil(String time);
-
-  /// No description provided for @mapCheckInRemove.
-  ///
-  /// In en, this message translates to:
-  /// **'Remove'**
-  String get mapCheckInRemove;
-
-  /// No description provided for @mapCheckInConsentTitle.
+  /// No description provided for @mapShareConsentTitle.
   ///
   /// In en, this message translates to:
   /// **'Show your location on the map?'**
-  String get mapCheckInConsentTitle;
+  String get mapShareConsentTitle;
 
-  /// No description provided for @mapCheckInConsentBody.
+  /// No description provided for @mapShareConsentBody.
   ///
   /// In en, this message translates to:
-  /// **'Your current position will be shown to the contacts on your map for one hour, then it disappears. It is sent only when you tap Check in — never automatically, and never in the background. You can remove it at any time.'**
-  String get mapCheckInConsentBody;
+  /// **'Your live location will be shown only to the contacts on your map: people you invited, or whose invitation you accepted. It keeps updating, including while Cubechat is in the background, until you hide. It is end-to-end encrypted and never reaches us. You can hide at any time on the map or in Profile, and contacts you block never see you.'**
+  String get mapShareConsentBody;
 
-  /// No description provided for @mapCheckInAllow.
+  /// No description provided for @mapShareConsentAllow.
   ///
   /// In en, this message translates to:
   /// **'Allow'**
-  String get mapCheckInAllow;
+  String get mapShareConsentAllow;
 
-  /// No description provided for @mapCheckInDecline.
+  /// No description provided for @mapShareConsentDecline.
   ///
   /// In en, this message translates to:
   /// **'Don\'t allow'**
-  String get mapCheckInDecline;
+  String get mapShareConsentDecline;
 
-  /// No description provided for @mapCheckInNobody.
+  /// No description provided for @mapVisibleToFriends.
   ///
   /// In en, this message translates to:
-  /// **'Add a contact to your map first'**
-  String get mapCheckInNobody;
+  /// **'Friends on your map see you'**
+  String get mapVisibleToFriends;
 
-  /// No description provided for @mapCheckInUnreachable.
+  /// No description provided for @mapHiddenFromFriends.
   ///
   /// In en, this message translates to:
-  /// **'Could not reach your map friends. Try again.'**
-  String get mapCheckInUnreachable;
+  /// **'You are hidden'**
+  String get mapHiddenFromFriends;
+
+  /// No description provided for @mapHideMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get mapHideMe;
+
+  /// No description provided for @mapShowMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Show me'**
+  String get mapShowMe;
 
   /// No description provided for @profileScaleSmall.
   ///

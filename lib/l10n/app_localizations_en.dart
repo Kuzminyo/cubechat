@@ -1287,7 +1287,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileMapLocationOnHint =>
-      'You can check in on the map; each check-in is shown to your map friends for one hour';
+      'Location is available for manual sharing and your pin is shown on the map';
 
   @override
   String get profileMapLocationOffHint =>
@@ -2468,35 +2468,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.';
 
   @override
-  String get mapCheckIn => 'Check in';
+  String get mapAlwaysNeeded =>
+      'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.';
 
   @override
-  String mapCheckedInUntil(String time) {
-    return 'Your map friends see you until $time';
-  }
+  String get mapShareConsentTitle => 'Show your location on the map?';
 
   @override
-  String get mapCheckInRemove => 'Remove';
+  String get mapShareConsentBody =>
+      'Your live location will be shown only to the contacts on your map: people you invited, or whose invitation you accepted. It keeps updating, including while Cubechat is in the background, until you hide. It is end-to-end encrypted and never reaches us. You can hide at any time on the map or in Profile, and contacts you block never see you.';
 
   @override
-  String get mapCheckInConsentTitle => 'Show your location on the map?';
+  String get mapShareConsentAllow => 'Allow';
 
   @override
-  String get mapCheckInConsentBody =>
-      'Your current position will be shown to the contacts on your map for one hour, then it disappears. It is sent only when you tap Check in — never automatically, and never in the background. You can remove it at any time.';
+  String get mapShareConsentDecline => 'Don\'t allow';
 
   @override
-  String get mapCheckInAllow => 'Allow';
+  String get mapVisibleToFriends => 'Friends on your map see you';
 
   @override
-  String get mapCheckInDecline => 'Don\'t allow';
+  String get mapHiddenFromFriends => 'You are hidden';
 
   @override
-  String get mapCheckInNobody => 'Add a contact to your map first';
+  String get mapHideMe => 'Hide';
 
   @override
-  String get mapCheckInUnreachable =>
-      'Could not reach your map friends. Try again.';
+  String get mapShowMe => 'Show me';
 
   @override
   String get profileScaleSmall => 'Smaller';

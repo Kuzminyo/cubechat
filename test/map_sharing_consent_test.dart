@@ -2,10 +2,8 @@ import 'dart:typed_data';
 
 import 'package:cubechat/core/identity/avatar_controller.dart';
 import 'package:cubechat/core/identity/nickname_controller.dart';
-import 'package:cubechat/core/transport/shared_location.dart';
 import 'package:cubechat/core/util/location_service.dart';
 import 'package:cubechat/features/map/data/map_friends_controller.dart';
-import 'package:cubechat/features/map/data/map_presence_controller.dart';
 import 'package:cubechat/features/map/data/shared_map_locations_provider.dart';
 import 'package:cubechat/features/map/presentation/people_map_screen.dart';
 import 'package:cubechat/features/peers/data/known_peers_controller.dart';
@@ -18,30 +16,20 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The one screen App Store review looks at for guideline 5.1.2(i): "request
+/// The screen App Store review looks at for guideline 5.1.2(i): "request
 /// permission to display location on a map, with the option to decline".
 ///
-/// `map_check_in_test.dart` pins the controller. This pins the part a reviewer
-/// actually touches — that the first tap on Check in asks, that "Don't allow"
-/// means the phone is not even asked where it is, and that nothing reaches a
-/// friend until the person says yes.
-const _alice =
-    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-
+/// Show me on the map asks first. "Don't allow" leaves sharing off and the
+/// phone not even asked where it is; "Allow" turns sharing on, and Hide turns
+/// it off again in one tap with no question.
 class _Peers extends KnownPeersController {
   @override
-  Map<String, KnownPeer> build() => {
-        _alice: KnownPeer(
-          pubkeyHex: _alice,
-          displayName: 'Alice',
-          lastSeen: DateTime(2026),
-        ),
-      };
+  Map<String, KnownPeer> build() => const {};
 }
 
 class _Friends extends MapFriendsController {
   @override
-  Set<String> build() => {_alice};
+  Set<String> build() => const {};
 }
 
 class _Privacy extends PrivacySettingsController {
@@ -70,12 +58,11 @@ class _Nickname extends NicknameController {
 }
 
 void main() {
-  testWidgets('declining never locates the phone; allowing checks in once',
+  testWidgets('Show me asks first; declining leaves the phone unasked',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     var fixes = 0;
-    final sent = <(String, SharedLocation)>[];
 
     await tester.pumpWidget(
       ProviderScope(
@@ -98,10 +85,6 @@ void main() {
               null,
             );
           }),
-          mapBeaconSenderProvider.overrideWithValue((peerId, text) async {
-            sent.add((peerId, SharedLocation.tryParse(text)!));
-            return true;
-          }),
         ],
         child: MaterialApp(
           locale: const Locale('en'),
@@ -117,39 +100,38 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
-    final t = AppLocalizations.of(
-      tester.element(find.byType(PeopleMapScreen)),
-    );
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(PeopleMapScreen)),
-    );
+    final screen = tester.element(find.byType(PeopleMapScreen));
+    final t = AppLocalizations.of(screen);
+    final container = ProviderScope.containerOf(screen);
 
-    expect(fixes, 0, reason: 'opening the map asks the phone nothing');
+    expect(fixes, 0, reason: 'a hidden person is not located');
+    expect(find.byKey(const ValueKey('map-show-me')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('map-check-in')));
+    await tester.tap(find.byKey(const ValueKey('map-show-me')));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text(t.mapCheckInConsentTitle), findsOneWidget);
+    expect(find.text(t.mapShareConsentTitle), findsOneWidget);
 
-    await tester.tap(find.text(t.mapCheckInDecline));
+    await tester.tap(find.text(t.mapShareConsentDecline));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text(t.mapCheckInConsentTitle), findsNothing);
+    expect(find.text(t.mapShareConsentTitle), findsNothing);
     expect(container.read(privacySettingsProvider).shareMapLocation, isFalse);
     expect(fixes, 0, reason: 'a "no" must not so much as read a position');
-    expect(sent, isEmpty);
-    expect(find.byKey(const ValueKey('map-check-in')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-show-me')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('map-check-in')));
+    await tester.tap(find.byKey(const ValueKey('map-show-me')));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text(t.mapCheckInAllow));
+    await tester.tap(find.text(t.mapShareConsentAllow));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
-
     expect(container.read(privacySettingsProvider).shareMapLocation, isTrue);
-    expect(sent, hasLength(1));
-    expect(sent.single.$1, _alice);
-    expect(sent.single.$2.presence, isTrue);
-    expect(container.read(mapPresenceControllerProvider), isNotNull);
-    expect(find.byKey(const ValueKey('map-checked-in')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-hide-me')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('map-hide-me')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text(t.mapShareConsentTitle), findsNothing,
+        reason: 'hiding is never asked about');
+    expect(container.read(privacySettingsProvider).shareMapLocation, isFalse);
+    expect(find.byKey(const ValueKey('map-show-me')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

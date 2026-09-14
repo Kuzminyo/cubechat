@@ -49,6 +49,7 @@ import 'dart:async';
 import '../../peers/data/peer_discovery_controller.dart';
 import 'widgets/code_pad.dart';
 import '../data/dead_mans_switch_controller.dart';
+import '../../map/presentation/map_sharing_consent.dart';
 
 // The version was a `const '0.1.0'` here, written on the first day and never
 // touched — so this screen, the one place a tester checks what they are
@@ -1235,7 +1236,12 @@ class _PrivacyCard extends ConsumerWidget {
                 ? t.profileMapLocationOnHint
                 : t.profileMapLocationOffHint,
             value: s.shareMapLocation,
-            onChanged: n.setShareMapLocation,
+            // On is asked, off is not — see [confirmMapSharing].
+            onChanged: (on) => unawaited(
+              on
+                  ? confirmMapSharing(context, ref)
+                  : n.setShareMapLocation(false),
+            ),
           ),
           const SizedBox(height: 14),
           // With the map pin and last seen, because it is the same kind of

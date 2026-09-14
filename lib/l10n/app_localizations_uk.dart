@@ -1291,7 +1291,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get profileMapLocationOnHint =>
-      'Ви можете відмічатися на мапі; кожну відмітку друзі на мапі бачать одну годину';
+      'Геолокація доступна для ручного надсилання, а вашу точку показано на мапі';
 
   @override
   String get profileMapLocationOffHint =>
@@ -2491,36 +2491,34 @@ class AppLocalizationsUk extends AppLocalizations {
       'Полегшене лишає відтінок і прибирає розмиття за панелями. Автоматично вимірює ваш телефон один раз і вирішує. На телефоні, який і так встигає, користі з цього небагато — воно для того, який не встигає.';
 
   @override
-  String get mapCheckIn => 'Відмітитися';
+  String get mapAlwaysNeeded =>
+      'Щоб карта оновлювалася, поки cubechat закрито, у налаштуваннях місцезнаходження треба вибрати «Завжди». Торкніться, щоб відкрити.';
 
   @override
-  String mapCheckedInUntil(String time) {
-    return 'Друзі на мапі бачать вас до $time';
-  }
+  String get mapShareConsentTitle =>
+      'Показувати ваше місцезнаходження на мапі?';
 
   @override
-  String get mapCheckInRemove => 'Прибрати';
+  String get mapShareConsentBody =>
+      'Ваше місцезнаходження в реальному часі бачитимуть лише контакти з вашої мапи: ті, кого ви запросили, або чиє запрошення ви прийняли. Воно оновлюється, зокрема коли Cubechat у фоні, доки ви не сховаєтеся. Воно зашифроване наскрізно й ніколи не потрапляє до нас. Сховатися можна будь-коли на мапі чи в профілі, а заблоковані контакти вас не бачать ніколи.';
 
   @override
-  String get mapCheckInConsentTitle =>
-      'Показати ваше місцезнаходження на мапі?';
+  String get mapShareConsentAllow => 'Дозволити';
 
   @override
-  String get mapCheckInConsentBody =>
-      'Ваше поточне місцезнаходження побачать контакти з вашої мапи протягом однієї години, після чого воно зникне. Воно надсилається лише тоді, коли ви натискаєте «Відмітитися», — ніколи автоматично й ніколи у фоні. Прибрати його можна будь-коли.';
+  String get mapShareConsentDecline => 'Не дозволяти';
 
   @override
-  String get mapCheckInAllow => 'Дозволити';
+  String get mapVisibleToFriends => 'Друзі на мапі бачать вас';
 
   @override
-  String get mapCheckInDecline => 'Не дозволяти';
+  String get mapHiddenFromFriends => 'Вас не видно';
 
   @override
-  String get mapCheckInNobody => 'Спочатку додайте контакт на мапу';
+  String get mapHideMe => 'Сховатися';
 
   @override
-  String get mapCheckInUnreachable =>
-      'Не вдалося зв’язатися з друзями на мапі. Спробуйте ще раз.';
+  String get mapShowMe => 'Показати мене';
 
   @override
   String get profileScaleSmall => 'Менший';

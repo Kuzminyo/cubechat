@@ -1,6 +1,7 @@
 import 'package:geolocator/geolocator.dart';
 
 import 'debug_log.dart';
+import 'platform_info.dart';
 
 /// What went wrong asking the phone where it is, in terms the UI can act on.
 enum LocationFailure { denied, serviceOff, unavailable }
@@ -128,13 +129,61 @@ class LocationService {
   /// and the map would be drawing confidence it does not have.
   static const double _cacheMaxErrorMetres = 120;
 
-  // A position subscription that ran while the app was out of sight, and the
-  // "Always" permission it asked for, lived here. Both served the live map,
-  // which App Store review rejected under guideline 5.1.2(i): a location is
-  // shown on a map only when a person checks in, by hand, each time. A check-in
-  // is one [current] fix taken while the person is looking at the map, so
-  // nothing here runs in the background, and nothing asks for more than
-  // while-in-use.
+  /// Positions for as long as somebody is on the map with you — including
+  /// while the app is out of sight.
+  ///
+  /// The opposite trade-off from [current], and deliberately not the default:
+  /// this is a subscription the OS keeps alive, which is the whole point (a
+  /// pin that freezes the moment its owner locks the phone answers "where were
+  /// they when they last looked at their map", which is not the question) and
+  /// also the whole cost. It runs only while map sharing is on *and* somebody
+  /// is actually receiving it — see MapPresenceController.
+  ///
+  /// [_watchDistanceMetres] rather than a clock does the throttling, because
+  /// standing still is the common case and a phone that has not moved has
+  /// nothing to say. It is also what keeps this affordable: no movement, no
+  /// wake-ups, no radio.
+  Stream<LocationFix> watch() =>
+      Geolocator.getPositionStream(locationSettings: _watchSettings())
+          .map(_fixOf);
+
+  /// Ask for the permission a background heartbeat needs, and say whether we
+  /// got it.
+  ///
+  /// On iOS this is "Always": "While Using" stops the updates at the moment
+  /// the app leaves the screen, which is exactly the case this exists for.
+  /// geolocator escalates a second [Geolocator.requestPermission] on an
+  /// already-granted while-in-use into the Always prompt, provided
+  /// `NSLocationAlwaysAndWhenInUseUsageDescription` is in Info.plist.
+  ///
+  /// Android needs no equivalent ask: the app already runs a foreground
+  /// service, and a service declaring the `location` type carries foreground
+  /// location access with it for as long as it is up.
+  Future<bool> ensureBackgroundPermission() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return false;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return false;
+      }
+      if (PlatformInfo.isIOS && permission == LocationPermission.whileInUse) {
+        // Best effort. iOS shows this at most once and may defer it until the
+        // app has actually used location in the background; while-in-use is
+        // still worth streaming with in the meantime, so a "no" here is not a
+        // reason to give up on the feature.
+        permission = await Geolocator.requestPermission();
+      }
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (e) {
+      DebugLog.instance.log('LOCATION', 'background permission failed: $e');
+      return false;
+    }
+  }
 
   static LocationFix _fixOf(Position position) => LocationFix(
         latitude: position.latitude,
@@ -142,6 +191,74 @@ class LocationService {
         accuracyMetres:
             position.accuracy.isFinite ? position.accuracy.round().clamp(0, 65535) : 0,
       );
+
+  static LocationSettings _watchSettings() {
+    if (PlatformInfo.isAndroid) {
+      return AndroidSettings(
+        // Not [_accuracy], which is what a one-shot asks for.
+        //
+        // High accuracy on a *subscription* means GPS held on for as long as
+        // the map is shared, and on Android that is felt as a warm phone in a
+        // pocket with the app closed. Fused medium leans on cell and Wi-Fi and
+        // wakes the satellite radio only when it must; against a pin that
+        // moves every forty metres, that difference is invisible on the map
+        // and is most of the battery.
+        accuracy: LocationAccuracy.medium,
+        distanceFilter: _watchDistanceMetres,
+        intervalDuration: const Duration(seconds: 60),
+        // The second notification is the price of the feature working at all.
+        //
+        // Leaving this out was the plan — cubechat already runs a foreground
+        // service for the mesh, and that service now declares the `location`
+        // type, so the app has location access while it is backgrounded. What
+        // that does not cover is the plugin: without a notification config,
+        // geolocator subscribes through the *Activity* and its own service
+        // never goes foreground, so swiping the app away takes the position
+        // stream with it. That is exactly the report — a killed app stops
+        // sending its pin — and no amount of our own service being alive
+        // brings the plugin's stream back.
+        //
+        // Also honest: Android wants a person to see, permanently and without
+        // digging, that something is reading their location while they are not
+        // looking at it. Two rows in the shade is a fair price for that.
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Cubechat live map',
+          notificationText: 'Sharing your position with your map friends',
+          notificationChannelName: 'Live map',
+          // No wake lock, deliberately, and it was on for one build.
+          //
+          // It holds the CPU awake for as long as the map is shared so that
+          // fixes arrive as they happen rather than in a burst when the phone
+          // next wakes. That is a nicer pin and a hot phone: a device that is
+          // never allowed to sleep is the single most expensive thing an app
+          // can do to a battery, and it is felt with the app closed, which is
+          // exactly what was reported. Doze delivers the fixes late instead —
+          // a pin that lags rather than a phone that cooks.
+          enableWakeLock: false,
+          setOngoing: true,
+        ),
+      );
+    }
+    if (PlatformInfo.isIOS) {
+      return AppleSettings(
+        accuracy: _accuracy,
+        distanceFilter: _watchDistanceMetres,
+        // The three that decide whether this survives leaving the screen:
+        // background updates allowed at all, iOS not pausing them on its own
+        // judgement of "stationary enough", and the blue indicator — which is
+        // not optional and should not be: an app sending your position while
+        // you are elsewhere ought to be saying so on the status bar.
+        allowBackgroundLocationUpdates: true,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+        activityType: ActivityType.other,
+      );
+    }
+    return const LocationSettings(
+      accuracy: _accuracy,
+      distanceFilter: _watchDistanceMetres,
+    );
+  }
 
   /// High, not medium.
   ///
@@ -153,4 +270,11 @@ class LocationService {
   /// most seconds of GPS for the least difference on a map read at street
   /// level.
   static const _accuracy = LocationAccuracy.high;
+
+  /// How far the phone must move before the OS bothers waking us with a fix.
+  ///
+  /// Roughly a building's width: far enough that GPS jitter on a phone lying
+  /// on a table cannot generate traffic, close enough that walking down a
+  /// street moves your pin while you are walking it.
+  static const _watchDistanceMetres = 30;
 }

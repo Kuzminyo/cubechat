@@ -12,10 +12,10 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
-import '../../profile/data/privacy_settings_controller.dart';
 import '../data/map_friend_link.dart';
 import '../data/map_friends_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
+import 'map_sharing_consent.dart';
 
 Future<void> showMapInviteSheet(BuildContext context) => showGlassSheet<void>(
       context: context,
@@ -48,6 +48,14 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
 
   Future<void> _send(List<Chat> chats, String link) async {
     if (_selected.isEmpty || _sending) return;
+
+    // Inviting people to your map shares your location with them, so it is
+    // asked first, in words, with a way to say no — App Store review requires
+    // that under guideline 5.1.2(i). It used to switch sharing on silently
+    // here, because leaving it off made an invitation that "worked" and showed
+    // nobody. A "no" sends nothing: an invitation to a map you are not on
+    // would be exactly that.
+    if (!await confirmMapSharing(context, ref) || !mounted) return;
     setState(() => _sending = true);
 
     final t = AppLocalizations.of(context);
@@ -56,12 +64,6 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
     var sent = 0;
 
     final friends = ref.read(mapFriendsControllerProvider.notifier);
-    // Inviting people to your map is the consent the map-sharing switch asks
-    // for, so it is granted here rather than hidden in Privacy for the user to
-    // go and find. Without it the invitation "worked" and nothing happened:
-    // both sides paired, neither ever appeared, because a beacon is only sent
-    // while sharing is on and it defaults to off.
-    await ref.read(privacySettingsProvider.notifier).setShareMapLocation(true);
     for (final chat in chats) {
       if (!_selected.contains(chat.id)) continue;
       try {

@@ -49,9 +49,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   ///
   /// **Location is no longer asked for here, and must not be.** Onboarding
   /// escalated every new install to the iOS "Always" prompt, for a live map
-  /// most people never opened. App Store review rejected the live map under
-  /// guideline 5.1.2(i); location is now asked for only when a person taps
-  /// Check in on the map, and only for while-in-use.
+  /// most people never opened, and App Store review rejected the build under
+  /// guideline 5.1.2(i). Location is asked for once a person agrees to be shown
+  /// on the map (see `confirmMapSharing`), which is the moment it is for.
   Future<void> _askForWhatCannotBeAskedTwice() async {
     try {
       await ref.read(pushEnabledProvider.notifier).reassert();

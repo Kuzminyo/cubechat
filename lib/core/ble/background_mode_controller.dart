@@ -54,23 +54,16 @@ class BackgroundModeController extends Notifier<bool> {
         debugPrint('notification permission request failed: $e');
       }
       await BackgroundService.instance.start();
+      // The iOS half of the same preference. Android keeps the process alive
+      // and needs no doorbell; iOS cannot keep a killed process alive at all,
+      // so the best available is being relaunched when the phone moves and
+      // catching up then. Arms itself only if Always location is already
+      // granted — this never prompts.
+      await IosSignificantLocation.instance.start();
     } else {
       await BackgroundService.instance.stop();
+      await IosSignificantLocation.instance.stop();
     }
-    // Disarmed on every boot, whichever way the switch is set.
-    //
-    // This used to arm iOS significant-change and region monitoring, so a
-    // closed app was relaunched whenever the phone moved — to catch up on
-    // messages, and to republish the map pin. The first job is APNs now; the
-    // second is what App Store review rejected under guideline 5.1.2(i), since
-    // a location may be shown on a map only after a manual check-in. Asking
-    // for "Always" location to wake a messenger would be refused on its own.
-    //
-    // Stopped rather than merely no longer started, because iOS keeps that
-    // monitoring registered across launches and app updates: a phone an older
-    // build armed would go on being relaunched by movement until something
-    // told it to stop.
-    await IosSignificantLocation.instance.stop();
   }
 
   Future<void> setEnabled(bool enabled) async {
