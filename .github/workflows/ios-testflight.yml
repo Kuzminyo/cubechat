@@ -110,16 +110,8 @@ jobs:
           done
           exit $missing
 
-      - name: Pin the CocoaPods platform to iOS 15
-        run: |
-          set -e
-          cd ios
-          if [ ! -f Podfile ]; then
-            flutter build ios --release --no-codesign --config-only || true
-          fi
-          grep -v "^platform :ios" Podfile > Podfile.pinned
-          printf "platform :ios, '15.0'\n" | cat - Podfile.pinned > Podfile
-          rm -f Podfile.pinned
+      - name: Check tracked Podfile
+        run: ruby -c ios/Podfile
 
       # A keychain of its own, thrown away with the runner.
       #
@@ -179,6 +171,21 @@ jobs:
 
       - name: Build signed IPA
         run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+      - name: Verify compiled microphone permission configuration
+        run: |
+          set -euo pipefail
+          for configuration in Debug Profile Release; do
+            xcodebuild -project ios/Pods/Pods.xcodeproj \
+              -target permission_handler_apple -configuration "$configuration" \
+              -showBuildSettings > "$RUNNER_TEMP/microphone-settings.txt"
+            grep -E 'GCC_PREPROCESSOR_DEFINITIONS = .*PERMISSION_MICROPHONE=1([[:space:]]|$)' "$RUNNER_TEMP/microphone-settings.txt"
+            if grep -E 'GCC_PREPROCESSOR_DEFINITIONS = .*PERMISSION_MICROPHONE=0([[:space:]]|$)' "$RUNNER_TEMP/microphone-settings.txt"; then
+              echo "::error::Microphone handler is disabled"
+              exit 1
+            fi
+          done
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Info.plist
 
       # The App Store Connect API key, rather than an Apple ID and password.
       # A password would need an app-specific one and would still be a second

@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'call_microphone_permission.dart';
 
 import '../../../core/transport/call_signal.dart';
 import '../../../core/transport/control_delivery.dart';
@@ -724,7 +724,7 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     obtainTurn: () => ref.read(turnCredentialsProvider).obtain(),
     microphone: () async =>
         PlatformInfo.isMobile &&
-        (await Permission.microphone.request()).isGranted,
+        await requestCallMicrophonePermission(),
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
