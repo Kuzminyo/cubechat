@@ -80,15 +80,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get callRouteHeadphones => 'Навушники';
 
   @override
-  String get callFullScreenTitle => 'Дзвінки на весь екран';
+  String get callFullScreenTitle => 'Дзвінки на екрані блокування';
 
   @override
   String get callFullScreenBody =>
-      'Дозвольте Cubechat показуватися поверх інших застосунків, щоб вхідний дзвінок відкривався на весь екран, як у звичайному телефоні, а не лише сповіщенням.';
+      'Дозвольте показувати вхідний дзвінок на заблокованому екрані, щоб відповідати без розблокування.';
 
   @override
   String get callFullScreenXiaomi =>
-      'На Xiaomi, Redmi і Poco також увімкніть «Показувати на екрані блокування» та «Спливаючі вікна у фоні» в розділі «Інші дозволи».';
+      'Xiaomi, Redmi і Poco не дають застосункам вмикати це самим: увімкніть «Показувати на екрані блокування» в розділі «Інші дозволи».';
 
   @override
   String get callFullScreenAllow => 'Дозволити';

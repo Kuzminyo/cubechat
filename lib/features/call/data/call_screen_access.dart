@@ -6,53 +6,47 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/util/platform_info.dart';
 
-/// What this phone allows an incoming call to open, when the app is not on
-/// screen.
+/// What this phone allows an incoming call to show over the lock screen.
 ///
-/// Android only. Over a locked screen the call opens full screen on its own; on
-/// a phone that is unlocked and in use, Android makes it a heads-up unless the
-/// user has let the app "appear on top" — and "a notification with Answer and
-/// Decline is not convenient, it has to be a real screen" was the report. So
-/// the missing permission is shown where calls are configured and on the call
-/// screen, with the button that opens the right settings page.
+/// Android only. A phone in use gets the heads-up in the shade and needs
+/// nothing for it. The lock screen gets the call screen by itself on most
+/// phones; two things can take that away, and they are the whole list:
+/// Android 14's full-screen switch, and on Xiaomi, Redmi and Poco their own
+/// "show on lock screen", which no app can turn on for itself.
+///
+/// It used to be four. "Appear on top" and MIUI's "pop-up windows in the
+/// background" were only for opening the screen on an unlocked phone, which
+/// is gone - "permissions should just be there, not something to go and
+/// switch on" was the report, and the honest answer is to stop needing them.
 @immutable
 class CallScreenAccess {
   const CallScreenAccess({
-    required this.overlay,
     required this.fullScreenIntent,
     required this.xiaomi,
     this.xiaomiLockScreen = true,
-    this.xiaomiBackgroundStart = true,
   });
 
   /// Nothing to ask for: not Android, or everything already granted.
   static const granted = CallScreenAccess(
-    overlay: true,
     fullScreenIntent: true,
     xiaomi: false,
   );
-
-  /// "Appear on top": the screen opens on an unlocked phone too.
-  final bool overlay;
 
   /// Android 14 can take full-screen intents away; without them not even the
   /// lock screen gets the call screen.
   final bool fullScreenIntent;
 
-  /// Xiaomi, Redmi or Poco, which gate both behind two permissions of their own
-  /// that no app can read — only point at.
+  /// Xiaomi, Redmi or Poco, which gate the lock screen behind a permission of
+  /// their own that no app can grant - only point at.
   final bool xiaomi;
 
   /// MIUI's "show on lock screen". Read from MIUI's own app-op; true when this
   /// is not MIUI or it could not be read.
   final bool xiaomiLockScreen;
 
-  /// MIUI's "open new windows while running in the background".
-  final bool xiaomiBackgroundStart;
+  bool get vendorComplete => xiaomiLockScreen;
 
-  bool get vendorComplete => xiaomiLockScreen && xiaomiBackgroundStart;
-
-  bool get complete => overlay && fullScreenIntent && vendorComplete;
+  bool get complete => fullScreenIntent && vendorComplete;
 }
 
 class CallScreenAccessController extends Notifier<CallScreenAccess> {
@@ -72,34 +66,21 @@ class CallScreenAccessController extends Notifier<CallScreenAccess> {
       final map = await _channel.invokeMapMethod<String, bool>('access');
       if (map == null) return;
       state = CallScreenAccess(
-        overlay: map['overlay'] ?? true,
         fullScreenIntent: map['fullScreenIntent'] ?? true,
         xiaomi: map['xiaomi'] ?? false,
         xiaomiLockScreen: map['xiaomiLockScreen'] ?? true,
-        xiaomiBackgroundStart: map['xiaomiBackgroundStart'] ?? true,
       );
     } catch (_) {
       // No plugin on this engine: a test, or a build without one.
     }
   }
 
-  /// Opens whichever settings page grants the next missing piece: the
-  /// full-screen permission first, since without it even the lock screen gets
-  /// a banner, then "appear on top". On Xiaomi, their own page as well.
+  /// Opens whichever settings page grants the missing piece: Android's
+  /// full-screen permission first, then MIUI's own page.
   Future<void> openSettings() async {
     try {
       if (!state.fullScreenIntent &&
           await _channel.invokeMethod<bool>('openFullScreenSettings') == true) {
-        return;
-      }
-      // MIUI before Android's own page: on a Xiaomi the lock-screen switch is
-      // the one that decides whether a locked phone shows the call at all.
-      if (state.xiaomi && !state.vendorComplete) {
-        await _channel.invokeMethod<bool>('openVendorSettings');
-        return;
-      }
-      if (!state.overlay) {
-        await _channel.invokeMethod<bool>('openOverlaySettings');
         return;
       }
       if (state.xiaomi) await _channel.invokeMethod<bool>('openVendorSettings');

@@ -8,8 +8,10 @@ import '../../../core/util/debug_log.dart';
 import 'call_tones.dart';
 
 /// `end` comes from iOS, where CallKit's red button means decline while the
-/// call rings and hang up once it is answered.
-enum IncomingCallActionKind { answer, decline, end }
+/// call rings and hang up once it is answered - and from Android's Hang up in
+/// the shade. `speaker` from the call screen Android keeps over the lock
+/// screen once a call is answered there.
+enum IncomingCallActionKind { answer, decline, end, speaker }
 
 /// A button pressed on the phone's own incoming-call screen, for the call
 /// identified by [key].
@@ -22,6 +24,7 @@ typedef IncomingCallLabels = ({
   String decline,
   String ongoing,
   String hangUp,
+  String speaker,
 });
 
 /// The incoming call drawn by the phone rather than by the app.
@@ -162,6 +165,11 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
         'title': words.title,
         'answer': words.answer,
         'decline': words.decline,
+        // For the call screen that stays over the lock screen when the call
+        // is answered there.
+        'ongoing': words.ongoing,
+        'hangUp': words.hangUp,
+        'speaker': words.speaker,
       });
       DebugLog.instance.log(
         'CALL',
@@ -205,6 +213,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
       'answer' => IncomingCallActionKind.answer,
       'decline' => IncomingCallActionKind.decline,
       'end' => IncomingCallActionKind.end,
+      'speaker' => IncomingCallActionKind.speaker,
       _ => null,
     };
     if (kind == null) return;
@@ -339,10 +348,18 @@ class AndroidSystemCallTones implements CallTones {
   @override
   Future<void> play(CallTone tone) async {
     try {
-      await _channel.invokeMethod<void>('ringStart');
-      DebugLog.instance.log('CALL', 'system ringtone on');
+      // The ringtone for a call to this phone; the dialler's own tones,
+      // generated rather than played from a file, for the caller - "beeps
+      // while calling and a sound when the call ends" was the report, and
+      // until now a caller heard silence until the other side spoke.
+      await _channel.invokeMethod<void>(switch (tone) {
+        CallTone.incoming => 'ringStart',
+        CallTone.ringback => 'ringbackStart',
+        CallTone.ended => 'endTone',
+      });
+      DebugLog.instance.log('CALL', '${tone.name} tone on');
     } catch (e) {
-      DebugLog.instance.log('CALL', 'system ringtone could not start: $e');
+      DebugLog.instance.log('CALL', '${tone.name} tone could not start: $e');
     }
   }
 

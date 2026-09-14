@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'branch_pager.dart';
+import 'tab_reset.dart';
 import '../util/debug_log.dart';
 import '../util/ui_activity.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
@@ -199,6 +200,11 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           builder: (context, ref, _) {
             final layout = ref.watch(navBarControllerProvider);
             final order = layout.branches;
+            // A tab left behind is rebuilt once it is out of sight - see
+            // [TabGenerations].
+            ref
+                .read(tabGenerationsProvider.notifier)
+                .noteCurrent(navigationShell.currentIndex);
             // Read, not watched: the pager is asked at the moment a finger
             // decides, and watching it would rebuild the whole strip every
             // time a folder changed — which is the thing the drag just did.
@@ -242,7 +248,8 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
             routes: [
               GoRoute(
                 path: '/chats',
-                builder: (context, state) => const ChatsListScreen(),
+                builder: (context, state) =>
+                    const TabReset(branch: 0, child: ChatsListScreen()),
               ),
             ],
           ),
@@ -254,7 +261,8 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
             routes: [
               GoRoute(
                 path: '/contacts',
-                builder: (context, state) => const ContactsScreen(),
+                builder: (context, state) =>
+                    const TabReset(branch: 1, child: ContactsScreen()),
               ),
             ],
           ),
@@ -281,7 +289,12 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
             routes: [
               GoRoute(
                 path: '/profile',
-                builder: (context, state) => const ProfileScreen(),
+                // Not Nearby or the map: mounting Nearby starts the radio and
+                // mounting the map asks for tiles and a fix, so rebuilding
+                // either behind the user's back would cost what resetting the
+                // others does not.
+                builder: (context, state) =>
+                    const TabReset(branch: 4, child: ProfileScreen()),
               ),
             ],
           ),

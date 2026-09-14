@@ -76,6 +76,7 @@ class MainApplication : Application() {
             context = applicationContext,
             messenger = messenger,
         )
+        VideoFramePlugin(messenger)
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

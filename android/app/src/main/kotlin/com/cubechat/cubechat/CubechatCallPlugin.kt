@@ -41,6 +41,9 @@ class CubechatCallPlugin(
                         title = call.argument<String>("title").orEmpty(),
                         answer = call.argument<String>("answer").orEmpty(),
                         decline = call.argument<String>("decline").orEmpty(),
+                        ongoing = call.argument<String>("ongoing").orEmpty(),
+                        hangUp = call.argument<String>("hangUp").orEmpty(),
+                        speaker = call.argument<String>("speaker").orEmpty(),
                     )
                     result.success(
                         IncomingCall.show(
@@ -59,16 +62,11 @@ class CubechatCallPlugin(
                 // What stands between a call and a real screen on this phone.
                 "access" -> result.success(
                     mapOf(
-                        "overlay" to IncomingCall.canDrawOverlays(context),
                         "fullScreenIntent" to IncomingCall.canUseFullScreen(context),
                         "xiaomi" to IncomingCall.isXiaomiFamily(),
                         "xiaomiLockScreen" to IncomingCall.miuiAllows(
                             context,
                             IncomingCall.MIUI_SHOW_WHEN_LOCKED,
-                        ),
-                        "xiaomiBackgroundStart" to IncomingCall.miuiAllows(
-                            context,
-                            IncomingCall.MIUI_BACKGROUND_START,
                         ),
                     ),
                 )
@@ -78,6 +76,14 @@ class CubechatCallPlugin(
                 }
                 "ringStop" -> {
                     CallRinger.stop()
+                    result.success(null)
+                }
+                "ringbackStart" -> {
+                    CallRinger.ringback()
+                    result.success(null)
+                }
+                "endTone" -> {
+                    CallRinger.ended()
                     result.success(null)
                 }
                 "ongoing" -> {
@@ -104,12 +110,6 @@ class CubechatCallPlugin(
                     CallService.stop(context)
                     result.success(null)
                 }
-                "openOverlaySettings" -> result.success(
-                    openSettings(
-                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        withPackage = true,
-                    ),
-                )
                 "openFullScreenSettings" -> result.success(
                     if (android.os.Build.VERSION.SDK_INT >= 34) {
                         openSettings(
@@ -131,18 +131,44 @@ class CubechatCallPlugin(
         }
     }
 
-    /** A JPEG from Dart, scaled down to what a notification icon can use. */
+    /**
+     * A JPEG from Dart, as a round picture a notification can use.
+     *
+     * Cropped to its centre square first - it used to be squeezed to 256 by
+     * 256 whatever its shape - and then cut to a circle with transparent
+     * corners, because the shade draws what it is given: "make the avatar
+     * round in the shade" came with a square one in the screenshot. The call
+     * screens clip it round themselves, so the circle costs them nothing.
+     */
     private fun decodeAvatar(bytes: ByteArray?): android.graphics.Bitmap? {
         if (bytes == null || bytes.isEmpty()) return null
         return try {
             val raw = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?: return null
-            val side = 256
-            if (raw.width <= side && raw.height <= side) {
-                raw
-            } else {
-                android.graphics.Bitmap.createScaledBitmap(raw, side, side, true)
-            }
+            val edge = minOf(raw.width, raw.height)
+            val side = minOf(edge, 256)
+            val round = android.graphics.Bitmap.createBitmap(
+                side,
+                side,
+                android.graphics.Bitmap.Config.ARGB_8888,
+            )
+            val canvas = android.graphics.Canvas(round)
+            val paint = android.graphics.Paint(
+                android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG,
+            )
+            canvas.drawOval(0f, 0f, side.toFloat(), side.toFloat(), paint)
+            paint.xfermode = android.graphics.PorterDuffXfermode(
+                android.graphics.PorterDuff.Mode.SRC_IN,
+            )
+            val left = (raw.width - edge) / 2
+            val top = (raw.height - edge) / 2
+            canvas.drawBitmap(
+                raw,
+                android.graphics.Rect(left, top, left + edge, top + edge),
+                android.graphics.Rect(0, 0, side, side),
+                paint,
+            )
+            round
         } catch (_: Exception) {
             null
         }

@@ -92,10 +92,10 @@
          not a dialler; IncomingCall asks before relying on it and falls back
          to a heads-up with the same two buttons. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- "Appear on top", granted by the user in settings. The one thing that
-         lets the incoming-call screen open on a phone that is unlocked and in
-         use, instead of Android turning it into a heads-up. See IncomingCall. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- No SYSTEM_ALERT_WINDOW. 1045 asked for "appear on top" to open the
+         call screen on an unlocked phone as well, and that put the screen up
+         behind the heads-up: "remove the screen, leave only the shade" was the
+         answer. A phone in use gets the heads-up alone now. See IncomingCall. -->
     <!-- The call in progress, as a foreground service of the microphone type.
          Without it Android 11+ silences the microphone the moment the app is
          not on screen - a call answered from the lock screen would be heard by

@@ -2,6 +2,7 @@
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
+import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import 'core/theme/glass.dart';
 import 'core/theme/glass_tier.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/chat/data/chat_scroll_memory.dart';
 import 'features/chat/data/messages_controller.dart';
 import 'features/chats/data/read_markers_controller.dart';
 import 'features/chats/presentation/chats_list_screen.dart';
@@ -111,7 +113,22 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       _refreshPushRegistration();
       _announceOnLaunch();
       _pushUnreadTotal();
+      _askCallPermissionsAhead();
     });
+  }
+
+  /// The microphone, asked once the app is up rather than on the first call -
+  /// see [askCallMicrophoneAhead]. Not over onboarding, and a few seconds in:
+  /// Bluetooth and notifications ask at launch too, and the system shows one
+  /// permission dialog at a time and refuses a second request meanwhile.
+  void _askCallPermissionsAhead() {
+    if (!PlatformInfo.isMobile || !widget.seenOnboarding) return;
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 4), () async {
+        if (!mounted || !AppLifecycle.instance.isForeground) return;
+        await askCallMicrophoneAhead();
+      }),
+    );
   }
 
   /// Keep the icon's number equal to the number of unread *messages*.
@@ -407,6 +424,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
+    // Closed for good: every conversation opens at its newest message again.
+    // On Android the engine - and this memory - outlives the window.
+    if (state == AppLifecycleState.detached) ChatScrollMemory.forgetAll();
     // The lock, when there is one. Leaving is remembered rather than acted on
     // — a glance at the notification shade is not leaving the app — and coming
     // back asks again only if the grace has run out.

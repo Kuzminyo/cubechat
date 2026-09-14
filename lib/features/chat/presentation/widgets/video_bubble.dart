@@ -5,33 +5,30 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/routing/page_transitions.dart';
+import '../../data/video_frames.dart';
 import '../../models/message.dart';
 import '../../data/voice_playback_controller.dart';
+import '../chat_media_gallery_screen.dart';
 import 'message_bubble.dart' show photoBubbleWidth;
 import 'playback_author.dart';
 
-/// Gallery clips play locally; circles share the voice-note player and island.
-/// Playback starts only on tap and never loops. The shared circle survives
-/// scrolling and navigation, while a gallery clip pauses when it leaves view.
+/// A clip opens full screen, the way a photo does; circles share the
+/// voice-note player and island. Neither holds a video decoder while it is
+/// only being scrolled past: both draw their first frame, see [VideoFrames].
 class VideoBubble extends ConsumerStatefulWidget {
   const VideoBubble({
     super.key,
     required this.message,
     this.onLongPress,
-    this.onMore,
     this.chatId,
   });
 
   final Message message;
   final String? chatId;
   final VoidCallback? onLongPress;
-
-  /// The three dots in a clip's corner: the same actions a long press opens,
-  /// at the place the dots were tapped.
-  final void Function(Offset globalPosition)? onMore;
 
   /// The width a clip is drawn at.
   ///
@@ -106,91 +103,37 @@ class VideoBubble extends ConsumerStatefulWidget {
 }
 
 class _VideoBubbleState extends ConsumerState<VideoBubble> {
-  VideoPlayerController? _player;
-  bool _loading = false;
-  bool _failed = false;
-
-  /// Opened by a tap rather than by scrolling into view, so the spinner is
-  /// worth showing.
-  bool _wantsPlay = false;
-  bool _muted = false;
+  VideoPoster? _poster;
 
   bool get _isCircle => VideoBubble.isCircle(widget.message);
 
   @override
-  void dispose() {
-    _player?.removeListener(_onTick);
-    _player?.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadPoster();
   }
 
-  void _onTick() {
-    if (!mounted) return;
-    setState(() {});
+  @override
+  void didUpdateWidget(VideoBubble old) {
+    super.didUpdateWidget(old);
+    if (old.message.filePath != widget.message.filePath) _loadPoster();
   }
 
-  /// Open the file. Costs a platform decoder, so it happens once and only for
-  /// a bubble that is actually on screen.
-  Future<VideoPlayerController?> _open() async {
-    if (_player != null) return _player;
-    if (_loading || _failed) return null;
-    setState(() => _loading = true);
-    final player = VideoPlayerController.file(File(widget.message.filePath!));
-    try {
-      await player.initialize();
-      if (!mounted) {
-        await player.dispose();
-        return null;
-      }
-      player.addListener(_onTick);
-      // Explicit replay only.
-      await player.setLooping(false);
-      setState(() {
-        _player = player;
-        _loading = false;
-      });
-      return player;
-    } catch (_) {
-      await player.dispose();
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
-      }
-      return null;
-    }
-  }
-
-  Future<void> _onVisibility(VisibilityInfo info) async {
-    // A circle belongs to the shared player and survives scrolling/leaving chat.
-    if (_isCircle || !mounted) return;
-    final shown = info.visibleFraction;
-    // **The first frame, not a black box with a film icon.** A clip in the
-    // chat is asked to look like a photo does - "video in the chat like the
-    // photo, like this" came with a Telegram screenshot - and a picture you
-    // cannot see until you press play is not that. The decoder is opened when
-    // the clip scrolls into view, paused on its first frame, and handed back
-    // when it has scrolled away, so a long chat holds only the players it is
-    // actually showing.
-    if (shown > 0.1 && _player == null) unawaited(_open());
-    if (shown <= 0.5 && (_player?.value.isPlaying ?? false)) {
-      await _player?.pause();
-    }
-    if (shown == 0 && _player != null && !_player!.value.isPlaying) {
-      final player = _player!;
-      player.removeListener(_onTick);
-      setState(() => _player = null);
-      await player.dispose();
-    }
-  }
-
-  Future<void> _toggleMute() async {
-    final player = _player;
-    if (player == null) return;
-    final next = !_muted;
-    await player.setVolume(next ? 0 : 1);
-    if (mounted) setState(() => _muted = next);
+  /// The first frame and the length, from memory when this run has seen the
+  /// clip already, so a bubble scrolled back into view draws its picture on
+  /// its first frame rather than a beat later.
+  void _loadPoster() {
+    final path = widget.message.filePath;
+    if (path == null) return;
+    _poster = VideoFrames.peek(path);
+    if (_poster != null) return;
+    unawaited(
+      VideoFrames.of(path).then((poster) {
+        if (mounted && widget.message.filePath == path) {
+          setState(() => _poster = poster);
+        }
+      }),
+    );
   }
 
   Future<void> _tap() async {
@@ -209,32 +152,40 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
           );
       return;
     }
-    _wantsPlay = true;
-    final player = _player ?? await _open();
-    if (player == null) return;
-    if (player.value.isPlaying) {
-      await player.pause();
-    } else {
-      // A tap is the one thing that clears "already watched", which is what
-      // makes it the way to see a circle a second time.
-      if (player.value.position >= player.value.duration) {
-        await player.seekTo(Duration.zero);
-      }
-      await player.play();
-    }
-    if (mounted) setState(() {});
+    // **Opened like a photo, not played in the bubble.** "Tap it and it just
+    // opens, like a photo, and there a tap plays and pauses" was the ask, with
+    // the three dots taken off. The viewer pages through the conversation's
+    // photos and clips together.
+    await Navigator.of(context).push(
+      mediaRoute<void>(
+        (_) => ChatMediaGalleryScreen(
+          chatId: widget.chatId ?? widget.message.chatId,
+          initialMessageId: widget.message.id,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return VisibilityDetector(
-      key: Key('video-${widget.message.id}'),
-      onVisibilityChanged: (info) => unawaited(_onVisibility(info)),
-      child: GestureDetector(
-        onTap: () => unawaited(_tap()),
-        onLongPress: widget.onLongPress,
-        child: _isCircle ? _circle() : _rectangle(),
-      ),
+    return GestureDetector(
+      onTap: () => unawaited(_tap()),
+      onLongPress: widget.onLongPress,
+      child: _isCircle ? _circle() : _rectangle(),
+    );
+  }
+
+  /// The first frame, filling its box, or nothing while it is being made.
+  Widget _frame(double drawnWidth) {
+    final frame = _poster?.frame;
+    if (frame == null) return const SizedBox.shrink();
+    return Image.file(
+      File(frame),
+      fit: BoxFit.cover,
+      // Decoded at the size it is drawn, like every photo in the chat.
+      cacheWidth: (drawnWidth * MediaQuery.devicePixelRatioOf(context)).round(),
+      gaplessPlayback: true,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
     );
   }
 
@@ -340,6 +291,19 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
               fit: StackFit.expand,
               children: [
                 ColoredBox(color: Colors.black.withValues(alpha: 0.45)),
+                // **Its first frame, not a camera icon on black** - asked for
+                // by name. Kept under the player until the clip has moved, so
+                // the picture does not blink out while the decoder opens - and
+                // not a frame longer: a circle plays at 60 fps, and an image
+                // hidden under the video is still drawn on every one of them.
+                if (!ready || progress <= 0)
+                  _frame(
+                    current
+                        ? VideoBubble.circleExpanded(
+                            MediaQuery.sizeOf(context).width,
+                          )
+                        : VideoBubble.circleIdle,
+                  ),
                 if (ready && player != null)
                   FittedBox(
                     // A circle is square and the camera is not, so the picture
@@ -352,22 +316,24 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
                       child: VideoPlayer(player),
                     ),
                   ),
-                if (!ready)
+                if (current && !ready)
                   Center(
-                    child: (current && !ready)
-                        ? SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: AppColors.brandPrimary,
-                            ),
-                          )
-                        : Icon(
-                            Icons.videocam_rounded,
-                            size: 30,
-                            color: Colors.white.withValues(alpha: 0.4),
-                          ),
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: AppColors.brandPrimary,
+                      ),
+                    ),
+                  )
+                else if (!ready && _poster?.frame == null)
+                  Center(
+                    child: Icon(
+                      Icons.videocam_rounded,
+                      size: 30,
+                      color: Colors.white.withValues(alpha: 0.4),
+                    ),
                   ),
                 if (!widget.message.isMine && !widget.message.voicePlayed)
                   Positioned(
@@ -392,7 +358,9 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
                     child: _Chip(
                       label: ready
                           ? _clock(playing ? left : total)
-                          : _size(widget.message.fileBytes),
+                          : _poster?.length != null
+                              ? _clock(_poster!.length!)
+                              : _size(widget.message.fileBytes),
                     ),
                   ),
                 ),
@@ -407,29 +375,23 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   // ---- the rectangular one ------------------------------------------------
 
   Widget _rectangle() {
-    final player = _player;
-    final ready = player != null && player.value.isInitialized;
-    final aspect = ready ? player.value.aspectRatio : 16 / 9;
-    final position = ready ? player.value.position : Duration.zero;
-    final total = ready ? player.value.duration : Duration.zero;
+    final aspect = _poster?.aspect ?? 16 / 9;
+    final length = _poster?.length;
 
     // The same two numbers a photo is drawn at — the width asked of the photo
     // bubble's own helper, the height of [VideoBubble.rectangleHeight].
     final width = photoBubbleWidth(context);
     final height = VideoBubble.rectangleHeight(width, aspect);
 
-    final playing = ready && player.value.isPlaying;
-
     // No rounding of its own. The bubble clips to its own corners now that a
     // clip reaches them, and a second, tighter radius inside that one drew a
     // visible sliver of bubble in each corner - the same note [_ImagePayload]
     // carries, for the same reason.
     //
-    // Laid out the way Telegram lays a clip out, from the screenshot that asked
-    // for it: the length and the sound in the top left corner, the three dots
-    // in the top right, the time in the bottom right (the bubble puts that one
-    // on). The film icon and the always-on play disc are gone; a paused clip
-    // shows its first frame and a small play mark, a playing one shows itself.
+    // A photo with a play mark on it: the first frame, the length in the top
+    // left corner the way Telegram puts it, the time in the bottom right (the
+    // bubble puts that one on). No three dots - a long press has the actions,
+    // and "remove the three dots on the video" was the report.
     return SizedBox(
       width: width,
       height: height,
@@ -437,99 +399,31 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
         fit: StackFit.expand,
         children: [
           ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-          if (ready)
-            // Filled, not fitted: the box is the photo's shape, not the
-            // camera's, and letterbox bars inside a bubble read as part of
-            // the message.
-            FittedBox(
-              fit: BoxFit.cover,
-              clipBehavior: Clip.hardEdge,
-              child: SizedBox(
-                width: player.value.size.width,
-                height: player.value.size.height,
-                child: VideoPlayer(player),
+          _frame(width),
+          Center(
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.42),
+                shape: BoxShape.circle,
               ),
-            ),
-          if (!playing)
-            Center(
-              child: _loading && _wantsPlay
-                  ? SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        color: AppColors.brandPrimary,
-                      ),
-                    )
-                  : Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.42),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        size: 30,
-                        color: Colors.white,
-                      ),
-                    ),
-            ),
-          if (ready && position > Duration.zero)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: LinearProgressIndicator(
-                value: total.inMilliseconds == 0
-                    ? 0
-                    : position.inMilliseconds / total.inMilliseconds,
-                minHeight: 2.5,
-                backgroundColor: Colors.white24,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(AppColors.brandPrimary),
-              ),
-            ),
-          Positioned(
-            left: 8,
-            top: 8,
-            child: GestureDetector(
-              // Its own target, so muting does not also pause.
-              behavior: HitTestBehavior.opaque,
-              onTap: ready ? () => unawaited(_toggleMute()) : null,
-              child: _Chip(
-                label: ready
-                    ? _clock(playing ? total - position : total)
-                    : _size(widget.message.fileBytes),
-                trailing: ready
-                    ? (_muted
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded)
-                    : null,
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                size: 30,
+                color: Colors.white,
               ),
             ),
           ),
-          if (widget.onMore != null)
-            Positioned(
-              right: 4,
-              top: 4,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapUp: (details) => widget.onMore!(details.globalPosition),
-                child: const SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: Center(
-                    child: Icon(
-                      Icons.more_vert_rounded,
-                      size: 20,
-                      color: Colors.white,
-                      shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
-                    ),
-                  ),
-                ),
-              ),
+          Positioned(
+            left: 8,
+            top: 8,
+            child: _Chip(
+              label: length != null
+                  ? _clock(length)
+                  : _size(widget.message.fileBytes),
             ),
+          ),
         ],
       ),
     );
@@ -582,10 +476,9 @@ class _RingPainter extends CustomPainter {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, this.trailing});
+  const _Chip({required this.label});
 
   final String label;
-  final IconData? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -596,23 +489,14 @@ class _Chip extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(9),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-          if (trailing != null) ...[
-            const SizedBox(width: 4),
-            Icon(trailing, size: 13, color: Colors.white),
-          ],
-        ],
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
       ),
     );
   }

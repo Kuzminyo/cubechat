@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,6 +50,7 @@ import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import '../../stickers/data/sticker_library.dart';
+import '../data/chat_scroll_memory.dart';
 import '../data/composer_panel.dart';
 import '../data/message_edit_target.dart';
 import '../data/photo_albums.dart';
@@ -1376,6 +1378,31 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     });
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _revealInitialMessage());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreScroll());
+  }
+
+  /// Back to where this conversation was left - see [ChatScrollMemory].
+  ///
+  /// Walked rather than jumped once: the list builds lazily, so its extent on
+  /// the first frame is a guess that grows as rows are laid out, and a single
+  /// jump past the guess is clamped short. A few frames of jumping to the same
+  /// place lands on it. Not when the chat was opened at a particular message -
+  /// that is a request to be somewhere else - and not against a finger that
+  /// has started scrolling meanwhile.
+  Future<void> _restoreScroll() async {
+    if (widget.initialMessageId != null) return;
+    final saved = ChatScrollMemory.of(widget.chatId);
+    if (saved == null) return;
+    for (var frame = 0; frame < 30; frame++) {
+      if (!mounted || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.userScrollDirection != ScrollDirection.idle) return;
+      final target =
+          saved.clamp(position.minScrollExtent, position.maxScrollExtent);
+      if ((position.pixels - target).abs() >= 1) _scroll.jumpTo(target);
+      if (position.maxScrollExtent >= saved) return;
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   @override
@@ -1397,6 +1424,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
     _smoothSendTimers.clear();
     _highlightTimer?.cancel();
+    if (_scroll.hasClients) {
+      ChatScrollMemory.save(widget.chatId, _scroll.offset);
+    }
     _scroll.removeListener(_onScrollChanged);
     _scroll.dispose();
     super.dispose();

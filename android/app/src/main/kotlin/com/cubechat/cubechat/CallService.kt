@@ -114,6 +114,7 @@ class CallService : Service() {
 
         fun stop(context: Context) {
             current = null
+            IncomingCall.callOver()
             try {
                 context.stopService(Intent(context, CallService::class.java))
             } catch (_: Exception) {

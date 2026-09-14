@@ -27,11 +27,10 @@ import java.lang.ref.WeakReference
  * the invite — the engine outlives the Activity, see [MainApplication] — and
  * rang a call screen nobody could see.
  *
- * Two surfaces, one notification. A `CATEGORY_CALL` notification with a
- * full-screen intent is what Android turns into [IncomingCallActivity] over the
- * lock screen or a sleeping display, and into a heads-up with Answer and
- * Decline on an unlocked one — the same split the dialler gets, decided by the
- * system rather than by guessing here.
+ * Two surfaces, one notification, and the system chooses between them the way
+ * it does for the dialler: a `CATEGORY_CALL` notification with a full-screen
+ * intent becomes [IncomingCallActivity] over the lock screen or a sleeping
+ * display, and the heads-up with Answer and Decline on a phone in use.
  *
  * Driven entirely from Dart through [CubechatCallPlugin]: only Dart can decrypt
  * the invite, so only Dart knows a call exists and whose it is.
@@ -49,6 +48,9 @@ object IncomingCall {
     const val EXTRA_TITLE = "callTitle"
     const val EXTRA_ANSWER = "callAnswer"
     const val EXTRA_DECLINE = "callDecline"
+    const val EXTRA_ONGOING = "callOngoing"
+    const val EXTRA_HANG_UP = "callHangUp"
+    const val EXTRA_SPEAKER = "callSpeaker"
 
     /**
      * Matches `CallTimings.noAnswer` in Dart. The system takes the notification
@@ -58,12 +60,26 @@ object IncomingCall {
     private const val TIMEOUT_MS = 45_000L
 
     /** Words from Dart, which owns the translations. */
-    data class Labels(val title: String, val answer: String, val decline: String)
+    data class Labels(
+        val title: String,
+        val answer: String,
+        val decline: String,
+        val ongoing: String = "",
+        val hangUp: String = "",
+        val speaker: String = "",
+    )
 
     /** The call on screen now, so a late dismiss for an older one is ignored. */
     @Volatile
     var shownKey: String? = null
         private set
+
+    /** Who is calling, for the call that gets answered without the app. */
+    @Volatile
+    private var shownName: String = ""
+
+    @Volatile
+    private var shownLabels: Labels? = null
 
     private var screen: WeakReference<IncomingCallActivity>? = null
 
@@ -96,6 +112,8 @@ object IncomingCall {
     ): Boolean {
         ensureChannel(context, labels.title)
         shownKey = key
+        shownName = name
+        shownLabels = labels
         avatar = picture
         val manager = NotificationManagerCompat.from(context)
         val fullScreen = canUseFullScreen(context)
@@ -104,6 +122,7 @@ object IncomingCall {
             .setImportant(true)
             .apply { picture?.let { setIcon(IconCompat.createWithBitmap(it)) } }
             .build()
+        val answer = answerIntent(context, key, name, labels)
         val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)
@@ -117,6 +136,10 @@ object IncomingCall {
             .addPerson(caller)
             .setContentIntent(screenIntent(context, key, name, labels))
             .setFullScreenIntent(screenIntent(context, key, name, labels), true)
+            // The round picture beside the name. CallStyle takes its picture
+            // from the Person, but some shades - MIUI's among them - draw the
+            // large icon instead, and that one was the square in the report.
+            .apply { picture?.let { setLargeIcon(it) } }
 
         // CallStyle is what draws the green and red buttons the dialler has.
         // Android 12+ refuses a CallStyle that is neither a foreground service
@@ -128,13 +151,13 @@ object IncomingCall {
                 NotificationCompat.CallStyle.forIncomingCall(
                     caller,
                     declineIntent(context, key),
-                    answerIntent(context, key),
+                    answer,
                 ),
             )
         } else {
             builder
                 .addAction(0, labels.decline, declineIntent(context, key))
-                .addAction(0, labels.answer, answerIntent(context, key))
+                .addAction(0, labels.answer, answer)
         }
 
         val notification = builder.build()
@@ -145,47 +168,25 @@ object IncomingCall {
             manager.notify(TAG, ID, notification)
             true
         } catch (_: SecurityException) {
-            // Notifications were refused. The screen below may still open.
             false
         }
-        // **The whole screen, not a banner, on an unlocked phone too.**
+        // **No screen of our own on a phone in use - the shade only.**
         //
-        // A full-screen intent only becomes a screen over the lock screen or a
-        // dark display; on a phone in use Android turns it into the heads-up,
-        // and "a notification with Answer and Decline is not convenient, it has
-        // to be a real screen" was the report on exactly that. Android lets an
-        // app open an Activity from the background only with the "appear on
-        // top" permission, which the user grants in settings - so with it the
-        // screen is opened directly, and without it the heads-up is what is
-        // left. The notification stays either way: it carries the ringtone, and
-        // it is what the lock screen uses.
-        // On MIUI its own "pop-up windows in the background" switch is what lets
-        // that start through, with or without Android's.
-        val mayOpen = canDrawOverlays(context) ||
-            (isXiaomiFamily() && miuiAllows(context, MIUI_BACKGROUND_START))
-        val opened = mayOpen && openScreen(context, key, name, labels)
-        return posted && fullScreen || opened
+        // 1045 opened [IncomingCallActivity] directly whenever "appear on top"
+        // was granted, so on an unlocked phone the call came up twice: the
+        // heads-up, and the whole screen behind it. "Remove the screen, leave
+        // only the shade" came back with a screenshot of exactly that. The
+        // full-screen intent above still gives the lock screen and a dark
+        // display their screen - that decision is the system's, as it is for
+        // the dialler - and nothing here second-guesses it any more. Which also
+        // means "appear on top" is no longer asked for at all.
+        return posted && fullScreen
     }
 
-    private fun openScreen(context: Context, key: String, name: String, labels: Labels): Boolean =
-        try {
-            context.startActivity(screenIntentFor(context, key, name, labels))
-            true
-        } catch (_: Exception) {
-            // Refused anyway - some vendors add their own gate on top of the
-            // permission. The heads-up is still there.
-            false
-        }
-
-    fun canDrawOverlays(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            android.provider.Settings.canDrawOverlays(context)
-
     /**
-     * Xiaomi, Redmi and Poco add two permissions of their own on top of
-     * Android's - "show on lock screen" and "open windows while running in the
-     * background" - and without them neither the full-screen intent nor a
-     * direct launch opens anything. They cannot be read from an app, only
+     * Xiaomi, Redmi and Poco add a permission of their own on top of Android's -
+     * "show on lock screen" - and without it the full-screen intent opens
+     * nothing over a locked phone. It cannot be granted by an app, only
      * pointed at.
      */
     fun isXiaomiFamily(): Boolean {
@@ -194,13 +195,10 @@ object IncomingCall {
     }
 
     /**
-     * MIUI's own switches, read where MIUI keeps them: two app-ops Android has
-     * no names for. 10020 is "show on lock screen", 10021 "open new windows
-     * while running in the background". Off by default for an app that did not
-     * come from Xiaomi's store, and with either off the call screen never opens
-     * over a locked phone - which is how "when the screen is locked, the call
-     * screen should open" was reported. True when this is not MIUI or the
-     * value cannot be read, so nobody is nagged about a switch they do not have.
+     * MIUI's own switches, read where MIUI keeps them: app-ops Android has no
+     * names for. 10020 is "show on lock screen". Off by default for an app that
+     * did not come from Xiaomi's store. True when this is not MIUI or the value
+     * cannot be read, so nobody is nagged about a switch they do not have.
      */
     fun miuiAllows(context: Context, op: Int): Boolean {
         if (!isXiaomiFamily()) return true
@@ -220,28 +218,78 @@ object IncomingCall {
     }
 
     const val MIUI_SHOW_WHEN_LOCKED = 10020
-    const val MIUI_BACKGROUND_START = 10021
 
     /** Take the call off screen: answered, declined, or over elsewhere. */
     fun dismiss(context: Context, key: String?) {
         if (key != null && shownKey != null && key != shownKey) return
         shownKey = null
-        avatar = null
         NotificationManagerCompat.from(context).cancel(TAG, ID)
         screen?.get()?.finishRinging()
     }
 
+    /** The call is over: a lock-screen call screen still showing it goes too. */
+    fun callOver() {
+        avatar = null
+        screen?.get()?.finishCall()
+    }
+
     /**
-     * Answer: open the app over whatever was on screen, and tell Dart.
+     * **Answered from the lock screen, and nothing asks for the unlock.**
      *
-     * An Activity intent rather than a broadcast, because answering is the one
-     * action that should bring the app forward — and Android 12 forbids a
-     * receiver from starting an Activity on a notification's behalf.
+     * "To take a call you have to unlock the phone, very inconvenient" was the
+     * report. Answer used to open the app, and the app is behind the lock, so
+     * Android put the PIN pad up first and the call waited behind it. Now the
+     * answer on a locked phone is a broadcast: the call is taken right there,
+     * its foreground service starts in the same moment - a notification action
+     * is one of the few things Android lets start a microphone service from the
+     * background - and the call goes on in the shade with Hang up. The app
+     * opens when the phone is unlocked and the call is tapped.
+     *
+     * On a phone that is already unlocked, Answer still opens the app, which
+     * is what somebody holding it expects. Which of the two is chosen when the
+     * call starts ringing.
      */
-    fun answerIntent(context: Context, key: String): PendingIntent {
+    fun answerInBackground(context: Context, key: String) {
+        if (key != shownKey) return
+        val labels = shownLabels
+        CallService.show(
+            context,
+            CallService.State(
+                key = key,
+                name = shownName,
+                avatar = avatar,
+                since = System.currentTimeMillis(),
+                title = labels?.ongoing.orEmpty(),
+                hangUp = labels?.hangUp.orEmpty(),
+            ),
+        )
+        CubechatCallPlugin.instance?.deliver("answer", key)
+        dismiss(context, key)
+    }
+
+    private fun answerIntent(
+        context: Context,
+        key: String,
+        name: String,
+        labels: Labels,
+    ): PendingIntent {
+        if (isLocked(context)) {
+            return PendingIntent.getBroadcast(
+                context,
+                REQUEST_ANSWER,
+                Intent(context, IncomingCallReceiver::class.java)
+                    .setAction(ACTION_ANSWER)
+                    .putExtra(EXTRA_KEY, key),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+        // An Activity rather than a broadcast here, because answering on a
+        // phone in use should bring the app forward — and Android 12 forbids a
+        // receiver from starting an Activity on a notification's behalf.
         val intent = Intent(context, MainActivity::class.java)
             .setAction(ACTION_ANSWER)
             .putExtra(EXTRA_KEY, key)
+            .putExtra(EXTRA_NAME, name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return PendingIntent.getActivity(
             context,
@@ -275,6 +323,9 @@ object IncomingCall {
         .putExtra(EXTRA_TITLE, labels.title)
         .putExtra(EXTRA_ANSWER, labels.answer)
         .putExtra(EXTRA_DECLINE, labels.decline)
+        .putExtra(EXTRA_ONGOING, labels.ongoing)
+        .putExtra(EXTRA_HANG_UP, labels.hangUp)
+        .putExtra(EXTRA_SPEAKER, labels.speaker)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
 
     private fun screenIntent(

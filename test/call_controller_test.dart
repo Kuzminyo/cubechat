@@ -547,12 +547,40 @@ void main() {
       expect(events, ['ring incoming', 'ring stop']);
     });
 
-    test('never rings for our own outgoing call', () async {
+    test('our own outgoing call hears the other phone ring, not a ringtone',
+        () async {
       await call.dial('peer');
+      await Future<void>.delayed(Duration.zero);
+      expect(events.where((e) => e.startsWith('ring')), isEmpty,
+          reason: 'nothing while the invite is still on its way');
       receive(CallSignal.ringing(dialledId()));
       await Future<void>.delayed(Duration.zero);
-      expect(events.where((e) => e.startsWith('ring')), isEmpty);
+      expect(events.where((e) => e.startsWith('ring')), ['ring ringback']);
       call.hangUp();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(events.where((e) => e.startsWith('ring')),
+          ['ring ringback', 'ring stop', 'ring ended']);
+    });
+
+    test('a call that was talking ends with the end tone, once', () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.talking);
+      receive(CallSignal.hangup(callId: dialledId(), reason: CallEndReason.hungUp));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      call.dismiss();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(events.where((e) => e == 'ring ended'), hasLength(1));
+    });
+
+    test('a call that only rang here and was declined makes no end tone',
+        () async {
+      receive(inviteFor(id(11)));
+      await Future<void>.delayed(Duration.zero);
+      call.decline();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(events, ['ring incoming', 'ring stop']);
     });
   });
 

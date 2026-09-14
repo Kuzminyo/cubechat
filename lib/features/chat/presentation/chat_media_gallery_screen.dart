@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/identity/anon_name.dart';
 import '../../../core/identity/nickname_controller.dart';
@@ -19,6 +20,7 @@ import '../data/chat_navigation.dart';
 import '../../../core/util/media_storage.dart';
 import '../data/conversation_settings_controller.dart';
 import '../data/messages_controller.dart';
+import '../data/video_frames.dart';
 import '../models/message.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../stickers/data/sticker_library.dart';
@@ -27,9 +29,10 @@ import 'widgets/photo_flight.dart';
 import 'widgets/media_photo_surface.dart';
 import '../../../core/util/motion.dart';
 
-/// Telegram-style media browser: every image in a conversation, full-screen and
-/// swipeable, with pinch-zoom, save-to-gallery and share. Opened from an image
-/// bubble at that image's position; swiping pages through the rest.
+/// Telegram-style media browser: every photo and clip in a conversation,
+/// full-screen and swipeable, with pinch-zoom, save-to-gallery and share.
+/// Opened from a photo or a clip at its own position; swiping pages through
+/// the rest, and a tap on a clip plays or pauses it.
 class ChatMediaGalleryScreen extends ConsumerStatefulWidget {
   const ChatMediaGalleryScreen({
     super.key,
@@ -114,12 +117,32 @@ class _ChatMediaGalleryScreenState
   /// arrives mid-view; still enough for the common "look through photos" flow.
   late final List<Message> _images = _collectImages();
 
+  /// A clip out of the gallery, not a circle: circles have their own player
+  /// and their own island.
+  static bool _isClip(Message m) =>
+      m.kind == MessageKind.file &&
+      !m.isCircle &&
+      !m.viewOnce &&
+      m.text.toLowerCase().startsWith('video/') &&
+      MediaPaths.existsOrNull(m.filePath);
+
+  /// Decided once with the list: [_isClip] asks the disk.
+  late final Set<String> _clipIds = {
+    for (final m in _images)
+      if (m.kind == MessageKind.file) m.id,
+  };
+
+  bool _clip(Message m) => _clipIds.contains(m.id);
+
+  String? _pathOf(Message m) => _clip(m) ? m.filePath : m.imagePath;
+
   List<Message> _collectImages() {
     final msgs = ref.read(messagesControllerProvider)[widget.chatId] ??
         const <Message>[];
     return msgs
         .where(
           (m) =>
+              _isClip(m) ||
               m.kind == MessageKind.image &&
               // Never reachable from the browser, even indirectly by paging
               // into it from a neighbouring photo. This screen can share and
@@ -157,7 +180,8 @@ class _ChatMediaGalleryScreenState
   final _shareButtonKey = GlobalKey();
 
   Future<void> _share() async {
-    final path = _current?.imagePath;
+    final current = _current;
+    final path = current == null ? null : _pathOf(current);
     if (path == null) return;
     final anchor = shareAnchorFor(context, key: _shareButtonKey);
     // "Send it to Telegram" means Telegram opens, and on iOS the share sheet
@@ -208,12 +232,26 @@ class _ChatMediaGalleryScreenState
 
   Future<void> _save() async {
     final msg = _current;
-    final path = msg?.imagePath;
+    final path = msg == null ? null : _pathOf(msg);
     if (path == null || _saving) return;
     setState(() => _saving = true);
     try {
+      if (_clip(msg!)) {
+        final dot = path.lastIndexOf('.');
+        final result = await SaverGallery.saveFile(
+          filePath: path,
+          fileName:
+              'cubechat_${msg.id}${dot < 0 ? '.mp4' : path.substring(dot)}',
+          skipIfExists: false,
+        );
+        _toast(
+          result.isSuccess ? 'Saved to gallery' : 'Save failed',
+          ok: result.isSuccess,
+        );
+        return;
+      }
       final bytes = await File(path).readAsBytes();
-      final ext = _extFor(msg!.imageMime, path);
+      final ext = _extFor(msg.imageMime, path);
       final result = await SaverGallery.saveImage(
         bytes,
         fileName: 'cubechat_${msg.id}$ext',
@@ -389,11 +427,14 @@ class _ChatMediaGalleryScreenState
                     // stays offered even when sharing is restricted: the
                     // picture does not leave the conversation, it stays in it
                     // and becomes reusable.
-                    PopupMenuItem(
-                      value: 'sticker',
-                      child:
-                          _menuRow(Icons.emoji_emotions_rounded, t.stickerKeep),
-                    ),
+                    if (current == null || !_clip(current))
+                      PopupMenuItem(
+                        value: 'sticker',
+                        child: _menuRow(
+                          Icons.emoji_emotions_rounded,
+                          t.stickerKeep,
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -417,6 +458,20 @@ class _ChatMediaGalleryScreenState
                     onPageChanged: (i) => setState(() => _index = i),
                     itemBuilder: (_, i) {
                       final m = _images[i];
+                      if (_clip(m)) {
+                        return MediaPhotoSurface(
+                          key: ValueKey(m.id),
+                          onDismissUpdate: _onDragUpdate,
+                          onDismissEnd: _onDragEnd,
+                          onDismissCancel: () => setState(() => _dragY = 0),
+                          onPageUpdate: _onPageDrag,
+                          onPageEnd: _onPageEnd,
+                          child: _ClipPage(
+                            path: m.filePath!,
+                            active: i == _index,
+                          ),
+                        );
+                      }
                       return MediaPhotoSurface(
                         key: ValueKey(m.id),
                         onDismissUpdate: _onDragUpdate,
@@ -518,4 +573,209 @@ String _extFor(String? mime, String path) {
     if (lower.endsWith(e)) return e;
   }
   return '.jpg';
+}
+
+/// One clip, full screen: its first frame at once, then the clip itself,
+/// playing from the moment its page is the one on screen. A tap plays or
+/// pauses it; paging away pauses it and hands the decoder back.
+class _ClipPage extends StatefulWidget {
+  const _ClipPage({required this.path, required this.active});
+
+  final String path;
+  final bool active;
+
+  @override
+  State<_ClipPage> createState() => _ClipPageState();
+}
+
+class _ClipPageState extends State<_ClipPage> {
+  VideoPlayerController? _player;
+  bool _failed = false;
+
+  /// Stopped by a tap rather than by the clip reaching its end.
+  bool _pausedByTap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) unawaited(_open());
+  }
+
+  @override
+  void didUpdateWidget(_ClipPage old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _pausedByTap = false;
+      final player = _player;
+      if (player == null) {
+        unawaited(_open());
+      } else {
+        unawaited(player.play());
+      }
+    } else if (!widget.active && old.active) {
+      unawaited(_player?.pause());
+    }
+  }
+
+  Future<void> _open() async {
+    if (_player != null || _failed) return;
+    final player = VideoPlayerController.file(File(widget.path));
+    try {
+      await player.initialize();
+      if (!mounted) {
+        await player.dispose();
+        return;
+      }
+      player.addListener(_onTick);
+      setState(() => _player = player);
+      if (widget.active && !_pausedByTap) await player.play();
+    } catch (_) {
+      await player.dispose();
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  bool _wasPlaying = false;
+
+  /// Only what the controls show: whether it plays, and where it is to the
+  /// quarter second. The texture repaints itself; rebuilding this page at the
+  /// player's own rate for a progress bar is the cost it does not need.
+  void _onTick() {
+    final value = _player?.value;
+    if (value == null || !mounted) return;
+    final quarter = value.position.inMilliseconds ~/ 250;
+    if (value.isPlaying != _wasPlaying || quarter != _lastQuarter) {
+      _wasPlaying = value.isPlaying;
+      _lastQuarter = quarter;
+      setState(() {});
+    }
+  }
+
+  int _lastQuarter = -1;
+
+  Future<void> _toggle() async {
+    final player = _player;
+    if (player == null) {
+      _pausedByTap = false;
+      await _open();
+      return;
+    }
+    if (player.value.isPlaying) {
+      _pausedByTap = true;
+      await player.pause();
+    } else {
+      _pausedByTap = false;
+      if (player.value.position >= player.value.duration) {
+        await player.seekTo(Duration.zero);
+      }
+      await player.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.removeListener(_onTick);
+    unawaited(_player?.dispose());
+    super.dispose();
+  }
+
+  static String _clock(Duration d) {
+    final s = d.inSeconds.clamp(0, 359999);
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = _player;
+    final ready = player != null && player.value.isInitialized;
+    final poster = VideoFrames.peek(widget.path);
+    final playing = ready && player.value.isPlaying;
+    final position = ready ? player.value.position : Duration.zero;
+    final total = ready ? player.value.duration : (poster?.length ?? Duration.zero);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(_toggle()),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: ready
+                ? AspectRatio(
+                    aspectRatio: player.value.aspectRatio,
+                    child: VideoPlayer(player),
+                  )
+                : poster?.frame != null
+                    ? Image.file(File(poster!.frame!), fit: BoxFit.contain)
+                    : const SizedBox.shrink(),
+          ),
+          if (!playing)
+            Center(
+              child: _failed
+                  ? Icon(
+                      Icons.broken_image_rounded,
+                      color: AppColors.textOnGlassDim,
+                      size: 56,
+                    )
+                  : Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        size: 44,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          if (ready)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.paddingOf(context).bottom + 20,
+              child: Row(
+                children: [
+                  Text(
+                    _clock(position),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: total.inMilliseconds == 0
+                            ? 0
+                            : (position.inMilliseconds / total.inMilliseconds)
+                                .clamp(0.0, 1.0),
+                        minHeight: 3,
+                        backgroundColor: Colors.white24,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _clock(total),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

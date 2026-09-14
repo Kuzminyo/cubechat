@@ -91,6 +91,48 @@ void main() {
       );
     }
   });
+
+  group('where the actions go', () {
+    SpotlightLayout at(double top, double height) => SpotlightLayout.of(
+          anchor: Rect.fromLTWH(20, top, 300, height),
+          safeTop: 50,
+          safeBottom: 800,
+          menuHeight: 300,
+          stripHeight: 62,
+          gap: 10,
+        );
+
+    test('a message high on the screen keeps its place, actions below', () {
+      final layout = at(150, 60);
+      expect(layout.menuAbove, isFalse);
+      expect(layout.bubbleTop, 150);
+      expect(layout.menuTop, 220);
+      expect(layout.scale, 1);
+    });
+
+    // "If a message, photo or video is at the bottom and you select it, the
+    // actions should be on top": they used to go below it whatever, and a
+    // message near the bottom was pushed up the screen to make room.
+    test('a message low on the screen keeps its place, actions above', () {
+      final layout = at(700, 60);
+      expect(layout.menuAbove, isTrue);
+      expect(layout.bubbleTop, 700);
+      expect(layout.menuTop, 700 - 10 - 300);
+      expect(layout.stripTop, layout.menuTop - 62);
+    });
+
+    test('a photo taller than the room beside its actions is drawn smaller',
+        () {
+      final layout = at(300, 600);
+      expect(layout.scale, lessThan(1));
+      final bottom = layout.menuAbove
+          ? layout.bubbleTop + 600 * layout.scale
+          : layout.menuTop + 300;
+      final top = layout.stripTop;
+      expect(top, greaterThanOrEqualTo(50 - 0.001));
+      expect(bottom, lessThanOrEqualTo(800 + 0.001));
+    });
+  });
 }
 
 /// Opens the spotlight without awaiting it — the route stays up for the test to

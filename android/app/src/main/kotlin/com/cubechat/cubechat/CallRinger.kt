@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -51,6 +52,64 @@ object CallRinger {
     fun stop() {
         main.post { stopNow() }
     }
+
+    private var tones: ToneGenerator? = null
+
+    /**
+     * The long tones a caller hears while the other phone rings.
+     *
+     * `ToneGenerator` on the voice-call stream, the dialler's own source: it
+     * is synthesised in the media server, follows the in-call volume and the
+     * route the call is using, and - unlike a player - changes neither the
+     * audio mode nor the focus. That is the whole reason there was no ringback
+     * before: the app's player writes the mode process-wide and would have
+     * pulled the audio out from under WebRTC as the call connected (see
+     * `AudioCallTones`). The country's own cadence comes from the tone itself.
+     */
+    fun ringback() {
+        main.post {
+            stopNow()
+            generator()?.startTone(ToneGenerator.TONE_SUP_RINGTONE)
+        }
+    }
+
+    /**
+     * Three short tones when a call ends, once: the "line dropped" sound.
+     * Congestion's cadence, 250 ms on and off, is the short beeping people
+     * expect from a phone whose call is over.
+     */
+    fun ended() {
+        main.post {
+            stopNow()
+            generator()?.startTone(ToneGenerator.TONE_SUP_CONGESTION, END_TONE_MS)
+            main.postDelayed(releaseTones, END_TONE_MS + 200L)
+        }
+    }
+
+    private val releaseTones = Runnable { releaseGenerator() }
+
+    private fun generator(): ToneGenerator? {
+        tones?.let { return it }
+        return try {
+            ToneGenerator(AudioManager.STREAM_VOICE_CALL, TONE_VOLUME).also { tones = it }
+        } catch (_: RuntimeException) {
+            // The media server refused a generator - it has a small pool. A
+            // silent ringback is not worth failing the call over.
+            null
+        }
+    }
+
+    private fun releaseGenerator() {
+        try {
+            tones?.stopTone()
+            tones?.release()
+        } catch (_: Exception) {
+        }
+        tones = null
+    }
+
+    private const val END_TONE_MS = 1400
+    private const val TONE_VOLUME = 80
 
     private fun playTone(context: Context) {
         try {
@@ -105,6 +164,8 @@ object CallRinger {
 
     private fun stopNow() {
         main.removeCallbacks(replay)
+        main.removeCallbacks(releaseTones)
+        releaseGenerator()
         try {
             ringtone?.stop()
         } catch (_: Exception) {

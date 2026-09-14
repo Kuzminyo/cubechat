@@ -96,8 +96,8 @@ class FileReassembler {
     required this.workDir,
     this.staleAfter = const Duration(minutes: 10),
     this.maxPendingTransfers = 4,
-    this.maxBytesPerTransfer = 64 * 1024 * 1024,
-    this.maxBytesOnDisk = 128 * 1024 * 1024,
+    this.maxBytesPerTransfer = 256 * 1024 * 1024,
+    this.maxBytesOnDisk = 512 * 1024 * 1024,
   });
 
   /// Scratch directory for partial transfers. Injected rather than resolved
@@ -122,9 +122,10 @@ class FileReassembler {
 
   /// Ceiling across every partial transfer together, so the caps above cannot
   /// be multiplied out by opening more of them. Two of the largest at once,
-  /// rather than [maxPendingTransfers] × the cap — four concurrent 64 MB
-  /// transfers is a quarter of a gigabyte of scratch space a stranger can make
-  /// us hold.
+  /// rather than [maxPendingTransfers] × the cap — four concurrent 256 MB
+  /// transfers is a gigabyte of scratch space a stranger can make us hold.
+  /// Raised with the sender's ceiling in 1047; see
+  /// [MessagingService.maxFileBytesRelay].
   final int maxBytesOnDisk;
 
   final Map<String, _PendingFile> _pending = <String, _PendingFile>{};

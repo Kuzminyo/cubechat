@@ -172,10 +172,13 @@ class CallController extends ChangeNotifier {
   void _updateOngoing() {
     final id = _machine.callId;
     final key = id == null ? null : _key(id);
+    // From the moment Answer is pressed, not from when the answer is ready:
+    // the microphone opens while the answer is being prepared, and on a phone
+    // answered from the lock screen the service is what lets it.
     final on = !_disposed &&
         key != null &&
         _machine.isLive &&
-        phase != CallPhase.incoming;
+        (phase != CallPhase.incoming || preparing);
     if (!on) {
       final shown = _ongoingKey;
       if (shown == null) return;
@@ -215,7 +218,17 @@ class CallController extends ChangeNotifier {
     // CallKit rings on its own, on screen or not; then the app must not ring
     // as well.
     final systemRings = surface.ringsInForeground;
-    _updateTone(ringing && onScreen && !systemRings ? CallTone.incoming : null);
+    // The caller hears the other phone ring once it says it is ringing - not
+    // while the invite is still on its way, when nobody may be there at all.
+    final ringback = !_disposed && phase == CallPhase.ringing;
+    _updateTone(
+      ringing && onScreen && !systemRings
+          ? CallTone.incoming
+          : ringback
+              ? CallTone.ringback
+              : null,
+    );
+    _updateEndTone();
     _updateSurface(
       ringing: ringing,
       onScreen: onScreen,
@@ -237,6 +250,42 @@ class CallController extends ChangeNotifier {
         }
       } catch (e) {
         _log('ringtone: $e');
+      }
+    })();
+  }
+
+  /// The call this phone was *in* - placing it, or past answering it - so its
+  /// end can be heard. A call that only rang here and stopped is not one: the
+  /// ringtone stopping says that already.
+  String? _joinedKey;
+
+  /// A few short tones when a call that was on goes off, the way a phone
+  /// says the line dropped. Queued behind the audio being released, so it is
+  /// played on a line WebRTC has let go of rather than under it.
+  void _updateEndTone() {
+    final id = _machine.callId;
+    final key = id == null ? null : _key(id);
+    final joined = !_disposed &&
+        _machine.isLive &&
+        key != null &&
+        (phase != CallPhase.incoming || preparing);
+    if (joined) {
+      _joinedKey = key;
+      return;
+    }
+    if (_joinedKey == null || (_machine.isLive && key == _joinedKey)) return;
+    _joinedKey = null;
+    if (_disposed) return;
+    _tone = null;
+    final previous = _toneWork;
+    final released = _released;
+    _toneWork = (() async {
+      await previous;
+      await released;
+      try {
+        await tones.play(CallTone.ended);
+      } catch (e) {
+        _log('end tone: $e');
       }
     })();
   }
@@ -321,6 +370,8 @@ class CallController extends ChangeNotifier {
       case IncomingCallActionKind.answer:
         // Answered here already: CallKit echoing the app's own answer back.
         if (ringingHere && !preparing) unawaited(answer());
+      case IncomingCallActionKind.speaker:
+        if (!ringingHere) unawaited(toggleSpeaker());
       case IncomingCallActionKind.decline:
       case IncomingCallActionKind.end:
         // CallKit has one red button for both: decline while it rings, hang
@@ -901,6 +952,7 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
           decline: t.callDecline,
           ongoing: t.callVoice,
           hangUp: t.callEnd,
+          speaker: t.callSpeaker,
         );
       },
       onVoipToken: () =>

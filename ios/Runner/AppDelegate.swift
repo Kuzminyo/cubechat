@@ -1,3 +1,4 @@
+import AVFoundation
 import BackgroundTasks
 import CoreLocation
 import Flutter
@@ -149,6 +150,63 @@ import UserNotifications
         }
       }
       locationChannel = location
+
+      // The first frame of a video as a small JPEG, for a clip or a circle
+      // drawn in the chat before it is played. Android's twin is
+      // VideoFramePlugin.kt; it explains why this is not a paused player.
+      FlutterMethodChannel(
+        name: "cubechat/video_frame",
+        binaryMessenger: messenger
+      ).setMethodCallHandler { call, result in
+        guard call.method == "frame" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        guard let args = call.arguments as? [String: Any],
+              let path = args["path"] as? String,
+              let out = args["out"] as? String
+        else {
+          result(nil)
+          return
+        }
+        let side = (args["maxSide"] as? NSNumber)?.doubleValue ?? 480
+        DispatchQueue.global(qos: .userInitiated).async {
+          let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+          let seconds = CMTimeGetSeconds(asset.duration)
+          let durationMs: Any = seconds.isFinite ? Int(seconds * 1000) : NSNull()
+          let target = URL(fileURLWithPath: out)
+          var written = FileManager.default.fileExists(atPath: out)
+          let generator = AVAssetImageGenerator(asset: asset)
+          generator.appliesPreferredTrackTransform = true
+          generator.maximumSize = CGSize(width: side, height: side)
+          if !written,
+             let image = try? generator.copyCGImage(at: .zero, actualTime: nil),
+             let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.82)
+          {
+            try? FileManager.default.createDirectory(
+              at: target.deletingLastPathComponent(),
+              withIntermediateDirectories: true
+            )
+            written = (try? data.write(to: target, options: .atomic)) != nil
+          }
+          // The shape it is shown in, upright: portrait is recorded as
+          // landscape with a transform.
+          var width: Any = NSNull()
+          var height: Any = NSNull()
+          if let track = asset.tracks(withMediaType: .video).first {
+            let upright = track.naturalSize.applying(track.preferredTransform)
+            width = Int(abs(upright.width))
+            height = Int(abs(upright.height))
+          }
+          let answer: [String: Any] = [
+            "frame": written,
+            "durationMs": durationMs,
+            "width": width,
+            "height": height,
+          ]
+          DispatchQueue.main.async { result(answer) }
+        }
+      }
 
       // What this install actually *is*, asked from inside it.
       //

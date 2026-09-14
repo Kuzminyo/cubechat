@@ -7,10 +7,16 @@ import '../../../core/util/audio_session.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 
-/// The sounds a call makes before anybody is talking.
+/// The sounds a call makes when nobody is talking.
 enum CallTone {
   /// This phone is being called.
   incoming,
+
+  /// The other phone is ringing: the long tones a caller hears.
+  ringback,
+
+  /// The call just ended: a few short tones, once. Stops on its own.
+  ended,
 }
 
 /// Plays and stops [CallTone]s. Injected so the controller can be tested with
@@ -78,6 +84,11 @@ class AudioCallTones implements CallTones {
 
   @override
   Future<void> play(CallTone tone) async {
+    // The caller's tones stay out of this player, for the reason above: they
+    // play while WebRTC owns the audio session. Android plays them through
+    // `ToneGenerator` instead, which touches neither the mode nor the focus -
+    // see `CallRinger.kt`.
+    if (tone != CallTone.incoming) return;
     if (_playing == tone) return;
     await stop();
     if (!PlatformInfo.isMobile) return;

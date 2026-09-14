@@ -113,12 +113,13 @@ void main() {
         reason: 'the protocol caps the chunk count too');
     expect(
       publishes,
-      lessThanOrEqualTo(2048),
+      lessThanOrEqualTo(4200),
       reason: 'every chunk is one publish and one round trip. This used to be '
           'a few hundred because a single rate-limited refusal threw the whole '
-          'transfer away; delivery retries and paces into a relay that pushes '
-          'back now, so the budget is what is polite to ask of somebody '
-          "else's server rather than what survives one bad answer",
+          'transfer away, then 2048 as what was polite to ask of somebody '
+          "else's server. The lane's first relay is our own now and a chunk "
+          'is sent when any relay takes it, so the budget is what our relay '
+          'carries - see MessagingService.maxFileBytesRelay',
     );
     // The number people ask for, and why it is not an option. A relay is not a
     // file host: it prunes, it caps event size, and it throttles a burst. No

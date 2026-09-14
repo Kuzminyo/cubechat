@@ -119,22 +119,15 @@ class _Spotlight extends StatelessWidget {
         actions.where((a) => a.separated).length +
         12 +
         (details == null ? 0 : 46);
-    final wanted = _stripHeight + _gap + anchor.height + _gap + menuHeight;
-
-    // Where the message sits once everything around it has been given room.
-    //
-    // Its own place, if the strip fits above and the menu below. Otherwise the
-    // whole group is slid just far enough to fit, so a message near either edge
-    // of the screen still gets both — and a conversation taller than the screen
-    // gets the message pinned where it can be seen rather than pushed off it.
-    var bubbleTop = anchor.top;
-    final topLimit = safeTop + _stripHeight + _gap;
-    final bottomLimit = safeBottom - menuHeight - _gap - anchor.height;
-    if (wanted <= safeBottom - safeTop) {
-      bubbleTop = bubbleTop.clamp(topLimit, bottomLimit);
-    } else {
-      bubbleTop = topLimit;
-    }
+    final layout = SpotlightLayout.of(
+      anchor: anchor,
+      safeTop: safeTop,
+      safeBottom: safeBottom,
+      menuHeight: menuHeight,
+      stripHeight: reactions.isEmpty ? 0 : _stripHeight + _gap,
+      gap: _gap,
+    );
+    final bubbleTop = layout.bubbleTop;
 
     final curved = CurvedAnimation(
       parent: animation,
@@ -211,8 +204,8 @@ class _Spotlight extends StatelessWidget {
               child: Opacity(
                 opacity: t,
                 child: Transform.scale(
-                  scale: 0.97 + 0.03 * t,
-                  alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                  scale: layout.scale * (0.97 + 0.03 * t),
+                  alignment: mine ? Alignment.topRight : Alignment.topLeft,
                   child: GestureDetector(
                     onTap: close,
                     child: AbsorbPointer(child: bubble),
@@ -226,7 +219,7 @@ class _Spotlight extends StatelessWidget {
               Positioned(
                 left: 12,
                 right: 12,
-                top: bubbleTop - _gap - _stripHeight,
+                top: layout.stripTop,
                 child: _Rise(
                   t: t,
                   from: 12,
@@ -239,15 +232,16 @@ class _Spotlight extends StatelessWidget {
                 ),
               ),
 
-            // The actions, below it.
+            // The actions, below it - or above it, for a message low on the
+            // screen. See [SpotlightLayout].
             Positioned(
               left: mine ? null : 12,
               right: mine ? 12 : null,
-              top: bubbleTop + anchor.height + _gap,
+              top: layout.menuTop,
               width: 232,
               child: _Rise(
                 t: t,
-                from: -12,
+                from: layout.menuAbove ? 12 : -12,
                 child: _ActionSheet(
                   actions: actions,
                   details: details,
@@ -261,6 +255,89 @@ class _Spotlight extends StatelessWidget {
       },
     );
   }
+}
+
+/// Where the reactions, the message and the actions go, for a message held
+/// at [anchor].
+///
+/// **The actions go above a message that is low on the screen.** They were
+/// always drawn under it, and the group was slid up to make room - which a
+/// message near the bottom of the chat, above all a photo or a clip, could not
+/// be slid far enough for: the list ran off the bottom of the screen, or the
+/// message was pushed away from where the finger was. "If a message, photo or
+/// video is at the bottom and you select it, the actions should be on top,
+/// with the blur" was the report. Both arrangements are measured and the one
+/// that moves the message least wins, the way Telegram decides.
+///
+/// And a message too tall to fit beside its actions at all - a portrait photo
+/// is most of a screen - is drawn smaller rather than pushed off it.
+@immutable
+class SpotlightLayout {
+  const SpotlightLayout({
+    required this.bubbleTop,
+    required this.menuTop,
+    required this.stripTop,
+    required this.scale,
+    required this.menuAbove,
+  });
+
+  factory SpotlightLayout.of({
+    required Rect anchor,
+    required double safeTop,
+    required double safeBottom,
+    required double menuHeight,
+    // The reactions and the gap under them; zero when there are none.
+    required double stripHeight,
+    required double gap,
+  }) {
+    final room = safeBottom - safeTop;
+    final around = stripHeight + menuHeight + gap;
+    final scale =
+        anchor.height <= 0 ? 1.0 : ((room - around) / anchor.height).clamp(0.35, 1.0);
+    final height = anchor.height * scale;
+
+    double clampTop(double lower, double upper) =>
+        upper < lower ? lower : anchor.top.clamp(lower, upper);
+
+    // Reactions, message, actions - top to bottom.
+    final belowTop = clampTop(
+      safeTop + stripHeight,
+      safeBottom - menuHeight - gap - height,
+    );
+    // Reactions, actions, message.
+    final aboveTop = clampTop(
+      safeTop + stripHeight + menuHeight + gap,
+      safeBottom - height,
+    );
+    final above = (aboveTop - anchor.top).abs() < (belowTop - anchor.top).abs();
+    if (above) {
+      final menuTop = aboveTop - gap - menuHeight;
+      return SpotlightLayout(
+        bubbleTop: aboveTop,
+        menuTop: menuTop,
+        stripTop: menuTop - stripHeight,
+        scale: scale,
+        menuAbove: true,
+      );
+    }
+    return SpotlightLayout(
+      bubbleTop: belowTop,
+      menuTop: belowTop + height + gap,
+      stripTop: belowTop - stripHeight,
+      scale: scale,
+      menuAbove: false,
+    );
+  }
+
+  final double bubbleTop;
+  final double menuTop;
+
+  /// Top of the reaction strip, when there is one.
+  final double stripTop;
+
+  /// How much the message is shrunk to fit; 1 almost always.
+  final double scale;
+  final bool menuAbove;
 }
 
 /// Fades in while sliding [from] logical pixels into place.

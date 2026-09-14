@@ -80,15 +80,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callRouteHeadphones => 'Headphones';
 
   @override
-  String get callFullScreenTitle => 'Calls full screen';
+  String get callFullScreenTitle => 'Calls on the lock screen';
 
   @override
   String get callFullScreenBody =>
-      'Allow Cubechat to appear over other apps, so an incoming call opens its own screen the way the phone app does, not just a notification.';
+      'Allow an incoming call to show on the locked screen, so it can be answered without unlocking.';
 
   @override
   String get callFullScreenXiaomi =>
-      'On Xiaomi, Redmi and Poco, also turn on “Show on lock screen” and “Display pop-up windows while running in the background” under Other permissions.';
+      'Xiaomi, Redmi and Poco do not let apps turn this on themselves: turn on “Show on lock screen” under Other permissions.';
 
   @override
   String get callFullScreenAllow => 'Allow';

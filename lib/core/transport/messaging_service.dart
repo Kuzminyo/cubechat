@@ -1640,7 +1640,19 @@ class MessagingService {
   /// Delivery rides out a refusal now ([_deliverMediaFrameRetrying]) instead of
   /// failing the whole file on the first one, which is what makes a transfer
   /// this size land at all.
-  static const int maxFileBytesRelay = 64 * 1024 * 1024;
+  ///
+  /// **256 MiB since build 1047, up from 64** - "raise the limit for sending
+  /// files over the internet" was the ask, and a minute of phone video is past
+  /// 64 MiB. What changed since 2048 publishes was the polite ceiling is whose
+  /// server carries it: the lane's first relay is ours (relay.cubechat.tech,
+  /// a 16 GB map on a disk with 21 GB free, media expiring after a fortnight -
+  /// `relay/deploy/strfry.conf`), and a chunk counts as sent when any relay on
+  /// the lane takes it, so a public relay throttling the burst costs its copy,
+  /// not the transfer. 4161 publishes; still inside [FileChunk.maxChunks].
+  ///
+  /// A phone on a build before 1047 reassembles at most 64 MiB and drops a
+  /// larger file part way through. Both ends need the update for the new size.
+  static const int maxFileBytesRelay = 256 * 1024 * 1024;
 
   /// Send [file] as-is, keeping its name.
   ///
@@ -1686,7 +1698,13 @@ class MessagingService {
     }
 
     final size = await file.length();
-    final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
+    // Past what the mesh can carry, straight to the internet when it is there.
+    // A Bluetooth link to *anyone* used to put the whole file on the mesh's
+    // 32 MiB ceiling - so a phone that happened to be near another one could
+    // not send over the internet what it could send a minute later, alone.
+    final meshCarries = size <= maxFileBytesMesh;
+    final relayOnly =
+        (!_hasAnyLink || !meshCarries) && _relayClient?.isConnected == true;
     final cap = relayOnly ? maxFileBytesRelay : maxFileBytesMesh;
     if (size > cap) {
       throw FileTooLarge(size: size, cap: cap, relayOnly: relayOnly);
