@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 8 September 2026**
+**Last updated: 14 September 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -108,7 +108,8 @@ good as the care taken in sharing it.
 ## 5. The push notification service
 
 To wake a phone whose app is fully closed, Cubechat runs one small service at
-`push.cubechat.tech`. This is the only server we operate.
+`push.cubechat.tech`. This is the only server we operate; the same machine also
+relays voice calls, described in section 5.1.
 
 **It is on by default, and you can switch it off.** It never sees message
 content.
@@ -150,28 +151,58 @@ policies apply to that processing.
 Server logs are kept for operational purposes and contain shortened public key
 fragments and delivery outcomes, not content.
 
+### 5.1 Voice calls
+
+A voice call is set up with encrypted messages, like any other message, and its
+audio is carried through a call relay (TURN) on the same server. The audio is
+encrypted between the two phones (DTLS-SRTP); the relay forwards it and cannot
+listen to it.
+
+**The relay does see network metadata:** the IP addresses of both phones, when
+a call took place, how long it lasted and how much data it carried. To use it,
+your phone asks the service for short-lived access with a request signed by
+your key. We do not record calls. The relay's server logs, kept for operating
+and securing the service, can contain those IP addresses and session times;
+they never contain audio.
+
+By default both phones only ever see the relay's address, not each other's. If
+you turn on **direct calls** in your profile, a call may connect phone to phone
+instead, and then the other person's phone can see your IP address.
+
 ---
 
 ## 6. Location
 
-Cubechat requests location permission for two separate features. **Sharing is
-off until you turn it on**, whatever you answered to the permission prompt.
+Cubechat uses your location for two things, and only when you ask for them:
+sending a location into a chat, and checking in on the map. **Nothing is shared
+until you do one of those by hand.**
 
-The app asks for the permission once, at the end of the first-run introduction,
-because both iOS and Android show that prompt only once and remember a refusal.
-Granting it does not start sharing anything — it only means the switch will
-work when you reach for it.
+The app asks for location only **while it is in use**. It never asks for
+background ("Always") location, never tracks you while it is closed or out of
+sight, and does not ask for location during the first-run introduction.
 
-**Sharing your position on the map.** When enabled, your coordinates are sent
-**end-to-end encrypted, only to the specific contacts you added to your map**,
-and each beacon expires after six minutes. Switching the feature off retracts
-your pin immediately rather than waiting for that to lapse. We never receive your
-location — it travels the same encrypted path as a message.
+**Checking in on the map.** Your position appears on the map only when you tap
+**Check in** on the Map tab. The first time, the app asks whether you allow
+your position to be shown on the map, and you can decline. Each check-in:
 
-**Background location on iOS ("Always").** This permission exists so the app
-can be woken when you move a significant distance, and refresh a pin your
-contacts are watching. Granting it is optional; without it, sharing works only
-while the app is open.
+- reads your position **once**;
+- is sent **end-to-end encrypted, only to the contacts you added to your map**,
+  and never to a contact you have blocked;
+- is visible for **one hour** and then disappears from their map on its own.
+
+There are **no automatic check-ins**: the app never repeats a check-in, never
+refreshes it as you move, and never checks you in from the background. To be
+on the map again after the hour, you tap Check in again. **Remove** takes your
+position off their maps at once, and so do switching map sharing off in your
+profile and blocking a contact. We never receive your location — it travels
+the same encrypted path as a message.
+
+**Sending a location in a chat** reads your position once and sends it, like a
+message, to the chat you chose, for the time you choose.
+
+**Blocking.** You can block any contact from their profile. A blocked contact
+receives no check-ins from you, a position you had already shown them is
+withdrawn, and their position is not drawn on your map.
 
 **Third parties who see something:**
 
@@ -250,7 +281,8 @@ personal data, and to object to processing.
 
 In practice these rights are mostly satisfied by the design: the only personal
 data we hold is the push registration described in section 5, and you can erase
-it yourself at any moment by switching push off. For anything else, or to
+it yourself at any moment by switching push off. The call relay in section 5.1
+keeps connection metadata only for operating and securing the service. For anything else, or to
 complain, use the contact address in section 1. You may also complain to your
 national supervisory authority.
 
@@ -264,9 +296,10 @@ Legitimate interest covers keeping the push service secure and operational.
 
 ## 12. Children
 
-Cubechat is not directed at children. If you believe a child has provided us
-with personal data — which, given section 2, would be limited to a push
-registration — contact us and it will be deleted.
+Cubechat is intended for adults and is rated **18+**. It is not directed at
+children. If you believe a child has provided us with personal data — which,
+given section 2, would be limited to a push registration — contact us and it
+will be deleted.
 
 ---
 

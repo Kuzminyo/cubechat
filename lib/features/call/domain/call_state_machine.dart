@@ -20,6 +20,36 @@ enum CallEndCause {
   glareLost,
 }
 
+/// What ended a call — separate from [CallEndCause], which says how it ended.
+///
+/// callId 22fc7aa8 ended as `hungUp` about ten seconds after the caller heard it
+/// ringing, and nothing in either log could say whether a finger did that. A
+/// hangup from the button, one from the other phone and one from a closing app
+/// all came out as the same word. They are told apart here, and every outcome
+/// line in the log names one.
+enum CallEndSource {
+  /// The person pressed end or decline.
+  button,
+
+  /// The app was closing with the call still on.
+  lifecycle,
+
+  /// The controller was torn down with the call still on.
+  dispose,
+
+  /// A call deadline ran out: no acknowledgement, no answer, no media in time.
+  timer,
+
+  /// A signal that had to leave this phone could not leave at all.
+  transport,
+
+  /// WebRTC failed, or stayed disconnected past its grace.
+  media,
+
+  /// The other phone said so: hangup, decline, busy, or an invite that won.
+  remote,
+}
+
 /// What a finished call leaves behind.
 @immutable
 class CallOutcome {
@@ -28,6 +58,8 @@ class CallOutcome {
     required this.outgoing,
     required this.cause,
     required this.talkedFor,
+    required this.source,
+    this.remoteReason,
   });
 
   final Uint8List callId;
@@ -37,6 +69,12 @@ class CallOutcome {
   /// Time actually spent talking, which is zero for everything that never
   /// connected. The ringing is not part of it.
   final Duration talkedFor;
+
+  final CallEndSource source;
+
+  /// The reason byte the other phone put in its hangup or decline, when that
+  /// is what ended the call.
+  final CallEndReason? remoteReason;
 }
 
 /// The whole life of one call, with no media, no platform and no transport in
@@ -65,8 +103,19 @@ class CallStateMachine extends ChangeNotifier {
   DateTime? _talkingSince;
   Timer? _deadline;
 
+  /// Ids of calls that are over, and when each was filed. See
+  /// [CallTimings.endedMemory].
+  final Map<String, DateTime> _ended = {};
+
+  /// Bounded so a stream of hangups for made-up ids cannot grow it; far more
+  /// than the calls one phone ends inside [CallTimings.endedMemory].
+  static const int _endedCapacity = 64;
+
   CallPhase get phase => _phase;
   Uint8List? get callId => _callId;
+
+  /// Whether a call is running rather than waiting for the next one.
+  bool get isLive => _phase != CallPhase.idle && _phase != CallPhase.ended;
 
   /// Whether [signal] belongs to the call this machine is running.
   bool _isOurs(CallSignal signal) {
@@ -78,8 +127,38 @@ class CallStateMachine extends ChangeNotifier {
     return true;
   }
 
+  static String _key(Uint8List callId) =>
+      callId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  void _forgetOld() {
+    final cutoff = now().subtract(CallTimings.endedMemory);
+    _ended.removeWhere((_, at) => at.isBefore(cutoff));
+  }
+
+  /// Whether [callId] is a call already over on this phone, or one the other
+  /// phone told us is over before we ever saw it.
+  bool hasEnded(Uint8List callId) {
+    _forgetOld();
+    return _ended.containsKey(_key(callId));
+  }
+
+  /// File [callId] as over.
+  ///
+  /// Called for every call this machine ends, and by the controller for a
+  /// hangup, decline or busy that names a call this phone is not running —
+  /// the one that arrived ahead of its own invite.
+  void rememberEnded(Uint8List callId) {
+    _forgetOld();
+    final key = _key(callId);
+    _ended.remove(key);
+    while (_ended.length >= _endedCapacity) {
+      _ended.remove(_ended.keys.first);
+    }
+    _ended[key] = now();
+  }
+
   void startOutgoing({required Uint8List callId, required String sdp}) {
-    if (_phase != CallPhase.idle && _phase != CallPhase.ended) return;
+    if (isLive) return;
     _talkingSince = null;
     _callId = callId;
     _outgoing = true;
@@ -100,9 +179,15 @@ class CallStateMachine extends ChangeNotifier {
     // dropped — which would otherwise leave them in `connecting` with no
     // deadline of their own. One extra frame, ignored harmlessly by an older
     // build that never asked for it, buys the callee's phone stopping too.
+    //
+    // This is also the whole of the wait for an invite no relay confirmed.
+    // Silence from the relays is not a reason to end the call early — callId
+    // 9ba4922a rang the other phone while the caller filed it unavailable —
+    // and it is not a reason to wait longer either: a phone that really cannot
+    // be reached is still told so here, eight seconds after dialling.
     _arm(CallTimings.ringingAck, () {
       _sendHangup(CallEndReason.noAnswer);
-      _end(CallEndCause.unavailable);
+      _end(CallEndCause.unavailable, CallEndSource.timer);
     });
   }
 
@@ -114,7 +199,7 @@ class CallStateMachine extends ChangeNotifier {
         _move(CallPhase.ringing);
         _arm(CallTimings.noAnswer, () {
           _sendHangup(CallEndReason.noAnswer);
-          _end(CallEndCause.noAnswer);
+          _end(CallEndCause.noAnswer, CallEndSource.timer);
         });
       case CallSignalKind.accept:
         // The ringing acknowledgement is a convenience, not a prerequisite:
@@ -122,19 +207,45 @@ class CallStateMachine extends ChangeNotifier {
         if (_phase != CallPhase.ringing && _phase != CallPhase.dialing) return;
         _disarm();
         _move(CallPhase.connecting);
-        _arm(CallTimings.connecting, mediaFailed);
+        _arm(
+          CallTimings.connecting,
+          () => mediaFailed(source: CallEndSource.timer),
+        );
       case CallSignalKind.decline:
         // The other end has already stopped. Telling it to stop is noise.
-        _end(CallEndCause.declined);
+        _end(
+          CallEndCause.declined,
+          CallEndSource.remote,
+          remoteReason: signal.reason,
+        );
       case CallSignalKind.busy:
-        _end(CallEndCause.busy);
+        _end(CallEndCause.busy, CallEndSource.remote);
       case CallSignalKind.hangup:
-        _end(CallEndCause.hungUp);
+        _end(
+          causeForRemoteHangup(signal.reason),
+          CallEndSource.remote,
+          remoteReason: signal.reason,
+        );
       case CallSignalKind.invite:
         // A repeat delivery of the invite we are already running.
         return;
     }
   }
+
+  /// What a hangup from the other phone means here.
+  ///
+  /// Every one used to be filed as `hungUp`, whatever byte it carried, so a
+  /// caller whose call had failed and a caller who gave up after forty-five
+  /// seconds both read as somebody pressing end. The byte has been on the wire
+  /// since the first build that could call; this only stops throwing it away.
+  static CallEndCause causeForRemoteHangup(CallEndReason? reason) =>
+      switch (reason) {
+        CallEndReason.noAnswer => CallEndCause.noAnswer,
+        CallEndReason.declined => CallEndCause.declined,
+        CallEndReason.busy => CallEndCause.busy,
+        CallEndReason.failed => CallEndCause.failed,
+        CallEndReason.hungUp || null => CallEndCause.hungUp,
+      };
 
   /// An invite that is not for the call we are already running.
   ///
@@ -151,6 +262,9 @@ class CallStateMachine extends ChangeNotifier {
     // hour ago arrives looking new. Answering one rings the caller back for a
     // call they gave up on, which is worse than dropping it.
     if (!inviteIsFresh(sentAtMs: invite.sentAtMs!, now: now())) return;
+    // Fresh, and already over: its hangup got here first. See
+    // [CallTimings.endedMemory].
+    if (hasEnded(invite.callId)) return;
 
     if (_phase == CallPhase.dialing || _phase == CallPhase.ringing) {
       // Both dialled at once. Both sides run the same comparison over the same
@@ -159,8 +273,8 @@ class CallStateMachine extends ChangeNotifier {
         unawaited(send(CallSignal.busy(invite.callId)));
         return;
       }
-      _end(CallEndCause.glareLost);
-    } else if (_phase != CallPhase.idle && _phase != CallPhase.ended) {
+      _end(CallEndCause.glareLost, CallEndSource.remote);
+    } else if (isLive) {
       unawaited(send(CallSignal.busy(invite.callId)));
       return;
     }
@@ -172,7 +286,10 @@ class CallStateMachine extends ChangeNotifier {
     // Acknowledged before anything else: without this the caller cannot tell
     // a phone that is ringing from a build that never understood the frame.
     unawaited(send(CallSignal.ringing(invite.callId)));
-    _arm(CallTimings.noAnswer, () => _end(CallEndCause.noAnswer));
+    _arm(
+      CallTimings.noAnswer,
+      () => _end(CallEndCause.noAnswer, CallEndSource.timer),
+    );
   }
 
   void accept({required String sdp}) {
@@ -180,22 +297,25 @@ class CallStateMachine extends ChangeNotifier {
     _disarm();
     unawaited(send(CallSignal.accept(callId: _callId!, sdp: sdp)));
     _move(CallPhase.connecting);
-    _arm(CallTimings.connecting, mediaFailed);
+    _arm(
+      CallTimings.connecting,
+      () => mediaFailed(source: CallEndSource.timer),
+    );
   }
 
-  void decline() {
+  void decline({CallEndSource source = CallEndSource.button}) {
     if (_phase != CallPhase.incoming) return;
     unawaited(send(CallSignal.decline(
       callId: _callId!,
       reason: CallEndReason.declined,
     )));
-    _end(CallEndCause.declined);
+    _end(CallEndCause.declined, source);
   }
 
-  void hangUp() {
-    if (_phase == CallPhase.idle || _phase == CallPhase.ended) return;
+  void hangUp({CallEndSource source = CallEndSource.button}) {
+    if (!isLive) return;
     _sendHangup(CallEndReason.hungUp);
-    _end(CallEndCause.hungUp);
+    _end(CallEndCause.hungUp, source);
   }
 
   void mediaConnected() {
@@ -205,10 +325,21 @@ class CallStateMachine extends ChangeNotifier {
     _move(CallPhase.talking);
   }
 
-  void mediaFailed() {
-    if (_phase == CallPhase.idle || _phase == CallPhase.ended) return;
+  void mediaFailed({CallEndSource source = CallEndSource.media}) {
+    if (!isLive) return;
     _sendHangup(CallEndReason.failed);
-    _end(CallEndCause.failed);
+    _end(CallEndCause.failed, source);
+  }
+
+  /// A signal the call depends on could not leave this phone at all.
+  ///
+  /// Only for *not sent*, never for *not confirmed* — see the note in
+  /// [startOutgoing]. The other phone is still told, in case some road the
+  /// failed send did not know about is open by now.
+  void signallingFailed() {
+    if (!isLive) return;
+    _sendHangup(CallEndReason.failed);
+    _end(CallEndCause.unavailable, CallEndSource.transport);
   }
 
   void _sendHangup(CallEndReason reason) {
@@ -238,8 +369,12 @@ class CallStateMachine extends ChangeNotifier {
   /// hangup in flight is one round trip, and a media failure reported after
   /// the user already hung up is one frame. Both used to be able to write a
   /// second line into the history for the same call.
-  void _end(CallEndCause cause) {
-    if (_phase == CallPhase.ended || _phase == CallPhase.idle) return;
+  void _end(
+    CallEndCause cause,
+    CallEndSource source, {
+    CallEndReason? remoteReason,
+  }) {
+    if (!isLive) return;
     _disarm();
     final since = _talkingSince;
     final outcome = CallOutcome(
@@ -247,7 +382,10 @@ class CallStateMachine extends ChangeNotifier {
       outgoing: _outgoing,
       cause: cause,
       talkedFor: since == null ? Duration.zero : now().difference(since),
+      source: source,
+      remoteReason: remoteReason,
     );
+    rememberEnded(_callId!);
     _move(CallPhase.ended);
     onOutcome(outcome);
   }

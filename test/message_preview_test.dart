@@ -148,6 +148,7 @@ void main() {
           outgoing: outgoing,
           cause: cause,
           talkedFor: talkedFor,
+          source: CallEndSource.button,
         );
 
     test('an answered outgoing call is named, not shown as base64', () {

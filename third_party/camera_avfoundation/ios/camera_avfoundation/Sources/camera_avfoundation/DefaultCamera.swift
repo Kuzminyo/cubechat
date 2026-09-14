@@ -429,7 +429,8 @@ final class DefaultCamera: NSObject, Camera {
       let longEdge = max(width, height)
       let shortEdge = min(width, height)
       guard abs(Int(longEdge * 3) - Int(shortEdge * 4)) <= 8 else { continue }
-      guard shortEdge <= 720 else { continue }
+      // 2026-09-14: restore requested 1080 capture rather than upscaling 720.
+      guard shortEdge <= 1080 else { continue }
 
       let isSubTypePreferred = subType == preferredSubType
       if shortEdge > bestShortEdge
@@ -1019,6 +1020,9 @@ final class DefaultCamera: NSObject, Camera {
         captureDevice.focusMode = .autoFocus
       }
     case .auto:
+      if let native = captureDevice as? AVCaptureDevice, native.isSmoothAutoFocusSupported {
+        native.isSmoothAutoFocusEnabled = true
+      }
       if captureDevice.isFocusModeSupported(.continuousAutoFocus) {
         captureDevice.focusMode = .continuousAutoFocus
       } else if captureDevice.isFocusModeSupported(.autoFocus) {
@@ -1210,22 +1214,11 @@ final class DefaultCamera: NSObject, Camera {
       let fpsNominator = floor(framesPerSecond * 10.0)
       let duration = CMTimeMake(value: 10, timescale: Int32(fpsNominator))
 
-      // **CubeChat: a ceiling, not a lock — the same change as the CameraX
-      // plugin's fps range.** The minimum frame duration is the fastest rate
-      // and the maximum is the slowest. Setting both to 1/60 s meant no frame
-      // could ever gather light for longer than 1/60 s, so in a dim room
-      // auto-exposure had nothing left but gain: a very dark picture, reported
-      // more than once. The fastest stays as asked; the slowest may fall to
-      // 30 fps in low light, one stop brighter, and only there. A requested
-      // rate already at or under 30 is left locked exactly as it was.
+      // User restored stable cadence on 2026-09-14. The former 30–60 range
+      // brightened low light by changing the frame rate. Illumination and
+      // exposure now supply light without silently lowering requested fps.
       mediaSettingsAVWrapper.setMinFrameDuration(duration, on: captureDevice)
-      let lowLightFloorFps = 30.0
-      if framesPerSecond > lowLightFloorFps {
-        mediaSettingsAVWrapper.setMaxFrameDuration(
-          CMTimeMake(value: 1, timescale: Int32(lowLightFloorFps)), on: captureDevice)
-      } else {
-        mediaSettingsAVWrapper.setMaxFrameDuration(duration, on: captureDevice)
-      }
+      mediaSettingsAVWrapper.setMaxFrameDuration(duration, on: captureDevice)
     }
   }
 

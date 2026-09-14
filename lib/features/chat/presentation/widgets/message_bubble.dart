@@ -46,7 +46,6 @@ import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
 import '../../../channels/data/channel_roster_controller.dart';
 import '../../../map/data/map_friends_controller.dart';
-import '../../../map/data/map_presence_controller.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
@@ -1622,16 +1621,15 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         await ref
                             .read(mapFriendsControllerProvider.notifier)
                             .activate(widget.chatId);
-                        // Accepting *is* agreeing to be on the map, so the
-                        // switch that decides whether a beacon is ever sent is
-                        // turned on here. It defaults to off, and leaving it
-                        // that way made accepting look like it had worked —
-                        // the pairing was real, the pin never came, and the
-                        // only cure was finding a toggle in Privacy nobody
-                        // knew to look for.
-                        await ref
-                            .read(privacySettingsProvider.notifier)
-                            .setShareMapLocation(true);
+                        // Accepting pairs two people on the map and nothing
+                        // more. It used to switch location sharing on and
+                        // publish a pin in the same tap, on the reasoning that
+                        // accepting was agreeing — and App Store review
+                        // rejected exactly that under guideline 5.1.2(i): a
+                        // person is asked, with a way to decline, before their
+                        // location is shown, and then checks in by hand each
+                        // time. Both happen on the map now, behind its check-in
+                        // button. See `MapPresenceController`.
                         await ref.read(messagingServiceProvider).sendText(
                               widget.chatId,
                               MapFriendLink.accepted(
@@ -1639,9 +1637,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                     ref.read(nicknameControllerProvider),
                               ).encode(),
                             );
-                        await ref
-                            .read(mapPresenceControllerProvider.notifier)
-                            .pokeNow();
                       }
                       if (!context.mounted) return;
                       context.go('/map');

@@ -36,6 +36,17 @@ abstract final class CallTimings {
   /// How far ahead of us a sender's clock may be before the timestamp is
   /// nonsense rather than drift.
   static const Duration clockSkew = Duration(seconds: 30);
+
+  /// How long a finished call's id is remembered, so its invite cannot ring
+  /// a phone after the call is over.
+  ///
+  /// A relay hands stored events over on reconnect newest first, and the mesh
+  /// can carry a frame the long way round, so a hangup can arrive *before* the
+  /// invite it cancels. The hangup finds no call and is dropped, then the
+  /// invite rings — a call nobody is making, for the full [noAnswer]. Kept for
+  /// as long as an invite can still pass [inviteIsFresh]: its age limit plus
+  /// the clock skew a sender is allowed to have.
+  static const Duration endedMemory = Duration(seconds: 90);
 }
 
 /// Whether an invite stamped [sentAtMs] should ring a phone at [now].

@@ -1291,7 +1291,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get profileMapLocationOnHint =>
-      'Геолокація доступна для ручного надсилання, а вашу точку показано на мапі';
+      'Ви можете відмічатися на мапі; кожну відмітку друзі на мапі бачать одну годину';
 
   @override
   String get profileMapLocationOffHint =>
@@ -2491,8 +2491,36 @@ class AppLocalizationsUk extends AppLocalizations {
       'Полегшене лишає відтінок і прибирає розмиття за панелями. Автоматично вимірює ваш телефон один раз і вирішує. На телефоні, який і так встигає, користі з цього небагато — воно для того, який не встигає.';
 
   @override
-  String get mapAlwaysNeeded =>
-      'Щоб карта оновлювалася, поки cubechat закрито, у налаштуваннях місцезнаходження треба вибрати «Завжди». Торкніться, щоб відкрити.';
+  String get mapCheckIn => 'Відмітитися';
+
+  @override
+  String mapCheckedInUntil(String time) {
+    return 'Друзі на мапі бачать вас до $time';
+  }
+
+  @override
+  String get mapCheckInRemove => 'Прибрати';
+
+  @override
+  String get mapCheckInConsentTitle =>
+      'Показати ваше місцезнаходження на мапі?';
+
+  @override
+  String get mapCheckInConsentBody =>
+      'Ваше поточне місцезнаходження побачать контакти з вашої мапи протягом однієї години, після чого воно зникне. Воно надсилається лише тоді, коли ви натискаєте «Відмітитися», — ніколи автоматично й ніколи у фоні. Прибрати його можна будь-коли.';
+
+  @override
+  String get mapCheckInAllow => 'Дозволити';
+
+  @override
+  String get mapCheckInDecline => 'Не дозволяти';
+
+  @override
+  String get mapCheckInNobody => 'Спочатку додайте контакт на мапу';
+
+  @override
+  String get mapCheckInUnreachable =>
+      'Не вдалося зв’язатися з друзями на мапі. Спробуйте ще раз.';
 
   @override
   String get profileScaleSmall => 'Менший';

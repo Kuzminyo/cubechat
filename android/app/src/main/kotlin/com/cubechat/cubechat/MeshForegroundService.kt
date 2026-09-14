@@ -1,18 +1,15 @@
 package com.cubechat.cubechat
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 
 /**
  * Keeps the cubechat process alive while the app is backgrounded so the BLE
@@ -68,38 +65,18 @@ class MeshForegroundService : Service() {
     }
 
     /**
-     * What this service claims to be doing, which decides what it is allowed
-     * to do. `connectedDevice` is the constant part — the mesh radio is why
-     * the service exists. `location` is added only when location has actually
-     * been granted, and is what lets the live map keep sending a pin while the
-     * app is out of sight: from Android 10 a backgrounded app gets location
-     * *only* through a foreground service declaring that type.
+     * What this service claims to be doing: the mesh radio, and nothing else.
      *
-     * Conditional because the alternative is worse than missing the feature:
-     * startForeground() with a location type the app has no permission for
-     * throws SecurityException, which here means the mesh service dies and
-     * cubechat stops being reachable at all — for users who simply never
-     * turned the map on. Re-promoting is cheap and idempotent, so the Dart
-     * side calls start() again once the permission is granted and this picks
-     * the type up then.
+     * It also declared the `location` type once location was granted, so a
+     * live map could keep sending a pin while the app was out of sight. The
+     * live map is gone — App Store review rejected it under guideline 5.1.2(i),
+     * and a map position is now a check-in made by hand on screen — and the
+     * manifest no longer declares the type. Claiming a type the manifest does
+     * not list is an exception at startForeground(), which would take the mesh
+     * down, so the two change together.
      */
-    private fun foregroundTypes(): Int {
-        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-        if (hasLocationPermission()) {
-            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-        }
-        return types
-    }
-
-    private fun hasLocationPermission(): Boolean =
-        ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-            ) == PackageManager.PERMISSION_GRANTED
+    private fun foregroundTypes(): Int =
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

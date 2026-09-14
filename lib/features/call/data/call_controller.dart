@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/transport/call_signal.dart';
+import '../../../core/transport/control_delivery.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
@@ -19,6 +21,7 @@ import '../domain/call_record.dart';
 import '../domain/call_rules.dart';
 import '../domain/call_state_machine.dart';
 import 'call_media.dart';
+import 'call_tones.dart';
 import 'turn_credentials_controller.dart';
 
 typedef ReceivedCallSignal = ({String chatId, CallSignal signal});
@@ -35,13 +38,20 @@ class CallController extends ChangeNotifier {
     required this.allowed,
     required this.allowDirect,
     required this.prepareAudio,
+    this.tones = const SilentCallTones(),
   }) {
     _machine =
         CallStateMachine(send: _send, onOutcome: _outcome, now: DateTime.now)
           ..addListener(_changed);
     _signals = signals.listen(_receive);
   }
-  final Future<int> Function(String peer, CallSignal signal) send;
+
+  /// Puts one signal on the wire and says what is known about it afterwards.
+  ///
+  /// Not a link count any more: zero links used to mean both "nothing left
+  /// this phone" and "seven relays took it and none answered in time", and the
+  /// second one is how a ringing call was hung up. See [DeliveryCertainty].
+  final Future<ControlDelivery> Function(String peer, CallSignal signal) send;
   final Future<TurnAccess> Function() obtainTurn;
   final Future<bool> Function() microphone;
   final CallMedia Function() createMedia;
@@ -55,6 +65,7 @@ class CallController extends ChangeNotifier {
   /// rather than quietly trying a direct path — see [dial].
   final bool Function() allowDirect;
   final Future<void> Function() prepareAudio;
+  final CallTones tones;
   late final CallStateMachine _machine;
   late final StreamSubscription<ReceivedCallSignal> _signals;
   StreamSubscription<CallMediaEvent>? _mediaEvents;
@@ -74,6 +85,12 @@ class CallController extends ChangeNotifier {
   bool _changingMute = false;
   bool _changingSpeaker = false;
   int _generation = 0;
+  CallTone? _tone;
+  Future<void> _toneWork = Future<void>.value();
+
+  /// Calls already over that have been answered with a hangup once, so a
+  /// ringing or accept that keeps arriving for one is not answered forever.
+  final Set<String> _staleReplies = {};
   Duration elapsed = Duration.zero;
   CallPhase get phase => _machine.phase;
   bool get active =>
@@ -88,7 +105,35 @@ class CallController extends ChangeNotifier {
         if (!_disposed) notifyListeners();
       });
     }
+    _updateTone();
     if (!_disposed) notifyListeners();
+  }
+
+  /// Ring while this phone is being called and nobody has touched Answer.
+  ///
+  /// Driven off the phase rather than from each place a call starts or stops,
+  /// because a call stops ringing in seven ways — answered, declined, the
+  /// caller hanging up, the timer, a glare, a dispose, the app closing — and a
+  /// ringtone left running by the seventh is worse than no ringtone.
+  void _updateTone() {
+    final wanted = !_disposed && phase == CallPhase.incoming && !preparing
+        ? CallTone.incoming
+        : null;
+    if (wanted == _tone) return;
+    _tone = wanted;
+    final previous = _toneWork;
+    _toneWork = (() async {
+      await previous;
+      try {
+        if (wanted == null) {
+          await tones.stop();
+        } else {
+          await tones.play(wanted);
+        }
+      } catch (e) {
+        _log('ringtone: $e');
+      }
+    })();
   }
 
   /// One line per step of a call, under `[CALL]`.
@@ -112,21 +157,74 @@ class CallController extends ChangeNotifier {
     final peer = peerId;
     final generation = _generation;
     if (peer == null) return;
+    ControlDelivery delivery;
     try {
-      final links = await send(peer, signal);
-      _log('sent ${signal.kind.name} ${_hex(signal.callId)} to '
-          '${_short(peer)}: $links link(s)');
-      if (links == 0 &&
-          generation == _generation &&
-          active &&
-          signal.kind != CallSignalKind.hangup &&
-          signal.kind != CallSignalKind.decline) {
-        _fail('unavailable');
-      }
+      delivery = await send(peer, signal);
     } catch (e) {
-      _log('sending ${signal.kind.name} failed: $e');
-      if (generation == _generation && active) _fail('unavailable');
+      // Thrown while sealing or before any transport took it, so nothing left.
+      _log('sending ${signal.kind.name} ${_hex(signal.callId)} failed: $e');
+      delivery = ControlDelivery.notSent;
     }
+    final ends = _undeliverableEndsCall(signal, delivery, generation, peer);
+    _log('sent ${signal.kind.name} ${_hex(signal.callId)} to '
+        '${_short(peer)}: $delivery${_sendNote(signal, delivery, ends)}');
+    if (ends) _fail('unavailable', source: CallEndSource.transport);
+  }
+
+  /// Whether a send that went nowhere ends the call it belongs to.
+  ///
+  /// **Only a send that went nowhere.** An unconfirmed one is a relay being
+  /// quiet, and callId 9ba4922a is what treating that as failure costs: the
+  /// other phone received the invite in 290 ms and was ringing, the caller
+  /// heard no `OK` inside two seconds, filed the call unavailable and hung up
+  /// on it — then received the ringing acknowledgement a second later. The
+  /// call deadlines already bound how long silence is waited out.
+  ///
+  /// **And only while the call is still at the step that send was for.** The
+  /// result of a publish arrives up to two seconds after it started, and a lot
+  /// happens in two seconds: the acknowledgement, the answer, the media. A late
+  /// verdict on the invite must not end a call that has since rung, connected
+  /// or started talking — so the generation, the call id and the phase all
+  /// have to still be the ones the send was made in.
+  bool _undeliverableEndsCall(
+    CallSignal signal,
+    ControlDelivery delivery,
+    int generation,
+    String peer,
+  ) {
+    if (!delivery.isNotSent) return false;
+    if (!_current(generation) || peerId != peer) return false;
+    if (!listEquals(_machine.callId, signal.callId)) return false;
+    return switch (signal.kind) {
+      // Nobody else can hear about this call: nothing is waiting to answer.
+      CallSignalKind.invite => phase == CallPhase.dialing,
+      // The caller will never get the answer, and this side would sit in
+      // `connecting` for thirty seconds finding that out.
+      CallSignalKind.accept => phase == CallPhase.connecting,
+      // A lost ringing acknowledgement is the caller's deadline to judge, and
+      // the answer can still reach them. A hangup, decline or busy has
+      // already ended the call here.
+      CallSignalKind.ringing ||
+      CallSignalKind.hangup ||
+      CallSignalKind.decline ||
+      CallSignalKind.busy =>
+        false,
+    };
+  }
+
+  static String _sendNote(
+    CallSignal signal,
+    ControlDelivery delivery,
+    bool ends,
+  ) {
+    if (ends) return ' — nothing left the phone, ending the call';
+    if (delivery.certainty == DeliveryCertainty.unconfirmed &&
+        signal.kind == CallSignalKind.invite) {
+      return ' — waiting up to ${CallTimings.ringingAck.inSeconds} s '
+          'for their acknowledgement';
+    }
+    if (delivery.isNotSent) return ' — the call is past this step, not ended';
+    return '';
   }
 
   bool _current(int generation) => !_disposed && generation == _generation;
@@ -196,6 +294,10 @@ class CallController extends ChangeNotifier {
 
   Future<CallMedia?> _prepare(int generation) async {
     await _released;
+    // The ringtone gives the audio session back before the microphone asks
+    // for it. Bounded, because a plugin that never answers must not be able
+    // to stop a call from being answered.
+    await _toneWork.timeout(const Duration(seconds: 1), onTimeout: () {});
     if (!_current(generation)) return null;
     if (!await microphone()) {
       _log('microphone refused');
@@ -218,8 +320,10 @@ class CallController extends ChangeNotifier {
         _fail('media');
       } else {
         _connected = false;
-        _disconnected ??=
-            Timer(const Duration(seconds: 10), () => _fail('media'));
+        _disconnected ??= Timer(const Duration(seconds: 10), () {
+          _log('media stayed disconnected for 10 s');
+          _fail('media');
+        });
       }
     });
     return media;
@@ -228,8 +332,9 @@ class CallController extends ChangeNotifier {
   void _receive(ReceivedCallSignal event) {
     if (_disposed) return;
     final signal = event.signal;
+    final reason = signal.reason;
     _log('received ${signal.kind.name} ${_hex(signal.callId)} from '
-        '${_short(event.chatId)}');
+        '${_short(event.chatId)}${reason == null ? '' : ' (reason ${reason.name})'}');
     if (!allowed(event.chatId)) {
       _log('ignored: ${_short(event.chatId)} is not a known, unblocked contact');
       return;
@@ -240,9 +345,15 @@ class CallController extends ChangeNotifier {
             '${DateTime.now().millisecondsSinceEpoch - signal.sentAtMs!} ms ago');
         return;
       }
+      // Before the busy reply below: an invite for a call that is already
+      // over is not a call to be busy for.
+      if (_machine.hasEnded(signal.callId)) {
+        _log('invite ${_hex(signal.callId)} dropped: that call is already over');
+        return;
+      }
       if (active && (peerId != event.chatId || preparing)) {
         unawaited(send(event.chatId, CallSignal.busy(signal.callId))
-            .catchError((Object _) => 0));
+            .catchError((Object _) => ControlDelivery.notSent));
         return;
       }
       if (!active) {
@@ -259,8 +370,12 @@ class CallController extends ChangeNotifier {
       }
       return;
     }
-    if (event.chatId != peerId || !listEquals(_machine.callId, signal.callId))
+    if (event.chatId != peerId ||
+        !listEquals(_machine.callId, signal.callId) ||
+        !_machine.isLive) {
+      _settleStale(event.chatId, signal);
       return;
+    }
     final wasWaiting = phase == CallPhase.dialing || phase == CallPhase.ringing;
     _machine.handleSignal(signal);
     if (signal.kind == CallSignalKind.accept &&
@@ -268,6 +383,51 @@ class CallController extends ChangeNotifier {
         phase == CallPhase.connecting) {
       final generation = _generation;
       unawaited(_acceptRemote(signal.sdp!, generation));
+    }
+  }
+
+  /// A signal for a call that is not running here.
+  ///
+  /// Two cases are worth acting on, and both are a call that would otherwise
+  /// ring or wait for nobody.
+  ///
+  /// A hangup, decline or busy that arrives *before* its own invite — a relay
+  /// hands stored events over newest first — is remembered, so the invite that
+  /// follows is dropped instead of ringing for forty-five seconds.
+  ///
+  /// A ringing or accept for a call already over here means the other phone
+  /// never got our hangup. It is told again, once per call.
+  void _settleStale(String chatId, CallSignal signal) {
+    final id = signal.callId;
+    switch (signal.kind) {
+      case CallSignalKind.hangup:
+      case CallSignalKind.decline:
+      case CallSignalKind.busy:
+        if (_machine.hasEnded(id)) return;
+        _machine.rememberEnded(id);
+        _log('${signal.kind.name} ${_hex(id)} names no call here — remembered, '
+            'so its invite cannot ring later');
+      case CallSignalKind.ringing:
+      case CallSignalKind.accept:
+        if (!_machine.hasEnded(id)) return;
+        final key = id.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        if (_staleReplies.length > 64) _staleReplies.clear();
+        if (!_staleReplies.add(key)) return;
+        _log('${signal.kind.name} ${_hex(id)} is for a call already over — '
+            'telling ${_short(chatId)} to stop');
+        unawaited(
+          send(
+            chatId,
+            CallSignal.hangup(callId: id, reason: CallEndReason.hungUp),
+          ).then(
+            (delivery) => _log('sent hangup ${_hex(id)} to ${_short(chatId)}: '
+                '$delivery'),
+            onError: (Object e) =>
+                _log('sending hangup ${_hex(id)} failed: $e'),
+          ),
+        );
+      case CallSignalKind.invite:
+        return;
     }
   }
 
@@ -313,12 +473,16 @@ class CallController extends ChangeNotifier {
     }
   }
 
-  void _fail(String reason) {
-    _log('failed: $reason (phase ${phase.name})');
+  void _fail(String reason, {CallEndSource source = CallEndSource.media}) {
+    _log('failed: $reason (phase ${phase.name}, ${source.name})');
     error = reason;
     preparing = false;
-    if (phase != CallPhase.idle && phase != CallPhase.ended) {
-      _machine.mediaFailed();
+    if (_machine.isLive) {
+      if (source == CallEndSource.transport) {
+        _machine.signallingFailed();
+      } else {
+        _machine.mediaFailed(source: source);
+      }
     } else {
       ++_generation;
       _release();
@@ -327,9 +491,11 @@ class CallController extends ChangeNotifier {
   }
 
   void _outcome(CallOutcome outcome) {
+    final theirs = outcome.remoteReason;
     _log('ended ${_hex(outcome.callId)}: ${outcome.cause.name}, '
         '${outcome.outgoing ? 'outgoing' : 'incoming'}, '
-        'talked ${outcome.talkedFor.inSeconds} s');
+        'talked ${outcome.talkedFor.inSeconds} s, by ${outcome.source.name}'
+        '${theirs == null ? '' : ' (their reason ${theirs.name})'}');
     ++_generation;
     preparing = false;
     error ??= outcome.cause.name;
@@ -366,16 +532,36 @@ class CallController extends ChangeNotifier {
     })();
   }
 
-  void decline() => _machine.decline();
-  void hangUp() {
+  void decline({CallEndSource source = CallEndSource.button}) =>
+      _machine.decline(source: source);
+
+  void hangUp({CallEndSource source = CallEndSource.button}) {
     if (phase == CallPhase.idle || phase == CallPhase.ended) {
+      if (preparing) {
+        _log('cancelled while preparing, by ${source.name}');
+      }
       ++_generation;
       preparing = false;
       error = 'hungUp';
       _release();
       _changed();
     } else {
-      _machine.hangUp();
+      _machine.hangUp(source: source);
+    }
+  }
+
+  /// The app moved between foreground, background and closing mid-call.
+  ///
+  /// Logged because a call that ends while the app is in the background reads
+  /// in the log exactly like one that ends by a finger, and only one of them
+  /// is a bug. Closing is the one state that also ends the call: the process is
+  /// going, and the other phone should stop ringing now rather than when its
+  /// own timer runs out.
+  void noteLifecycle(AppLifecycleState state) {
+    if (!active) return;
+    _log('app ${state.name} during ${preparing ? 'preparing' : phase.name}');
+    if (state == AppLifecycleState.detached) {
+      hangUp(source: CallEndSource.lifecycle);
     }
   }
 
@@ -422,8 +608,19 @@ class CallController extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Flagged first, so the outcome below does not notify listeners that are
+    // being torn down with this.
     _disposed = true;
+    // A call still on when the controller goes is a call the other phone is
+    // still in. It used to be dropped without a word — no hangup, no outcome,
+    // no line in the log — and the other side rang or talked to nobody until
+    // its own deadline.
+    if (_machine.isLive) {
+      _log('controller disposed during ${phase.name}');
+      _machine.hangUp(source: CallEndSource.dispose);
+    }
     ++_generation;
+    _updateTone();
     unawaited(_signals.cancel());
     _machine.dispose();
     _release();
@@ -444,6 +641,7 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
+    tones: AudioCallTones(),
     peerName: (peer) =>
         ref.read(knownPeersControllerProvider)[peer]?.displayName ??
         peer.substring(0, 8),

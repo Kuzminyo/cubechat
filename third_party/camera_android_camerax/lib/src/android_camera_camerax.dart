@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart'
 import 'package:stream_transform/stream_transform.dart';
 import 'camerax_library.dart';
 import 'rotated_preview_delegate.dart';
+import 'recording_completion.dart';
 
 /// The Android implementation of [CameraPlatform] that uses the CameraX library.
 class AndroidCameraCameraX extends CameraPlatform {
@@ -108,17 +109,10 @@ class AndroidCameraCameraX extends CameraPlatform {
   deviceOrientationChangedStreamController =
       StreamController<DeviceOrientationChangedEvent>.broadcast();
 
-  /// Stream queue to pick up finalized viceo recording events in
-  /// [stopVideoRecording].
-  final StreamQueue<VideoRecordEvent> videoRecordingEventStreamQueue =
-      StreamQueue<VideoRecordEvent>(videoRecordingEventStreamController.stream);
-
-  late final VideoRecordEventListener _videoRecordingEventListener =
-      VideoRecordEventListener(
-        onEvent: (_, VideoRecordEvent event) {
-          videoRecordingEventStreamController.add(event);
-        },
-      );
+  // Each recording owns its completion signals. A delayed Finalize from a
+  // cancelled recording must not consume the next recording's Start event.
+  int _recordingEpoch = 0;
+  RecordingCompletion? _recordingCompletion;
 
   /// Whether or not [preview] has been bound to the lifecycle of the camera by
   /// [createCamera].
@@ -126,6 +120,7 @@ class AndroidCameraCameraX extends CameraPlatform {
   bool previewInitiallyBound = false;
 
   bool _previewIsPaused = false;
+  bool _videoOnly = false;
 
   /// The prefix used to create the filename for video recording files.
   @visibleForTesting
@@ -142,9 +137,9 @@ class AndroidCameraCameraX extends CameraPlatform {
   @visibleForTesting
   bool torchEnabled = false;
 
-  /// **CubeChat:** the slowest a requested frame rate may fall to in low light.
-  /// See the fps range in [createCameraWithSettings].
-  static const int _lowLightFloorFps = 30;
+  /// 2026-09-14: user restored steady 60 fps. Earlier 30–60 low-light
+  /// negotiation brightened shadows but changed the requested cadence.
+  static const int _lowLightFloorFps = 60;
 
   /// The [ImageAnalysis] instance that can be configured to analyze individual
   /// frames.
@@ -380,6 +375,7 @@ class AndroidCameraCameraX extends CameraPlatform {
     MediaSettings? mediaSettings,
   ) async {
     enableRecordingAudio = mediaSettings?.enableAudio ?? false;
+    _videoOnly = mediaSettings?.resolutionPreset == ResolutionPreset.veryHigh;
     final CameraPermissionsError? error = await systemServicesManager
         .requestCameraPermissions(enableRecordingAudio);
 
@@ -426,7 +422,7 @@ class AndroidCameraCameraX extends CameraPlatform {
 
     // Retrieve a fresh ProcessCameraProvider instance.
     processCameraProvider ??= await ProcessCameraProvider.getInstance();
-    unawaited(processCameraProvider!.unbindAll());
+    await processCameraProvider!.unbindAll();
 
     // Configure Preview instance.
     preview = Preview(
@@ -522,7 +518,9 @@ class AndroidCameraCameraX extends CameraPlatform {
     // instead of here.
     camera = await processCameraProvider!.bindToLifecycle(
       cameraSelector!,
-      <UseCase>[preview!, imageCapture!, imageAnalysis!],
+      _videoOnly
+          ? <UseCase>[preview!, videoCapture!]
+          : <UseCase>[preview!, imageCapture!, imageAnalysis!],
     );
     await _updateCameraInfoAndLiveCameraState(_flutterSurfaceTextureId);
     previewInitiallyBound = true;
@@ -559,6 +557,14 @@ class AndroidCameraCameraX extends CameraPlatform {
   /// Releases the resources of the accessed camera with ID [cameraId].
   @override
   Future<void> dispose(int cameraId) async {
+    _recordingEpoch++;
+    _recordingCompletion?.finish();
+    final activeRecording = recording;
+    recording = null;
+    pendingRecording = null;
+    // Release a persistent recording even when native Start/Finalize failed.
+    // Unbinding alone deliberately keeps persistent recordings alive.
+    try { await activeRecording?.close(); } catch (_) {}
     // **CubeChat: a released camera is a dark one.** This instance is the
     // app-wide platform singleton, so the flag outlives the camera it described.
     // Left set, the next camera's torch press returned early in [setFlashMode]
@@ -1222,6 +1228,9 @@ class AndroidCameraCameraX extends CameraPlatform {
         // session rebuild left the flag true with the light off, and every
         // later press returned early above without reaching the camera.
         torchEnabled = await _enableTorchMode(true);
+        if (!torchEnabled) {
+          throw CameraException('torchUnavailable', 'This camera could not enable its flash.');
+        }
     }
   }
 
@@ -1303,16 +1312,24 @@ class AndroidCameraCameraX extends CameraPlatform {
       !enableRecordingAudio,
     );
 
-    recording = await pendingRecording!.start(_videoRecordingEventListener);
+    final epoch = ++_recordingEpoch;
+    final completion = _recordingCompletion = RecordingCompletion();
+    recording = await pendingRecording!.start(VideoRecordEventListener(
+      onEvent: (_, event) {
+        if (epoch != _recordingEpoch) return;
+        if (event is VideoRecordEventStart) completion.start();
+        if (event is VideoRecordEventFinalize) completion.finish();
+      },
+    ));
 
     if (streamCallback != null) {
       onStreamedFrameAvailable(options.cameraId).listen(streamCallback);
     }
 
     // Wait for video recording to start.
-    VideoRecordEvent event = await videoRecordingEventStreamQueue.next;
-    while (event is! VideoRecordEventStart) {
-      event = await videoRecordingEventStreamQueue.next;
+    final started = await completion.started.timeout(const Duration(seconds: 6));
+    if (!started) {
+      throw CameraException('videoRecordingFailed', 'Recording finalized before its first frame.');
     }
   }
 
@@ -1334,10 +1351,7 @@ class AndroidCameraCameraX extends CameraPlatform {
 
     /// Stop the active recording and wait for the video recording to be finalized.
     await recording!.close();
-    VideoRecordEvent event = await videoRecordingEventStreamQueue.next;
-    while (event is! VideoRecordEventFinalize) {
-      event = await videoRecordingEventStreamQueue.next;
-    }
+    await _recordingCompletion!.finished.timeout(const Duration(seconds: 6));
     recording = null;
     pendingRecording = null;
 
@@ -1351,7 +1365,9 @@ class AndroidCameraCameraX extends CameraPlatform {
       );
     }
 
-    await _unbindUseCaseFromLifecycle(videoCapture!);
+    // A circle is disposed immediately after stop. Rebinding preview-only
+    // here opens another session just to tear it down on cancel/re-record.
+    if (!_videoOnly) await _unbindUseCaseFromLifecycle(videoCapture!);
     final videoFile = XFile(videoOutputPath!);
     cameraEventStreamController.add(
       VideoRecordedEvent(cameraId, videoFile, /* duration */ null),
@@ -1728,7 +1744,10 @@ class AndroidCameraCameraX extends CameraPlatform {
         // a minute of it at the matching bitrate is 37 MB and some six hundred
         // relay publishes — a transfer nobody watches finish. At 960x720 the
         // same minute is 16 MB and 270. Frame rate is untouched at 60.
-        boundSize = CameraSize(width: 960, height: 720);
+        // User explicitly restored 1080 on 2026-09-14. Avoiding the extra
+        // still/analysis session rebuild, rather than lowering resolution,
+        // addresses the measured 0.5–0.7 s setup delay.
+        boundSize = CameraSize(width: 1440, height: 1080);
         aspectRatio = AspectRatio.ratio4To3;
       case ResolutionPreset.ultraHigh:
         boundSize = CameraSize(width: 3840, height: 2160);

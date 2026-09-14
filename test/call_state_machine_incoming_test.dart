@@ -206,4 +206,66 @@ void main() {
       });
     });
   });
+
+  group('a call that is over stays over', () {
+    // A relay hands stored events over newest first on reconnect, so the
+    // hangup of a cancelled call can arrive ahead of the invite it cancels.
+    test('an invite whose hangup came first does not ring', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.rememberEnded(id(4));
+        t.machine.handleInvite(inviteAt(id(4), t.clock()));
+        async.flushMicrotasks();
+        expect(t.machine.phase, CallPhase.idle);
+        expect(t.sent, isEmpty);
+        t.machine.dispose();
+      });
+    });
+
+    test('the memory lasts as long as an invite can still be fresh, and no '
+        'longer', () {
+      fakeAsync((async) {
+        final t = build(async);
+        final sentAt = t.clock();
+        t.machine.rememberEnded(id(4));
+        async.elapse(CallTimings.inviteFreshness);
+        t.machine.handleInvite(inviteAt(id(4), sentAt));
+        expect(t.machine.phase, CallPhase.idle,
+            reason: 'still fresh at sixty seconds, so still remembered');
+        async.elapse(CallTimings.endedMemory);
+        expect(t.machine.hasEnded(id(4)), isFalse);
+        t.machine.dispose();
+      });
+    });
+
+    test('a call this phone ended is remembered without being told', () {
+      fakeAsync((async) {
+        final t = build(async);
+        t.machine.handleInvite(inviteAt(id(1), t.clock()));
+        t.machine.decline();
+        expect(t.machine.hasEnded(id(1)), isTrue);
+        t.machine.dispose();
+      });
+    });
+  });
+
+  group('a hangup from the caller keeps its reason', () {
+    for (final (reason, cause) in [
+      (CallEndReason.hungUp, CallEndCause.hungUp),
+      (CallEndReason.noAnswer, CallEndCause.noAnswer),
+      (CallEndReason.failed, CallEndCause.failed),
+    ]) {
+      test('${reason.name} ends as ${cause.name}', () {
+        fakeAsync((async) {
+          final t = build(async);
+          t.machine.handleInvite(inviteAt(id(1), t.clock()));
+          t.machine.handleSignal(CallSignal.hangup(callId: id(1), reason: reason));
+          expect(t.outcomes.single.cause, cause);
+          expect(t.outcomes.single.source, CallEndSource.remote);
+          expect(t.outcomes.single.remoteReason, reason);
+          t.machine.dispose();
+        });
+      });
+    }
+  });
 }

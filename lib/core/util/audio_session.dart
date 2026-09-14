@@ -125,6 +125,14 @@ class AudioSession {
 
   static bool _applied = false;
 
+  /// Something else set the session's category, so the next voice note must
+  /// set it back rather than trust that it is still ours.
+  ///
+  /// iOS has one session for the whole process. The incoming-call ringtone
+  /// takes it as `soloAmbient`, and without this a voice note played after a
+  /// declined call would inherit a category that the silent switch mutes.
+  static void markPlaybackPolicyStale() => _applied = false;
+
   /// Whether the recording config above is worth logging about on this
   /// platform. Android has no equivalent route problem.
   static bool get isIOS => PlatformInfo.isIOS;

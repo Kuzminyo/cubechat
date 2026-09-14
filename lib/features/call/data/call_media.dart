@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../../core/util/debug_log.dart';
+import 'call_candidate_wait.dart';
 
 enum CallMediaEvent { connected, disconnected, failed }
 
@@ -25,6 +26,7 @@ class WebRtcCallMedia implements CallMedia {
   Future<void>? _closing;
   bool _closed = false;
   final _gathered = Completer<void>();
+  final _relayReady = Completer<void>();
 
   @override
   Stream<CallMediaEvent> get events => _events.stream;
@@ -59,6 +61,15 @@ class WebRtcCallMedia implements CallMedia {
     };
     final peer = _peer = await createPeerConnection(config);
     _checkOpen();
+    peer.onIceCandidate = (candidate) {
+      // Both test phones timed out at 12 s waiting for every network
+      // interface. A usable relay route is sufficient for a complete SDP
+      // snapshot; dead interfaces must not hold back a working route.
+      if (candidate.candidate?.contains(' typ relay') ?? false) {
+        _log('usable relay candidate (${watch.elapsedMilliseconds} ms)');
+        if (!_relayReady.isCompleted) _relayReady.complete();
+      }
+    };
     peer.onIceGatheringState = (state) {
       _log('gathering ${state.name} (${watch.elapsedMilliseconds} ms)');
       if (state == RTCIceGatheringState.RTCIceGatheringStateComplete &&
@@ -117,7 +128,10 @@ class WebRtcCallMedia implements CallMedia {
     // The wire carries a complete SDP, without candidate trickling. Never
     // invite a peer with an offer which cannot reach our required TURN relay.
     try {
-      await _gathered.future.timeout(const Duration(seconds: 12));
+      await waitForCallCandidates(
+        gathered: _gathered.future,
+        relayReady: _relayReady.future,
+      );
     } on TimeoutException {
       // Named, because this is the failure that ends a call before anybody is
       // rung, and "TimeoutException after 0:00:12" says nothing about which

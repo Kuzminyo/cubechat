@@ -39,8 +39,21 @@ class CallHost extends ConsumerStatefulWidget {
   ConsumerState<CallHost> createState() => _CallHostState();
 }
 
-class _CallHostState extends ConsumerState<CallHost> {
+class _CallHostState extends ConsumerState<CallHost>
+    with WidgetsBindingObserver {
   ChildBackButtonDispatcher? _back;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // Here rather than in the controller, which is plain Dart with no binding in
+  // its tests. This widget lives as long as the app does, above the router.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      ref.read(callControllerProvider).noteLifecycle(state);
 
   Future<bool> _onBack() async {
     final call = ref.read(callControllerProvider);
@@ -65,6 +78,7 @@ class _CallHostState extends ConsumerState<CallHost> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _holdBack(false);
     super.dispose();
   }
@@ -179,7 +193,9 @@ class CallScreen extends StatelessWidget {
                                       _control(
                                           Icons.call_end_rounded,
                                           incoming ? t.callDecline : t.callEnd,
-                                          incoming ? call.decline : call.hangUp)
+                                          incoming
+                                              ? () => call.decline()
+                                              : () => call.hangUp())
                                     else
                                       _control(Icons.close_rounded, t.callClose,
                                           call.dismiss),

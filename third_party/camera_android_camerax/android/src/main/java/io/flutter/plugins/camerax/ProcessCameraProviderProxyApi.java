@@ -5,10 +5,13 @@
 package io.flutter.plugins.camerax;
 
 import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CaptureRequest;
 import android.util.SizeF;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
+import androidx.camera.camera2.interop.Camera2CameraControl;
+import androidx.camera.camera2.interop.CaptureRequestOptions;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfo;
@@ -73,7 +76,13 @@ class ProcessCameraProviderProxyApi extends PigeonApiProcessCameraProvider {
     final List<CameraInfo> cameras = new ArrayList<>(pigeonInstance.getAvailableCameraInfos());
     final Map<CameraInfo, Double> fields = new HashMap<>();
     for (CameraInfo camera : cameras) fields.put(camera, fieldOfViewScore(camera));
-    cameras.sort(Comparator.comparingDouble((CameraInfo camera) -> fields.get(camera)).reversed());
+    // The widest rear sensor may be an auxiliary camera without a flash
+    // (reported as lens 2 / No flash unit on 2026-09-14). Prefer a rear
+    // camera with its own flash; keep widest-first for selfies.
+    cameras.sort(Comparator
+        .comparingInt((CameraInfo camera) ->
+            camera.getLensFacing() == CameraSelector.LENS_FACING_BACK && camera.hasFlashUnit() ? 0 : 1)
+        .thenComparing(Comparator.comparingDouble((CameraInfo camera) -> fields.get(camera)).reversed()));
     return cameras;
   }
 
@@ -106,8 +115,29 @@ class ProcessCameraProviderProxyApi extends PigeonApiProcessCameraProvider {
       @NonNull List<? extends UseCase> useCases) {
     final LifecycleOwner lifecycleOwner = getPigeonRegistrar().getLifecycleOwner();
     if (lifecycleOwner != null) {
-      return pigeonInstance.bindToLifecycle(
+      final Camera bound = pigeonInstance.bindToLifecycle(
           lifecycleOwner, cameraSelector, useCases.toArray(new UseCase[0]));
+      // Continuous video focus avoids still-photo focus jumps. Fixed-focus
+      // cameras retain their supported native policy.
+      if (useCases.stream().anyMatch(useCase -> useCase instanceof androidx.camera.video.VideoCapture)) {
+        try {
+          final int[] modes = Camera2CameraInfo.from(bound.getCameraInfo())
+              .getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+          if (modes != null) {
+            for (int mode : modes) {
+              if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) {
+                Camera2CameraControl.from(bound.getCameraControl()).setCaptureRequestOptions(
+                    new CaptureRequestOptions.Builder()
+                        .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, mode).build());
+                break;
+              }
+            }
+          }
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+          // Non-Camera2 implementations retain their native focus policy.
+        }
+      }
+      return bound;
     }
 
     throw new IllegalStateException(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cubechat/core/transport/control_delivery.dart';
 import 'package:cubechat/features/call/data/call_controller.dart';
 import 'package:cubechat/features/call/data/call_media.dart';
 import 'package:cubechat/features/call/data/turn_credentials_controller.dart';
@@ -49,7 +50,10 @@ void main() {
     signals = StreamController<ReceivedCallSignal>(sync: true);
     call = CallController(
       signals: signals.stream,
-      send: (peer, signal) async => 1,
+      send: (peer, signal) async => const ControlDelivery(
+        links: 1,
+        certainty: DeliveryCertainty.confirmed,
+      ),
       obtainTurn: () async => TurnAccess(
         urls: const ['turn:test'],
         username: 'u',

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/core/transport/control_delivery.dart';
 import 'package:cubechat/core/transport/nostr/nostr_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,21 +37,28 @@ void main() {
     });
 
     test('the send path holds a frame nobody confirmed', () {
+      // Silence is read as unconfirmed — not accepted — and the bool every
+      // holding sender reads is true for accepted alone. Since 2026-09-14 the
+      // three-way answer is kept for calls, which must not treat silence as
+      // failure either (see control_delivery_test.dart); the outbox still sees
+      // exactly the false it always did.
+      expect(
+        RelayPublishOutcome.fromReceipt(
+          const PublishReceipt(sentTo: 3, accepted: 0, rejected: 0),
+        ),
+        RelayPublishOutcome.unconfirmed,
+      );
       // Source-checked: reaching this needs a relay pool, a signer and a live
       // socket, and what matters is the branch, not the plumbing.
       final source =
           File('lib/core/transport/messaging_service.dart').readAsStringSync();
+      final at = source.indexOf('Future<bool> _sendOverNostr(');
+      expect(at, isNonNegative);
       expect(
-        source,
-        contains('if (!receipt.isAccepted) {'),
+        source.substring(at, at + 400),
+        matches(RegExp(r'==\s*RelayPublishOutcome\.accepted;')),
         reason: 'without this, total silence returns true and the message is '
             'never handed to store-and-forward',
-      );
-      final at = source.indexOf('if (!receipt.isAccepted) {');
-      expect(
-        source.substring(at, at + 260),
-        contains('return false'),
-        reason: 'false is what routes it into the outbox to be retried',
       );
     });
   });
@@ -91,32 +99,10 @@ void main() {
     });
   });
 
-  group('the map parks the radio when it cannot locate the phone', () {
-    late final String source;
-
-    setUpAll(() {
-      source = File('lib/features/map/data/map_presence_controller.dart')
-          .readAsStringSync();
-    });
-
-    test('a brake exists for being unable to find a fix', () {
-      // `_beaconIsLanding` answers "is anybody receiving this", which is a
-      // different question. A log had six 20-second GPS timeouts ninety
-      // seconds apart, unbroken, each ending in the stale coordinate it would
-      // have used anyway.
-      expect(source, contains('bool get _canLocate'));
-      expect(source, contains('if (!_canLocate) return;'));
-    });
-
-    test('and any fix at all releases it', () {
-      final at = source.indexOf('void _noteStamped(');
-      expect(at, isNonNegative);
-      expect(
-        source.substring(at, at + 700),
-        contains('_lostRounds = 0;'),
-        reason: 'the park is because asking again is futile, not because the '
-            'phone is written off — one arriving on its own ends the reason',
-      );
-    });
-  });
+  // "The map parks the radio when it cannot locate the phone" lived here: a
+  // brake on the live map's 45-second locate loop, after a log of six GPS
+  // timeouts in a row. The loop is gone — App Store review rejected automatic
+  // check-ins under guideline 5.1.2(i) — and a check-in now reads one position
+  // when a person taps. There is no loop left to brake; map_check_in_test.dart
+  // pins that none comes back.
 }

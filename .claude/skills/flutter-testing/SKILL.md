@@ -120,6 +120,16 @@ tester.binding.scheduleFrame();
 await tester.pump();
 ```
 
+### `fakeAsync` only drives what was built inside it
+
+A controller built in `setUp` and then driven inside `fakeAsync` stalls at its
+first `await`: a future created outside the fake zone completes on the *real*
+microtask queue, which `flushMicrotasks` never runs, so the test sees the phase
+it started in. Build the object inside the `fakeAsync` body. A single-
+subscription `StreamController` it listens to must be recreated there too —
+cancelling the old listener does not free the stream ("Stream has already been
+listened to"). `call_controller_test.dart` does both.
+
 Two related clocks, also worth keeping straight: `tester.pump(duration)` moves
 the **test's** clock, and anything reading `DateTime.now()` — the warm-up filter
 in `FrameStats`, every freshness window in the app — does not see it. Real time

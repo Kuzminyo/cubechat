@@ -63,11 +63,6 @@ class IosBackgroundRefresh {
   /// handshake plus a backlog replay on a slow connection.
   static const Duration window = Duration(seconds: 20);
 
-  /// Unit tests use millisecond windows to prove boundedness; those are too
-  /// short to do useful location work and would only start async provider work
-  /// that outlives the test container. Real native windows are much longer.
-  static const Duration mapPresenceMinimumWindow = Duration(seconds: 1);
-
   ProviderContainer? _container;
 
   /// True while a refresh is in flight — iOS can fire the task again while the
@@ -170,9 +165,11 @@ class IosBackgroundRefresh {
       // manually opened the app.
       final effectiveWindow = window ?? IosBackgroundRefresh.window;
       container.read(messagingServiceProvider).wakeRelays(force: true);
-      if (effectiveWindow >= mapPresenceMinimumWindow) {
-        unawaited(_pokeMapPresence(container, offered));
-      }
+      // No map position is published from here, and none may be. This window
+      // used to republish the pin — and a relaunch because the phone moved did
+      // the same — which App Store review rejected under guideline 5.1.2(i):
+      // a location is shown on a map only after a person checks in, by hand,
+      // each time. See `MapPresenceController`.
       // Which of the two wake-ups this is, because they are not the same event
       // and the log could not tell them apart.
       //
@@ -199,25 +196,6 @@ class IosBackgroundRefresh {
       DebugLog.instance.log('BGFETCH', 'refresh failed: $e');
     } finally {
       _running = false;
-    }
-  }
-
-  Future<void> _pokeMapPresence(
-    ProviderContainer container,
-    StampedLocationFix? offered,
-  ) async {
-    try {
-      await container
-          .read(mapPresenceControllerProvider.notifier)
-          .pokeNow(offered: offered)
-          .timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          DebugLog.instance.log('BGFETCH', 'map presence poke timed out');
-        },
-      );
-    } catch (e) {
-      DebugLog.instance.log('BGFETCH', 'map presence poke failed: $e');
     }
   }
 }

@@ -171,7 +171,15 @@ void main() {
   group('torch', () {
     test('a torch that failed to light is asked again, not assumed lit', () async {
       first.failNext = true;
-      await camera.setFlashMode(0, FlashMode.torch);
+      // Since 1039 a failed torch says so instead of returning as if lit — a
+      // back sensor with no flash unit logged `No flash unit` while the button
+      // showed on. CircleRecorder.toggleTorch catches it and turns the button
+      // back off.
+      await expectLater(
+        camera.setFlashMode(0, FlashMode.torch),
+        throwsA(isA<CameraException>()
+            .having((e) => e.code, 'code', 'torchUnavailable')),
+      );
       await camera.setFlashMode(0, FlashMode.torch);
       expect(first.torches, [true, true],
           reason: 'the second press must reach the camera; the first never lit');
@@ -202,11 +210,11 @@ void main() {
     });
   });
 
-  // "Very dark", reported after a full stop of exposure compensation. At a
-  // locked 60 fps no frame can gather light for longer than 1/60 s; a range
-  // lets auto-exposure slow to 30 in a dim room and stay at 60 in a bright one.
-  test('asking for 60 fps allows 30 in the dark rather than locking 60',
-      () async {
+  // Build 1038 asked for 30–60 so auto-exposure could slow to 30 in a dim room
+  // ("very dark"). On 2026-09-14 the product owner restored a steady 60: the
+  // range brightened shadows but changed the cadence of every circle. The
+  // +1 EV exposure bias stays. Pinned so neither direction happens by accident.
+  test('asking for 60 fps holds 60, by the product owner\'s call', () async {
     final ranges = <(int, int)>[];
     PigeonOverrides.cameraIntegerRange_new = ({required lower, required upper}) {
       ranges.add((lower, upper));
@@ -219,9 +227,8 @@ void main() {
       // harness does not fake, and the frame rate does not depend on it.
       const MediaSettings(fps: 60),
     );
-    expect(ranges, contains((30, 60)));
-    expect(ranges, isNot(contains((60, 60))),
-        reason: 'a lock at 60 is what left no room to expose');
+    expect(ranges, contains((60, 60)));
+    expect(ranges, isNot(contains((30, 60))));
   });
 
   test('a rate already at or under the floor is left exactly as asked',

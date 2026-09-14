@@ -187,8 +187,16 @@ probe:
 
 The probe is skipped by default and never publishes a message. `/geo` uses a
 separate WebSocket connection to the same backend, not an independent server.
-The geo lane keeps `relay.nostr.net` as its independent fallback; `offchain.pub`
-was removed because both supplied device logs show web-of-trust refusals.
+The geo lane's independent fallback is `nostr.sathoarder.com` since 2026-09-14.
+`relay.nostr.net` held that place until its origin went down behind Cloudflare
+(500/525 on every upgrade), and `offchain.pub` before it was removed because
+both supplied device logs show web-of-trust refusals. A replacement is chosen
+with `push/tool/probe_geo_relays.mjs`, which publishes a kind-1059 event from a
+throwaway key and reads it back by `#p` without AUTH:
+
+```powershell
+cd push; node tool/probe_geo_relays.mjs 6 nostr.sathoarder.com nostr.21crypto.ch
+```
 
 The app also restores buffered forward-secret file chunks that arrive before
 the manifest, and serializes incoming signature verification off the UI

@@ -62,6 +62,7 @@ import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'call_signal.dart';
+import 'control_delivery.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'contact_card.dart';
@@ -721,6 +722,29 @@ class MessagingService {
     bool wakesPeer = false,
     bool wakesCall = false,
     RelayLane lane = RelayLane.conversation,
+  }) async =>
+      await _publishOverNostr(
+        canonicalId,
+        frameBytes,
+        wakesPeer: wakesPeer,
+        wakesCall: wakesCall,
+        lane: lane,
+      ) ==
+      RelayPublishOutcome.accepted;
+
+  /// [_sendOverNostr] with the answer left in three parts.
+  ///
+  /// Everything that holds a frame and sends it again reads only "accepted or
+  /// not", and keeps doing so through the wrapper above. A call cannot: an
+  /// invite that no relay confirmed inside two seconds had in fact rung the
+  /// other phone (callId 9ba4922a), and treating that silence as "not sent"
+  /// hung up on a call that was working. See [DeliveryCertainty].
+  Future<RelayPublishOutcome> _publishOverNostr(
+    String canonicalId,
+    Uint8List frameBytes, {
+    bool wakesPeer = false,
+    bool wakesCall = false,
+    RelayLane lane = RelayLane.conversation,
   }) async {
     final transport = _nostr;
     // Said out loud, because the silence here is what made a phone look broken:
@@ -729,20 +753,22 @@ class MessagingService {
     if (transport == null) {
       DebugLog.instance.log(
           'NOSTR', 'internet fallback is off — $canonicalId stays queued');
-      return false;
+      return RelayPublishOutcome.unavailable;
     }
     // If the relay pool is merely asleep/backing off, wake it and wait briefly
     // for one socket. This is the common iOS path: the user opens the app or a
     // background window starts, immediately sends/flushes something, and the
     // relay is still in `connecting`. Returning false in that window pushed a
     // perfectly sendable message into the slow mesh/store-forward path.
-    if (!await _ensureRelayAwakeForSend()) return false;
+    if (!await _ensureRelayAwakeForSend()) {
+      return RelayPublishOutcome.unavailable;
+    }
     final npub =
         _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
     if (npub == null || npub.length != 32) {
       DebugLog.instance.log(
           'NOSTR', 'no npub for $canonicalId — cannot use internet fallback');
-      return false;
+      return RelayPublishOutcome.unavailable;
     }
     final npubHex = _hexOf(npub);
     try {
@@ -756,15 +782,16 @@ class MessagingService {
         wakesCall: wakesCall,
         lane: lane,
       );
+      final outcome = RelayPublishOutcome.fromReceipt(receipt);
       // A write is not a send. Relays refuse events routinely — rate limits,
       // size caps, spam heuristics — and counting a refusal as delivery is how
       // a message disappears while the chat shows it delivered.
-      if (receipt.isRefused) {
+      if (outcome == RelayPublishOutcome.refused) {
         DebugLog.instance.log(
             'NOSTR',
             'every relay refused the frame for $canonicalId '
                 '(${receipt.rejections.join('; ')})');
-        return false;
+        return outcome;
       }
       // Nor is silence from *everybody*.
       //
@@ -787,19 +814,25 @@ class MessagingService {
       // frame published twice is dropped by the recipient's dedup on msgId, so
       // a wrong guess here costs one duplicate write. A frame assumed
       // delivered and never sent again is gone.
-      if (!receipt.isAccepted) {
+      //
+      // "Held" is the caller's word, not this function's: a text message is
+      // held and sent again, a control frame is not held by anyone, and a call
+      // reads this as "written, unconfirmed" and waits for the other phone.
+      if (outcome != RelayPublishOutcome.accepted) {
         DebugLog.instance.log(
             'NOSTR',
-            'no relay confirmed the frame for $canonicalId — holding it '
-                '($receipt)');
-        return false;
+            'no relay confirmed the frame for $canonicalId in time — '
+                'unconfirmed, not refused ($receipt)');
+        return outcome;
       }
       DebugLog.instance.log('NOSTR',
           'sent ${frameBytes.length}B to $canonicalId via relay — $receipt');
-      return true;
+      return outcome;
     } catch (e) {
+      // Thrown before any socket took the event: no relay connected, or every
+      // write failed. Nothing is out there to be delivered late.
       DebugLog.instance.log('NOSTR', 'relay send to $canonicalId failed: $e');
-      return false;
+      return RelayPublishOutcome.unavailable;
     }
   }
 
@@ -2970,15 +3003,19 @@ class MessagingService {
   /// itself — equivalent today, because a chat id is the peer's X25519 key in
   /// hex — but [_resolvePeerPub] prefers an established session's static key,
   /// and two copies of "which key is this person" is how one of them goes
-  /// stale. Zero links when there is no key, which a caller already reads as
-  /// "nobody heard this".
-  Future<int> sendCallSignal({
+  /// stale. Not sent when there is no key.
+  ///
+  /// Returns what is actually known rather than a count of links, because the
+  /// count could not tell "nothing left this phone" from "seven relays took it
+  /// and none answered in two seconds" — see [DeliveryCertainty] for the call
+  /// that difference ended.
+  Future<ControlDelivery> sendCallSignal({
     required String canonicalId,
     required CallSignal signal,
   }) async {
     final peerPub = _resolvePeerPub(canonicalId);
-    if (peerPub == null) return 0;
-    return _sendControlToPeer(
+    if (peerPub == null) return ControlDelivery.notSent;
+    return _deliverControlToPeer(
       canonicalId: canonicalId,
       peerPub: peerPub,
       type: InnerPayloadType.callSignal,
@@ -4867,6 +4904,32 @@ class MessagingService {
     bool relayOnly = false,
     bool wakesPeer = false,
     bool wakesCall = false,
+  }) async =>
+      (await _deliverControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: type,
+        innerBody: innerBody,
+        relayOnly: relayOnly,
+        wakesPeer: wakesPeer,
+        wakesCall: wakesCall,
+      ))
+          .links;
+
+  /// [_sendControlToPeer], keeping apart what the link count merges.
+  ///
+  /// The count stays exactly what it was — Bluetooth writes plus one for a
+  /// relay that confirmed — so every receipt, reaction and typing notice reads
+  /// the same number as before. What is added is whether a zero means nothing
+  /// left the phone, or relays took the frame and were silent about it.
+  Future<ControlDelivery> _deliverControlToPeer({
+    required String canonicalId,
+    required Uint8List peerPub,
+    required InnerPayloadType type,
+    required Uint8List innerBody,
+    bool relayOnly = false,
+    bool wakesPeer = false,
+    bool wakesCall = false,
   }) async {
     final identity = await _ref.read(identityProvider.future);
     final myHash = await _myPubkeyHash();
@@ -4898,29 +4961,35 @@ class MessagingService {
         Frame(type: FrameType.transport, payload: env.encode()).encode();
 
     if (relayOnly) {
-      return await _sendOverNostr(
-        canonicalId,
-        frameBytes,
-        wakesPeer: wakesPeer,
-        wakesCall: wakesCall,
-      )
-          ? 1
-          : 0;
+      return combineControlDelivery(
+        meshLinks: 0,
+        direct: false,
+        relay: await _publishOverNostr(
+          canonicalId,
+          frameBytes,
+          wakesPeer: wakesPeer,
+          wakesCall: wakesCall,
+        ),
+      );
     }
 
     final session = _findSessionByPubkeyHex(canonicalId);
     final transportId = session?.peerId;
+    const onSession = ControlDelivery(
+      links: 1,
+      certainty: DeliveryCertainty.confirmed,
+    );
     if (transportId != null) {
       final client = _clients[transportId];
       if (client != null && client.isConnected) {
         try {
           await _writeFrameToClient(client, frameBytes);
-          return 1;
+          return onSession;
         } catch (_) {/* fall through to notify / fan-out */}
       }
       try {
         if (await _notifyFrameToPeripheral(frameBytes)) {
-          return 1;
+          return onSession;
         }
       } catch (_) {}
     }
@@ -4937,16 +5006,22 @@ class MessagingService {
     // working over the internet as soon as any phone is nearby". Duplicates are
     // free: both copies carry the same msgId, and the receiver dedups.
     final direct = transportId != null;
-    if (fanout > 0 && direct) return fanout;
-    final viaRelay = await _sendOverNostr(
-      canonicalId,
-      frameBytes,
-      wakesPeer: wakesPeer,
-      wakesCall: wakesCall,
-    )
-        ? 1
-        : 0;
-    return fanout + viaRelay;
+    if (fanout > 0 && direct) {
+      return ControlDelivery(
+        links: fanout,
+        certainty: DeliveryCertainty.confirmed,
+      );
+    }
+    return combineControlDelivery(
+      meshLinks: fanout,
+      direct: direct,
+      relay: await _publishOverNostr(
+        canonicalId,
+        frameBytes,
+        wakesPeer: wakesPeer,
+        wakesCall: wakesCall,
+      ),
+    );
   }
 
   /// Build a broadcast channel frame: sign the inner payload (full signature,

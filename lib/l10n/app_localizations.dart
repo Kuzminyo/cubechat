@@ -2345,7 +2345,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileMapLocationOnHint.
   ///
   /// In en, this message translates to:
-  /// **'Location is available for manual sharing and your pin is shown on the map'**
+  /// **'You can check in on the map; each check-in is shown to your map friends for one hour'**
   String get profileMapLocationOnHint;
 
   /// No description provided for @profileMapLocationOffHint.
@@ -4328,11 +4328,59 @@ abstract class AppLocalizations {
   /// **'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.'**
   String get profileGlassHint;
 
-  /// No description provided for @mapAlwaysNeeded.
+  /// No description provided for @mapCheckIn.
   ///
   /// In en, this message translates to:
-  /// **'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.'**
-  String get mapAlwaysNeeded;
+  /// **'Check in'**
+  String get mapCheckIn;
+
+  /// No description provided for @mapCheckedInUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'Your map friends see you until {time}'**
+  String mapCheckedInUntil(String time);
+
+  /// No description provided for @mapCheckInRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get mapCheckInRemove;
+
+  /// No description provided for @mapCheckInConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show your location on the map?'**
+  String get mapCheckInConsentTitle;
+
+  /// No description provided for @mapCheckInConsentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your current position will be shown to the contacts on your map for one hour, then it disappears. It is sent only when you tap Check in — never automatically, and never in the background. You can remove it at any time.'**
+  String get mapCheckInConsentBody;
+
+  /// No description provided for @mapCheckInAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get mapCheckInAllow;
+
+  /// No description provided for @mapCheckInDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t allow'**
+  String get mapCheckInDecline;
+
+  /// No description provided for @mapCheckInNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a contact to your map first'**
+  String get mapCheckInNobody;
+
+  /// No description provided for @mapCheckInUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach your map friends. Try again.'**
+  String get mapCheckInUnreachable;
 
   /// No description provided for @profileScaleSmall.
   ///

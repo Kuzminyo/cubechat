@@ -114,7 +114,8 @@ class CircleRecorder extends ChangeNotifier {
         ResolutionPreset.veryHigh,
         enableAudio: true,
         fps: 60,
-        videoBitrate: 2200000,
+        // Restored with 1080: 2.2 Mbps was the old 720 encoding budget.
+        videoBitrate: 5000000,
         audioBitrate: 64000,
       );
 
@@ -259,6 +260,7 @@ class CircleRecorder extends ChangeNotifier {
   double _zoom = 1;
   double _zoomAtGestureStart = 1;
   bool _torchOn = false;
+  bool _torchBusy = false;
 
   /// True when the light is on, whichever kind of light this phone has.
   bool get torchOn => _torchOn;
@@ -477,7 +479,12 @@ class CircleRecorder extends ChangeNotifier {
   /// with a flash beside it does not exist on any phone this app will meet.
   Future<void> toggleTorch() async {
     final camera = _camera;
-    if (camera == null) return;
+    if (camera == null ||
+        _torchBusy ||
+        _flipping ||
+        _lensChange != null ||
+        _stopping) return;
+    _torchBusy = true;
     _torchOn = !_torchOn;
     DebugLog.instance.log(
       'CIRCLE',
@@ -488,11 +495,12 @@ class CircleRecorder extends ChangeNotifier {
       try {
         await camera.setFlashMode(_torchOn ? FlashMode.torch : FlashMode.off);
       } catch (e) {
-        DebugLog.instance
-            .log('CIRCLE', 'torch refused ($e) — using the screen');
-        _hardwareTorch = false;
+        DebugLog.instance.log('CIRCLE', 'rear torch refused: $e');
+        // A screen light cannot illuminate a rear-facing subject.
+        _torchOn = false;
       }
     }
+    _torchBusy = false;
     _notify();
   }
 

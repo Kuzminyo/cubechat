@@ -412,6 +412,9 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
   /// the event that caused the relaunch.
   private static let armedKey = "cubechat.significantLocation.armed"
 
+  /// Movement monitoring is off for good. See [start].
+  private static let regionsDisabled = true
+
   /// The circle we sit inside; leaving it is the event.
   ///
   /// Significant-change monitoring rings on a cell hand-off — half a kilometre,
@@ -450,40 +453,28 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
     return status == .authorizedAlways
   }
 
+  /// **Never arms, in this build or after it.**
+  ///
+  /// This relaunched a closed app whenever the phone moved — to catch up on
+  /// messages, now APNs' job, and to republish the map pin, which App Store
+  /// review rejected under guideline 5.1.2(i): a location may be shown on a map
+  /// only after a manual check-in. "Always" location to wake a messenger would
+  /// be refused on its own, and the Info.plist key that allowed asking for it
+  /// is gone. A caller that still asks is told no, and whatever an older build
+  /// left registered is taken down on the way.
   @discardableResult
   func start() -> Bool {
-    // The wish is recorded before the ability to grant it is checked, and that
-    // ordering is the whole of this. It used to be the other way round, so a
-    // phone on While-Using fell out at the guard below with the flag still
-    // false — and `authorizationChanged` only re-arms when the flag is true.
-    // Granting Always afterwards in Settings therefore armed nothing, and
-    // Settings is exactly where people go: iOS shows the upgrade prompt at
-    // most once, and anyone who dismissed it has no other route. The symptom
-    // was a live-map pin that simply stopped updating once the app was closed,
-    // with every switch in the app turned on and nothing to see anywhere.
-    //
-    // Nothing is monitoring yet. This says somebody asked for it, so a later
-    // grant has something to act on; `monitoring` still says whether it is
-    // actually running, and `stop()` clears the flag when the wish is
-    // withdrawn.
-    UserDefaults.standard.set(true, forKey: Self.armedKey)
-    guard CLLocationManager.significantLocationChangeMonitoringAvailable() else {
-      return false
-    }
-    // Never prompts. While-in-use gets no background delivery, so arming under
-    // it would only cost a manager that can never fire.
-    guard authorizedAlways else { return false }
-    guard !monitoring else { return true }
-    monitoring = true
-    manager.startMonitoringSignificantLocationChanges()
-    armRegion(around: manager.location)
-    NSLog("cubechat: significant location monitoring armed")
-    return true
+    stop()
+    return false
   }
 
+  /// Unconditional, because iOS keeps significant-change and region monitoring
+  /// registered across launches and app updates. The `monitoring` flag only
+  /// knows about this process, so guarding on it — as this once did — left a
+  /// phone an older build had armed being relaunched by movement indefinitely.
+  /// Stopping what is not running costs nothing.
   func stop() {
     UserDefaults.standard.set(false, forKey: Self.armedKey)
-    guard monitoring else { return }
     monitoring = false
     manager.stopMonitoringSignificantLocationChanges()
     clearRegions()
@@ -502,6 +493,13 @@ final class SignificantLocationWatcher: NSObject, CLLocationManagerDelegate {
   /// refuse, and noisy in the system log, so that a crash report can name it
   /// instead of leaving the next person to eliminate it again.
   private func armRegion(around location: CLLocation?) {
+    // Never registers a region any more — see [start]. This is the one place a
+    // region is created, and it is reached from the location delivery that
+    // relaunched the app, so without this line the very wake a disarmed phone
+    // receives from an older build's registration would draw a fresh circle and
+    // re-arm itself. What remains is taking down whatever is left.
+    clearRegions()
+    guard Self.regionsDisabled == false else { return }
     guard let location else { return }
     guard authorizedAlways else { return }
     guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {

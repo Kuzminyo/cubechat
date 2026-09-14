@@ -120,7 +120,21 @@ class RelaySettings {
     // logs (2026-09-09). Use a separate connection to our own relay; NIP-42
     // authenticates the recipient before either socket can read kind 1059.
     'wss://relay.cubechat.tech/geo',
-    'wss://relay.nostr.net',
+    // relay.nostr.net replaced on 2026-09-14. Both phone logs had it refusing
+    // the upgrade on every attempt ("not upgraded to websocket", backoff
+    // 2 -> 4 -> 8 -> 16 s), which is the state dot blinking amber and red in
+    // the relay screen; from here Cloudflare answered 500 and 525 six times
+    // out of six — its origin is down, not the phones' network. The lane had
+    // one road the whole time.
+    //
+    // Picked by `push/tool/probe_geo_relays.mjs`, which does what this lane
+    // does: publishes a kind-1059 event from a throwaway key and reads it back
+    // by `#p` with no AUTH. Six rounds each: nostr.sathoarder.com 6/6 at a
+    // 280 ms median, nostr.21crypto.ch 6/6 at 345 ms, nostr.data.haus 6/6 at
+    // 687 ms; einundzwanzig wants NIP-05, lopp.social a whitelist,
+    // fountain.fm refuses the kind. None of the three runs the conversation
+    // or media relays.
+    'wss://nostr.sathoarder.com',
   ];
 
   /// On by default since 986, which is a deliberate reversal.

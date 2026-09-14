@@ -29,6 +29,7 @@ class FakeCamera extends CameraController {
   bool released = false;
   int disposals = 0;
   int exposureWrites = 0;
+  bool refuseTorch = false;
   Completer<void>? opening;
   Completer<void>? starting;
   Completer<void>? exposure;
@@ -74,7 +75,12 @@ class FakeCamera extends CameraController {
   }
 
   @override
-  Future<void> setFlashMode(FlashMode mode) async {}
+  Future<void> setFlashMode(FlashMode mode) async {
+    if (refuseTorch && mode == FlashMode.torch) {
+      throw CameraException('torchUnavailable', 'No flash unit');
+    }
+  }
+
   @override
   Future<void> lockCaptureOrientation([DeviceOrientation? orientation]) async {}
   @override
@@ -123,6 +129,18 @@ class FakeCamera extends CameraController {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('rear flash failure never pretends a screen light illuminates the scene',
+      () async {
+    final camera = FakeCamera(back)..refuseTorch = true;
+    final recorder = CircleRecorder(
+        listCameras: () async => [back], createCamera: (_) => camera);
+    await recorder.start(front: false);
+    await recorder.toggleTorch();
+    expect(recorder.torchOn, isFalse);
+    expect(recorder.usesScreenLight, isFalse);
+    await recorder.cancel();
+    recorder.dispose();
+  });
   for (final duringStart in [false, true]) {
     test(
         'cancel waits for native ${duringStart ? 'recording start' : 'initialization'} before disposal',
@@ -402,13 +420,15 @@ void main() {
         async.flushMicrotasks();
         expect(started, isTrue);
 
-        ({File file, Duration length})? shot = (file: File('x'), length: Duration.zero);
+        ({File file, Duration length})? shot =
+            (file: File('x'), length: Duration.zero);
         var stopped = false;
         recorder.stop().then((s) {
           shot = s;
           stopped = true;
         });
-        async.elapse(CircleRecorder.nativeCallCeiling - const Duration(milliseconds: 1));
+        async.elapse(
+            CircleRecorder.nativeCallCeiling - const Duration(milliseconds: 1));
         expect(stopped, isFalse, reason: 'not a moment early');
         async.elapse(const Duration(milliseconds: 2));
         async.flushMicrotasks();
@@ -433,7 +453,8 @@ void main() {
     // only cleared when that start returned, so even after the cancel had
     // released everything, every later circle was refused as "already
     // starting", for as long as the app stayed open.
-    test('a camera that never opens and never lets go does not lock circles out',
+    test(
+        'a camera that never opens and never lets go does not lock circles out',
         () {
       fakeAsync((async) {
         final first = FakeCamera(front)

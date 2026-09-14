@@ -8,7 +8,6 @@ import '../../../core/notifications/push_registration.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/aurora_background.dart';
-import '../../../core/util/location_service.dart';
 import '../../../core/widgets/cube_logo.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/onboarding_controller.dart';
@@ -39,29 +38,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   /// Ask for what the app cannot ask for later.
   ///
-  /// Both prompts are shown once by the system and never again: a refusal is
+  /// The prompt is shown once by the system and never again: a refusal is
   /// remembered, `requestAuthorization` then returns false without drawing
   /// anything, and the only way back is Settings. So the moment somebody
   /// finishes the intro — having just read what this app does — is the best
   /// one there is to ask, and it was not being used.
   ///
-  /// Location is the one that mattered. A field log read
-  /// `NOT armed: iOS location for cubechat is not set to Always`, which is a
-  /// line in a diagnostics screen nobody opens, and the ask only ever happened
-  /// if somebody went looking for map sharing. [ensureBackgroundPermission]
-  /// escalates a granted while-in-use into the Always prompt, which is the one
-  /// that lets a closed app be woken by movement.
+  /// A "no" blocks nothing: push then registers nothing, which is exactly the
+  /// state the app was in before it asked.
   ///
-  /// Neither answer blocks anything. A "no" to location leaves the map off, a
-  /// "no" to notifications leaves push registering nothing, and both are
-  /// exactly the state the app was in before it asked.
+  /// **Location is no longer asked for here, and must not be.** Onboarding
+  /// escalated every new install to the iOS "Always" prompt, for a live map
+  /// most people never opened. App Store review rejected the live map under
+  /// guideline 5.1.2(i); location is now asked for only when a person taps
+  /// Check in on the map, and only for while-in-use.
   Future<void> _askForWhatCannotBeAskedTwice() async {
-    try {
-      await const LocationService().ensureBackgroundPermission();
-    } catch (_) {
-      // A prompt that fails is not a reason to hold up the first screen.
-    }
-    if (!mounted) return;
     try {
       await ref.read(pushEnabledProvider.notifier).reassert();
     } catch (_) {

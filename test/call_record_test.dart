@@ -17,6 +17,7 @@ void main() {
         outgoing: outgoing,
         cause: cause,
         talkedFor: talkedFor,
+        source: CallEndSource.button,
       );
 
   test('an answered call round-trips its direction and its length', () {

@@ -122,6 +122,24 @@ public class ProcessCameraProviderTest {
   }
 
   @Test
+  public void rearCameraWithFlashWinsOverAuxiliaryUltraWide() {
+    final ProcessCameraProviderProxyApi api =
+        (ProcessCameraProviderProxyApi) new TestProxyApiRegistrar().getPigeonApiProcessCameraProvider();
+    final ProcessCameraProvider provider = mock(ProcessCameraProvider.class);
+    final CameraInfo wide = mock(CameraInfo.class);
+    final CameraInfo ultra = mock(CameraInfo.class);
+    when(wide.getLensFacing()).thenReturn(CameraSelector.LENS_FACING_BACK);
+    when(ultra.getLensFacing()).thenReturn(CameraSelector.LENS_FACING_BACK);
+    when(wide.hasFlashUnit()).thenReturn(true);
+    when(provider.getAvailableCameraInfos()).thenReturn(List.of(ultra, wide));
+    try (MockedStatic<Camera2CameraInfo> bridge = Mockito.mockStatic(Camera2CameraInfo.class)) {
+      cameraMetadata(bridge, wide, 6, 6, 1);
+      cameraMetadata(bridge, ultra, 3, 6, 1);
+      assertEquals(List.of(wide, ultra), api.getAvailableCameraInfos(provider));
+    }
+  }
+
+  @Test
   public void missingMetadataPreservesAvailableCameraOrder() {
     final ProcessCameraProviderProxyApi api =
         (ProcessCameraProviderProxyApi) new TestProxyApiRegistrar().getPigeonApiProcessCameraProvider();

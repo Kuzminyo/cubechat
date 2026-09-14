@@ -1287,7 +1287,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileMapLocationOnHint =>
-      'Location is available for manual sharing and your pin is shown on the map';
+      'You can check in on the map; each check-in is shown to your map friends for one hour';
 
   @override
   String get profileMapLocationOffHint =>
@@ -2468,8 +2468,35 @@ class AppLocalizationsEn extends AppLocalizations {
       'Light keeps the tint and drops the blur behind panels. Automatic measures your phone once and decides. On a phone that already keeps up this is worth very little — it is for one that does not.';
 
   @override
-  String get mapAlwaysNeeded =>
-      'For the map to keep up while cubechat is closed, Location must be set to Always. Tap to open Settings.';
+  String get mapCheckIn => 'Check in';
+
+  @override
+  String mapCheckedInUntil(String time) {
+    return 'Your map friends see you until $time';
+  }
+
+  @override
+  String get mapCheckInRemove => 'Remove';
+
+  @override
+  String get mapCheckInConsentTitle => 'Show your location on the map?';
+
+  @override
+  String get mapCheckInConsentBody =>
+      'Your current position will be shown to the contacts on your map for one hour, then it disappears. It is sent only when you tap Check in — never automatically, and never in the background. You can remove it at any time.';
+
+  @override
+  String get mapCheckInAllow => 'Allow';
+
+  @override
+  String get mapCheckInDecline => 'Don\'t allow';
+
+  @override
+  String get mapCheckInNobody => 'Add a contact to your map first';
+
+  @override
+  String get mapCheckInUnreachable =>
+      'Could not reach your map friends. Try again.';
 
   @override
   String get profileScaleSmall => 'Smaller';
