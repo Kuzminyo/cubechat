@@ -44,6 +44,7 @@ class CubechatCallPlugin(
                         ongoing = call.argument<String>("ongoing").orEmpty(),
                         hangUp = call.argument<String>("hangUp").orEmpty(),
                         speaker = call.argument<String>("speaker").orEmpty(),
+                        microphone = call.argument<String>("microphone").orEmpty(),
                     )
                     result.success(
                         IncomingCall.show(

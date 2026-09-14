@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A view tag key for IncomingCallActivity: the glyph inside a call button, so
+     the microphone button can swap between its on and off icons. -->
+<resources>
+    <item name="call_action_icon" type="id" />
+</resources>

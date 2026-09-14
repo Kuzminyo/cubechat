@@ -372,6 +372,8 @@ class CallController extends ChangeNotifier {
         if (ringingHere && !preparing) unawaited(answer());
       case IncomingCallActionKind.speaker:
         if (!ringingHere) unawaited(toggleSpeaker());
+      case IncomingCallActionKind.mute:
+        unawaited(toggleMute());
       case IncomingCallActionKind.decline:
       case IncomingCallActionKind.end:
         // CallKit has one red button for both: decline while it rings, hang
@@ -559,6 +561,10 @@ class CallController extends ChangeNotifier {
     await prepareAudio();
     if (!_current(generation)) return null;
     final media = _media = createMedia();
+    // Muted while it was still ringing: the microphone opens muted.
+    if (micMuted) {
+      unawaited(media.setMuted(true).catchError((Object _) {}));
+    }
     _mediaEvents = media.events.listen((event) {
       if (!_current(generation)) return;
       _log('media ${event.name}');
@@ -833,15 +839,24 @@ class CallController extends ChangeNotifier {
     _changed();
   }
 
+  /// Mute or unmute, at any point in a live call - not only once it talks.
+  ///
+  /// It used to answer only while `talking`, and the button was drawn only
+  /// once a call reached `connecting`, where pressing it did nothing. So the
+  /// person being called had no microphone switch at all until the audio was
+  /// already flowing, and "the one being called should be able to mute too"
+  /// was the report. Before a microphone exists the choice is simply kept, and
+  /// [_prepare] opens the microphone muted.
   Future<void> toggleMute() async {
-    if (phase != CallPhase.talking || _media == null || _changingMute) return;
+    if (!active || _changingMute) return;
     _changingMute = true;
     final generation = _generation;
     final next = !micMuted;
     try {
-      await _media!.setMuted(next);
+      await _media?.setMuted(next);
       if (!_current(generation)) return;
       micMuted = next;
+      _log('microphone ${next ? 'muted' : 'on'}');
       _changed();
     } catch (_) {
       if (_current(generation)) _fail('media');
@@ -953,6 +968,7 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
           ongoing: t.callVoice,
           hangUp: t.callEnd,
           speaker: t.callSpeaker,
+          microphone: t.callMicrophone,
         );
       },
       onVoipToken: () =>

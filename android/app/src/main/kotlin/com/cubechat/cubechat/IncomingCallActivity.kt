@@ -39,6 +39,7 @@ class IncomingCallActivity : Activity() {
     /** Answered here, on a locked phone: this is the call screen now. */
     private var inCall = false
     private var speakerOn = false
+    private var muted = false
     private var unlockWatch: BroadcastReceiver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,12 +116,14 @@ class IncomingCallActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
+        // Answer on the left, Decline on the right - swapped on request, and
+        // the same order the app's own call screen uses.
         buttons.addView(
-            action(decline, Color.rgb(229, 57, 53), R.drawable.ic_call_decline) { declineCall() },
+            action(answer, Color.rgb(46, 204, 113), R.drawable.ic_call_answer) { answerCall() },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
         buttons.addView(
-            action(answer, Color.rgb(46, 204, 113), R.drawable.ic_call_answer) { answerCall() },
+            action(decline, Color.rgb(229, 57, 53), R.drawable.ic_call_decline) { declineCall() },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
         root.addView(buttons)
@@ -175,6 +178,7 @@ class IncomingCallActivity : Activity() {
         val ongoing = intent.getStringExtra(IncomingCall.EXTRA_ONGOING).orEmpty()
         val hangUp = intent.getStringExtra(IncomingCall.EXTRA_HANG_UP).orEmpty()
         val speaker = intent.getStringExtra(IncomingCall.EXTRA_SPEAKER).orEmpty()
+        val microphone = intent.getStringExtra(IncomingCall.EXTRA_MICROPHONE).orEmpty()
         val clock = Chronometer(this).apply {
             base = SystemClock.elapsedRealtime()
             setTextColor(Color.argb(210, 255, 255, 255))
@@ -187,6 +191,21 @@ class IncomingCallActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
+        // The microphone, for the person who answered on the lock screen: this
+        // screen had only the speaker and hang up, so a call taken here could
+        // not be muted until the phone was unlocked.
+        lateinit var micButton: View
+        micButton = action(microphone, micColor(), micIcon()) {
+            val callKey = key ?: return@action
+            muted = !muted
+            CubechatCallPlugin.instance?.deliver("mute", callKey)
+            (micButton.tag as? GradientDrawable)?.setColor(micColor())
+            (micButton.getTag(R.id.call_action_icon) as? ImageView)?.setImageResource(micIcon())
+        }
+        buttons.addView(
+            micButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
         lateinit var speakerButton: View
         speakerButton = action(speaker, speakerColor(), R.drawable.ic_call_speaker) {
             val callKey = key ?: return@action
@@ -205,6 +224,12 @@ class IncomingCallActivity : Activity() {
         root.addView(buttons)
         setContentView(root)
     }
+
+    private fun micColor(): Int =
+        if (muted) Color.WHITE else Color.argb(60, 255, 255, 255)
+
+    private fun micIcon(): Int =
+        if (muted) R.drawable.ic_call_mic_off else R.drawable.ic_call_mic
 
     private fun speakerColor(): Int =
         if (speakerOn) Color.rgb(125, 217, 160) else Color.argb(60, 255, 255, 255)
@@ -297,6 +322,7 @@ class IncomingCallActivity : Activity() {
             shape = GradientDrawable.OVAL
             setColor(color)
         }
+        val glyph = ImageView(this@IncomingCallActivity).apply { setImageResource(icon) }
         val button = FrameLayout(this).apply {
             background = disc
             isClickable = true
@@ -304,11 +330,12 @@ class IncomingCallActivity : Activity() {
             contentDescription = text
             setOnClickListener { onTap() }
             addView(
-                ImageView(this@IncomingCallActivity).apply { setImageResource(icon) },
+                glyph,
                 FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER),
             )
         }
         column.tag = disc
+        column.setTag(R.id.call_action_icon, glyph)
         column.addView(button, LinearLayout.LayoutParams(dp(76), dp(76)))
         column.addView(spacer(dp(12)))
         column.addView(label(text, 15f, Color.WHITE, Typeface.NORMAL))

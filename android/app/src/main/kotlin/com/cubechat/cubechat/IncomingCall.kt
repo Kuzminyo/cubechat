@@ -51,6 +51,7 @@ object IncomingCall {
     const val EXTRA_ONGOING = "callOngoing"
     const val EXTRA_HANG_UP = "callHangUp"
     const val EXTRA_SPEAKER = "callSpeaker"
+    const val EXTRA_MICROPHONE = "callMicrophone"
 
     /**
      * Matches `CallTimings.noAnswer` in Dart. The system takes the notification
@@ -67,6 +68,7 @@ object IncomingCall {
         val ongoing: String = "",
         val hangUp: String = "",
         val speaker: String = "",
+        val microphone: String = "",
     )
 
     /** The call on screen now, so a late dismiss for an older one is ignored. */
@@ -155,9 +157,11 @@ object IncomingCall {
                 ),
             )
         } else {
+            // Answer first, as on the app's own screens. CallStyle above keeps
+            // the system's order, which no app can change.
             builder
-                .addAction(0, labels.decline, declineIntent(context, key))
                 .addAction(0, labels.answer, answer)
+                .addAction(0, labels.decline, declineIntent(context, key))
         }
 
         val notification = builder.build()
@@ -326,6 +330,7 @@ object IncomingCall {
         .putExtra(EXTRA_ONGOING, labels.ongoing)
         .putExtra(EXTRA_HANG_UP, labels.hangUp)
         .putExtra(EXTRA_SPEAKER, labels.speaker)
+        .putExtra(EXTRA_MICROPHONE, labels.microphone)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
 
     private fun screenIntent(

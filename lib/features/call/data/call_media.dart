@@ -45,6 +45,10 @@ abstract interface class CallMedia {
 
 class WebRtcCallMedia implements CallMedia {
   final _events = StreamController<CallMediaEvent>.broadcast();
+
+  /// Muted before there was a microphone to mute - the person being called
+  /// pressed it while the call still rang. Applied to the track as it opens.
+  bool _muted = false;
   RTCPeerConnection? _peer;
   MediaStream? _local;
   Future<String>? _opening;
@@ -127,6 +131,11 @@ class WebRtcCallMedia implements CallMedia {
       'video': false,
     });
     _checkOpen();
+    if (_muted) {
+      for (final track in local.getAudioTracks()) {
+        await Helper.setMicrophoneMute(true, track);
+      }
+    }
     if (Platform.isAndroid) {
       await Helper.setAndroidAudioConfiguration(
           AndroidAudioConfiguration.communication);
@@ -189,6 +198,7 @@ class WebRtcCallMedia implements CallMedia {
   @override
   Future<void> setMuted(bool muted) async {
     _checkOpen();
+    _muted = muted;
     for (final track in _local?.getAudioTracks() ?? <MediaStreamTrack>[]) {
       await Helper.setMicrophoneMute(muted, track);
     }

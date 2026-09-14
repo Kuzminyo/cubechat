@@ -549,21 +549,35 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     // `Wrap` of fixed 90-point cells, so two buttons huddled in the middle and
     // four wrapped onto a second line on a narrow phone. Asked for as "align
     // the icons across the width": every button gets an equal share of it.
+    //
+    // The microphone is there for the whole of a live call, the ringing
+    // included: the person being called can answer already muted.
+    //
+    // Answer before Decline. They were the other way round, and "swap answer
+    // and decline" was asked for - which also leaves the red button at the
+    // right-hand end in every state of the call, ringing or talking.
     final controls = <Widget>[
-      if (talking || connecting) ...[
+      if (call.active)
         _control(
           call.micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
           t.callMicrophone,
           () => unawaited(call.toggleMute()),
           selected: call.micMuted,
         ),
+      if (talking || connecting)
         _control(
           routeIcon(route),
           call.hasHeadsetRoute ? routeName : t.callSpeaker,
           () => unawaited(_onSpeaker()),
           selected: route != CallAudioRouteKind.earpiece,
         ),
-      ],
+      if (incoming)
+        _control(
+          Icons.call_rounded,
+          t.callAnswer,
+          () => unawaited(call.answer()),
+          tone: AppColors.brandPrimary,
+        ),
       if (call.active)
         _control(
           Icons.call_end_rounded,
@@ -573,13 +587,6 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         )
       else
         _control(Icons.close_rounded, t.callClose, call.dismiss),
-      if (incoming)
-        _control(
-          Icons.call_rounded,
-          t.callAnswer,
-          () => unawaited(call.answer()),
-          tone: AppColors.brandPrimary,
-        ),
     ];
 
     return Material(

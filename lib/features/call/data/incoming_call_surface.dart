@@ -9,9 +9,9 @@ import 'call_tones.dart';
 
 /// `end` comes from iOS, where CallKit's red button means decline while the
 /// call rings and hang up once it is answered - and from Android's Hang up in
-/// the shade. `speaker` from the call screen Android keeps over the lock
-/// screen once a call is answered there.
-enum IncomingCallActionKind { answer, decline, end, speaker }
+/// the shade. `speaker` and `mute` from the call screen Android keeps over the
+/// lock screen once a call is answered there.
+enum IncomingCallActionKind { answer, decline, end, speaker, mute }
 
 /// A button pressed on the phone's own incoming-call screen, for the call
 /// identified by [key].
@@ -25,6 +25,7 @@ typedef IncomingCallLabels = ({
   String ongoing,
   String hangUp,
   String speaker,
+  String microphone,
 });
 
 /// The incoming call drawn by the phone rather than by the app.
@@ -170,6 +171,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
         'ongoing': words.ongoing,
         'hangUp': words.hangUp,
         'speaker': words.speaker,
+        'microphone': words.microphone,
       });
       DebugLog.instance.log(
         'CALL',
@@ -214,6 +216,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
       'decline' => IncomingCallActionKind.decline,
       'end' => IncomingCallActionKind.end,
       'speaker' => IncomingCallActionKind.speaker,
+      'mute' => IncomingCallActionKind.mute,
       _ => null,
     };
     if (kind == null) return;

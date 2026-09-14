@@ -44,8 +44,9 @@ class FakeMedia implements CallMedia {
     if (connectOnAccept) controller.add(CallMediaEvent.connected);
   }
 
+  final muted = <bool>[];
   @override
-  Future<void> setMuted(bool muted) async {}
+  Future<void> setMuted(bool on) async => muted.add(on);
   final speaker = <bool>[];
   List<CallAudioRoute> available = const [];
   CallAudioRoute? selected;
@@ -801,6 +802,59 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(surface.ongoingLog, ['ongoing peer']);
       call.hangUp();
+    });
+  });
+
+  // "The one being called should be able to mute too": the switch answered
+  // only while talking, so there was none while it rang or connected.
+  group('the microphone switch', () {
+    test('muted while it rings, the call is answered with the microphone off',
+        () async {
+      media.connectOnAccept = false;
+      receive(inviteFor(id(50)));
+      await Future<void>.delayed(Duration.zero);
+      await call.toggleMute();
+      expect(call.micMuted, isTrue, reason: 'kept before there is a microphone');
+      expect(media.muted, isEmpty);
+      await call.answer();
+      await Future<void>.delayed(Duration.zero);
+      expect(media.muted, [true], reason: 'the microphone opens muted');
+      call.hangUp();
+    });
+
+    test('works while the call is still connecting', () async {
+      media.connectOnAccept = false;
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, isNot(CallPhase.talking));
+      await call.toggleMute();
+      expect(call.micMuted, isTrue);
+      expect(media.muted, [true]);
+      await call.toggleMute();
+      expect(call.micMuted, isFalse);
+      expect(media.muted, [true, false]);
+      call.hangUp();
+    });
+
+    test('the lock-screen call screen can mute an answered call', () async {
+      media.connectOnAccept = false;
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      final key = dialledId()
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      surface.pressed.add((kind: IncomingCallActionKind.mute, key: key));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.micMuted, isTrue);
+      call.hangUp();
+    });
+
+    test('a call that is over cannot be muted', () async {
+      await call.toggleMute();
+      expect(call.micMuted, isFalse);
+      expect(media.muted, isEmpty);
     });
   });
 }
