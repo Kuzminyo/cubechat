@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cubechat/core/util/transition_probe.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 FrameTiming _frame(int number, {required int buildMs, required int rasterMs}) {
@@ -59,6 +60,22 @@ void main() {
       expect(rows.single.over16PerRun, 1, reason: 'only the 21 ms raster');
       expect(rows.single.rasterP99, 21);
     });
+  });
+
+  test('a push made while a frame is building counts that frame', () {
+    // The router's push: didPush runs inside the build of frame 40, and frame
+    // 40 is the one that builds the new screen.
+    expect(
+      TransitionProbe.windowStart(40, SchedulerPhase.persistentCallbacks),
+      39,
+    );
+    expect(
+      TransitionProbe.windowStart(40, SchedulerPhase.transientCallbacks),
+      39,
+    );
+    // A tap between frames: the next frame is the first.
+    expect(TransitionProbe.windowStart(40, SchedulerPhase.idle), 40);
+    expect(TransitionProbe.windowStart(40, SchedulerPhase.postFrameCallbacks), 40);
   });
 
   test('nothing is measured while disarmed', () {

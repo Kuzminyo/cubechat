@@ -124,7 +124,10 @@ class TransitionProbe {
     final window = _Window(
       kind: kind,
       route: route,
-      fromFrame: PlatformDispatcher.instance.frameData.frameNumber,
+      fromFrame: windowStart(
+        PlatformDispatcher.instance.frameData.frameNumber,
+        SchedulerBinding.instance.schedulerPhase,
+      ),
       startedMs: _clock.elapsedMilliseconds,
       experiments: _experiments(),
     );
@@ -138,6 +141,26 @@ class TransitionProbe {
     });
     window.giveUp = Timer(length + _giveUpAfter, () => _finish(window));
   }
+
+  /// The last frame number *not* in a window opened at [current] during
+  /// [phase].
+  ///
+  /// **A push made by the router lands inside a frame, not between two.**
+  /// `context.push` only tells the router; the Navigator receives its new page
+  /// list while that frame builds, calls `didPush` from inside the build, and
+  /// builds the chat in the same frame. So the frame number read in `didPush`
+  /// is the number of the very frame that builds the chat - and counting from
+  /// the one after it left out the heaviest frame of every open. The 1052 log
+  /// shows it: `open chat` windows with a build max of 1.7 ms beside a
+  /// `[FRAME]` line of 24-34 ms `chat, chats`, and that frame turning up in
+  /// the *previous* chat's close window whenever the next chat was opened
+  /// within its 520 ms. A push from a tap between frames (idle, or after the
+  /// frame's callbacks) still starts with the next frame.
+  @visibleForTesting
+  static int windowStart(int current, SchedulerPhase phase) =>
+      phase == SchedulerPhase.idle || phase == SchedulerPhase.postFrameCallbacks
+          ? current
+          : current - 1;
 
   String _experiments() => [
         if (instantTransitions.value) 'instant',

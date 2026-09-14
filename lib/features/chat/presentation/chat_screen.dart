@@ -5063,7 +5063,11 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
 
   @override
   Widget build(BuildContext context) {
-    FrameStats.countBuild('chat');
+    // Its own name. It was counted as `chat` too, so every chat open read
+    // `chat x2` in the frame meter - one conversation and one composer, which
+    // looked like the conversation building twice (checked on 2026-09-15: the
+    // conversation builds once when a chat opens).
+    FrameStats.countBuild('composer');
     final t = AppLocalizations.of(context);
     final voiceState = ref.watch(voiceRecorderProvider);
     final draft = ref.watch(draftsControllerProvider)[widget.canonicalId];
