@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-FrameTiming _frame({required int buildMs, required int rasterMs}) {
+FrameTiming _frame({
+  required int buildMs,
+  required int rasterMs,
+  int frameNumber = -1,
+}) {
   // FrameTiming is built from raw timestamps, in microseconds.
   const start = 0;
   final buildEnd = buildMs * 1000;
@@ -15,6 +19,7 @@ FrameTiming _frame({required int buildMs, required int rasterMs}) {
     rasterStart: buildEnd,
     rasterFinish: rasterEnd,
     rasterFinishWallTime: rasterEnd,
+    frameNumber: frameNumber,
   );
 }
 
@@ -94,6 +99,31 @@ void main() {
       isNot(contains('chats')),
       reason: 'the cheap frame before it must not be blamed for this one',
     );
+  });
+
+  test('a release batch of a hundred timings still names the right frame',
+      () async {
+    FrameStats.instance
+      ..reset()
+      ..start();
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+
+    // A release engine reports once a second: at 120 Hz, a batch of about a
+    // hundred and twenty frames at once. Paired by position against a queue
+    // eight deep, the slow frame in the middle of it was answered with
+    // nothing - the 2026-09-14 log read `nothing counted rebuilt` beside every
+    // 20-35 ms chat open. Paired by frame number it is answered with itself.
+    FrameStats.instance.noteFrameCountsForTest(1060, const {'chat': 1});
+    FrameStats.instance.ingestForTest([
+      for (var n = 1000; n < 1120; n++)
+        _frame(
+          buildMs: n == 1060 ? 30 : 1,
+          rasterMs: 1,
+          frameNumber: n,
+        ),
+    ]);
+
+    expect(FrameStats.instance.lastSlowFrameWho, 'chat x1');
   });
 
   test('stopping detaches the per-frame callback', () async {

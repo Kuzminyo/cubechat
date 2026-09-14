@@ -15,6 +15,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/theme/typography.dart';
 import '../../../../core/util/debug_log.dart';
+import '../../../../core/util/transition_probe.dart';
 import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
@@ -2675,18 +2676,32 @@ class _AlbumCell extends StatelessWidget {
       child: Hero(
         tag: 'image-${message.id}',
         flightShuttleBuilder: photoFlightShuttle(path),
-        child: Image.file(
-          File(path),
-          fit: BoxFit.cover,
-          cacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
-          errorBuilder: (_, __, ___) => _ImagePlaceholder(
-            icon: Icons.broken_image_rounded,
-            label: '',
-          ),
-        ),
+        child: TransitionProbe.instance.placeholderMedia.value
+            ? const _MediaPlaceholder()
+            : Image.file(
+                File(path),
+                fit: BoxFit.cover,
+                cacheWidth:
+                    (width * MediaQuery.devicePixelRatioOf(context)).round(),
+                errorBuilder: (_, __, ___) => _ImagePlaceholder(
+                  icon: Icons.broken_image_rounded,
+                  label: '',
+                ),
+              ),
       ),
     );
   }
+}
+
+/// A photo that is not decoded: the Diagnostics experiment that measures a
+/// chat opening without any of its pictures - see
+/// [TransitionProbe.placeholderMedia].
+class _MediaPlaceholder extends StatelessWidget {
+  const _MediaPlaceholder();
+
+  @override
+  Widget build(BuildContext context) =>
+      const ColoredBox(color: Color(0x33FFFFFF), child: SizedBox.expand());
 }
 
 class _ImagePayload extends StatelessWidget {
@@ -2738,7 +2753,10 @@ class _ImagePayload extends StatelessWidget {
     // lights it in the spotlight with everything that can be done to it, which
     // is where a sticker's actions belong and where Telegram keeps them too.
     final opens = fileExists && !message.isSticker;
-    final picture = Image.file(
+    final picture = TransitionProbe.instance.placeholderMedia.value &&
+            !message.isSticker
+        ? const _MediaPlaceholder()
+        : Image.file(
       // Only ever drawn on the `fileExists` side of the branch below, which is
       // where the null check lives.
       File(path!),

@@ -20,6 +20,7 @@ import 'features/profile/data/dead_mans_switch_controller.dart';
 import 'features/profile/data/quiet_hours_controller.dart';
 import 'features/profile/presentation/app_lock_gate.dart';
 import 'core/util/platform_info.dart';
+import 'core/util/transition_probe.dart';
 import 'core/util/ui_activity.dart';
 import 'features/chat/presentation/widgets/voice_mini_player.dart';
 import 'core/theme/glass.dart';
@@ -432,6 +433,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // back asks again only if the grace has run out.
     final lock = ref.read(appLockControllerProvider.notifier);
     if (state == AppLifecycleState.resumed) {
+      // Measured apart from any chat opened straight after, when the
+      // transition probe is armed - see [TransitionProbe.noteResume].
+      TransitionProbe.instance.noteResume();
       lock.noteReturned();
       unawaited(_checkDeadMansSwitch());
     } else if (state == AppLifecycleState.paused ||

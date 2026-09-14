@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/util/transition_probe.dart';
 import '../../../../core/routing/page_transitions.dart';
 import '../../data/video_frames.dart';
 import '../../models/message.dart';
@@ -125,6 +126,8 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   void _loadPoster() {
     final path = widget.message.filePath;
     if (path == null) return;
+    // The Diagnostics experiment draws no media, so none is read either.
+    if (TransitionProbe.instance.placeholderMedia.value) return;
     _poster = VideoFrames.peek(path);
     if (_poster != null) return;
     unawaited(
@@ -179,6 +182,10 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   Widget _frame(double drawnWidth) {
     final frame = _poster?.frame;
     if (frame == null) return const SizedBox.shrink();
+    // Diagnostics experiment: nothing decoded at all.
+    if (TransitionProbe.instance.placeholderMedia.value) {
+      return const ColoredBox(color: Color(0x33FFFFFF));
+    }
     return Image.file(
       File(frame),
       fit: BoxFit.cover,

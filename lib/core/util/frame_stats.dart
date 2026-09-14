@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show FrameTiming;
+import 'dart:ui' show FrameTiming, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/scheduler.dart';
@@ -111,15 +111,22 @@ class FrameStats {
         _buildCounts.clear();
         return;
       }
-      if (_buildCounts.isEmpty) {
-        // Still a frame, and still needs an entry: the queue below is matched
-        // to the timings stream position by position, so a frame that skipped
-        // is a frame that has to be represented.
-        _frameCounts.add(const <String, int>{});
-      } else {
-        _frameCounts.add(Map<String, int>.of(_buildCounts));
-        _buildCounts.clear();
+      final counts = _buildCounts.isEmpty
+          ? const <String, int>{}
+          : Map<String, int>.of(_buildCounts);
+      _buildCounts.clear();
+      // By the engine's frame number, which is what each timing carries too.
+      final number = PlatformDispatcher.instance.frameData.frameNumber;
+      if (number >= 0) {
+        if (counts.isNotEmpty) _countsByFrame[number] = counts;
+        while (_countsByFrame.length > _countsByFrameDepth) {
+          _countsByFrame.remove(_countsByFrame.keys.first);
+        }
       }
+      // Still a frame, and still needs an entry: the queue below is matched
+      // to the timings stream position by position, so a frame that skipped
+      // is a frame that has to be represented.
+      _frameCounts.add(counts);
       // Timings arrive a frame or two behind, never further, so a short queue
       // is enough — and a bounded one cannot grow while nobody is listening.
       while (_frameCounts.length > _frameCountsDepth) {
@@ -146,6 +153,22 @@ class FrameStats {
   final List<Map<String, int>> _frameCounts = <Map<String, int>>[];
   static const int _frameCountsDepth = 8;
 
+  /// The same counts, filed by frame number - the pairing actually used
+  /// wherever the engine supplies one.
+  ///
+  /// **Position pairing cannot work in a release build, and that is why the
+  /// shipped logs still read `nothing counted rebuilt`.** A release engine
+  /// hands timings over in batches, once a second or every hundred frames;
+  /// at 120 Hz that is up to 120 frames per batch against a queue eight deep,
+  /// so the first eight timings of a batch took the counts of the last eight
+  /// frames and every other one took nothing. Nearly every slow frame on a
+  /// chat open in the 2026-09-14 log says `nothing counted rebuilt` beside a
+  /// 20-35 ms build, which a route push cannot be. Keyed by number, a batch
+  /// arriving late changes nothing. Deep enough for a second at 120 Hz with
+  /// room over; only frames that counted something are kept.
+  final Map<int, Map<String, int>> _countsByFrame = <int, Map<String, int>>{};
+  static const int _countsByFrameDepth = 240;
+
   /// Take [count] entries off the front and throw them away.
   ///
   /// The trim in the frame callback is a safety valve, not a mechanism: it fires
@@ -169,6 +192,7 @@ class FrameStats {
     // Left behind, they would be handed to the first frames of the *next*
     // measuring window and blame them for somebody else's rebuilds.
     _frameCounts.clear();
+    _countsByFrame.clear();
     _buildCounts.clear();
   }
 
@@ -233,6 +257,7 @@ class FrameStats {
     // pressed reset in order to see.
     _lastReport = null;
     _frameCounts.clear();
+    _countsByFrame.clear();
     _lastSlowFrameWho = null;
   }
 
@@ -254,6 +279,12 @@ class FrameStats {
   /// what it is given.
   @visibleForTesting
   void ingestForTest(List<FrameTiming> timings) => _onTimings(timings);
+
+  /// What frame [frameNumber] rebuilt, as the frame callback would have filed
+  /// it on a real engine - a test has no frame numbers of its own.
+  @visibleForTesting
+  void noteFrameCountsForTest(int frameNumber, Map<String, int> counts) =>
+      _countsByFrame[frameNumber] = counts;
 
   void _onTimings(List<FrameTiming> timings) {
     final from = _collectFrom;
@@ -288,9 +319,15 @@ class FrameStats {
       _framesSinceReport++;
       // Taken for every frame, slow or not, so the queue stays in step with the
       // timings rather than draining only when something is reported.
-      final who = _frameCounts.isEmpty
-          ? const <String, int>{}
-          : _frameCounts.removeAt(0);
+      final Map<String, int> who;
+      if (t.frameNumber >= 0) {
+        who = _countsByFrame.remove(t.frameNumber) ?? const <String, int>{};
+        if (_frameCounts.isNotEmpty) _frameCounts.removeAt(0);
+      } else {
+        who = _frameCounts.isEmpty
+            ? const <String, int>{}
+            : _frameCounts.removeAt(0);
+      }
       _reportIfSlow(build, raster, who);
       if (_buildUs.length > _window) _buildUs.removeAt(0);
       if (_rasterUs.length > _window) _rasterUs.removeAt(0);

@@ -14,6 +14,7 @@ import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/util/open_in.dart';
 import '../../../core/util/share_anchor.dart';
+import '../../../core/util/transition_probe.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/glass_toast.dart';
 
@@ -160,6 +161,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         child: Column(
           children: [
             const _FramePanel(),
+            const _TransitionPanel(),
             const _WakePanel(),
             Expanded(
               child: _buildLog(context, t, entries),
@@ -224,6 +226,151 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 /// Re-asked when this screen opens. The call never prompts and is idempotent,
 /// and returning from Settings having just granted Always is exactly when
 /// somebody comes here to check.
+/// Opening and closing screens, measured one transition at a time — see
+/// [TransitionProbe].
+///
+/// Folded to one line until it is opened, because the log below it is what
+/// this screen is mostly for and the column has a fixed height to share. The
+/// two experiments are here and nowhere else on purpose: they exist to answer
+/// one question each, they are not saved, and a restart puts everything back.
+class _TransitionPanel extends StatefulWidget {
+  const _TransitionPanel();
+
+  @override
+  State<_TransitionPanel> createState() => _TransitionPanelState();
+}
+
+class _TransitionPanelState extends State<_TransitionPanel> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final probe = TransitionProbe.instance;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: AppColors.glass(0.06),
+        border: Border.all(color: AppColors.glass(0.12)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          probe.armed,
+          probe.instantTransitions,
+          probe.placeholderMedia,
+          probe.revision,
+        ]),
+        builder: (context, _) {
+          final rows = probe.summary;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _open = !_open),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Transitions${probe.armed.value ? ' · measuring' : ''}'
+                        '${rows.isEmpty ? '' : ' · ${rows.length} scenario(s)'}',
+                        style: AppTypography.heading(
+                          size: 13,
+                          color: AppColors.textOnGlass,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      _open
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: AppColors.textOnGlassDim,
+                    ),
+                  ],
+                ),
+              ),
+              if (_open) ...[
+                _toggle('measure every open, close and resume', probe.armed.value,
+                    probe.arm),
+                _toggle(
+                  'experiment: no slide animation',
+                  probe.instantTransitions.value,
+                  (v) => probe.instantTransitions.value = v,
+                ),
+                _toggle(
+                  'experiment: placeholders instead of photos and video',
+                  probe.placeholderMedia.value,
+                  (v) => probe.placeholderMedia.value = v,
+                ),
+                Text(
+                  'blur experiment: Кастомізація → Скло → Полегшене',
+                  style: TextStyle(
+                    color: AppColors.textOnGlassFaint,
+                    fontSize: 10.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final row in rows)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              row.line,
+                              style: AppTypography.mono(
+                                size: 10.5,
+                                color: row.over16PerRun >= 1
+                                    ? const Color(0xFFFF6B6B)
+                                    : AppColors.textOnGlass,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: probe.logSummary,
+                      child: const Text('summary to log'),
+                    ),
+                    TextButton(
+                      onPressed: probe.resetSummary,
+                      child: const Text('reset'),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) =>
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            ),
+          ),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      );
+}
+
 class _WakePanel extends StatefulWidget {
   const _WakePanel();
 

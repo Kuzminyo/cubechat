@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'branch_pager.dart';
 import 'tab_reset.dart';
 import '../util/debug_log.dart';
+import '../util/transition_probe.dart';
 import '../util/ui_activity.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../features/profile/presentation/customize_screen.dart';
@@ -97,12 +98,14 @@ class _LogRoutes extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     DebugLog.instance.log('NAV', 'push ${_name(route)}');
+    TransitionProbe.instance.noteRoute(route, opening: true);
     _holdGlassStill(route);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     DebugLog.instance.log('NAV', 'pop ${_name(route)}');
+    TransitionProbe.instance.noteRoute(route, opening: false);
     _holdGlassStill(route);
   }
 

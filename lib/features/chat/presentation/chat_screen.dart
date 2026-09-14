@@ -21,6 +21,7 @@ import '../../../core/transport/nostr/websocket_relay_client.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/audio_trimmer.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/transition_probe.dart';
 import '../../../core/util/location_service.dart';
 import '../../../core/util/media_storage.dart';
 import '../../../core/transport/shared_location.dart';
@@ -1442,6 +1443,27 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return bubble;
   }
 
+  /// Empty, text, or which media is on screen when it opens (the newest thirty
+  /// messages), and roughly how long the history is.
+  static String _probeLabel(List<Message> messages) {
+    if (messages.isEmpty) return 'chat[empty]';
+    final media = <String>{};
+    final from = messages.length > 30 ? messages.length - 30 : 0;
+    for (var i = from; i < messages.length; i++) {
+      final m = messages[i];
+      if (m.kind == MessageKind.image && !m.isSticker) media.add('photo');
+      if (m.isCircle) {
+        media.add('circle');
+      } else if (m.kind == MessageKind.file &&
+          m.text.toLowerCase().startsWith('video/')) {
+        media.add('video');
+      }
+    }
+    final n = messages.length;
+    final size = n < 50 ? '<50' : (n < 500 ? '<500' : '500+');
+    return 'chat[${media.isEmpty ? 'text' : (media.toList()..sort()).join('+')}, $size]';
+  }
+
   PhotoAlbums _albumsFor(List<Message> messages) {
     final cached = _albumCache;
     if (cached != null && identical(_albumSource, messages)) return cached;
@@ -2137,6 +2159,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // only screen not reporting how often it rebuilt was this one.
     FrameStats.countBuild('chat');
     final messages = widget.messages;
+    // Files this route's open and close under what kind of chat it is, when
+    // the transition probe is armed. The id only decides first open from a
+    // repeat; it is not in the label, which is what goes into the log.
+    TransitionProbe.instance.describe(
+      context,
+      key: widget.chatId,
+      label: () => _probeLabel(messages),
+    );
     // Photos sent as one batch, drawn as one grid. Derived here rather than
     // stored: nothing on the wire says which pictures went together, and the
     // conversation itself says it plainly enough.

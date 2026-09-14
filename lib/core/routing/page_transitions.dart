@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 
 import '../util/motion.dart';
+import '../util/transition_probe.dart';
 import 'back_gesture.dart';
 
 /// How a pushed screen arrives, leaves, and is dragged back.
@@ -77,7 +78,10 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   Widget buildContent(BuildContext context) => _builder(context);
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 300);
+  Duration get transitionDuration =>
+      TransitionProbe.instance.instantTransitions.value
+          ? Duration.zero
+          : const Duration(milliseconds: 300);
 
   /// Leaving takes longer than arriving.
   ///
@@ -91,8 +95,14 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   /// 380 ms is the pace the back gesture's release already settles at, so a
   /// close by button and a close by thumb now agree instead of being two
   /// different speeds for one action.
+  ///
+  /// Both collapse to nothing under the Diagnostics experiment that measures
+  /// the same open without a slide - see [TransitionProbe.instantTransitions].
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 380);
+  Duration get reverseTransitionDuration =>
+      TransitionProbe.instance.instantTransitions.value
+          ? Duration.zero
+          : const Duration(milliseconds: 380);
 
   @override
   String? get title => null;
