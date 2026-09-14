@@ -314,6 +314,31 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactsSearchEmpty => 'Контактів не знайдено';
 
   @override
+  String get contactsTabContacts => 'Контакти';
+
+  @override
+  String get contactsTabCalls => 'Дзвінки';
+
+  @override
+  String get callsFilterAll => 'Усі';
+
+  @override
+  String get callsFilterMissed => 'Пропущені';
+
+  @override
+  String get callsEmptyTitle => 'Поки що немає дзвінків';
+
+  @override
+  String get callsEmptyHint =>
+      'Тут з’являться вхідні, вихідні та пропущені дзвінки.';
+
+  @override
+  String get callsMissedEmpty => 'Пропущених дзвінків немає';
+
+  @override
+  String get callsCallBack => 'Подзвонити';
+
+  @override
   String get contactProfileChat => 'Чат';
 
   @override

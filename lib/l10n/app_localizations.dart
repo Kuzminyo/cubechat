@@ -632,6 +632,54 @@ abstract class AppLocalizations {
   /// **'No matching contacts'**
   String get contactsSearchEmpty;
 
+  /// No description provided for @contactsTabContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get contactsTabContacts;
+
+  /// No description provided for @contactsTabCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls'**
+  String get contactsTabCalls;
+
+  /// No description provided for @callsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get callsFilterAll;
+
+  /// No description provided for @callsFilterMissed.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed'**
+  String get callsFilterMissed;
+
+  /// No description provided for @callsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No calls yet'**
+  String get callsEmptyTitle;
+
+  /// No description provided for @callsEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming, outgoing and missed calls will appear here.'**
+  String get callsEmptyHint;
+
+  /// No description provided for @callsMissedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No missed calls'**
+  String get callsMissedEmpty;
+
+  /// No description provided for @callsCallBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Call'**
+  String get callsCallBack;
+
   /// No description provided for @contactProfileChat.
   ///
   /// In en, this message translates to:

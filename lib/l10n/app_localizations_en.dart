@@ -313,6 +313,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsSearchEmpty => 'No matching contacts';
 
   @override
+  String get contactsTabContacts => 'Contacts';
+
+  @override
+  String get contactsTabCalls => 'Calls';
+
+  @override
+  String get callsFilterAll => 'All';
+
+  @override
+  String get callsFilterMissed => 'Missed';
+
+  @override
+  String get callsEmptyTitle => 'No calls yet';
+
+  @override
+  String get callsEmptyHint =>
+      'Incoming, outgoing and missed calls will appear here.';
+
+  @override
+  String get callsMissedEmpty => 'No missed calls';
+
+  @override
+  String get callsCallBack => 'Call';
+
+  @override
   String get contactProfileChat => 'Chat';
 
   @override

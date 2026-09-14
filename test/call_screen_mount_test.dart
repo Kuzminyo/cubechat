@@ -108,7 +108,7 @@ void main() {
 
     unawaited(call.dial('peer'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(tester.takeException(), isNull,
         reason: 'a thrown build is the white screen');
@@ -185,14 +185,16 @@ void main() {
 
     unawaited(call.dial('peer'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 400));
     final before = tester.getTopLeft(find.text('underneath'));
 
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.byType(CallIsland), findsOneWidget);
-    expect(find.byType(CallScreen), findsNothing);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(CallScreen), findsNothing,
+        reason: 'gone once it has slid down');
 
     await tester.tap(find.text('underneath'));
     expect(tapped, 1, reason: 'the chats are usable while the call is away');
@@ -205,6 +207,7 @@ void main() {
     await tester.tap(find.byType(CallIsland));
     await tester.pump();
     expect(find.byType(CallScreen), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
 
     await tester.tap(find.byIcon(Icons.call_end_rounded));
     await tester.pump();
@@ -216,15 +219,43 @@ void main() {
     await tester.pumpAndSettle();
     unawaited(call.dial('peer'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
     await tester.pump();
 
     call.hangUp();
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(CallScreen), findsNothing);
     expect(find.byType(CallIsland), findsNothing);
     expect(call.peerId, isNull, reason: 'dismissed, not left behind');
+  });
+
+  testWidgets('the call screen rises from the bottom and goes back down',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    final height = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+
+    unawaited(call.dial('peer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    final rising = tester.getTopLeft(find.byType(CallScreen)).dy;
+    expect(rising, greaterThan(0), reason: 'on its way up, not already there');
+    expect(rising, lessThan(height));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.getTopLeft(find.byType(CallScreen)).dy, 0);
+
+    call.hangUp();
+    await tester.pump();
+    call.dismiss();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(CallScreen), findsOneWidget,
+        reason: 'still sliding away after the call is dismissed');
+    expect(tester.getTopLeft(find.byType(CallScreen)).dy, greaterThan(0));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(CallScreen), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

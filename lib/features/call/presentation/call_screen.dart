@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/util/motion.dart';
 import '../../../core/widgets/bar_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/util/platform_info.dart';
@@ -51,8 +53,63 @@ class CallHost extends ConsumerStatefulWidget {
 }
 
 class _CallHostState extends ConsumerState<CallHost>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   ChildBackButtonDispatcher? _back;
+
+  /// **The call screen rises from the bottom and goes back down.** It used to
+  /// appear and vanish in a single frame - dialling, answering, putting the
+  /// call away and closing it all cut straight to the next picture. "It
+  /// should come up smoothly from the bottom and close downwards" was the ask.
+  ///
+  /// 0 is below the screen, 1 is in place. A slide rather than a fade: moving
+  /// a finished layer is the cheap animation (see `BranchContainer`), and it
+  /// is also the gesture a sheet makes.
+  late final AnimationController _sheet;
+
+  late final Animation<Offset> _slide;
+
+  /// Made in [initState], not lazily: a `late final` first touched in
+  /// [dispose] builds a ticker there, and a ticker asks the tree for
+  /// `TickerMode` - which an unmounting element may no longer do.
+  void _makeSheet() {
+    _sheet = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 340),
+      reverseDuration: const Duration(milliseconds: 260),
+    )..addStatusListener(_onSheetStatus);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _sheet,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+  }
+
+  void _onSheetStatus(AnimationStatus status) {
+    // Gone for good only once it is out of sight. With Reduce Motion the jump
+    // to 0 happens inside build, where a setState is not allowed, so there it
+    // waits for the frame to finish.
+    if (status != AnimationStatus.dismissed || !mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _sheet.isDismissed) setState(() => _leaving = null);
+      });
+    } else {
+      setState(() => _leaving = null);
+    }
+  }
+
+  /// The screen as it last looked, drawn while it slides away. The same
+  /// widget instance, so nothing under it rebuilds on the way down - a call
+  /// that has just been dismissed has no name left to show, and the screen
+  /// would otherwise empty itself mid-slide.
+  Widget? _leaving;
+  bool _expandedBefore = false;
 
   /// Put away into the island. Reset for every new call, so a call that was
   /// minimised does not make the next one start out of sight.
@@ -64,6 +121,7 @@ class _CallHostState extends ConsumerState<CallHost>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _makeSheet();
   }
 
   // Here rather than in the controller, which is plain Dart with no binding in
@@ -106,7 +164,29 @@ class _CallHostState extends ConsumerState<CallHost>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _holdBack(false);
+    _sheet.dispose();
     super.dispose();
+  }
+
+  /// Start the slide the call's state asks for, from wherever it is now, so
+  /// putting a call away mid-rise turns round instead of jumping.
+  void _moveSheet(bool expanded) {
+    if (expanded == _expandedBefore) return;
+    _expandedBefore = expanded;
+    final reduced = AppMotion.reduced(context);
+    if (expanded) {
+      if (reduced) {
+        _sheet.value = 1;
+      } else {
+        unawaited(_sheet.forward());
+      }
+    } else {
+      if (reduced) {
+        _sheet.value = 0;
+      } else {
+        unawaited(_sheet.reverse());
+      }
+    }
   }
 
   @override
@@ -137,6 +217,18 @@ class _CallHostState extends ConsumerState<CallHost>
     final island = showing && _minimized && call.active;
     final expanded = showing && !island && !(_minimized && !call.active);
     _holdBack(expanded);
+    _moveSheet(expanded);
+    if (expanded) {
+      _leaving = CallScreen(
+        call: call,
+        onMinimize: CallIsland.canMinimize(call)
+            ? () => setState(() => _minimized = true)
+            : null,
+      );
+    }
+    final screen = _leaving;
+    final onScreen =
+        screen != null && (expanded || _sheet.status != AnimationStatus.dismissed);
 
     final media = MediaQuery.of(context);
     return Stack(children: [
@@ -165,13 +257,16 @@ class _CallHostState extends ConsumerState<CallHost>
             onExpand: () => setState(() => _minimized = false),
           ),
         ),
-      if (expanded)
+      if (onScreen)
         Positioned.fill(
-          child: CallScreen(
-            call: call,
-            onMinimize: CallIsland.canMinimize(call)
-                ? () => setState(() => _minimized = true)
-                : null,
+          // On its way down it no longer takes touches: the app underneath is
+          // already the one being used.
+          child: IgnorePointer(
+            ignoring: !expanded,
+            child: SlideTransition(
+              position: _slide,
+              child: RepaintBoundary(child: screen),
+            ),
           ),
         ),
     ]);

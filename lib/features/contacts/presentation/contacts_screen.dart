@@ -20,6 +20,7 @@ import '../../chat/data/messages_controller.dart';
 import '../../chats/data/hidden_chats_controller.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
+import 'recent_calls_view.dart';
 
 /// Who belongs in Contacts: people you have actually corresponded with, and
 /// people you did until you deleted the conversation.
@@ -95,6 +96,12 @@ class ContactsScreen extends ConsumerStatefulWidget {
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   String _query = '';
 
+  /// The calls half instead of the people - Telegram keeps its recent calls
+  /// beside its contacts, and "a separate tab of recent calls, like Telegram,
+  /// in Contacts" was the ask.
+  bool _calls = false;
+  bool _missedOnly = false;
+
   /// The label being filtered by, or null for everybody.
   String? _tag;
 
@@ -167,10 +174,37 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       fontSize: 13,
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  _SectionSwitch(
+                    labels: [t.contactsTabContacts, t.contactsTabCalls],
+                    selected: _calls ? 1 : 0,
+                    onSelect: (i) {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      setState(() => _calls = i == 1);
+                    },
+                  ),
                 ],
               ),
             ),
           ),
+          if (_calls)
+            ...recentCallSlivers(
+              context: context,
+              ref: ref,
+              missedOnly: _missedOnly,
+              onMissedOnly: (value) => setState(() => _missedOnly = value),
+              chip: (label, selected, onTap) => _TagChip(
+                label: label,
+                selected: selected,
+                onTap: onTap,
+              ),
+              empty: (title, hint) => _ContactsEmptyState(
+                title: title,
+                hint: hint,
+                icon: Icons.call_rounded,
+              ),
+            )
+          else ...[
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -262,6 +296,72 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Contacts or calls: two halves of one screen, the way Telegram pairs them.
+class _SectionSwitch extends StatelessWidget {
+  const _SectionSwitch({
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingGlass(
+      blur: false,
+      borderRadius: 14,
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onSelect(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  // 44 tall with the label: the smallest target the
+                  // accessibility audit (and a thumb) accepts.
+                  constraints: const BoxConstraints(minHeight: 44),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: i == selected
+                        ? AppColors.brandPrimary.withValues(alpha: 0.22)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: i == selected
+                          ? AppColors.brandPrimary.withValues(alpha: 0.55)
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Text(
+                    labels[i],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: i == selected
+                          ? AppColors.textOnGlass
+                          : AppColors.textOnGlassDim,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -554,10 +654,15 @@ class _ContactTile extends ConsumerWidget {
 }
 
 class _ContactsEmptyState extends StatelessWidget {
-  const _ContactsEmptyState({required this.title, required this.hint});
+  const _ContactsEmptyState({
+    required this.title,
+    required this.hint,
+    this.icon = Icons.contacts_rounded,
+  });
 
   final String title;
   final String hint;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +672,7 @@ class _ContactsEmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.contacts_rounded,
+            icon,
             color: AppColors.textOnGlassFaint,
             size: 46,
           ),
