@@ -119,13 +119,52 @@ object IncomingCall {
         // Ring and buzz until someone acts, the way a call does, instead of the
         // single chime a notification gets.
         notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
-        return try {
+        val posted = try {
             manager.notify(TAG, ID, notification)
-            fullScreen
+            true
         } catch (_: SecurityException) {
-            // Notifications were refused. Nothing more can be shown from here.
+            // Notifications were refused. The screen below may still open.
             false
         }
+        // **The whole screen, not a banner, on an unlocked phone too.**
+        //
+        // A full-screen intent only becomes a screen over the lock screen or a
+        // dark display; on a phone in use Android turns it into the heads-up,
+        // and "a notification with Answer and Decline is not convenient, it has
+        // to be a real screen" was the report on exactly that. Android lets an
+        // app open an Activity from the background only with the "appear on
+        // top" permission, which the user grants in settings - so with it the
+        // screen is opened directly, and without it the heads-up is what is
+        // left. The notification stays either way: it carries the ringtone, and
+        // it is what the lock screen uses.
+        val opened = canDrawOverlays(context) && openScreen(context, key, name, labels)
+        return posted && fullScreen || opened
+    }
+
+    private fun openScreen(context: Context, key: String, name: String, labels: Labels): Boolean =
+        try {
+            context.startActivity(screenIntentFor(context, key, name, labels))
+            true
+        } catch (_: Exception) {
+            // Refused anyway - some vendors add their own gate on top of the
+            // permission. The heads-up is still there.
+            false
+        }
+
+    fun canDrawOverlays(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            android.provider.Settings.canDrawOverlays(context)
+
+    /**
+     * Xiaomi, Redmi and Poco add two permissions of their own on top of
+     * Android's - "show on lock screen" and "open windows while running in the
+     * background" - and without them neither the full-screen intent nor a
+     * direct launch opens anything. They cannot be read from an app, only
+     * pointed at.
+     */
+    fun isXiaomiFamily(): Boolean {
+        val brand = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase()
+        return listOf("xiaomi", "redmi", "poco").any { brand.contains(it) }
     }
 
     /** Take the call off screen: answered, declined, or over elsewhere. */
@@ -169,19 +208,26 @@ object IncomingCall {
         )
     }
 
+    private fun screenIntentFor(
+        context: Context,
+        key: String,
+        name: String,
+        labels: Labels,
+    ): Intent = Intent(context, IncomingCallActivity::class.java)
+        .putExtra(EXTRA_KEY, key)
+        .putExtra(EXTRA_NAME, name)
+        .putExtra(EXTRA_TITLE, labels.title)
+        .putExtra(EXTRA_ANSWER, labels.answer)
+        .putExtra(EXTRA_DECLINE, labels.decline)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+
     private fun screenIntent(
         context: Context,
         key: String,
         name: String,
         labels: Labels,
     ): PendingIntent {
-        val intent = Intent(context, IncomingCallActivity::class.java)
-            .putExtra(EXTRA_KEY, key)
-            .putExtra(EXTRA_NAME, name)
-            .putExtra(EXTRA_TITLE, labels.title)
-            .putExtra(EXTRA_ANSWER, labels.answer)
-            .putExtra(EXTRA_DECLINE, labels.decline)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+        val intent = screenIntentFor(context, key, name, labels)
         return PendingIntent.getActivity(
             context,
             REQUEST_SCREEN,

@@ -69,6 +69,7 @@ class Playback extends VoicePlaybackController {
 
 class Messages extends MessagesController {
   final heard = <String>[];
+  void seed(List<Message> messages) => state = {'peer': messages};
   @override
   Map<String, List<Message>> build() => {};
   @override
@@ -108,6 +109,33 @@ void main() {
     );
     controller =
         container.read(voicePlaybackControllerProvider.notifier) as Playback;
+  });
+  test('starting at circle two plays three and stops without wrapping',
+      () async {
+    final messages =
+        container.read(messagesControllerProvider.notifier) as Messages;
+    messages.seed([
+      for (var i = 1; i <= 3; i++)
+        Message(
+            id: '$i',
+            chatId: 'peer',
+            text: 'video/mp4',
+            isMine: false,
+            sentAt: DateTime(2026, 9, 14, 12, i),
+            kind: MessageKind.file,
+            fileName: Message.circleFileName,
+            filePath: file.path)
+    ]);
+    await start('2');
+    controller.made.last.value =
+        controller.made.last.value.copyWith(isCompleted: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(voicePlaybackControllerProvider).messageId, '3');
+    controller.made.last.value =
+        controller.made.last.value.copyWith(isCompleted: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(voicePlaybackControllerProvider).isActive, isFalse);
+    expect(controller.made.length, 2);
   });
   tearDown(() async {
     await controller.stop();

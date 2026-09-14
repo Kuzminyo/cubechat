@@ -68,14 +68,18 @@ class FakeTones implements CallTones {
 
 /// The phone's own incoming-call screen, writing into the same list.
 class FakeSurface implements IncomingCallSurface {
-  FakeSurface(this.log);
+  FakeSurface(this.log, {this.ringsInForeground = false});
   final List<String> log;
   final pressed = StreamController<IncomingCallAction>.broadcast(sync: true);
+  @override
+  final bool ringsInForeground;
   @override
   Stream<IncomingCallAction> get actions => pressed.stream;
   @override
   Future<void> show({required String key, required String name}) async =>
       log.add('screen show $name');
+  @override
+  Future<void> answered(String key) async => log.add('screen answered');
   @override
   Future<void> dismiss(String? key) async => log.add('screen dismiss');
 }
@@ -563,7 +567,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(call.phase, CallPhase.connecting);
       expect(sent.last.kind, CallSignalKind.accept);
-      expect(events.take(3), ['screen show peer', 'screen dismiss', 'microphone']);
+      expect(events.take(3), ['screen show peer', 'screen answered', 'microphone']);
       call.hangUp();
     });
 
@@ -615,6 +619,73 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(events.where((e) => e.startsWith('screen')), isEmpty);
       call.hangUp();
+    });
+  });
+
+  group('on an iPhone, CallKit is the incoming-call screen', () {
+    String keyOf(Uint8List callId) =>
+        callId.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+    setUp(() {
+      call.dispose();
+      surface = FakeSurface(events, ringsInForeground: true);
+      signals = StreamController<ReceivedCallSignal>(sync: true);
+      call = build();
+    });
+
+    test('it rings even with the app open, and the app stays quiet', () async {
+      onScreen = true;
+      receive(inviteFor(id(30)));
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['screen show peer'],
+          reason: 'one ringtone: CallKit\'s, never the app\'s beside it');
+      call.decline();
+    });
+
+    test('answered on CallKit, the call stays on CallKit until it ends',
+        () async {
+      media.connectOnAccept = false;
+      receive(inviteFor(id(31)));
+      await Future<void>.delayed(Duration.zero);
+      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(call.phase, CallPhase.connecting);
+      expect(events, ['screen show peer', 'screen answered', 'microphone'],
+          reason: 'not dismissed: CallKit owns the audio of an answered call');
+
+      // CallKit echoes the answer back; answering twice must not happen.
+      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
+      await Future<void>.delayed(Duration.zero);
+      expect(sent.where((s) => s.kind == CallSignalKind.accept), hasLength(1));
+
+      call.hangUp();
+      await Future<void>.delayed(Duration.zero);
+      expect(events.last, 'screen dismiss');
+    });
+
+    test('the red button declines while it rings', () async {
+      receive(inviteFor(id(32)));
+      await Future<void>.delayed(Duration.zero);
+      surface.pressed.add((kind: IncomingCallActionKind.end, key: keyOf(id(32))));
+      expect(outcomes.single.cause, CallEndCause.declined);
+      expect(sent.last.kind, CallSignalKind.decline);
+    });
+
+    test('and hangs up once the call is on', () async {
+      media.earlyConnect = true;
+      receive(inviteFor(id(33)));
+      await call.answer();
+      expect(call.phase, CallPhase.talking);
+      surface.pressed.add((kind: IncomingCallActionKind.end, key: keyOf(id(33))));
+      expect(outcomes.single.cause, CallEndCause.hungUp);
+      expect(sent.last.kind, CallSignalKind.hangup);
+    });
+
+    test('the caller giving up ends the CallKit call', () async {
+      receive(inviteFor(id(34)));
+      receive(CallSignal.hangup(callId: id(34), reason: CallEndReason.noAnswer));
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['screen show peer', 'screen dismiss']);
     });
   });
 }

@@ -16,6 +16,7 @@
 		CB1A0007000000000000A1A1 /* CubechatOpenInPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */; };
 		CB1A0009000000000000A1A1 /* CubechatCpuProbePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */; };
 		CB1A000B000000000000A1A1 /* CubechatPushPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */; };
+		CB1A000D000000000000A1A1 /* CubechatCallKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A000E000000000000A1A1 /* CubechatCallKit.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		CB1A0005000000000000A1A1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CB1A0006000000000000A1A1 /* PrivacyInfo.xcprivacy */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
@@ -59,6 +60,7 @@
 		CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatOpenInPlugin.swift; sourceTree = "<group>"; };
 		CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatCpuProbePlugin.swift; sourceTree = "<group>"; };
 		CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatPushPlugin.swift; sourceTree = "<group>"; };
+		CB1A000E000000000000A1A1 /* CubechatCallKit.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatCallKit.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
@@ -137,6 +139,7 @@
 				CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */,
 				CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */,
 				CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */,
+				CB1A000E000000000000A1A1 /* CubechatCallKit.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -298,6 +301,7 @@
 				CB1A0007000000000000A1A1 /* CubechatOpenInPlugin.swift in Sources */,
 				CB1A0009000000000000A1A1 /* CubechatCpuProbePlugin.swift in Sources */,
 				CB1A000B000000000000A1A1 /* CubechatPushPlugin.swift in Sources */,
+				CB1A000D000000000000A1A1 /* CubechatCallKit.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

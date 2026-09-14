@@ -99,9 +99,7 @@ bool messageCanBeCopied(
     // bytes never leave either way, but offering Copy and Forward on something
     // the app has just promised to destroy reads as the promise not being
     // meant.
-    !copyingRestricted &&
-    !message.viewOnce &&
-    copyableText(message) != null;
+    !copyingRestricted && !message.viewOnce && copyableText(message) != null;
 
 /// A picture can be passed on as well as a line of text.
 ///
@@ -500,9 +498,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   bool get _showsComments {
     if (!widget.chatId.startsWith('#')) return false;
     if (channelForCommunity(widget.chatId) != null) return false;
-    return ref
-            .watch(channelControllerProvider)[widget.chatId]
-            ?.adminOnly ??
+    return ref.watch(channelControllerProvider)[widget.chatId]?.adminOnly ??
         false;
   }
 
@@ -648,7 +644,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ? MapFriendLink.tryParse(widget.message.text)
       : null;
 
-  bool get _canCopy => widget.message.text.trim().isNotEmpty &&
+  bool get _canCopy =>
+      widget.message.text.trim().isNotEmpty &&
       tryParseCallRecord(widget.message.text) == null;
 
   /// Forwarding re-sends the text into another chat, so it needs text for the
@@ -1025,34 +1022,34 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final readers = m.readBy.entries.toList()
       ..sort((a, b) => a.value.at.compareTo(b.value.at));
     return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+        ),
+        if (readAt != null)
           Text(
-            t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            t.chatReadAt(formatMessageDetailsTime(context, readAt)),
+            style: const TextStyle(
+              color: _BubbleMeta._readColor,
+              fontSize: 11.5,
+            ),
           ),
-          if (readAt != null)
-            Text(
-              t.chatReadAt(formatMessageDetailsTime(context, readAt)),
-              style: const TextStyle(
-                color: _BubbleMeta._readColor,
-                fontSize: 11.5,
-              ),
+        for (final r in readers)
+          Text(
+            '${r.value.name} · '
+            '${formatMessageDetailsTime(context, r.value.at)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _BubbleMeta._readColor,
+              fontSize: 11.5,
             ),
-          for (final r in readers)
-            Text(
-              '${r.value.name} · '
-              '${formatMessageDetailsTime(context, r.value.at)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _BubbleMeta._readColor,
-                fontSize: 11.5,
-              ),
-            ),
-        ],
-      );
+          ),
+      ],
+    );
   }
 
   /// Pick a chat and re-send this message's text into it.
@@ -1078,8 +1075,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final t = AppLocalizations.of(context);
     final emoji = await showEmojiPicker(context, title: t.stickerEmojiTitle);
     if (!mounted) return;
-    final kept =
-        await ref.read(stickerLibraryProvider.notifier).keep(path, emoji: emoji);
+    final kept = await ref
+        .read(stickerLibraryProvider.notifier)
+        .keep(path, emoji: emoji);
     if (!mounted) return;
     showGlassToast(
       context,
@@ -1279,9 +1277,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // Shares the sticker's path rather than inventing a second bare shape, so
     // the two cannot drift apart. What it does *not* share is the sticker's
     // fixed width: this is a line of text, and it is sized by its own font.
-    final bareEmoji = message.kind == MessageKind.text
-        ? message.bareEmojiCount
-        : null;
+    final bareEmoji =
+        message.kind == MessageKind.text ? message.bareEmojiCount : null;
     // A video whose bytes are on this phone, so it plays in the bubble rather
     // than being handed to whatever the phone calls a video player.
     //
@@ -1299,9 +1296,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // there is a drawing of that emoji. Null for everything else, which is
     // most things: the pack has thirty-six faces and the keyboard has
     // thousands, and a glyph with no drawing is drawn as a glyph.
-    final drawnFace = bareEmoji == 1
-        ? StickerPack.faceForGlyph[message.text.trim()]
-        : null;
+    final drawnFace =
+        bareEmoji == 1 ? StickerPack.faceForGlyph[message.text.trim()] : null;
 
     // Drawn edge to edge, so the rows around it put their own inset back.
     final photo = message.kind == MessageKind.image;
@@ -1542,8 +1538,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child:
-                            VoiceBubble(message: message, chatId: widget.chatId),
+                        child: VoiceBubble(
+                            message: message, chatId: widget.chatId),
                       ),
                       if (message.isMine &&
                           message.status == MessageStatus.sending) ...[
@@ -1657,8 +1653,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     onTap: () => _openSharedContact(sharedContact),
                   )
                 else if (tryParseCallRecord(message.text) != null)
-                  Text(messageContentPreview(message, AppLocalizations.of(context)),
-                    style: TextStyle(color: AppColors.textPrimary))
+                  Text(
+                      messageContentPreview(
+                          message, AppLocalizations.of(context)),
+                      style: TextStyle(color: AppColors.textPrimary))
                 else if (drawnFace != null)
                   // One emoji, and we have a drawing of that one: it moves.
                   //
@@ -1865,6 +1863,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     ],
                   ),
                   child: Row(
+                    // Ours on the right, circles included. A circle grows
+                    // away from its own edge when tapped, the way Telegram's
+                    // does, so an outgoing one opens leftwards across the
+                    // screen rather than jumping to the other side of it.
                     mainAxisAlignment:
                         mine ? MainAxisAlignment.end : MainAxisAlignment.start,
                     children: [
@@ -1881,8 +1883,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         const SizedBox(width: 8),
                       ],
                       ConstrainedBox(
+                        // A tapped circle is allowed past the usual three
+                        // quarters: it grows to most of the screen, and a cap
+                        // meant for text would squeeze it. See
+                        // [VideoBubble.circleExpanded].
                         constraints: BoxConstraints(
-                            maxWidth: MediaQuery.sizeOf(context).width * 0.75),
+                            maxWidth: MediaQuery.sizeOf(context).width *
+                                (circle ? 1.0 : 0.75)),
                         child: Column(
                           crossAxisAlignment: mine
                               ? CrossAxisAlignment.end
@@ -2745,11 +2752,10 @@ class _ImagePayload extends StatelessWidget {
       // costs a full-resolution decode per photo and a texture upload to
       // match, which is most of why such a chat warms the phone. At the drawn
       // size it is a twenty-fifth of the pixels.
-      cacheWidth: ((message.isSticker
-                  ? kStickerWidth
-                  : photoBubbleWidth(context)) *
-              MediaQuery.devicePixelRatioOf(context))
-          .round(),
+      cacheWidth:
+          ((message.isSticker ? kStickerWidth : photoBubbleWidth(context)) *
+                  MediaQuery.devicePixelRatioOf(context))
+              .round(),
       errorBuilder: (_, __, ___) => _ImagePlaceholder(
         icon: Icons.broken_image_rounded,
         label: message.imageMime ?? 'image',
@@ -2799,6 +2805,11 @@ class _ImagePayload extends StatelessWidget {
       // capped so a panorama shot in portrait cannot become a bubble you have
       // to scroll past.
       constraints: BoxConstraints(
+        // Stretched to the column, not only capped by it. A portrait
+        // screenshot drew at its own narrow shape with the bubble showing down
+        // one side; `cover` crops it to the column instead, the way a photo in
+        // any messenger fills its bubble.
+        minWidth: message.isSticker ? 0 : width,
         maxWidth: width,
         maxHeight: message.isSticker ? kStickerWidth : width * 1.25,
       ),
@@ -3129,7 +3140,6 @@ class _BubbleMeta extends StatelessWidget {
     );
   }
 }
-
 
 /// "Comments" under a channel post, opening the room they live in.
 ///

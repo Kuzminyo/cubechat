@@ -11,6 +11,7 @@ import '../../../core/transport/call_signal.dart';
 import '../../../core/transport/control_delivery.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/locale/locale_controller.dart';
+import '../../../core/notifications/push_registration.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../l10n/app_localizations.dart';
@@ -147,8 +148,15 @@ class CallController extends ChangeNotifier {
     final ringing = !_disposed && phase == CallPhase.incoming && !preparing;
     final id = _machine.callId;
     final onScreen = ringing && _foreground();
-    _updateTone(ringing && onScreen ? CallTone.incoming : null);
-    _updateSurface(ringing && !onScreen && id != null ? _key(id) : null);
+    // CallKit rings on its own, on screen or not; then the app must not ring
+    // as well.
+    final systemRings = surface.ringsInForeground;
+    _updateTone(ringing && onScreen && !systemRings ? CallTone.incoming : null);
+    _updateSurface(
+      ringing: ringing,
+      onScreen: onScreen,
+      key: id == null ? null : _key(id),
+    );
   }
 
   void _updateTone(CallTone? wanted) {
@@ -169,20 +177,53 @@ class CallController extends ChangeNotifier {
     })();
   }
 
-  void _updateSurface(String? wanted) {
-    if (wanted == _surfaceKey) return;
+  /// Whether the phone's call screen has been told the call was answered.
+  bool _surfaceAnswered = false;
+
+  /// Keep the phone's own call screen in step with the call.
+  ///
+  /// Three things can happen to it, and they are not the same thing. It is
+  /// shown while the call rings. It is told the call was *answered* - which
+  /// takes an Android notification down but leaves CallKit's call up, because
+  /// on an iPhone that call now owns the conversation's audio session. And it
+  /// is *dismissed* when the call is over, or when an Android call moves onto
+  /// the app's own screen.
+  void _updateSurface({
+    required bool ringing,
+    required bool onScreen,
+    required String? key,
+  }) {
     final shown = _surfaceKey;
-    _surfaceKey = wanted;
-    final caller = name;
+    if (ringing && key != null && (surface.ringsInForeground || !onScreen)) {
+      if (shown == key) return;
+      if (shown != null) _queueSurface(() => surface.dismiss(shown));
+      _surfaceKey = key;
+      _surfaceAnswered = false;
+      final caller = name;
+      _queueSurface(() => surface.show(key: key, name: caller));
+      return;
+    }
+    if (shown == null) return;
+    final sameCallStillOn = !_disposed && _machine.isLive && key == shown;
+    if (sameCallStillOn && (preparing || phase != CallPhase.incoming)) {
+      if (!_surfaceAnswered) {
+        _surfaceAnswered = true;
+        _queueSurface(() => surface.answered(shown));
+      }
+      if (!surface.ringsInForeground) _surfaceKey = null;
+      return;
+    }
+    _surfaceKey = null;
+    _surfaceAnswered = false;
+    _queueSurface(() => surface.dismiss(shown));
+  }
+
+  void _queueSurface(Future<void> Function() step) {
     final previous = _surfaceWork;
     _surfaceWork = (() async {
       await previous;
       try {
-        if (wanted == null) {
-          await surface.dismiss(shown);
-        } else {
-          await surface.show(key: wanted, name: caller);
-        }
+        await step();
       } catch (e) {
         _log('incoming-call screen: $e');
       }
@@ -199,21 +240,29 @@ class CallController extends ChangeNotifier {
   /// up while a finger was on the way.
   void _onSurfaceAction(IncomingCallAction action) {
     final id = _machine.callId;
-    if (_disposed ||
-        id == null ||
-        _key(id) != action.key ||
-        phase != CallPhase.incoming) {
-      _log('${action.kind.name} on the phone\'s call screen ignored: '
-          'that call is no longer ringing');
+    final current =
+        !_disposed && id != null && _key(id) == action.key && _machine.isLive;
+    if (!current) {
+      _log("${action.kind.name} on the phone's call screen ignored: "
+          'that call is already over');
       unawaited(surface.dismiss(action.key));
       return;
     }
-    _log('${action.kind.name} pressed on the phone\'s call screen');
+    _log("${action.kind.name} pressed on the phone's call screen");
+    final ringingHere = phase == CallPhase.incoming;
     switch (action.kind) {
       case IncomingCallActionKind.answer:
-        unawaited(answer());
+        // Answered here already: CallKit echoing the app's own answer back.
+        if (ringingHere && !preparing) unawaited(answer());
       case IncomingCallActionKind.decline:
-        decline();
+      case IncomingCallActionKind.end:
+        // CallKit has one red button for both: decline while it rings, hang
+        // up once it has been answered.
+        if (ringingHere) {
+          decline();
+        } else {
+          hangUp();
+        }
     }
   }
 
@@ -729,10 +778,9 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
     tones: AudioCallTones(),
-    // Android only for now. iOS draws an incoming call over the lock screen
-    // through CallKit alone, and CallKit needs a VoIP push to reach an app
-    // that is not running — a server path and a native side that do not exist
-    // yet. Until they do, iOS keeps ringing inside the app.
+    // The phone's own incoming-call screen: a full-screen notification on
+    // Android, CallKit on an iPhone. CallKit also needs the VoIP token in the
+    // push registration, so a new one sends the registration again.
     surface: PlatformInfo.isAndroid
         ? AndroidIncomingCallSurface(
             labels: () {
@@ -744,7 +792,12 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
               );
             },
           )
-        : const NoIncomingCallSurface(),
+        : PlatformInfo.isIOS
+            ? IosCallKitSurface(
+                onVoipToken: () =>
+                    unawaited(ref.read(pushEnabledProvider.notifier).reassertForVoip()),
+              )
+            : const NoIncomingCallSurface(),
     // The framework's own lifecycle, which it updates before any observer is
     // told. `inactive` counts as on screen: it is the notification shade or a
     // permission dialog passing over the app, and the app is still what the

@@ -69,11 +69,14 @@ void main() {
       find.text('\u0411\u0435\u0437 \u0437\u0432\u0443\u043a\u0443'),
       findsOneWidget,
     );
+    // No "Verify" among the quick actions any more. With five of them the last
+    // label ran off the card on a narrow phone, and it was asked to go: the
+    // same check lives one card down, under Security.
     expect(
       find.text(
         '\u041f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438',
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.text(

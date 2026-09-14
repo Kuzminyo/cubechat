@@ -159,4 +159,68 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.uri.path, '/',
         reason: 'with no call on screen, back is the router\'s again');
   });
+
+  testWidgets('a call folds into an island and the app underneath is usable '
+      'again', (tester) async {
+    var tapped = 0;
+    router = GoRouter(routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, __) => Scaffold(
+          body: SafeArea(
+            child: TextButton(
+              onPressed: () => tapped++,
+              child: const Text('underneath'),
+            ),
+          ),
+        ),
+      ),
+    ]);
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    unawaited(call.dial('peer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final before = tester.getTopLeft(find.text('underneath'));
+
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CallIsland), findsOneWidget);
+    expect(find.byType(CallScreen), findsNothing);
+
+    await tester.tap(find.text('underneath'));
+    expect(tapped, 1, reason: 'the chats are usable while the call is away');
+    expect(
+      tester.getTopLeft(find.text('underneath')).dy,
+      greaterThanOrEqualTo(before.dy + CallIsland.height),
+      reason: 'headers step down under the island instead of hiding behind it',
+    );
+
+    await tester.tap(find.byType(CallIsland));
+    await tester.pump();
+    expect(find.byType(CallScreen), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.call_end_rounded));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a call that ends while folded away does not unfold', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    unawaited(call.dial('peer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pump();
+
+    call.hangUp();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CallScreen), findsNothing);
+    expect(find.byType(CallIsland), findsNothing);
+    expect(call.peerId, isNull, reason: 'dismissed, not left behind');
+  });
 }

@@ -206,6 +206,42 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get callClose;
 
+  /// No description provided for @callMinimize.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimize'**
+  String get callMinimize;
+
+  /// No description provided for @callFullScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls full screen'**
+  String get callFullScreenTitle;
+
+  /// No description provided for @callFullScreenBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow Cubechat to appear over other apps, so an incoming call opens its own screen the way the phone app does, not just a notification.'**
+  String get callFullScreenBody;
+
+  /// No description provided for @callFullScreenXiaomi.
+  ///
+  /// In en, this message translates to:
+  /// **'On Xiaomi, Redmi and Poco, also turn on “Show on lock screen” and “Display pop-up windows while running in the background” under Other permissions.'**
+  String get callFullScreenXiaomi;
+
+  /// No description provided for @callFullScreenAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get callFullScreenAllow;
+
+  /// No description provided for @callFullScreenLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get callFullScreenLater;
+
   /// No description provided for @circleMessage.
   ///
   /// In en, this message translates to:

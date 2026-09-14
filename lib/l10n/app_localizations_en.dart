@@ -65,6 +65,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callClose => 'Close';
 
   @override
+  String get callMinimize => 'Minimize';
+
+  @override
+  String get callFullScreenTitle => 'Calls full screen';
+
+  @override
+  String get callFullScreenBody =>
+      'Allow Cubechat to appear over other apps, so an incoming call opens its own screen the way the phone app does, not just a notification.';
+
+  @override
+  String get callFullScreenXiaomi =>
+      'On Xiaomi, Redmi and Poco, also turn on “Show on lock screen” and “Display pop-up windows while running in the background” under Other permissions.';
+
+  @override
+  String get callFullScreenAllow => 'Allow';
+
+  @override
+  String get callFullScreenLater => 'Not now';
+
+  @override
   String get circleMessage => 'Video message';
 
   @override

@@ -544,7 +544,7 @@ class _EmojiChoice extends StatelessWidget {
 /// alongside the sideways drag between tabs. The hint under the title says so,
 /// because somebody who has just given the right swipe a job will reasonably
 /// wonder what happened to the gesture they had.
-class _SwipeCard extends ConsumerWidget {
+class _SwipeCard extends ConsumerStatefulWidget {
   const _SwipeCard();
 
   static String label(AppLocalizations t, ChatSwipeAction a) => switch (a) {
@@ -557,9 +557,79 @@ class _SwipeCard extends ConsumerWidget {
       };
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SwipeCard> createState() => _SwipeCardState();
+}
+
+/// Telegram's own control for the same setting, asked for by name with a
+/// recording of it: a chat row on the left that slides to show what the swipe
+/// will do, and a wheel on the right that loops, the chosen word held between
+/// two coloured rules.
+///
+/// Chips did the same job and said less. A row of six words is a list to read;
+/// a row that moves when the wheel moves shows the gesture itself, which is the
+/// thing somebody choosing this is actually trying to picture.
+class _SwipeCardState extends ConsumerState<_SwipeCard>
+    with SingleTickerProviderStateMixin {
+  static const double _itemExtent = 40;
+  static const double _height = 132;
+
+  late final FixedExtentScrollController _wheel;
+
+  /// Replays the swipe in the preview each time the choice changes: the row
+  /// slides back, then out again to show the new panel. One shot per change,
+  /// never a loop - see the glass-ui rule about tickers that never stop.
+  late final AnimationController _swipe;
+
+  static int _indexOf(ChatSwipeAction action) =>
+      ChatSwipeAction.values.indexOf(action);
+
+  @override
+  void initState() {
+    super.initState();
+    _wheel = FixedExtentScrollController(
+      initialItem: _indexOf(ref.read(chatSwipeActionProvider)),
+    );
+    _swipe = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+      value: 1,
+    );
+  }
+
+  @override
+  void dispose() {
+    _wheel.dispose();
+    _swipe.dispose();
+    super.dispose();
+  }
+
+  /// The wheel loops, so its item index grows without bound; the action is the
+  /// index modulo the list.
+  ChatSwipeAction _actionAt(int item) {
+    final values = ChatSwipeAction.values;
+    return values[item % values.length];
+  }
+
+  void _picked(int item) {
+    final action = _actionAt(item);
+    if (action == ref.read(chatSwipeActionProvider)) return;
+    HapticFeedback.selectionClick();
+    ref.read(chatSwipeActionProvider.notifier).select(action);
+    _swipe.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final current = ref.watch(chatSwipeActionProvider);
+
+    // The saved choice arrives from storage after the first frame. Move the
+    // wheel to it rather than leaving the default under the rules.
+    ref.listen<ChatSwipeAction>(chatSwipeActionProvider, (previous, next) {
+      if (!_wheel.hasClients) return;
+      if (_actionAt(_wheel.selectedItem) == next) return;
+      _wheel.jumpToItem(_indexOf(next));
+    });
 
     return GlassCard(
       child: Column(
@@ -568,35 +638,214 @@ class _SwipeCard extends ConsumerWidget {
           Text(
             t.customizeSwipeTitle,
             style: TextStyle(
-              color: AppColors.textOnGlass,
+              color: AppColors.brandPrimary,
               fontSize: 15,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: _height,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 11,
+                  child: Center(
+                    child: _SwipePreview(action: current, swipe: _swipe),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(flex: 10, child: _wheelPicker(t)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(
             t.customizeSwipeHint,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final action in ChatSwipeAction.values)
-                _SwipeChip(
-                  action: action,
-                  label: label(t, action),
-                  active: action == current,
-                  onTap: () =>
-                      ref.read(chatSwipeActionProvider.notifier).select(action),
-                ),
-            ],
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
           ),
         ],
       ),
     );
   }
+
+  Widget _wheelPicker(AppLocalizations t) {
+    final rule = Container(
+      height: 2,
+      decoration: BoxDecoration(
+        color: AppColors.brandPrimary.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(1),
+      ),
+    );
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        ListWheelScrollView.useDelegate(
+          controller: _wheel,
+          itemExtent: _itemExtent,
+          physics: const FixedExtentScrollPhysics(),
+          // Nearly flat, like the Android number picker Telegram uses: the
+          // neighbours fade rather than tilting away on a drum.
+          diameterRatio: 3.2,
+          perspective: 0.001,
+          overAndUnderCenterOpacity: 0.42,
+          onSelectedItemChanged: _picked,
+          childDelegate: ListWheelChildLoopingListDelegate(
+            children: [
+              for (final action in ChatSwipeAction.values)
+                Center(
+                  child: Text(
+                    _SwipeCard.label(t, action),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // The two rules the chosen item sits between. Inert, so a drag that
+        // starts on one still turns the wheel.
+        IgnorePointer(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              rule,
+              const SizedBox(height: _itemExtent - 2),
+              rule,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A chat row mid-swipe, showing the panel the chosen action reveals.
+///
+/// Drawn from shapes rather than from a real chat: it is a picture of the
+/// gesture, and somebody's actual conversation in a settings screen is both
+/// noise and a thing they did not ask to see here.
+class _SwipePreview extends StatelessWidget {
+  const _SwipePreview({required this.action, required this.swipe});
+
+  final ChatSwipeAction action;
+  final Animation<double> swipe;
+
+  @override
+  Widget build(BuildContext context) {
+    final off = action == ChatSwipeAction.none;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final width = box.maxWidth;
+        const height = 64.0;
+        // How far the row stands open: about the width of the panel's icon
+        // cell, the same travel the real row needs before it fires.
+        final open = (width * 0.30).clamp(56.0, 84.0);
+        return SizedBox(
+          width: width,
+          height: height,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              children: [
+                // The panel. Rightward, like the list itself: it opens on the
+                // left, under where the row was.
+                Positioned.fill(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    color: off
+                        ? AppColors.glass(0.10)
+                        : action.color.withValues(alpha: 0.88),
+                    alignment: Alignment.centerLeft,
+                    padding: EdgeInsets.only(left: (open - 26) / 2),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      ),
+                      child: Icon(
+                        action.icon,
+                        key: ValueKey(action),
+                        size: 26,
+                        color: off ? AppColors.textOnGlassDim : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: swipe,
+                  builder: (context, child) {
+                    // Back to closed for the first third, then out again, so
+                    // every change of the wheel reads as one fresh swipe.
+                    final t = swipe.value;
+                    final shown = t < 0.3
+                        ? 1 - Curves.easeIn.transform(t / 0.3)
+                        : Curves.easeOutBack.transform((t - 0.3) / 0.7);
+                    return Transform.translate(
+                      offset: Offset(open * shown, 0),
+                      child: child,
+                    );
+                  },
+                  child: Container(
+                    width: width,
+                    height: height,
+                    decoration: BoxDecoration(
+                      color: AppColors.bgDeep,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.glass(0.14)),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.glass(0.18),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _bar(0.45, 0.30),
+                              const SizedBox(height: 8),
+                              _bar(0.85, 0.18),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static Widget _bar(double widthFactor, double alpha) => FractionallySizedBox(
+        widthFactor: widthFactor,
+        child: Container(
+          height: 6,
+          decoration: BoxDecoration(
+            color: AppColors.glass(alpha),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+      );
 }
 
 /// Whether a round message stops the phone's music.
@@ -721,62 +970,6 @@ class _ArchiveRowCard extends ConsumerWidget {
                 ref.read(archiveVisibleProvider.notifier).set(next),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SwipeChip extends StatelessWidget {
-  const _SwipeChip({
-    required this.action,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final ChatSwipeAction action;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // Each chip wears the colour of the panel its action reveals, so the choice
-    // here and the thing that appears under the finger are recognisably the
-    // same. Only when chosen: six coloured chips at rest is a paint chart.
-    final color = active ? action.color : AppColors.textOnGlassDim;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: active
-              ? action.color.withValues(alpha: 0.20)
-              : AppColors.glass(0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: active
-                ? action.color.withValues(alpha: 0.6)
-                : AppColors.glass(0.15),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(action.icon, size: 15, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              textScaler: TextScaler.noScaling,
-              style: TextStyle(
-                color: active ? AppColors.textOnGlass : color,
-                fontSize: 12.5,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -961,7 +1154,8 @@ class _TabRow extends StatelessWidget {
             child: Icon(
               icon,
               size: 17,
-              color: dimmed ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
+              color:
+                  dimmed ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
             ),
           ),
           const SizedBox(width: 12),

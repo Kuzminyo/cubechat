@@ -677,10 +677,11 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
         .where((message) =>
             message.kind == MessageKind.image && !message.isSticker)
         .length;
-    final voiceCount =
-        messages.where((message) => message.isVoiceNote).length;
-    final fileCount =
-        messages.where((message) => message.kind == MessageKind.file && !message.isCircle).length;
+    final voiceCount = messages.where((message) => message.isVoiceNote).length;
+    final fileCount = messages
+        .where(
+            (message) => message.kind == MessageKind.file && !message.isCircle)
+        .length;
     final chats = ref.watch(chatsProvider);
     Chat? contact;
     for (final chat in chats) {
@@ -800,13 +801,11 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                                   .read(callControllerProvider)
                                   .dial(peerPubkeyHex)),
                           onMute: () => _setMuted(ref, peer),
-                          onVerify: () => context.push(_verifyRoute()),
                           onBlock: () => _setBlocked(ref, peer),
                           chatLabel: t.contactProfileChat,
                           callLabel: t.contactProfileCall,
                           muteLabel:
                               peer?.isMuted == true ? t.peerUnmute : t.peerMute,
-                          verifyLabel: t.contactProfileVerify,
                           blockLabel: peer?.isBlocked == true
                               ? t.peerUnblock
                               : t.peerBlock,
@@ -1084,12 +1083,10 @@ class _ProfileHero extends ConsumerWidget {
     required this.onChat,
     required this.onCall,
     required this.onMute,
-    required this.onVerify,
     required this.onBlock,
     required this.chatLabel,
     required this.callLabel,
     required this.muteLabel,
-    required this.verifyLabel,
     required this.blockLabel,
     required this.moreTooltip,
   });
@@ -1135,12 +1132,10 @@ class _ProfileHero extends ConsumerWidget {
   /// does nothing when pressed is worse than one that is not there.
   final VoidCallback? onCall;
   final VoidCallback onMute;
-  final VoidCallback onVerify;
   final VoidCallback onBlock;
   final String chatLabel;
   final String callLabel;
   final String muteLabel;
-  final String verifyLabel;
   final String blockLabel;
   final String moreTooltip;
 
@@ -1421,11 +1416,6 @@ class _ProfileHero extends ConsumerWidget {
                           : Icons.notifications_off_rounded,
                       label: muteLabel,
                       onTap: onMute,
-                    ),
-                    _QuickAction(
-                      icon: Icons.verified_user_rounded,
-                      label: verifyLabel,
-                      onTap: onVerify,
                     ),
                     _QuickAction(
                       icon: blocked

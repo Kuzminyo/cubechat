@@ -175,16 +175,15 @@ void main() {
     );
     final clock = tester.getRect(find.text('10:11', skipOffstage: false));
 
-    // **The slot is the playing size and it does not change.**
+    // **At rest the slot is the disc, with nothing round it.**
     //
-    // It used to be `circleIdle` and to grow to `circlePlaying` with an
-    // `AnimatedContainer` — a box changing size inside a scrolling list, so
-    // every frame of the 260 ms re-laid-out the row, its padding and
-    // everything below it, to make one disc bigger. The disc scales inside a
-    // fixed slot now: the same movement on screen, no layout at all, and the
-    // conversation underneath never shifts while you are reading it. The cost
-    // is the whitespace around a resting circle, which is the cheaper half.
-    expect(circle.width, VideoBubble.circlePlaying);
+    // For a while the slot was always the playing size, so tapping re-laid-out
+    // nothing — and a resting circle sat inside forty-eight points of empty
+    // space that held it away from its edge of the screen. Reported as "move
+    // the circles left, like Telegram", together with "bigger when tapped",
+    // which a slot that never changes cannot do without leaving even more
+    // space round every resting circle.
+    expect(circle.width, VideoBubble.circleIdle);
     expect(circle.height, circle.width, reason: 'a circle is square');
     expect(
       circle.contains(clock.center),
@@ -192,6 +191,44 @@ void main() {
       reason: 'a rectangular pill in the corner of a round bubble hangs off '
           'the shape; the circle draws its own countdown instead',
     );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // A portrait screenshot sent as a photo drew at its own shape inside the
+  // bubble - narrow, with the bubble's colour showing down one side, because
+  // the picture was only ever capped, never stretched. Reported with a
+  // screenshot: "the photo has to stretch across the whole width". Measured
+  // before the picture decodes, which is the moment an uncapped box collapses
+  // to nothing.
+  testWidgets('a photo takes the whole column, whatever its shape',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await _pump(
+      tester,
+      Message(
+        id: 'photo',
+        chatId: 'peer',
+        text: 'image/png',
+        sentAt: DateTime(2026, 9, 10, 10, 11),
+        isMine: true,
+        kind: MessageKind.image,
+        imagePath: _path,
+        imageMime: 'image/png',
+      ),
+    );
+    final picture = tester.getRect(
+      find
+          .ancestor(
+            of: find.byType(Image, skipOffstage: false),
+            matching: find.byType(ConstrainedBox, skipOffstage: false),
+          )
+          .first,
+    );
+    expect(picture.width, closeTo(_photoWidth, 0.5));
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -14,3 +14,14 @@ test('an unknown or missing language falls back to English for both', () => {
   assert.equal(pushBody(undefined, { call: true }), 'Incoming call');
   assert.equal(pushBody('xx'), 'New message');
 });
+
+// The PushKit token rides in a signed tag. Only an iPhone's is believed, and
+// only a well-formed one: it is handed straight to Apple.
+test('a VoIP token is read from an iOS registration and nowhere else', async () => {
+  const { voipTokenOf } = await import('../src/index.js');
+  const hex = 'ab'.repeat(32);
+  assert.equal(voipTokenOf({ tags: [['voip', hex]] }, 'ios'), hex);
+  assert.equal(voipTokenOf({ tags: [['voip', hex]] }, 'android'), null);
+  assert.equal(voipTokenOf({ tags: [['voip', 'not hex']] }, 'ios'), null);
+  assert.equal(voipTokenOf({ tags: [] }, 'ios'), null);
+});

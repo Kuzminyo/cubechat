@@ -44,6 +44,7 @@ import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/util/platform_info.dart';
+import '../../call/data/call_screen_access.dart';
 import '../../../core/widgets/glass_toast.dart';
 import 'dart:async';
 import '../../peers/data/peer_discovery_controller.dart';
@@ -1262,6 +1263,35 @@ class _PrivacyCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 14),
+          // Beside the other call setting. A system permission rather than an
+          // app one, so the switch shows what Android says and flipping it opens
+          // the page that changes it — see [CallScreenAccess].
+          if (PlatformInfo.isAndroid) ...[
+            Builder(
+              builder: (context) {
+                final access = ref.watch(callScreenAccessProvider);
+                return _SettingSwitch(
+                  icon: access.complete
+                      ? Icons.fullscreen_rounded
+                      : Icons.notifications_active_outlined,
+                  title: t.callFullScreenTitle,
+                  hint: access.xiaomi
+                      ? '${t.callFullScreenBody} ${t.callFullScreenXiaomi}'
+                      : t.callFullScreenBody,
+                  value: access.complete,
+                  onChanged: (_) {
+                    final notifier = ref.read(callScreenAccessProvider.notifier);
+                    unawaited(
+                      access.complete && access.xiaomi
+                          ? notifier.openVendorSettings()
+                          : notifier.openSettings(),
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
           _SettingSwitch(
             icon: s.shareLastSeen
                 ? Icons.schedule_rounded

@@ -55,22 +55,18 @@ class VideoBubble extends ConsumerStatefulWidget {
   /// Drawn round and square rather than as a rectangle in a card.
   static bool isCircle(Message message) => message.isCircle;
 
-  /// Resting, and playing.
+  /// Resting, and tapped.
   ///
-  /// It grows when it starts. Not decoration: a circle at rest is one of many
-  /// things in a scrolling column, and the one that is speaking should be the
-  /// one your eye lands on. Telegram does the same and for the same reason.
-  ///
-  /// 200 and 248, up from 176 and 216. The gap between them is kept at a
-  /// quarter rather than widened with them, because the growth has to read as
-  /// emphasis and not as the layout jumping.
-  ///
-  /// The ceiling is the narrowest phone this runs on. 248 leaves about 70
-  /// logical points beside the disc on a 320-point screen, which is enough for
-  /// the row's margins and an avatar; past roughly 260 a circle starts to
-  /// decide the width of the conversation rather than sit in it.
+  /// At rest a circle is one of many things in a scrolling column. Tapped, it
+  /// becomes the thing on screen: most of the width, the way Telegram draws a
+  /// round message that is playing, and asked for by name. The one that is
+  /// speaking should be the one your eye lands on.
   static const double circleIdle = 200;
-  static const double circlePlaying = 248;
+
+  /// The width of the screen less the row's margins on both sides and a little
+  /// room beside the disc, capped so a tablet does not get a dinner plate.
+  static double circleExpanded(double screenWidth) =>
+      (screenWidth - 52).clamp(circleIdle, 340.0);
 
   /// How tall a clip is drawn, given the width a photo would take and the
   /// shape the camera recorded.
@@ -246,37 +242,41 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
         ? position.inMilliseconds / total.inMilliseconds
         : 0.0;
 
-    // **The box does not change size; the disc inside it does.**
+    // **Tapped, it grows to most of the screen, the way Telegram's does.**
     //
-    // It was an `AnimatedContainer` growing from 200 to 248, and a box that
-    // changes size inside a scrolling list relayouts the row on every frame of
-    // the 260 ms — the list, its padding and everything below the bubble, sixty
-    // times, for a decoration. `AnimatedScale` is a transform applied when the
-    // disc is painted: same movement on screen, no layout at all, and the
-    // conversation underneath never shifts.
+    // It used to grow by a quarter inside a slot that was always the playing
+    // size, so the conversation never re-laid-out. The price of that was the
+    // slot itself: a resting circle sat inside forty-eight points of nothing,
+    // which pushed it away from its edge of the screen — reported as "move the
+    // circles left, like Telegram" — and a growth that stayed that small read
+    // as nothing happening when you tapped. Asked for plainly: bigger when
+    // pressed, against the edge when not.
     //
-    // The slot stays at the playing size and the resting disc sits inside it,
-    // which also means the row does not jump when playback starts.
-    return SizedBox(
-      width: VideoBubble.circlePlaying,
-      height: VideoBubble.circlePlaying,
-      child: AnimatedScale(
-        scale: playing ? 1 : VideoBubble.circleIdle / VideoBubble.circlePlaying,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        // The disc repaints with the ring and the countdown while it plays.
-        // Its own layer, so that repaint does not drag the bubble, the row and
-        // the conversation behind it into the same dirty rect.
-        child: RepaintBoundary(
-          child: _disc(
-            ready: ready,
-            current: current,
-            playing: playing,
-            player: player,
-            progress: progress,
-            left: left,
-            total: total,
-          ),
+    // A slot the size of the grown disc cannot be kept, it would leave more
+    // empty space round a resting circle than the circle takes. So the slot
+    // changes size, once per tap, over 260 ms. That is a relayout of one row
+    // for a quarter of a second after a deliberate touch, not a cost paid while
+    // scrolling or while playing — the playing frames repaint only the ring.
+    final size = current
+        ? VideoBubble.circleExpanded(MediaQuery.sizeOf(context).width)
+        : VideoBubble.circleIdle;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      width: size,
+      height: size,
+      // The disc repaints with the ring and the countdown while it plays.
+      // Its own layer, so that repaint does not drag the bubble, the row and
+      // the conversation behind it into the same dirty rect.
+      child: RepaintBoundary(
+        child: _disc(
+          ready: ready,
+          current: current,
+          playing: playing,
+          player: player,
+          progress: progress,
+          left: left,
+          total: total,
         ),
       ),
     );
@@ -291,9 +291,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     required Duration left,
     required Duration total,
   }) {
-    return SizedBox(
-      width: VideoBubble.circlePlaying,
-      height: VideoBubble.circlePlaying,
+    return SizedBox.expand(
       child: CustomPaint(
         // The ring is the only chrome. No card, no border, no play button: a
         // circle is a circle, and the one thing worth drawing round it is how

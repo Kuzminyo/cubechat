@@ -185,6 +185,13 @@ class PushRegistration {
           tags: <List<String>>[
             <String>['lang', await _language()],
             <String>['platform', platformTag],
+            // The PushKit token, when there is one. It is what lets a call
+            // wake an iPhone whose app was swiped away and ring CallKit's
+            // screen; the alert token in the content can only draw a banner.
+            // Signed with the rest, so a call cannot be redirected to another
+            // phone. Absent on Android and on an unregistration.
+            if (token.isNotEmpty && PlatformInfo.isIOS)
+              if (await _voipToken() case final voip?) <String>['voip', voip],
           ],
           content: token,
         ),
@@ -203,6 +210,19 @@ class PushRegistration {
       'no doorbell answered — tried ${endpoints.length}',
     );
     return false;
+  }
+
+  static const _callKit = MethodChannel('cubechat/callkit');
+
+  Future<String?> _voipToken() async {
+    try {
+      final token = await _callKit.invokeMethod<String>('voipToken');
+      return token != null && RegExp(r'^[0-9a-f]{64}$').hasMatch(token)
+          ? token
+          : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// One attempt at one endpoint. Never throws; the caller tries the next.
@@ -421,14 +441,22 @@ class PushEnabled extends Notifier<bool> {
 
   Future<void> reassert() => _reasserting.run('push', _reassertOnce);
 
-  Future<void> _reassertOnce() async {
+  /// Send the registration again now, past the interval: PushKit has just
+  /// handed over a VoIP token, usually a second after the launch registration
+  /// left without one, and a call to this iPhone cannot wake it until the
+  /// server has it.
+  Future<void> reassertForVoip() =>
+      _reasserting.run('push-voip', () => _reassertOnce(force: true));
+
+  Future<void> _reassertOnce({bool force = false}) async {
     if (!PlatformInfo.isMobile) return;
     await _loading;
     // The position itself is never throttled: flipping the switch has to reach
     // the server now, and it is `set` that does that. This is only about the
     // unprompted repeat.
     final since = _reassertedAt;
-    if (_reassertedState == state &&
+    if (!force &&
+        _reassertedState == state &&
         since != null &&
         DateTime.now().difference(since) < _reassertMinInterval) {
       return;

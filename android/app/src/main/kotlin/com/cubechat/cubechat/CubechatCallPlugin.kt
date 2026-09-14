@@ -48,6 +48,31 @@ class CubechatCallPlugin(
                     IncomingCall.dismiss(context, call.argument<String>("key"))
                     result.success(null)
                 }
+                // What stands between a call and a real screen on this phone.
+                "access" -> result.success(
+                    mapOf(
+                        "overlay" to IncomingCall.canDrawOverlays(context),
+                        "fullScreenIntent" to IncomingCall.canUseFullScreen(context),
+                        "xiaomi" to IncomingCall.isXiaomiFamily(),
+                    ),
+                )
+                "openOverlaySettings" -> result.success(
+                    openSettings(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        withPackage = true,
+                    ),
+                )
+                "openFullScreenSettings" -> result.success(
+                    if (android.os.Build.VERSION.SDK_INT >= 34) {
+                        openSettings(
+                            android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                            withPackage = true,
+                        )
+                    } else {
+                        false
+                    },
+                )
+                "openVendorSettings" -> result.success(openVendorSettings())
                 "takePending" -> {
                     val held = pending
                     pending = null
@@ -55,6 +80,42 @@ class CubechatCallPlugin(
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun openSettings(action: String, withPackage: Boolean): Boolean = try {
+        val intent = android.content.Intent(action)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (withPackage) {
+            intent.data = android.net.Uri.parse("package:${context.packageName}")
+        }
+        context.startActivity(intent)
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
+     * MIUI's own permission page for this app, where "show on lock screen" and
+     * "pop-up windows in the background" live. Not a public API, so it falls
+     * back to the ordinary app settings page when the activity is not there.
+     */
+    private fun openVendorSettings(): Boolean {
+        val miui = android.content.Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName(
+                "com.miui.securitycenter",
+                "com.miui.permcenter.permissions.PermissionsEditorActivity",
+            )
+            .putExtra("extra_pkgname", context.packageName)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            context.startActivity(miui)
+            true
+        } catch (_: Exception) {
+            openSettings(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                withPackage = true,
+            )
         }
     }
 

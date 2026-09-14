@@ -138,6 +138,12 @@
 		     and has friends receiving it, so an install that never opens the
 		     map never runs it. -->
 		<string>location</string>
+		<!-- A call to an app that is not running. PushKit delivers VoIP pushes
+		     only to an app that declares this, and CallKit keeps the answered
+		     call's audio going with the screen locked through `audio`. Both
+		     are spent only on a call; see CubechatCallKit. -->
+		<string>voip</string>
+		<string>audio</string>
 	</array>
 	<!-- BGTaskScheduler refuses to register an identifier that is not listed
 	     here, and throws at launch when the app tries. Must match

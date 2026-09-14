@@ -85,6 +85,11 @@ import UserNotifications
     // task.
     registerRefreshTask()
 
+    // The same rule for PushKit, and a harder one: a launch caused by a VoIP
+    // push delivers that push only to a registry that exists before launch
+    // finishes, and the push must end in a CallKit report. See CubechatCallKit.
+    CubechatCallKit.shared.start()
+
     let started = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     scheduleRefresh()
 
@@ -123,6 +128,7 @@ import UserNotifications
       openInPlugin = CubechatOpenInPlugin(messenger: messenger)
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       pushPlugin = CubechatPushPlugin(messenger: messenger)
+      CubechatCallKit.shared.attach(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
         binaryMessenger: messenger

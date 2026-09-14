@@ -23,7 +23,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-09-14-call-kind';
+const VERSION = '2026-09-14-voip-calls';
 
 const RECIPIENT_TAG = 'p';
 
@@ -221,6 +221,8 @@ const CALL_BODY = {
 const DEFAULT_LANG = 'en';
 
 /// The banner text for a language and a kind of event. Exported for the test.
+export { voipTokenOf };
+
 export function pushBody(lang, { call = false } = {}) {
   const table = call ? CALL_BODY : ALERT_BODY;
   return table[lang] || table[DEFAULT_LANG];
@@ -241,6 +243,22 @@ function languageOf(event) {
     }
   }
   return DEFAULT_LANG;
+}
+
+/// The PushKit token from an iPhone registration, or null.
+///
+/// A tag rather than the content, because the content is the alert token and
+/// an empty content already means "forget me". Signed with everything else, so
+/// nobody can point somebody else's calls at their own phone. Only iOS has
+/// one; an Android registration carrying the tag is not believed.
+function voipTokenOf(event, platform) {
+  if (platform !== 'ios') return null;
+  for (const tag of event.tags ?? []) {
+    if (!Array.isArray(tag) || tag[0] !== 'voip' || typeof tag[1] !== 'string') continue;
+    const value = tag[1].trim().toLowerCase();
+    if (/^[0-9a-f]{64}$/.test(value)) return value;
+  }
+  return null;
 }
 
 function handleRegister(event) {
@@ -275,6 +293,7 @@ function handleRegister(event) {
   const token = deviceTokenOf(event.content, platform);
   if (!token) return { ok: false, reason: 'token' };
   const lang = languageOf(event);
+  const voip = voipTokenOf(event, platform);
 
   const previous = tokens.get(event.pubkey);
   const before = previous?.token;
@@ -289,6 +308,10 @@ function handleRegister(event) {
     // service re-learn it, at the cost of a wasted round trip, forever. A
     // *new* token may well be a new environment, so that keeps nothing.
     host: token === before ? previous?.host : undefined,
+    // Kept from before only for the same install. PushKit hands the token over
+    // a moment after launch, so a registration can leave before it exists; a
+    // phone that has not been reinstalled still has the one it sent last time.
+    voip: voip ?? (token === before ? previous?.voip : undefined),
   });
   void saveStore();
   // Only when the set of npubs changed. A phone re-registering the same token
@@ -572,7 +595,46 @@ async function sendFcm(npub, token, { call = false } = {}) {
   }
 }
 
-async function sendPush(npub, token, { call = false } = {}) {
+/// Ring an iPhone for a call through PushKit, so it can show CallKit's screen
+/// even when the app has been swiped away.
+///
+/// The ordinary alert is only a banner, and "calls do not arrive on iOS when the
+/// app is fully closed" was the report: a banner is not a call. A VoIP push
+/// launches the app in the background and iOS requires it to report a call to
+/// CallKit before it does anything else — which is exactly the full-screen
+/// incoming call being asked for.
+///
+/// True when Apple took it. A token Apple refuses outright is forgotten, and
+/// the caller falls back to the alert, so a broken VoIP token costs one call a
+/// banner instead of costing every call its doorbell.
+async function sendVoip(npub, voip, eventId) {
+  const [first, second] = hostsFor(npub);
+  let attempt = await pushTo(npub, voip, first, { voip: true, eventId });
+  logAttempt(npub, voip, first, attempt);
+  if (attempt.status === 200) return true;
+  if (attempt.reason === 'BadDeviceToken') {
+    const retry = await pushTo(npub, voip, second, { voip: true, eventId });
+    logAttempt(npub, voip, second, retry);
+    if (retry.status === 200) return true;
+    attempt = retry;
+  }
+  const dead = ['BadDeviceToken', 'DeviceTokenNotForTopic', 'Unregistered', 'TopicDisallowed'];
+  if (attempt.status === 410 || dead.includes(attempt.reason)) {
+    const entry = tokens.get(npub);
+    if (entry?.voip === voip) {
+      delete entry.voip;
+      void saveStore();
+      log('voip', `${short(npub)} voip token retired (${attempt.reason || attempt.status})`);
+    }
+  }
+  return false;
+}
+
+async function sendPush(npub, token, { call = false, eventId = '' } = {}) {
+  const voip = tokens.get(npub)?.voip;
+  if (call && voip && tokens.get(npub)?.platform !== 'android') {
+    if (await sendVoip(npub, voip, eventId)) return true;
+  }
   // Android goes to Google, everything else to Apple. The two networks share
   // nothing but this doorbell's intent, so the split is here rather than
   // threaded through the APNs code below.
@@ -647,8 +709,11 @@ function forgetToken(npub, why) {
 
 /// One attempt against one host. Returns what Apple said rather than deciding
 /// what it means, because the meaning depends on which attempt this was.
-function pushTo(npub, token, host, { call = false } = {}) {
-  const payload = JSON.stringify({
+function pushTo(npub, token, host, { call = false, voip = false, eventId = '' } = {}) {
+  // A VoIP push carries no alert: the app reports the call to CallKit itself,
+  // the moment iOS hands it this, and CallKit draws the screen. Which call it
+  // is, is inside the relay event; the id is only there for the log.
+  const payload = voip ? JSON.stringify({ aps: {}, type: 'call', id: eventId }) : JSON.stringify({
     aps: {
       // The text itself, not a `loc-key`. That is what this sent until
       // 2026-08-31, and it never worked: `loc-key` names an entry in the
@@ -684,9 +749,13 @@ function pushTo(npub, token, host, { call = false } = {}) {
         ':method': 'POST',
         ':path': `/3/device/${token}`,
         authorization: `bearer ${apnsAuthorization()}`,
-        'apns-topic': APNS_TOPIC,
-        'apns-push-type': 'alert',
+        'apns-topic': voip ? `${APNS_TOPIC}.voip` : APNS_TOPIC,
+        'apns-push-type': voip ? 'voip' : 'alert',
         'apns-priority': '10',
+        // A call nobody could be rung for a minute ago is over. Without this
+        // APNs stores a VoIP push for an offline phone and rings it later for
+        // a call that ended long before.
+        ...(voip ? { 'apns-expiration': String(Math.floor(Date.now() / 1000) + 60) } : {}),
         // No `apns-collapse-id`. With one there, every push carried the same
         // id and APNs treats that as "this replaces the last one" — so a
         // second message overwrote the first banner instead of arriving
@@ -859,7 +928,7 @@ function connectRelay(url) {
       if (!entry) continue;
       if (!shouldWake(tag[1])) continue;
       log('wake', `${short(tag[1])} has ${call ? 'a call' : 'mail'}`);
-      void sendPush(tag[1], entry.token, { call });
+      void sendPush(tag[1], entry.token, { call, eventId: event.id });
     }
   });
 

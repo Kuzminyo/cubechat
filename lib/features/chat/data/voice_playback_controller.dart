@@ -161,9 +161,11 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
     if (_disposed || player == null || !state.isCircle) return;
     final value = player.value;
     if (value.isCompleted || value.hasError) {
+      final previous = state;
       _lastPositionAt = null;
       state = VoicePlayback(speed: state.speed);
-      unawaited(_releaseVideo());
+      final generation = _generation;
+      unawaited(_finishCircle(previous, generation, advance: !value.hasError));
       return;
     }
     // Starting, stopping and the length arriving are news and go at once. Only
@@ -181,6 +183,30 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
       duration: value.duration,
       playing: value.isPlaying,
     );
+  }
+
+  Future<void> _finishCircle(VoicePlayback previous, int generation,
+      {required bool advance}) async {
+    await _releaseVideo();
+    if (!advance || _disposed || generation != _generation) return;
+    final messages = ref.read(messagesControllerProvider)[previous.chatId];
+    if (messages == null) return;
+    final ordered = messages.toList()
+      ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+    final index = ordered.indexWhere((m) => m.id == previous.messageId);
+    if (index < 0 || index + 1 >= ordered.length) return;
+    final next = ordered[index + 1];
+    // Only the adjacent circle continues the run: no skipping text, missing
+    // downloads or deleted messages, and never wrap back to its beginning.
+    if (!next.isCircle ||
+        next.filePath == null ||
+        !File(next.filePath!).existsSync()) return;
+    await toggleCircle(
+        messageId: next.id,
+        path: next.filePath!,
+        chatId: previous.chatId!,
+        chatTitle: previous.chatTitle ?? '',
+        sentAt: next.sentAt);
   }
 
   Future<void> toggleCircle({
