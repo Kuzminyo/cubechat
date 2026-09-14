@@ -10,6 +10,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
 import '../../../core/routing/app_router.dart';
+import '../../../core/routing/shell_coverage.dart';
+import '../../../core/util/ui_activity.dart';
 import '../../../core/routing/branch_pager.dart';
 import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
@@ -584,6 +586,52 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     super.didChangeDependencies();
     final route = ModalRoute.of(context);
     if (route is ModalRoute<void>) appRouteObserver.subscribe(this, route);
+    final delegate = GoRouter.maybeOf(context)?.routerDelegate;
+    if (!identical(delegate, _routerDelegate)) {
+      _routerDelegate?.removeListener(_onRouteChanged);
+      _routerDelegate = delegate;
+      delegate?.addListener(_onRouteChanged);
+      _coveredByRoute =
+          delegate != null && routeCoversShell(delegate.currentConfiguration);
+    }
+  }
+
+  GoRouterDelegate? _routerDelegate;
+
+  /// A page pushed over the whole shell - see [routeCoversShell] for why this
+  /// cannot be read off the list's own route.
+  bool _coveredByRoute = false;
+
+  /// The page over the shell came or went.
+  ///
+  /// Covered: nothing to do now, the next rebuild hands back the last tree.
+  /// Uncovered: one full build to catch up with what arrived meanwhile - but
+  /// after the page has finished sliding away, not as it starts to. The list
+  /// shows its last tree during the slide, which is what it looked like a
+  /// moment ago, and a 26 ms build in the first frame of closing a chat was
+  /// what the meter caught when this rebuild ran immediately.
+  void _onRouteChanged() {
+    final delegate = _routerDelegate;
+    if (delegate == null || !mounted) return;
+    final covered = routeCoversShell(delegate.currentConfiguration);
+    if (covered == _coveredByRoute) return;
+    _coveredByRoute = covered;
+    if (!covered) _catchUpWhenStill();
+  }
+
+  void _catchUpWhenStill() {
+    final navigating = UiActivity.instance.isNavigating;
+    if (!navigating.value) {
+      if (mounted) setState(() {});
+      return;
+    }
+    void settled() {
+      if (navigating.value) return;
+      navigating.removeListener(settled);
+      if (mounted && !_coveredByRoute) setState(() {});
+    }
+
+    navigating.addListener(settled);
   }
 
   /// Publish the folder row as something a sideways flick can walk through.
@@ -651,6 +699,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
 
   @override
   void dispose() {
+    _routerDelegate?.removeListener(_onRouteChanged);
     appRouteObserver.unsubscribe(this);
     _select.dispose();
     _folderSlide.dispose();
@@ -727,7 +776,8 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     // precisely what stops the rebuilds, and [didPopNext] is what makes that
     // safe. Counted under its own name so a log says plainly that the skip is
     // happening rather than leaving it to be inferred.
-    final covered = !(ModalRoute.of(context)?.isCurrent ?? true);
+    final covered =
+        _coveredByRoute || !(ModalRoute.of(context)?.isCurrent ?? true);
     final last = _covered;
     if (covered && last != null) {
       FrameStats.countBuild('chats(skipped)');
