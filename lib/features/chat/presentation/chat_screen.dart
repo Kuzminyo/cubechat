@@ -170,12 +170,43 @@ ChatRoute resolveChatRoute({
   return (route: available, hops: null);
 }
 
-bool _hasMeshLink(Map<String, ChatSession> sessions, int peripheralLinks) =>
-    peripheralLinks > 0 ||
-    sessions.values.any((session) => session.isEstablished);
-
 bool _hasRelay(Map<String, RelayState> statuses) =>
     statuses.values.any((state) => state == RelayState.connected);
+
+/// The session a conversation speaks over, by transport id or by pubkey.
+ChatSession? _sessionFor(Map<String, ChatSession> sessions, String peerId) {
+  final direct = sessions[peerId];
+  if (direct != null) return direct;
+  for (final s in sessions.values) {
+    if (s.remotePubkeyHex == peerId) return s;
+  }
+  return null;
+}
+
+/// What an open conversation takes from the whole session table: its own
+/// session, the state that session is in, and whether any link at all is up.
+///
+/// **A record, so a handshake with somebody else rebuilds nothing here.** The
+/// screen watched the whole map, and the map is replaced on every step of
+/// every handshake with every phone in range. `ChatSession` changes its status
+/// in place, which is why the status is in the record beside the session: the
+/// same object in a new state has to compare unequal.
+typedef _SessionView = ({
+  ChatSession? session,
+  ChatSessionStatus? status,
+  String? pubkey,
+  bool anyEstablished,
+});
+
+_SessionView _sessionView(Map<String, ChatSession> sessions, String peerId) {
+  final session = _sessionFor(sessions, peerId);
+  return (
+    session: session,
+    status: session?.status,
+    pubkey: session?.remotePubkeyHex,
+    anyEstablished: sessions.values.any((s) => s.isEstablished),
+  );
+}
 
 /// Real-transport chat screen.
 ///
@@ -281,20 +312,23 @@ class ChatScreen extends ConsumerWidget {
       return _buildChannel(context, ref, t);
     }
 
-    final sessions = ref.watch(chatSessionManagerProvider);
-
     // `peerId` from the URL can be either a BLE transport id (when we got
     // here from a Nearby tap) or a pubkey-hex chat id (when re-entered from
     // the main Chats list). Resolve to a live session by either route.
-    ChatSession? session = sessions[peerId];
-    if (session == null) {
-      for (final s in sessions.values) {
-        if (s.remotePubkeyHex == peerId) {
-          session = s;
-          break;
-        }
-      }
-    }
+    //
+    // **Only what this conversation uses from each provider below, and that
+    // is measured.** An open chat of 2000 messages, with nothing in it
+    // changing, rebuilt 460 widgets - every visible bubble - for a typing
+    // notice from somebody in a *different* chat (a throwaway
+    // `debugOnRebuildDirtyWidget` count, 2026-09-14). It watched whole maps:
+    // who is typing anywhere, every session, every relay, every alias, every
+    // conversation's settings. "Chats lag" was the report; a phone with a few
+    // people typing at once was rebuilding the conversation every few seconds
+    // for none of them.
+    final sessionView = ref.watch(
+      chatSessionManagerProvider.select((all) => _sessionView(all, peerId)),
+    );
+    final session = sessionView.session;
 
     // Prefer the canonical pubkey-keyed bucket; fall back to the transport
     // id (for chats that are still on the BLE-address URL).
@@ -329,17 +363,16 @@ class ChatScreen extends ConsumerWidget {
     );
     final availableRoute = resolveChatRoute(
       directBluetooth: session?.isEstablished ?? false,
-      meshAvailable: _hasMeshLink(
-        sessions,
-        // The count alone. The controller's state also carries advertising
-        // flags and per-central detail that change without the count changing,
-        // and only the count reaches this screen.
-        ref.watch(
-          peripheralControllerProvider.select((p) => p.connectedCount),
-        ),
-      ),
+      meshAvailable: sessionView.anyEstablished ||
+          // The count alone. The controller's state also carries advertising
+          // flags and per-central detail that change without the count
+          // changing, and only the count reaches this screen.
+          ref.watch(
+                peripheralControllerProvider.select((p) => p.connectedCount),
+              ) >
+              0,
       relayAvailable: known?.nostrPubkey != null &&
-          _hasRelay(ref.watch(relayStatusProvider)),
+          ref.watch(relayStatusProvider.select(_hasRelay)),
     );
     final route = displayedChatRoute(messages, availableRoute);
     // Sending needs a recipient pubkey, not a live handshake. Gating on
@@ -355,11 +388,15 @@ class ChatScreen extends ConsumerWidget {
     // chat was opened. Renaming somebody from their profile and coming back to
     // a header still showing the old name is the obvious way for this to feel
     // broken, and watching the alias store is what stops it.
-    final aliases = ref.watch(contactAliasesControllerProvider);
+    final alias = ref.watch(
+      contactAliasesControllerProvider.select((a) => a[canonicalId]),
+    );
     final headerLabel = known == null
         ? peerLabel
         : contactDisplayName(
-            alias: aliases[known.pubkeyHex],
+            alias: known.pubkeyHex == canonicalId
+                ? alias
+                : ref.read(contactAliasesControllerProvider)[known.pubkeyHex],
             rawBroadcastName: known.displayName,
             pubkeyHex: known.pubkeyHex,
           );
@@ -376,9 +413,10 @@ class ChatScreen extends ConsumerWidget {
     // Presence: a live session, else a fresh beacon (the internet case), else
     // how recently they were announcing on the mesh. See [peerIsOnline].
     // Drives the timer beside the name in the header.
-    final autoDelete = ref
-            .watch(conversationSettingsControllerProvider)[canonicalId]
-            ?.autoDelete ??
+    final autoDelete = ref.watch(
+          conversationSettingsControllerProvider
+              .select((all) => all[canonicalId]?.autoDelete),
+        ) ??
         ChatAutoDelete.off;
     final lastSeen = known?.lastSeen;
     // What the header prints as "last online" — see [KnownPeer.lastPresenceAt].
@@ -408,7 +446,7 @@ class ChatScreen extends ConsumerWidget {
     final hideTimes = !presenceShared || (beacon?.hidesLastSeen ?? false);
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
-    ref.watch(typingControllerProvider);
+    ref.watch(typingControllerProvider.select((all) => all[canonicalId]));
     final activity =
         ref.read(typingControllerProvider.notifier).activityOf(canonicalId);
 
@@ -561,7 +599,9 @@ class ChatScreen extends ConsumerWidget {
     // A saved-notes chat is never "joined" — there is nothing to join — but it
     // is always writable, which is the only thing `joined` gates.
     final saved = isSavedChat(peerId);
-    final channel = saved ? null : ref.watch(channelControllerProvider)[peerId];
+    final channel = saved
+        ? null
+        : ref.watch(channelControllerProvider.select((all) => all[peerId]));
     final joined = saved || channel != null;
     final rosterVersion = ref.watch(channelRosterControllerProvider);
     // A discussion room says whose discussion it is.
@@ -574,7 +614,10 @@ class ChatScreen extends ConsumerWidget {
     final parentChannel =
         saved ? null : channelForCommunity(peerId);
     final isCommunity = parentChannel != null &&
-        ref.watch(channelControllerProvider)[parentChannel] != null;
+        ref.watch(
+          channelControllerProvider
+              .select((all) => all[parentChannel] != null),
+        );
     final self = saved
         ? null
         : ref.watch(_channelSelfMemberProvider(peerId)).valueOrNull;
@@ -591,16 +634,17 @@ class ChatScreen extends ConsumerWidget {
         ),
       ),
     );
-    final sessions = ref.watch(chatSessionManagerProvider);
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
-      meshAvailable: _hasMeshLink(
-        sessions,
-        ref.watch(
-          peripheralControllerProvider.select((p) => p.connectedCount),
-        ),
-      ),
-      relayAvailable: _hasRelay(ref.watch(relayStatusProvider)),
+      meshAvailable: ref.watch(
+            chatSessionManagerProvider
+                .select((all) => all.values.any((s) => s.isEstablished)),
+          ) ||
+          ref.watch(
+                peripheralControllerProvider.select((p) => p.connectedCount),
+              ) >
+              0,
+      relayAvailable: ref.watch(relayStatusProvider.select(_hasRelay)),
     );
     final route = displayedChatRoute(messages, availableRoute);
     return _withBackHandling(
@@ -1346,6 +1390,57 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// costs nothing to ask.
   List<Message>? _albumSource;
   PhotoAlbums? _albumCache;
+
+  /// The bubble last built for each message, handed back while nothing it was
+  /// built from has changed.
+  ///
+  /// **A widget that is the same instance is not rebuilt, and that is the
+  /// whole trick.** Anything that rebuilt this screen - a delivery tick on one
+  /// message, the other person starting to type, the header's status line -
+  /// built every visible bubble again from scratch, because each pass made a
+  /// new `MessageBubble` for every row. Measured with a throwaway rebuild
+  /// counter on a 2000-message chat: 460 widgets for a tick on a single
+  /// message. A bubble still rebuilds for everything it watches itself
+  /// (reactions, selection, playback); only the rebuild it was dragged into by
+  /// its parent is saved.
+  ///
+  /// Keyed on identity: the store hands back the same `Message` object until
+  /// that message changes, and the same album list until its photos do.
+  final Map<String,
+          ({Message message, List<Message>? album, bool animate, Widget bubble})>
+      _bubbles = {};
+
+  Widget _bubbleFor(Message m, List<Message>? album, bool animate) {
+    final cached = _bubbles[m.id];
+    if (cached != null &&
+        identical(cached.message, m) &&
+        identical(cached.album, album) &&
+        cached.animate == animate) {
+      return cached.bubble;
+    }
+    // Bounded: a long scroll back through history must not keep every bubble
+    // it ever passed. What is on screen is put back on the next pass.
+    if (_bubbles.length > 400) _bubbles.clear();
+    final bubble = MessageBubble(
+      // Keyed by the message, so a bubble's element follows its message rather
+      // than its slot. Without this the reversed list matched elements by
+      // position: a new message landing at the top reused the element that was
+      // there, its State was not rebuilt from scratch, and `initState` — the
+      // only place the entry animation is armed — never ran. That is the
+      // "анимация отправки работает через раз": it fired only when the
+      // framework happened to build a fresh element. Keying also stops a
+      // half-swiped bubble's offset showing up on whatever message slid into
+      // its place.
+      key: ValueKey(m.id),
+      message: m,
+      chatId: widget.chatId,
+      album: album,
+      animateEntry: animate,
+    );
+    _bubbles[m.id] =
+        (message: m, album: album, animate: animate, bubble: bubble);
+    return bubble;
+  }
 
   PhotoAlbums _albumsFor(List<Message> messages) {
     final cached = _albumCache;
@@ -2111,9 +2206,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final selectedForBar = _selectedMessages(selection);
     final singleSelected =
         selectedForBar.length == 1 ? selectedForBar.first : null;
-    final copyingRestricted = ref
-            .watch(conversationSettingsControllerProvider)[widget.chatId]
-            ?.copyingRestricted ??
+    final copyingRestricted = ref.watch(
+          conversationSettingsControllerProvider
+              .select((all) => all[widget.chatId]?.copyingRestricted),
+        ) ??
         false;
     // Messages the list is currently playing out. Read once here rather than
     // per row, like everything else the itemBuilder needs.
@@ -2179,23 +2275,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       id != null &&
                       (m.id == id ||
                           (album?.any((photo) => photo.id == id) ?? false));
-                  Widget bubble = MessageBubble(
-                    // Keyed by the message, so a bubble's element follows its
-                    // message rather than its slot. Without this the reversed
-                    // list matched elements by position: a new message landing
-                    // at the top reused the element that was there, its State
-                    // was not rebuilt from scratch, and `initState` — the only
-                    // place the entry animation is armed — never ran. That is
-                    // the "анимация отправки работает через раз": it fired only
-                    // when the framework happened to build a fresh element.
-                    // Keying also stops a half-swiped bubble's offset showing up
-                    // on whatever message slid into its place.
-                    key: ValueKey(m.id),
-                    message: m,
-                    chatId: widget.chatId,
-                    album: album,
-                    animateEntry: _smoothSendIds.contains(m.id),
-                  );
+                  Widget bubble =
+                      _bubbleFor(m, album, _smoothSendIds.contains(m.id));
                   if (isHere(widget.initialMessageId)) {
                     bubble =
                         KeyedSubtree(key: _initialMessageKey, child: bubble);
