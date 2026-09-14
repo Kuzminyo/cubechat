@@ -8,7 +8,13 @@ class CirclePlaybackThumbnail extends ConsumerWidget {
   const CirclePlaybackThumbnail({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playback = ref.watch(voicePlaybackControllerProvider);
+    final playback = ref.watch(voicePlaybackControllerProvider.select(
+      (value) => (
+        isCircle: value.isCircle,
+        messageId: value.messageId,
+        duration: value.duration
+      ),
+    ));
     final video = ref.read(voicePlaybackControllerProvider.notifier).video;
     if (!playback.isCircle || video == null || !video.value.isInitialized) {
       return const SizedBox.shrink();

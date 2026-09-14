@@ -105,12 +105,15 @@ class VideoBubble extends ConsumerStatefulWidget {
 
 class _VideoBubbleState extends ConsumerState<VideoBubble> {
   VideoPoster? _poster;
+  Animation<double>? _routeAnimation;
+  String? _loadingPath;
+  String? _posterPath;
 
   bool get _isCircle => VideoBubble.isCircle(widget.message);
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _loadPoster();
   }
 
@@ -128,8 +131,24 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     if (path == null) return;
     // The Diagnostics experiment draws no media, so none is read either.
     if (TransitionProbe.instance.placeholderMedia.value) return;
-    _poster = VideoFrames.peek(path);
-    if (_poster != null) return;
+    if (_posterPath != path) {
+      _posterPath = path;
+      _poster = null;
+      _loadingPath = null;
+    }
+    _poster ??= VideoFrames.peek(path);
+    if (_poster != null || _loadingPath == path) return;
+    final animation = ModalRoute.of(context)?.animation;
+    if (!identical(animation, _routeAnimation)) {
+      _routeAnimation?.removeStatusListener(_routeStatus);
+      _routeAnimation = animation;
+      animation?.addStatusListener(_routeStatus);
+    }
+    // Memory hits are immediate; uncached native frame extraction waits until
+    // the route is settled, instead of competing with the entrance animation.
+    if (animation != null && animation.status != AnimationStatus.completed)
+      return;
+    _loadingPath = path;
     unawaited(
       VideoFrames.of(path).then((poster) {
         if (mounted && widget.message.filePath == path) {
@@ -137,6 +156,16 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
         }
       }),
     );
+  }
+
+  void _routeStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) _loadPoster();
+  }
+
+  @override
+  void dispose() {
+    _routeAnimation?.removeStatusListener(_routeStatus);
+    super.dispose();
   }
 
   Future<void> _tap() async {

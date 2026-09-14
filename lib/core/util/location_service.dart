@@ -33,7 +33,14 @@ class LocationFix {
 class LocationService {
   const LocationService();
 
-  Future<(LocationFix?, LocationFailure?)> current() async {
+  // Map refresh and the sharing beacon can arrive together after resume.
+  // They need the same fix, not parallel permission checks and GPS requests.
+  static Future<(LocationFix?, LocationFailure?)>? _inFlight;
+
+  Future<(LocationFix?, LocationFailure?)> current() =>
+      _inFlight ??= _current().whenComplete(() => _inFlight = null);
+
+  Future<(LocationFix?, LocationFailure?)> _current() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         return (null, LocationFailure.serviceOff);
@@ -79,7 +86,8 @@ class LocationService {
         // every other map app shows in the same moment.
         final stale = cached ?? await _lastKnown();
         if (stale != null) {
-          DebugLog.instance.log('LOCATION', 'live fix failed ($e) — using last known');
+          DebugLog.instance
+              .log('LOCATION', 'live fix failed ($e) — using last known');
           return (_fixOf(stale), null);
         }
         rethrow;
@@ -117,7 +125,9 @@ class LocationService {
       return false;
     }
     final accuracy = position.accuracy;
-    return accuracy.isFinite && accuracy > 0 && accuracy <= _cacheMaxErrorMetres;
+    return accuracy.isFinite &&
+        accuracy > 0 &&
+        accuracy <= _cacheMaxErrorMetres;
   }
 
   /// How old the platform's cached fix may be and still be worth showing.
@@ -188,8 +198,9 @@ class LocationService {
   static LocationFix _fixOf(Position position) => LocationFix(
         latitude: position.latitude,
         longitude: position.longitude,
-        accuracyMetres:
-            position.accuracy.isFinite ? position.accuracy.round().clamp(0, 65535) : 0,
+        accuracyMetres: position.accuracy.isFinite
+            ? position.accuracy.round().clamp(0, 65535)
+            : 0,
       );
 
   static LocationSettings _watchSettings() {

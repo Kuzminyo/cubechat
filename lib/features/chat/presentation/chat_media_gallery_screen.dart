@@ -617,7 +617,13 @@ class _ClipPageState extends State<_ClipPage> {
     }
   }
 
-  Future<void> _open() async {
+  // Repeated taps and page activation can arrive before initialize finishes.
+  // Share that operation rather than allocate another native decoder.
+  Future<void>? _opening;
+  Future<void> _open() =>
+      _opening ??= _openOnce().whenComplete(() => _opening = null);
+
+  Future<void> _openOnce() async {
     if (_player != null || _failed) return;
     final player = VideoPlayerController.file(File(widget.path));
     try {

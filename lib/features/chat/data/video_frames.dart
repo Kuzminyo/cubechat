@@ -32,13 +32,42 @@ class VideoFrames {
 
   static final Map<String, Future<VideoPoster>> _known = {};
   static final Map<String, VideoPoster> _ready = {};
+  // Poster metadata used to retain every visited video for the whole session.
+  // Keep only a recent working set; JPEGs remain available in the disk cache.
+  static const int maxCachedPosters = 96;
+  static Future<void> _tail = Future<void>.value();
 
   /// Already known this run, without waiting: lets a bubble draw its frame on
   /// its first build instead of flashing an empty box for one.
-  static VideoPoster? peek(String videoPath) => _ready[videoPath];
+  static VideoPoster? peek(String videoPath) {
+    final poster = _ready.remove(videoPath);
+    if (poster != null) _ready[videoPath] = poster;
+    return poster;
+  }
 
-  static Future<VideoPoster> of(String videoPath) =>
-      _known[videoPath] ??= _make(videoPath);
+  static Future<VideoPoster> of(String videoPath) {
+    final ready = peek(videoPath);
+    if (ready != null) return Future.value(ready);
+    return _known[videoPath] ??= _enqueue(videoPath);
+  }
+
+  static Future<VideoPoster> _enqueue(String path) {
+    final job = _tail.then((_) => _make(path));
+    _tail = job.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    unawaited(job.then<void>((_) {
+      _known.remove(path);
+    }));
+    return job;
+  }
+
+  static VideoPoster _remember(String path, VideoPoster poster) {
+    _ready.remove(path);
+    _ready[path] = poster;
+    while (_ready.length > maxCachedPosters) {
+      _ready.remove(_ready.keys.first);
+    }
+    return poster;
+  }
 
   static const VideoPoster _none = (frame: null, length: null, aspect: null);
 
@@ -66,9 +95,9 @@ class VideoFrames {
         length: ms is num && ms > 0 ? Duration(milliseconds: ms.round()) : null,
         aspect: w is num && h is num && w > 0 && h > 0 ? w / h : null,
       );
-      return _ready[videoPath] = poster;
+      return _remember(videoPath, poster);
     } on MissingPluginException {
-      return _ready[videoPath] = _none;
+      return _remember(videoPath, _none);
     } catch (e) {
       DebugLog.instance.log('MEDIA', 'no first frame for a video: $e');
       return _forget(videoPath);
@@ -76,14 +105,7 @@ class VideoFrames {
   }
 
   /// Not remembered as a failure for good: the file may still be arriving.
-  static VideoPoster _forget(String videoPath) {
-    unawaited(
-      Future<void>.delayed(const Duration(seconds: 5), () {
-        _known.remove(videoPath);
-      }),
-    );
-    return _none;
-  }
+  static VideoPoster _forget(String videoPath) => _none;
 
   /// FNV-1a over the UTF-16 units, as 16 hex digits. Stable across runs, which
   /// `String.hashCode` is not promised to be.
