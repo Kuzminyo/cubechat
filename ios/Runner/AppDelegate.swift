@@ -39,6 +39,18 @@ import UserNotifications
 
   private var refreshChannel: FlutterMethodChannel?
 
+  /// Channel Dart says it has finished its goodbye on. Must match
+  /// `IosGoodbyeHold` on the Dart side.
+  private static let goodbyeChannelName = "cubechat/goodbye"
+
+  /// The most background time asked for to say goodbye. iOS allows about
+  /// thirty seconds; the fan-out to ten contacts takes a few.
+  private static let goodbyeHold: TimeInterval = 25
+
+  /// Held from the moment the app goes to the background until Dart has told
+  /// its contacts it left — see `holdForGoodbye`.
+  private var goodbyeTask: UIBackgroundTaskIdentifier = .invalid
+
   /// Channel the significant-location doorbell is armed over. Must match
   /// `IosSignificantLocation` on the Dart side.
   private static let locationChannelName = "cubechat/significant_location"
@@ -93,6 +105,26 @@ import UserNotifications
 
     let started = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     scheduleRefresh()
+
+    // Leaving and coming back, by notification rather than by the delegate
+    // methods: this app runs on the scene lifecycle (SceneDelegate), and under
+    // it `applicationDidEnterBackground` is not called at all. The
+    // notifications are posted either way.
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.didEnterBackgroundNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.holdForGoodbye()
+      self?.scheduleRefresh()
+    }
+    NotificationCenter.default.addObserver(
+      forName: UIApplication.willEnterForegroundNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.releaseGoodbye()
+    }
 
     // After super, because that is what boots the engine and creates the
     // channels this talks over.
@@ -150,6 +182,18 @@ import UserNotifications
         }
       }
       locationChannel = location
+
+      FlutterMethodChannel(
+        name: AppDelegate.goodbyeChannelName,
+        binaryMessenger: messenger
+      ).setMethodCallHandler { [weak self] call, result in
+        guard call.method == "said" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self?.releaseGoodbye()
+        result(nil)
+      }
 
       // The first frame of a video as a small JPEG, for a clip or a circle
       // drawn in the chat before it is played. Android's twin is
@@ -357,6 +401,40 @@ import UserNotifications
         )
       }
     }
+  }
+
+  // MARK: - Goodbye
+
+  /// Keep running long enough to tell contacts the app was left.
+  ///
+  /// Leaving is when the "not in the app" beacon goes out — after a three
+  /// second grace, then to each contact in turn, each publish waiting for a
+  /// relay to answer. iOS suspends an app a few seconds after it goes to the
+  /// background unless it holds a task, so the fan-out was cut off part of the
+  /// way through, most contacts never heard it, and they went on showing the
+  /// iPhone "in the app" until the beacon they had expired. Reported as the dot
+  /// staying lit after leaving, on iOS.
+  ///
+  /// Released as soon as Dart says the goodbye went (`said`), when the app
+  /// comes back, or after [goodbyeHold] — whichever is first.
+  private func holdForGoodbye() {
+    releaseGoodbye()
+    let task = UIApplication.shared.beginBackgroundTask(withName: "cubechat.goodbye") {
+      [weak self] in
+      self?.releaseGoodbye()
+    }
+    goodbyeTask = task
+    DispatchQueue.main.asyncAfter(deadline: .now() + AppDelegate.goodbyeHold) {
+      [weak self] in
+      guard let self, self.goodbyeTask == task else { return }
+      self.releaseGoodbye()
+    }
+  }
+
+  private func releaseGoodbye() {
+    guard goodbyeTask != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(goodbyeTask)
+    goodbyeTask = .invalid
   }
 
   // MARK: - Background refresh

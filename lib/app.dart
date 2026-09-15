@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/ble/background_mode_controller.dart';
 import 'core/locale/locale_controller.dart';
+import 'core/notifications/ios_goodbye_hold.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/notifications/push_registration.dart';
 import 'core/routing/app_router.dart';
@@ -405,10 +406,19 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
     _goodbyeTimer = Timer(_goodbyeGrace, () {
       _goodbyeTimer = null;
-      if (!mounted || !_announcedOnline) return;
+      if (!mounted || !_announcedOnline) {
+        unawaited(IosGoodbyeHold.said());
+        return;
+      }
       _announcedOnline = false;
+      // On an iPhone this runs on background time taken for exactly this, and
+      // gives it back as soon as the contacts have been told — see
+      // [IosGoodbyeHold].
       unawaited(
-        ref.read(messagingServiceProvider).announcePresence(online: false),
+        ref
+            .read(messagingServiceProvider)
+            .announcePresence(online: false)
+            .whenComplete(IosGoodbyeHold.said),
       );
     });
   }

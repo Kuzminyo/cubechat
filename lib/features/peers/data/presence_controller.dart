@@ -54,7 +54,17 @@ class PeerPresence {
   /// anybody, and a phone that dies without a goodbye still goes dark in the
   /// same 100 s — which is the half that must not grow, because a dot that
   /// stays lit is a lie nobody can correct.
-  static const Duration ttl = Duration(seconds: 100);
+  ///
+  /// **60 s, down from 100 on 2026-09-15**, asked for directly ("ten seconds —
+  /// no, sixty"), with [MessagingService.presenceHeartbeat] brought down to
+  /// 25 s so two beacons still fit. Ten was priced first and declined: a
+  /// beacon every four seconds is eleven times the traffic, on relays that
+  /// already answer bursts with `rate-limited` and then refuse real messages.
+  /// The half of the complaint that is not this number — the goodbye not
+  /// arriving, so the dot stayed lit for the whole window after leaving — was
+  /// a dropped goodbye and an iPhone suspended mid fan-out, both fixed the same
+  /// day; see `MessagingService.announcePresence`.
+  static const Duration ttl = Duration(seconds: 60);
 
   bool get isFresh => DateTime.now().difference(at) < ttl;
 

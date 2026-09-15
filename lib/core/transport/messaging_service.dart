@@ -9210,7 +9210,15 @@ class MessagingService {
   /// Two whole beacons now fit inside the window, so losing one changes
   /// nothing, and a phone that dies without a goodbye still dims inside the
   /// same 100 s it did yesterday.
-  static const Duration presenceHeartbeat = Duration(seconds: 45);
+  ///
+  /// **25 s, down from 45 on 2026-09-15**, because [PeerPresence.ttl] went to
+  /// 60 s at the owner's request and two beacons have to keep fitting inside
+  /// it (`presence_expiry_test` holds the pair together). The cost argument
+  /// above still stands in its own terms: rounds happen only with the app on
+  /// screen, and this is about 1.8 times as many of them there. Ten seconds of
+  /// window — a beacon every four — was the number asked for first, and was
+  /// priced at eleven times the traffic on relays that already rate-limit.
+  static const Duration presenceHeartbeat = Duration(seconds: 25);
 
   /// Most peers one heartbeat will reach. Each beacon is a signed frame
   /// published to every configured relay, so this bounds a pathological roster
@@ -9303,15 +9311,28 @@ class MessagingService {
     // next twenty seconds, or the next heartbeat, before anybody is told.
     final hidden = !_ref.read(privacySettingsProvider).shareLastSeen;
     final since = _lastPresenceAt;
-    if (_presenceInFlight ||
-        (_lastPresenceOnline == online &&
-            _lastPresenceHidden == hidden &&
-            since != null &&
-            now.difference(since) < _presenceMinInterval)) {
+    // **The opposite answer waits its turn; it is not dropped.** A round in
+    // flight used to swallow whatever came next, and the thing that came next
+    // was usually the goodbye: the app left while the heartbeat was still
+    // walking its contacts, the goodbye found the flag up and returned, and
+    // those contacts went on showing somebody "in the app" until the beacon
+    // they held ran out. Now it runs the moment the round ends — and a round
+    // saying "online" stops early once the app is no longer on screen, see
+    // [_fanOutPresence].
+    if (_presenceInFlight) {
+      if (online == _presenceSending) return;
+      _presenceQueued = online;
+      return (_presenceQueuedDone ??= Completer<void>()).future;
+    }
+    if (_lastPresenceOnline == online &&
+        _lastPresenceHidden == hidden &&
+        since != null &&
+        now.difference(since) < _presenceMinInterval) {
       return;
     }
     // Claimed before the first await, so a concurrent caller sees it.
     _presenceInFlight = true;
+    _presenceSending = online;
     try {
       // Recorded only if it actually went out. Marking the attempt up front —
       // which is what this did — meant a beacon that reached nobody still
@@ -9329,8 +9350,27 @@ class MessagingService {
       }
     } finally {
       _presenceInFlight = false;
+      final next = _presenceQueued;
+      final done = _presenceQueuedDone;
+      _presenceQueued = null;
+      _presenceQueuedDone = null;
+      if (next != null && !_disposed) {
+        unawaited(
+          announcePresence(online: next).whenComplete(() => done?.complete()),
+        );
+      } else {
+        done?.complete();
+      }
     }
   }
+
+  /// What the round in flight is saying.
+  bool? _presenceSending;
+
+  /// The other answer, asked for while a round was in flight, and the future
+  /// its caller is waiting on.
+  bool? _presenceQueued;
+  Completer<void>? _presenceQueuedDone;
 
   /// Say hello to somebody who has just entered the roster.
   ///
@@ -9479,6 +9519,9 @@ class MessagingService {
     var sent = 0;
     final targets = peers.take(_presenceFanoutCap).toList();
     for (var i = 0; i < targets.length; i++) {
+      // "In the app", said by an app that has since left, is the one thing a
+      // beacon must not say — and the goodbye is queued behind this round.
+      if (online && !AppLifecycle.instance.isForeground) break;
       final peer = targets[i];
       final Uint8List peerPub;
       try {
