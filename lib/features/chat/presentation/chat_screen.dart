@@ -2552,10 +2552,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         ),
       ),
     );
-    // The islands' shared backdrop, when [AppBlur.groupedPanes] asks for it.
-    // Always in the tree so the experiment flips nothing structural, and one
-    // key per open conversation: two chats sliding past each other must not
-    // blur from one another's copy of the screen.
+    // The islands' shared backdrop — see [AppBlur.groupedPanes] for what it
+    // bought. Always in the tree so switching it off for a comparison flips
+    // nothing structural, and one key per open conversation: two chats
+    // sliding past each other must not blur from one another's copy of the
+    // screen.
     return BackdropGroup(backdropKey: _backdropKey, child: view);
   }
 }

@@ -144,12 +144,14 @@ class AppBlur {
   /// GPU-side win should start with overdraw, not with the filter.
   static bool panes = true;
 
-  /// **Experiment, temporary.** The conversation's islands share one read of
-  /// what is behind them instead of taking three — see the [BackdropGroup] in
-  /// the chat screen. Flipped only by `TransitionBenchmark`, never a setting.
+  /// The conversation's islands — header, pinned bar, composer — share one
+  /// read of what is behind them instead of taking three. Only inside the
+  /// [BackdropGroup] the chat screen sets up; every other pane in the app,
+  /// with no group above it, filters on its own exactly as before. Not a
+  /// setting: `TransitionBenchmark` turns it off for its comparison rounds.
   ///
-  /// Why it is back on the table. Build 1059's scripted run, twice over the
-  /// same chat, six slides of each variant, frames per 300 ms slide:
+  /// How it got here. Build 1059's scripted run, twice over the same chat,
+  /// frames per 300 ms slide:
   ///
   /// ```
   ///               over 8.3 ms   raster p95
@@ -158,16 +160,27 @@ class AppBlur {
   /// placeholders    12-20        15 ms
   /// ```
   ///
-  /// So on that phone the slide's cost is the three chat islands' blur, which
-  /// `chat_input.dart` keeps on through a transition on purpose (turning it off
-  /// flickers, reported twice). Grouping keeps every pane looking exactly the
-  /// same and changes only how often the renderer stops to copy the backdrop.
+  /// So on that phone a chat's slide costs its islands' blur, which
+  /// `chat_input.dart` keeps on through a transition on purpose (turning it
+  /// off flickers, reported twice). Build 1060 ran grouped beside the other
+  /// two, eight rounds each, taking turns, per chat open / close:
+  ///
+  /// ```
+  ///               open: >8.3  >16.7  raster p95   close: >16.7  raster p95
+  /// separate            14.1    1.4    15.0 ms           2.6    16.6 ms
+  /// grouped              8.9    0.8    11.1 ms           0.9    13.3 ms
+  /// no blur              1.1    0.4     7.2 ms           0.6    10.1 ms
+  /// ```
+  ///
+  /// Every grouped open landed at 8-10 frames over budget against 11-15
+  /// separate, so it is not noise; and the close's frames over 16.7 ms fell
+  /// to where no blur puts them. What is left between grouped and no blur is
+  /// the gaussian itself, which cannot go without the panes looking different.
   ///
   /// It was tried app-wide on 2026-08-06 and reverted as "less smooth
   /// everywhere" — by feel, with nothing that could put a number on one slide.
-  /// See [FloatingGlass.blur]. This time it is scoped to the chat screen and
-  /// the run measures it beside the other two.
-  static bool groupedPanes = false;
+  /// See [FloatingGlass.blur], which is still not grouped.
+  static bool groupedPanes = true;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.

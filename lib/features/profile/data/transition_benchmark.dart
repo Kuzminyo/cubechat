@@ -15,9 +15,9 @@ enum BenchVariant {
   /// Panes tinted but not blurred, as the light glass tier draws them.
   noBlur,
 
-  /// The same blur, the chat's islands sharing one read of the backdrop — see
-  /// [AppBlur.groupedPanes].
-  grouped,
+  /// The chat's islands each reading the backdrop on their own, as they did
+  /// before 1061 — see [AppBlur.groupedPanes].
+  ungrouped,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -101,7 +101,7 @@ class TransitionBenchmark {
     var finished = false;
     void apply(BenchVariant v) {
       AppBlur.panes = v == BenchVariant.noBlur ? false : wasBlur;
-      AppBlur.groupedPanes = v == BenchVariant.grouped;
+      AppBlur.groupedPanes = v == BenchVariant.ungrouped ? false : wasGrouped;
       probe
         ..placeholderMedia.value = false
         ..instantTransitions.value = false;

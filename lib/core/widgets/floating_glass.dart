@@ -82,6 +82,10 @@ class FloatingGlass extends StatelessWidget {
   /// screens carry one or two of these, not five, and a group appears to cost
   /// more than it saves at that count. If this is revisited, measure on a
   /// device first — the reasoning alone has now been wrong once.
+  ///
+  /// It was revisited for the chat screen's three islands, which are not these
+  /// panes, and measured: grouped there since 1061, see [AppBlur.groupedPanes].
+  /// The panes here are still separate.
   final bool blur;
 
   /// Long-press reporting the global press point, so a caller can anchor a

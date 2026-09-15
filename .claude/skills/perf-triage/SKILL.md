@@ -65,6 +65,15 @@ Do not re-propose these; they are in the tree.
   17-35 ms build of a conversation was spent out of the slide and showed as a
   jump. Do not "fix" an open jerk by deferring part of the page to the next
   frame: that moves the cost from before the motion into the middle of it.
+- **Chat transitions cost their islands' blur, and those islands share one
+  backdrop read since 1061** (`AppBlur.groupedPanes`, a `BackdropGroup` in
+  the chat screen). Scripted run, frames over 8.3 ms per chat open: separate
+  14.1, grouped 8.9, no blur 1.1; close frames over 16.7 ms 2.6 / 0.9 / 0.6.
+  The islands keep blurring through a slide on purpose (off flickers). What
+  remains is the gaussian itself. `FloatingGlass` panes are still not grouped.
+- **Measure transitions with the scripted run** (Diagnostics → Transitions →
+  a chat name): fixed waits, variants taking turns, rows tagged `[bench,…]`.
+  Media placeholders changed nothing on the chat slide (1059).
 - Chat list rows are kept by identity while their inputs are equal (1055):
   727 widgets rebuilt for one changed row became 211
   (`test/chat_list_rebuild_budget_test.dart`)
