@@ -8,6 +8,7 @@ import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/identity_avatar.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../contacts/presentation/contacts_screen.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../qr/data/channel_qr_payload.dart';
 import '../../qr/presentation/qr_display.dart';
@@ -81,8 +82,20 @@ class _ChannelInviteSheetState extends ConsumerState<ChannelInviteSheet> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final peers = ref.watch(knownPeersControllerProvider).values.toList()
-      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    // The people on the Contacts tab, and nobody else.
+    //
+    // This listed the whole roster: everybody this phone has ever completed a
+    // handshake with, which includes whoever was in Bluetooth range once and
+    // every member of every room — a column of "Anonymous" nobody could tell
+    // apart, sitting between the people actually meant. "Only contacts that
+    // exist" was the ask. Named and ordered the way Contacts shows them, and a
+    // blocked person is not somebody to hand a room key to.
+    final roster = ref.watch(knownPeersControllerProvider);
+    final peers = [
+      for (final contact in ref.watch(contactChatsProvider))
+        if (roster[contact.id] case final peer? when !peer.isBlocked)
+          (peer: peer, name: contact.peerName),
+    ];
     final channel = ref.watch(channelControllerProvider)[widget.channelName];
     final qrData = channel == null ? null : ChannelQrPayload.encode(channel);
 
@@ -127,9 +140,9 @@ class _ChannelInviteSheetState extends ConsumerState<ChannelInviteSheet> {
                 shrinkWrap: true,
                 itemCount: peers.length,
                 itemBuilder: (_, i) {
-                  final p = peers[i];
-                  final name = p.displayName.isNotEmpty
-                      ? p.displayName
+                  final p = peers[i].peer;
+                  final name = peers[i].name.isNotEmpty
+                      ? peers[i].name
                       : 'Peer ${p.pubkeyHex.substring(0, 6)}';
                   return CheckboxListTile(
                     value: _selected.contains(p.pubkeyHex),
