@@ -2897,4 +2897,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get circleCameraSwitchFailed =>
       'Could not switch cameras. Your recording is still open.';
+
+  @override
+  String get diagnosticsTitle => 'Diagnostics';
+
+  @override
+  String get diagnosticsIntro =>
+      'What the app has been doing lately. If something does not work, send this to the developer.';
+
+  @override
+  String get diagnosticsShare => 'Send log to the developer';
+
+  @override
+  String get diagnosticsEvents => 'Recent events';
+
+  @override
+  String get diagnosticsTechnical => 'Technical records';
+
+  @override
+  String get diagnosticsEmpty => 'Nothing to show yet.';
+
+  @override
+  String get diagnosticsDeveloperOn => 'Developer mode on';
+
+  @override
+  String get diagnosticsDeveloperOff => 'Developer mode off';
+
+  @override
+  String get logAppStarted => 'App started';
+
+  @override
+  String get logInternetOn => 'Internet connection on';
+
+  @override
+  String logServerConnected(String host) {
+    return 'Connected to $host';
+  }
+
+  @override
+  String logServerLost(String host) {
+    return 'Lost connection to $host';
+  }
 }

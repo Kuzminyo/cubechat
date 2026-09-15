@@ -5077,6 +5077,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not switch cameras. Your recording is still open.'**
   String get circleCameraSwitchFailed;
+
+  /// No description provided for @diagnosticsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostics'**
+  String get diagnosticsTitle;
+
+  /// No description provided for @diagnosticsIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'What the app has been doing lately. If something does not work, send this to the developer.'**
+  String get diagnosticsIntro;
+
+  /// No description provided for @diagnosticsShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Send log to the developer'**
+  String get diagnosticsShare;
+
+  /// No description provided for @diagnosticsEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent events'**
+  String get diagnosticsEvents;
+
+  /// No description provided for @diagnosticsTechnical.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical records'**
+  String get diagnosticsTechnical;
+
+  /// No description provided for @diagnosticsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to show yet.'**
+  String get diagnosticsEmpty;
+
+  /// No description provided for @diagnosticsDeveloperOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Developer mode on'**
+  String get diagnosticsDeveloperOn;
+
+  /// No description provided for @diagnosticsDeveloperOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Developer mode off'**
+  String get diagnosticsDeveloperOff;
+
+  /// No description provided for @logAppStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'App started'**
+  String get logAppStarted;
+
+  /// No description provided for @logInternetOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Internet connection on'**
+  String get logInternetOn;
+
+  /// No description provided for @logServerConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected to {host}'**
+  String logServerConnected(String host);
+
+  /// No description provided for @logServerLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost connection to {host}'**
+  String logServerLost(String host);
 }
 
 class _AppLocalizationsDelegate

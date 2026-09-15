@@ -1074,5 +1074,17 @@
     "chatPreparingPhotos":  "Готую {count} фото…",
   "circleSwitchCamera": "Перемкнути камеру",
   "circleLight": "Підсвічування запису",
-  "circleCameraSwitchFailed": "Не вдалося перемкнути камеру. Запис залишається відкритим."
+  "circleCameraSwitchFailed": "Не вдалося перемкнути камеру. Запис залишається відкритим.",
+  "diagnosticsTitle": "Діагностика",
+  "diagnosticsIntro": "Що останнім часом робив застосунок. Якщо щось не працює — надішліть це розробнику.",
+  "diagnosticsShare": "Надіслати журнал розробнику",
+  "diagnosticsEvents": "Останні події",
+  "diagnosticsTechnical": "Технічні записи",
+  "diagnosticsEmpty": "Поки що нічого немає.",
+  "diagnosticsDeveloperOn": "Режим розробника увімкнено",
+  "diagnosticsDeveloperOff": "Режим розробника вимкнено",
+  "logAppStarted": "Застосунок запущено",
+  "logInternetOn": "Зв’язок через інтернет увімкнено",
+  "logServerConnected": "Підключено до {host}",
+  "logServerLost": "Втрачено зв’язок з {host}"
 }

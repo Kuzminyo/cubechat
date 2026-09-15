@@ -2928,4 +2928,45 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get circleCameraSwitchFailed =>
       'Не вдалося перемкнути камеру. Запис залишається відкритим.';
+
+  @override
+  String get diagnosticsTitle => 'Діагностика';
+
+  @override
+  String get diagnosticsIntro =>
+      'Що останнім часом робив застосунок. Якщо щось не працює — надішліть це розробнику.';
+
+  @override
+  String get diagnosticsShare => 'Надіслати журнал розробнику';
+
+  @override
+  String get diagnosticsEvents => 'Останні події';
+
+  @override
+  String get diagnosticsTechnical => 'Технічні записи';
+
+  @override
+  String get diagnosticsEmpty => 'Поки що нічого немає.';
+
+  @override
+  String get diagnosticsDeveloperOn => 'Режим розробника увімкнено';
+
+  @override
+  String get diagnosticsDeveloperOff => 'Режим розробника вимкнено';
+
+  @override
+  String get logAppStarted => 'Застосунок запущено';
+
+  @override
+  String get logInternetOn => 'Зв’язок через інтернет увімкнено';
+
+  @override
+  String logServerConnected(String host) {
+    return 'Підключено до $host';
+  }
+
+  @override
+  String logServerLost(String host) {
+    return 'Втрачено зв’язок з $host';
+  }
 }

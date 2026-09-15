@@ -1804,7 +1804,7 @@ class _DiagnosticsRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Diagnostics',
+              AppLocalizations.of(context).diagnosticsTitle,
               style: TextStyle(
                 color: AppColors.textOnGlass,
                 fontSize: 14,

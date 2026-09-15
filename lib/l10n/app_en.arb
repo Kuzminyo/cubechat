@@ -1408,5 +1408,23 @@
   },
   "circleSwitchCamera": "Switch camera",
   "circleLight": "Recording light",
-  "circleCameraSwitchFailed": "Could not switch cameras. Your recording is still open."
+  "circleCameraSwitchFailed": "Could not switch cameras. Your recording is still open.",
+  "diagnosticsTitle": "Diagnostics",
+  "diagnosticsIntro": "What the app has been doing lately. If something does not work, send this to the developer.",
+  "diagnosticsShare": "Send log to the developer",
+  "diagnosticsEvents": "Recent events",
+  "diagnosticsTechnical": "Technical records",
+  "diagnosticsEmpty": "Nothing to show yet.",
+  "diagnosticsDeveloperOn": "Developer mode on",
+  "diagnosticsDeveloperOff": "Developer mode off",
+  "logAppStarted": "App started",
+  "logInternetOn": "Internet connection on",
+  "logServerConnected": "Connected to {host}",
+  "@logServerConnected": {
+    "placeholders": { "host": { "type": "String" } }
+  },
+  "logServerLost": "Lost connection to {host}",
+  "@logServerLost": {
+    "placeholders": { "host": { "type": "String" } }
+  }
 }

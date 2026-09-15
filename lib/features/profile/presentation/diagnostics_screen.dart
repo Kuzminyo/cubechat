@@ -14,6 +14,7 @@ import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/cpu_probe.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
+import '../../../core/util/log_humanizer.dart';
 import '../../../core/util/open_in.dart';
 import '../../../core/util/share_anchor.dart';
 import '../../../core/util/transition_probe.dart';
@@ -27,6 +28,20 @@ import '../data/transition_benchmark.dart';
 /// whenever a new line is added.
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
+
+  /// The measuring panels — frame cost, CPU, transitions and the scripted run,
+  /// iOS wake — shown only to whoever asks for them.
+  ///
+  /// "Take the tests out of Diagnostics" was the ask: they are instruments for
+  /// finding a slow frame, and to anybody else they are a wall of numbers above
+  /// the one thing the screen is for. Out of sight rather than deleted, because
+  /// they are how the last several fixes were found and the next one will be.
+  /// Seven taps on the title, the way Android hides its own developer options;
+  /// for this run of the app only.
+  static bool _developer = false;
+
+  @visibleForTesting
+  static set developerModeForTest(bool on) => _developer = on;
 
   @override
   State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
@@ -125,6 +140,33 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     }
   }
 
+  int _titleTaps = 0;
+  DateTime? _firstTitleTap;
+
+  /// The raw log in place of the plain list, for this visit.
+  bool _technical = false;
+
+  void _onTitleTap(AppLocalizations t) {
+    final now = DateTime.now();
+    final first = _firstTitleTap;
+    if (first == null || now.difference(first) > const Duration(seconds: 3)) {
+      _firstTitleTap = now;
+      _titleTaps = 0;
+    }
+    _titleTaps++;
+    if (_titleTaps < 7) return;
+    _titleTaps = 0;
+    _firstTitleTap = null;
+    setState(
+        () => DiagnosticsScreen._developer = !DiagnosticsScreen._developer);
+    showGlassToast(
+      context,
+      DiagnosticsScreen._developer
+          ? t.diagnosticsDeveloperOn
+          : t.diagnosticsDeveloperOff,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     FrameStats.countBuild('diagnostics');
@@ -135,47 +177,238 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         leading: BackButton(color: AppColors.textOnGlass),
-        title: Text('Diagnostics',
+        title: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _onTitleTap(t),
+          child: Text(
+            t.diagnosticsTitle,
             style:
-                AppTypography.heading(size: 18, color: AppColors.textOnGlass)),
+                AppTypography.heading(size: 18, color: AppColors.textOnGlass),
+          ),
+        ),
         actions: [
           IconButton(
             key: _shareButtonKey,
-            tooltip: 'Share log file',
+            tooltip: t.diagnosticsShare,
             icon: Icon(Icons.share_rounded, color: AppColors.textOnGlass),
             onPressed: entries.isEmpty ? null : () => _shareLog(entries),
           ),
-          IconButton(
-            tooltip: 'Copy all',
-            icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlass),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: _asText(entries)));
-              if (!context.mounted) return;
-              showCopiedToast(context, t.copied);
-            },
-          ),
+          if (DiagnosticsScreen._developer)
+            IconButton(
+              tooltip: 'Copy all',
+              icon: Icon(Icons.copy_rounded, color: AppColors.textOnGlass),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: _asText(entries)));
+                if (!context.mounted) return;
+                showCopiedToast(context, t.copied);
+              },
+            ),
           IconButton(
             tooltip: 'Clear',
-            icon: Icon(Icons.delete_outline_rounded, color: AppColors.textOnGlass),
+            icon: Icon(Icons.delete_outline_rounded,
+                color: AppColors.textOnGlass),
             onPressed: () => DebugLog.instance.clear(),
           ),
         ],
       ),
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            const _FramePanel(),
-            const _TransitionPanel(),
-            const _WakePanel(),
-            Expanded(
-              child: _buildLog(context, t, entries),
-            ),
-          ],
-        ),
+        child: DiagnosticsScreen._developer
+            ? Column(
+                children: [
+                  const _FramePanel(),
+                  const _TransitionPanel(),
+                  const _WakePanel(),
+                  Expanded(
+                    child: _buildLog(context, t, entries),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  _intro(t, entries),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            t.diagnosticsEvents,
+                            style: AppTypography.heading(
+                              size: 14,
+                              color: AppColors.textOnGlass,
+                            ),
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            t.diagnosticsTechnical,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.textOnGlassDim,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: _technical,
+                          onChanged: (v) => setState(() => _technical = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: _technical
+                        ? _buildLog(context, t, entries)
+                        : _buildFriendlyLog(t, entries),
+                  ),
+                ],
+              ),
       ),
     );
   }
+
+  /// What the screen is for, and the one thing to do with it.
+  Widget _intro(AppLocalizations t, List<DebugLogEntry> entries) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.glass(0.06),
+          border: Border.all(color: AppColors.glass(0.12)),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              t.diagnosticsIntro,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Full width with room to wrap: "Надіслати журнал розробнику" at a
+            // large text size does not fit on one line of a narrow phone, and
+            // the pill this started as could only overflow.
+            Material(
+              color: AppColors.brandPrimary.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: entries.isEmpty ? null : () => _shareLog(entries),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.send_rounded,
+                        size: 18,
+                        color: AppColors.brandPrimary,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          t.diagnosticsShare,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.brandPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// The log as somebody who is not the developer reads it — see
+  /// [humanizeLogLine]. The shared file is still the whole log.
+  Widget _buildFriendlyLog(AppLocalizations t, List<DebugLogEntry> entries) {
+    final lines = <(DebugLogEntry, FriendlyLogLine)>[
+      for (final e in entries)
+        if (humanizeLogLine(e.line, t) case final friendly?) (e, friendly),
+    ];
+    if (lines.isEmpty) {
+      return Center(
+        child: Text(
+          t.diagnosticsEmpty,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+        ),
+      );
+    }
+    final time = TextStyle(
+      color: AppColors.textOnGlassFaint,
+      fontSize: 12,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+      itemCount: lines.length,
+      itemBuilder: (_, i) {
+        final (entry, friendly) = lines[i];
+        final problem = friendly.kind == LogKind.problem;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 58,
+                child: Text(
+                  entry.at.toIso8601String().substring(11, 19),
+                  style: time,
+                ),
+              ),
+              Icon(
+                _kindIcon(friendly.kind),
+                size: 16,
+                color: problem ? AppColors.danger : AppColors.textOnGlassDim,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  entry.repeats > 1
+                      ? '${friendly.text}  ×${entry.repeats}'
+                      : friendly.text,
+                  style: TextStyle(
+                    color: problem ? AppColors.danger : AppColors.textOnGlass,
+                    fontSize: 13.5,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static IconData _kindIcon(LogKind kind) => switch (kind) {
+        LogKind.startup => Icons.power_settings_new_rounded,
+        LogKind.internet => Icons.public_rounded,
+        LogKind.bluetooth => Icons.bluetooth_rounded,
+        LogKind.chats => Icons.chat_bubble_outline_rounded,
+        LogKind.media => Icons.photo_outlined,
+        LogKind.calls => Icons.call_rounded,
+        LogKind.location => Icons.place_outlined,
+        LogKind.backup => Icons.backup_outlined,
+        LogKind.problem => Icons.error_outline_rounded,
+      };
 
   Widget _buildLog(
     BuildContext context,
@@ -185,8 +418,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     // Resolved once per build rather than once per visible row. Every
     // `AppTypography.mono` call goes through google_fonts' registry, and a
     // screen full of log lines asked it thirty-odd times for the same answer.
-    final line =
-        AppTypography.mono(size: 11.5, color: AppColors.textOnGlass);
+    final line = AppTypography.mono(size: 11.5, color: AppColors.textOnGlass);
 
     return entries.isEmpty
         ? Center(
@@ -298,8 +530,8 @@ class _TransitionPanelState extends State<_TransitionPanel> {
                 ),
               ),
               if (_open) ...[
-                _toggle('measure every open, close and resume', probe.armed.value,
-                    probe.arm),
+                _toggle('measure every open, close and resume',
+                    probe.armed.value, probe.arm),
                 _toggle(
                   'experiment: no slide animation',
                   probe.instantTransitions.value,
@@ -364,8 +596,7 @@ class _TransitionPanelState extends State<_TransitionPanel> {
     );
   }
 
-  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) =>
-      Row(
+  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) => Row(
         children: [
           Expanded(
             child: Text(
@@ -514,9 +745,7 @@ class _WakePanelState extends State<_WakePanel> {
                     'location. What stops is your map pin, which only moves '
                     'while the app is running.',
             style: TextStyle(
-              color: armed
-                  ? AppColors.textOnGlassDim
-                  : AppColors.textOnGlass,
+              color: armed ? AppColors.textOnGlassDim : AppColors.textOnGlass,
               fontSize: 11.5,
               height: 1.35,
             ),
@@ -540,7 +769,7 @@ class _WakePanelState extends State<_WakePanel> {
           // above is green, and that is not a fault.
           Text(
             'Triggered by moving about a hundred metres, not by messages '
-                'arriving. A phone that stays put stays quiet.',
+            'arriving. A phone that stays put stays quiet.',
             style: TextStyle(
               color: AppColors.textOnGlassFaint,
               fontSize: 10,
@@ -736,9 +965,8 @@ class _FramePanelState extends State<_FramePanel> {
             'avg ${avg.toStringAsFixed(1)}  p90 ${p90.toStringAsFixed(1)} ms',
             style: AppTypography.mono(
               size: 11.5,
-              color: p90 > 16.7
-                  ? const Color(0xFFFF6B6B)
-                  : AppColors.textOnGlass,
+              color:
+                  p90 > 16.7 ? const Color(0xFFFF6B6B) : AppColors.textOnGlass,
             ),
           ),
         ],

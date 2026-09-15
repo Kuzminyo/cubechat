@@ -41,6 +41,8 @@ void main() {
     }
   });
 
+  tearDown(() => DiagnosticsScreen.developerModeForTest = false);
+
   testWidgets('tapping a chat name starts the scripted run', (tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -85,6 +87,18 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 300));
+
+    // An ordinary visit: the plain log and the button to send it, no tests.
+    expect(find.text('Send log to the developer'), findsWidgets);
+    expect(find.text('Transitions'), findsNothing);
+
+    // Seven taps on the title, the way Android hides its own.
+    for (var i = 0; i < 7; i++) {
+      await tester.tap(find.text('Diagnostics'));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Transitions'), findsOneWidget);
 
     await tester.tap(find.text('Transitions'));
     await tester.pump(const Duration(milliseconds: 300));
