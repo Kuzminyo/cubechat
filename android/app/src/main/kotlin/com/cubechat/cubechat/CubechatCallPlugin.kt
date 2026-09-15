@@ -111,6 +111,10 @@ class CubechatCallPlugin(
                     CallService.stop(context)
                     result.success(null)
                 }
+                "nearEar" -> {
+                    NearEar.watch(context, call.argument<Boolean>("watch") == true)
+                    result.success(null)
+                }
                 "openFullScreenSettings" -> result.success(
                     if (android.os.Build.VERSION.SDK_INT >= 34) {
                         openSettings(

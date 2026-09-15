@@ -103,6 +103,11 @@ class FakeSurface implements IncomingCallSurface {
   Future<void> answered(String key) async => log.add('screen answered');
   @override
   Future<void> dismiss(String? key) async => log.add('screen dismiss');
+
+  /// Every change of the proximity sensor, in order.
+  final nearEarLog = <bool>[];
+  @override
+  Future<void> nearEar({required bool watch}) async => nearEarLog.add(watch);
 }
 
 const confirmed =
@@ -527,6 +532,58 @@ void main() {
       disposedByTest = true;
       expect(outcomes.single.source, CallEndSource.dispose);
       expect(sent.last.kind, CallSignalKind.hangup);
+    });
+  });
+
+  group('the screen at the ear', () {
+    // "Когда прислоняешь к уху в звонке, чтобы экран тух."
+    Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+    test('watched from dialling, not while the speaker is on, off at the end',
+        () async {
+      await call.dial('peer');
+      await settle();
+      expect(surface.nearEarLog, [true],
+          reason: 'somebody hearing the ringback holds it to their ear too');
+
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await settle();
+      expect(call.phase, CallPhase.talking);
+      expect(surface.nearEarLog, [true], reason: 'told once, not per change');
+
+      await call.toggleSpeaker();
+      await settle();
+      expect(surface.nearEarLog, [true, false]);
+      await call.toggleSpeaker();
+      await settle();
+      expect(surface.nearEarLog, [true, false, true]);
+
+      call.hangUp();
+      await settle();
+      expect(surface.nearEarLog.last, isFalse);
+    });
+
+    test('not while it only rings here; from Answer on', () async {
+      receive(inviteFor(id(21)));
+      await settle();
+      expect(surface.nearEarLog, isEmpty,
+          reason: 'a ringing phone is in a hand, being looked at');
+
+      media.earlyConnect = true;
+      await call.answer();
+      await settle();
+      expect(surface.nearEarLog, [true]);
+
+      call.hangUp();
+      await settle();
+      expect(surface.nearEarLog, [true, false]);
+    });
+
+    test('a call that only rang and was declined never touched it', () async {
+      receive(inviteFor(id(22)));
+      call.decline();
+      await settle();
+      expect(surface.nearEarLog, isEmpty);
     });
   });
 

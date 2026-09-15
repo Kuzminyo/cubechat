@@ -114,6 +114,16 @@ final class CubechatCallKit: NSObject {
         let held = self.heldForDart
         self.heldForDart = []
         result(held)
+      case "nearEar":
+        // The screen off while the phone is at an ear during a call. iOS does
+        // it for the Phone app and for CallKit's own screen; the app's call
+        // screen has to ask. Dart decides when — see
+        // `CallController._updateNearEar`.
+        let watch = args?["watch"] as? Bool ?? false
+        DispatchQueue.main.async {
+          UIDevice.current.isProximityMonitoringEnabled = watch
+        }
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }

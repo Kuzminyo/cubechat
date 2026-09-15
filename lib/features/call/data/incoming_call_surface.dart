@@ -67,6 +67,10 @@ abstract interface class IncomingCallSurface {
   /// call, so an older call's late dismiss cannot take down a newer one; null
   /// takes down whatever is showing.
   Future<void> dismiss(String? key);
+
+  /// Let the proximity sensor turn the screen off while the phone is held to
+  /// an ear, or stop it. See `CallController._updateNearEar` for when.
+  Future<void> nearEar({required bool watch});
 }
 
 /// For tests and desktop.
@@ -99,6 +103,9 @@ class NoIncomingCallSurface implements IncomingCallSurface {
 
   @override
   Future<void> dismiss(String? key) async {}
+
+  @override
+  Future<void> nearEar({required bool watch}) async {}
 }
 
 /// `IncomingCall.kt` on the other end of `cubechat/incoming_call`.
@@ -119,6 +126,16 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
 
   @override
   bool get ringsInForeground => false;
+
+  /// A proximity wake lock, in `NearEar.kt`.
+  @override
+  Future<void> nearEar({required bool watch}) async {
+    try {
+      await _channel.invokeMethod<void>('nearEar', {'watch': watch});
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'proximity sensor not available: $e');
+    }
+  }
 
   /// The ringing notification comes down; the call moves to the one in the
   /// shade, which [ongoing] puts up.
@@ -260,6 +277,16 @@ class IosCallKitSurface implements IncomingCallSurface {
 
   @override
   bool get ringsInForeground => true;
+
+  /// `UIDevice.isProximityMonitoringEnabled`, in `CubechatCallKit.swift`.
+  @override
+  Future<void> nearEar({required bool watch}) async {
+    try {
+      await _channel.invokeMethod<void>('nearEar', {'watch': watch});
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'proximity sensor not available: $e');
+    }
+  }
 
   /// CallKit keeps an answered call on its own screen and in the status bar.
   @override

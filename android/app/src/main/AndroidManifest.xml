@@ -102,6 +102,9 @@
          nobody. See CallService. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- The proximity wake lock that turns the screen off at the ear during a
+         call. A normal permission, granted at install. See NearEar. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:label="cubechat"

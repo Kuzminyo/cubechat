@@ -158,7 +158,33 @@ class CallController extends ChangeNotifier {
     }
     _updateRinging();
     _updateOngoing();
+    _updateNearEar();
     if (!_disposed) notifyListeners();
+  }
+
+  bool _nearEarWatched = false;
+
+  /// The screen goes dark while the phone is held to an ear, and lights again
+  /// when it comes away — the way every phone call does. "Когда прислоняешь к
+  /// уху в звонке, чтобы экран тух" was the ask: a cheek on the glass was
+  /// muting the microphone and hanging up.
+  ///
+  /// From the moment a call is placed or answered until it is over, the way
+  /// [_updateOngoing] counts a call — somebody listening to the ringback holds
+  /// the phone to their ear too. Not while it only rings here: the phone is in
+  /// a hand, being looked at. And not while the sound is on the speaker or in a
+  /// headset, where the phone is not at anybody's ear and a hand passing over
+  /// the sensor would blank the screen for nothing.
+  void _updateNearEar() {
+    final atEar = !speakerOn &&
+        (audioRoute == null || audioRoute == CallAudioRouteKind.earpiece);
+    final watch = !_disposed &&
+        _machine.isLive &&
+        (phase != CallPhase.incoming || preparing) &&
+        atEar;
+    if (watch == _nearEarWatched) return;
+    _nearEarWatched = watch;
+    _queueSurface(() => surface.nearEar(watch: watch));
   }
 
   String? _ongoingKey;
@@ -931,6 +957,7 @@ class CallController extends ChangeNotifier {
     }
     ++_generation;
     _updateRinging();
+    _updateNearEar();
     unawaited(_signals.cancel());
     unawaited(_surfaceActions.cancel());
     _machine.dispose();
