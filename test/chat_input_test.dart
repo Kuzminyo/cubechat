@@ -236,6 +236,58 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   });
 
+  testWidgets(
+      'the panel runs to the bottom of the screen, under the home indicator, '
+      'and the composer does not move when it comes or goes', (tester) async {
+    // "Убери пустоту под эмодзи": the panel sat on top of the bottom safe
+    // area, so a band of the conversation showed under its category row.
+    final view = tester.view;
+    addTearDown(view.reset);
+    addTearDown(KeyboardHeight.debugReset);
+    view.devicePixelRatio = 3;
+    view.viewInsets = FakeViewPadding.zero;
+    view.viewPadding = const FakeViewPadding(bottom: 34 * 3);
+    view.padding = const FakeViewPadding(bottom: 34 * 3);
+    final screen = view.physicalSize.height / view.devicePixelRatio;
+
+    await tester.pumpWidget(_host(ChatInput(
+      hint: 'Message',
+      sendTooltip: 'Send',
+      onSend: (_) {},
+      onSticker: (_, __) {},
+    )));
+    await tester.pump();
+    final field = find.byType(EditableText);
+    final restingField = tester.getBottomLeft(field).dy;
+
+    await tester.tap(find.byIcon(Icons.emoji_emotions_rounded));
+    await tester.pump();
+    expect(tester.getBottomLeft(field).dy, restingField,
+        reason: 'the frame the panel arrives in, nothing above it moves');
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getBottomLeft(find.byType(KeyboardSlotPanel)).dy, screen,
+        reason: 'no gap under the panel');
+    expect(
+      tester.getSize(find.byType(KeyboardSlotPanel)).height,
+      KeyboardHeight.fallback,
+      reason: 'the height of the keyboard it stands in for, from the bottom',
+    );
+    // The category row is above the home indicator, not under it.
+    final backspace = find.byIcon(Icons.backspace_outlined);
+    if (backspace.evaluate().isNotEmpty) {
+      expect(tester.getBottomLeft(backspace).dy, lessThanOrEqualTo(screen - 34));
+    }
+
+    // Closed the way back closes it: folds away, and the composer lands where
+    // it started.
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(KeyboardSlotPanel.motion + const Duration(seconds: 1));
+    expect(find.byType(KeyboardSlotPanel), findsNothing);
+    expect(tester.getBottomLeft(field).dy, restingField);
+  });
+
   testWidgets('a keyboard shorter than the tallest one still takes the slot',
       (tester) async {
     // The reported bug. The panel sizes itself against the tallest keyboard

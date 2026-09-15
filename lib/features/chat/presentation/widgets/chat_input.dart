@@ -540,6 +540,9 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
       },
       child: SafeArea(
         top: false,
+        // The panel runs under the home indicator and keeps that strip itself
+        // — see [KeyboardSlotPanel.reachesScreenBottom].
+        bottom: !_panelOpen,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -550,6 +553,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
             ),
             if (_panelOpen)
               KeyboardSlotPanel(
+                reachesScreenBottom: true,
                 open: !_closingPanel,
                 onKeyboardTookOver: _keyboardTookOver,
                 startOnStickers: _panelOnStickers,

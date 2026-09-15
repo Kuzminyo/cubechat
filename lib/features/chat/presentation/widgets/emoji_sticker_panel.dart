@@ -114,9 +114,15 @@ class EmojiStickerPanel extends StatefulWidget {
     this.onSticker,
     this.onCreateSticker,
     this.startOnStickers = false,
+    this.bottomInset = 0,
   });
 
   final double height;
+
+  /// The strip at the bottom of the screen that belongs to the system — the
+  /// home indicator, Android's gesture bar. The island's glass runs under it,
+  /// the way a keyboard's does; the category row stays above it.
+  final double bottomInset;
   final ValueChanged<String> onEmoji;
 
   /// Rub out the character before the caret. Null where the panel is picking
@@ -160,6 +166,7 @@ class _EmojiStickerPanelState extends State<EmojiStickerPanel> {
             ),
           ],
         ),
+        padding: EdgeInsets.only(bottom: widget.bottomInset),
         child: Column(
           children: [
             if (stickers)
@@ -229,11 +236,28 @@ class KeyboardSlotPanel extends StatefulWidget {
     this.onCreateSticker,
     this.startOnStickers = false,
     this.onKeyboardTookOver,
+    this.reachesScreenBottom = false,
   });
 
   /// False starts the fold; the parent takes this out of the tree [motion]
   /// later, which is how the fold is seen rather than cut off.
   final bool open;
+
+  /// The parent has dropped its bottom safe area for as long as this is in the
+  /// tree, so the panel runs to the bottom of the screen the way the keyboard
+  /// does, and keeps that strip itself when it has nothing else to show.
+  ///
+  /// Without it the panel sat on top of the home indicator's inset: the
+  /// keyboard's height, drawn a home indicator above where the keyboard is. So
+  /// under the category row there was a band of the conversation showing
+  /// through — "пустота под емодзі", on the iPhone and on Android alike — and
+  /// the composer stood that much higher over the panel than over the keyboard
+  /// it replaces.
+  ///
+  /// The strip is taken from the [View], like the keyboard, and not from a
+  /// MediaQuery: inside a Scaffold that one already has the keyboard
+  /// subtracted, on a different frame from the one this panel hears about it.
+  final bool reachesScreenBottom;
 
   final ValueChanged<String> onEmoji;
   final void Function(String path, String? emoji)? onSticker;
@@ -356,15 +380,30 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
 
   double get _slack => math.max(0, KeyboardHeight.value - _inset);
 
+  /// The system's strip at the bottom of the screen, in logical pixels.
+  double _systemStrip(BuildContext context) {
+    if (!widget.reachesScreenBottom) return 0;
+    final view = View.maybeOf(context);
+    if (view == null || view.devicePixelRatio <= 0) return 0;
+    return view.viewPadding.bottom / view.devicePixelRatio;
+  }
+
   @override
   Widget build(BuildContext context) {
     final full = KeyboardHeight.value;
+    final strip = _systemStrip(context);
+    // What the slot holds with no panel in it: the system strip, less whatever
+    // of it a keyboard is already covering. Exactly what the parent's safe area
+    // would have given — which is why nothing moves when the panel comes into
+    // the tree or leaves it.
+    final rest = math.max(0.0, strip - _inset);
     return AnimatedBuilder(
       animation: _open,
       // Built once and handed in, rather than rebuilt on every tick: the grid
       // behind this is fifty-odd cells, and the animation is a clip.
       child: EmojiStickerPanel(
         height: full,
+        bottomInset: strip,
         startOnStickers: widget.startOnStickers,
         onEmoji: widget.onEmoji,
         onBackspace: widget.onBackspace,
@@ -372,18 +411,19 @@ class _KeyboardSlotPanelState extends State<KeyboardSlotPanel>
         onCreateSticker: widget.onCreateSticker,
       ),
       builder: (context, child) {
+        final nothing = SizedBox(height: rest);
         // Once the keyboard has taken the slot there is nothing of this to
         // draw, whatever the arithmetic says. The parent unmounts us a frame or
         // two later; until then, drawing the leftover strip is what left the
         // tabs hanging over the keyboard.
-        if (_toldParent) return const SizedBox.shrink();
-        final shown = _open.value * _slack;
-        if (shown <= 0.5) return const SizedBox.shrink();
+        if (_toldParent) return nothing;
+        final shown = rest + _open.value * math.max(0.0, _slack - rest);
+        if (shown - rest <= 0.5) return nothing;
         // Opening still animates through the small sizes — that is the entrance
         // curve — so this only bites once the panel is fully out and the space
         // is being taken from it.
         if (_open.isCompleted && shown < _minUseful) {
-          return const SizedBox.shrink();
+          return nothing;
         }
         return ClipRect(
           child: Align(
