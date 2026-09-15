@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cubechat/app.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
+import 'package:cubechat/features/chats/data/chat_selection_controller.dart';
 import 'package:cubechat/features/chats/data/favorites_controller.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:flutter/material.dart';
@@ -121,5 +122,37 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Delete this chat?'), findsNothing);
     expect(find.text('#test'), findsWidgets);
+  });
+
+  // Back with rows picked out is the ✕ on the bar, not the way out of the app.
+  //
+  // The list's own PopScope says so and never gets the chance: go_router hands
+  // a system back to the deepest navigator that can pop, and the chats list is
+  // the first route of its branch, so the press goes to the shell instead —
+  // which popped, and closed cubechat with a selection still standing.
+  testWidgets('the system back gesture cancels a selection', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.longPress(find.text('#test').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(container.read(chatSelectionProvider), isNotEmpty);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(container.read(chatSelectionProvider), isEmpty);
+    // And the list is still the screen, with its ordinary header back.
+    expect(find.byType(ChatsListScreen), findsOneWidget);
+    expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
   });
 }

@@ -1059,6 +1059,15 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
       final ids = {for (final chat in filtered) chat.id};
       _rows.removeWhere((id, _) => !ids.contains(id));
     }
+    // Kept, but it is not what answers the Android back gesture.
+    //
+    // This screen is the first route of its branch navigator, and go_router
+    // hands a system back to the deepest navigator that has something to pop —
+    // which is never this one. So the press goes to the shell's scope instead,
+    // and that is where cancelling a selection had to be taught (see the
+    // `PopScope` in `AppShell`). This one still answers a `Navigator.maybePop`
+    // aimed at the list itself, and saying the same thing in both places is
+    // cheaper than working out, later, which of them was the live one.
     return _covered = PopScope<void>(
       canPop: !selecting,
       onPopInvokedWithResult: (didPop, _) {

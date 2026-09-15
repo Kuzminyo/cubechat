@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/chats/data/chat_selection_controller.dart';
 import '../../features/chats/presentation/chats_list_screen.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../l10n/app_localizations.dart';
@@ -74,7 +75,26 @@ class AppShell extends ConsumerWidget {
     // tab rather than refuse the edit.
     final currentIndex = layout.positionOf(shell.currentIndex) ?? 0;
 
-    // The system back gesture goes to Chats before it leaves the app.
+    // Rows picked out on the chats list are a mode, and back leaves the mode
+    // before it leaves anything else — the same press the ✕ on the selection
+    // bar takes.
+    //
+    // The list has a `PopScope` of its own that says exactly this, and on
+    // Android it never ran. Back arrives at the *root* navigator, and go_router
+    // only walks down into a branch navigator that has something to pop; the
+    // chats list is the first route of its branch, so nothing down there is
+    // ever asked and the press falls through to this scope. Standing on Chats
+    // this scope allowed the pop, and a pop with nothing left to pop closes the
+    // app — which is what it did, rows still selected. Reported as back closing
+    // cubechat instead of dropping the selection.
+    //
+    // `select` rather than a plain watch: the shell carries the aurora and the
+    // bar, and it has no business rebuilding on every row added to a selection.
+    // Only the flip between picking and not picking reaches here.
+    final selecting = shell.currentIndex == 0 &&
+        ref.watch(chatSelectionProvider.select((s) => s.isNotEmpty));
+
+    // Otherwise the system back gesture goes to Chats before it leaves the app.
     //
     // There was nothing here at all, so a swipe back from Contacts, Nearby, the
     // map or the profile closed cubechat outright — on a phone where back *is*
@@ -84,9 +104,14 @@ class AppShell extends ConsumerWidget {
     // "back" means; from there the gesture keeps its usual meaning and the app
     // does close.
     return PopScope<void>(
-      canPop: shell.currentIndex == 0,
+      canPop: shell.currentIndex == 0 && !selecting,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop || shell.currentIndex == 0) return;
+        if (didPop) return;
+        if (selecting) {
+          ref.read(chatSelectionProvider.notifier).clear();
+          return;
+        }
+        if (shell.currentIndex == 0) return;
         shell.goBranch(0);
       },
       child: AuroraBackground(
