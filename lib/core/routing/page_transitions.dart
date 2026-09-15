@@ -146,33 +146,41 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   Animation<double> createAnimation() =>
       _TimedFromFirstFrame(super.createAnimation());
 
-  /// What the page underneath does while this one slides over it:
-  /// Cupertino's own step aside, with the page's tickers stopped once it is
-  /// fully covered — see [_StillWhileCovered].
+  /// What a Material page underneath does while this one slides over it:
+  /// **stays exactly where it is**, and stops its tickers once it is fully
+  /// covered — see [_StillWhileCovered].
   ///
-  /// This is the path the tabs take: the shell is a Material page, and a
+  /// The tabs' shell and each tab's first screen are Material pages, and a
   /// Material page hands its outgoing motion to the route arriving on top of
-  /// it. A static tear-off, so every one of these routes compares equal and a
-  /// screen over a screen keeps using [buildTransitions].
+  /// it. With nothing handed over — as up to 1066 — the chat list did not move
+  /// at all under a chat.
+  ///
+  /// **1067 handed over Cupertino's own step aside here** and was reverted in
+  /// 1068. `CupertinoRouteTransitionMixin` has no delegated transition of its
+  /// own (only `CupertinoPageRoute` does), so what was meant as "the same
+  /// motion, plus the tickers stopped" was a new motion: the list slid a third
+  /// of the screen to the left under every chat and back on close. "I liked the
+  /// geometry of closing a chat the way it was — now the chats jerk from left to
+  /// right" was the report on the phone.
+  ///
+  /// A static tear-off, so every one of these routes compares equal and a
+  /// screen over a screen keeps using [buildTransitions] and its parallax, as
+  /// it always has.
   @override
-  DelegatedTransitionBuilder? get delegatedTransition => _stepAside;
+  DelegatedTransitionBuilder? get delegatedTransition => _standStill;
 
-  static Widget? _stepAside(
+  static Widget? _standStill(
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
     bool allowSnapshotting,
     Widget? child,
   ) =>
-      CupertinoPageTransition.delegatedTransition(
-        context,
-        animation,
-        secondaryAnimation,
-        allowSnapshotting,
-        child == null
-            ? null
-            : _StillWhileCovered(covering: secondaryAnimation, child: child),
-      );
+      // The page's own transition arrives here with its secondary animation
+      // held at rest, so the page itself does not move.
+      child == null
+          ? null
+          : _StillWhileCovered(covering: secondaryAnimation, child: child);
 
   /// The mixin's own transition, with a reachable drag strip in place of its
   /// 20-pixel one.
@@ -216,7 +224,7 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
           isActive: () => isActive,
         ),
         // A screen covered by another one of these stops its tickers — see
-        // [_StillWhileCovered]. Under the shell's page, [delegatedTransition]
+        // [_StillWhileCovered]. Under a Material page, [delegatedTransition]
         // does the same.
         child: _StillWhileCovered(covering: secondaryAnimation, child: child),
       ),

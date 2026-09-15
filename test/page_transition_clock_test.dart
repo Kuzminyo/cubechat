@@ -91,6 +91,45 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('the list under a chat does not move, opening or closing',
+      (tester) async {
+    // 1067 slid it a third of the screen to the left under every chat, and
+    // back on close — "the chats jerk from left to right". Up to 1066 it stood
+    // still, and that is what was wanted back.
+    final navigator = await pumpApp(tester);
+    final atRest = tester.getTopLeft(find.text('list'));
+
+    navigator.push(screenRoute<void>((_) => const Text('chat')));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tester.getTopLeft(find.text('list')), atRest);
+    }
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('list')), atRest);
+
+    navigator.pop();
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tester.getTopLeft(find.text('list')), atRest);
+    }
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('list')), atRest);
+
+    // A screen over a screen keeps its parallax, as it always had.
+    navigator.push(screenRoute<void>((_) => const Text('chat')));
+    await tester.pumpAndSettle();
+    final chatAtRest = tester.getTopLeft(find.text('chat'));
+    navigator.push(screenRoute<void>((_) => const Text('profile')));
+    await tester.pump();
+    // The slide starts on the frame after the build — see the tests above.
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(tester.getTopLeft(find.text('chat')).dx, lessThan(chatAtRest.dx));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a covered screen stays painted but stops animating',
       (tester) async {
     // Kept on stage for the close, it went on running its tickers under the
