@@ -1103,6 +1103,18 @@
   "@chatRecordingCircle": {
     "description": "Live status: the other person is recording a round video message."
   },
+  "chatSendingPhoto": "sending a photo…",
+  "@chatSendingPhoto": {
+    "description": "Live status: a photo from the other person is on its way."
+  },
+  "chatSendingVideo": "sending a video…",
+  "@chatSendingVideo": {
+    "description": "Live status: a video or a round video message from the other person is on its way."
+  },
+  "chatSendingFile": "sending a file…",
+  "@chatSendingFile": {
+    "description": "Live status: a file from the other person is on its way."
+  },
   "onboardingMeshTitle": "Works without internet",
   "onboardingMeshBody": "Messages travel over Bluetooth, phone to phone. No signal, no Wi-Fi, no accounts — just the people around you.",
   "onboardingRelayTitle": "And with it, when there is some",

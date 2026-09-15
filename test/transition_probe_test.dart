@@ -62,6 +62,40 @@ void main() {
     });
   });
 
+  test('a scripted run says where in the window each slow frame fell', () {
+    fakeAsync((async) {
+      final probe = TransitionProbe.instance
+        ..scripted = true
+        ..arm(true);
+      probe.noteResume();
+      // Frames 8.3 ms apart, the window starting after the frame already on
+      // the go: a slow build on its first frame, and a slow raster fourteen
+      // frames later, 108 ms in.
+      probe.ingestForTest([
+        _frame(2, buildMs: 19, rasterMs: 2),
+        for (var n = 3; n < 15; n++) _frame(n, buildMs: 1, rasterMs: 2),
+        _frame(15, buildMs: 1, rasterMs: 12),
+      ]);
+      async.elapse(const Duration(seconds: 2));
+      probe.scripted = false;
+
+      final row = probe.summary.single;
+      expect(row.slowByTenthPerRun, [1, 1, 0, 0, 0, 0]);
+      expect(row.line, contains('slow per 100 ms 1.0/1.0/0.0/0.0/0.0/0.0'));
+    });
+  });
+
+  test('a slow frame reads as when, and which thread', () {
+    expect(
+      const SlowFrame(atMs: 120, buildMs: 1.2, rasterMs: 13.4).toString(),
+      '+120:r13',
+    );
+    expect(
+      const SlowFrame(atMs: 0, buildMs: 21.6, rasterMs: 2).toString(),
+      '+0:b22',
+    );
+  });
+
   test('a push made while a frame is building counts that frame', () {
     // The router's push: didPush runs inside the build of frame 40, and frame
     // 40 is the one that builds the new screen.

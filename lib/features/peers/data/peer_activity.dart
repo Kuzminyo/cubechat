@@ -16,12 +16,35 @@ import 'package:flutter/foundation.dart';
 enum PeerActivity {
   typing(0x01),
   recordingVoice(0x02),
-  recordingCircle(0x03);
+  recordingCircle(0x03),
+
+  /// A photo, or a batch of them, on its way — from the first chunk to the
+  /// last. Asked for as "отправляет фото", the line Telegram shows while a
+  /// picture uploads: over Bluetooth that is minutes, and without it the
+  /// other side had no idea anything was coming.
+  ///
+  /// The three sending values are new in 1062. A build before that reads them
+  /// as a stop, the same as it read the recording values before those existed.
+  sendingPhoto(0x04),
+
+  /// A clip or a circle on its way.
+  sendingVideo(0x05),
+
+  /// Any other file on its way.
+  sendingFile(0x06);
 
   const PeerActivity(this.wireByte);
 
   /// The value carried in the typing payload's single byte.
   final int wireByte;
+
+  /// Which sending activity a transfer of [mime] announces.
+  static PeerActivity sendingFor(String mime) {
+    final type = mime.toLowerCase();
+    if (type.startsWith('image/')) return sendingPhoto;
+    if (type.startsWith('video/')) return sendingVideo;
+    return sendingFile;
+  }
 
   /// The activity a byte names, or null for a stop and for anything a later
   /// build might send that this one does not know.

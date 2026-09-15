@@ -3914,6 +3914,24 @@ abstract class AppLocalizations {
   /// **'recording a video message…'**
   String get chatRecordingCircle;
 
+  /// Live status: a photo from the other person is on its way.
+  ///
+  /// In en, this message translates to:
+  /// **'sending a photo…'**
+  String get chatSendingPhoto;
+
+  /// Live status: a video or a round video message from the other person is on its way.
+  ///
+  /// In en, this message translates to:
+  /// **'sending a video…'**
+  String get chatSendingVideo;
+
+  /// Live status: a file from the other person is on its way.
+  ///
+  /// In en, this message translates to:
+  /// **'sending a file…'**
+  String get chatSendingFile;
+
   /// No description provided for @onboardingMeshTitle.
   ///
   /// In en, this message translates to:

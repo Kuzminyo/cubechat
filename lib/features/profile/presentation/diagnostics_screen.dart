@@ -401,9 +401,9 @@ class _BenchmarkRow extends ConsumerWidget {
           children: [
             Text(
               'scripted run: from the chat list, opens and closes a chat '
-              '${TransitionBenchmark.defaultRounds}× each as it is, without '
-              'blur and with the chat blur ungrouped, taking turns. '
-              'About 50 s, hands off — a touch stops it.',
+              '${TransitionBenchmark.defaultRounds}× each as it is and '
+              'without blur, taking turns. '
+              'About 45 s, hands off — a touch stops it.',
               style: dim,
             ),
             Wrap(

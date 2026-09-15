@@ -2223,6 +2223,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRecordingCircle => 'recording a video message…';
 
   @override
+  String get chatSendingPhoto => 'sending a photo…';
+
+  @override
+  String get chatSendingVideo => 'sending a video…';
+
+  @override
+  String get chatSendingFile => 'sending a file…';
+
+  @override
   String get onboardingMeshTitle => 'Works without internet';
 
   @override

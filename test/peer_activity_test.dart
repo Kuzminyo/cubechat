@@ -19,6 +19,29 @@ void main() {
     expect(PeerActivity.typing.wireByte, 0x01);
     expect(PeerActivity.recordingVoice.wireByte, 0x02);
     expect(PeerActivity.recordingCircle.wireByte, 0x03);
+    expect(PeerActivity.sendingPhoto.wireByte, 0x04);
+    expect(PeerActivity.sendingVideo.wireByte, 0x05);
+    expect(PeerActivity.sendingFile.wireByte, 0x06);
+  });
+
+  test('every byte names one activity and reads back as it', () {
+    final bytes = PeerActivity.values.map((a) => a.wireByte).toSet();
+    expect(bytes, hasLength(PeerActivity.values.length));
+    for (final activity in PeerActivity.values) {
+      expect(PeerActivity.fromWire(activity.wireByte), activity);
+    }
+  });
+
+  test('what a transfer announces follows its type', () {
+    // A circle travels as an ordinary video file, so it says "video" too.
+    expect(PeerActivity.sendingFor('image/jpeg'), PeerActivity.sendingPhoto);
+    expect(PeerActivity.sendingFor('video/mp4'), PeerActivity.sendingVideo);
+    expect(PeerActivity.sendingFor('VIDEO/QuickTime'), PeerActivity.sendingVideo);
+    expect(PeerActivity.sendingFor('application/pdf'), PeerActivity.sendingFile);
+    expect(
+      PeerActivity.sendingFor('application/octet-stream'),
+      PeerActivity.sendingFile,
+    );
   });
 
   test('0x01 is still typing, so an older sender is understood', () {
@@ -27,12 +50,13 @@ void main() {
 
   test('a stop, and anything unknown, reads as no activity', () {
     // The old decoder is `body[0] != 0x01 -> clear`, so a build that predates
-    // this takes the indicator *down* for 0x02 and 0x03. Nothing wrong appears
+    // this takes the indicator *down* for 0x02 and 0x03 — and a build before
+    // 1062 does the same for the sending values, 0x04 to 0x06. Nothing wrong appears
     // under somebody's name there; it simply says nothing. This side answers a
     // byte from the future the same way, which is why the check is a lookup
     // and not "anything non-zero is typing".
     expect(PeerActivity.fromWire(0x00), isNull);
-    expect(PeerActivity.fromWire(0x04), isNull);
+    expect(PeerActivity.fromWire(0x07), isNull);
     expect(PeerActivity.fromWire(0xFF), isNull);
   });
 

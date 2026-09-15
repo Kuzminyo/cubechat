@@ -77,14 +77,13 @@ void main() {
     expect(find.textContaining('hands off'), findsOneWidget,
         reason: 'it says it is running from the first moment');
 
-    await elapse(tester, const Duration(seconds: 14));
+    await elapse(tester, const Duration(seconds: 12));
 
     expect(bench.running, isFalse);
     expect(seen, [
       asIs, // warm-up, unmeasured
       asIs,
       (grouped: true, blur: false),
-      (grouped: false, blur: true),
     ]);
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);

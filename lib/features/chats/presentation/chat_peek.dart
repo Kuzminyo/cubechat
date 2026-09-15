@@ -15,11 +15,13 @@ import '../../chat/models/message.dart';
 import '../../chat/presentation/widgets/chat_input.dart';
 import '../../chat/presentation/widgets/message_bubble.dart';
 import '../../peers/data/known_peers_controller.dart';
-import '../../peers/data/peer_activity.dart';
 import '../../peers/data/typing_controller.dart';
+import '../../peers/presentation/peer_status.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
+import '../../profile/data/privacy_settings_controller.dart';
 import '../data/pinned_chats_controller.dart';
 import '../data/read_markers_controller.dart';
+import '../data/saved_messages.dart';
 import '../models/chat.dart';
 
 /// A look at a conversation that does not count as having read it.
@@ -284,12 +286,11 @@ class _PeekHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    // Typing beats online here for the reason it does everywhere else: it is
-    // the more specific fact, and there is one line to say it in.
-    final notice = chat.isChannel
-        ? null
-        : ref.watch(typingControllerProvider.select((m) => m[chat.id]));
+    // A room and the notebook are nobody, so they have no line to say.
+    final person = !chat.isChannel && !isSavedChat(chat.id);
+    final notice = person
+        ? ref.watch(typingControllerProvider.select((m) => m[chat.id]))
+        : null;
     final activity =
         notice != null && DateTime.now().difference(notice.at) < TypingController.ttl
             ? notice.kind
@@ -297,12 +298,38 @@ class _PeekHeader extends ConsumerWidget {
 
     final isOnline = ref.watch(peerOnlineProvider(chat.peerId));
     final isTyping = activity != null;
-    final String? status = switch (activity) {
-      PeerActivity.typing => t.chatTyping,
-      PeerActivity.recordingVoice => t.chatRecordingVoice,
-      PeerActivity.recordingCircle => t.chatRecordingCircle,
-      null => isOnline ? t.presenceOnline : null,
-    };
+    // The chat header's whole line, not the two words this used to manage.
+    //
+    // It said "online" or nothing, so a person gone for a week and a person
+    // gone for a minute looked the same from here — and the peek is where you
+    // decide whether something needs answering now. Asked for as "в сети не в
+    // сети гс кружки и тд": everything the header says, through the same
+    // function, one key at a time so a beacon about anybody else is nothing
+    // to it.
+    final String? status;
+    var blocked = false;
+    if (person) {
+      final known = ref.watch(
+        knownPeersControllerProvider.select((all) => all[chat.id]),
+      );
+      blocked = known?.isBlocked ?? false;
+      final beacon = ref.watch(
+        presenceControllerProvider.select((all) => all[chat.id]),
+      );
+      final shared = ref.watch(
+        privacySettingsProvider.select((p) => p.shareLastSeen),
+      );
+      status = peerStatusLine(
+        context,
+        blocked: blocked,
+        activity: activity,
+        online: isOnline,
+        hideTimes: !shared || (beacon?.hidesLastSeen ?? false),
+        lastPresent: known?.lastPresenceAt,
+      );
+    } else {
+      status = null;
+    }
 
     return SizedBox(
       height: _height,
@@ -348,14 +375,27 @@ class _PeekHeader extends ConsumerWidget {
                         color: AppColors.textOnGlass,
                       ),
                     ),
-                    if (status != null)
+                    // Something happening right now gets its mark, the way the
+                    // list row draws it; anything else is the plain line.
+                    if (activity != null && !blocked)
+                      PeerActivityLine(
+                        activity: activity,
+                        iconSize: 12,
+                        style: TextStyle(
+                          color: AppColors.brandPrimary,
+                          fontSize: 11.5,
+                        ),
+                      )
+                    else if (status != null)
                       Text(
                         status,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: isTyping
-                              ? AppColors.brandPrimary
+                          // The header's colours: green while they are here,
+                          // dim once they are not.
+                          color: isOnline && !isTyping
+                              ? AppColors.online
                               : AppColors.textOnGlassDim,
                           fontSize: 11.5,
                         ),

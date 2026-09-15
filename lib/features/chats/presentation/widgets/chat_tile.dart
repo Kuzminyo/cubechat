@@ -7,8 +7,8 @@ import '../../../peers/data/presence_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
-import '../../../peers/data/peer_activity.dart';
 import '../../../peers/data/typing_controller.dart';
+import '../../../peers/presentation/peer_status.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../models/chat.dart';
@@ -85,6 +85,16 @@ class ChatTile extends ConsumerWidget {
     // preview line, on top of the count badge — so a glance down the list lands
     // on the conversations with something new.
     final unread = chat.unreadCount > 0;
+    final previewStyle = TextStyle(
+      color: isTyping || chat.isDraft
+          ? AppColors.brandPrimary
+          : unread
+              ? AppColors.textOnGlass
+              : AppColors.textOnGlassDim,
+      fontSize: 14,
+      height: 1.35,
+      fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
@@ -246,33 +256,24 @@ class ChatTile extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  // Ahead of the draft, and for the same reason it goes ahead
-                  // of "online" in the chat header: a draft is a note to
-                  // yourself that will still be there in an hour, and this is
-                  // the other person doing something right now. Only one line
-                  // exists, so the live fact takes it.
-                  switch (activity) {
-                    PeerActivity.typing => t.chatTyping,
-                    PeerActivity.recordingVoice => t.chatRecordingVoice,
-                    PeerActivity.recordingCircle => t.chatRecordingCircle,
-                    null => chat.isDraft
+                // Ahead of the draft, and for the same reason it goes ahead of
+                // "online" in the chat header: a draft is a note to yourself
+                // that will still be there in an hour, and this is the other
+                // person doing something right now. Only one line exists, so
+                // the live fact takes it — with its mark in front, a microphone
+                // or a camera, so a glance down the list tells a voice note
+                // coming from a photo without reading the words.
+                if (activity != null)
+                  PeerActivityLine(activity: activity, style: previewStyle)
+                else
+                  Text(
+                    chat.isDraft
                         ? '${t.chatDraft}: ${chat.lastMessage}'
                         : chat.lastMessage,
-                  },
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isTyping || chat.isDraft
-                        ? AppColors.brandPrimary
-                        : unread
-                            ? AppColors.textOnGlass
-                            : AppColors.textOnGlassDim,
-                    fontSize: 14,
-                    height: 1.35,
-                    fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: previewStyle,
                   ),
-                ),
               ],
             ),
           ),

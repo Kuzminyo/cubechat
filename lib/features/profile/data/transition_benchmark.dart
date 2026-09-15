@@ -14,10 +14,6 @@ enum BenchVariant {
 
   /// Panes tinted but not blurred, as the light glass tier draws them.
   noBlur,
-
-  /// The chat's islands each reading the backdrop on their own, as they did
-  /// before 1061 — see [AppBlur.groupedPanes].
-  ungrouped,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -59,13 +55,15 @@ class TransitionBenchmark {
 
   static const Duration _settle = Duration(milliseconds: 1500);
 
-  /// Of each variant: three variants at eight rounds is about fifty seconds of
+  /// Of each variant: two variants at ten rounds is about forty-five seconds of
   /// leaving the phone alone, which is roughly as long as anyone will.
   ///
-  /// Placeholders and the no-slide variant were in the 1059 run and are not
-  /// now: placeholders changed nothing (12-20 frames over 8.3 ms per slide
-  /// against 13-15 as it is), and those rounds are better spent on repeats.
-  static const int defaultRounds = 8;
+  /// Variants come and go with the question. Placeholders and the no-slide
+  /// variant answered theirs in 1059 (media changed nothing on the slide) and
+  /// grouped-against-separate blur in 1060-1061 (grouped, now the default).
+  /// What is left is the close: about six frames over budget with the blur on
+  /// or off, which [TransitionReport.slow] now places in time.
+  static const int defaultRounds = 10;
 
   bool _touched = false;
 
@@ -84,7 +82,6 @@ class TransitionBenchmark {
     final wasPlaceholders = probe.placeholderMedia.value;
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
-    final wasGrouped = AppBlur.groupedPanes;
     const variants = BenchVariant.values;
     final total = rounds * variants.length;
     progress.value = 'starting';
@@ -101,7 +98,6 @@ class TransitionBenchmark {
     var finished = false;
     void apply(BenchVariant v) {
       AppBlur.panes = v == BenchVariant.noBlur ? false : wasBlur;
-      AppBlur.groupedPanes = v == BenchVariant.ungrouped ? false : wasGrouped;
       probe
         ..placeholderMedia.value = false
         ..instantTransitions.value = false;
@@ -134,7 +130,6 @@ class TransitionBenchmark {
         ..remove()
         ..dispose();
       AppBlur.panes = wasBlur;
-      AppBlur.groupedPanes = wasGrouped;
       probe
         ..scripted = false
         ..placeholderMedia.value = wasPlaceholders

@@ -2240,6 +2240,15 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatRecordingCircle => 'записує відеоповідомлення…';
 
   @override
+  String get chatSendingPhoto => 'надсилає фото…';
+
+  @override
+  String get chatSendingVideo => 'надсилає відео…';
+
+  @override
+  String get chatSendingFile => 'надсилає файл…';
+
+  @override
   String get onboardingMeshTitle => 'Працює без інтернету';
 
   @override

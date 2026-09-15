@@ -311,6 +311,7 @@ class TransitionReport {
     required this.over16,
     required this.spanMs,
     required this.rssBytes,
+    this.slow = const [],
   });
 
   factory TransitionReport.of({
@@ -326,6 +327,25 @@ class TransitionReport {
     var over8 = 0;
     var over16 = 0;
     var spanUs = 0;
+    final sorted = [...frames]
+      ..sort((a, b) => a.frameNumber.compareTo(b.frameNumber));
+    final startUs = sorted.isEmpty
+        ? 0
+        : sorted.first.timestampInMicroseconds(FramePhase.vsyncStart);
+    final slow = <SlowFrame>[
+      for (final f in sorted)
+        if (math.max(
+              f.buildDuration.inMicroseconds,
+              f.rasterDuration.inMicroseconds,
+            ) >
+            8333)
+          SlowFrame(
+            atMs: (f.timestampInMicroseconds(FramePhase.vsyncStart) - startUs) ~/
+                1000,
+            buildMs: f.buildDuration.inMicroseconds / 1000,
+            rasterMs: f.rasterDuration.inMicroseconds / 1000,
+          ),
+    ];
     for (final f in frames) {
       // Late by the thread that was late: a frame is over budget when either
       // side of it is, which is how the meter above counts too.
@@ -336,11 +356,9 @@ class TransitionReport {
       if (worst > 8333) over8++;
       if (worst > 16667) over16++;
     }
-    if (frames.length > 1) {
-      final sorted = [...frames]
-        ..sort((a, b) => a.frameNumber.compareTo(b.frameNumber));
+    if (sorted.length > 1) {
       spanUs = sorted.last.timestampInMicroseconds(FramePhase.rasterFinish) -
-          sorted.first.timestampInMicroseconds(FramePhase.vsyncStart);
+          startUs;
     }
     return TransitionReport(
       kind: kind,
@@ -358,6 +376,7 @@ class TransitionReport {
       over16: over16,
       spanMs: spanUs ~/ 1000,
       rssBytes: rssBytes,
+      slow: slow,
     );
   }
 
@@ -379,6 +398,14 @@ class TransitionReport {
   final int spanMs;
   final int? rssBytes;
 
+  /// The frames over 8.3 ms, and how far into the window each one began.
+  ///
+  /// Totals could not say *where* a transition hurts. Closing a chat read
+  /// about six frames over budget with the blur on, off or grouped alike
+  /// (1061), which is a second cause — and whether it is the first frame of
+  /// the slide, its middle or the frame after it lands decides which one.
+  final List<SlowFrame> slow;
+
   /// What ten attempts of the same thing are filed under.
   String get scenario =>
       '$kind $label${first ? ' (first)' : ''} [$experiments]';
@@ -387,7 +414,10 @@ class TransitionReport {
       ' · build p95 ${_ms(buildP95)} p99 ${_ms(buildP99)} max ${_ms(buildMax)}'
       ' · raster p95 ${_ms(rasterP95)} p99 ${_ms(rasterP99)} max ${_ms(rasterMax)}'
       ' · >8.3 ms: $over8 · >16.7 ms: $over16'
-      '${rssBytes == null ? '' : ' · rss ${rssBytes! ~/ (1024 * 1024)} MB'}';
+      '${rssBytes == null ? '' : ' · rss ${rssBytes! ~/ (1024 * 1024)} MB'}'
+      // Scripted runs only: a hand-tapped line is long enough, and nobody
+      // reads a hundred of them frame by frame.
+      '${experiments.contains('bench') && slow.isNotEmpty ? ' · slow ${slow.join(' ')}' : ''}';
 
   static String _ms(double v) => v.toStringAsFixed(1);
 
@@ -401,13 +431,41 @@ class TransitionReport {
   }
 }
 
+/// A frame over budget inside a transition window.
+@immutable
+class SlowFrame {
+  const SlowFrame({
+    required this.atMs,
+    required this.buildMs,
+    required this.rasterMs,
+  });
+
+  /// From the window's first frame to this one's vsync.
+  final int atMs;
+  final double buildMs;
+  final double rasterMs;
+
+  /// `+120:r13` — when, and which thread was late by how much.
+  @override
+  String toString() => buildMs >= rasterMs
+      ? '+$atMs:b${buildMs.round()}'
+      : '+$atMs:r${rasterMs.round()}';
+}
+
 class _Scenario {
   final List<TransitionReport> reports = <TransitionReport>[];
   final List<int> build = <int>[];
   final List<int> raster = <int>[];
 
+  /// Frames over budget per 100 ms of the window, summed over the runs; the
+  /// last bucket takes everything from 500 ms on.
+  final List<int> slowByTenth = List<int>.filled(6, 0);
+
   void add(TransitionReport report, List<FrameTiming> frames) {
     reports.add(report);
+    for (final s in report.slow) {
+      slowByTenth[math.min(s.atMs ~/ 100, slowByTenth.length - 1)]++;
+    }
     for (final f in frames) {
       build.add(f.buildDuration.inMicroseconds);
       raster.add(f.rasterDuration.inMicroseconds);
@@ -433,6 +491,9 @@ class _Scenario {
           : reports.fold<int>(0, (a, r) => a + r.over16) / reports.length,
       rssFirstMb: rss.isEmpty ? null : rss.first ~/ (1024 * 1024),
       rssLastMb: rss.isEmpty ? null : rss.last ~/ (1024 * 1024),
+      slowByTenthPerRun: reports.isEmpty
+          ? const []
+          : [for (final n in slowByTenth) n / reports.length],
     );
   }
 }
@@ -452,6 +513,7 @@ class ScenarioSummary {
     required this.over16PerRun,
     required this.rssFirstMb,
     required this.rssLastMb,
+    this.slowByTenthPerRun = const [],
   });
 
   final String name;
@@ -466,10 +528,15 @@ class ScenarioSummary {
   final int? rssFirstMb;
   final int? rssLastMb;
 
+  /// Frames over 8.3 ms per run in each 100 ms of the window: 0-99, 100-199,
+  /// … and 500 on. Where in a transition the cost lands.
+  final List<double> slowByTenthPerRun;
+
   String get line => '$name × $runs · median $medianSpanMs ms'
       ' · build p95 ${buildP95.toStringAsFixed(1)} p99 ${buildP99.toStringAsFixed(1)}'
       ' · raster p95 ${rasterP95.toStringAsFixed(1)} p99 ${rasterP99.toStringAsFixed(1)}'
       ' · per run >8.3: ${over8PerRun.toStringAsFixed(1)}'
       ' >16.7: ${over16PerRun.toStringAsFixed(1)}'
-      '${rssFirstMb == null ? '' : ' · rss $rssFirstMb→$rssLastMb MB'}';
+      '${rssFirstMb == null ? '' : ' · rss $rssFirstMb→$rssLastMb MB'}'
+      '${slowByTenthPerRun.isEmpty ? '' : ' · slow per 100 ms ${slowByTenthPerRun.map((n) => n.toStringAsFixed(1)).join('/')}'}';
 }

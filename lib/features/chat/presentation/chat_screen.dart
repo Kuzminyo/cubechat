@@ -29,6 +29,7 @@ import '../../../core/utils/time_format.dart';
 import '../../../core/utils/file_mime.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/floating_glass.dart';
+import '../../peers/presentation/peer_status.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../channels/data/channel_controller.dart';
@@ -453,46 +454,27 @@ class ChatScreen extends ConsumerWidget {
 
     final blocked = known?.isBlocked ?? false;
 
-    final String statusText;
-    // Ahead of everything else, and deliberately: nothing this person's phone
-    // says about itself is worth repeating once you have blocked them. Their
-    // beacons are dropped on arrival ("drop inbound from blocked peer"), so
-    // the last-seen shown here was frozen at the moment of the block and grew
-    // staler by the day — the header cheerfully reporting somebody as absent
-    // for a week when the truth is you stopped listening.
-    if (blocked) {
-      statusText = t.chatBlockedStatus;
-    } else if (session != null &&
-        (session.status == ChatSessionStatus.handshakingInitiator ||
-            session.status == ChatSessionStatus.handshakingResponder ||
-            session.status == ChatSessionStatus.idle)) {
-      statusText = t.chatSessionHandshaking;
-    } else if (session != null && session.status == ChatSessionStatus.failed) {
-      statusText = t.chatSessionFailed;
-    } else if (activity != null) {
-      // Ahead of "online": somebody doing any of these is online by
-      // definition, and the more specific fact is the one worth the one line
-      // there is.
-      statusText = switch (activity) {
-        PeerActivity.typing => t.chatTyping,
-        PeerActivity.recordingVoice => t.chatRecordingVoice,
-        PeerActivity.recordingCircle => t.chatRecordingCircle,
-      };
-    } else if (isOnline) {
-      statusText = t.presenceOnline;
-    } else if (hideTimes) {
-      // Still reported as online above when they are: that is a fact about
-      // now, not a history of when they came and went.
-      statusText = t.presenceRecently;
-    } else if (lastPresent != null) {
-      // "just now", "был(а) 12 минут назад", and past an hour the clock —
-      // see [formatLastSeen], which carries the argument for the three
-      // registers. The bare "offline · 14:05" this replaced was the third one
-      // for every gap, including the ones a minute wide.
-      statusText = formatLastSeen(context, lastPresent);
-    } else {
-      statusText = t.presenceOffline;
-    }
+    // Blocked, connecting, doing something, online, or when last here — in
+    // that order, for the reasons on [peerStatusLine]. The peek says the same
+    // line through the same function.
+    final statusText = peerStatusLine(
+      context,
+      blocked: blocked,
+      sessionNote: session == null
+          ? null
+          : switch (session.status) {
+              ChatSessionStatus.handshakingInitiator ||
+              ChatSessionStatus.handshakingResponder ||
+              ChatSessionStatus.idle =>
+                t.chatSessionHandshaking,
+              ChatSessionStatus.failed => t.chatSessionFailed,
+              _ => null,
+            },
+      activity: activity,
+      online: isOnline,
+      hideTimes: hideTimes,
+      lastPresent: lastPresent,
+    );
 
     final pubkeyHex = session?.remotePubkeyHex ?? known?.pubkeyHex;
 

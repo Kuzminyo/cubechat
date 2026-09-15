@@ -35,6 +35,7 @@ import '../../features/peers/data/peer_discovery_controller.dart';
 import '../../features/peers/data/peripheral_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/data/peer_activity.dart';
+import '../../features/peers/data/sending_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
@@ -1774,6 +1775,10 @@ class MessagingService {
       return msg;
     }
 
+    // "Sending a video…" on the other phone for as long as chunks are leaving
+    // this one. Not for a file waiting on a route above: nothing is on its way.
+    final sending = PeerActivity.sendingFor(mime);
+    _beginSendingMedia(canonicalId, sending);
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
@@ -1916,6 +1921,8 @@ class MessagingService {
         error: e.toString(),
       );
       rethrow;
+    } finally {
+      _endSendingMedia(canonicalId, sending);
     }
     return msg;
   }
@@ -2093,6 +2100,10 @@ class MessagingService {
 
     final messages = _ref.read(messagesControllerProvider.notifier);
 
+    // "Sending a photo…" on the other phone while this runs — see
+    // [_beginSendingMedia]. Each photo of an album passes through here in turn,
+    // and the stop lingers long enough that the line holds across the gaps.
+    _beginSendingMedia(canonicalId, PeerActivity.sendingPhoto);
     try {
       // Size chunks to the link's real MTU so a full chunk-frame fits one BLE
       // write. A fixed 140 overflowed low-MTU iOS links (the frame was
@@ -2222,6 +2233,8 @@ class MessagingService {
       // Surface it: the caller shows a snackbar. Silently swallowing left the
       // user with a broken bubble and no idea the link had dropped.
       rethrow;
+    } finally {
+      _endSendingMedia(canonicalId, PeerActivity.sendingPhoto);
     }
   }
 
@@ -3117,6 +3130,21 @@ class MessagingService {
       // See above: a lost typing notice is not an error worth reporting.
     }
   }
+
+  /// "Sending a photo / video / file…" on the other phone while a transfer is
+  /// leaving this one — see [SendingActivity].
+  late final SendingActivity _sendingActivity = SendingActivity(
+    announce: (chatId, kind) => unawaited(announceTyping(chatId, kind: kind)),
+    stop: (chatId) => unawaited(announceTyping(chatId, typing: false)),
+  );
+
+  void _beginSendingMedia(String canonicalId, PeerActivity kind) {
+    if (_disposed) return;
+    _sendingActivity.begin(canonicalId, kind);
+  }
+
+  void _endSendingMedia(String canonicalId, PeerActivity kind) =>
+      _sendingActivity.end(canonicalId, kind);
 
   /// A peer is writing to us — or has stopped.
   void _ingestTyping({
@@ -10743,6 +10771,7 @@ class MessagingService {
     _stalledMedia.clear();
     _introduceRoomsTimer?.cancel();
     _introduceRoomsTimer = null;
+    _sendingActivity.dispose();
     // Flush any pending buffer write synchronously so a held frame isn't
     // lost if we're disposed inside the debounce window.
     _relayPersistTimer?.cancel();

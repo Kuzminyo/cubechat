@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cubechat/features/chats/models/chat.dart';
 import 'package:cubechat/features/chats/presentation/widgets/chat_tile.dart';
+import 'package:cubechat/features/peers/data/peer_activity.dart';
 import 'package:cubechat/features/peers/data/typing_controller.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -96,6 +97,35 @@ void main() {
     expect(find.text('hi'), findsNothing);
 
     await _stopTyping(tester, container);
+  });
+
+  testWidgets('a voice note, a circle or a photo on its way has its own mark',
+      (tester) async {
+    // Asked for on the chat tile itself: "индикатор же гс и тд на плитке
+    // чата". The words were already there for recording; the mark in front is
+    // what lets a glance down the list tell a voice note from a photo.
+    final container = await _pumpTile(tester, _chat());
+    final typing = container.read(typingControllerProvider.notifier);
+
+    typing.record(_peer, kind: PeerActivity.recordingVoice);
+    await tester.pump();
+    expect(find.text('recording a voice message…'), findsOneWidget);
+    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    expect(find.text('hi'), findsNothing);
+
+    typing.record(_peer, kind: PeerActivity.sendingPhoto);
+    await tester.pump();
+    expect(find.text('sending a photo…'), findsOneWidget);
+    expect(find.byIcon(Icons.photo_rounded), findsOneWidget);
+
+    typing.record(_peer, kind: PeerActivity.sendingVideo);
+    await tester.pump();
+    expect(find.text('sending a video…'), findsOneWidget);
+    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+
+    await _stopTyping(tester, container);
+    expect(find.text('hi'), findsOneWidget);
+    expect(find.byIcon(Icons.videocam_rounded), findsNothing);
   });
 
   testWidgets('it goes away on its own, without a stop frame', (tester) async {

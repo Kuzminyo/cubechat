@@ -5,6 +5,8 @@ import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chats/data/read_markers_controller.dart';
 import 'package:cubechat/features/chats/models/chat.dart';
 import 'package:cubechat/features/chats/presentation/chat_peek.dart';
+import 'package:cubechat/features/peers/data/peer_activity.dart';
+import 'package:cubechat/features/peers/data/typing_controller.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,6 +125,29 @@ void main() {
       container.read(readMarkersControllerProvider).containsKey(_chatId),
       isFalse,
     );
+  });
+
+  testWidgets('the header says what the chat header says, not only online',
+      (tester) async {
+    // "в сети не в сети гс кружки и тд". It used to say "online" or nothing,
+    // so somebody who was not here read the same as a screen with no status.
+    final container = await _openPeek(tester);
+    expect(find.text('offline'), findsOneWidget);
+
+    final typing = container.read(typingControllerProvider.notifier);
+    typing.record(_chatId, kind: PeerActivity.recordingCircle);
+    await tester.pump();
+    expect(find.text('recording a video message…'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
+    expect(find.text('offline'), findsNothing);
+
+    typing.record(_chatId, kind: PeerActivity.sendingPhoto);
+    await tester.pump();
+    expect(find.text('sending a photo…'), findsOneWidget);
+
+    typing.clearAll();
+    await tester.pump();
+    expect(find.text('offline'), findsOneWidget);
   });
 
   testWidgets('the conversation is there to scroll', (tester) async {
