@@ -9225,7 +9225,14 @@ class MessagingService {
   /// (and the relay traffic) to something a phone can afford. The peers that
   /// matter are the ones you've heard from recently, which is how they're
   /// ranked.
-  static const int _presenceFanoutCap = 10;
+  ///
+  /// **30, up from 10 on 2026-09-15.** Ten was fewer than the owner's own
+  /// eleven contacts, and the ranking is by `lastSeen`, which every
+  /// announcement moves — so which ten got a beacon changed from round to
+  /// round, and whoever fell out of the ten saw this phone drop to "away" for a
+  /// round while it was plainly in use: "в сети иногда пропадает". The bound
+  /// stays for a roster far larger than anybody's circle.
+  static const int _presenceFanoutCap = 30;
 
   /// Most peers one channel post is published to. Higher than the presence cap
   /// — missing a room member loses a message, missing a presence beacon only
@@ -9483,10 +9490,25 @@ class MessagingService {
     // because that is the one that repeats.
     final meshHello = online && arriving && _hasAnyLink;
     final meshGoodbye = !online && _hasAnyLink;
+    // **Except to somebody this phone holds a live Bluetooth session with.**
+    //
+    // Over that session the heartbeat is one write on a link that is up
+    // anyway — no flood through the mesh, no relay event — and without it two
+    // phones in the same room with no internet had the hello and then nothing:
+    // the dot went out when the hello's window ran out, with both apps open
+    // and a conversation going. "И по BLE тоже пропадает." The chatter the
+    // paragraph above refuses is a beacon carried hop by hop to everybody;
+    // this is a beacon to the person at the other end of a wire.
+    bool direct(KnownPeer p) =>
+        _findSessionByPubkeyHex(p.pubkeyHex)?.isEstablished ?? false;
+    final anyDirect = _hasAnyLink;
     // With no socket up and nothing to hand it to, the fan-out is ten peers of
     // guaranteed failure spaced by [relayFanoutPacing] — a second of wakeful
     // work every 45 s on exactly the phone that has no internet.
-    if (_relayClient?.isConnected != true && !meshGoodbye && !meshHello) {
+    if (_relayClient?.isConnected != true &&
+        !meshGoodbye &&
+        !meshHello &&
+        !anyDirect) {
       return false;
     }
     final peers = _ref
@@ -9496,7 +9518,7 @@ class MessagingService {
         // their pubkey and needs no such thing, so the goodbye is not limited
         // to the contacts who happen to have one on file.
         .where((p) =>
-            (p.nostrPubkey != null || meshGoodbye || meshHello) &&
+            (p.nostrPubkey != null || meshGoodbye || meshHello || direct(p)) &&
             !p.isBlocked &&
             now.difference(p.lastSeen) < _presenceMaxPeerAge)
         .toList()
@@ -9544,8 +9566,9 @@ class MessagingService {
           type: InnerPayloadType.presence,
           innerBody: hiddenHere ? hiddenBody! : body,
           // See [meshGoodbye] and [meshHello]: the heartbeat keeps to the
-          // relay; the goodbye and the arrival take whatever road exists.
-          relayOnly: online && !arriving,
+          // relay; the goodbye and the arrival take whatever road exists — and
+          // so does the heartbeat to somebody on a live session, see [direct].
+          relayOnly: online && !arriving && !direct(peer),
         );
         if (n > 0) sent++;
       } catch (e) {
