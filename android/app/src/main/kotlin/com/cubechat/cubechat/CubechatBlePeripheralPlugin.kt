@@ -92,7 +92,21 @@ class CubechatBlePeripheralPlugin(
     // thread so it stays single-threaded.
     private val notifyQueue = ArrayDeque<ByteArray>()
     private var notifyInFlight = false
-    private val maxNotifyQueue = 4096
+
+    /// Fragments that may wait here before a sender is turned away.
+    ///
+    /// 4096 until 1075, and when full the oldest was dropped while Dart was
+    /// still told "sent". A log of two Androids on Bluetooth had a 32 MB backup
+    /// going out as 7819 chunks: Dart produced them far faster than the link
+    /// drained them (about 40 KB a second), the queue overran, fragments of the
+    /// file fell off the front, and the file could never be assembled. A voice
+    /// note sent meanwhile went in at the back of a queue minutes long, and its
+    /// own fragments fell off in turn — "голосові не доходять, і файл не
+    /// дійшов". iOS had already been changed to refuse; this is the same
+    /// change. 512 fragments is a few seconds of link, so a message sent in the
+    /// middle of a transfer waits seconds, not minutes, and a refusal becomes
+    /// the pacing `_deliverMediaFrameRetrying` already applies.
+    private val maxNotifyQueue = 512
 
     init {
         methodChannel.setMethodCallHandler(this)
@@ -397,9 +411,15 @@ class CubechatBlePeripheralPlugin(
     }
 
     /// Enqueue a frame and kick the drain. Returns true when the frame was
-    /// accepted (there is a server, a characteristic, and at least one
-    /// subscriber). A busy stack no longer surfaces to Dart as a failure — the
-    /// queue drains as onNotificationSent fires.
+    /// accepted (there is a server, a characteristic, at least one subscriber,
+    /// and room). A busy stack does not surface to Dart as a failure — the
+    /// queue drains as onNotificationSent fires — but a full queue does: see
+    /// [maxNotifyQueue]. Refuse rather than drop.
+    ///
+    /// Synchronous, on the main thread the method channel already calls in on,
+    /// which is also the only thread that touches the queue — so the answer is
+    /// about the queue as it really is, not as it will be once a posted
+    /// runnable gets round to it.
     private fun notifyInbound(data: ByteArray): Boolean {
         if (gattServer == null) {
             Log.w(TAG, "notifyInbound: no gattServer"); return false
@@ -411,14 +431,12 @@ class CubechatBlePeripheralPlugin(
             Log.w(TAG, "notifyInbound: no subscribers (central did not enable CCCD)")
             return false
         }
-        mainHandler.post {
-            if (notifyQueue.size >= maxNotifyQueue) {
-                notifyQueue.removeFirst() // bound memory under sustained overrun
-                Log.w(TAG, "notify queue full — dropping oldest frame")
-            }
-            notifyQueue.addLast(data)
+        if (notifyQueue.size >= maxNotifyQueue) {
             pumpNotifyQueue()
+            if (notifyQueue.size >= maxNotifyQueue) return false
         }
+        notifyQueue.addLast(data)
+        pumpNotifyQueue()
         return true
     }
 
