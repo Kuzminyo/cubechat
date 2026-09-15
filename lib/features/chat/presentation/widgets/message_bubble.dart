@@ -41,7 +41,9 @@ import '../../data/message_edit_target.dart';
 import '../../data/message_reply_target.dart';
 import '../../data/messages_controller.dart';
 import '../../domain/message_preview.dart';
+import '../../../call/data/call_controller.dart';
 import '../../../call/domain/call_record.dart';
+import '../../../call/presentation/call_screen.dart' show callClock;
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
@@ -1656,11 +1658,21 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     contact: sharedContact,
                     onTap: () => _openSharedContact(sharedContact),
                   )
-                else if (tryParseCallRecord(message.text) != null)
-                  Text(
-                      messageContentPreview(
-                          message, AppLocalizations.of(context)),
-                      style: TextStyle(color: AppColors.textPrimary))
+                else if (tryParseCallRecord(message.text) case final call?)
+                  // A call you can make again from where it sits, the way
+                  // Telegram's are: "зробити клікабельні дзвінки, натискаєш і
+                  // дзвониш прямо в стрічці". It was a line of text. Off while
+                  // selecting, where a tap on the row means the tick.
+                  _CallRecordBubble(
+                    call: call,
+                    onCall: selecting
+                        ? null
+                        : () => unawaited(
+                              ref.read(callControllerProvider).dial(
+                                    widget.chatId,
+                                  ),
+                            ),
+                  )
                 else if (drawnFace != null)
                   // One emoji, and we have a drawing of that one: it moves.
                   //
@@ -2123,6 +2135,98 @@ class _MapFriendLinkBubble extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A finished call, in the conversation: which way it went, how long it
+/// lasted, and the phone to call again.
+class _CallRecordBubble extends StatelessWidget {
+  const _CallRecordBubble({required this.call, required this.onCall});
+
+  final CallRecord call;
+
+  /// Null while the message list is picking messages out.
+  final VoidCallback? onCall;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final missed = !call.outgoing && !call.answered;
+    final (icon, label) = switch ((call.outgoing, call.answered)) {
+      (true, true) => (Icons.call_made_rounded, t.previewCallOutgoing),
+      (true, false) => (Icons.call_made_rounded, t.callNoAnswer),
+      (false, true) => (Icons.call_received_rounded, t.previewCallIncoming),
+      (false, false) => (Icons.call_missed_rounded, t.previewCallMissed),
+    };
+    final tone = missed ? AppColors.danger : AppColors.brandPrimary;
+    return Semantics(
+      button: onCall != null,
+      label: '$label. ${t.callsCallBack}',
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onCall,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 190, maxWidth: 250),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: tone.withValues(alpha: 0.16),
+                  ),
+                  child: Icon(icon, size: 21, color: tone),
+                ),
+                const SizedBox(width: 11),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: missed
+                              ? AppColors.danger
+                              : AppColors.textOnGlass,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (call.answered) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          callClock(call.talkedFor),
+                          style: TextStyle(
+                            color: AppColors.textOnGlassDim,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(
+                  Icons.call_rounded,
+                  size: 22,
+                  color: onCall == null
+                      ? AppColors.textOnGlassFaint
+                      : AppColors.brandPrimary,
+                ),
+              ],
+            ),
           ),
         ),
       ),
