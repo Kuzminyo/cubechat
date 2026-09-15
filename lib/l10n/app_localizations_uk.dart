@@ -918,6 +918,17 @@ class AppLocalizationsUk extends AppLocalizations {
       'Коли хтось пересилає ваше повідомлення, рядок над ним може відкривати ваш профіль. Вимкнено — вони бачать лише ім\'я, натиснути нема на що. Це прохання до їхнього застосунку, а не те, що цей може змусити.';
 
   @override
+  String get privacyCallsTitle => 'Приймати дзвінки';
+
+  @override
+  String get privacyCallsOnHint =>
+      'Ваші контакти можуть вам дзвонити. Щоб заборонити комусь одному, відкрийте його профіль.';
+
+  @override
+  String get privacyCallsOffHint =>
+      'Ніхто не може вам дзвонити, крім тих, кому ви дозволили в їхньому профілі. Відхилений дзвінок вони побачать як «зайнято».';
+
+  @override
   String get chatsStatusChannel => 'канал';
 
   @override
@@ -1628,6 +1639,15 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get contactHiddenFromThem => 'Приховано від цього контакту';
+
+  @override
+  String get contactRefuseCalls => 'Не приймати його дзвінки';
+
+  @override
+  String get contactAllowCalls => 'Приймати його дзвінки';
+
+  @override
+  String get contactCallsException => 'Виняток із ваших налаштувань дзвінків';
 
   @override
   String get contactProfileCopyingRestricted =>

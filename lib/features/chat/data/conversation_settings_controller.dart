@@ -135,6 +135,7 @@ class ConversationSettings {
     this.hideAvatar = false,
     this.hideLastSeen = false,
     this.hideReadReceipts = false,
+    this.acceptCalls,
     this.preferRelay = false,
     this.muted = false,
     this.mutedUntil,
@@ -200,6 +201,14 @@ class ConversationSettings {
   final bool hideLastSeen;
   final bool hideReadReceipts;
 
+  /// Calls from this person, against the global switch
+  /// ([PrivacySettings.acceptCalls]): true lets them ring when calls are
+  /// refused, false refuses them when calls are accepted, null follows the
+  /// switch. The one exception here that can go either way — "never take calls,
+  /// except from these", and "take calls, except from these", are both what a
+  /// phone's own settings offer.
+  final bool? acceptCalls;
+
   /// Try the internet before the radios for this conversation.
   ///
   /// A bias, not a lock. The road is picked per message from what is actually
@@ -249,12 +258,15 @@ class ConversationSettings {
     bool? hideAvatar,
     bool? hideLastSeen,
     bool? hideReadReceipts,
+    bool? acceptCalls,
+    bool clearAcceptCalls = false,
     bool? preferRelay,
     bool? muted,
     DateTime? mutedUntil,
     bool clearMutedUntil = false,
   }) =>
       ConversationSettings(
+        acceptCalls: clearAcceptCalls ? null : (acceptCalls ?? this.acceptCalls),
         autoDelete: autoDelete ?? this.autoDelete,
         autoDeleteFrom:
             clearAutoDeleteFrom ? null : (autoDeleteFrom ?? this.autoDeleteFrom),
@@ -280,6 +292,7 @@ class ConversationSettings {
       !hideAvatar &&
       !hideLastSeen &&
       !hideReadReceipts &&
+      acceptCalls == null &&
       !preferRelay &&
       !muted;
 
@@ -294,6 +307,7 @@ class ConversationSettings {
       other.hideAvatar == hideAvatar &&
       other.hideLastSeen == hideLastSeen &&
       other.hideReadReceipts == hideReadReceipts &&
+      other.acceptCalls == acceptCalls &&
       other.preferRelay == preferRelay &&
       other.muted == muted &&
       other.mutedUntil == mutedUntil;
@@ -308,6 +322,7 @@ class ConversationSettings {
         hideAvatar,
         hideLastSeen,
         hideReadReceipts,
+        acceptCalls,
         preferRelay,
         muted,
         mutedUntil,
@@ -411,6 +426,23 @@ class ConversationSettingsController
 
   Future<void> setHideReadReceipts(String chatId, bool hidden) =>
       _put(chatId, forChat(chatId).copyWith(hideReadReceipts: hidden));
+
+  /// This person's exception to the calls switch, or null to follow it.
+  Future<void> setAcceptCalls(String chatId, bool? accept) => _put(
+        chatId,
+        forChat(chatId).copyWith(
+          acceptCalls: accept,
+          clearAcceptCalls: accept == null,
+        ),
+      );
+
+  /// Whether a call from [chatId] may ring: this person's exception if they
+  /// have one, the global switch otherwise. Unlike the three below, an
+  /// exception can be more open than the switch as well as less — that is
+  /// what "nobody, except" is.
+  bool acceptsCallsFrom(String chatId) =>
+      forChat(chatId).acceptCalls ??
+      ref.read(privacySettingsProvider).acceptCalls;
 
   /// The three questions the transport asks before it sends something about
   /// us, answered by the global switch and this contact's exception together.
@@ -523,6 +555,7 @@ class ConversationSettingsController
             hideAvatar: value['hideAvatar'] == true,
             hideLastSeen: value['hideLastSeen'] == true,
             hideReadReceipts: value['hideReadReceipts'] == true,
+            acceptCalls: value['acceptCalls'] as bool?,
             preferRelay: value['preferRelay'] == true,
             muted: value['muted'] == true,
             mutedUntil: value['mutedUntilMs'] is int
@@ -563,6 +596,8 @@ class ConversationSettingsController
             if (entry.value.hideAvatar) 'hideAvatar': true,
             if (entry.value.hideLastSeen) 'hideLastSeen': true,
             if (entry.value.hideReadReceipts) 'hideReadReceipts': true,
+            if (entry.value.acceptCalls != null)
+              'acceptCalls': entry.value.acceptCalls,
             if (entry.value.preferRelay) 'preferRelay': true,
             if (entry.value.muted) 'muted': true,
             if (entry.value.mutedUntil != null)

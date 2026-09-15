@@ -15,6 +15,7 @@ import '../../../core/notifications/push_registration.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chat/data/conversation_settings_controller.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/data/voice_playback_controller.dart';
 import '../../chat/models/message.dart';
@@ -46,8 +47,10 @@ class CallController extends ChangeNotifier {
     this.tones = const SilentCallTones(),
     this.surface = const NoIncomingCallSurface(),
     this.peerAvatar,
+    bool Function(String peer)? acceptsCallFrom,
     bool Function()? foreground,
-  }) : _foreground = foreground ?? _alwaysForeground {
+  })  : _foreground = foreground ?? _alwaysForeground,
+        acceptsCallFrom = acceptsCallFrom ?? _acceptsEverybody {
     _machine =
         CallStateMachine(send: _send, onOutcome: _outcome, now: DateTime.now)
           ..addListener(_changed);
@@ -67,6 +70,13 @@ class CallController extends ChangeNotifier {
   final void Function(String peer, CallOutcome outcome) record;
   final String Function(String peer) peerName;
   final bool Function(String peer) allowed;
+
+  /// Whether a call from this person may ring here — the privacy switch for
+  /// calls and this person's exception to it. Asked of an invite only: our
+  /// own call to somebody we do not take calls from still goes, the way it
+  /// does on a phone.
+  final bool Function(String peer) acceptsCallFrom;
+  static bool _acceptsEverybody(String _) => true;
 
   /// Read at the moment a connection is built, not captured at construction:
   /// the switch can change between two calls without restarting anything.
@@ -643,6 +653,23 @@ class CallController extends ChangeNotifier {
             .catchError((Object _) => ControlDelivery.notSent));
         return;
       }
+      // Calls from this person are not taken — the privacy switch, or their
+      // exception to it. Answered as busy, which tells them no more than that
+      // the call did not connect, and nothing rings or is recorded here.
+      //
+      // An iPhone may already be ringing on CallKit: a VoIP push has to be
+      // reported the moment it lands, before anything here has seen the
+      // invite. Nothing else is showing (the busy branch above took the case
+      // where something is), so taking down whatever CallKit holds is taking
+      // down this call.
+      if (!active && !acceptsCallFrom(event.chatId)) {
+        _log('invite ${_hex(signal.callId)} refused: calls from '
+            '${_short(event.chatId)} are not accepted');
+        unawaited(send(event.chatId, CallSignal.busy(signal.callId))
+            .catchError((Object _) => ControlDelivery.notSent));
+        _queueSurface(() => surface.dismiss(null));
+        return;
+      }
       if (!active) {
         peerId = event.chatId;
         error = null;
@@ -1019,6 +1046,9 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
         RegExp(r'^[0-9a-f]{64}$').hasMatch(peer) &&
         ref.read(knownPeersControllerProvider)[peer] != null &&
         !ref.read(knownPeersControllerProvider)[peer]!.isBlocked,
+    acceptsCallFrom: (peer) => ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .acceptsCallsFrom(peer),
     record: (peer, outcome) {
       final text = encodeCallRecord(outcome);
       if (text.isEmpty) return;

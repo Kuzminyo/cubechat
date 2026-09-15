@@ -5,6 +5,7 @@ import 'package:cubechat/features/chat/data/conversation_settings_controller.dar
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
+import 'package:cubechat/features/profile/data/privacy_settings_controller.dart';
 /*
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
@@ -93,6 +94,38 @@ void main() {
       await settings.setHideAvatar('alice', true);
       expect(settings.sharesAvatarWith('alice'), isFalse);
       expect(settings.sharesAvatarWith('bob'), isTrue);
+    });
+
+    test('calls: the switch, and exceptions to it either way', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings =
+          container.read(conversationSettingsControllerProvider.notifier);
+      final privacy = container.read(privacySettingsProvider.notifier);
+      await settings.loaded;
+      await privacy.loaded;
+
+      // Everybody by default.
+      expect(settings.acceptsCallsFrom('alice'), isTrue);
+
+      // "Take calls, except from Alice."
+      await settings.setAcceptCalls('alice', false);
+      expect(settings.acceptsCallsFrom('alice'), isFalse);
+      expect(settings.acceptsCallsFrom('bob'), isTrue);
+
+      // "Nobody, except Bob" — and Alice's exception still refuses her.
+      await privacy.setAcceptCalls(false);
+      await settings.setAcceptCalls('bob', true);
+      expect(settings.acceptsCallsFrom('bob'), isTrue);
+      expect(settings.acceptsCallsFrom('carol'), isFalse);
+      expect(settings.acceptsCallsFrom('alice'), isFalse);
+
+      // An exception is a setting worth keeping, and clearing it follows the
+      // switch again.
+      expect(settings.forChat('bob').isDefault, isFalse);
+      await settings.setAcceptCalls('bob', null);
+      expect(settings.acceptsCallsFrom('bob'), isFalse);
+      expect(settings.forChat('bob').isDefault, isTrue);
     });
   });
 

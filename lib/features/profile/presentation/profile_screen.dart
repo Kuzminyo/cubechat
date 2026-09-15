@@ -1333,6 +1333,18 @@ class _PrivacyCard extends ConsumerWidget {
                   .broadcastForwardPrivacy(allowed: value);
             },
           ),
+          const SizedBox(height: 14),
+          // Who may ring this phone. Exceptions either way live on each
+          // contact's profile — see `ConversationSettings.acceptCalls`.
+          _SettingSwitch(
+            icon: s.acceptCalls
+                ? Icons.call_rounded
+                : Icons.phone_disabled_rounded,
+            title: t.privacyCallsTitle,
+            hint: s.acceptCalls ? t.privacyCallsOnHint : t.privacyCallsOffHint,
+            value: s.acceptCalls,
+            onChanged: n.setAcceptCalls,
+          ),
           const SizedBox(height: 10),
           Text(
             t.profilePrivacyExplainer,

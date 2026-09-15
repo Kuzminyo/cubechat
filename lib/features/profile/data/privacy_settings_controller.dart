@@ -30,7 +30,16 @@ class PrivacySettings {
     required this.shareReadReceipts,
     required this.shareMapLocation,
     this.allowForwardLink = true,
+    this.acceptCalls = true,
   });
+
+  /// True: anybody in the contacts may ring this phone. False: nobody may,
+  /// except the people whose profile says otherwise — see
+  /// `ConversationSettingsController.acceptsCallsFrom`. A refused call is
+  /// answered as busy and never rings here. Local: nothing about it goes on
+  /// the wire, and the caller learns no more than that the call did not
+  /// connect.
+  final bool acceptCalls;
 
   /// True: publish the presence beacon, and show peers' online state.
   /// False: publish nothing, and treat every peer's presence as unknown.
@@ -67,12 +76,14 @@ class PrivacySettings {
     bool? shareReadReceipts,
     bool? shareMapLocation,
     bool? allowForwardLink,
+    bool? acceptCalls,
   }) =>
       PrivacySettings(
         shareLastSeen: shareLastSeen ?? this.shareLastSeen,
         shareReadReceipts: shareReadReceipts ?? this.shareReadReceipts,
         shareMapLocation: shareMapLocation ?? this.shareMapLocation,
         allowForwardLink: allowForwardLink ?? this.allowForwardLink,
+        acceptCalls: acceptCalls ?? this.acceptCalls,
       );
 
   @override
@@ -81,12 +92,12 @@ class PrivacySettings {
       other.shareLastSeen == shareLastSeen &&
       other.shareReadReceipts == shareReadReceipts &&
       other.shareMapLocation == shareMapLocation &&
-      other.allowForwardLink == allowForwardLink;
+      other.allowForwardLink == allowForwardLink &&
+      other.acceptCalls == acceptCalls;
 
   @override
-  int get hashCode =>
-      Object.hash(shareLastSeen, shareReadReceipts, shareMapLocation,
-          allowForwardLink);
+  int get hashCode => Object.hash(shareLastSeen, shareReadReceipts,
+      shareMapLocation, allowForwardLink, acceptCalls);
 }
 
 class PrivacySettingsController extends Notifier<PrivacySettings> {
@@ -94,6 +105,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
   static const _keyReceipts = 'privacy.shareReadReceipts';
   static const _keyMapLocation = 'privacy.shareMapLocation';
   static const _keyForwardLink = 'privacy.allowForwardLink';
+  static const _keyAcceptCalls = 'privacy.acceptCalls';
 
   Box<dynamic>? _box;
 
@@ -134,6 +146,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
         shareReadReceipts: box.get(_keyReceipts) as bool? ?? true,
         shareMapLocation: box.get(_keyMapLocation) as bool? ?? false,
         allowForwardLink: box.get(_keyForwardLink) as bool? ?? true,
+        acceptCalls: box.get(_keyAcceptCalls) as bool? ?? true,
       );
     } catch (e) {
       debugPrint('PrivacySettings load failed: $e');
@@ -160,6 +173,11 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
     await _put(_keyForwardLink, value);
   }
 
+  Future<void> setAcceptCalls(bool value) async {
+    state = state.copyWith(acceptCalls: value);
+    await _put(_keyAcceptCalls, value);
+  }
+
   Future<void> _put(String key, bool value) async {
     _changed = true;
     try {
@@ -181,6 +199,7 @@ class PrivacySettingsController extends Notifier<PrivacySettings> {
       await _box?.delete(_keyLastSeen);
       await _box?.delete(_keyReceipts);
       await _box?.delete(_keyMapLocation);
+      await _box?.delete(_keyAcceptCalls);
     } catch (e) {
       debugPrint('PrivacySettings reset failed: $e');
     }

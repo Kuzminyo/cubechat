@@ -131,6 +131,9 @@ void main() {
   late bool onScreen;
   late FakeSurface surface;
 
+  /// People whose calls the privacy setting refuses.
+  var refusedCallers = <String>{};
+
   /// What each send reports. A completer here holds that kind of signal in
   /// flight until the test settles it, which is how a publish still waiting
   /// for relay `OK`s is modelled.
@@ -152,6 +155,7 @@ void main() {
         record: (peer, outcome) => outcomes.add(outcome),
         peerName: (peer) => peer,
         allowed: (_) => true,
+        acceptsCallFrom: (peer) => !refusedCallers.contains(peer),
         allowDirect: () => direct,
         prepareAudio: () async {},
         tones: FakeTones(events),
@@ -170,6 +174,7 @@ void main() {
     direct = false;
     disposedByTest = false;
     onScreen = true;
+    refusedCallers = <String>{};
     surface = FakeSurface(events);
     turn = () async => TurnAccess(
         urls: ['turn:test'],
@@ -532,6 +537,30 @@ void main() {
       disposedByTest = true;
       expect(outcomes.single.source, CallEndSource.dispose);
       expect(sent.last.kind, CallSignalKind.hangup);
+    });
+  });
+
+  group('calls the privacy setting refuses', () {
+    test('answered as busy, never ring, and leave no record', () async {
+      refusedCallers = {'peer'};
+      receive(inviteFor(id(31)));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(call.active, isFalse);
+      expect(call.phase, isNot(CallPhase.incoming));
+      expect(sent.single.kind, CallSignalKind.busy);
+      expect(events, isNot(contains('ring ${CallTone.incoming.name}')));
+      expect(events, isNot(contains('screen show peer')));
+      expect(events, contains('screen dismiss'),
+          reason: 'whatever a VoIP push put on CallKit comes down');
+      expect(outcomes, isEmpty);
+    });
+
+    test('our own call to them still goes', () async {
+      refusedCallers = {'peer'};
+      await call.dial('peer');
+      expect(sent.single.kind, CallSignalKind.invite);
+      call.hangUp();
     });
   });
 

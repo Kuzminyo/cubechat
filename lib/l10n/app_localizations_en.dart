@@ -915,6 +915,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.';
 
   @override
+  String get privacyCallsTitle => 'Accept calls';
+
+  @override
+  String get privacyCallsOnHint =>
+      'Your contacts can call you. To refuse one person, open their profile.';
+
+  @override
+  String get privacyCallsOffHint =>
+      'Nobody can call you, except people you allow in their profile. A refused call reaches them as busy.';
+
+  @override
   String get chatsStatusChannel => 'channel';
 
   @override
@@ -1621,6 +1632,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactHiddenFromThem => 'Hidden from this contact';
+
+  @override
+  String get contactRefuseCalls => 'Don\'t accept their calls';
+
+  @override
+  String get contactAllowCalls => 'Accept their calls';
+
+  @override
+  String get contactCallsException => 'An exception to your call setting';
 
   @override
   String get contactProfileCopyingRestricted =>

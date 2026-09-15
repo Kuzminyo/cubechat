@@ -560,6 +560,41 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                                 );
                           },
                         ),
+                        // Calls from this person, against the privacy switch —
+                        // the one exception that can go either way. The row
+                        // offers the opposite of what applies now; choosing
+                        // what the switch already says clears the exception
+                        // rather than storing a copy of the switch.
+                        Builder(builder: (context) {
+                          final everybody = ref.watch(
+                            privacySettingsProvider
+                                .select((p) => p.acceptCalls),
+                          );
+                          final accepts =
+                              conversationSettings.acceptCalls ?? everybody;
+                          return _ActionTile(
+                            icon: accepts
+                                ? Icons.phone_disabled_rounded
+                                : Icons.call_rounded,
+                            label: accepts
+                                ? t.contactRefuseCalls
+                                : t.contactAllowCalls,
+                            subtitle: conversationSettings.acceptCalls == null
+                                ? null
+                                : t.contactCallsException,
+                            onTap: () async {
+                              close();
+                              final next = !accepts;
+                              await ref
+                                  .read(conversationSettingsControllerProvider
+                                      .notifier)
+                                  .setAcceptCalls(
+                                    peerPubkeyHex,
+                                    next == everybody ? null : next,
+                                  );
+                            },
+                          );
+                        }),
                         _ActionTile(
                           icon: conversationSettings.restrictCopying
                               ? Icons.content_copy_rounded

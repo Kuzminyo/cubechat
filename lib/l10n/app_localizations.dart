@@ -1712,6 +1712,24 @@ abstract class AppLocalizations {
   /// **'When somebody passes on a message of yours, the line above it can open your profile. Off, they see your name and nothing to tap. A request to their app, not something this one can enforce.'**
   String get privacyForwardLinkHint;
 
+  /// No description provided for @privacyCallsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept calls'**
+  String get privacyCallsTitle;
+
+  /// No description provided for @privacyCallsOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your contacts can call you. To refuse one person, open their profile.'**
+  String get privacyCallsOnHint;
+
+  /// No description provided for @privacyCallsOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody can call you, except people you allow in their profile. A refused call reaches them as busy.'**
+  String get privacyCallsOffHint;
+
   /// No description provided for @chatsStatusChannel.
   ///
   /// In en, this message translates to:
@@ -2953,6 +2971,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hidden from this contact'**
   String get contactHiddenFromThem;
+
+  /// No description provided for @contactRefuseCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t accept their calls'**
+  String get contactRefuseCalls;
+
+  /// No description provided for @contactAllowCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept their calls'**
+  String get contactAllowCalls;
+
+  /// No description provided for @contactCallsException.
+  ///
+  /// In en, this message translates to:
+  /// **'An exception to your call setting'**
+  String get contactCallsException;
 
   /// No description provided for @contactProfileCopyingRestricted.
   ///
