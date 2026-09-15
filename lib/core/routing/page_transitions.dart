@@ -146,6 +146,34 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   Animation<double> createAnimation() =>
       _TimedFromFirstFrame(super.createAnimation());
 
+  /// What the page underneath does while this one slides over it:
+  /// Cupertino's own step aside, with the page's tickers stopped once it is
+  /// fully covered — see [_StillWhileCovered].
+  ///
+  /// This is the path the tabs take: the shell is a Material page, and a
+  /// Material page hands its outgoing motion to the route arriving on top of
+  /// it. A static tear-off, so every one of these routes compares equal and a
+  /// screen over a screen keeps using [buildTransitions].
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition => _stepAside;
+
+  static Widget? _stepAside(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    bool allowSnapshotting,
+    Widget? child,
+  ) =>
+      CupertinoPageTransition.delegatedTransition(
+        context,
+        animation,
+        secondaryAnimation,
+        allowSnapshotting,
+        child == null
+            ? null
+            : _StillWhileCovered(covering: secondaryAnimation, child: child),
+      );
+
   /// The mixin's own transition, with a reachable drag strip in place of its
   /// 20-pixel one.
   ///
@@ -187,7 +215,10 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
           isCurrent: () => isCurrent,
           isActive: () => isActive,
         ),
-        child: child,
+        // A screen covered by another one of these stops its tickers — see
+        // [_StillWhileCovered]. Under the shell's page, [delegatedTransition]
+        // does the same.
+        child: _StillWhileCovered(covering: secondaryAnimation, child: child),
       ),
     );
 
@@ -315,6 +346,69 @@ class _TimedFromFirstFrame extends Animation<double>
     if (start == null) return raw;
     return ((raw - start) / (1 - start)).clamp(0.0, 1.0);
   }
+}
+
+/// A screen that another has fully covered: still painted, not animating.
+///
+/// Since 1065 a pushed screen is not opaque (see `_SlideRoute.opaque`), which
+/// made closing a chat smooth — and quietly undid something the overlay had
+/// always done for free. An entry under an opaque one is off stage, and off
+/// stage is `TickerMode(enabled: false)`: every animation on the covered screen
+/// stopped. Kept on stage, the chat list under a conversation went on running
+/// its aurora for two seconds after every transition, its dots, anything with a
+/// ticker — each tick a frame that now draws both screens. "The phone started
+/// warming up a little, in the app, not in the background" was the report the
+/// day it shipped.
+///
+/// So the page stays painted, which is what the close needs, and its tickers
+/// stop the moment the screen on top has finished arriving. They run again as
+/// soon as it starts to leave — a slide back or a drag — so nothing underneath
+/// is frozen while it can be seen.
+class _StillWhileCovered extends StatefulWidget {
+  const _StillWhileCovered({required this.covering, required this.child});
+
+  /// The route on top's progress, as this page sees it.
+  final Animation<double> covering;
+
+  final Widget child;
+
+  @override
+  State<_StillWhileCovered> createState() => _StillWhileCoveredState();
+}
+
+class _StillWhileCoveredState extends State<_StillWhileCovered> {
+  late bool _covered = widget.covering.isCompleted;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.covering.addStatusListener(_onStatus);
+  }
+
+  @override
+  void didUpdateWidget(_StillWhileCovered oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.covering, widget.covering)) {
+      oldWidget.covering.removeStatusListener(_onStatus);
+      widget.covering.addStatusListener(_onStatus);
+      _covered = widget.covering.isCompleted;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.covering.removeStatusListener(_onStatus);
+    super.dispose();
+  }
+
+  void _onStatus(AnimationStatus status) {
+    final covered = status == AnimationStatus.completed;
+    if (covered != _covered && mounted) setState(() => _covered = covered);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      TickerMode(enabled: !_covered, child: widget.child);
 }
 
 /// Rounds a page's corners for exactly as long as it is moving.

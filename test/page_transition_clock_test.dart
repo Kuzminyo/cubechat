@@ -91,6 +91,42 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('a covered screen stays painted but stops animating',
+      (tester) async {
+    // Kept on stage for the close, it went on running its tickers under the
+    // screen on top — the aurora, the dots — and the phone warmed up for it.
+    final navigator = await pumpApp(tester);
+    bool ticking() => TickerMode.of(tester.element(find.text('list')));
+    expect(ticking(), isTrue);
+
+    navigator.push(screenRoute<void>((_) => const Text('chat')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(ticking(), isTrue, reason: 'still moving, still visible');
+
+    await tester.pumpAndSettle();
+    expect(find.text('list'), findsOneWidget, reason: 'painted underneath');
+    expect(ticking(), isFalse);
+
+    navigator.pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(ticking(), isTrue, reason: 'awake again as soon as it shows');
+    await tester.pumpAndSettle();
+    expect(ticking(), isTrue);
+
+    // And a screen under another pushed screen, the same.
+    navigator.push(screenRoute<void>((_) => const Text('chat')));
+    await tester.pumpAndSettle();
+    navigator.push(screenRoute<void>((_) => const Text('profile')));
+    await tester.pumpAndSettle();
+    expect(TickerMode.of(tester.element(find.text('chat'))), isFalse);
+    expect(TickerMode.of(tester.element(find.text('profile'))), isTrue);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(TickerMode.of(tester.element(find.text('chat'))), isTrue);
+  });
+
   testWidgets('once open, going back is the controller exactly',
       (tester) async {
     final navigator = await pumpApp(tester);
