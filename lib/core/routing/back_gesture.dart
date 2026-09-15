@@ -92,32 +92,67 @@ class EdgeBackGesture extends StatefulWidget {
   State<EdgeBackGesture> createState() => _EdgeBackGestureState();
 }
 
-class _EdgeBackGestureState extends State<EdgeBackGesture> {
+class _EdgeBackGestureState extends State<EdgeBackGesture>
+    with WidgetsBindingObserver {
   EdgeBackGestureController? _controller;
-  late final _RightwardDragRecognizer _recognizer;
+  late _RightwardDragRecognizer _recognizer = _newRecognizer();
+
+  _RightwardDragRecognizer _newRecognizer() =>
+      _RightwardDragRecognizer(debugOwner: this)
+        // From where the finger went *down*, not from where the gesture was
+        // won.
+        //
+        // This is what made the drag feel like it refused to finish. Away from
+        // the edge the gesture is only claimed after 44 pixels, and with the
+        // default behaviour those 44 are thrown away — so the page trailed the
+        // finger by that much for the whole drag, and to push it past the
+        // half-screen mark that decides a pop you had to drag most of the way
+        // across. Counting from the touch means the page catches up on the
+        // frame it starts moving and tracks the finger one-to-one after that.
+        ..dragStartBehavior = DragStartBehavior.down
+        ..onStart = _handleDragStart
+        ..onUpdate = _handleDragUpdate
+        ..onEnd = _handleDragEnd
+        ..onCancel = _handleDragCancel;
 
   @override
   void initState() {
     super.initState();
-    _recognizer = _RightwardDragRecognizer(debugOwner: this)
-      // From where the finger went *down*, not from where the gesture was won.
-      //
-      // This is what made the drag feel like it refused to finish. Away from
-      // the edge the gesture is only claimed after 44 pixels, and with the
-      // default behaviour those 44 are thrown away — so the page trailed the
-      // finger by that much for the whole drag, and to push it past the
-      // half-screen mark that decides a pop you had to drag most of the way
-      // across. Counting from the touch means the page catches up on the frame
-      // it starts moving and tracks the finger one-to-one after that.
-      ..dragStartBehavior = DragStartBehavior.down
-      ..onStart = _handleDragStart
-      ..onUpdate = _handleDragUpdate
-      ..onEnd = _handleDragEnd
-      ..onCancel = _handleDragCancel;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// **Forget every touch when the app stops being in front.**
+  ///
+  /// Leaving an iPhone app is a gesture that starts inside it — the swipe up
+  /// from the home indicator — and when the system takes that touch over, the
+  /// app is not always told it lifted. The recognizer went on tracking the
+  /// pointer, and a drag only ends once *every* pointer it tracks has ended:
+  /// so the first swipe back after coming back moved the page and never
+  /// finished, leaving the chat stopped halfway across. "Выход из чата
+  /// зависает на полпути — рандомно, когда с фона заходишь, на iOS." Random,
+  /// because it needed the lost touch to have landed on this page.
+  ///
+  /// A swipe back cut off the same way — a notification, Control Center, the
+  /// app going away under the finger — used to stay wherever the finger was.
+  /// It is settled now the way a cancelled drag is, and the recognizer is
+  /// replaced, which is the only way to make it let go of pointers it will
+  /// never hear from again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) return;
+    _forgetTouches();
+  }
+
+  void _forgetTouches() {
+    _controller?.dragEnd(0);
+    _controller = null;
+    _recognizer.dispose();
+    _recognizer = _newRecognizer();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _recognizer.dispose();
     // Disposed mid-drag — the navigator is still holding a user gesture that
     // now has nobody driving it.
@@ -152,6 +187,11 @@ class _EdgeBackGestureState extends State<EdgeBackGesture> {
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    // A new touch while a drag is still open means the old one's end was
+    // lost, not that a second finger joined: this gesture is one finger, and
+    // a drag nobody is driving is exactly the page stuck halfway. Settle it
+    // and start clean. See [didChangeAppLifecycleState].
+    if (_controller != null) _forgetTouches();
     if (!widget.enabledCallback()) return;
     final box = context.findRenderObject() as RenderBox?;
     final localX = box == null ? 0.0 : box.globalToLocal(event.position).dx;
