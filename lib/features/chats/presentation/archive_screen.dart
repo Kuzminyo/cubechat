@@ -54,8 +54,20 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
   /// `NotifierProvider`, not auto-disposed, so the instance outlives this
   /// screen by design — it is shared with the main list, which is the entire
   /// reason this clear exists.
-  late final ChatSelectionController _selection =
-      ref.read(chatSelectionProvider.notifier);
+  ///
+  /// **Taken in [initState], not by a lazy initializer.** It was
+  /// `late final … = ref.read(…)`, which reads the provider on first *use* —
+  /// and when nothing on the screen was ever picked, the first use was the
+  /// line in [dispose]. So the read this field exists to move out of `dispose`
+  /// happened in `dispose` anyway, and the same "Cannot use ref after the
+  /// widget was disposed" came back from a phone on 1068.
+  late final ChatSelectionController _selection;
+
+  @override
+  void initState() {
+    super.initState();
+    _selection = ref.read(chatSelectionProvider.notifier);
+  }
 
   @override
   void dispose() {
