@@ -27,10 +27,14 @@ import 'removed_contacts_controller.dart';
 ///
 /// The tombstone does the work now. [RemovedContactsController] already stopped
 /// an announcement or a beacon from re-creating a contact; the Contacts screen
-/// reads it too. A message still lifts it — see the `restore` call in
-/// `MessagingService` — and that should stay the road back: with the
-/// conversation intact there is nothing left to lose by their writing again,
-/// and a list you can leave but never rejoin is a trap.
+/// reads it too. Two things lift it, and they should stay the road back: adding
+/// them from their card, and — since 1076 — their introducing themselves to us
+/// in person, which is what adding us back and writing sends (see
+/// `MessagingService._ingestAnnouncement`). This comment used to say "a
+/// message lifts it", and nothing did: a removed contact who wrote again was
+/// silently dropped. With the conversation intact there is nothing left to
+/// lose by their writing again, and a list you can leave but never rejoin is a
+/// trap.
 ///
 /// To stop somebody reaching you at all, block them. That is a different button
 /// doing a different thing: their frames are dropped on arrival and the

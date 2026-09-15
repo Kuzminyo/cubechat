@@ -8146,7 +8146,11 @@ class MessagingService {
   /// our own coming back to us — in both cases the caller must not treat it as
   /// news. Signature verification is what stops an attacker on the mesh from
   /// injecting a fake Ed25519 key to break later per-message checks.
-  Future<bool> _ingestAnnouncement(Uint8List body, String peerId) async {
+  Future<bool> _ingestAnnouncement(
+    Uint8List body,
+    String peerId, {
+    bool addressedToUs = false,
+  }) async {
     final PeerAnnouncement ann;
     try {
       ann = await PeerAnnouncement.verifyAndDecode(body);
@@ -8165,6 +8169,34 @@ class MessagingService {
       return false;
     }
     final pubkeyHex = _hexOf(ann.pubkey);
+    // **Somebody we removed, introducing themselves to us in person, is let
+    // back in.**
+    //
+    // The tombstone exists so a removed contact does not walk back in off the
+    // radio — a broadcast, a beacon, a handshake with whoever is in range. An
+    // introduction sealed to us is none of those. It goes out when they add us
+    // from our card, when they first write to us, or when they rename, and
+    // it is the only way their keys reach us: refused, the message behind it
+    // waited a minute for a key that never came and was dropped. So adding
+    // somebody back and writing to them showed no chat at all on this side
+    // until this side added them too — and then the chat appeared with
+    // everything they had written. "При повторному додаванні нехай чат
+    // з'являється" was the ask, and the tombstone was answering a question
+    // about the radio that this frame never asked.
+    if (introductionLiftsRemoval(
+      addressedToUs: addressedToUs,
+      inRoster: _ref.read(knownPeersControllerProvider)[pubkeyHex] != null,
+      removed: _ref.read(removedContactsControllerProvider).contains(pubkeyHex),
+    )) {
+      await _ref
+          .read(removedContactsControllerProvider.notifier)
+          .restore(pubkeyHex);
+      DebugLog.instance.log(
+        'MESH',
+        '${pubkeyHex.substring(0, 8)} was removed and introduced themselves '
+            'to us — back in the roster',
+      );
+    }
     _ref.read(knownPeersControllerProvider.notifier).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
@@ -8472,7 +8504,7 @@ class MessagingService {
       }
 
       // We opened it, so it was addressed to us and stops here.
-      await _ingestAnnouncement(opened, peerId);
+      await _ingestAnnouncement(opened, peerId, addressedToUs: true);
       return;
     }
 
@@ -9267,6 +9299,10 @@ class MessagingService {
   /// round, and whoever fell out of the ten saw this phone drop to "away" for a
   /// round while it was plainly in use: "в сети иногда пропадает". The bound
   /// stays for a roster far larger than anybody's circle.
+  ///
+  /// Relay beacons only. Contacts on a live Bluetooth session are beaconed
+  /// whatever their number — "why is there a limit over BLE at all" was the
+  /// right question; see `_fanOutPresence`.
   static const int _presenceFanoutCap = 30;
 
   /// Most peers one channel post is published to. Higher than the presence cap
@@ -9574,7 +9610,14 @@ class MessagingService {
     Uint8List? hiddenBody;
     final settings = _ref.read(conversationSettingsControllerProvider.notifier);
     var sent = 0;
-    final targets = peers.take(_presenceFanoutCap).toList();
+    // No cap on somebody at the other end of a live Bluetooth session: the
+    // beacon to them is one write on a link that is up anyway, and a cap there
+    // only decides who, sitting in the same room, sees this phone go dark. The
+    // cap is for relay events, which is what it was ever about.
+    final targets = [
+      ...peers.where(direct),
+      ...peers.where((p) => !direct(p)).take(_presenceFanoutCap),
+    ];
     for (var i = 0; i < targets.length; i++) {
       // "In the app", said by an app that has since left, is the one thing a
       // beacon must not say — and the goodbye is queued behind this round.
@@ -9730,6 +9773,17 @@ class MessagingService {
   /// up. Worth pinning because the number that made the bug invisible is a
   /// relationship, not a constant: frames arriving further apart than the TTL
   /// should leave a queue of one, and the shipped log had seventeen.
+  /// Whether an announcement lets a removed contact back into the roster —
+  /// only one sealed to us, and only for somebody the roster no longer holds.
+  /// See [_ingestAnnouncement].
+  @visibleForTesting
+  static bool introductionLiftsRemoval({
+    required bool addressedToUs,
+    required bool inRoster,
+    required bool removed,
+  }) =>
+      addressedToUs && !inRoster && removed;
+
   @visibleForTesting
   static bool heldFrameIsFresh(DateTime heldAt, DateTime now) =>
       now.difference(heldAt) <= _heldUnverifiedTtl;

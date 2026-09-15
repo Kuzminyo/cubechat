@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/features/peers/data/known_peers_controller.dart';
 import 'package:cubechat/features/peers/data/removed_contacts_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,10 +80,48 @@ void main() {
     );
   });
 
-  test('writing to us brings them back', () async {
+  test('introducing themselves to us brings them back; the radio does not', () {
+    // Adding us back from our card, or writing to us, sends an introduction
+    // sealed to us. That lifts the removal; a broadcast does not, and nothing
+    // needs lifting for somebody the roster still holds.
+    expect(
+      MessagingService.introductionLiftsRemoval(
+        addressedToUs: true,
+        inRoster: false,
+        removed: true,
+      ),
+      isTrue,
+    );
+    expect(
+      MessagingService.introductionLiftsRemoval(
+        addressedToUs: false,
+        inRoster: false,
+        removed: true,
+      ),
+      isFalse,
+      reason: 'a broadcast off the radio is what the tombstone is for',
+    );
+    expect(
+      MessagingService.introductionLiftsRemoval(
+        addressedToUs: true,
+        inRoster: true,
+        removed: true,
+      ),
+      isFalse,
+    );
+    expect(
+      MessagingService.introductionLiftsRemoval(
+        addressedToUs: true,
+        inRoster: false,
+        removed: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('once lifted, they are in the roster again', () async {
     await removed().remember(alice);
-    // What the transport does when a message actually arrives. Mail is never
-    // worth losing to a preference.
+    // What the transport does on that introduction.
     await removed().restore(alice);
 
     peers().upsert(pubkeyHex: alice, displayName: 'Alice');
