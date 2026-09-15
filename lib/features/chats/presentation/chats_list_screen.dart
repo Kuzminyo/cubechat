@@ -3140,7 +3140,17 @@ Future<void> _confirmAndDeleteChat(
   // and can take the row that asked out from under us. See [_deleteChat].
   final container = ProviderScope.containerOf(context, listen: false);
   // Same reason: the Undo toast goes up after the row that asked has left.
-  final overlay = Overlay.of(context, rootOverlay: true);
+  //
+  // Asked of the navigator, not looked up the tree. `Overlay.of` walks
+  // *ancestors*, and one caller hands this the root navigator's own context —
+  // whose overlay is its child, not its ancestor — so the lookup found nothing
+  // and threw before the dialog was ever built. The tap that did it is the one
+  // the list's own comment calls the way to delete a chat: hold a row, then the
+  // bin on the selection bar, with a single chat picked. It asked nothing,
+  // deleted nothing and showed nothing; the button read as dead. Two or more
+  // chats went down a different path and worked, which is why it looked like
+  // the button rather than the code behind it. Since 1065.
+  final overlay = Navigator.of(context, rootNavigator: true).overlay!;
 
   var alsoForThem = false;
   final confirmed = await showDialog<bool>(

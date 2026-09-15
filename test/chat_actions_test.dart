@@ -86,4 +86,40 @@ void main() {
       isTrue,
     );
   });
+
+  // The bin on the bar, with one chat picked, did nothing at all: the bar hands
+  // the dialog the root navigator's own context, and reading an Overlay off
+  // that context finds none — a Navigator's overlay is its child — so the
+  // Undo toast's overlay threw before the question was ever put. Reported as
+  // the delete button not being pressable. Two or more chats take another path
+  // and always worked, which is what made it look like the button.
+  testWidgets('the bin asks about a single picked chat', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CubechatApp()));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(ChatsListScreen)));
+    await container.read(channelControllerProvider.notifier).join('test');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.longPress(find.text('#test').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Delete this chat?'), findsOneWidget);
+
+    // Answering no leaves the conversation where it was — and leaves no
+    // countdown running behind the test.
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Delete this chat?'), findsNothing);
+    expect(find.text('#test'), findsWidgets);
+  });
 }
