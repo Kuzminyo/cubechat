@@ -118,12 +118,30 @@ class TransitionProbe {
 
   /// A route was pushed ([opening]) or popped.
   void noteRoute(Route<dynamic> route, {required bool opening}) {
+    if (opening) _lastOpened = route;
     if (!armed.value) return;
     _open(
       kind: opening ? 'open' : 'close',
       route: route,
       length: opening ? _openWindow : _closeWindow,
     );
+  }
+
+  /// The screen opened last, so a scroll through it is filed under its name.
+  Route<dynamic>? _lastOpened;
+
+  static const Duration _scrollWindow = Duration(milliseconds: 1200);
+
+  /// A scroll of the screen on top, driven by `TransitionBenchmark`, is about
+  /// to start: the frames of the drag and the fling after it.
+  ///
+  /// Asked for because a change that fixes a transition can cost every frame
+  /// drawn in between — keeping the chat list painted under a conversation is
+  /// the case that raised it — and a scroll is the most frames anyone draws in
+  /// a chat.
+  void noteScroll() {
+    if (!armed.value) return;
+    _open(kind: 'scroll', route: _lastOpened, length: _scrollWindow);
   }
 
   /// The app came back to the front: resuming is measured on its own, so a

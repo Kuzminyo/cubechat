@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -54,6 +55,18 @@ class TransitionBenchmark {
   /// The close's 520 ms window, and the chat list catching up after it.
   static const Duration afterClose = Duration(milliseconds: 1100);
 
+  /// A drag through the open chat and the fling it leaves, before the close.
+  static const Duration afterScroll = Duration(milliseconds: 1300);
+
+  /// While the run's own drag is being fed in, the sheet lets it through.
+  final ValueNotifier<bool> _dragging = ValueNotifier<bool>(false);
+
+  var _dragDown = true;
+
+  /// The pointer the run's own drag uses, which the sheet does not count as a
+  /// touch.
+  static const int _dragPointer = 0x7E57;
+
   static const Duration _settle = Duration(milliseconds: 1500);
 
   /// Of each variant: two variants at ten rounds is about forty-five seconds of
@@ -63,9 +76,11 @@ class TransitionBenchmark {
   /// variant answered theirs in 1059 (media changed nothing on the slide) and
   /// grouped-against-separate blur in 1060-1061 (grouped, now the default).
   /// Blur against no blur answered the close's too in 1062: the same six
-  /// frames over budget either way, all in its first 90 ms. What is being
-  /// asked now is whether that is the chat list being painted again.
-  static const int defaultRounds = 10;
+  /// frames over budget either way, all in its first 90 ms. Keeping the chat
+  /// list painted underneath answered what that is in 1063 (6.7 frames to
+  /// 0.4). What is asked now is what keeping it painted costs a scroll in the
+  /// open chat — eight rounds of each, with a scroll in every one.
+  static const int defaultRounds = 8;
 
   bool _touched = false;
 
@@ -157,6 +172,10 @@ class TransitionBenchmark {
     if (_interrupted) return false;
     unawaited(router.push<void>(chat));
     await Future<void>.delayed(afterOpen);
+    if (_interrupted) return false;
+    TransitionProbe.instance.noteScroll();
+    await _drag();
+    await Future<void>.delayed(afterScroll);
     if (_interrupted || !router.canPop()) return false;
     router.pop();
     await Future<void>.delayed(afterClose);
@@ -164,6 +183,68 @@ class TransitionBenchmark {
   }
 
   bool get _interrupted => _touched || !_foreground;
+
+  /// A thumb's flick through the middle of the screen: 35% of its height in
+  /// 120 ms, down one round and up the next so the conversation is not walked
+  /// ever further back into its history as the run goes on.
+  ///
+  /// Real pointer events through the gesture system, so the list sees a drag
+  /// and a fling exactly as it would from a finger — the scroll physics, the
+  /// "is scrolling" signal the panes read, all of it.
+  Future<void> _drag() async {
+    final view = WidgetsBinding.instance.platformDispatcher.implicitView;
+    if (view == null) return;
+    final size = view.physicalSize / view.devicePixelRatio;
+    final x = size.width / 2;
+    final from = size.height * (_dragDown ? 0.35 : 0.70);
+    final to = size.height * (_dragDown ? 0.70 : 0.35);
+    _dragDown = !_dragDown;
+    const pointer = _dragPointer;
+    const steps = 10;
+    final clock = Stopwatch()..start();
+    Duration stamp() => Duration(microseconds: clock.elapsedMicroseconds);
+    final binding = GestureBinding.instance;
+    _dragging.value = true;
+    try {
+      // The sheet lets touches through from its next build, not from this
+      // line: a drag fed in straight away landed on the sheet and stopped the
+      // run as though somebody had touched it.
+      await WidgetsBinding.instance.endOfFrame;
+      var at = Offset(x, from);
+      binding.handlePointerEvent(
+        PointerDownEvent(
+          viewId: view.viewId,
+          pointer: pointer,
+          position: at,
+          timeStamp: stamp(),
+        ),
+      );
+      for (var i = 1; i <= steps; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 12));
+        final next = Offset(x, from + (to - from) * i / steps);
+        binding.handlePointerEvent(
+          PointerMoveEvent(
+            viewId: view.viewId,
+            pointer: pointer,
+            position: next,
+            delta: next - at,
+            timeStamp: stamp(),
+          ),
+        );
+        at = next;
+      }
+      binding.handlePointerEvent(
+        PointerUpEvent(
+          viewId: view.viewId,
+          pointer: pointer,
+          position: at,
+          timeStamp: stamp(),
+        ),
+      );
+    } finally {
+      _dragging.value = false;
+    }
+  }
 
   static bool get _foreground {
     final state = WidgetsBinding.instance.lifecycleState;
@@ -185,32 +266,41 @@ class _RunningSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) => bench._touched = true,
-        child: SafeArea(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xE6000000),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: ValueListenableBuilder<String?>(
-                    valueListenable: bench.progress,
-                    builder: (context, progress, _) => Text(
-                      'scripted run ${progress ?? ''}\n'
-                      'hands off · touch to stop',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        decoration: TextDecoration.none,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: bench._dragging,
+        builder: (context, dragging, sheet) =>
+            IgnorePointer(ignoring: dragging, child: sheet),
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (event.pointer != TransitionBenchmark._dragPointer) {
+              bench._touched = true;
+            }
+          },
+          child: SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xE6000000),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: ValueListenableBuilder<String?>(
+                      valueListenable: bench.progress,
+                      builder: (context, progress, _) => Text(
+                        'scripted run ${progress ?? ''}\n'
+                        'hands off · touch to stop',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                   ),

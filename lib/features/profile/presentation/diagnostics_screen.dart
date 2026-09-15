@@ -400,10 +400,10 @@ class _BenchmarkRow extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'scripted run: from the chat list, opens and closes a chat '
-              '${TransitionBenchmark.defaultRounds}× each as it is and '
-              'with the chat list kept painted underneath, taking turns. '
-              'About 45 s, hands off — a touch stops it.',
+              'scripted run: from the chat list, opens a chat, scrolls it '
+              'and closes it, ${TransitionBenchmark.defaultRounds}× each as '
+              'it is and with the chat list kept painted underneath, taking '
+              'turns. About 60 s, hands off — a touch stops it.',
               style: dim,
             ),
             Wrap(

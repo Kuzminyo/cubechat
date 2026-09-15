@@ -30,8 +30,25 @@ class _ChatState extends State<_Chat> {
   }
 
   @override
-  Widget build(BuildContext context) => const Scaffold(body: Text('chat'));
+  Widget build(BuildContext context) => Scaffold(
+        body: NotificationListener<ScrollUpdateNotification>(
+          onNotification: (_) {
+            _scrolls++;
+            return false;
+          },
+          child: ListView(
+            children: [
+              const Text('chat'),
+              for (var i = 0; i < 200; i++)
+                SizedBox(height: 60, child: Text('row $i')),
+            ],
+          ),
+        ),
+      );
 }
+
+/// Scroll updates seen by every chat the run opened.
+var _scrolls = 0;
 
 /// The scripted open-and-close run behind the Diagnostics "scripted run" row.
 void main() {
@@ -70,6 +87,7 @@ void main() {
 
   testWidgets('every variant takes its turn, and everything is put back',
       (tester) async {
+    _scrolls = 0;
     final overlay = await pumpApp(tester);
     final bench = TransitionBenchmark.instance;
     unawaited(
@@ -80,7 +98,7 @@ void main() {
     expect(find.textContaining('hands off'), findsOneWidget,
         reason: 'it says it is running from the first moment');
 
-    await elapse(tester, const Duration(seconds: 12));
+    await elapse(tester, const Duration(seconds: 17));
 
     expect(bench.running, isFalse);
     expect(seen, [
@@ -90,6 +108,9 @@ void main() {
     ]);
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);
+    expect(_scrolls, greaterThan(0),
+        reason: 'the drag it feeds in scrolls the screen on top, through the '
+            'sheet that otherwise swallows touches');
     final probe = TransitionProbe.instance;
     expect(probe.placeholderMedia.value, isFalse);
     expect(probe.instantTransitions.value, isFalse);
