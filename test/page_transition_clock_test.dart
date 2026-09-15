@@ -1,4 +1,5 @@
 import 'package:cubechat/core/routing/page_transitions.dart';
+import 'package:cubechat/core/util/transition_probe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +69,26 @@ void main() {
       navigator.push(route);
     });
     await expectHeldThenSmooth(tester, route);
+  });
+
+  testWidgets('the underlay experiment keeps the covered screen painted',
+      (tester) async {
+    addTearDown(() => TransitionProbe.instance.keepUnderlay.value = false);
+    final navigator = await pumpApp(tester);
+
+    navigator.push(screenRoute<void>((_) => const Text('opaque')));
+    await tester.pumpAndSettle();
+    expect(find.text('list'), findsNothing,
+        reason: 'an opaque screen takes the one under it off stage');
+    navigator.pop();
+    await tester.pumpAndSettle();
+
+    TransitionProbe.instance.keepUnderlay.value = true;
+    navigator.push(screenRoute<void>((_) => const Text('see-through')));
+    await tester.pumpAndSettle();
+    expect(find.text('list'), findsOneWidget);
+    navigator.pop();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('once open, going back is the controller exactly',

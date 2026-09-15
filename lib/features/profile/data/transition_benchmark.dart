@@ -12,8 +12,9 @@ enum BenchVariant {
   /// Whatever the phone is set to.
   asIs,
 
-  /// Panes tinted but not blurred, as the light glass tier draws them.
-  noBlur,
+  /// The screen underneath a chat goes on being painted while the chat covers
+  /// it — see [TransitionProbe.keepUnderlay].
+  underlay,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -61,8 +62,9 @@ class TransitionBenchmark {
   /// Variants come and go with the question. Placeholders and the no-slide
   /// variant answered theirs in 1059 (media changed nothing on the slide) and
   /// grouped-against-separate blur in 1060-1061 (grouped, now the default).
-  /// What is left is the close: about six frames over budget with the blur on
-  /// or off, which [TransitionReport.slow] now places in time.
+  /// Blur against no blur answered the close's too in 1062: the same six
+  /// frames over budget either way, all in its first 90 ms. What is being
+  /// asked now is whether that is the chat list being painted again.
   static const int defaultRounds = 10;
 
   bool _touched = false;
@@ -82,6 +84,7 @@ class TransitionBenchmark {
     final wasPlaceholders = probe.placeholderMedia.value;
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
+    final wasUnderlay = probe.keepUnderlay.value;
     const variants = BenchVariant.values;
     final total = rounds * variants.length;
     progress.value = 'starting';
@@ -97,10 +100,11 @@ class TransitionBenchmark {
     );
     var finished = false;
     void apply(BenchVariant v) {
-      AppBlur.panes = v == BenchVariant.noBlur ? false : wasBlur;
+      AppBlur.panes = wasBlur;
       probe
         ..placeholderMedia.value = false
-        ..instantTransitions.value = false;
+        ..instantTransitions.value = false
+        ..keepUnderlay.value = v == BenchVariant.underlay;
     }
 
     try {
@@ -132,6 +136,7 @@ class TransitionBenchmark {
       AppBlur.panes = wasBlur;
       probe
         ..scripted = false
+        ..keepUnderlay.value = wasUnderlay
         ..placeholderMedia.value = wasPlaceholders
         ..instantTransitions.value = wasInstant;
       if (!wasArmed) probe.arm(false);

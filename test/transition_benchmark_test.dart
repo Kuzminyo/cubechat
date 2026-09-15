@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 /// How the chat screen found the experiments as each open was built.
-typedef _Seen = ({bool grouped, bool blur});
+typedef _Seen = ({bool underlay, bool blur});
 
 class _Chat extends StatefulWidget {
   const _Chat(this.seen);
@@ -23,7 +23,10 @@ class _ChatState extends State<_Chat> {
   @override
   void initState() {
     super.initState();
-    widget.seen.add((grouped: AppBlur.groupedPanes, blur: AppBlur.panes));
+    widget.seen.add((
+      underlay: TransitionProbe.instance.keepUnderlay.value,
+      blur: AppBlur.panes,
+    ));
   }
 
   @override
@@ -63,7 +66,7 @@ void main() {
     }
   }
 
-  const asIs = (grouped: true, blur: true);
+  const asIs = (underlay: false, blur: true);
 
   testWidgets('every variant takes its turn, and everything is put back',
       (tester) async {
@@ -83,7 +86,7 @@ void main() {
     expect(seen, [
       asIs, // warm-up, unmeasured
       asIs,
-      (grouped: true, blur: false),
+      (underlay: true, blur: true),
     ]);
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);
@@ -91,7 +94,7 @@ void main() {
     expect(probe.placeholderMedia.value, isFalse);
     expect(probe.instantTransitions.value, isFalse);
     expect(AppBlur.panes, isTrue);
-    expect(AppBlur.groupedPanes, isTrue);
+    expect(probe.keepUnderlay.value, isFalse);
     expect(probe.scripted, isFalse);
     expect(probe.armed.value, isFalse, reason: 'it was not armed before');
   });

@@ -111,6 +111,12 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   @override
   bool get maintainState => true;
 
+  /// Opaque, except under the Diagnostics experiment that keeps the screen
+  /// underneath painted — see [TransitionProbe.keepUnderlay]. Read when the
+  /// route settles, so it applies to routes pushed after it is switched.
+  @override
+  bool get opaque => !TransitionProbe.instance.keepUnderlay.value;
+
   /// The slide is timed from the first frame after the page was built.
   ///
   /// See [_TimedFromFirstFrame]: the frame that builds a conversation is the

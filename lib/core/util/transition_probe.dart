@@ -52,6 +52,18 @@ class TransitionProbe {
   /// built, so it applies to the next chat opened.
   final ValueNotifier<bool> placeholderMedia = ValueNotifier<bool>(false);
 
+  /// **Experiment, temporary.** A pushed screen is not opaque, so the one under
+  /// it goes on being painted the whole time it is covered.
+  ///
+  /// 1062's scripted run put every slow frame of a chat close in its first
+  /// 90 ms — `+0:b10 +16:r20 +24:r14 +41:r14 … +83:r9` — with the blur on
+  /// or off alike, and none after. That is the moment the chat list, not
+  /// painted at all while the conversation covered it, has to be recorded and
+  /// drawn again from nothing. Keeping it painted is the one change that
+  /// answers whether that is the cost; it costs GPU for every frame drawn in
+  /// the open chat, which the same run measures.
+  final ValueNotifier<bool> keepUnderlay = ValueNotifier<bool>(false);
+
   /// The transitions are being driven by a script rather than a thumb — see
   /// `TransitionBenchmark`. Filed apart, because the two are not comparable:
   /// a thumb opens the next chat while the last close is still settling.
@@ -171,6 +183,7 @@ class TransitionProbe {
         if (scripted) 'bench',
         if (instantTransitions.value) 'instant',
         if (placeholderMedia.value) 'placeholders',
+        if (keepUnderlay.value) 'underlay',
         AppBlur.panes ? 'blur' : 'no-blur',
         if (AppBlur.panes && !AppBlur.groupedPanes) 'ungrouped',
       ].join(',');
