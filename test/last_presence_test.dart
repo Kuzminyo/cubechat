@@ -164,6 +164,44 @@ void main() {
     );
   });
 
+  test('a request to hide the clock outlives the beacon that carried it',
+      () async {
+    // "Приховати час візиту" was honoured only while their beacon was fresh:
+    // it lived on the beacon, the beacon expires a hundred seconds after it
+    // lands, and from then on the clock it asked to hide was shown anyway.
+    var container = ProviderContainer();
+    var known = await controller(container);
+    known.upsert(pubkeyHex: peer, displayName: 'Anonymous');
+    await settleBackgroundStorage();
+    final left = DateTime.now().subtract(const Duration(minutes: 5));
+    await known.markPresent(peer, at: left, hidesLastSeen: true);
+    expect(container.read(knownPeersControllerProvider)[peer]?.hidesLastSeen,
+        isTrue);
+
+    // A text they wrote later is a visit, but it is not a change of mind.
+    await known.markPresent(peer, at: left.add(const Duration(minutes: 1)));
+    expect(container.read(knownPeersControllerProvider)[peer]?.hidesLastSeen,
+        isTrue);
+    // Nor is an announcement.
+    known.upsert(pubkeyHex: peer, displayName: 'Anonymous');
+    await settleBackgroundStorage();
+    expect(container.read(knownPeersControllerProvider)[peer]?.hidesLastSeen,
+        isTrue);
+    container.dispose();
+
+    // And it is still there after a restart, with no beacon at all.
+    container = ProviderContainer();
+    addTearDown(container.dispose);
+    known = await controller(container);
+    expect(container.read(knownPeersControllerProvider)[peer]?.hidesLastSeen,
+        isTrue);
+
+    // Their next beacon saying otherwise is what lifts it.
+    await known.markPresent(peer, hidesLastSeen: false);
+    expect(container.read(knownPeersControllerProvider)[peer]?.hidesLastSeen,
+        isFalse);
+  });
+
   test('it survives a restart', () async {
     var container = ProviderContainer();
     var known = await controller(container);

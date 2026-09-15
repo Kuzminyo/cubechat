@@ -35,6 +35,16 @@ class _FakeRelayServer {
   /// rate-limiting, which is the refusal that was silently counted as delivery.
   String refusalMessage = 'rate-limited: you are noting too much';
 
+  /// Sockets accepted so far.
+  int connections = 0;
+
+  /// Sockets numbered below this take every write and answer nothing — the
+  /// socket that died without closing, which is what a suspended iPhone leaves
+  /// behind. New sockets are answered as usual.
+  int _deafBelow = 0;
+
+  void silenceOpenSockets() => _deafBelow = connections;
+
   String get url => 'ws://localhost:${_server.port}';
 
   static Future<_FakeRelayServer> start() async {
@@ -47,10 +57,12 @@ class _FakeRelayServer {
         return;
       }
       final ws = await WebSocketTransformer.upgrade(req);
+      final socketNo = relay.connections++;
       final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
       String? authenticatedKey;
       if (relay.requireAuth) ws.add(jsonEncode(['AUTH', challenge]));
       ws.listen((data) async {
+        if (socketNo < relay._deafBelow) return;
         final msg = jsonDecode(data as String) as List<dynamic>;
         switch (msg[0]) {
           case 'AUTH':
@@ -105,7 +117,7 @@ class _FakeRelayServer {
             relay.reqs.add(data);
             final filter = (msg[2] as Map).cast<String, dynamic>();
             if (relay.requireAuth &&
-                !(filter['#p'] as List).contains(authenticatedKey)) {
+                (filter['#p'] as List?)?.contains(authenticatedKey) != true) {
               ws.add(
                 jsonEncode([
                   'CLOSED',
@@ -304,6 +316,69 @@ void main() {
         reason: 'silence is not a refusal — the event was probably stored',
       );
       expect(receipt.isAccepted, isFalse);
+      expect(
+        relay.connections,
+        1,
+        reason: 'it answered the probe, so the socket was left alone',
+      );
+    });
+
+    test('a socket that died without closing is found out and sent over again',
+        () async {
+      // An iPhone back from sleep: eight sockets still "connected", every write
+      // taken, nothing answered, for three and a half minutes. Two calls rang
+      // nowhere and two texts stayed queued.
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: ackTimeout,
+        probeTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+
+      relay.silenceOpenSockets();
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame)
+          .timeout(const Duration(seconds: 6));
+
+      expect(
+        receipt.isAccepted,
+        isTrue,
+        reason: 'sent again over the reopened socket, and answered',
+      );
+      expect(relay.connections, 2);
+      expect(
+        relay.received,
+        hasLength(1),
+        reason: 'the dead socket swallowed the first copy',
+      );
+    });
+
+    test('coming back to the app checks a socket that still looks open',
+        () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        probeTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+
+      client.wake();
+      await Future<void>.delayed(ackTimeout * 2);
+      expect(relay.connections, 1, reason: 'a live socket answers and stays');
+
+      relay.silenceOpenSockets();
+      client.wake();
+      await _until(
+        () => relay.connections == 2 && client.isConnected,
+        reason: 'the quiet socket reopened',
+      );
     });
 
     test('one relay accepting is enough, even when another refuses', () async {

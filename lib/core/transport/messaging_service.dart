@@ -548,6 +548,10 @@ class MessagingService {
   /// than on every state message a flapping relay emits.
   bool _relayWasConnected = false;
 
+  /// Each relay's state as last seen, so one relay coming back up can be told
+  /// apart from the pool as a whole doing so.
+  Map<String, RelayState> _relayStatesSeen = const {};
+
   /// Where the relay subscription resumes from across restarts.
   final RelayWatermarkStore _relayWatermark = RelayWatermarkStore();
 
@@ -643,6 +647,28 @@ class MessagingService {
         // every state message, or a flapping relay would re-arm the drain
         // continuously and undo the back-off it exists to allow.
         final connected = client.isConnected;
+        // Any one relay coming up, too — not only the pool as a whole.
+        //
+        // The queue below used to be carried only on the pool's transition
+        // from nothing to something, and sockets that die without closing
+        // never make that transition: they count as connected the whole time,
+        // and when they are finally found out and reopened it happens one at a
+        // time, with the rest still "up". A shipped iPhone log had two texts
+        // queued behind eight such sockets and all eight coming back over ten
+        // seconds — and nothing carried the texts, because the pool had never
+        // been down. The flush guards itself against running twice, and gives
+        // up after three failures in a row, so a flapping relay cannot turn it
+        // into a loop.
+        final cameUp = <String>{
+          for (final e in states.entries)
+            if (e.value == RelayState.connected &&
+                _relayStatesSeen[e.key] != RelayState.connected)
+              e.key,
+        };
+        _relayStatesSeen = Map.of(states);
+        if (connected && _relayWasConnected && cameUp.isNotEmpty) {
+          unawaited(_flushOutboxOverRelay());
+        }
         if (connected && !_relayWasConnected) {
           nudgeFileQueue();
           // And the read receipts that had nowhere to go.
@@ -690,6 +716,7 @@ class MessagingService {
     _nostrSub = null;
     await _relayStateSub?.cancel();
     _relayStateSub = null;
+    _relayStatesSeen = const {};
     _nostr = null;
     final client = _relayClient;
     _relayClient = null;
@@ -9273,10 +9300,7 @@ class MessagingService {
   }
 
   Future<void> _greetPeers(List<KnownPeer> peers) async {
-    final body = PresenceBeacon(
-      online: true,
-      hideLastSeen: !_ref.read(privacySettingsProvider).shareLastSeen,
-    ).encode();
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
     var sent = 0;
     for (final peer in peers) {
       if (_disposed) return;
@@ -9286,6 +9310,13 @@ class MessagingService {
       } catch (_) {
         continue;
       }
+      // The contact's own exception as well as the global switch, the way the
+      // heartbeat asks — this read only the global one, so a contact hidden
+      // from was greeted with the clock allowed.
+      final body = PresenceBeacon(
+        online: true,
+        hideLastSeen: !settings.sharesLastSeenWith(peer.pubkeyHex),
+      ).encode();
       try {
         final n = await _sendControlToPeer(
           canonicalId: peer.pubkeyHex,
@@ -9976,9 +10007,16 @@ class MessagingService {
     // At the beacon's own moment, not at ours, for the same reason: a beacon
     // that waited on a relay is evidence of life *then*. [markPresent] never
     // moves the mark backwards, so a stale one cannot undo a fresher answer.
-    _ref
-        .read(knownPeersControllerProvider.notifier)
-        .markPresent(canonical, at: stamp);
+    //
+    // The hide request is kept with the mark, stale beacon or fresh: it has to
+    // outlive the beacon, which is gone in a hundred seconds, while the clock
+    // it hides is shown for as long as they are away. See
+    // [KnownPeer.hidesLastSeen].
+    _ref.read(knownPeersControllerProvider.notifier).markPresent(
+          canonical,
+          at: stamp,
+          hidesLastSeen: beacon.hideLastSeen,
+        );
     DebugLog.instance.log(
       'PRESENCE',
       '${canonical.substring(0, 8)} is '

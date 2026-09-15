@@ -445,7 +445,12 @@ class ChatScreen extends ConsumerWidget {
     // ours, because we gave up seeing everybody's times when we stopped
     // publishing our own — and theirs, carried on their beacon, which is the
     // only thing their switch can do from another phone.
-    final hideTimes = !presenceShared || (beacon?.hidesLastSeen ?? false);
+    //
+    // Theirs is read off the beacon while there is one and off the roster once
+    // it has expired — see [KnownPeer.hidesLastSeen] for what forgetting it
+    // with the beacon did.
+    final hideTimes = !presenceShared ||
+        (beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false);
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
     ref.watch(typingControllerProvider.select((all) => all[canonicalId]));

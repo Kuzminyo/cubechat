@@ -324,7 +324,10 @@ class _PeekHeader extends ConsumerWidget {
         blocked: blocked,
         activity: activity,
         online: isOnline,
-        hideTimes: !shared || (beacon?.hidesLastSeen ?? false),
+        // The roster's copy once the beacon has expired — see
+        // [KnownPeer.hidesLastSeen].
+        hideTimes: !shared ||
+            (beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false),
         lastPresent: known?.lastPresenceAt,
       );
     } else {

@@ -33,6 +33,22 @@ class NostrRelayProtocol {
     return jsonEncode(['REQ', subId, filter]);
   }
 
+  /// A `["REQ", subId, filter]` whose filter matches nothing, so the relay
+  /// answers with a bare `EOSE` (or a `CLOSED`) and no events.
+  ///
+  /// It asks whether a socket is still alive without asking for anything: our
+  /// own [req] would work as well and would replay ten minutes of mail from
+  /// every relay on every resume — a photo received a minute ago is thirty-odd
+  /// chunks, eight times over.
+  static String probe(String subId) => jsonEncode([
+        'REQ',
+        subId,
+        {
+          'ids': ['0' * 64],
+          'limit': 1,
+        },
+      ]);
+
   /// A `["EVENT", event]` publishing a signed event.
   static String event(NostrEvent event) {
     return jsonEncode(['EVENT', event.toJson()]);

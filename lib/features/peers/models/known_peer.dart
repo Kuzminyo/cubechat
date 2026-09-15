@@ -34,6 +34,7 @@ class KnownPeer {
     this.mutedAt,
     this.allowsForwardLink = true,
     this.avatarHash,
+    this.hidesLastSeen = false,
   });
 
   final String pubkeyHex;
@@ -58,6 +59,17 @@ class KnownPeer {
   /// morning — 17:47 was when their phone last spoke, not when they last
   /// looked. Reported from an iOS device that had not been opened at all.
   final DateTime? lastPresenceAt;
+
+  /// They asked not to be shown a clock beside their status — the flag on
+  /// their newest presence beacon, kept.
+  ///
+  /// It used to live only on the beacon itself, in `PresenceController`, and
+  /// that forgets a beacon a hundred seconds after it lands. So for as long as
+  /// somebody was in the app their time was hidden, and the moment they left
+  /// it the entry expired, the request went with it, and [lastPresenceAt] was
+  /// printed after all — "мій час візиту бачать", with the switch off. A
+  /// request about *when they were last here* has to outlive their being here.
+  final bool hidesLastSeen;
   final DateTime? verifiedAt;
   final Uint8List? signPublicKey;
 
@@ -130,6 +142,7 @@ class KnownPeer {
     DateTime? mutedAt,
     bool? allowsForwardLink,
     Uint8List? avatarHash,
+    bool? hidesLastSeen,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
     bool clearBlockedAt = false,
@@ -152,6 +165,7 @@ class KnownPeer {
       mutedAt: clearMutedAt ? null : (mutedAt ?? this.mutedAt),
       allowsForwardLink: allowsForwardLink ?? this.allowsForwardLink,
       avatarHash: clearAvatarHash ? null : (avatarHash ?? this.avatarHash),
+      hidesLastSeen: hidesLastSeen ?? this.hidesLastSeen,
     );
   }
 }

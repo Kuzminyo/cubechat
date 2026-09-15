@@ -46,7 +46,9 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     Iterable<String>? seenIds,
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
+    Duration? probeTimeout,
   })  : _authSigner = authSigner,
+        _probeTimeout = probeTimeout ?? defaultProbeTimeout,
         _verifyInbound = verifyInbound ?? _verifyOffThread,
         _urls = List.unmodifiable(
           <String>{
@@ -182,6 +184,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// between an iPhone and an Android took however long the timer happened to
   /// have left. Coming back to the app is the strongest possible signal that
   /// the network is worth another try.
+  ///
+  /// And a relay that *looks* up is asked whether it still is — see
+  /// [_RelayConnection.probe]. The paragraph above was half the story: iOS
+  /// does not always tear the socket down. A shipped iPhone log had every one
+  /// of eight sockets still "connected" after the phone came back, taking every
+  /// write and answering none, for three and a half minutes. Two calls to an
+  /// Android rang nowhere and two texts sat in the queue, while this method
+  /// skipped all eight because they were up.
   void wake() {
     if (_disposed) return;
     // start() first, so a relay added while we were away gets a connection at
@@ -191,6 +201,20 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       conn.wake();
     }
   }
+
+  /// How long a socket that looks open has to answer a probe before it is
+  /// taken for dead and opened again.
+  ///
+  /// A live relay answers a REQ with its `EOSE` in a round trip — a few
+  /// hundred milliseconds on a mobile link. Two seconds leaves room for a slow
+  /// one, and a wrong verdict costs one reconnect, not a message.
+  static const Duration defaultProbeTimeout = Duration(seconds: 2);
+
+  final Duration _probeTimeout;
+
+  /// How long a publish waits for a socket reopened after a failed probe
+  /// before it sends again without it.
+  static const Duration _reopenWait = Duration(seconds: 3);
 
   /// How long to wait for relays to answer an `EVENT` before giving up on the
   /// stragglers.
@@ -229,6 +253,64 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     }
     final id = event.id;
     final payload = NostrRelayProtocol.event(event);
+    var receipt = await _publishTo(targets, id, payload);
+
+    // Nobody answered at all: find out whether anybody is there.
+    //
+    // One relay being slow is ordinary, and the publish already settles on the
+    // first `OK` without waiting for it. Every relay quiet at once is the
+    // pattern of sockets that died without saying so — the phone asleep, a
+    // network switch — and a shipped iPhone log had exactly that for three and
+    // a half minutes: every write taken, none answered, nothing reconnecting,
+    // because nothing had closed. Two calls rang nowhere and two texts stayed
+    // queued in that window.
+    //
+    // So each socket is probed, the dead ones are opened again, and the same
+    // event goes out once more over whatever answered. Sending twice is safe:
+    // a relay answers a duplicate id with `OK`, and the frame inside carries a
+    // msgId the recipient already dedups on. Waiting costs the sender a few
+    // seconds; not sending costs the message.
+    if (id != null && receipt.accepted == 0 && receipt.rejected == 0) {
+      final before = targets.length;
+      final alive = await Future.wait([
+        for (final c in targets) c.probe(timeout: _probeTimeout),
+      ]);
+      final revived = alive.where((a) => !a).length;
+      if (revived > 0 && !_disposed) {
+        DebugLog.instance.log(
+          'NOSTR',
+          'no answer from $before relay(s) — $revived did not answer a probe '
+              'either, reopened; sending ${id.substring(0, 8)} again',
+        );
+        await Future.wait([
+          for (final c in targets) c.whenOpen(_reopenWait),
+        ]);
+        final reopened = _conns.values.where((c) => c.isOpen).toList();
+        final again = wanted.isEmpty
+            ? reopened
+            : reopened.where((c) => wanted.contains(c.url)).toList();
+        final retargets = again.isNotEmpty ? again : reopened;
+        if (retargets.isNotEmpty && !_disposed) {
+          receipt = await _publishTo(retargets, id, payload);
+        }
+      }
+    }
+
+    if (id != null) {
+      DebugLog.instance.log(
+        'NOSTR',
+        'published ${id.substring(0, 8)} — $receipt',
+      );
+    }
+    return receipt;
+  }
+
+  /// One write of [payload] to [targets], and the answers to it.
+  Future<PublishReceipt> _publishTo(
+    List<_RelayConnection> targets,
+    String? id,
+    String payload,
+  ) async {
     var sent = 0;
     for (final c in targets) {
       if (c.send(payload)) sent++;
@@ -250,12 +332,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     _pending[id] = pending;
 
     final receipt = await pending.wait(_publishAckTimeout);
-    _pending.remove(id);
-
-    DebugLog.instance.log(
-      'NOSTR',
-      'published ${id.substring(0, 8)} — $receipt',
-    );
+    if (identical(_pending[id], pending)) _pending.remove(id);
     return receipt;
   }
 
@@ -471,14 +548,81 @@ class _RelayConnection {
 
   /// Try again immediately, whatever the backoff had grown to.
   ///
-  /// A no-op when the socket is already up: reopening a healthy connection
-  /// would drop the subscription and re-ask for the backlog for nothing.
+  /// A socket that is already up is not reopened — that would drop the
+  /// subscription and re-ask for the backlog for nothing — but it is asked
+  /// whether it is really there. See [probe].
   void wake() {
-    if (_closed || _connected) return;
+    if (_closed) return;
+    if (_connected) {
+      unawaited(probe(timeout: _pool._probeTimeout));
+      return;
+    }
+    _reopenNow();
+  }
+
+  void _reopenNow() {
+    if (_closed) return;
     _retryTimer?.cancel();
     _retryTimer = null;
     _backoff = WebSocketNostrRelayClient._initialBackoff;
     unawaited(open());
+  }
+
+  /// Completed by the next frame of any kind to arrive on this socket, which is
+  /// all a probe waits for.
+  Completer<void>? _heardSomething;
+
+  Future<bool>? _probing;
+
+  /// Whether a socket that looks open still has a relay on the other end.
+  ///
+  /// A socket can die without closing: the phone is suspended, the network
+  /// changes under it, and no FIN ever arrives. The channel then goes on
+  /// taking writes into nothing, and every check this class made — connected,
+  /// not errored, not done — keeps saying yes. So it is asked something a relay
+  /// must answer (see [NostrRelayProtocol.probe]); anything at all coming back
+  /// inside [timeout] is life. Silence tears the socket down and opens it
+  /// again at once.
+  ///
+  /// True when it answered. False when it did not, or was already down, and a
+  /// fresh socket is on its way — [whenOpen] waits for that. Probes asked for
+  /// while one is running share it.
+  Future<bool> probe({required Duration timeout}) {
+    if (_closed) return Future<bool>.value(true);
+    if (!_connected) {
+      if (_retryTimer != null) _reopenNow();
+      return Future<bool>.value(false);
+    }
+    return _probing ??= _runProbe(timeout).whenComplete(() => _probing = null);
+  }
+
+  Future<bool> _runProbe(Duration timeout) async {
+    final channel = _channel;
+    final waiter = _heardSomething = Completer<void>();
+    final probeId = 'cc-probe-${Random().nextInt(1 << 32).toRadixString(16)}';
+    if (!send(NostrRelayProtocol.probe(probeId))) return false;
+    final answered = await waiter.future
+        .then((_) => true)
+        .timeout(timeout, onTimeout: () => false);
+    if (identical(_heardSomething, waiter)) _heardSomething = null;
+    if (_closed) return true;
+    if (answered) {
+      send(NostrRelayProtocol.close(probeId));
+      return true;
+    }
+    // It went down by itself while we waited, and is already coming back.
+    if (!identical(channel, _channel)) return false;
+    _onDown('no answer to a probe in ${timeout.inMilliseconds} ms');
+    _reopenNow();
+    return false;
+  }
+
+  /// Wait, up to [max], for this socket to be open.
+  Future<void> whenOpen(Duration max) async {
+    final deadline = DateTime.now().add(max);
+    while (!_connected && !_closed && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   /// Open the socket and wait for it to actually be up.
@@ -590,6 +734,8 @@ class _RelayConnection {
   }
 
   void _onMessage(dynamic raw) {
+    final waiter = _heardSomething;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
     if (raw is! String) return;
     final msg = NostrRelayProtocol.parse(raw);
     switch (msg) {
@@ -660,6 +806,7 @@ class _RelayConnection {
 
   void _teardownSocket() {
     _connected = false;
+    _heardSomething = null;
     _authChallenge = null;
     _authEventId = null;
     _authInFlight = false;

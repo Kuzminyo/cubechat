@@ -168,6 +168,8 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       // around; only a presence beacon says somebody is in the app, and
       // [markPresent] is the one place that writes it.
       lastPresenceAt: existing?.lastPresenceAt,
+      // Theirs, and only a beacon says it — see [markPresent].
+      hidesLastSeen: existing?.hidesLastSeen ?? false,
       // Preserve a prior verification across name / lastSeen refreshes —
       // verification is tied to the pubkey, which by definition hasn't
       // changed if we're upserting under the same pubkeyHex. EXCEPT when
@@ -226,7 +228,14 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
   /// Called only from a presence beacon, which is the only message that means
   /// it. Everything else — announcements, handshakes, relayed frames — says a
   /// phone is reachable, and a phone is reachable while its owner is asleep.
-  Future<void> markPresent(String pubkeyHex, {DateTime? at}) async {
+  ///
+  /// [hidesLastSeen] is the request a beacon carries, and null from anything
+  /// that is not a beacon. See [KnownPeer.hidesLastSeen].
+  Future<void> markPresent(
+    String pubkeyHex, {
+    DateTime? at,
+    bool? hidesLastSeen,
+  }) async {
     // Against what is queued as well as what is published, or a burst would be
     // judged against half its own history.
     final existing = _pendingPresence[pubkeyHex] ?? state[pubkeyHex];
@@ -237,10 +246,19 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     // answer to "when were they last there", but it must not undo a beacon
     // that arrived since.
     final known = existing.lastPresenceAt;
-    if (known != null && !when.isAfter(known)) return;
+    final newer = known == null || when.isAfter(known);
+    // The request goes with the newest beacon, and a beacon dated the same
+    // moment as the mark still counts: a text and a beacon in the same second
+    // are the same visit.
+    final hides = hidesLastSeen != null &&
+            (newer || when.isAtSameMomentAs(known))
+        ? hidesLastSeen
+        : existing.hidesLastSeen;
+    if (!newer && hides == existing.hidesLastSeen) return;
     final updated = existing.copyWith(
       lastSeen: existing.lastSeen.isAfter(when) ? existing.lastSeen : when,
-      lastPresenceAt: when,
+      lastPresenceAt: newer ? when : known,
+      hidesLastSeen: hides,
     );
 
     // The first mark of a burst lands at once; the rest of it queues.
@@ -445,6 +463,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         if (p.mutedAt != null) 'mutedAtIso': p.mutedAt!.toIso8601String(),
         if (!p.allowsForwardLink) 'noForwardLink': true,
         if (p.avatarHash != null) 'avatarHashHex': _hexOf(p.avatarHash!),
+        if (p.hidesLastSeen) 'hidesLastSeen': true,
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
@@ -473,6 +492,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       mutedAt: mutedRaw == null ? null : DateTime.tryParse(mutedRaw),
       allowsForwardLink: m['noForwardLink'] != true,
       avatarHash: avatarRaw == null ? null : _hexDecode(avatarRaw),
+      hidesLastSeen: m['hidesLastSeen'] == true,
     );
   }
 

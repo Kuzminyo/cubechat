@@ -705,7 +705,10 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
     final theirBeacon = ref.watch(
       presenceControllerProvider.select((m) => m[peerPubkeyHex]),
     );
-    final hideTimes = !presenceShared || (theirBeacon?.hidesLastSeen ?? false);
+    // The roster's copy once the beacon has expired — see
+    // [KnownPeer.hidesLastSeen].
+    final hideTimes = !presenceShared ||
+        (theirBeacon?.hidesLastSeen ?? peer?.hidesLastSeen ?? false);
     // Read off the beacon this screen already holds rather than off the chat
     // row, which no longer carries presence — see [peerOnlineProvider].
     final isOnline = peerIsOnline(
