@@ -176,6 +176,23 @@ class PendingImageSend {
   final Message message;
 }
 
+/// The ids of a room's members as its roster has them, leaving out anybody an
+/// administrator put out of it.
+@visibleForTesting
+Set<String> roomMemberIds(Map<String, ChannelMember>? roster) => {
+      for (final m in (roster ?? const <String, ChannelMember>{}).values)
+        if (m.removedAt == null) m.id,
+    };
+
+/// Whether [peer] is one of [memberIds] — the question a room post asks before
+/// it rings somebody's doorbell. See `_broadcastChannelOverNostr`.
+@visibleForTesting
+bool isRoomMember(KnownPeer peer, Set<String> memberIds) {
+  final key = peer.signPublicKey;
+  return key != null &&
+      memberIds.contains(ChannelRosterController.fingerprintOf(key));
+}
+
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
 /// message store together.
 ///
@@ -4400,7 +4417,8 @@ class MessagingService {
               packTextReply(replyTarget, inner),
               msgId,
             );
-      final fanout = await _broadcastChannelFrame(frame);
+      final fanout =
+          await _broadcastChannelFrame(frame, wakeRoom: channel.name);
       messages.updateStatus(
         canonicalId,
         msg.id,
@@ -4495,6 +4513,7 @@ class MessagingService {
         caption: caption0,
         sha256: sha,
       );
+      // The manifest rings; the chunks behind it do not.
       var fanout = await _broadcastChannelFrame(
         await _buildChannelFrame(
           channel,
@@ -4502,6 +4521,7 @@ class MessagingService {
           manifest.encode(),
           TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         ),
+        wakeRoom: channel.name,
       );
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -4610,6 +4630,7 @@ class MessagingService {
         durationMs: durationMs,
         sha256: sha,
       );
+      // The manifest rings; the chunks behind it do not.
       var fanout = await _broadcastChannelFrame(
         await _buildChannelFrame(
           channel,
@@ -4617,6 +4638,7 @@ class MessagingService {
           manifest.encode(),
           TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         ),
+        wakeRoom: channel.name,
       );
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -4834,7 +4856,8 @@ class MessagingService {
         payload.encode(),
         msgId,
       );
-      final fanout = await _broadcastChannelFrame(frame);
+      final fanout =
+          await _broadcastChannelFrame(frame, wakeRoom: channel.name);
       messages.updateStatus(
         channel.name,
         message.id,
@@ -5210,10 +5233,18 @@ class MessagingService {
   ///
   /// Capped and paced, because relays rate-limit: a burst of publishes earns a
   /// `rate-limited` that lands on real messages too.
-  Future<int> _broadcastChannelFrame(Uint8List frameBytes) async {
+  ///
+  /// [wakeRoom] names the room when this frame is news a member would want to
+  /// be woken for — a post, a photo, a voice note, a poll — and is left null
+  /// for everything else. See [_broadcastChannelOverNostr].
+  Future<int> _broadcastChannelFrame(
+    Uint8List frameBytes, {
+    String? wakeRoom,
+  }) async {
     _rememberChannelFrame(frameBytes);
     final mesh = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    final relayed = await _broadcastChannelOverNostr(frameBytes);
+    final relayed =
+        await _broadcastChannelOverNostr(frameBytes, wakeRoom: wakeRoom);
     return mesh + relayed;
   }
 
@@ -5282,9 +5313,30 @@ class MessagingService {
     }
   }
 
+  /// **Who is woken, and for what.** Every frame of every room used to ring
+  /// the doorbell of every contact it went to — `wakesPeer: true`, here, for
+  /// all of them. A room frame goes to all of this phone's contacts, members
+  /// or not, and every member carries each one on to all of *theirs*; so a
+  /// read receipt, a reaction, a pin, each of the thirty chunks of one photo,
+  /// and every one of those again from every member, put "Нове повідомлення"
+  /// on the lock screen of people with no message to read — most of them not
+  /// even in the room, holding a frame they cannot open. Reported as exactly
+  /// that: a notification, and nothing behind it. A shipped log carried
+  /// `channel post relayed to 11 peer(s)` for a room far smaller than eleven.
+  ///
+  /// Now only [wakeRoom]'s members are woken, and only when it is given: the
+  /// author's own post, photo, voice note or poll. Everything else still
+  /// travels exactly as before — nothing about delivery changes — it just no
+  /// longer rings. A member learns of the rest when the app next opens, which
+  /// is when a reaction or a tick is worth seeing anyway.
+  ///
+  /// Members as the roster knows them, by the signing-key fingerprint a room
+  /// frame carries. A member who has never shown up in the room's traffic is
+  /// not in it and is not woken; reading the room once puts them there.
   Future<int> _broadcastChannelOverNostr(
     Uint8List frameBytes, {
     String? excludePubkeyHex,
+    String? wakeRoom,
   }) async {
     if (_nostr == null) return 0;
     final now = DateTime.now();
@@ -5300,6 +5352,10 @@ class MessagingService {
       ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
     if (peers.isEmpty) return 0;
 
+    final members = wakeRoom == null
+        ? const <String>{}
+        : roomMemberIds(_ref.read(channelRosterControllerProvider)[wakeRoom]);
+
     final targets = peers.take(_channelFanoutCap).toList();
     var sent = 0;
     for (var i = 0; i < targets.length; i++) {
@@ -5307,7 +5363,7 @@ class MessagingService {
         if (await _sendOverNostr(
           targets[i].pubkeyHex,
           frameBytes,
-          wakesPeer: true,
+          wakesPeer: isRoomMember(targets[i], members),
         )) {
           sent++;
         }
@@ -5359,6 +5415,10 @@ class MessagingService {
     // missing — and their link may not exist for another ten minutes. The
     // mesh's own relay only reaches the links that are up right now.
     _rememberChannelFrame(bytes);
+    // Carried on without ringing anybody: the author rang the members they
+    // know when they posted, and a carried copy is a second event for the same
+    // post — one more "new message" banner for every member it reaches. See
+    // [_broadcastChannelOverNostr].
     final sent = await _broadcastChannelOverNostr(
       bytes,
       excludePubkeyHex: originHex,
