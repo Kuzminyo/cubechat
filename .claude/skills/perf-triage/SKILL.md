@@ -65,12 +65,6 @@ Do not re-propose these; they are in the tree.
   17-35 ms build of a conversation was spent out of the slide and showed as a
   jump. Do not "fix" an open jerk by deferring part of the page to the next
   frame: that moves the cost from before the motion into the middle of it.
-- The page *under* a slide is drawn from a `SnapshotWidget` while the slide
-  runs (1056, `_StillWhileCovered`). Impeller keeps no raster cache, so a
-  `RepaintBoundary` does not stop a static layer being redrawn every frame;
-  1055 measured chat open/close raster p95 9.8-15.3 ms against 5-7 for a plain
-  screen. Never snapshot the arriving page, and nothing is snapshotted under
-  `mediaRoute` — a photo's hero would show twice.
 - Chat list rows are kept by identity while their inputs are equal (1055):
   727 widgets rebuilt for one changed row became 211
   (`test/chat_list_rebuild_budget_test.dart`)
@@ -116,6 +110,13 @@ half the lesson; re-proposing it is the failure this section exists to prevent.
   plain painting — full-screen gradients and translucent fills over them — and
   the way to move that number is to draw less area, not to remove passes there
   are not many of. The test is also the guard: it fails if the counts grow.
+- **A `SnapshotWidget` over the page under a slide** (1056, reverted in 1057).
+  Impeller keeps no raster cache, so snapshotting the static covered page
+  looked like a free halving of transition raster. On the phone it cut frames
+  over 8.3 ms by a quarter and multiplied frames over 16.7 ms by three, with
+  raster frames of 82-99 ms and +60 MB rss: a new full-screen texture per
+  slide, and the allocation is sometimes most of a tenth of a second. See the
+  comment in `_SlideRoute.buildTransitions`.
 - **An animation-polish branch** (2026-08-17) — written and deleted. Fix measured
   lag before any "make it feel better" pass, and animate what every touch does
   rather than what happens rarely.
