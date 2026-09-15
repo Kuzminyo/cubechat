@@ -960,6 +960,23 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get chatsDeletedToast => 'Chat deleted.';
+
+  @override
+  String chatsDeletedManyToast(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chats deleted.',
+      one: '$count chat deleted.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get undo => 'Undo';
+
+  @override
   String get chatsDeletePeerHint =>
       'Clears the conversation. The contact stays, so you can write to them again without swapping codes.';
 

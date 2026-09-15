@@ -499,6 +499,15 @@
   "@chatsDeleteManyHint": {
     "placeholders": { "count": { "type": "int" } }
   },
+  "chatsDeletedToast": "Chat deleted.",
+  "@chatsDeletedToast": {
+    "description": "Toast after deleting a chat, shown with an Undo button and a five-second countdown."
+  },
+  "chatsDeletedManyToast": "{count, plural, one{{count} chat deleted.} other{{count} chats deleted.}}",
+  "@chatsDeletedManyToast": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "undo": "Undo",
   "chatsDeletePeerHint": "Clears the conversation. The contact stays, so you can write to them again without swapping codes.",
   "chatsDeleteChannelHint": "Leaves the channel and removes its history. You will need the key again to rejoin.",
   "chatsDeleteForThemToo": "Also delete for them",

@@ -6,6 +6,7 @@ import 'package:cubechat/features/chat/data/message_reply_target.dart';
 import 'package:cubechat/features/chat/data/message_selection.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
+import 'package:cubechat/features/chat/presentation/chat_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/peers/data/known_peers_controller.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,14 @@ import 'support/hive_settle.dart';
 /// so what is pinned here is the observable result — the reply target the
 /// composer reads, and the optimistic local echo a reaction leaves on the
 /// message.
+/// [finder] inside the open conversation only.
+///
+/// Since 1065 the chat list stays painted under a chat that covers it, so the
+/// same words are on stage twice — in the bubble and in the row's preview —
+/// and `.first` found the row.
+Finder _inChat(Finder finder) =>
+    find.descendant(of: find.byType(ChatScreen), matching: finder).first;
+
 void main() {
   late Directory tempDir;
 
@@ -101,7 +110,7 @@ void main() {
     expect(container.read(messageSelectionProvider(peerHex)), isEmpty);
 
     final messageCenter =
-        tester.getCenter(find.text('ключі під килимком').first);
+        tester.getCenter(_inChat(find.text('ключі під килимком')));
     final rowBlankSpace = Offset(
       tester.view.physicalSize.width / tester.view.devicePixelRatio - 24,
       messageCenter.dy,
@@ -132,7 +141,7 @@ void main() {
     expect(container.read(messageReplyTargetProvider), isNull);
 
     await tester.drag(
-      find.text('ключі під килимком').first,
+      _inChat(find.text('ключі під килимком')),
       const Offset(-110, 0),
     );
     await beat(tester);
@@ -147,16 +156,16 @@ void main() {
   testWidgets('the bubble springs back rather than staying dragged',
       (tester) async {
     await openPeerChat(tester);
-    final before = tester.getTopLeft(find.text('ключі під килимком').first);
+    final before = tester.getTopLeft(_inChat(find.text('ключі під килимком')));
 
     await tester.drag(
-      find.text('ключі під килимком').first,
+      _inChat(find.text('ключі під килимком')),
       const Offset(-110, 0),
     );
     await beat(tester);
 
     expect(
-      tester.getTopLeft(find.text('ключі під килимком').first).dx,
+      tester.getTopLeft(_inChat(find.text('ключі під килимком'))).dx,
       closeTo(before.dx, 0.5),
       reason: 'the swipe is a gesture, not a new resting position',
     );
@@ -166,7 +175,7 @@ void main() {
     final container = await openPeerChat(tester);
 
     await tester.drag(
-      find.text('ключі під килимком').first,
+      _inChat(find.text('ключі під килимком')),
       const Offset(-20, 0),
     );
     await beat(tester);
@@ -182,7 +191,7 @@ void main() {
     final container = await openPeerChat(tester);
 
     await tester.drag(
-      find.text('ключі під килимком').first,
+      _inChat(find.text('ключі під килимком')),
       const Offset(80, 0),
     );
     await beat(tester);
@@ -194,7 +203,7 @@ void main() {
     final container = await openPeerChat(tester);
 
     await tester.drag(
-      find.text('ключі під килимком').first,
+      _inChat(find.text('ключі під килимком')),
       const Offset(0, -120),
     );
     await beat(tester);
@@ -212,7 +221,7 @@ void main() {
     final before = container.read(messagesControllerProvider)[peerHex]!.single;
     expect(before.reactions, isEmpty);
 
-    final finder = find.text('ключі під килимком').first;
+    final finder = _inChat(find.text('ключі під килимком'));
     await tester.tap(finder);
     await tester.pump(const Duration(milliseconds: 60));
     await tester.tap(finder);
@@ -229,7 +238,7 @@ void main() {
   testWidgets('a single tap leaves no reaction', (tester) async {
     final container = await openPeerChat(tester);
 
-    await tester.tap(find.text('ключі під килимком').first);
+    await tester.tap(_inChat(find.text('ключі під килимком')));
     await beat(tester);
 
     final after = container.read(messagesControllerProvider)[peerHex]!.single;

@@ -963,6 +963,25 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String get chatsDeletedToast => 'Чат видалено.';
+
+  @override
+  String chatsDeletedManyToast(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Видалено $count чату.',
+      many: 'Видалено $count чатів.',
+      few: 'Видалено $count чати.',
+      one: 'Видалено $count чат.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get undo => 'Скасувати';
+
+  @override
   String get chatsDeletePeerHint =>
       'Розмову буде очищено. Контакт залишиться — писати йому знову можна без обміну кодами.';
 

@@ -5,6 +5,7 @@ import 'package:cubechat/features/channels/data/channel_controller.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/data/pinned_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
+import 'package:cubechat/features/chat/presentation/chat_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,9 +103,15 @@ void main() {
     // Open the chat.
     await tester.tap(find.text('#test').first);
     await beat(tester);
-    expect(find.text('адреса зустрічі'), findsOneWidget);
+    // Inside the conversation: the chat list stays painted under it since
+    // 1065, and its row previews the same words.
+    final inChat = find.descendant(
+      of: find.byType(ChatScreen),
+      matching: find.text('адреса зустрічі'),
+    );
+    expect(inChat, findsOneWidget);
 
-    await tester.longPress(find.text('адреса зустрічі'));
+    await tester.longPress(inChat);
     await beat(tester);
 
     expect(find.byIcon(Icons.push_pin_rounded), findsWidgets);

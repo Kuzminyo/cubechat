@@ -402,7 +402,7 @@ class _BenchmarkRow extends ConsumerWidget {
             Text(
               'scripted run: from the chat list, opens a chat, scrolls it '
               'and closes it, ${TransitionBenchmark.defaultRounds}× each as '
-              'it is and with the chat list kept painted underneath, taking '
+              'it is and with the old opaque screens, taking '
               'turns. About 60 s, hands off — a touch stops it.',
               style: dim,
             ),

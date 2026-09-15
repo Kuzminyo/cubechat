@@ -111,9 +111,29 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   @override
   bool get maintainState => true;
 
-  /// Opaque, except under the Diagnostics experiment that keeps the screen
-  /// underneath painted — see [TransitionProbe.keepUnderlay]. Read when the
-  /// route settles, so it applies to routes pushed after it is switched.
+  /// **Not opaque, so the screen underneath stays painted while this one
+  /// covers it** — since 1065. See [TransitionProbe.keepUnderlay] for the
+  /// switch that measures the old way.
+  ///
+  /// An opaque route takes the screen under it off stage once it has slid in,
+  /// which sounds free and was not: closing a chat then had to record and draw
+  /// the whole chat list again from nothing, in the first 90 ms of the slide
+  /// back. The scripted run on the Android phone, ten closes of each, taking
+  /// turns:
+  ///
+  /// ```
+  ///                    frames over 8.3 ms   over 16.7   raster p95
+  /// opaque (before)          6.7               0.8        13.4 ms
+  /// list kept painted        0.4               0.0         6.1 ms
+  /// ```
+  ///
+  /// Opening was the same either way (8.8 and 9.1 frames over 8.3 ms). What a
+  /// scroll inside the open chat pays for the list under it had not been run
+  /// when this shipped at the owner's request; the scripted run compares it
+  /// against opaque for exactly that.
+  ///
+  /// Nothing underneath can be touched or read out: the page on top covers the
+  /// screen, and every route's modal barrier blocks the semantics below it.
   @override
   bool get opaque => !TransitionProbe.instance.keepUnderlay.value;
 
@@ -331,7 +351,11 @@ class _RoundedWhileMoving extends StatelessWidget {
   final Animation<double> secondary;
   final Widget child;
 
-  static const double _radius = 22;
+  // Match the requested rounded sheet on the first part of the drag. The
+  // former 22 * progress gave only 5.5 px at the quarter-width commit point,
+  // so the exposed edge looked square until the page was almost gone.
+  // Reach the full corner early, then keep it stable for the remaining slide.
+  static const double _radius = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -343,7 +367,8 @@ class _RoundedWhileMoving extends StatelessWidget {
           1 - primary.value.clamp(0.0, 1.0),
           secondary.value.clamp(0.0, 1.0),
         );
-        final radius = _radius * travelling;
+        final cornerProgress = (travelling / 0.16).clamp(0.0, 1.0);
+        final radius = _radius * Curves.easeOut.transform(cornerProgress);
         return ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           // `hardEdge` while it travels, not `antiAlias`.

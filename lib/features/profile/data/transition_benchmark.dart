@@ -13,9 +13,9 @@ enum BenchVariant {
   /// Whatever the phone is set to.
   asIs,
 
-  /// The screen underneath a chat goes on being painted while the chat covers
-  /// it — see [TransitionProbe.keepUnderlay].
-  underlay,
+  /// The screen underneath a chat is taken off stage once the chat covers it,
+  /// as every pushed screen was before 1065 — see [TransitionProbe.keepUnderlay].
+  opaque,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -119,7 +119,7 @@ class TransitionBenchmark {
       probe
         ..placeholderMedia.value = false
         ..instantTransitions.value = false
-        ..keepUnderlay.value = v == BenchVariant.underlay;
+        ..keepUnderlay.value = v == BenchVariant.opaque ? false : wasUnderlay;
     }
 
     try {

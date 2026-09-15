@@ -55,6 +55,7 @@ import 'widgets/swipe_action_row.dart';
 import '../data/chat_selection_controller.dart';
 import '../data/favorites_controller.dart';
 import '../data/hidden_chats_controller.dart';
+import '../data/pending_chat_deletes.dart';
 import '../data/pinned_chats_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../data/user_chat_folders_controller.dart';
@@ -62,6 +63,7 @@ import '../data/saved_messages.dart';
 import '../models/chat.dart';
 import 'widgets/chat_tile.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../core/widgets/undo_toast.dart';
 
 /// Kept for the tests and callers that still name it; the list itself now
 /// filters through [ChatFolder], which the user chooses rather than inherits.
@@ -478,13 +480,19 @@ bool _sameRows(List<Chat> a, List<Chat> b) {
 final chatsProvider = Provider<List<Chat>>((ref) {
   final all = ref.watch(allChatsProvider);
   final hidden = ref.watch(hiddenChatsControllerProvider);
-  if (hidden.isEmpty) return all;
-  final messagesByChat = ref.watch(messagesControllerProvider);
+  // Deleted a moment ago and still undoable: gone from every list that reads
+  // this — the chats, search, forwarding — exactly as if the delete had run.
+  // See [PendingChatDeletes].
+  final pending = ref.watch(pendingChatDeletesProvider);
+  if (hidden.isEmpty && pending.isEmpty) return all;
+  final messagesByChat =
+      hidden.isEmpty ? null : ref.watch(messagesControllerProvider);
   return all
       .where(
         (chat) =>
-            !hidden.contains(chat.id) ||
-            (messagesByChat[chat.id]?.isNotEmpty ?? false),
+            !pending.contains(chat.id) &&
+            (!hidden.contains(chat.id) ||
+                (messagesByChat?[chat.id]?.isNotEmpty ?? false)),
       )
       .toList();
 });
@@ -1008,6 +1016,8 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
       }
     }
     final saved = savedChatRow(ref, t);
+    // The notebook is not in [chatsProvider], so it is filtered here.
+    final pendingDeletes = ref.watch(pendingChatDeletesProvider);
     // Presence is read here only while the one folder that filters on it is
     // the folder showing. Every other folder — and the unfiltered list, which
     // is what the app opens on — never touches it, which is the whole point of
@@ -1028,6 +1038,7 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
       // An ordinary row, sorted by when it was last written in like every
       // other.
       if (saved != null &&
+          !pendingDeletes.contains(saved.id) &&
           folder == null &&
           userFolder == null &&
           (query.isEmpty || saved.peerName.toLowerCase().contains(query)))
@@ -2074,6 +2085,7 @@ class ChatSelectionBar extends ConsumerWidget {
             final rootContext =
                 Navigator.of(context, rootNavigator: true).context;
             final container = ProviderScope.containerOf(context, listen: false);
+            final overlay = Overlay.of(context, rootOverlay: true);
             final selection = ref.read(chatSelectionProvider.notifier);
             // Asked once for the batch, not once per chat.
             //
@@ -2101,9 +2113,14 @@ class ChatSelectionBar extends ConsumerWidget {
             // [container], which does not care that this widget is gone.
             selection.clear();
             if (answer == _DeleteAnswer.done) return;
-            for (final chat in chats) {
-              await _deleteChat(container, chat, alsoForThem: false);
-            }
+            // One toast, one Undo, for the whole batch.
+            _holdDeletes(
+              overlay,
+              container,
+              chats,
+              alsoForThem: false,
+              t: t,
+            );
           },
         ),
         _SelectionOverflow(selected: selected),
@@ -3122,6 +3139,8 @@ Future<void> _confirmAndDeleteChat(
   // first step of the wipe empties the conversation, which rebuilds the list
   // and can take the row that asked out from under us. See [_deleteChat].
   final container = ProviderScope.containerOf(context, listen: false);
+  // Same reason: the Undo toast goes up after the row that asked has left.
+  final overlay = Overlay.of(context, rootOverlay: true);
 
   var alsoForThem = false;
   final confirmed = await showDialog<bool>(
@@ -3194,7 +3213,54 @@ Future<void> _confirmAndDeleteChat(
   );
   if (confirmed != true) return;
 
-  await _deleteChat(container, chat, alsoForThem: alsoForThem);
+  _holdDeletes(overlay, container, [chat], alsoForThem: alsoForThem, t: t);
+}
+
+/// Delete [chats] the way the owner sees it — gone from the list now — with
+/// five seconds to take it back before anything is actually removed.
+///
+/// Nothing irreversible happens inside the window: not the local wipe, and not
+/// "delete for them too", which sends a retraction to the other phone. Undo
+/// puts the rows back where they were; the countdown running out, another
+/// delete replacing the toast, or the app leaving the screen commits them. See
+/// [PendingChatDeletes] and [showUndoToast].
+void _holdDeletes(
+  OverlayState overlay,
+  ProviderContainer container,
+  List<Chat> chats, {
+  required bool alsoForThem,
+  required AppLocalizations t,
+}) {
+  if (chats.isEmpty) return;
+  final pending = container.read(pendingChatDeletesProvider.notifier);
+  for (final chat in chats) {
+    pending.hold(
+      chat.id,
+      () => _deleteChat(container, chat, alsoForThem: alsoForThem),
+    );
+  }
+  DebugLog.instance.log(
+    'CHAT',
+    'delete held for ${chats.length} chat(s) — undo for 5 s',
+  );
+  showUndoToast(
+    overlay,
+    message: chats.length == 1
+        ? t.chatsDeletedToast
+        : t.chatsDeletedManyToast(chats.length),
+    undoLabel: t.undo,
+    onUndo: () {
+      for (final chat in chats) {
+        pending.undo(chat.id);
+      }
+      DebugLog.instance.log('CHAT', 'delete undone for ${chats.length} chat(s)');
+    },
+    onExpire: () {
+      for (final chat in chats) {
+        unawaited(pending.commit(chat.id));
+      }
+    },
+  );
 }
 
 /// One question for a whole selection.

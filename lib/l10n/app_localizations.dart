@@ -1784,6 +1784,24 @@ abstract class AppLocalizations {
   /// **'{count, plural, other{Clears {count} conversations. The contacts stay, so you can write to them again without swapping codes.}}'**
   String chatsDeleteManyHint(int count);
 
+  /// Toast after deleting a chat, shown with an Undo button and a five-second countdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat deleted.'**
+  String get chatsDeletedToast;
+
+  /// No description provided for @chatsDeletedManyToast.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} chat deleted.} other{{count} chats deleted.}}'**
+  String chatsDeletedManyToast(int count);
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
   /// No description provided for @chatsDeletePeerHint.
   ///
   /// In en, this message translates to:

@@ -71,22 +71,22 @@ void main() {
     await expectHeldThenSmooth(tester, route);
   });
 
-  testWidgets('the underlay experiment keeps the covered screen painted',
+  testWidgets('the screen underneath stays painted, unless measured opaque',
       (tester) async {
-    addTearDown(() => TransitionProbe.instance.keepUnderlay.value = false);
+    addTearDown(() => TransitionProbe.instance.keepUnderlay.value = true);
     final navigator = await pumpApp(tester);
 
-    navigator.push(screenRoute<void>((_) => const Text('opaque')));
+    navigator.push(screenRoute<void>((_) => const Text('covering')));
     await tester.pumpAndSettle();
-    expect(find.text('list'), findsNothing,
-        reason: 'an opaque screen takes the one under it off stage');
+    expect(find.text('list'), findsOneWidget,
+        reason: 'kept on stage, so closing does not repaint it from nothing');
     navigator.pop();
     await tester.pumpAndSettle();
 
-    TransitionProbe.instance.keepUnderlay.value = true;
-    navigator.push(screenRoute<void>((_) => const Text('see-through')));
+    TransitionProbe.instance.keepUnderlay.value = false;
+    navigator.push(screenRoute<void>((_) => const Text('opaque')));
     await tester.pumpAndSettle();
-    expect(find.text('list'), findsOneWidget);
+    expect(find.text('list'), findsNothing);
     navigator.pop();
     await tester.pumpAndSettle();
   });

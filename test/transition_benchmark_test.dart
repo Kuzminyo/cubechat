@@ -83,7 +83,7 @@ void main() {
     }
   }
 
-  const asIs = (underlay: false, blur: true);
+  const asIs = (underlay: true, blur: true);
 
   testWidgets('every variant takes its turn, and everything is put back',
       (tester) async {
@@ -104,7 +104,7 @@ void main() {
     expect(seen, [
       asIs, // warm-up, unmeasured
       asIs,
-      (underlay: true, blur: true),
+      (underlay: false, blur: true),
     ]);
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);
@@ -115,7 +115,7 @@ void main() {
     expect(probe.placeholderMedia.value, isFalse);
     expect(probe.instantTransitions.value, isFalse);
     expect(AppBlur.panes, isTrue);
-    expect(probe.keepUnderlay.value, isFalse);
+    expect(probe.keepUnderlay.value, isTrue);
     expect(probe.scripted, isFalse);
     expect(probe.armed.value, isFalse, reason: 'it was not armed before');
   });
