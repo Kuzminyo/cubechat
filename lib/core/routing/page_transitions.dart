@@ -120,6 +120,37 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   Animation<double> createAnimation() =>
       _TimedFromFirstFrame(super.createAnimation());
 
+  /// What the page underneath does while this one slides over it: Cupertino's
+  /// step aside, drawn from a snapshot. See [_StillWhileCovered].
+  ///
+  /// This is the path the tabs take — the shell is a Material page, and a
+  /// Material page hands its outgoing motion to the route arriving on top of
+  /// it. A static tear-off, so every one of these routes compares equal and a
+  /// conversation over a conversation keeps using [buildTransitions].
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition => _stepAside;
+
+  static Widget? _stepAside(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    bool allowSnapshotting,
+    Widget? child,
+  ) =>
+      CupertinoPageTransition.delegatedTransition(
+        context,
+        animation,
+        secondaryAnimation,
+        allowSnapshotting,
+        child == null
+            ? null
+            : _StillWhileCovered(
+                covering: secondaryAnimation,
+                enabled: allowSnapshotting,
+                child: child,
+              ),
+      );
+
   /// The mixin's own transition, with a reachable drag strip in place of its
   /// 20-pixel one.
   ///
@@ -136,16 +167,23 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final content = RepaintBoundary(
-      child: EdgeBackGesture(
-        enabledCallback: () => popGestureEnabled,
-        onStartGesture: () => EdgeBackGestureController(
-          navigator: navigator!,
-          controller: controller!,
-          isCurrent: () => isCurrent,
-          isActive: () => isActive,
+    final content = _StillWhileCovered(
+      // This page being covered or uncovered by another one of these — a
+      // profile over a conversation. Under the shell's own page the same job
+      // is done by [delegatedTransition].
+      covering: secondaryAnimation,
+      enabled: allowSnapshotting,
+      child: RepaintBoundary(
+        child: EdgeBackGesture(
+          enabledCallback: () => popGestureEnabled,
+          onStartGesture: () => EdgeBackGestureController(
+            navigator: navigator!,
+            controller: controller!,
+            isCurrent: () => isCurrent,
+            isActive: () => isActive,
+          ),
+          child: child,
         ),
-        child: child,
       ),
     );
 
@@ -273,6 +311,96 @@ class _TimedFromFirstFrame extends Animation<double>
     if (start == null) return raw;
     return ((raw - start) / (1 - start)).clamp(0.0, 1.0);
   }
+}
+
+/// The page underneath a slide, drawn from one picture of itself while the
+/// slide runs.
+///
+/// Build 1055 put numbers on the slide itself: the GPU thread, not Dart, was
+/// the cost of opening and closing a conversation. Raster p95 9.8 ms over
+/// twelve opens of a chat with photos and circles, 15.3 ms for one with
+/// circles, against 5-7 ms for a plain screen and a 120 Hz budget of 8.3 —
+/// seven to eleven frames over budget in every forty-frame slide, and slow
+/// frames of 17-18 ms raster beside 0.9 ms of build when chats were opened and
+/// closed in a row. GPU raster was 29-41% of a core against 14-20% for Dart.
+///
+/// A slide draws two whole screens on every frame: the one arriving and the
+/// one it covers, each with its aurora, its panes and its rows. The
+/// [RepaintBoundary] below does not save that on this renderer — Impeller
+/// keeps no raster cache, so a layer that did not change is still drawn from
+/// its display list every frame. The page underneath does not change while it
+/// is being covered, though: the chat list hands back its last tree and waits
+/// for the slide to end before catching up, the panes stop sampling and the
+/// aurora parks. So it is painted once into a texture and that texture is what
+/// moves — the same thing Material's own zoom transition does, through the
+/// same [SnapshotWidget].
+///
+/// Only while it is moving. At rest the page is live, and fully covered it is
+/// not painted at all. Never for the page that is arriving, whose first frames
+/// are still settling (a scroll restored, pictures landing) and would be
+/// re-snapshotted or shown stale. A platform view underneath (the map) cannot
+/// be snapshotted and is painted as before — that is what `permissive` means.
+///
+/// Always built, never inserted: a wrapper that comes and goes changes the
+/// shape of the tree, and that tears the page down — see [_RoundedWhileMoving].
+class _StillWhileCovered extends StatefulWidget {
+  const _StillWhileCovered({
+    required this.covering,
+    required this.enabled,
+    required this.child,
+  });
+
+  /// The route on top's progress, as this page sees it.
+  final Animation<double> covering;
+
+  /// The route's own `allowSnapshotting`.
+  final bool enabled;
+
+  final Widget child;
+
+  @override
+  State<_StillWhileCovered> createState() => _StillWhileCoveredState();
+}
+
+class _StillWhileCoveredState extends State<_StillWhileCovered> {
+  final _snapshot = SnapshotController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.covering.addStatusListener(_onStatus);
+    _update();
+  }
+
+  @override
+  void didUpdateWidget(_StillWhileCovered oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.covering, widget.covering)) {
+      oldWidget.covering.removeStatusListener(_onStatus);
+      widget.covering.addStatusListener(_onStatus);
+    }
+    _update();
+  }
+
+  @override
+  void dispose() {
+    widget.covering.removeStatusListener(_onStatus);
+    _snapshot.dispose();
+    super.dispose();
+  }
+
+  void _onStatus(AnimationStatus _) => _update();
+
+  void _update() =>
+      _snapshot.allowSnapshotting = widget.enabled && widget.covering.isAnimating;
+
+  @override
+  Widget build(BuildContext context) => SnapshotWidget(
+        controller: _snapshot,
+        mode: SnapshotMode.permissive,
+        autoresize: true,
+        child: widget.child,
+      );
 }
 
 /// Rounds a page's corners for exactly as long as it is moving.

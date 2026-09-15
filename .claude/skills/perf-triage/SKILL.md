@@ -65,6 +65,12 @@ Do not re-propose these; they are in the tree.
   17-35 ms build of a conversation was spent out of the slide and showed as a
   jump. Do not "fix" an open jerk by deferring part of the page to the next
   frame: that moves the cost from before the motion into the middle of it.
+- The page *under* a slide is drawn from a `SnapshotWidget` while the slide
+  runs (1056, `_StillWhileCovered`). Impeller keeps no raster cache, so a
+  `RepaintBoundary` does not stop a static layer being redrawn every frame;
+  1055 measured chat open/close raster p95 9.8-15.3 ms against 5-7 for a plain
+  screen. Never snapshot the arriving page, and nothing is snapshotted under
+  `mediaRoute` — a photo's hero would show twice.
 - Chat list rows are kept by identity while their inputs are equal (1055):
   727 widgets rebuilt for one changed row became 211
   (`test/chat_list_rebuild_budget_test.dart`)
