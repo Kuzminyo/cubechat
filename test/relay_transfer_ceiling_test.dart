@@ -139,10 +139,21 @@ void main() {
     // chunk count is capped. Past this, sendFile throws "too many chunks"
     // instead of sending — so the ceiling and the arithmetic have to agree, or
     // the app offers a size it cannot deliver.
+    //
+    // Since 1075 a file past 32 MiB goes in larger chunks, so the ceiling is
+    // what those number — and those have to fit a frame on the conservative
+    // link, or the largest file the app offers could not be fragmented.
     expect(
       MessagingService.maxFileBytesMesh,
-      lessThanOrEqualTo(FileChunk.maxChunks * kBleMediaChunkData),
+      lessThanOrEqualTo(FileChunk.maxChunks * kBleLargeFileChunkData),
     );
+    expect(
+      kBleLargeFileChunkData,
+      lessThanOrEqualTo(bleLargeChunkCeiling(conservativeEffectivePayload())),
+    );
+    expect(kBleLargeFileChunkData, lessThanOrEqualTo(FileChunk.maxDataBytes));
+    // And the files that fit the old size are still sent the old way.
+    expect(FileChunk.maxChunks * kBleMediaChunkData, 32 * 1024 * 1024);
   });
 
   test('the receiver will reassemble what the sender is allowed to send', () {

@@ -1665,7 +1665,14 @@ class MessagingService {
   /// Worth knowing before reaching for a bigger number: at the ~14 KB/s a real
   /// Bluetooth link sustains, 32 MiB is already about forty minutes on the
   /// radio. Raising the chunk cap would buy hours, not megabytes.
-  static const int maxFileBytesMesh = 32 * 1024 * 1024;
+  ///
+  /// **128 MiB since 1075**, asked for directly ("raise the limit for files
+  /// and video over BLE"). Not by raising the chunk cap, which is on the wire,
+  /// but by the chunk size, which is not: a file past 32 MiB goes in
+  /// [kBleLargeFileChunkData] chunks. The time is what the paragraph above
+  /// says it is — a two-Android log measured about 40 KB/s, so 128 MiB is most
+  /// of an hour — and the receiver has taken files up to 256 MiB since 1047.
+  static const int maxFileBytesMesh = 128 * 1024 * 1024;
 
   /// And over the internet fallback, where every chunk is one relay event.
   ///
@@ -1747,7 +1754,15 @@ class MessagingService {
     // A Bluetooth link to *anyone* used to put the whole file on the mesh's
     // 32 MiB ceiling - so a phone that happened to be near another one could
     // not send over the internet what it could send a minute later, alone.
-    final meshCarries = size <= maxFileBytesMesh;
+    //
+    // And a large file takes the mesh only on a wire to the person it is for.
+    // Up to 32 MiB any link would do, as before; past it — possible over
+    // Bluetooth since 1075 — a link to somebody else is a hope of a route at
+    // forty kilobytes a second for most of an hour, when the internet may be
+    // right there.
+    final directToThem = session?.isEstablished ?? false;
+    final meshCarries = size <= maxFileBytesMesh &&
+        (size <= FileChunk.maxChunks * kBleMediaChunkData || directToThem);
     final relayOnly =
         (!_hasAnyLink || !meshCarries) && _relayClient?.isConnected == true;
     final cap = relayOnly ? maxFileBytesRelay : maxFileBytesMesh;
@@ -1826,8 +1841,28 @@ class MessagingService {
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
-      final chunkData = _mediaChunkData(direct,
+      var chunkData = _mediaChunkData(direct,
           relayOnly: relayOnly, ceiling: FileChunk.maxDataBytes);
+      // Over Bluetooth, a file too large for the chunk count at the usual size
+      // goes in bigger chunks — see [kBleLargeFileChunkData]. Sized to the
+      // narrower of the direct link and the conservative one, because a chunk
+      // may leave by either.
+      final needed = (size + FileChunk.maxChunks - 1) ~/ FileChunk.maxChunks;
+      if (!relayOnly && needed > chunkData) {
+        final direct0 = direct;
+        final effective = direct0 != null && direct0.isConnected
+            ? effectivePayload(direct0.negotiatedMtu)
+            : conservativeEffectivePayload();
+        final narrowest = effective < conservativeEffectivePayload()
+            ? effective
+            : conservativeEffectivePayload();
+        var larger =
+            needed > kBleLargeFileChunkData ? needed : kBleLargeFileChunkData;
+        final linkMax = bleLargeChunkCeiling(narrowest);
+        if (larger > linkMax) larger = linkMax;
+        if (larger > FileChunk.maxDataBytes) larger = FileChunk.maxDataBytes;
+        chunkData = larger;
+      }
       final total = (size + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > FileChunk.maxChunks) {
         throw StateError(

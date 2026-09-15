@@ -137,6 +137,35 @@ int effectivePayload(int negotiatedMtu) {
 /// Effective payload to use when the per-link MTU is unknown.
 int conservativeEffectivePayload() => effectivePayload(kConservativeAttMtu);
 
+/// Data bytes per chunk for a file too large to number in
+/// [kBleMediaChunkData] chunks.
+///
+/// The chunk count is capped at 8192 on the wire, so 4 KiB chunks top out at
+/// 32 MiB — which was the whole of the Bluetooth file limit until 1075, when
+/// "raise the limit for files and video over BLE" was asked for. Nothing on
+/// the receiving side reads the chunk size (each chunk carries its own
+/// length, up to the u16 of `FileChunk.maxDataBytes`), so a bigger file simply
+/// goes in bigger chunks. Four times the size gives four times the file, 128
+/// MiB, and still fits in half the fragments one frame may use on the
+/// conservative link — see [bleLargeChunkCeiling]. Only files that need it
+/// pay for it: anything under 32 MiB is chunked exactly as before.
+const int kBleLargeFileChunkData = 16 * 1024;
+
+/// The most media-chunk `data` one frame may carry on an [effectiveMtu] link
+/// while staying inside half of [kMaxFragments].
+///
+/// Half, not all, for the reason [kBleMaxFragmentsPerChunk] budgets a quarter:
+/// the fragment count follows a negotiated MTU that can come back smaller than
+/// anything tested, and `fragmentFrame` throws past 255. On the conservative
+/// 185-byte link this is about 21 KiB; on a 23-byte one it is a few kilobytes,
+/// and a large file is refused there rather than failing half way.
+int bleLargeChunkCeiling(int effectiveMtu) {
+  final maxSlice = effectiveMtu - 1 - kFragHeaderLen;
+  if (maxSlice < 1) return kMinMediaChunkData;
+  final fits = maxSlice * (kMaxFragments ~/ 2) - kMediaChunkFrameOverhead;
+  return fits < kMinMediaChunkData ? kMinMediaChunkData : fits;
+}
+
 /// Largest media-chunk `data` length whose full transport frame still fits an
 /// [effectiveMtu]-byte payload, clamped to `[kMinMediaChunkData, ceiling]`.
 /// [ceiling] is the chunk type's own protocol cap (e.g. `ImageChunk.maxDataBytes`).
