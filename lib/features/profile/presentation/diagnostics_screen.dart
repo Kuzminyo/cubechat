@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -17,6 +19,9 @@ import '../../../core/util/share_anchor.dart';
 import '../../../core/util/transition_probe.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../chats/presentation/chats_list_screen.dart'
+    show routeForChat, visibleChatsProvider;
+import '../data/transition_benchmark.dart';
 
 /// In-app diagnostic log viewer. Reads the [DebugLog] singleton and rebuilds
 /// whenever a new line is added.
@@ -313,6 +318,8 @@ class _TransitionPanelState extends State<_TransitionPanel> {
                   ),
                 ),
                 const SizedBox(height: 6),
+                const _BenchmarkRow(),
+                const SizedBox(height: 6),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 150),
                   child: SingleChildScrollView(
@@ -369,6 +376,60 @@ class _TransitionPanelState extends State<_TransitionPanel> {
           Switch(value: value, onChanged: onChanged),
         ],
       );
+}
+
+/// Starts a [TransitionBenchmark] on one of the most recent conversations.
+///
+/// Offered as the top few rows of the chat list rather than a picker: the
+/// chats worth measuring are the ones in use, and those are at the top.
+class _BenchmarkRow extends ConsumerWidget {
+  const _BenchmarkRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bench = TransitionBenchmark.instance;
+    final chats = ref.watch(visibleChatsProvider).take(4).toList();
+    final dim = TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5);
+    return ValueListenableBuilder<String?>(
+      valueListenable: bench.progress,
+      builder: (context, progress, _) {
+        if (progress != null) {
+          return Text('scripted run · $progress', style: dim);
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'scripted run: from the chat list, opens and closes a chat '
+              '${TransitionBenchmark.defaultRounds}× as it is and '
+              '${TransitionBenchmark.defaultRounds}× with placeholders, '
+              'alternating. About 45 s, hands off — a touch stops it.',
+              style: dim,
+            ),
+            Wrap(
+              spacing: 4,
+              children: [
+                for (final chat in chats)
+                  TextButton(
+                    onPressed: () => unawaited(
+                      bench.run(
+                        router: GoRouter.of(context),
+                        chat: routeForChat(chat),
+                      ),
+                    ),
+                    child: Text(
+                      chat.peerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _WakePanel extends StatefulWidget {

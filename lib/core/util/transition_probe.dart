@@ -52,6 +52,11 @@ class TransitionProbe {
   /// built, so it applies to the next chat opened.
   final ValueNotifier<bool> placeholderMedia = ValueNotifier<bool>(false);
 
+  /// The transitions are being driven by a script rather than a thumb — see
+  /// `TransitionBenchmark`. Filed apart, because the two are not comparable:
+  /// a thumb opens the next chat while the last close is still settling.
+  bool scripted = false;
+
   /// Bumped whenever [summary] changes.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
@@ -163,6 +168,7 @@ class TransitionProbe {
           : current - 1;
 
   String _experiments() => [
+        if (scripted) 'bench',
         if (instantTransitions.value) 'instant',
         if (placeholderMedia.value) 'placeholders',
         AppBlur.panes ? 'blur' : 'no-blur',
