@@ -401,9 +401,9 @@ class _BenchmarkRow extends ConsumerWidget {
           children: [
             Text(
               'scripted run: from the chat list, opens and closes a chat '
-              '${TransitionBenchmark.defaultRounds}× as it is and '
-              '${TransitionBenchmark.defaultRounds}× with placeholders, '
-              'alternating. About 45 s, hands off — a touch stops it.',
+              '${TransitionBenchmark.defaultRounds}× each as it is, without '
+              'blur, with placeholders and without the slide, taking turns. '
+              'About 50 s, hands off — a touch stops it.',
               style: dim,
             ),
             Wrap(
@@ -414,6 +414,7 @@ class _BenchmarkRow extends ConsumerWidget {
                     onPressed: () => unawaited(
                       bench.run(
                         router: GoRouter.of(context),
+                        overlay: Overlay.of(context, rootOverlay: true),
                         chat: routeForChat(chat),
                       ),
                     ),

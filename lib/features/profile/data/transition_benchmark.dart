@@ -1,30 +1,48 @@
 import 'dart:async';
 
-import 'package:flutter/gestures.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/glass.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/transition_probe.dart';
 
+/// One way of opening the chat in a scripted run.
+enum BenchVariant {
+  /// Whatever the phone is set to.
+  asIs,
+
+  /// Panes tinted but not blurred, as the light glass tier draws them.
+  noBlur,
+
+  /// Photos, clips and circles drawn as flat boxes.
+  placeholders,
+
+  /// The route appears without sliding.
+  instant,
+}
+
 /// Opens and closes one conversation from the chat list, the same way every
-/// time, with and without its media, and files what each cost.
+/// time, in each [BenchVariant] in turn, and files what each cost.
 ///
 /// Hand-tapped logs could not tell builds apart. 1055 and 1057 are the same
 /// code and read 8.6 and 5.7 frames over 8.3 ms per chat open — the noise was
 /// as large as any change being measured, because a thumb opens the next chat
 /// while the last close is still settling, at a different pace every session,
 /// on a phone warming up as it goes. Here every open waits the same time, every
-/// close does too, and the two variants alternate, so heat and battery drift
-/// land on both.
+/// close does too, and the variants take turns, so heat and battery drift land
+/// on all of them.
 ///
 /// The chat list is put underneath first: opened from Diagnostics, the screen
 /// being covered would be Diagnostics, which is not the case being asked
 /// about. One unmeasured round goes first, so the decoders and caches a first
-/// open fills are not charged to either variant.
+/// open fills are not charged to any variant.
 ///
-/// A touch stops it, and so does leaving the app. Either would put
-/// transitions in the log that the script did not make.
+/// While it runs, a sheet over the whole app says so and swallows touches. The
+/// first version had neither: it sat on the chat list for a second and a half
+/// before its first open, looking like nothing had happened, and on 1058 it
+/// was stopped by a touch in that second and a half three times out of three.
+/// A touch on the sheet still stops it — now as a choice.
 class TransitionBenchmark {
   TransitionBenchmark._();
 
@@ -43,16 +61,18 @@ class TransitionBenchmark {
 
   static const Duration _settle = Duration(milliseconds: 1500);
 
-  /// Of each variant. Ten of each is about 45 seconds of leaving the phone
-  /// alone, which is roughly as long as anyone will.
-  static const int defaultRounds = 10;
+  /// Of each variant: four variants at six rounds is about fifty seconds of
+  /// leaving the phone alone, which is roughly as long as anyone will.
+  static const int defaultRounds = 6;
 
   bool _touched = false;
 
-  /// [chat] is a location as [GoRouter.push] takes it; [rounds] of each
-  /// variant.
+  /// [chat] is a location as [GoRouter.push] takes it. [overlay] is where the
+  /// "running" sheet goes: the root one, which outlives the screens the run
+  /// moves between.
   Future<void> run({
     required GoRouter router,
+    required OverlayState overlay,
     required String chat,
     int rounds = defaultRounds,
   }) async {
@@ -61,20 +81,30 @@ class TransitionBenchmark {
     final wasArmed = probe.armed.value;
     final wasPlaceholders = probe.placeholderMedia.value;
     final wasInstant = probe.instantTransitions.value;
+    final wasBlur = AppBlur.panes;
+    const variants = BenchVariant.values;
+    final total = rounds * variants.length;
     progress.value = 'starting';
     _touched = false;
-    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
+    final sheet = OverlayEntry(builder: (_) => _RunningSheet(bench: this));
+    overlay.insert(sheet);
     DebugLog.instance.log(
       'BENCH',
-      'start · $rounds opens and closes each, normal and placeholders '
-          'alternating · open ${afterOpen.inMilliseconds} ms, '
+      'start · $rounds opens and closes each of '
+          '${variants.map((v) => v.name).join(', ')}, taking turns · '
+          'open ${afterOpen.inMilliseconds} ms, '
           'close ${afterClose.inMilliseconds} ms',
     );
     var finished = false;
-    try {
+    void apply(BenchVariant v) {
+      AppBlur.panes = v == BenchVariant.noBlur ? false : wasBlur;
       probe
-        ..instantTransitions.value = false
-        ..placeholderMedia.value = false;
+        ..placeholderMedia.value = v == BenchVariant.placeholders
+        ..instantTransitions.value = v == BenchVariant.instant;
+    }
+
+    try {
+      apply(BenchVariant.asIs);
       router.go('/chats');
       await Future<void>.delayed(_settle);
       progress.value = 'warm-up';
@@ -84,18 +114,22 @@ class TransitionBenchmark {
         ..resetSummary()
         ..scripted = true
         ..arm(true);
-      final total = rounds * 2;
       for (var i = 0; i < total; i++) {
-        probe.placeholderMedia.value = i.isOdd;
-        progress.value = '${i + 1}/$total';
+        final variant = variants[i % variants.length];
+        apply(variant);
+        progress.value = '${i + 1}/$total · ${variant.name}';
         if (!await _cycle(router, chat)) return;
       }
+      apply(BenchVariant.asIs);
       // Release builds hand frame timings over up to a second late.
       await Future<void>.delayed(_settle);
       probe.logSummary();
       finished = true;
     } finally {
-      GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
+      sheet
+        ..remove()
+        ..dispose();
+      AppBlur.panes = wasBlur;
       probe
         ..scripted = false
         ..placeholderMedia.value = wasPlaceholders
@@ -106,7 +140,7 @@ class TransitionBenchmark {
         finished
             ? 'done'
             : 'stopped at ${progress.value}'
-                '${_touched ? ' — the screen was touched' : ''}'
+                '${_touched ? ' — stopped by a touch' : ''}'
                 '${_foreground ? '' : ' — the app left the screen'}',
       );
       progress.value = null;
@@ -130,8 +164,57 @@ class TransitionBenchmark {
     final state = WidgetsBinding.instance.lifecycleState;
     return state == null || state == AppLifecycleState.resumed;
   }
+}
 
-  void _onPointer(PointerEvent event) {
-    if (event is PointerDownEvent) _touched = true;
+/// Over the whole app while a run goes: what it is doing, and a place for a
+/// touch to land that is not a chat.
+///
+/// Drawn in every measured frame, so it is as little as can say the thing — a
+/// dark capsule of text, no blur, no animation — and every variant pays for it
+/// alike.
+class _RunningSheet extends StatelessWidget {
+  const _RunningSheet({required this.bench});
+
+  final TransitionBenchmark bench;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) => bench._touched = true,
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xE6000000),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: ValueListenableBuilder<String?>(
+                    valueListenable: bench.progress,
+                    builder: (context, progress, _) => Text(
+                      'scripted run ${progress ?? ''}\n'
+                      'hands off · touch to stop',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
