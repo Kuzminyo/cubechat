@@ -172,6 +172,7 @@ class TransitionProbe {
         if (instantTransitions.value) 'instant',
         if (placeholderMedia.value) 'placeholders',
         AppBlur.panes ? 'blur' : 'no-blur',
+        if (AppBlur.panes && AppBlur.groupedPanes) 'grouped',
       ].join(',');
 
   void _onTimings(List<FrameTiming> timings) {

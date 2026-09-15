@@ -50,9 +50,15 @@ class GlassBlur extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => AppBlur.panes
-      ? BackdropFilter(filter: AppBlur.pane, child: child)
-      : child;
+  Widget build(BuildContext context) {
+    if (!AppBlur.panes) return child;
+    // Same widget type either way, so flipping the experiment updates the
+    // render object instead of remounting the pane. Outside a [BackdropGroup]
+    // the grouped constructor finds no key and filters on its own.
+    return AppBlur.groupedPanes
+        ? BackdropFilter.grouped(filter: AppBlur.pane, child: child)
+        : BackdropFilter(filter: AppBlur.pane, child: child);
+  }
 }
 
 class AppBlur {
@@ -137,6 +143,31 @@ class AppBlur {
   /// hint used to say and no longer does. Anyone reaching for the next
   /// GPU-side win should start with overdraw, not with the filter.
   static bool panes = true;
+
+  /// **Experiment, temporary.** The conversation's islands share one read of
+  /// what is behind them instead of taking three — see the [BackdropGroup] in
+  /// the chat screen. Flipped only by `TransitionBenchmark`, never a setting.
+  ///
+  /// Why it is back on the table. Build 1059's scripted run, twice over the
+  /// same chat, six slides of each variant, frames per 300 ms slide:
+  ///
+  /// ```
+  ///               over 8.3 ms   raster p95
+  /// as it is        13-15        14-15 ms
+  /// no blur          1-4          5-9 ms
+  /// placeholders    12-20        15 ms
+  /// ```
+  ///
+  /// So on that phone the slide's cost is the three chat islands' blur, which
+  /// `chat_input.dart` keeps on through a transition on purpose (turning it off
+  /// flickers, reported twice). Grouping keeps every pane looking exactly the
+  /// same and changes only how often the renderer stops to copy the backdrop.
+  ///
+  /// It was tried app-wide on 2026-08-06 and reverted as "less smooth
+  /// everywhere" — by feel, with nothing that could put a number on one slide.
+  /// See [FloatingGlass.blur]. This time it is scoped to the chat screen and
+  /// the run measures it beside the other two.
+  static bool groupedPanes = false;
 
   /// Ready-made filter, so no call site has to remember to pass the same value
   /// to both axes.

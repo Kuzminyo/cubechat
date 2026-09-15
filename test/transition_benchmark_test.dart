@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 /// How the chat screen found the experiments as each open was built.
-typedef _Seen = ({bool placeholders, bool instant, bool blur});
+typedef _Seen = ({bool grouped, bool blur});
 
 class _Chat extends StatefulWidget {
   const _Chat(this.seen);
@@ -23,12 +23,7 @@ class _ChatState extends State<_Chat> {
   @override
   void initState() {
     super.initState();
-    final probe = TransitionProbe.instance;
-    widget.seen.add((
-      placeholders: probe.placeholderMedia.value,
-      instant: probe.instantTransitions.value,
-      blur: AppBlur.panes,
-    ));
+    widget.seen.add((grouped: AppBlur.groupedPanes, blur: AppBlur.panes));
   }
 
   @override
@@ -68,7 +63,7 @@ void main() {
     }
   }
 
-  const asIs = (placeholders: false, instant: false, blur: true);
+  const asIs = (grouped: false, blur: true);
 
   testWidgets('every variant takes its turn, and everything is put back',
       (tester) async {
@@ -82,15 +77,14 @@ void main() {
     expect(find.textContaining('hands off'), findsOneWidget,
         reason: 'it says it is running from the first moment');
 
-    await elapse(tester, const Duration(seconds: 16));
+    await elapse(tester, const Duration(seconds: 14));
 
     expect(bench.running, isFalse);
     expect(seen, [
       asIs, // warm-up, unmeasured
       asIs,
-      (placeholders: false, instant: false, blur: false),
-      (placeholders: true, instant: false, blur: true),
-      (placeholders: false, instant: true, blur: true),
+      (grouped: false, blur: false),
+      (grouped: true, blur: true),
     ]);
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);
@@ -98,6 +92,7 @@ void main() {
     expect(probe.placeholderMedia.value, isFalse);
     expect(probe.instantTransitions.value, isFalse);
     expect(AppBlur.panes, isTrue);
+    expect(AppBlur.groupedPanes, isFalse);
     expect(probe.scripted, isFalse);
     expect(probe.armed.value, isFalse, reason: 'it was not armed before');
   });

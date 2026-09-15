@@ -15,11 +15,9 @@ enum BenchVariant {
   /// Panes tinted but not blurred, as the light glass tier draws them.
   noBlur,
 
-  /// Photos, clips and circles drawn as flat boxes.
-  placeholders,
-
-  /// The route appears without sliding.
-  instant,
+  /// The same blur, the chat's islands sharing one read of the backdrop — see
+  /// [AppBlur.groupedPanes].
+  grouped,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -61,9 +59,13 @@ class TransitionBenchmark {
 
   static const Duration _settle = Duration(milliseconds: 1500);
 
-  /// Of each variant: four variants at six rounds is about fifty seconds of
+  /// Of each variant: three variants at eight rounds is about fifty seconds of
   /// leaving the phone alone, which is roughly as long as anyone will.
-  static const int defaultRounds = 6;
+  ///
+  /// Placeholders and the no-slide variant were in the 1059 run and are not
+  /// now: placeholders changed nothing (12-20 frames over 8.3 ms per slide
+  /// against 13-15 as it is), and those rounds are better spent on repeats.
+  static const int defaultRounds = 8;
 
   bool _touched = false;
 
@@ -82,6 +84,7 @@ class TransitionBenchmark {
     final wasPlaceholders = probe.placeholderMedia.value;
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
+    final wasGrouped = AppBlur.groupedPanes;
     const variants = BenchVariant.values;
     final total = rounds * variants.length;
     progress.value = 'starting';
@@ -98,9 +101,10 @@ class TransitionBenchmark {
     var finished = false;
     void apply(BenchVariant v) {
       AppBlur.panes = v == BenchVariant.noBlur ? false : wasBlur;
+      AppBlur.groupedPanes = v == BenchVariant.grouped;
       probe
-        ..placeholderMedia.value = v == BenchVariant.placeholders
-        ..instantTransitions.value = v == BenchVariant.instant;
+        ..placeholderMedia.value = false
+        ..instantTransitions.value = false;
     }
 
     try {
@@ -130,6 +134,7 @@ class TransitionBenchmark {
         ..remove()
         ..dispose();
       AppBlur.panes = wasBlur;
+      AppBlur.groupedPanes = wasGrouped;
       probe
         ..scripted = false
         ..placeholderMedia.value = wasPlaceholders

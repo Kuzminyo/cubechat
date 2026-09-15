@@ -1477,6 +1477,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   /// measures it — see [_FloatingComposerBody.headerBottom].
   final ValueNotifier<double> _headerBottom = ValueNotifier<double>(0);
 
+  /// Held for the life of the screen: a [BackdropGroup] given a new key
+  /// notifies every pane under it, which on each rebuild would be all three.
+  final BackdropKey _backdropKey = BackdropKey();
+
   void _noteBuilt(int i) {
     if (_builtFrom == null || i < _builtFrom!) _builtFrom = i;
     if (_builtTo == null || i > _builtTo!) _builtTo = i;
@@ -2253,7 +2257,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     // Behind the conversation and in front of the route's aurora. Draws
     // nothing at all unless this chat has been given a wallpaper, so every
     // other chat is untouched.
-    return ChatWallpaperLayer(
+    final view = ChatWallpaperLayer(
       chatId: widget.chatId,
       child: _FloatingComposerBody(
         headerBottom: _headerBottom,
@@ -2548,6 +2552,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         ),
       ),
     );
+    // The islands' shared backdrop, when [AppBlur.groupedPanes] asks for it.
+    // Always in the tree so the experiment flips nothing structural, and one
+    // key per open conversation: two chats sliding past each other must not
+    // blur from one another's copy of the screen.
+    return BackdropGroup(backdropKey: _backdropKey, child: view);
   }
 }
 
