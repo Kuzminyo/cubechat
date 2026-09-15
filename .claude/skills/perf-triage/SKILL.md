@@ -59,6 +59,15 @@ Do not re-propose these; they are in the tree.
 - Presence beacon cadence reduced; GPS parked when the beacon reaches nobody
 - Signature work off the hot path; read receipts batched instead of per-message
 - Map rebuilt once per stop rather than four times per resume
+- A pushed screen's slide is timed from the first frame *after* the page was
+  built (build 1055, `_TimedFromFirstFrame` in `page_transitions.dart`). A
+  ticker started inside a frame takes that frame's timestamp as zero, so the
+  17-35 ms build of a conversation was spent out of the slide and showed as a
+  jump. Do not "fix" an open jerk by deferring part of the page to the next
+  frame: that moves the cost from before the motion into the middle of it.
+- Chat list rows are kept by identity while their inputs are equal (1055):
+  727 widgets rebuilt for one changed row became 211
+  (`test/chat_list_rebuild_budget_test.dart`)
 
 ## What has been tried and reverted — read the comment first
 

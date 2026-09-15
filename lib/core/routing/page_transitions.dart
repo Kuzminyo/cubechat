@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 
 import '../util/motion.dart';
@@ -110,6 +111,15 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   @override
   bool get maintainState => true;
 
+  /// The slide is timed from the first frame after the page was built.
+  ///
+  /// See [_TimedFromFirstFrame]: the frame that builds a conversation is the
+  /// longest one of the whole open, and the controller was counting it as
+  /// part of the slide.
+  @override
+  Animation<double> createAnimation() =>
+      _TimedFromFirstFrame(super.createAnimation());
+
   /// The mixin's own transition, with a reachable drag strip in place of its
   /// 20-pixel one.
   ///
@@ -190,6 +200,78 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
         child: content,
       ),
     );
+  }
+}
+
+/// A route's opening slide, restarted on the first frame after the one that
+/// built the page.
+///
+/// A ticker started inside a frame takes *that frame's* timestamp as its zero
+/// (`Ticker.start`). A push through the router lands in the build of the frame
+/// that also builds the new page, so the slide's clock was already running
+/// while that build ran — and for a conversation it is the heaviest frame of
+/// the open: build 17-35 ms on build 1054, against 1.5 ms of raster. The frame
+/// after it then shows the page where 25 ms of slide would have put it, and on
+/// [Curves.fastEaseInToSlowEaseOut] that is 18% of the way across as the very
+/// first thing seen, where a steady 120 Hz start moves it 3% a frame. Reported
+/// as the jerk when a chat opens, glass tier or not.
+///
+/// So the first tick after the build is taken as the start, and the rest of
+/// the run is stretched to fit: the page leaves the edge one frame later than
+/// it did, and arrives on time. The heavy frame becomes a pause before the
+/// motion instead of a jump inside it — and it does not matter any more how
+/// long it was.
+///
+/// Only the opening run. Once the push has finished, or was turned back before
+/// it did, this is the controller's own value again, so a back swipe follows
+/// the finger exactly.
+class _TimedFromFirstFrame extends Animation<double>
+    with AnimationWithParentMixin<double> {
+  _TimedFromFirstFrame(this.parent) {
+    parent
+      ..addListener(_onTick)
+      ..addStatusListener(_onStatus);
+    // After the frame that builds the page — whether the push came inside that
+    // frame (the router) or before it (a tap handler calling push).
+    SchedulerBinding.instance.addPostFrameCallback((_) => _built = true);
+  }
+
+  @override
+  final Animation<double> parent;
+
+  bool _built = false;
+  bool _settled = false;
+
+  /// The controller's value on the first frame after the build, while the
+  /// opening run is going; null otherwise.
+  double? _start;
+
+  void _onTick() {
+    if (!_built || _settled) return;
+    parent.removeListener(_onTick);
+    if (parent.status == AnimationStatus.forward && parent.value < 1) {
+      _start = parent.value;
+    }
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.forward ||
+        status == AnimationStatus.reverse) {
+      return;
+    }
+    _settled = true;
+    _start = null;
+    parent
+      ..removeListener(_onTick)
+      ..removeStatusListener(_onStatus);
+  }
+
+  @override
+  double get value {
+    final raw = parent.value;
+    final start = _start;
+    if (start == null) return raw;
+    return ((raw - start) / (1 - start)).clamp(0.0, 1.0);
   }
 }
 

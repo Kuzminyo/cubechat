@@ -768,6 +768,124 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     return false;
   }
 
+  /// The rows as last built, by chat id, with what each was built from.
+  ///
+  /// Build 1054 caught the list catching up after a conversation closed: one
+  /// frame of 19-27 ms on the UI thread as the slide back finished, when nothing
+  /// on screen had changed but the row of the chat just read. Every visible row
+  /// was built again all the same, because every build of this screen made a
+  /// new widget for every row: 727 widgets rebuilt for one new preview in a list
+  /// of 13 visible rows (`test/chat_list_rebuild_budget_test.dart`). A row whose
+  /// inputs are all equal to last time comes back as the *same* widget now, and
+  /// Flutter skips an identical widget without building anything under it.
+  ///
+  /// [Chat] has value equality, so a row is new exactly when something it shows
+  /// changed. Everything else [_buildRow] reads from the screen's build is in
+  /// the record too; a closure there capturing something that is not would go
+  /// stale without a sound. Theme and locale need not be: a row reads those as
+  /// inherited dependencies, which reach it whether its parent rebuilt or not,
+  /// and a palette switch marks every element dirty regardless.
+  final Map<String, (_RowInputs, Widget)> _rows = {};
+
+  Widget _rowFor(_RowInputs inputs) {
+    final cached = _rows[inputs.chat.id];
+    if (cached != null && cached.$1 == inputs) return cached.$2;
+    final row = _buildRow(inputs);
+    _rows[inputs.chat.id] = (inputs, row);
+    return row;
+  }
+
+  /// One conversation in the list. Reads nothing but [r] and the screen's own
+  /// long-lived fields — see [_rows].
+  Widget _buildRow(_RowInputs r) {
+    final chat = r.chat;
+    final selecting = r.selecting;
+    return _FolderSlide(
+      key: ValueKey(chat.id),
+      animation: _folderSlide,
+      from: r.slideFrom,
+      child: Padding(
+        // The gap rides with the row: a reorderable list has no separators to
+        // keep it out of the way of a drag.
+        padding: EdgeInsets.only(bottom: r.last ? 0 : 8),
+        child: AppearAnimation(
+          // Off, deliberately, and it has been off in practice all along.
+          //
+          // [AppearOnce] only says yes on the list's first frame, and until
+          // `warmChatList` existed that frame had no rows in it — the
+          // conversations arrived afterwards, with `animate` already false. So
+          // this entrance has not actually run on a cold start for as long as
+          // anyone can remember, and warming the list would have switched it
+          // back on.
+          //
+          // Which is the one thing that was asked for not to happen: "they
+          // should be there straight away". A staggered slide is a hundred and
+          // fifty milliseconds of something arriving, and after two reports of
+          // a jerk at startup, introducing one now would be answering the
+          // complaint with the complaint. The flourish belongs to a list that
+          // appears while you are watching — Archive and Contacts, entered by a
+          // tap, still have it.
+          enabled: false,
+          child: SwipeActionRow(
+            // Off while picking chats out: in that mode a row means one thing,
+            // and it is the tick.
+            action: selecting ? ChatSwipeAction.none : r.swipeAction,
+            onFire: () => _fireSwipeAction(context, ref, chat, r.swipeAction),
+            child: FloatingGlass(
+              blur: false,
+              borderRadius: 18,
+              // While anything is selected, a tap picks rather than opens — the
+              // same rule every list of this shape uses, and the only one that
+              // lets somebody select a second chat without the first one's chat
+              // opening on them.
+              onTap: () {
+                if (!selecting) {
+                  context.push(routeForChat(chat));
+                  return;
+                }
+                ref.read(chatSelectionProvider.notifier).toggle(chat.id);
+              },
+              // Holding a row picks it out, and nothing else. A menu was tried
+              // here and taken back out: the hold is what puts the list into the
+              // mode where a pinned row grows its drag handle, so a popup on top
+              // of it took away the way to reorder pins. Every action lives in
+              // the bar the selection opens — including deleting the chat and
+              // deleting the person.
+              onLongPressAt: (_) =>
+                  ref.read(chatSelectionProvider.notifier).toggle(chat.id),
+              child: ChatTile(
+                chat: chat,
+                selected: r.picked,
+                reorderIndex: r.reorderIndex,
+                // Hold the picture to look inside without the badge clearing or
+                // a receipt going out. Withheld while a selection is running:
+                // there the hold belongs to the row, and taking it would be the
+                // same mistake the menu made.
+                onAvatarLongPress: selecting
+                    ? null
+                    : () => unawaited(
+                          showChatPeek(
+                            context,
+                            chat,
+                            onOpen: () => context.push(routeForChat(chat)),
+                            onDelete: () => unawaited(
+                              _confirmAndDeleteChat(
+                                context,
+                                ref,
+                                chat,
+                                AppLocalizations.of(context),
+                              ),
+                            ),
+                          ),
+                        ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Something is on top of this list — a conversation, a profile, a sheet —
@@ -925,6 +1043,11 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
             c.lastMessage.toLowerCase().contains(query);
       }),
     ]..sort(compareChatRows);
+    // Rows for chats that left the list are dropped with them.
+    if (_rows.length > filtered.length) {
+      final ids = {for (final chat in filtered) chat.id};
+      _rows.removeWhere((id, _) => !ids.contains(id));
+    }
     return _covered = PopScope<void>(
       canPop: !selecting,
       onPopInvokedWithResult: (didPop, _) {
@@ -1130,125 +1253,23 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                         },
                         itemBuilder: (_, i) {
                           final chat = filtered[i];
-                          final picked = selection.contains(chat.id);
-                          return _FolderSlide(
-                            key: ValueKey(chat.id),
-                            animation: _folderSlide,
-                            from: _folderSlideFrom,
-                            child: Padding(
-                            // The gap rides with the row: a reorderable list has no
-                            // separators to keep it out of the way of a drag.
-                            padding: EdgeInsets.only(
-                              bottom: i == filtered.length - 1 ? 0 : 8,
-                            ),
-                            child: AppearAnimation(
-                              // Off, deliberately, and it has been off in
-                              // practice all along.
-                              //
-                              // [AppearOnce] only says yes on the list's first
-                              // frame, and until `warmChatList` existed that
-                              // frame had no rows in it — the conversations
-                              // arrived afterwards, with `animate` already
-                              // false. So this entrance has not actually run on
-                              // a cold start for as long as anyone can
-                              // remember, and warming the list would have
-                              // switched it back on.
-                              //
-                              // Which is the one thing that was asked for not
-                              // to happen: "they should be there straight
-                              // away". A staggered slide is a hundred and fifty
-                              // milliseconds of something arriving, and after
-                              // two reports of a jerk at startup, introducing
-                              // one now would be answering the complaint with
-                              // the complaint. The flourish belongs to a list
-                              // that appears while you are watching — Archive
-                              // and Contacts, entered by a tap, still have it.
-                              enabled: false,
-                              delay: AppearAnimation.stagger(i),
-                              child: SwipeActionRow(
-                                // Off while picking chats out: in that mode a row
-                                // means one thing, and it is the tick.
-                                action: selection.isEmpty
-                                    ? swipeAction
-                                    : ChatSwipeAction.none,
-                                onFire: () => _fireSwipeAction(
-                                  context,
-                                  ref,
-                                  chat,
-                                  swipeAction,
-                                ),
-                                child: FloatingGlass(
-                                  blur: false,
-                                  borderRadius: 18,
-                                  // While anything is selected, a tap picks rather
-                                  // than opens — the same rule every list of this
-                                  // shape uses, and the only one that lets somebody
-                                  // select a second chat without the first one's chat
-                                  // opening on them.
-                                  onTap: () {
-                                    if (selection.isEmpty) {
-                                      context.push(routeForChat(chat));
-                                      return;
-                                    }
-                                    ref
-                                        .read(chatSelectionProvider.notifier)
-                                        .toggle(chat.id);
-                                  },
-                                  // Holding a row picks it out, and nothing else. A
-                                  // menu was tried here and taken back out: the hold is
-                                  // what puts the list into the mode where a pinned row
-                                  // grows its drag handle, so a popup on top of it took
-                                  // away the way to reorder pins. Every action lives in
-                                  // the bar the selection opens — including deleting
-                                  // the chat and deleting the person.
-                                  onLongPressAt: (_) => ref
-                                      .read(chatSelectionProvider.notifier)
-                                      .toggle(chat.id),
-                                  child: ChatTile(
-                                    chat: chat,
-                                    selected: picked,
-                                    // The grip appears when the list is held — the
-                                    // same gesture that starts a selection — and only
-                                    // on the rows that can move. Permanently visible it
-                                    // was a control on every pinned row of a list
-                                    // nobody is currently rearranging; and dragging is
-                                    // gated on it, so outside that mode a pinned row
-                                    // scrolls like any other instead of setting off a
-                                    // reorder under a thumb that meant to scroll.
-                                    reorderIndex:
-                                        chat.isPinned && selection.isNotEmpty
-                                            ? i
-                                            : null,
-                                    // Hold the picture to look inside without the
-                                    // badge clearing or a receipt going out. Withheld
-                                    // while a selection is running: there the hold
-                                    // belongs to the row, and taking it would be the
-                                    // same mistake the menu made.
-                                    onAvatarLongPress: selection.isEmpty
-                                        ? () => unawaited(
-                                              showChatPeek(
-                                                context,
-                                                chat,
-                                                onOpen: () => context
-                                                    .push(routeForChat(chat)),
-                                                onDelete: () => unawaited(
-                                                  _confirmAndDeleteChat(
-                                                    context,
-                                                    ref,
-                                                    chat,
-                                                    AppLocalizations.of(
-                                                        context),
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            ),
-                          );
+                          return _rowFor((
+                            chat: chat,
+                            last: i == filtered.length - 1,
+                            picked: selection.contains(chat.id),
+                            // The grip appears when the list is held — the
+                            // same gesture that starts a selection — and only
+                            // on the rows that can move. Permanently visible
+                            // it was a control on every pinned row of a list
+                            // nobody is currently rearranging; and dragging is
+                            // gated on it, so outside that mode a pinned row
+                            // scrolls like any other instead of setting off a
+                            // reorder under a thumb that meant to scroll.
+                            reorderIndex: chat.isPinned && selecting ? i : null,
+                            selecting: selecting,
+                            swipeAction: swipeAction,
+                            slideFrom: _folderSlideFrom,
+                          ));
                         },
                       ),
                     ),
@@ -2273,6 +2294,19 @@ IconData folderIcon(ChatFolder folder) => switch (folder) {
       ChatFolder.favorites => Icons.star_rounded,
       ChatFolder.online => Icons.radar_rounded,
     };
+
+/// Everything one row of the chat list is built from — see
+/// `_ChatsListScreenState._rows`. A record, so two sets of inputs are equal
+/// when every field is.
+typedef _RowInputs = ({
+  Chat chat,
+  bool last,
+  bool picked,
+  int? reorderIndex,
+  bool selecting,
+  ChatSwipeAction swipeAction,
+  double slideFrom,
+});
 
 /// A row arriving with its folder.
 ///
