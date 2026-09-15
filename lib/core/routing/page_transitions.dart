@@ -140,13 +140,18 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
     // 1057.** The covered page does not change during a slide, so it was
     // painted once into a `SnapshotWidget` and the picture moved instead: the
     // way Material's zoom transition does it, and Impeller keeps no raster
-    // cache that would do it otherwise. On the Android phone, against 1055
-    // over the same chats: frames over 8.3 ms per open 6.8 -> 5.1, but frames
-    // over 16.7 ms 0.8 -> 2.0 (close 0.7 -> 2.3), raster p99 13.0 -> 18.3,
-    // single raster frames of 36, 42, 82, 84 and 99 ms, and rss ~250 -> ~310
-    // MB. Every slide allocates and fills a new full-screen texture, and that
-    // allocation is sometimes most of a tenth of a second. A handful of 9 ms
-    // frames became a handful of 100 ms ones.
+    // cache that would do it otherwise. On the Android phone, per chat open or
+    // close, averaged over every run in three logs of hand-tapped opens:
+    //
+    //   1055 (no snapshot, 17 runs)  >8.3 ms 8.6  >16.7 ms 1.1  raster >30 ms in 0
+    //   1056 (snapshot, 52 runs)     >8.3 ms 5.0  >16.7 ms 1.9  raster >30 ms in 7
+    //   1057 (no snapshot, 26 runs)  >8.3 ms 5.7  >16.7 ms 1.5  raster >30 ms in 1
+    //
+    // 1055 and 1057 are the same code, so the >8.3 ms column is session noise
+    // and says nothing. What stood out was the tail: raster frames of 36, 42,
+    // 82, 84 and 99 ms, from a new full-screen texture filled on every slide.
+    // (rss read ~310 MB on 1056, but 1057 reads 322 MB without a snapshot, so
+    // that was the length of the session, not this.)
     final content = RepaintBoundary(
       child: EdgeBackGesture(
         enabledCallback: () => popGestureEnabled,

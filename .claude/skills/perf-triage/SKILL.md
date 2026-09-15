@@ -112,11 +112,14 @@ half the lesson; re-proposing it is the failure this section exists to prevent.
   are not many of. The test is also the guard: it fails if the counts grow.
 - **A `SnapshotWidget` over the page under a slide** (1056, reverted in 1057).
   Impeller keeps no raster cache, so snapshotting the static covered page
-  looked like a free halving of transition raster. On the phone it cut frames
-  over 8.3 ms by a quarter and multiplied frames over 16.7 ms by three, with
-  raster frames of 82-99 ms and +60 MB rss: a new full-screen texture per
-  slide, and the allocation is sometimes most of a tenth of a second. See the
-  comment in `_SlideRoute.buildTransitions`.
+  looked like a free halving of transition raster. On the phone it added a
+  tail of 36-99 ms raster frames (7 of 52 opens, against 1 of 26 without it):
+  a new full-screen texture per slide. Its apparent cut in frames over 8.3 ms
+  was noise — see the next point. Comment in `_SlideRoute.buildTransitions`.
+- **Hand-tapped transition logs are too noisy for small effects.** 1055 and
+  1057 are the same code and read 8.6 vs 5.7 frames over 8.3 ms per chat open.
+  A change worth less than ~3 frames per open cannot be seen that way; compare
+  the tail (frames over 16.7 / 30 ms) or use a scripted run.
 - **An animation-polish branch** (2026-08-17) — written and deleted. Fix measured
   lag before any "make it feel better" pass, and animate what every touch does
   rather than what happens rarely.
