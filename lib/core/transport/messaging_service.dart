@@ -184,6 +184,27 @@ Set<String> roomMemberIds(Map<String, ChannelMember>? roster) => {
         if (m.removedAt == null) m.id,
     };
 
+/// Who a room frame is published to: everybody in the address book, or only
+/// the room's members when the frame is a piece of a transfer.
+///
+/// A text post is one small event and reaching a contact the roster has not
+/// yet learned is a member costs nothing. The chunks of a picture are the
+/// opposite, and a non-member can neither open one nor carry it onward. With
+/// no members known the roster is what is wrong, so everybody gets it as
+/// before. See `_broadcastChannelOverNostr`.
+@visibleForTesting
+List<KnownPeer> roomRelayAudience(
+  List<KnownPeer> peers, {
+  required Set<String> members,
+  required bool mediaLane,
+}) {
+  if (!mediaLane || members.isEmpty) return peers;
+  return [
+    for (final peer in peers)
+      if (isRoomMember(peer, members)) peer,
+  ];
+}
+
 /// Whether [peer] is one of [memberIds] — the question a room post asks before
 /// it rings somebody's doorbell. See `_broadcastChannelOverNostr`.
 @visibleForTesting
@@ -4476,8 +4497,11 @@ class MessagingService {
               packTextReply(replyTarget, inner),
               msgId,
             );
-      final fanout =
-          await _broadcastChannelFrame(frame, wakeRoom: channel.name);
+      final fanout = await _broadcastChannelFrame(
+        frame,
+        room: channel.name,
+        wakes: true,
+      );
       messages.updateStatus(
         canonicalId,
         msg.id,
@@ -4572,7 +4596,8 @@ class MessagingService {
         caption: caption0,
         sha256: sha,
       );
-      // The manifest rings; the chunks behind it do not.
+      // The manifest rings; the chunks behind it do not. Media lane, like
+      // every other transfer — see [_broadcastChannelOverNostr].
       var fanout = await _broadcastChannelFrame(
         await _buildChannelFrame(
           channel,
@@ -4580,7 +4605,9 @@ class MessagingService {
           manifest.encode(),
           TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         ),
-        wakeRoom: channel.name,
+        room: channel.name,
+        wakes: true,
+        lane: RelayLane.media,
       );
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -4599,6 +4626,8 @@ class MessagingService {
             chunk.encode(),
             TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           ),
+          room: channel.name,
+          lane: RelayLane.media,
         );
         // Same pacing as the 1:1 photo path — see [sendImage].
         if (i + 1 < total && !relayOnly) {
@@ -4689,7 +4718,8 @@ class MessagingService {
         durationMs: durationMs,
         sha256: sha,
       );
-      // The manifest rings; the chunks behind it do not.
+      // The manifest rings; the chunks behind it do not. Media lane, like
+      // every other transfer — see [_broadcastChannelOverNostr].
       var fanout = await _broadcastChannelFrame(
         await _buildChannelFrame(
           channel,
@@ -4697,7 +4727,9 @@ class MessagingService {
           manifest.encode(),
           TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         ),
-        wakeRoom: channel.name,
+        room: channel.name,
+        wakes: true,
+        lane: RelayLane.media,
       );
       for (var i = 0; i < total; i++) {
         final start = i * chunkData;
@@ -4717,6 +4749,8 @@ class MessagingService {
             chunk.encode(),
             TransportEnvelope.newMsgId(initialTtl: _meshTtl),
           ),
+          room: channel.name,
+          lane: RelayLane.media,
         );
         // Same pacing as the channel photo path.
         if (i + 1 < total && !relayOnly) {
@@ -4819,6 +4853,8 @@ class MessagingService {
         manifest.encode(),
         TransportEnvelope.newMsgId(initialTtl: _meshTtl),
       ),
+      room: channel.name,
+      lane: RelayLane.media,
     );
     for (var i = 0; i < total; i++) {
       final start = i * chunkData;
@@ -4836,6 +4872,8 @@ class MessagingService {
           ).encode(),
           TransportEnvelope.newMsgId(initialTtl: _meshTtl),
         ),
+        room: channel.name,
+        lane: RelayLane.media,
       );
       if (i + 1 < total && !relayOnly) {
         await Future<void>.delayed(const Duration(milliseconds: 15));
@@ -4915,8 +4953,11 @@ class MessagingService {
         payload.encode(),
         msgId,
       );
-      final fanout =
-          await _broadcastChannelFrame(frame, wakeRoom: channel.name);
+      final fanout = await _broadcastChannelFrame(
+        frame,
+        room: channel.name,
+        wakes: true,
+      );
       messages.updateStatus(
         channel.name,
         message.id,
@@ -5293,17 +5334,25 @@ class MessagingService {
   /// Capped and paced, because relays rate-limit: a burst of publishes earns a
   /// `rate-limited` that lands on real messages too.
   ///
-  /// [wakeRoom] names the room when this frame is news a member would want to
-  /// be woken for — a post, a photo, a voice note, a poll — and is left null
-  /// for everything else. See [_broadcastChannelOverNostr].
+  /// [room] names the room this frame belongs to — which decides who the
+  /// chunks of a transfer are published to — and [wakes] says whether it is
+  /// news a member would want to be woken for: a post, a photo, a voice note,
+  /// a poll, but not the chunks behind them. See
+  /// [_broadcastChannelOverNostr].
   Future<int> _broadcastChannelFrame(
     Uint8List frameBytes, {
-    String? wakeRoom,
+    String? room,
+    bool wakes = false,
+    RelayLane lane = RelayLane.conversation,
   }) async {
     _rememberChannelFrame(frameBytes);
     final mesh = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    final relayed =
-        await _broadcastChannelOverNostr(frameBytes, wakeRoom: wakeRoom);
+    final relayed = await _broadcastChannelOverNostr(
+      frameBytes,
+      room: room,
+      wakes: wakes,
+      lane: lane,
+    );
     return mesh + relayed;
   }
 
@@ -5383,7 +5432,7 @@ class MessagingService {
   /// that: a notification, and nothing behind it. A shipped log carried
   /// `channel post relayed to 11 peer(s)` for a room far smaller than eleven.
   ///
-  /// Now only [wakeRoom]'s members are woken, and only when it is given: the
+  /// Now only [room]'s members are woken, and only when [wakes] says so: the
   /// author's own post, photo, voice note or poll. Everything else still
   /// travels exactly as before — nothing about delivery changes — it just no
   /// longer rings. A member learns of the rest when the app next opens, which
@@ -5395,7 +5444,9 @@ class MessagingService {
   Future<int> _broadcastChannelOverNostr(
     Uint8List frameBytes, {
     String? excludePubkeyHex,
-    String? wakeRoom,
+    String? room,
+    bool wakes = false,
+    RelayLane lane = RelayLane.conversation,
   }) async {
     if (_nostr == null) return 0;
     final now = DateTime.now();
@@ -5411,18 +5462,41 @@ class MessagingService {
       ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
     if (peers.isEmpty) return 0;
 
-    final members = wakeRoom == null
+    final members = room == null
         ? const <String>{}
-        : roomMemberIds(_ref.read(channelRosterControllerProvider)[wakeRoom]);
+        : roomMemberIds(_ref.read(channelRosterControllerProvider)[room]);
 
-    final targets = peers.take(_channelFanoutCap).toList();
+    // **A photo goes to the room, not to the address book.**
+    //
+    // Every frame of a room is published to every contact, because the roster
+    // is learned from traffic and a member who has never spoken is not in it
+    // — a text post is small and reaching one extra phone costs nothing. The
+    // chunks of a picture are not small. One 389 KB picture went out as seven
+    // chunks to eleven contacts on eight relays: 704 publishes, ~46 MB after
+    // encoding, and the log that came with it held 234 `rate limited` and 206
+    // `event too large` refusals. Eight of those eleven could not have opened
+    // it, and a non-member does not carry a room frame onward either — only
+    // members do, and only after they have opened it.
+    //
+    // So media goes to the members the roster knows, and everything else goes
+    // where it always did. With no members known at all the transfer falls
+    // back to everybody, because then the roster is the thing that is wrong.
+    final audience = roomRelayAudience(
+      peers,
+      members: members,
+      mediaLane: lane == RelayLane.media,
+    );
+    if (audience.isEmpty) return 0;
+
+    final targets = audience.take(_channelFanoutCap).toList();
     var sent = 0;
     for (var i = 0; i < targets.length; i++) {
       try {
         if (await _sendOverNostr(
           targets[i].pubkeyHex,
           frameBytes,
-          wakesPeer: isRoomMember(targets[i], members),
+          wakesPeer: wakes && isRoomMember(targets[i], members),
+          lane: lane,
         )) {
           sent++;
         }
@@ -8993,8 +9067,14 @@ class MessagingService {
   /// whether to queue / mark failed), matching the old direct-write contract.
   Future<bool> _writeFrameToClient(
       BleGattClient client, Uint8List frameBytes) async {
-    final parts =
-        fragmentFrame(frameBytes, effectivePayload(client.negotiatedMtu));
+    final budget = effectivePayload(client.negotiatedMtu);
+    // See [_notifyFrameToPeripheral]: a relay-sized frame is left to the relay
+    // rather than thrown at the fragmenter.
+    if (!fitsFragments(frameBytes.length, budget)) {
+      _noteUncarryableOnMesh(frameBytes.length);
+      return false;
+    }
+    final parts = fragmentFrame(frameBytes, budget);
     for (var i = 0; i < parts.length; i++) {
       await client.writeOutbound(parts[i]);
       if ((i + 1) % _fragmentsBeforeYield == 0) {
@@ -9002,6 +9082,23 @@ class MessagingService {
       }
     }
     return true;
+  }
+
+  /// Rate gate for the line above — one per transfer, not one per chunk.
+  DateTime? _lastUncarryableLogAt;
+
+  void _noteUncarryableOnMesh(int frameBytes) {
+    final now = DateTime.now();
+    final last = _lastUncarryableLogAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastUncarryableLogAt = now;
+    DebugLog.instance.log(
+      'MESH',
+      '${frameBytes}B is too much for one Bluetooth frame — '
+          'leaving this transfer to the relay',
+    );
   }
 
   Duration get _fragmentPacing => PlatformInfo.isAndroid
@@ -9017,6 +9114,15 @@ class MessagingService {
   /// no longer surfaces here as a failure the way it used to.
   Future<bool> _notifyFrameToPeripheral(Uint8List frameBytes) async {
     final peripheral = _ref.read(blePeripheralProvider);
+    // A frame sized for the relay does not fit a Bluetooth link, and it is not
+    // an error: a room's photo is chunked at 63 KiB when this phone had no
+    // link at all as the transfer started, and the relay is carrying it. One
+    // line a transfer, rather than `fanout notify failed … needs 388 fragments`
+    // per chunk with the whole log made of it.
+    if (!fitsFragments(frameBytes.length, conservativeEffectivePayload())) {
+      _noteUncarryableOnMesh(frameBytes.length);
+      return false;
+    }
     final parts = fragmentFrame(frameBytes, conservativeEffectivePayload());
     for (var i = 0; i < parts.length; i++) {
       // Stop at the first refusal rather than pushing the rest of a frame

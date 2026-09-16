@@ -38,6 +38,21 @@ final _fragRand = Random.secure();
 /// one-byte slice, or if the frame would need more than [kMaxFragments]
 /// fragments at this size (callers size media chunks so this never triggers in
 /// practice; text frames are far too small to approach the cap).
+/// Whether [frameBytes] can be fragmented for a link whose frames may be at
+/// most [maxFrameBytes].
+///
+/// The same arithmetic [fragmentFrame] throws on, asked instead of caught. A
+/// frame sized for the relay — where one chunk is one event and 63 KiB is
+/// ordinary — cannot go on a Bluetooth link at all, and the caller has a
+/// better answer than an exception per chunk: leave it to the road it was
+/// sized for.
+bool fitsFragments(int frameBytes, int maxFrameBytes) {
+  if (frameBytes <= maxFrameBytes) return true;
+  final maxSlice = maxFrameBytes - 1 - kFragHeaderLen;
+  if (maxSlice < 1) return false;
+  return (frameBytes + maxSlice - 1) ~/ maxSlice <= kMaxFragments;
+}
+
 List<Uint8List> fragmentFrame(Uint8List frameBytes, int maxFrameBytes) {
   if (frameBytes.length <= maxFrameBytes) return [frameBytes];
 

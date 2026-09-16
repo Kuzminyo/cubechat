@@ -52,6 +52,40 @@ void main() {
     expect(isRoomMember(_peer('unsigned'), ids), isFalse);
   });
 
+  group('who the chunks of a room transfer go to', () {
+    // One 389 KB picture went out as seven chunks to eleven contacts on eight
+    // relays — 704 publishes, most of them to people who could not open a
+    // chunk and do not carry one onward — and the log came back full of
+    // `rate limited` and `event too large`.
+    final member = _peer('in', signKey: inRoom);
+    final stranger = _peer('out', signKey: outsider);
+    final peers = [member, stranger];
+
+    test('a picture: only the members', () {
+      expect(
+        roomRelayAudience(peers, members: roomMemberIds(roster), mediaLane: true),
+        [member],
+      );
+    });
+
+    test('a post: everybody, so a member nobody has heard from still gets it',
+        () {
+      expect(
+        roomRelayAudience(peers,
+            members: roomMemberIds(roster), mediaLane: false),
+        peers,
+      );
+    });
+
+    test('a picture with no roster: everybody, because the roster is what is '
+        'wrong', () {
+      expect(
+        roomRelayAudience(peers, members: const <String>{}, mediaLane: true),
+        peers,
+      );
+    });
+  });
+
   test('a room nobody knows the members of wakes nobody', () {
     expect(roomMemberIds(null), isEmpty);
     expect(isRoomMember(_peer('in', signKey: inRoom), roomMemberIds(null)),
