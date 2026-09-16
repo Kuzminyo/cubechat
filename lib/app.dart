@@ -529,6 +529,14 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         unawaited(NotificationService.instance.clearForChat(open));
         ref.read(readMarkersControllerProvider.notifier).markRead(open);
       }
+      // And the generic "new message" banner the push service may have rung,
+      // whatever it was about: the app is open now, so it has been answered by
+      // definition. See [NotificationService.dismissStaleDoorbell] for the
+      // ones that had nothing behind them.
+      unawaited(
+        NotificationService.instance
+            .dismissStaleDoorbell(within: Duration.zero),
+      );
     }
   }
 

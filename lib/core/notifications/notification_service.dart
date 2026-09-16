@@ -277,6 +277,7 @@ class NotificationService {
           ? _nextIosId(threadKey)
           : threadKey.hashCode & 0x7fffffff;
       thread.notePosted(id);
+      _lastShownAt = DateTime.now();
       await _plugin.show(
         id,
         title,
@@ -288,6 +289,35 @@ class NotificationService {
     } catch (e) {
       debugPrint('NotificationService.showMessage failed: $e');
     }
+  }
+
+  /// When this app last put a notification on the screen, so a doorbell that
+  /// stood in for one can tell whether it was ever answered.
+  DateTime? _lastShownAt;
+
+  /// For tests: showing a real notification needs the plugin and a platform.
+  @visibleForTesting
+  set debugLastShownAt(DateTime? at) => _lastShownAt = at;
+
+  /// Take the generic banner down when there turned out to be nothing behind
+  /// it.
+  ///
+  /// The doorbell is rung by the push service, which cannot read anything: it
+  /// sees an event addressed to this phone and rings. Most of the time the app
+  /// then shows the real notification and cancels the placeholder. Sometimes
+  /// there is nothing to show — the message had already arrived over
+  /// Bluetooth, the event was a room frame this phone is not a member of, a
+  /// copy of something already stored — and then "Нове повідомлення" stayed on
+  /// the lock screen with nothing behind it. Reported exactly that way, twice.
+  ///
+  /// So whoever finishes a sweep with nothing to say takes it down. Cancelling
+  /// a tag that holds nothing is a binder call and nothing else.
+  Future<void> dismissStaleDoorbell({
+    Duration within = const Duration(seconds: 10),
+  }) async {
+    final shown = _lastShownAt;
+    if (shown != null && DateTime.now().difference(shown) < within) return;
+    await _dismissDoorbell(twice: false);
   }
 
   /// Take down the generic "New message" banner FCM drew for this.
@@ -311,9 +341,12 @@ class NotificationService {
   ///
   /// iOS has no equivalent and needs none: a terminated app is the only case
   /// where APNs delivers, and a terminated app draws nothing of its own.
-  Future<void> _dismissDoorbell() async {
+  Future<void> _dismissDoorbell({bool twice = true}) async {
     if (!PlatformInfo.isAndroid) return;
-    for (final delay in const <Duration>[Duration.zero, Duration(seconds: 4)]) {
+    final when = twice
+        ? const <Duration>[Duration.zero, Duration(seconds: 4)]
+        : const <Duration>[Duration.zero];
+    for (final delay in when) {
       if (delay > Duration.zero) await Future<void>.delayed(delay);
       try {
         await _badgeChannel.invokeMethod<void>('dismissDoorbell');

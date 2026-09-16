@@ -635,16 +635,19 @@ class MessagingService {
             // does — and all of it is Dart on the UI isolate. Splitting it
             // finer can come later; what is wanted first is whether this or
             // `nostr-verify` is where the seconds go.
-            (frame) => unawaited(CostMeter.instance.measure(
-              'relay-frame',
-              () => _handleInboundBytes(
-                _nostrPeerId,
-                frame.bytes,
-                // When they said it, not when it reached us. A relay holds
-                // events for whoever subscribes next — see [InboundFrame].
-                sentAt: frame.sentAt,
-              ),
-            )),
+            (frame) {
+              unawaited(CostMeter.instance.measure(
+                'relay-frame',
+                () => _handleInboundBytes(
+                  _nostrPeerId,
+                  frame.bytes,
+                  // When they said it, not when it reached us. A relay holds
+                  // events for whoever subscribes next — see [InboundFrame].
+                  sentAt: frame.sentAt,
+                ),
+              ));
+              _noteRelayFrameForDoorbell();
+            },
             onError: (Object e) =>
                 DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
           );
@@ -742,6 +745,27 @@ class MessagingService {
     // relays" to the UI. On our own disposal the container is already going
     // down, and reading a provider out of it here throws.
     if (!_disposed) _ref.read(relayStatusProvider.notifier).clear();
+  }
+
+  /// Watches a burst of relay frames settle, so a doorbell nobody answered can
+  /// be taken down.
+  Timer? _doorbellSweep;
+
+  /// A relay frame arrived. If the app says nothing about this burst, the
+  /// generic "new message" banner the push service rang was about nothing this
+  /// phone can show — see [NotificationService.dismissStaleDoorbell].
+  ///
+  /// Three seconds after the last frame of the burst, because a message is
+  /// opened, verified, stored and only then announced, and a photo arrives as
+  /// a manifest followed by chunks.
+  void _noteRelayFrameForDoorbell() {
+    if (_disposed || !PlatformInfo.isAndroid) return;
+    _doorbellSweep?.cancel();
+    _doorbellSweep = Timer(const Duration(seconds: 3), () {
+      _doorbellSweep = null;
+      if (_disposed) return;
+      unawaited(NotificationService.instance.dismissStaleDoorbell());
+    });
   }
 
   /// Synthetic peerId for frames that arrived over a relay rather than a BLE
@@ -11021,6 +11045,8 @@ class MessagingService {
     _fileQueueTimer = null;
     _stalledMediaTimer?.cancel();
     _stalledMediaTimer = null;
+    _doorbellSweep?.cancel();
+    _doorbellSweep = null;
     _stalledMedia.clear();
     _introduceRoomsTimer?.cancel();
     _introduceRoomsTimer = null;
