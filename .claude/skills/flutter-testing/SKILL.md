@@ -105,6 +105,22 @@ ProviderScope(
 Widgets need `AppLocalizations` in scope; copy the harness from
 `chat_search_capture_test.dart`.
 
+### A screen whose state comes from the identity cannot be pumped into place
+
+`ChannelInfoScreen` claims its seat in `initState` — `ensureSelf` awaits
+`identityProvider.future`, which mints an Ed25519 keypair through secure storage
+and a file. That is real asynchronous work: a widget test's clock never performs
+it, so the `setState` at the end never runs and the screen draws the member's
+half however the roster is set up. Awaiting the provider from the test does not
+fix it either; the screen's own call is still in flight when the test ends, and
+resumes against a container that has been disposed.
+
+Override the controller and hand the answer over instead — `_Roster` in
+`channel_info_screen_test.dart` returns a roster from `build()` (without calling
+`super.build()`, which would load Hive over it a frame later) and a synchronous
+`ensureSelf`. What the screen is being asked is which half to draw, and that is
+the part worth pinning.
+
 ### `pump()` draws nothing unless a frame is already scheduled
 
 `tester.pump()` runs `handleBeginFrame`/`handleDrawFrame` **only** when
