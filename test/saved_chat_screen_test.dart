@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:cubechat/app.dart';
 import 'package:cubechat/features/channels/data/channel_roster_controller.dart';
+import 'package:cubechat/features/chat/data/messages_controller.dart';
+import 'package:cubechat/features/chats/data/saved_messages.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -81,6 +83,20 @@ void main() {
       reason: 'an initial taken off the title says only which language the app '
           'is in — the same notebook was a "З" in Ukrainian',
     );
+  });
+
+  testWidgets('a note written in the notebook is in the notebook', (tester) async {
+    // The other end of "избранное не работает": proof that writing one works,
+    // so an empty-looking notebook is the filter and never the writing.
+    final container = await openSaved(tester);
+
+    await tester.enterText(find.byType(TextField).last, 'buy milk');
+    await beat(tester);
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await beat(tester);
+
+    expect(container.read(messagesControllerProvider)[savedChatId], hasLength(1));
+    expect(find.text('buy milk'), findsOneWidget);
   });
 
   testWidgets('tapping the name opens what is in the notebook, not a room',

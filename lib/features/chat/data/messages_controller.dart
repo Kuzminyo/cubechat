@@ -57,6 +57,16 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   /// doesn't need to wait (the UI rebuilds when it lands); tests do.
   Future<void> get loaded => _loading ?? Future<void>.value();
 
+  bool _loadFailed = false;
+
+  /// Whether the read off disk threw, leaving [state] empty for a reason other
+  /// than there being nothing to read.
+  ///
+  /// The difference matters to anything that treats "not in the history" as
+  /// "gone for good" — saved-note tags do — because on a failed load that is
+  /// every message on the phone.
+  bool get loadFailed => _loadFailed;
+
   Future<void>? _summarising;
 
   /// Completes once the per-chat summaries are in [summaries].
@@ -160,6 +170,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           ),
       };
     } catch (e, st) {
+      _loadFailed = true;
       debugPrint('Messages load failed: $e\n$st');
     }
   }

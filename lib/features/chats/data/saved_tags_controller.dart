@@ -6,6 +6,9 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../chat/data/messages_controller.dart';
+import '../../chat/models/message.dart';
+import 'saved_messages.dart';
 
 /// One emoji tag per saved note, for finding things again.
 ///
@@ -28,10 +31,68 @@ class SavedTagsController extends Notifier<Map<String, String>> {
 
   Box<dynamic>? _box;
 
+  /// Whether both stores have been read. Until they have, the notebook looks
+  /// empty, and reconciling against an empty notebook would delete every tag
+  /// on the phone.
+  bool _ready = false;
+
   @override
   Map<String, String> build() {
-    unawaited(_load());
+    // A tag outlives its note through every path that removes one: a single
+    // delete, a selection, `/clear`, the auto-delete sweep, an Emergency Wipe.
+    // Rather than a call at each of those — and the next one anybody adds —
+    // the tags follow the notes: whatever is left in the notebook is what may
+    // keep a tag.
+    ref.listen<List<Message>>(
+      messagesControllerProvider
+          .select((all) => all[savedChatId] ?? const <Message>[]),
+      (_, notes) {
+        if (_ready) unawaited(_retain(notes));
+      },
+    );
+    unawaited(_start());
     return const <String, String>{};
+  }
+
+  Future<void> _start() async {
+    await _load();
+    // And once, on the way in, for everything deleted while this provider was
+    // not listening — including on a phone that has been carrying orphans
+    // since before any of this existed.
+    final messages = ref.read(messagesControllerProvider.notifier);
+    await messages.loaded;
+    // A history that failed to read is not a history that is empty, and tags
+    // dropped against it would be dropped for good.
+    if (messages.loadFailed) return;
+    _ready = true;
+    final notes =
+        ref.read(messagesControllerProvider)[savedChatId] ?? const <Message>[];
+    await _retain(notes);
+  }
+
+  /// Keep only the tags whose notes are still there.
+  Future<void> _retain(List<Message> notes) async {
+    if (state.isEmpty) return;
+    final live = {for (final note in notes) note.id};
+    final next = <String, String>{
+      for (final entry in state.entries)
+        if (live.contains(entry.key)) entry.key: entry.value,
+    };
+    if (next.length == state.length) return;
+    state = next;
+    _dropFilterOnAVanishedTag();
+    await _persist();
+  }
+
+  /// A filter is a tag, and a tag can stop existing under it — the last note
+  /// carrying it deleted, or untagged. Left alone, the notebook then filters
+  /// itself down to nothing and every note written next lands outside the
+  /// filter, which is a saved chat that looks broken rather than one that is
+  /// filtered.
+  void _dropFilterOnAVanishedTag() {
+    final active = ref.read(savedTagFilterProvider);
+    if (active == null || state.values.contains(active)) return;
+    ref.read(savedTagFilterProvider.notifier).clear();
   }
 
   Future<void> _load() async {
@@ -77,11 +138,15 @@ class SavedTagsController extends Notifier<Map<String, String>> {
       next[messageId] = tag;
     }
     state = next;
+    _dropFilterOnAVanishedTag();
     await _persist();
   }
 
   /// Drop a tag when its note is gone, so a deleted note does not leave its tag
   /// haunting the filter bar as an entry that matches nothing.
+  ///
+  /// The notebook is watched for this too — see [build] — so nothing depends on
+  /// every delete path remembering to call it.
   Future<void> forget(String messageId) => setTag(messageId, null);
 
   Future<void> _persist() async {
