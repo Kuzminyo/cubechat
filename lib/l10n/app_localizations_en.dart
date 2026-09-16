@@ -2251,6 +2251,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get channelDescriptionSave => 'Save';
 
   @override
+  String get channelPrivateSubtitle => 'private channel';
+
+  @override
+  String get channelAvatarSet => 'Set a new photo';
+
+  @override
+  String get channelSettingsTitle => 'Channel settings';
+
+  @override
+  String get channelSettingsHint => 'Who may post, copying, the backlog';
+
+  @override
+  String get channelLeaveAction => 'Leave';
+
+  @override
+  String get channelLeaveConfirm =>
+      'The room and everything said in it go from this phone. The key comes from the name, so you can open it again by typing the same one.';
+
+  @override
+  String get channelShareAction => 'Share';
+
+  @override
+  String channelMembersOf(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count members',
+      one: '1 member',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get chatTyping => 'typing…';
 
   @override

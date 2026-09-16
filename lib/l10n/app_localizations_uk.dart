@@ -2270,6 +2270,41 @@ class AppLocalizationsUk extends AppLocalizations {
   String get channelDescriptionSave => 'Зберегти';
 
   @override
+  String get channelPrivateSubtitle => 'приватний канал';
+
+  @override
+  String get channelAvatarSet => 'Встановити нове фото';
+
+  @override
+  String get channelSettingsTitle => 'Налаштування каналу';
+
+  @override
+  String get channelSettingsHint => 'Хто може писати, копіювання, історія';
+
+  @override
+  String get channelLeaveAction => 'Покинути';
+
+  @override
+  String get channelLeaveConfirm =>
+      'Кімната і все сказане в ній зникнуть з цього телефона. Ключ походить від назви, тож ви зможете відкрити її знову, ввівши ту саму.';
+
+  @override
+  String get channelShareAction => 'Поділитися';
+
+  @override
+  String channelMembersOf(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count учасника',
+      many: '$count учасників',
+      few: '$count учасники',
+      one: '1 учасник',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get chatTyping => 'пише…';
 
   @override

@@ -3950,6 +3950,54 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get channelDescriptionSave;
 
+  /// No description provided for @channelPrivateSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'private channel'**
+  String get channelPrivateSubtitle;
+
+  /// No description provided for @channelAvatarSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a new photo'**
+  String get channelAvatarSet;
+
+  /// No description provided for @channelSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel settings'**
+  String get channelSettingsTitle;
+
+  /// No description provided for @channelSettingsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Who may post, copying, the backlog'**
+  String get channelSettingsHint;
+
+  /// No description provided for @channelLeaveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get channelLeaveAction;
+
+  /// No description provided for @channelLeaveConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'The room and everything said in it go from this phone. The key comes from the name, so you can open it again by typing the same one.'**
+  String get channelLeaveConfirm;
+
+  /// No description provided for @channelShareAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get channelShareAction;
+
+  /// No description provided for @channelMembersOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 member} other{{count} members}}'**
+  String channelMembersOf(int count);
+
   /// No description provided for @chatTyping.
   ///
   /// In en, this message translates to:

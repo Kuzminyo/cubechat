@@ -4798,6 +4798,9 @@ class MessagingService {
     }
     final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
     await avatars.loaded;
+    // Ours is the room's picture now, so anything of theirs still waiting for
+    // its sender to be recognised is out of date — see [_dropHeldChannelState].
+    _dropHeldChannelState(channel.name, InnerPayloadType.channelAvatar);
     if (jpeg == null) {
       await avatars.forget(channel.name);
     } else if (!await avatars.store(channel.name, jpeg)) {
@@ -9824,11 +9827,46 @@ class MessagingService {
     await _applyChannelState(channelName, type, body);
   }
 
+  /// Forget a held frame of this kind: whatever is being applied now is newer
+  /// than something that was waiting for its sender to be recognised.
+  ///
+  /// Without it a picture removed by an admin came back. The clear went out
+  /// and was applied everywhere; then a roster update confirmed some earlier
+  /// sender, the avatar frame held from before the clear was replayed, and the
+  /// old picture was restored over it — "в каналах не прибирається аватарка".
+  void _dropHeldChannelState(String channelName, InnerPayloadType type) {
+    _heldChannelState.remove('$channelName|${type.name}');
+  }
+
+  /// Seams for the hold-and-replay rule. The frames that drive it are signed
+  /// and arrive over the mesh, so what a test can reach is the rule itself —
+  /// state applied now outranks a frame still waiting for its sender.
+  @visibleForTesting
+  void debugHoldChannelState(
+    String channelName,
+    InnerPayloadType type,
+    String senderId,
+    Uint8List body,
+  ) =>
+      _holdChannelState(channelName, type, senderId, body);
+
+  @visibleForTesting
+  Iterable<String> get debugHeldChannelState => _heldChannelState.keys;
+
+  @visibleForTesting
+  Future<void> debugApplyChannelState(
+    String channelName,
+    InnerPayloadType type,
+    Uint8List body,
+  ) =>
+      _applyChannelState(channelName, type, body);
+
   Future<void> _applyChannelState(
     String channelName,
     InnerPayloadType type,
     Uint8List body,
   ) async {
+    _dropHeldChannelState(channelName, type);
     switch (type) {
       case InnerPayloadType.channelAvatar:
         final avatars = _ref.read(channelAvatarsControllerProvider.notifier);

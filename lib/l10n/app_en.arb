@@ -1109,6 +1109,21 @@
   "channelDescriptionHint": "What this channel is for",
   "channelDescriptionAdminOnly": "Only an administrator can change the description",
   "channelDescriptionSave": "Save",
+  "channelPrivateSubtitle": "private channel",
+  "channelAvatarSet": "Set a new photo",
+  "channelSettingsTitle": "Channel settings",
+  "channelSettingsHint": "Who may post, copying, the backlog",
+  "channelLeaveAction": "Leave",
+  "channelLeaveConfirm": "The room and everything said in it go from this phone. The key comes from the name, so you can open it again by typing the same one.",
+  "channelShareAction": "Share",
+  "channelMembersOf": "{count, plural, =1{1 member} other{{count} members}}",
+  "@channelMembersOf": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "chatTyping": "typing…",
   "chatRecordingVoice": "recording a voice message…",
   "@chatRecordingVoice": {

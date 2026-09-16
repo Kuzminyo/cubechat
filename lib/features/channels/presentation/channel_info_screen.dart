@@ -1,14 +1,10 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
-
-import 'package:flutter/gestures.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-import '../../../core/routing/back_gesture.dart';
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/transport/channel_admin.dart';
@@ -543,218 +539,182 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
     final description =
         ref.watch(channelDescriptionsControllerProvider)[widget.channelName];
 
+    final admins = [for (final m in members) if (m.isAdmin) m];
+    final muted = ref
+            .watch(conversationSettingsControllerProvider)[widget.channelName]
+            ?.isMutedNow ??
+        false;
+
+    // The shape a channel has everywhere else: the picture across the top with
+    // the name over it, a row of round actions, and the rest as rows you open
+    // rather than a page of switches. Asked for with screenshots, and the
+    // member's version is the same screen with the administrator's half taken
+    // out — no greyed-out controls, no toasts explaining what somebody cannot
+    // do here.
     return AuroraBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          foregroundColor: AppColors.textOnGlass,
-          title: Text(t.channelInfoTitle),
-        ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          padding: const EdgeInsets.only(bottom: 32),
           children: [
-            _ChannelHero(
+            _ChannelCover(
               channelName: widget.channelName,
-              memberCount: members.length,
               picture: picture,
-              // The tap does nothing for a member rather than offering a
-              // picker that would be refused on arrival — and the toast says
-              // which, so a disabled control is never a mystery.
-              onTapAvatar: canManage
-                  ? _pickChannelAvatar
-                  : () => showGlassToast(context, t.channelAvatarAdminOnly),
-              onRemoveAvatar:
-                  canManage && picture != null ? _removeChannelAvatar : null,
-            ),
-            const SizedBox(height: 12),
-            _ChannelDescription(
-              text: description,
+              memberCount: members.length,
               canManage: canManage,
-              // A member gets the same treatment as the picture: the row is
-              // still there, and tapping says why it will not open rather
-              // than doing nothing.
-              onTap: canManage
-                  ? () => _editDescription(description ?? '')
-                  : () => showGlassToast(
-                        context,
-                        t.channelDescriptionAdminOnly,
-                      ),
+              onBack: () => Navigator.of(context).maybePop(),
+              onEdit: canManage ? _editChannel : null,
+              onOpenPicture: picture == null
+                  ? null
+                  : () => _openPicture(picture),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _ChannelAction(
-                    icon: Icons.person_add_alt_1_rounded,
-                    label: t.channelInviteTitle,
-                    onTap: () =>
-                        showChannelInviteSheet(context, widget.channelName),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ChannelAction(
-                    icon: Icons.wallpaper_rounded,
-                    label: t.chatWallpaperTitle,
-                    // Each member picks their own — nothing about a wallpaper
-                    // travels, so there is no admin gate here.
-                    onTap: () => context.push(
-                      '/wallpaper/${Uri.encodeComponent(widget.channelName)}',
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  if (canManage)
+                    _RoundAction(
+                      icon: Icons.person_add_alt_1_rounded,
+                      label: t.channelInviteTitle,
+                      onTap: () =>
+                          showChannelInviteSheet(context, widget.channelName),
+                    )
+                  else
+                    _RoundAction(
+                      icon: Icons.ios_share_rounded,
+                      label: t.channelShareAction,
+                      onTap: () =>
+                          showChannelInviteSheet(context, widget.channelName),
                     ),
+                  const SizedBox(width: 10),
+                  _RoundAction(
+                    icon: muted
+                        ? Icons.notifications_off_rounded
+                        : Icons.notifications_active_rounded,
+                    label: muted ? t.channelUnmute : t.channelMute,
+                    onTap: () => _toggleMute(muted),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ChannelAction(
+                  const SizedBox(width: 10),
+                  _RoundAction(
                     icon: Icons.perm_media_rounded,
                     label: t.channelSharedContent,
                     // The channel's own bucket keys the shared-content screen
-                    // exactly the way a peer's pubkey does, so the media, files
-                    // and polls tabs come for free.
+                    // exactly the way a peer's pubkey does, so the media,
+                    // files and polls tabs come for free.
                     onTap: () => context.push(
                       '/person/${Uri.encodeComponent(widget.channelName)}'
                       '/content?name=${Uri.encodeComponent(widget.channelName)}',
                     ),
                   ),
-                ),
-              ],
-            ),
-            // The room's rules, shown to the people who set them.
-            //
-            // They used to be on screen for everybody, greyed out with a
-            // toast on tap — which tells a member the room has a switch, that
-            // it is not theirs, and nothing else they can act on. A rule is
-            // felt when it applies; a disabled control for it is furniture.
-            const SizedBox(height: 12),
-            // Everyone's, and above the administrator's block: silencing a
-            // room is the thing a member is most likely to have come here for.
-            _ChannelMute(channelName: widget.channelName),
-            if (canManage) ...[
-              const SizedBox(height: 12),
-              // A room-wide version of the 1:1 switch. Members receive it into
-              // the same field a peer's request lands in, so it is not
-              // something a reader can turn off for themselves — see
-              // [MessagingService.sendChannelCopyRestriction].
-              _ChannelCopyRestriction(
-                channelName: widget.channelName,
-                canManage: canManage,
-              ),
-              const SizedBox(height: 12),
-              _ChannelAdminOnly(
-                channelName: widget.channelName,
-                canManage: canManage,
-              ),
-              // Only where a backlog is safe to hand over: a channel frame is
-              // signed by whoever sent it, so replaying somebody else's words
-              // under our own signature is only honest in a room where the
-              // administrator wrote all of them. The receiving side refuses it
-              // anywhere else — see [MessagingService.sendChannelHistory].
-              if (adminOnly) ...[
-                const SizedBox(height: 12),
-                // The switch the manual button was standing in for: on, a new
-                // member is handed the backlog the moment they turn up, which
-                // is the only time anybody actually wants it sent.
-                _ChannelAutoHistory(channelName: widget.channelName),
-                const SizedBox(height: 12),
-                GlassCard(
-                  onTap: _shareHistory,
-                  child: Row(
-                    children: [
-                      Icon(Icons.history_rounded,
-                          color: AppColors.brandPrimary),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              t.channelShareHistory,
-                              style: TextStyle(
-                                color: AppColors.textOnGlass,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              t.channelShareHistoryHint,
-                              style: TextStyle(
-                                color: AppColors.textOnGlassFaint,
-                                fontSize: 11.5,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
+                  const SizedBox(width: 10),
+                  if (canManage)
+                    _RoundAction(
+                      icon: Icons.wallpaper_rounded,
+                      label: t.chatWallpaperTitle,
+                      onTap: () => context.push(
+                        '/wallpaper/${Uri.encodeComponent(widget.channelName)}',
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-            const SizedBox(height: 20),
-            Text(
-              t.channelParticipantsTitle.toUpperCase(),
-              style: TextStyle(
-                color: AppColors.textOnGlassDim,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2,
+                    )
+                  else
+                    _RoundAction(
+                      icon: Icons.logout_rounded,
+                      label: t.channelLeaveAction,
+                      tone: AppColors.danger,
+                      onTap: _leaveChannel,
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            if (members.isEmpty)
-              GlassCard(
-                child: Text(
-                  t.channelNoParticipants,
-                  style: TextStyle(color: AppColors.textOnGlassDim),
-                ),
-              )
-            else
-              for (final member in members)
-                _MemberRow(
-                  member: member,
-                  contact: contacts[member.id],
-                  isMe: member.id == _myId,
+            if (description != null && description.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _ChannelDescription(
+                  text: description,
                   canManage: canManage,
-                  onInvite: () => _inviteToContacts(member),
-                  onModerate: () => _moderate(member),
-                  onToggleAdmin: () =>
-                      ref.read(messagingServiceProvider).sendChannelAdminChange(
-                            widget.channelName,
-                            member.id,
-                            !member.isAdmin,
+                  onTap: canManage
+                      ? () => _editDescription(description)
+                      : () => showGlassToast(
+                            context,
+                            t.channelDescriptionAdminOnly,
                           ),
                 ),
-            // The last thing on the screen, and only for one person in the
-            // room. Below the member list rather than up with the settings,
-            // because it is not a setting — it is the end of the room.
-            if (_myId != null && roster.isOwner(widget.channelName, _myId!)) ...[
-              const SizedBox(height: 24),
-              GlassCard(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
-                    Icons.delete_forever_rounded,
-                    color: AppColors.danger,
-                  ),
-                  title: Text(
-                    t.channelCloseTitle,
-                    style: const TextStyle(
+              ),
+            ],
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: GlassCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    _InfoRow(
+                      icon: Icons.group_rounded,
+                      label: t.channelParticipantsTitle,
+                      trailing: '${members.length}',
+                      onTap: () => _showPeople(members, contacts, canManage),
+                    ),
+                    _InfoRow(
+                      icon: Icons.shield_rounded,
+                      label: t.channelAdministratorsTitle,
+                      trailing: '${admins.length}',
+                      onTap: () => _showPeople(admins, contacts, canManage),
+                    ),
+                    if (canManage)
+                      _InfoRow(
+                        icon: Icons.tune_rounded,
+                        label: t.channelSettingsTitle,
+                        subtitle: t.channelSettingsHint,
+                        onTap: () => _showSettings(adminOnly),
+                        last: true,
+                      )
+                    else
+                      _InfoRow(
+                        icon: Icons.wallpaper_rounded,
+                        label: t.chatWallpaperTitle,
+                        onTap: () => context.push(
+                          '/wallpaper/'
+                          '${Uri.encodeComponent(widget.channelName)}',
+                        ),
+                        last: true,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            // The end of the room, and only for the one person who can end it.
+            // Below everything else rather than among the settings, because it
+            // is not a setting.
+            if (_myId != null &&
+                roster.isOwner(widget.channelName, _myId!)) ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GlassCard(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
+                      Icons.delete_forever_rounded,
                       color: AppColors.danger,
-                      fontWeight: FontWeight.w600,
                     ),
-                  ),
-                  subtitle: Text(
-                    t.channelCloseSubtitle,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 12,
-                      height: 1.35,
+                    title: Text(
+                      t.channelCloseTitle,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                    subtitle: Text(
+                      t.channelCloseSubtitle,
+                      style: TextStyle(
+                        color: AppColors.textOnGlassDim,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                    onTap: _closeForEveryone,
                   ),
-                  onTap: _closeForEveryone,
                 ),
               ),
             ],
@@ -762,6 +722,233 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
         ),
       ),
     );
+  }
+
+  /// Silence the room, or let it speak again. The same switch the row used to
+  /// carry, now behind the bell in the action strip.
+  Future<void> _toggleMute(bool muted) async {
+    await ref
+        .read(conversationSettingsControllerProvider.notifier)
+        .setMuted(widget.channelName, !muted);
+  }
+
+  /// The picture at full size, the way a contact's opens.
+  void _openPicture(Uint8List picture) {
+    showGlassSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.memory(picture, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The pencil: the room's picture and its description, which are the two
+  /// things an administrator can change about it.
+  Future<void> _editChannel() async {
+    final t = AppLocalizations.of(context);
+    final picture = ref
+        .read(channelAvatarsControllerProvider.notifier)
+        .forChannel(widget.channelName);
+    final description =
+        ref.read(channelDescriptionsControllerProvider)[widget.channelName];
+    if (!mounted) return;
+    final action = await showGlassSheet<String>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.photo_camera_rounded,
+              label: t.channelAvatarSet,
+              onTap: () => Navigator.of(sheet).pop('photo'),
+            ),
+            if (picture != null)
+              _InfoRow(
+                icon: Icons.hide_image_rounded,
+                label: t.avatarRemove,
+                tone: AppColors.danger,
+                onTap: () => Navigator.of(sheet).pop('remove'),
+              ),
+            _InfoRow(
+              icon: Icons.notes_rounded,
+              label: t.channelDescriptionTitle,
+              onTap: () => Navigator.of(sheet).pop('description'),
+              last: true,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'photo':
+        await _pickChannelAvatar();
+      case 'remove':
+        await _removeChannelAvatar();
+      case 'description':
+        await _editDescription(description ?? '');
+    }
+  }
+
+  /// The room's people, in a sheet rather than down the page: thirty of them
+  /// under the settings is a screen nobody scrolls to the bottom of.
+  void _showPeople(
+    List<ChannelMember> people,
+    Map<String, KnownPeer> contacts,
+    bool canManage,
+  ) {
+    final t = AppLocalizations.of(context);
+    showGlassSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: people.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(28),
+                child: Text(
+                  t.channelNoParticipants,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textOnGlassDim),
+                ),
+              )
+            : ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                children: [
+                  for (final member in people)
+                    _MemberRow(
+                      member: member,
+                      contact: contacts[member.id],
+                      isMe: member.id == _myId,
+                      canManage: canManage,
+                      onInvite: () => _inviteToContacts(member),
+                      onModerate: () => _moderate(member),
+                      onToggleAdmin: () => ref
+                          .read(messagingServiceProvider)
+                          .sendChannelAdminChange(
+                            widget.channelName,
+                            member.id,
+                            !member.isAdmin,
+                          ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Everything the room's administrator decides, in one place.
+  void _showSettings(bool adminOnly) {
+    final t = AppLocalizations.of(context);
+    showGlassSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          children: [
+            _ChannelCopyRestriction(
+              channelName: widget.channelName,
+              canManage: true,
+            ),
+            const SizedBox(height: 12),
+            _ChannelAdminOnly(
+              channelName: widget.channelName,
+              canManage: true,
+            ),
+            // Only where a backlog is safe to hand over: a channel frame is
+            // signed by whoever sent it, so replaying somebody else's words
+            // under our own signature is only honest in a room where the
+            // administrator wrote all of them. The receiving side refuses it
+            // anywhere else — see [MessagingService.sendChannelHistory].
+            if (adminOnly) ...[
+              const SizedBox(height: 12),
+              _ChannelAutoHistory(channelName: widget.channelName),
+              const SizedBox(height: 12),
+              GlassCard(
+                onTap: _shareHistory,
+                child: Row(
+                  children: [
+                    Icon(Icons.history_rounded, color: AppColors.brandPrimary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            t.channelShareHistory,
+                            style: TextStyle(
+                              color: AppColors.textOnGlass,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            t.channelShareHistoryHint,
+                            style: TextStyle(
+                              color: AppColors.textOnGlassFaint,
+                              fontSize: 11.5,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            GlassCard(
+              onTap: () => context.push(
+                '/wallpaper/${Uri.encodeComponent(widget.channelName)}',
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.wallpaper_rounded, color: AppColors.brandPrimary),
+                  const SizedBox(width: 12),
+                  Text(
+                    t.chatWallpaperTitle,
+                    style: TextStyle(
+                      color: AppColors.textOnGlass,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Leave the room: it goes from this phone and nothing is said to anybody.
+  /// The key comes from the name, so this is not a door that locks.
+  Future<void> _leaveChannel() async {
+    final t = AppLocalizations.of(context);
+    if (!await confirmAction(
+      context,
+      title: t.channelLeaveAction,
+      message: t.channelLeaveConfirm,
+      confirmLabel: t.channelLeaveAction,
+      destructive: true,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    await ref
+        .read(messagingServiceProvider)
+        .wipeChannelLocally(widget.channelName);
+    if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   /// End the room, on every phone that has it.
@@ -791,253 +978,6 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
   }
 }
 
-/// The card the screen opens on: the room's picture, its name, and how many
-/// people are in it.
-///
-/// Replaces a row that showed a megaphone glyph for every channel there has
-/// ever been — which told you nothing about *this* one, and made two rooms
-/// indistinguishable at a glance in the one place that exists to tell them
-/// apart.
-class _ChannelHero extends StatelessWidget {
-  const _ChannelHero({
-    required this.channelName,
-    required this.memberCount,
-    required this.picture,
-    required this.onTapAvatar,
-    required this.onRemoveAvatar,
-  });
-
-  final String channelName;
-  final int memberCount;
-  final Uint8List? picture;
-  final VoidCallback onTapAvatar;
-  final VoidCallback? onRemoveAvatar;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    // No padding of its own: the picture is allowed the whole card, so opening
-    // it fills the width of the screen the way a contact's does instead of
-    // growing into a framed inset. The text below brings its own.
-    return GlassCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          _ChannelPicture(
-            channelName: channelName,
-            picture: picture,
-            onEdit: onTapAvatar,
-          ),
-          Text(
-            channelName,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${t.channelParticipantsTitle}: $memberCount',
-            style: TextStyle(color: AppColors.textOnGlassDim),
-          ),
-          const SizedBox(height: 18),
-          if (onRemoveAvatar != null)
-            TextButton(
-              onPressed: onRemoveAvatar,
-              child: Text(
-                t.avatarRemove,
-                style: TextStyle(color: AppColors.warning),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The room's picture, which opens the way a person's does.
-///
-/// A channel is a profile like any other, and its photograph was the one that
-/// could not be looked at: tapping it went straight to the picker, so an
-/// administrator could replace a picture they had never seen at full size, and
-/// everybody else tapped a circle that did nothing at all.
-///
-/// The same gesture the contact header uses, and deliberately: up opens, down
-/// closes, a tap does either. What grows is the circle itself — the size and
-/// the corner radius are lerped together — so one shape becomes the other
-/// rather than a second view appearing over the first.
-///
-/// The camera badge keeps the picker, and only for somebody who may set it.
-class _ChannelPicture extends StatefulWidget {
-  const _ChannelPicture({
-    required this.channelName,
-    required this.picture,
-    required this.onEdit,
-  });
-
-  final String channelName;
-  final Uint8List? picture;
-
-  /// Null for a member who cannot change the room's picture.
-  final VoidCallback? onEdit;
-
-  @override
-  State<_ChannelPicture> createState() => _ChannelPictureState();
-}
-
-class _ChannelPictureState extends State<_ChannelPicture>
-    with SingleTickerProviderStateMixin {
-  static const double _rest = 96;
-
-  /// How far a finger travels on the picture before it counts. Short enough to
-  /// feel like a flick, long enough that a scroll which happens to start on
-  /// the picture is still a scroll.
-  static const double _dragToOpen = 28;
-
-  late final AnimationController _open = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-  );
-  double _dragged = 0;
-
-  @override
-  void dispose() {
-    _open.dispose();
-    super.dispose();
-  }
-
-  void _toggle() => _open.value > 0.5 ? _open.reverse() : _open.forward();
-
-  void _drag(DragUpdateDetails d) {
-    _dragged += d.delta.dy;
-    if (_open.isAnimating) return;
-    if (_dragged <= -_dragToOpen && _open.value < 1) {
-      _dragged = 0;
-      _open.forward();
-    } else if (_dragged >= _dragToOpen && _open.value > 0) {
-      _dragged = 0;
-      _open.reverse();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _open,
-      builder: (context, _) {
-        final t = Curves.easeOutCubic.transform(_open.value);
-        return LayoutBuilder(
-          builder: (context, box) {
-            final width = ui.lerpDouble(_rest, box.maxWidth, t)!;
-            // Squarer as it opens rather than ever taller: a room's picture is
-            // a thumbnail, and stretching it into a portrait frame would show
-            // a crop of it and call that opening it.
-            final height = ui.lerpDouble(_rest, box.maxWidth * 0.82, t)!;
-            final radius = ui.lerpDouble(_rest / 2, 22, t)!;
-            return SizedBox(
-              // The whole card's width, always, so the badge can sit against
-              // the picture's real edge and the closed circle still centres.
-              width: box.maxWidth,
-              // The card gives the picture no padding of its own — the open
-              // state is meant to reach the card's corners — so the breathing
-              // room at rest lives here and goes as it opens.
-              height: height + ui.lerpDouble(22, 0, t)!,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  RawGestureDetector(
-                    gestures: <Type, GestureRecognizerFactory>{
-                      // Eager, because this card sits in a scroll view and an
-                      // ordinary detector loses that arena outright.
-                      EagerVerticalDragRecognizer:
-                          GestureRecognizerFactoryWithHandlers<
-                              EagerVerticalDragRecognizer>(
-                        EagerVerticalDragRecognizer.new,
-                        (r) => r
-                          ..onStart = ((_) => _dragged = 0)
-                          ..onUpdate = _drag,
-                      ),
-                      TapGestureRecognizer:
-                          GestureRecognizerFactoryWithHandlers<
-                              TapGestureRecognizer>(
-                        TapGestureRecognizer.new,
-                        (r) => r.onTap =
-                            widget.picture == null ? widget.onEdit : _toggle,
-                      ),
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(radius),
-                      child: SizedBox(
-                        width: width,
-                        height: height,
-                        child: widget.picture == null
-                            ? IdentityAvatar(
-                                seed: widget.channelName,
-                                label: widget.channelName,
-                                size: _rest,
-                                mark: Icons.campaign_rounded,
-                              )
-                            : Image.memory(
-                                widget.picture!,
-                                fit: BoxFit.cover,
-                                // Decoded at the size actually drawn, so the
-                                // open picture is sharp and the closed one is
-                                // not a full-resolution bitmap squeezed into
-                                // ninety-six points.
-                                cacheWidth: (box.maxWidth *
-                                        MediaQuery.devicePixelRatioOf(context))
-                                    .round(),
-                                errorBuilder: (_, __, ___) =>
-                                    const SizedBox.shrink(),
-                              ),
-                      ),
-                    ),
-                  ),
-                  if (widget.onEdit != null)
-                    Positioned(
-                      // Follows the picture's own edge as it grows, rather
-                      // than staying where the circle used to be.
-                      right: (box.maxWidth - width) / 2 + 10 * t,
-                      bottom: ui.lerpDouble(22, 10, t)!,
-                      child: GestureDetector(
-                        onTap: widget.onEdit,
-                        child: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.brandPrimary,
-                          ),
-                          child: const Icon(
-                            Icons.photo_camera_rounded,
-                            size: 14,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-/// What the room is for, in the room's own words.
-///
-/// Always present rather than hidden when empty: a channel with no topic and
-/// an admin looking for where to write one are the same screen, and a row that
-/// only exists once it has content is a row nobody finds the first time.
-/// Room-wide "do not copy or forward this".
-///
-/// Reads the same [ConversationSettings.copyingRestricted] the bubbles already
-/// consult, keyed by the channel name — so once it is on, every Copy and
-/// Forward in the room is gone without anything else having to know this
-/// screen exists.
 /// Announcement mode: only admins may post.
 ///
 /// The switch is a request; the enforcement lives on every member's device,
@@ -1240,59 +1180,9 @@ class _ChannelAutoHistory extends ConsumerWidget {
   }
 }
 
-/// "Do not announce this room."
-///
-/// Everyone's, not just an administrator's: it is about this phone's
-/// notifications and travels nowhere. It is the switch a 1:1 chat has had in
-/// its profile all along, and rooms — the chats people most want to silence —
-/// were the ones without it. Held down in the reader's bar for a length; here
-/// it is the plain on-and-off, because a profile is where you go to settle
-/// something rather than to snooze it.
-class _ChannelMute extends ConsumerWidget {
-  const _ChannelMute({required this.channelName});
-
-  final String channelName;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
-    final on = ref.watch(
-      conversationSettingsControllerProvider.select(
-        (all) => all[channelName]?.isMutedNow ?? false,
-      ),
-    );
-    return GlassCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        child: Row(
-          children: [
-            Icon(
-              on
-                  ? Icons.notifications_off_rounded
-                  : Icons.notifications_active_rounded,
-              size: 19,
-              color: AppColors.textOnGlassDim,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                t.channelMute,
-                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-              ),
-            ),
-            Switch(
-              value: on,
-              onChanged: (next) => ref
-                  .read(conversationSettingsControllerProvider.notifier)
-                  .setMuted(channelName, next),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
+/// The room's own words, under the actions: a card rather than a row, because
+/// a description is read here and not opened. An administrator taps it to
+/// write one; anybody else is told who may.
 class _ChannelDescription extends StatelessWidget {
   const _ChannelDescription({
     required this.text,
@@ -1351,36 +1241,283 @@ class _ChannelDescription extends StatelessWidget {
   }
 }
 
-/// One of the two big buttons under the hero.
-class _ChannelAction extends StatelessWidget {
-  const _ChannelAction({
+/// The top of the screen: the room's picture across the width, its name over
+/// the bottom of it, and the controls that belong to the picture itself.
+///
+/// A cover rather than a card, which is what a channel looks like everywhere
+/// else and what was asked for with screenshots. With no picture the same
+/// space is the room's own colour with its initial in it, so the screen does
+/// not change shape when one is set.
+class _ChannelCover extends StatelessWidget {
+  const _ChannelCover({
+    required this.channelName,
+    required this.picture,
+    required this.memberCount,
+    required this.canManage,
+    required this.onBack,
+    this.onEdit,
+    this.onOpenPicture,
+  });
+
+  final String channelName;
+  final Uint8List? picture;
+  final int memberCount;
+  final bool canManage;
+  final VoidCallback onBack;
+
+  /// The pencil, for an administrator: the picture and the description.
+  final VoidCallback? onEdit;
+
+  /// Tapping the picture opens it at full size. Null when there is none.
+  final VoidCallback? onOpenPicture;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final top = MediaQuery.paddingOf(context).top;
+    final height = (MediaQuery.sizeOf(context).height * 0.42).clamp(260.0, 420.0);
+    final shot = picture;
+    return SizedBox(
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (shot != null)
+            GestureDetector(
+              onTap: onOpenPicture,
+              child: Image.memory(
+                shot,
+                fit: BoxFit.cover,
+                // Drawn far larger than it was sent, so the filter is what
+                // decides whether it reads as a photograph or as pixels.
+                filterQuality: FilterQuality.medium,
+              ),
+            )
+          else
+            // No picture: the room's own colour across the whole cover, with
+            // its initial in the middle, so the screen keeps its shape.
+            Center(
+              child: IdentityAvatar(
+                seed: channelName,
+                label: channelName,
+                size: height * 0.42,
+              ),
+            ),
+          // The name has to stay readable over whatever the picture happens to
+          // be, and the buttons over the top of it likewise.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.45),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.62),
+                    ],
+                    stops: const [0, 0.42, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 4,
+            right: 4,
+            top: top + 4,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  color: Colors.white,
+                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                ),
+                const Spacer(),
+                if (canManage && onEdit != null)
+                  IconButton(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_rounded),
+                    color: Colors.white,
+                    tooltip: t.channelSettingsTitle,
+                  ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  channelName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${t.channelPrivateSubtitle} · '
+                  '${t.channelMembersOf(memberCount)}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One of the round actions under the cover — the strip a channel carries
+/// everywhere: silence it, share it, open what was posted in it.
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.tone,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
+  /// Off-brand only where the action is: leaving a room is in the danger
+  /// colour, the rest are not.
+  final Color? tone;
+
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      onTap: onTap,
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.brandPrimary, size: 22),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textOnGlass, fontSize: 12.5),
-          ),
-        ],
+    final colour = tone ?? AppColors.brandPrimary;
+    return Expanded(
+      child: GlassCard(
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: colour, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// A row you open: a label, what it holds, and a chevron. The screen is a list
+/// of these now rather than a page of switches.
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.trailing,
+    this.tone,
+    this.last = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+
+  /// The count on the right — how many members, how many administrators.
+  final String? trailing;
+  final Color? tone;
+
+  /// The last row in its card draws no divider under itself.
+  final bool last;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = tone ?? AppColors.textOnGlass;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Row(
+              children: [
+                Icon(icon, size: 21, color: tone ?? AppColors.textOnGlassDim),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: colour,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            color: AppColors.textOnGlassFaint,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null)
+                  Text(
+                    trailing!,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (!last)
+          Padding(
+            padding: const EdgeInsets.only(left: 49),
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: AppColors.glass(0.08),
+            ),
+          ),
+      ],
     );
   }
 }
