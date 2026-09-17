@@ -236,6 +236,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
         const SizedBox(height: 10),
 
+        // One way in to Pro, and it is a row like any other. No banner in a
+        // conversation and no dialog on launch.
+        const _ProRow(),
+
+        const SizedBox(height: 10),
+
         _ExpandableSection(
           icon: Icons.tune_rounded,
           title: t.profileGroupApp,
@@ -1774,6 +1780,21 @@ class _StorageRow extends StatelessWidget {
         icon: Icons.pie_chart_rounded,
         label: AppLocalizations.of(context).storageTitle,
         route: '/storage',
+      );
+}
+
+class _ProRow extends StatelessWidget {
+  const _ProRow();
+
+  @override
+  Widget build(BuildContext context) => _PushRow(
+        icon: Icons.workspace_premium_rounded,
+        label: AppLocalizations.of(context).proTitle,
+        route: '/pro',
+        // Framed, like the customize row it sits beside. An unframed row draws
+        // a bare InkWell, and only a section supplies the transparent Material
+        // that ripple needs — a top-level row without a frame throws.
+        framed: true,
       );
 }
 
