@@ -6,7 +6,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 
 process.env.CUBECHAT_WALLET_DB = ':memory:';
-const { server, store } = await import('../src/index.js');
+const { server, store, setPurchaseDeps } = await import('../src/index.js');
 
 const PAYER_KEY = '02'.repeat(32);
 const THIEF_KEY = '03'.repeat(32);
@@ -161,3 +161,80 @@ test('an unknown operation is not an error the caller can learn from',
     });
     assert.equal(status, 404);
   });
+
+test('a confirmed receipt credits the key that signed for it', async () => {
+  setPurchaseDeps({
+    async appleTransaction() {
+      return { transactionId: 'a-9', productId: 'cubes.300', revoked: false };
+    },
+    async googlePurchase() {
+      return null;
+    },
+  });
+  const before = store.balanceOf(PAYER);
+
+  const { status, body } = await post('/credit', {
+    event: signed({
+      tags: [
+        ['op', 'credit'],
+        ['platform', 'apple'],
+        ['token', 'tk'],
+        ['product', 'cubes.300'],
+      ],
+    }),
+  });
+
+  assert.equal(status, 200);
+  assert.equal(body.cubes, before + 300);
+});
+
+test('the same receipt presented twice credits once', async () => {
+  // The app retries: a lost reply is ordinary, and a second credit is not.
+  setPurchaseDeps({
+    async appleTransaction() {
+      return { transactionId: 'a-10', productId: 'cubes.100', revoked: false };
+    },
+    async googlePurchase() {
+      return null;
+    },
+  });
+  const tags = [
+    ['op', 'credit'],
+    ['platform', 'apple'],
+    ['token', 'tk'],
+    ['product', 'cubes.100'],
+  ];
+  const before = store.balanceOf(PAYER);
+
+  await post('/credit', { event: signed({ tags }) });
+  await post('/credit', { event: signed({ tags }) });
+
+  assert.equal(store.balanceOf(PAYER), before + 100);
+});
+
+test('a receipt the store will not confirm credits nothing', async () => {
+  setPurchaseDeps({
+    async appleTransaction() {
+      return null;
+    },
+    async googlePurchase() {
+      return null;
+    },
+  });
+  const before = store.balanceOf(PAYER);
+
+  const { status, body } = await post('/credit', {
+    event: signed({
+      tags: [
+        ['op', 'credit'],
+        ['platform', 'apple'],
+        ['token', 'tk'],
+        ['product', 'cubes.100'],
+      ],
+    }),
+  });
+
+  assert.equal(status, 400);
+  assert.equal(body.error, 'receipt');
+  assert.equal(store.balanceOf(PAYER), before);
+});

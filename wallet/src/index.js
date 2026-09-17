@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 
 import { authorise, AuthError } from './auth.js';
+import { liveDeps, verifyPurchase } from './receipts.js';
 import { openStore } from './store.js';
 
 /// The wallet service.
@@ -17,6 +18,18 @@ const DB = process.env.CUBECHAT_WALLET_DB ?? 'cubes.db';
 const MAX_BODY = 8 * 1024;
 
 export const store = openStore(DB);
+
+/// How the service reaches Apple and Google.
+///
+/// Swappable so a test can answer for both without a network or a credential.
+/// The live pair refuses everything until the deploy configures it, which is
+/// the right behaviour for a wallet that has no way to check a receipt: a
+/// purchase it cannot verify is a purchase it does not credit.
+let purchaseDeps = liveDeps();
+
+export function setPurchaseDeps(deps) {
+  purchaseDeps = deps;
+}
 
 function send(res, status, body) {
   const text = JSON.stringify(body);
@@ -68,6 +81,35 @@ const handlers = {
     return { cubes: store.balanceOf(claim.npub) };
   },
 
+  /// Turn a store receipt into cubes.
+  ///
+  /// The tags say which store and which product, and carry the token to go and
+  /// ask about. How many cubes that is worth, and the reference that makes the
+  /// credit happen once, both come back from the store — see [verifyPurchase].
+  async credit(claim) {
+    const platform = claim.tag('platform');
+    const token = claim.tag('token');
+    const productId = claim.tag('product');
+    if (!platform || !token || !productId) {
+      throw new AuthError('purchase', 'platform, token and product required');
+    }
+    const purchase = await verifyPurchase(
+      { platform, token, productId },
+      purchaseDeps,
+    );
+    // One answer for every way a receipt can fail to be one. Which way it
+    // failed is between us and the store.
+    if (!purchase) throw new AuthError('receipt', 'not a purchase we can see');
+
+    store.credit({
+      npub: claim.npub,
+      amount: purchase.cubes,
+      ref: purchase.ref,
+      source: platform,
+    });
+    return { cubes: store.balanceOf(claim.npub) };
+  },
+
   transfer(claim) {
     const to = claim.tag('to');
     const amount = amountFrom(claim.tag('amount'));
@@ -106,7 +148,9 @@ export const server = createServer(async (req, res) => {
   if (!handler) return send(res, 404, { error: 'op' });
 
   try {
-    return send(res, 200, handler(claim));
+    // Awaited: crediting has to ask a store, and the rest do not — but a
+    // non-promise awaits to itself, so both shapes go through one path.
+    return send(res, 200, await handler(claim));
   } catch (e) {
     // A refusal the caller can act on: not enough cubes, a bad recipient. The
     // ledger and auth errors both carry a code; anything else is ours and says
