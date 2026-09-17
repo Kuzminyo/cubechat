@@ -21,6 +21,8 @@ import 'core/util/media_storage.dart';
 import 'features/chats/data/chat_list_warmup.dart';
 import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
+import 'features/pro/data/entitlement_source.dart';
+import 'features/pro/data/store_entitlement_source.dart';
 import 'features/profile/data/audio_focus_controller.dart';
 import 'features/profile/data/call_routing_controller.dart';
 
@@ -286,7 +288,15 @@ Future<void> main() async {
     limit: const Duration(seconds: 2),
   );
 
-  final container = ProviderContainer();
+  // The store receipt is the only source of the right to Pro in stage one.
+  // It is handed in here rather than reached for inside the controller so the
+  // tests can put a fake in its place, and so stage two's blind-signed tokens
+  // can take the same seat without the controller changing.
+  final container = ProviderContainer(
+    overrides: [
+      entitlementSourceProvider.overrideWithValue(StoreEntitlementSource()),
+    ],
+  );
   IosBackgroundRefresh.instance.install(container);
 
   // Whether a round message stops the phone's music, read before anything can
