@@ -1107,5 +1107,17 @@
   "proYearly": "Щороку",
   "proLifetime": "Назавжди",
   "proRestore": "Відновити покупки",
-  "proActive": "Pro активний на цьому пристрої"
+  "proActive": "Pro активний на цьому пристрої",
+  "proPerMonth": "на місяць",
+  "proPerYear": "на рік",
+  "proOnce": "разовий платіж",
+  "proSubscribe": "Підписатися",
+  "proBuyOnce": "Придбати",
+  "proUnavailable": "Покупки поки недоступні",
+  "proFeatureIconTitle": "Іконка застосунку в тон темі",
+  "proFeatureIconBody": "Кубик на екрані додому набуває кольору обраної палітри.",
+  "proFeatureStickersTitle": "Більше стикерпаків",
+  "proFeatureStickersBody": "Нові набори понад котів, які є у всіх, та імпорт власних.",
+  "proFeatureBackupTitle": "Резервні копії за розкладом",
+  "proFeatureBackupBody": "Зашифровані копії щодня або щотижня, без потреби пам’ятати."
 }

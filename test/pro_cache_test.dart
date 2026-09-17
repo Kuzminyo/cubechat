@@ -21,7 +21,9 @@ class _SilentSource implements EntitlementSource {
   @override
   Future<void> restore() async {}
   @override
-  Future<void> buy(ProProduct product) async {}
+  Future<bool> buy(ProProduct product) async => true;
+  @override
+  Future<Map<ProProduct, String>> prices() async => const {};
   @override
   Future<void> dispose() async => controller.close();
 }

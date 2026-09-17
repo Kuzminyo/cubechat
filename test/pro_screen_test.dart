@@ -19,6 +19,17 @@ class _Pro extends ProController {
   ProState build() => _value;
 }
 
+/// A store that will not start the purchase, which is what every product does
+/// until it is registered in Play Console and App Store Connect.
+class _RefusingPro extends ProController {
+  @override
+  ProState build() => ProState.free;
+  @override
+  Future<bool> buy(ProProduct product) async => false;
+  @override
+  Future<void> restore() async {}
+}
+
 /// `proProvider` is overridden, so nothing reads the source — but the provider
 /// still has to resolve to something rather than throw.
 class _IdleSource implements EntitlementSource {
@@ -29,7 +40,9 @@ class _IdleSource implements EntitlementSource {
   @override
   Future<void> restore() async {}
   @override
-  Future<void> buy(ProProduct product) async {}
+  Future<bool> buy(ProProduct product) async => true;
+  @override
+  Future<Map<ProProduct, String>> prices() async => const {};
   @override
   Future<void> dispose() async {}
 }
@@ -59,6 +72,10 @@ void main() {
     expect(find.text('Monthly'), findsOneWidget);
     expect(find.text('Yearly'), findsOneWidget);
     expect(find.text('Lifetime'), findsOneWidget);
+
+    // Restore sits under the feature list, off the first screenful — and a
+    // ListView does not build what is not visible.
+    await tester.scrollUntilVisible(find.text('Restore purchases'), 200);
     expect(find.text('Restore purchases'), findsOneWidget);
   });
 
@@ -75,6 +92,43 @@ void main() {
 
     expect(find.text('Pro is active on this device'), findsOneWidget);
     expect(find.text('Monthly'), findsNothing);
+  });
+
+  testWidgets('a product missing from the store is said, not logged',
+      (tester) async {
+    // This is the defect this test exists for: a missing product used to be
+    // pushed onto the entitlement stream as an error, which painted the
+    // diagnostics log red with lines that were not faults — and the tap
+    // itself did nothing visible. It belongs on screen, once, as a sentence.
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          entitlementSourceProvider.overrideWithValue(_IdleSource()),
+          proProvider.overrideWith(_RefusingPro.new),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ProScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Subscribe'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Purchases are not available yet'), findsOneWidget);
+
+    // The toast dismisses itself on a timer, and a test that ends before it
+    // fires fails on the pending timer rather than on anything real.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('shows no padlock while the store has not answered',

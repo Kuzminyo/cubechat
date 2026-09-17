@@ -1454,5 +1454,17 @@
   "proYearly": "Yearly",
   "proLifetime": "Lifetime",
   "proRestore": "Restore purchases",
-  "proActive": "Pro is active on this device"
+  "proActive": "Pro is active on this device",
+  "proPerMonth": "per month",
+  "proPerYear": "per year",
+  "proOnce": "one-off payment",
+  "proSubscribe": "Subscribe",
+  "proBuyOnce": "Buy",
+  "proUnavailable": "Purchases are not available yet",
+  "proFeatureIconTitle": "App icon in your theme",
+  "proFeatureIconBody": "The cube on your home screen takes the colour of the palette you chose.",
+  "proFeatureStickersTitle": "More sticker packs",
+  "proFeatureStickersBody": "New packs beyond the cats everyone has, and your own imported ones.",
+  "proFeatureBackupTitle": "Scheduled backups",
+  "proFeatureBackupBody": "Encrypted backups made daily or weekly, without having to remember."
 }

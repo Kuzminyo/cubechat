@@ -5275,6 +5275,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pro is active on this device'**
   String get proActive;
+
+  /// No description provided for @proPerMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'per month'**
+  String get proPerMonth;
+
+  /// No description provided for @proPerYear.
+  ///
+  /// In en, this message translates to:
+  /// **'per year'**
+  String get proPerYear;
+
+  /// No description provided for @proOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'one-off payment'**
+  String get proOnce;
+
+  /// No description provided for @proSubscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscribe'**
+  String get proSubscribe;
+
+  /// No description provided for @proBuyOnce.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy'**
+  String get proBuyOnce;
+
+  /// No description provided for @proUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Purchases are not available yet'**
+  String get proUnavailable;
+
+  /// No description provided for @proFeatureIconTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'App icon in your theme'**
+  String get proFeatureIconTitle;
+
+  /// No description provided for @proFeatureIconBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The cube on your home screen takes the colour of the palette you chose.'**
+  String get proFeatureIconBody;
+
+  /// No description provided for @proFeatureStickersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'More sticker packs'**
+  String get proFeatureStickersTitle;
+
+  /// No description provided for @proFeatureStickersBody.
+  ///
+  /// In en, this message translates to:
+  /// **'New packs beyond the cats everyone has, and your own imported ones.'**
+  String get proFeatureStickersBody;
+
+  /// No description provided for @proFeatureBackupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduled backups'**
+  String get proFeatureBackupTitle;
+
+  /// No description provided for @proFeatureBackupBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted backups made daily or weekly, without having to remember.'**
+  String get proFeatureBackupBody;
 }
 
 class _AppLocalizationsDelegate

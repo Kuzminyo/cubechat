@@ -3013,4 +3013,43 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get proActive => 'Pro is active on this device';
+
+  @override
+  String get proPerMonth => 'per month';
+
+  @override
+  String get proPerYear => 'per year';
+
+  @override
+  String get proOnce => 'one-off payment';
+
+  @override
+  String get proSubscribe => 'Subscribe';
+
+  @override
+  String get proBuyOnce => 'Buy';
+
+  @override
+  String get proUnavailable => 'Purchases are not available yet';
+
+  @override
+  String get proFeatureIconTitle => 'App icon in your theme';
+
+  @override
+  String get proFeatureIconBody =>
+      'The cube on your home screen takes the colour of the palette you chose.';
+
+  @override
+  String get proFeatureStickersTitle => 'More sticker packs';
+
+  @override
+  String get proFeatureStickersBody =>
+      'New packs beyond the cats everyone has, and your own imported ones.';
+
+  @override
+  String get proFeatureBackupTitle => 'Scheduled backups';
+
+  @override
+  String get proFeatureBackupBody =>
+      'Encrypted backups made daily or weekly, without having to remember.';
 }

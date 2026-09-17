@@ -18,9 +18,23 @@ abstract interface class EntitlementSource {
   /// Ask the store again for past purchases.
   Future<void> restore();
 
-  /// Begin a purchase. The result arrives on [changes], not as a return value:
-  /// a store purchase can finish minutes later, or on another launch.
-  Future<void> buy(ProProduct product);
+  /// Begin a purchase. The *outcome* arrives on [changes], not here: a store
+  /// purchase can finish minutes later, or on another launch.
+  ///
+  /// What comes back is only whether the store accepted the attempt. False
+  /// means it could not be started at all — most often because the product is
+  /// not registered in the store yet — and the screen says so. It is
+  /// deliberately not an error on [changes]: a product missing from the store
+  /// is not evidence that somebody's subscription broke, and pushing it there
+  /// filled the diagnostics log with red lines that were not faults.
+  Future<bool> buy(ProProduct product);
+
+  /// What each product costs, formatted by the store in the buyer's currency.
+  ///
+  /// Empty for anything the store does not know, which is every product until
+  /// they are registered. The screen shows a dash rather than inventing a
+  /// number.
+  Future<Map<ProProduct, String>> prices();
 
   Future<void> dispose();
 }

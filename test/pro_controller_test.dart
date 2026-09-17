@@ -28,7 +28,13 @@ class _FakeSource implements EntitlementSource {
   Future<void> restore() async => restoreCalls++;
 
   @override
-  Future<void> buy(ProProduct product) async => bought.add(product);
+  Future<bool> buy(ProProduct product) async {
+    bought.add(product);
+    return true;
+  }
+
+  @override
+  Future<Map<ProProduct, String>> prices() async => const {};
 
   @override
   Future<void> dispose() async {

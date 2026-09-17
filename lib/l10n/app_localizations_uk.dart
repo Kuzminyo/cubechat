@@ -3046,4 +3046,43 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get proActive => 'Pro активний на цьому пристрої';
+
+  @override
+  String get proPerMonth => 'на місяць';
+
+  @override
+  String get proPerYear => 'на рік';
+
+  @override
+  String get proOnce => 'разовий платіж';
+
+  @override
+  String get proSubscribe => 'Підписатися';
+
+  @override
+  String get proBuyOnce => 'Придбати';
+
+  @override
+  String get proUnavailable => 'Покупки поки недоступні';
+
+  @override
+  String get proFeatureIconTitle => 'Іконка застосунку в тон темі';
+
+  @override
+  String get proFeatureIconBody =>
+      'Кубик на екрані додому набуває кольору обраної палітри.';
+
+  @override
+  String get proFeatureStickersTitle => 'Більше стикерпаків';
+
+  @override
+  String get proFeatureStickersBody =>
+      'Нові набори понад котів, які є у всіх, та імпорт власних.';
+
+  @override
+  String get proFeatureBackupTitle => 'Резервні копії за розкладом';
+
+  @override
+  String get proFeatureBackupBody =>
+      'Зашифровані копії щодня або щотижня, без потреби пам’ятати.';
 }

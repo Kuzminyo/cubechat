@@ -83,21 +83,36 @@ class StoreEntitlementSource implements EntitlementSource {
   }
 
   @override
-  Future<void> buy(ProProduct product) async {
-    if (!_storeExists) return;
+  Future<bool> buy(ProProduct product) async {
+    if (!_storeExists) return false;
     final response = await _iap.queryProductDetails({product.storeId});
     ProductDetails? details;
     for (final d in response.productDetails) {
       if (d.id == product.storeId) details = d;
     }
-    if (details == null) {
-      _out.addError(StateError('product ${product.storeId} not in the store'));
-      return;
-    }
+    // Not in the store is an answer, not a fault. It used to go onto the
+    // entitlement stream as an error, which painted the diagnostics log red
+    // with lines that meant "this product is not registered yet".
+    if (details == null) return false;
     final param = PurchaseParam(productDetails: details);
     // Both the subscription and the lifetime unlock are non-consumable as far
     // as the plugin is concerned: neither is bought twice over.
     await _iap.buyNonConsumable(purchaseParam: param);
+    return true;
+  }
+
+  @override
+  Future<Map<ProProduct, String>> prices() async {
+    if (!_storeExists) return const {};
+    final response = await _iap.queryProductDetails(
+      {for (final p in ProProduct.values) p.storeId},
+    );
+    final out = <ProProduct, String>{};
+    for (final d in response.productDetails) {
+      final product = proProductFromStoreId(d.id);
+      if (product != null) out[product] = d.price;
+    }
+    return out;
   }
 
   void _apply(List<PurchaseDetails> purchases) {

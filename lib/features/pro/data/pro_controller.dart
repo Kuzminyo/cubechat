@@ -90,7 +90,10 @@ class ProController extends Notifier<ProState> {
     }
   }
 
-  Future<void> buy(ProProduct product) =>
+  /// False when the store would not even start the purchase — see
+  /// [EntitlementSource.buy]. The screen tells the user; nothing is logged as
+  /// a fault.
+  Future<bool> buy(ProProduct product) =>
       ref.read(entitlementSourceProvider).buy(product);
 
   Future<void> restore() => ref.read(entitlementSourceProvider).restore();
@@ -98,3 +101,8 @@ class ProController extends Notifier<ProState> {
 
 final proProvider =
     NotifierProvider<ProController, ProState>(ProController.new);
+
+/// What the store charges, or an empty map until the products exist there.
+final proPricesProvider = FutureProvider<Map<ProProduct, String>>(
+  (ref) => ref.watch(entitlementSourceProvider).prices(),
+);
