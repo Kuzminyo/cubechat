@@ -5413,6 +5413,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Recognised on this phone, never sent anywhere.'**
   String get proFeatureVoiceBody;
+
+  /// No description provided for @chatTranslateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate'**
+  String get chatTranslateAction;
+
+  /// No description provided for @chatTranslateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That one cannot be translated on this phone.'**
+  String get chatTranslateFailed;
+
+  /// No description provided for @proFeatureTranslateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation'**
+  String get proFeatureTranslateTitle;
+
+  /// No description provided for @proFeatureTranslateBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Done on the device. The text is never sent.'**
+  String get proFeatureTranslateBody;
 }
 
 class _AppLocalizationsDelegate

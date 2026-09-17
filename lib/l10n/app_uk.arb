@@ -1130,5 +1130,9 @@
   "chatTranscribeAction": "Розпізнати голос",
   "chatTranscribeFailed": "Цей телефон не може розпізнати це повідомлення.",
   "proFeatureVoiceTitle": "Голосові як текст",
-  "proFeatureVoiceBody": "Розпізнається на цьому телефоні, нікуди не надсилається."
+  "proFeatureVoiceBody": "Розпізнається на цьому телефоні, нікуди не надсилається.",
+  "chatTranslateAction": "Перекласти",
+  "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні.",
+  "proFeatureTranslateTitle": "Переклад",
+  "proFeatureTranslateBody": "Просто на пристрої. Текст нікуди не надсилається."
 }

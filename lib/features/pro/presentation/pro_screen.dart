@@ -119,7 +119,19 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.textOnGlassDim, height: 1.4),
         ),
-        const SizedBox(height: 22),
+        // Plans before the list, not after it. The features grew past a
+        // screenful and pushed the choice below the fold, and on a paywall the
+        // choice is the part that has to be in sight — the list is what you
+        // read afterwards if you are still deciding.
+        const SizedBox(height: 20),
+        _Segmented(
+          labels: {
+            for (final p in ProProduct.values) p: _label(t, p),
+          },
+          selected: _selected,
+          onSelect: (p) => setState(() => _selected = p),
+        ),
+        const SizedBox(height: 20),
         GlassCard(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
@@ -151,16 +163,13 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 title: t.proFeatureVoiceTitle,
                 body: t.proFeatureVoiceBody,
               ),
+              _divider(),
+              _FeatureRow(
+                title: t.proFeatureTranslateTitle,
+                body: t.proFeatureTranslateBody,
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 20),
-        _Segmented(
-          labels: {
-            for (final p in ProProduct.values) p: _label(t, p),
-          },
-          selected: _selected,
-          onSelect: (p) => setState(() => _selected = p),
         ),
         const SizedBox(height: 10),
         Center(

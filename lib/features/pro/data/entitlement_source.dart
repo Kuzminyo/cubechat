@@ -39,9 +39,40 @@ abstract interface class EntitlementSource {
   Future<void> dispose();
 }
 
-/// Overridden in tests, and in `main.dart` with the store-backed source.
+/// A source that owns nothing and can buy nothing.
+///
+/// The default, and deliberately not a thrown error. Pro is read from inside
+/// the message bubble now, so *any* widget test that mounts a conversation
+/// would have to override this or crash — a coupling nobody would guess at
+/// from the test they were writing. The honest default is the true one for a
+/// device that has not been told otherwise: no Pro.
+///
+/// `main.dart` overrides it with [StoreEntitlementSource]; tests override it
+/// when they want to pretend otherwise.
+class NoStoreEntitlementSource implements EntitlementSource {
+  const NoStoreEntitlementSource();
+
+  @override
+  Stream<ProState> get changes => const Stream<ProState>.empty();
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> restore() async {}
+
+  @override
+  Future<bool> buy(ProProduct product) async => false;
+
+  @override
+  Future<Map<ProProduct, String>> prices() async => const {};
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// Overridden in `main.dart` with the store-backed source, and in tests that
+/// need a purchase to exist.
 final entitlementSourceProvider = Provider<EntitlementSource>(
-  (ref) => throw UnimplementedError(
-    'entitlementSourceProvider must be overridden before proProvider is read',
-  ),
+  (ref) => const NoStoreEntitlementSource(),
 );

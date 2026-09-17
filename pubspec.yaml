@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1081
+version: 1.0.0+1082
 
 environment:
   sdk: ^3.6.0
@@ -29,6 +29,15 @@ dependencies:
   # Pro subscription (stage 1). StoreKit 2 on iOS, Play Billing on Android;
   # the receipt stays on the device and no server is told about it.
   in_app_purchase: ^3.2.0
+
+  # On-device translation. The model is downloaded once and the text is
+  # translated locally after that — message contents never reach a server,
+  # which is the only reason translation is possible here at all.
+  google_mlkit_translation: ^0.13.0
+  # Which language a message is in. The translator needs a source and a
+  # target, and guessing the source from the app's locale gets it wrong for
+  # exactly the messages worth translating.
+  google_mlkit_language_id: ^0.13.0
 
   # BLE transport (M1)
   flutter_blue_plus: ^1.34.5

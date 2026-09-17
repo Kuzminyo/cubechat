@@ -3083,4 +3083,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get proFeatureVoiceBody =>
       'Recognised on this phone, never sent anywhere.';
+
+  @override
+  String get chatTranslateAction => 'Translate';
+
+  @override
+  String get chatTranslateFailed =>
+      'That one cannot be translated on this phone.';
+
+  @override
+  String get proFeatureTranslateTitle => 'Translation';
+
+  @override
+  String get proFeatureTranslateBody =>
+      'Done on the device. The text is never sent.';
 }

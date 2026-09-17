@@ -53,6 +53,7 @@ import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../map/presentation/map_sharing_consent.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
+import '../../data/translation_controller.dart';
 import '../../data/voice_transcription_controller.dart';
 import '../../../pro/data/pro_controller.dart';
 import '../../../chats/data/saved_messages.dart';
@@ -795,6 +796,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.record_voice_over_rounded,
             label: t.chatTranscribeAction,
           ),
+        // Same rule as transcription: Pro only, and absent rather than locked.
+        if (widget.message.kind == MessageKind.text &&
+            widget.message.text.trim().isNotEmpty &&
+            ref.read(proProvider).isActive &&
+            ref.read(translationProvider)[widget.message.id] == null)
+          SpotlightAction(
+            id: 'translate',
+            icon: Icons.translate_rounded,
+            label: t.chatTranslateAction,
+          ),
         if (_canEdit)
           SpotlightAction(
             id: 'edit',
@@ -911,11 +922,35 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       await _saveToSaved();
     } else if (picked == 'transcribe') {
       await _transcribeVoice();
+    } else if (picked == 'translate') {
+      await _translateMessage();
     } else if (picked == 'tag') {
       await _tagSavedMessage();
     } else if (picked == 'delete') {
       await _promptDelete();
     }
+  }
+
+  /// Read a message written in a language you do not have.
+  ///
+  /// Translated on the device: the text never reaches a server. The model for a
+  /// language pair is fetched from Google once, which says which languages this
+  /// phone wants and nothing else — no message and no fragment of one — and
+  /// after that the work is offline.
+  ///
+  /// Into the language the interface is in, which is the one the reader has
+  /// already said they read. A message already in it is left alone rather than
+  /// answered with a copy of itself.
+  Future<void> _translateMessage() async {
+    final t = AppLocalizations.of(context);
+    final target = Localizations.localeOf(context).languageCode;
+    final text = await ref.read(translationProvider.notifier).translate(
+          messageId: widget.message.id,
+          text: widget.message.text,
+          target: target,
+        );
+    if (!mounted || text != null) return;
+    showGlassToast(context, t.chatTranslateFailed);
   }
 
   /// Read a voice note instead of listening to it.
@@ -1815,6 +1850,25 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       3 => 32,
                       _ => null,
                     },
+                  ),
+                // Under the message, never instead of it. What they wrote is
+                // still what they wrote; this is a reading of it, and a
+                // translation that replaced the original would hide the one
+                // thing a reader can check.
+                if (ref.watch(
+                      translationProvider.select((t) => t[message.id]),
+                    ) case final String translated)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      translated,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.textOnGlassDim,
+                      ),
+                    ),
                   ),
                 if (!metaOnMedia) ...[
                   if (!media) const SizedBox(height: 4),

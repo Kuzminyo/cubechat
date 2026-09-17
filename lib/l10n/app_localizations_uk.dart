@@ -3118,4 +3118,18 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get proFeatureVoiceBody =>
       'Розпізнається на цьому телефоні, нікуди не надсилається.';
+
+  @override
+  String get chatTranslateAction => 'Перекласти';
+
+  @override
+  String get chatTranslateFailed =>
+      'Це повідомлення не вдається перекласти на цьому телефоні.';
+
+  @override
+  String get proFeatureTranslateTitle => 'Переклад';
+
+  @override
+  String get proFeatureTranslateBody =>
+      'Просто на пристрої. Текст нікуди не надсилається.';
 }
