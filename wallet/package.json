@@ -1,0 +1,20 @@
+{
+  "name": "cubechat-wallet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The cubes ledger: credits from a store receipt, spends in-app.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "//": "node:sqlite is built in from 22.5, which is why there is no native dependency here and nothing to compile on the droplet. The push service asks for >=20; this one cannot.",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0"
+  }
+}
