@@ -1100,5 +1100,12 @@
   "logAppStarted": "Застосунок запущено",
   "logInternetOn": "Зв’язок через інтернет увімкнено",
   "logServerConnected": "Підключено до {host}",
-  "logServerLost": "Втрачено зв’язок з {host}"
+  "logServerLost": "Втрачено зв’язок з {host}",
+  "proTitle": "cubechat Pro",
+  "proBlurb": "Мережа, шифрування та доставка залишаються безкоштовними для всіх. Pro оплачує те, що коштує грошей на сервері.",
+  "proMonthly": "Щомісяця",
+  "proYearly": "Щороку",
+  "proLifetime": "Назавжди",
+  "proRestore": "Відновити покупки",
+  "proActive": "Pro активний на цьому пристрої"
 }

@@ -1447,5 +1447,12 @@
   "logServerLost": "Lost connection to {host}",
   "@logServerLost": {
     "placeholders": { "host": { "type": "String" } }
-  }
+  },
+  "proTitle": "cubechat Pro",
+  "proBlurb": "The mesh, the encryption and delivery stay free for everyone. Pro pays for what the server costs to run.",
+  "proMonthly": "Monthly",
+  "proYearly": "Yearly",
+  "proLifetime": "Lifetime",
+  "proRestore": "Restore purchases",
+  "proActive": "Pro is active on this device"
 }

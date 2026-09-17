@@ -3024,4 +3024,26 @@ class AppLocalizationsUk extends AppLocalizations {
   String logServerLost(String host) {
     return 'Втрачено зв’язок з $host';
   }
+
+  @override
+  String get proTitle => 'cubechat Pro';
+
+  @override
+  String get proBlurb =>
+      'Мережа, шифрування та доставка залишаються безкоштовними для всіх. Pro оплачує те, що коштує грошей на сервері.';
+
+  @override
+  String get proMonthly => 'Щомісяця';
+
+  @override
+  String get proYearly => 'Щороку';
+
+  @override
+  String get proLifetime => 'Назавжди';
+
+  @override
+  String get proRestore => 'Відновити покупки';
+
+  @override
+  String get proActive => 'Pro активний на цьому пристрої';
 }

@@ -5233,6 +5233,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Lost connection to {host}'**
   String logServerLost(String host);
+
+  /// No description provided for @proTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'cubechat Pro'**
+  String get proTitle;
+
+  /// No description provided for @proBlurb.
+  ///
+  /// In en, this message translates to:
+  /// **'The mesh, the encryption and delivery stay free for everyone. Pro pays for what the server costs to run.'**
+  String get proBlurb;
+
+  /// No description provided for @proMonthly.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get proMonthly;
+
+  /// No description provided for @proYearly.
+  ///
+  /// In en, this message translates to:
+  /// **'Yearly'**
+  String get proYearly;
+
+  /// No description provided for @proLifetime.
+  ///
+  /// In en, this message translates to:
+  /// **'Lifetime'**
+  String get proLifetime;
+
+  /// No description provided for @proRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore purchases'**
+  String get proRestore;
+
+  /// No description provided for @proActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Pro is active on this device'**
+  String get proActive;
 }
 
 class _AppLocalizationsDelegate
