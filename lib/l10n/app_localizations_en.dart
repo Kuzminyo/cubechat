@@ -3103,4 +3103,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get proFeatureLastSeenBody => 'Their own choice to hide still stands.';
+
+  @override
+  String get cubesTitle => 'Cubes';
+
+  @override
+  String get cubesBalance => 'cubes';
+
+  @override
+  String get cubesBackupFirstTitle => 'Make a backup first';
+
+  @override
+  String get cubesBackupFirstBody =>
+      'Cubes belong to this device\'s key. Reinstalling makes a new one, and the cubes do not come with it. A backup is how the key survives.';
+
+  @override
+  String get cubesBackupFirstAction => 'Make a backup';
+
+  @override
+  String get cubesEntry => 'Cubes';
 }

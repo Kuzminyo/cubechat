@@ -3139,4 +3139,23 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get proFeatureLastSeenBody =>
       'Їхнє власне приховування лишається чинним.';
+
+  @override
+  String get cubesTitle => 'Кубики';
+
+  @override
+  String get cubesBalance => 'кубиків';
+
+  @override
+  String get cubesBackupFirstTitle => 'Спершу зробіть резервну копію';
+
+  @override
+  String get cubesBackupFirstBody =>
+      'Кубики належать ключу цього пристрою. Перевстановлення створює новий ключ, і кубики з ним не переходять. Резервна копія — це те, як ключ виживає.';
+
+  @override
+  String get cubesBackupFirstAction => 'Зробити копію';
+
+  @override
+  String get cubesEntry => 'Кубики';
 }

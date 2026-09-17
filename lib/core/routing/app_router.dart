@@ -7,6 +7,7 @@ import 'tab_reset.dart';
 import '../util/debug_log.dart';
 import '../util/transition_probe.dart';
 import '../util/ui_activity.dart';
+import '../../features/pro/presentation/cubes_screen.dart';
 import '../../features/pro/presentation/pro_screen.dart';
 import '../../features/profile/data/nav_bar_controller.dart';
 import '../../features/profile/presentation/customize_screen.dart';
@@ -399,6 +400,14 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: ProScreen()),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/cubes',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: const AuroraBackground(child: CubesScreen()),
           state: state,
         ),
       ),

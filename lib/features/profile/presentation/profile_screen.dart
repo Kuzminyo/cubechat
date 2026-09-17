@@ -242,6 +242,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
         const SizedBox(height: 10),
 
+        const _CubesRow(),
+
+        const SizedBox(height: 10),
+
         _ExpandableSection(
           icon: Icons.tune_rounded,
           title: t.profileGroupApp,
@@ -1794,6 +1798,20 @@ class _ProRow extends StatelessWidget {
         // Framed, like the customize row it sits beside. An unframed row draws
         // a bare InkWell, and only a section supplies the transparent Material
         // that ripple needs — a top-level row without a frame throws.
+        framed: true,
+      );
+}
+
+class _CubesRow extends StatelessWidget {
+  const _CubesRow();
+
+  @override
+  Widget build(BuildContext context) => _PushRow(
+        icon: Icons.view_in_ar_rounded,
+        label: AppLocalizations.of(context).cubesEntry,
+        route: '/cubes',
+        // Framed for the same reason as the rows beside it: an unframed
+        // top-level row has no Material for its ripple to paint on.
         framed: true,
       );
 }

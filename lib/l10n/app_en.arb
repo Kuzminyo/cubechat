@@ -1483,5 +1483,11 @@
   "proFeatureTranslateTitle": "Translation",
   "proFeatureTranslateBody": "Done on the device. The text is never sent.",
   "proFeatureLastSeenTitle": "Their times while yours are off",
-  "proFeatureLastSeenBody": "Their own choice to hide still stands."
+  "proFeatureLastSeenBody": "Their own choice to hide still stands.",
+  "cubesTitle": "Cubes",
+  "cubesBalance": "cubes",
+  "cubesBackupFirstTitle": "Make a backup first",
+  "cubesBackupFirstBody": "Cubes belong to this device's key. Reinstalling makes a new one, and the cubes do not come with it. A backup is how the key survives.",
+  "cubesBackupFirstAction": "Make a backup",
+  "cubesEntry": "Cubes"
 }

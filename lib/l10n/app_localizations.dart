@@ -5449,6 +5449,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Their own choice to hide still stands.'**
   String get proFeatureLastSeenBody;
+
+  /// No description provided for @cubesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cubes'**
+  String get cubesTitle;
+
+  /// No description provided for @cubesBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'cubes'**
+  String get cubesBalance;
+
+  /// No description provided for @cubesBackupFirstTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Make a backup first'**
+  String get cubesBackupFirstTitle;
+
+  /// No description provided for @cubesBackupFirstBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Cubes belong to this device\'s key. Reinstalling makes a new one, and the cubes do not come with it. A backup is how the key survives.'**
+  String get cubesBackupFirstBody;
+
+  /// No description provided for @cubesBackupFirstAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Make a backup'**
+  String get cubesBackupFirstAction;
+
+  /// No description provided for @cubesEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Cubes'**
+  String get cubesEntry;
 }
 
 class _AppLocalizationsDelegate
