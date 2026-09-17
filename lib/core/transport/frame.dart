@@ -44,6 +44,17 @@ enum FrameType {
   /// for transport frames. See [PeerAnnouncement].
   peerAnnouncement(0x20),
 
+  /// "This device is running Pro", broadcast beside an announcement and
+  /// carrying a [ProBadge].
+  ///
+  /// A frame of its own rather than a field in the announcement, and that is
+  /// the whole point: the announcement's decoder refuses a version it does not
+  /// know, so a new field there would make every updated phone invisible to
+  /// every phone still on an older build. An unknown *frame type* is caught in
+  /// `_handleInboundBytes`, logged and dropped, and the link carries on — so an
+  /// older build ignores this one and loses nothing.
+  proBadge(0x21),
+
   /// One slice of a frame too large for the link's negotiated MTU. Carries
   /// `[fragId:4][index:1][count:1][slice…]`; the receiver reassembles the
   /// original frame bytes *before* normal dispatch, so dedup/replay/relay never

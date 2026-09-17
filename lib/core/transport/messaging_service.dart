@@ -38,6 +38,8 @@ import '../../features/peers/data/peer_activity.dart';
 import '../../features/peers/data/sending_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
+import '../../features/pro/data/pro_controller.dart';
+import '../../features/pro/data/pro_peers_controller.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
@@ -72,6 +74,7 @@ import 'shared_location.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'frame.dart';
+import 'pro_badge.dart';
 import 'frame_fragment.dart';
 import 'file_reassembly.dart';
 import 'image_reassembly.dart';
@@ -6429,6 +6432,9 @@ class MessagingService {
       case FrameType.peerAnnouncement:
         await _handlePeerAnnouncementFrame(peerId, frame);
 
+      case FrameType.proBadge:
+        await _handleProBadgeFrame(peerId, frame);
+
       case FrameType.fragment:
         // Fragments are reassembled in _handleInboundBytes before dispatch, so
         // one reaching here means a slice leaked past reassembly — drop it.
@@ -8668,6 +8674,38 @@ class MessagingService {
   /// Peer-announcement RX: unwrap envelope, dedup, then either open a sealed
   /// per-recipient introduction or verify a cleartext broadcast, and relay
   /// onward so peers more than one hop away hear it too.
+  /// Take in "this device is running Pro" from somebody in range.
+  ///
+  /// Not relayed onward. An announcement travels the mesh because reaching
+  /// people out of earshot is what it is for; a badge is decoration beside a
+  /// beacon, and flooding one costs the same airtime as a real message for
+  /// something nobody is waiting on.
+  ///
+  /// Kept in memory only — see [ProPeersController] for why writing down who
+  /// paid, on somebody else's phone, is not a thing worth doing for a badge.
+  Future<void> _handleProBadgeFrame(String peerId, Frame frame) async {
+    final TransportEnvelope env;
+    try {
+      env = TransportEnvelope.decode(frame.payload);
+    } catch (e) {
+      DebugLog.instance
+          .log('MESH', 'drop pro badge from $peerId: malformed envelope ($e)');
+      return;
+    }
+    if (!_dedup.acceptEnvelope(env)) return;
+    try {
+      final badge = await ProBadge.verifyAndDecode(env.body);
+      _ref.read(proPeersProvider.notifier).setPro(
+            _hexOf(badge.signPubkey),
+            isPro: badge.isPro,
+          );
+    } catch (e) {
+      // A bad signature or an unknown version. Both mean "do not believe it",
+      // and neither is worth more than a line.
+      DebugLog.instance.log('MESH', 'drop pro badge from $peerId: $e');
+    }
+  }
+
   Future<void> _handlePeerAnnouncementFrame(String peerId, Frame frame) async {
     final TransportEnvelope env;
     try {
@@ -10620,8 +10658,42 @@ class MessagingService {
       if (fanout > 0) {
         DebugLog.instance.log('MESH', 'announced on $fanout link(s)');
       }
+      await _broadcastProBadge(originHash: originHash);
     } catch (e, st) {
       debugPrint('broadcastAnnouncement failed: $e\n$st');
+    }
+  }
+
+  /// Say "this device is running Pro", to anyone in range.
+  ///
+  /// Only while Pro is on: a device without it emits nothing extra at all,
+  /// which is what keeps this off a beacon cadence that has been tuned for heat
+  /// twice already.
+  ///
+  /// Only from the public path, too. With discovery off the announcement is
+  /// sealed to each contact individually, precisely so a listener learns
+  /// nothing; putting a cleartext badge beside that would hand back what the
+  /// mode exists to withhold.
+  Future<void> _broadcastProBadge({required Uint8List originHash}) async {
+    if (!_ref.read(proProvider).isActive) return;
+    try {
+      final identity = await _ref.read(identityProvider.future);
+      final payload = await ProBadge.signed(
+        keyPair: identity.asSignKeyPair(),
+        isPro: true,
+      );
+      final env = TransportEnvelope(
+        originPubkeyHash: originHash,
+        destPubkeyHash: TransportEnvelope.broadcastDest(),
+        msgId: TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+        ttl: _meshTtl,
+        body: payload,
+      );
+      _dedup.acceptEnvelope(env);
+      final frame = Frame(type: FrameType.proBadge, payload: env.encode());
+      await _fanoutAllLinks(frame.encode(), excludePeerId: null);
+    } catch (e) {
+      DebugLog.instance.log('MESH', 'pro badge not sent: $e');
     }
   }
 

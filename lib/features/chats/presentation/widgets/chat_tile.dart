@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
 import '../../../peers/data/presence_controller.dart';
+import '../../../pro/data/pro_peers_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
@@ -208,6 +209,19 @@ class ChatTile extends ConsumerWidget {
                       Icon(
                         Icons.verified_rounded,
                         color: AppColors.brandPrimary,
+                        size: 14,
+                      ),
+                    ],
+                    // What they say about themselves, not what we checked —
+                    // see ProBadge. Deliberately a different mark from the
+                    // verified tick beside it, which means something this
+                    // device proved.
+                    if (!chat.isChannel &&
+                        ref.watch(peerClaimsProProvider(chat.peerId))) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.workspace_premium_rounded,
+                        color: AppColors.textOnGlassDim,
                         size: 14,
                       ),
                     ],
