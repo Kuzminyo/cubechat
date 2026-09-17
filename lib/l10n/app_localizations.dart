@@ -5389,6 +5389,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Wallpaper set here. It will reach them when they are in range.'**
   String get chatSharedWallpaperFailed;
+
+  /// No description provided for @chatTranscribeAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcribe'**
+  String get chatTranscribeAction;
+
+  /// No description provided for @chatTranscribeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone cannot transcribe that one.'**
+  String get chatTranscribeFailed;
+
+  /// No description provided for @proFeatureVoiceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice notes as text'**
+  String get proFeatureVoiceTitle;
+
+  /// No description provided for @proFeatureVoiceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Recognised on this phone, never sent anywhere.'**
+  String get proFeatureVoiceBody;
 }
 
 class _AppLocalizationsDelegate

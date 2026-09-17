@@ -10,6 +10,7 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var blePeripheralPlugin: CubechatBlePeripheralPlugin?
   private var audioTrimPlugin: CubechatAudioTrimPlugin?
+  private var transcribePlugin: CubechatTranscribePlugin?
   private var openInPlugin: CubechatOpenInPlugin?
 
   /// Held for the life of the app, like the others: it captures the platform
@@ -158,6 +159,7 @@ import UserNotifications
     {
       blePeripheralPlugin = CubechatBlePeripheralPlugin(messenger: messenger)
       audioTrimPlugin = CubechatAudioTrimPlugin(messenger: messenger)
+      transcribePlugin = CubechatTranscribePlugin(messenger: messenger)
       openInPlugin = CubechatOpenInPlugin(messenger: messenger)
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       pushPlugin = CubechatPushPlugin(messenger: messenger)

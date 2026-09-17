@@ -3104,4 +3104,18 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get chatSharedWallpaperFailed =>
       'Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.';
+
+  @override
+  String get chatTranscribeAction => 'Розпізнати голос';
+
+  @override
+  String get chatTranscribeFailed =>
+      'Цей телефон не може розпізнати це повідомлення.';
+
+  @override
+  String get proFeatureVoiceTitle => 'Голосові як текст';
+
+  @override
+  String get proFeatureVoiceBody =>
+      'Розпізнається на цьому телефоні, нікуди не надсилається.';
 }

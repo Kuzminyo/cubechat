@@ -91,8 +91,20 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       );
     }
 
+    // The list scrolls; the button does not. A paywall whose buy button sits
+    // below the fold asks people to go looking for it, and this one grew a row
+    // past the bottom of a 844-point phone the moment a fifth feature landed.
+    return Column(
+      children: [
+        Expanded(child: _pitch(t, prices)),
+        _cta(t, prices),
+      ],
+    );
+  }
+
+  Widget _pitch(AppLocalizations t, Map<ProProduct, String> prices) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       children: [
         const Center(child: CubeLogo(size: 88, glow: true)),
         const SizedBox(height: 20),
@@ -134,6 +146,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 title: t.proFeatureSaveTitle,
                 body: t.proFeatureSaveBody,
               ),
+              _divider(),
+              _FeatureRow(
+                title: t.proFeatureVoiceTitle,
+                body: t.proFeatureVoiceBody,
+              ),
             ],
           ),
         ),
@@ -145,40 +162,7 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           selected: _selected,
           onSelect: (p) => setState(() => _selected = p),
         ),
-        const SizedBox(height: 12),
-        Center(
-          child: Text(
-            // The store's price when it has one, and the list price until the
-            // products are registered there. See [ProProduct.listPrice] for
-            // why the store's answer is the one that is true.
-            '${prices[_selected] ?? _selected.listPrice}  '
-            '${_period(t, _selected)}',
-            style: AppTypography.mono(
-              size: 13,
-              color: AppColors.textOnGlassDim,
-            ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton(
-            onPressed: _buy,
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: AppColors.brandPrimary, width: 1.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(26),
-              ),
-            ),
-            child: Text(
-              _selected == ProProduct.lifetime ? t.proBuyOnce : t.proSubscribe,
-              style: AppTypography.heading(
-                size: 16,
-                color: AppColors.brandPrimary,
-              ),
-            ),
-          ),
-        ),
+        const SizedBox(height: 10),
         Center(
           child: TextButton(
             onPressed: () => ref.read(proProvider.notifier).restore(),
@@ -191,6 +175,49 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       ],
     );
   }
+
+  Widget _cta(AppLocalizations t, Map<ProProduct, String> prices) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              // The store's price when it has one, and the list price until
+              // the products are registered there. See [ProProduct.listPrice]
+              // for why the store's answer is the one that is true.
+              '${prices[_selected] ?? _selected.listPrice}  '
+              '${_period(t, _selected)}',
+              style: AppTypography.mono(
+                size: 13,
+                color: AppColors.textOnGlassDim,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton(
+                onPressed: _buy,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppColors.brandPrimary, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                ),
+                child: Text(
+                  _selected == ProProduct.lifetime
+                      ? t.proBuyOnce
+                      : t.proSubscribe,
+                  style: AppTypography.heading(
+                    size: 16,
+                    color: AppColors.brandPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _divider() => Divider(
         height: 1,

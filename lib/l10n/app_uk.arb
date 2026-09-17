@@ -1126,5 +1126,9 @@
   "savedAdded": "Збережено в нотатках",
   "savedTagAsk": "Збережено. Додати тег?",
   "savedTagAdd": "Додати тег",
-  "chatSharedWallpaperFailed": "Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч."
+  "chatSharedWallpaperFailed": "Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.",
+  "chatTranscribeAction": "Розпізнати голос",
+  "chatTranscribeFailed": "Цей телефон не може розпізнати це повідомлення.",
+  "proFeatureVoiceTitle": "Голосові як текст",
+  "proFeatureVoiceBody": "Розпізнається на цьому телефоні, нікуди не надсилається."
 }

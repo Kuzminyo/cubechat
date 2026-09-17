@@ -3070,4 +3070,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get chatSharedWallpaperFailed =>
       'Wallpaper set here. It will reach them when they are in range.';
+
+  @override
+  String get chatTranscribeAction => 'Transcribe';
+
+  @override
+  String get chatTranscribeFailed => 'This phone cannot transcribe that one.';
+
+  @override
+  String get proFeatureVoiceTitle => 'Voice notes as text';
+
+  @override
+  String get proFeatureVoiceBody =>
+      'Recognised on this phone, never sent anywhere.';
 }

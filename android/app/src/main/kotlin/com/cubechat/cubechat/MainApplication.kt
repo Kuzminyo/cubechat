@@ -64,6 +64,10 @@ class MainApplication : Application() {
         CubechatAudioTrimPlugin(
             methodChannel = MethodChannel(messenger, "cubechat/audio_trim"),
         )
+        CubechatTranscribePlugin(
+            context = applicationContext,
+            methodChannel = MethodChannel(messenger, "cubechat/transcribe"),
+        )
         // Here rather than on the Activity because Dart main() runs on this
         // engine before any Activity exists, and the push switch re-asserts
         // itself from there on every launch. MainActivity lends it a window
