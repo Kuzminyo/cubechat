@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cubechat/features/pro/data/entitlement_source.dart';
 import 'package:cubechat/features/pro/data/pro_controller.dart';
 import 'package:cubechat/features/pro/models/pro_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
+
+import 'support/hive_settle.dart';
 
 class _FakeSource implements EntitlementSource {
   final controller = StreamController<ProState>.broadcast();
@@ -41,6 +46,25 @@ ProviderContainer _containerWith(_FakeSource source) {
 }
 
 void main() {
+  // The controller caches its answer in the encrypted settings box, so it
+  // needs somewhere to write and a key to write under. Without both, the
+  // cipher's "delete and retry" throws into the surrounding zone, and
+  // package:test hangs that error on whichever test happens to be running.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tempDir;
+
+  setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({});
+    tempDir = await Directory.systemTemp.createTemp('cubechat_pro_ctl_');
+    Hive.init(tempDir.path);
+  });
+
+  tearDown(() async {
+    await settleBackgroundStorage();
+    await Hive.close();
+  });
+
   group('ProController', () {
     test('starts on unknown rather than on free', () async {
       final source = _FakeSource();
