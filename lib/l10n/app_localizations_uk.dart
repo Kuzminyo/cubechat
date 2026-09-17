@@ -3029,8 +3029,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String get proTitle => 'cubechat Pro';
 
   @override
-  String get proBlurb =>
-      'Мережа, шифрування та доставка залишаються безкоштовними для всіх. Pro оплачує те, що коштує грошей на сервері.';
+  String get proBlurb => 'Три речі понад те, що й так безкоштовне.';
 
   @override
   String get proMonthly => 'Щомісяця';
@@ -3069,20 +3068,17 @@ class AppLocalizationsUk extends AppLocalizations {
   String get proFeatureIconTitle => 'Іконка застосунку в тон темі';
 
   @override
-  String get proFeatureIconBody =>
-      'Кубик на екрані додому набуває кольору обраної палітри.';
+  String get proFeatureIconBody => 'Кубик набуває кольору палітри.';
 
   @override
   String get proFeatureStickersTitle => 'Більше стикерпаків';
 
   @override
-  String get proFeatureStickersBody =>
-      'Нові набори понад котів, які є у всіх, та імпорт власних.';
+  String get proFeatureStickersBody => 'Понад котів, які є у всіх.';
 
   @override
-  String get proFeatureBackupTitle => 'Резервні копії за розкладом';
+  String get proFeatureBackupTitle => 'Копії за розкладом';
 
   @override
-  String get proFeatureBackupBody =>
-      'Зашифровані копії щодня або щотижня, без потреби пам’ятати.';
+  String get proFeatureBackupBody => 'Щодня або щотижня, зашифровано.';
 }

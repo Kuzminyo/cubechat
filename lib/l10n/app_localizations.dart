@@ -5243,7 +5243,7 @@ abstract class AppLocalizations {
   /// No description provided for @proBlurb.
   ///
   /// In en, this message translates to:
-  /// **'The mesh, the encryption and delivery stay free for everyone. Pro pays for what the server costs to run.'**
+  /// **'Three things beyond what is already free.'**
   String get proBlurb;
 
   /// No description provided for @proMonthly.
@@ -5321,7 +5321,7 @@ abstract class AppLocalizations {
   /// No description provided for @proFeatureIconBody.
   ///
   /// In en, this message translates to:
-  /// **'The cube on your home screen takes the colour of the palette you chose.'**
+  /// **'The cube takes the colour of your palette.'**
   String get proFeatureIconBody;
 
   /// No description provided for @proFeatureStickersTitle.
@@ -5333,7 +5333,7 @@ abstract class AppLocalizations {
   /// No description provided for @proFeatureStickersBody.
   ///
   /// In en, this message translates to:
-  /// **'New packs beyond the cats everyone has, and your own imported ones.'**
+  /// **'Beyond the cats everyone has.'**
   String get proFeatureStickersBody;
 
   /// No description provided for @proFeatureBackupTitle.
@@ -5345,7 +5345,7 @@ abstract class AppLocalizations {
   /// No description provided for @proFeatureBackupBody.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted backups made daily or weekly, without having to remember.'**
+  /// **'Daily or weekly, encrypted.'**
   String get proFeatureBackupBody;
 }
 

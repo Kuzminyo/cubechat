@@ -2996,8 +2996,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proTitle => 'cubechat Pro';
 
   @override
-  String get proBlurb =>
-      'The mesh, the encryption and delivery stay free for everyone. Pro pays for what the server costs to run.';
+  String get proBlurb => 'Three things beyond what is already free.';
 
   @override
   String get proMonthly => 'Monthly';
@@ -3036,20 +3035,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proFeatureIconTitle => 'App icon in your theme';
 
   @override
-  String get proFeatureIconBody =>
-      'The cube on your home screen takes the colour of the palette you chose.';
+  String get proFeatureIconBody => 'The cube takes the colour of your palette.';
 
   @override
   String get proFeatureStickersTitle => 'More sticker packs';
 
   @override
-  String get proFeatureStickersBody =>
-      'New packs beyond the cats everyone has, and your own imported ones.';
+  String get proFeatureStickersBody => 'Beyond the cats everyone has.';
 
   @override
   String get proFeatureBackupTitle => 'Scheduled backups';
 
   @override
-  String get proFeatureBackupBody =>
-      'Encrypted backups made daily or weekly, without having to remember.';
+  String get proFeatureBackupBody => 'Daily or weekly, encrypted.';
 }

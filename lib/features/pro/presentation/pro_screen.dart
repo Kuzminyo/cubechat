@@ -4,36 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/cube_logo.dart';
+import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/pro_controller.dart';
 import '../models/pro_state.dart';
 
-/// The one screen in cubechat that does not follow the palette.
-///
-/// Everywhere else a hardcoded colour is a bug — `AppColors` is rewritten by
-/// `ThemeController` so the whole interface retints, and a literal is a surface
-/// that will not follow. This screen is the deliberate exception, chosen
-/// explicitly: a paywall that looks like the rest of the app does not read as
-/// an offer, and every messenger that sells a tier breaks out of its own
-/// chrome to say "this part is different".
-///
-/// The gradient is therefore fixed, and it is the only thing here that is.
-/// Text still reads through [AppColors.textOnGlass] so contrast follows the
-/// same rules as everywhere else.
-const _proGradient = <Color>[
-  Color(0xFF3B1E8C),
-  Color(0xFF7B2FD4),
-  Color(0xFFD4429C),
-];
-
-/// Per-row accents for the feature list. Fixed for the same reason as the
-/// gradient: they are part of the Pro look rather than of the theme.
-const _iconAmber = Color(0xFFF5A623);
-const _iconBlue = Color(0xFF4A9EF5);
-const _iconPink = Color(0xFFEF5DA8);
-
 /// What Pro is, and the three ways to buy it.
+///
+/// Built out of the app's own language rather than a paywall borrowed from
+/// somewhere else: the palette through [AppColors], one pane of glass, the
+/// cube, and hairlines between the rows. An earlier pass drew a fixed violet
+/// gradient and colour-tiled icons, which read as another messenger's screen
+/// pasted into this one.
+///
+/// Prices are whatever the store says. Until the products are registered there
+/// the line is a dash — a number invented for a mockup is the kind of
+/// placeholder that ships.
 class ProScreen extends ConsumerStatefulWidget {
   const ProScreen({super.key});
 
@@ -62,26 +49,15 @@ class _ProScreenState extends ConsumerState<ProScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        elevation: 0,
         leading: BackButton(color: AppColors.textOnGlass),
       ),
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: _proGradient,
-          ),
-        ),
-        child: SafeArea(child: _content(t, pro, prices)),
-      ),
+      body: SafeArea(top: false, child: _body(t, pro, prices)),
     );
   }
 
-  Widget _content(
+  Widget _body(
     AppLocalizations t,
     ProState pro,
     Map<ProProduct, String> prices,
@@ -99,13 +75,13 @@ class _ProScreenState extends ConsumerState<ProScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CubeLogo(size: 96, glow: true),
-              const SizedBox(height: 24),
+              const CubeLogo(size: 88, glow: true),
+              const SizedBox(height: 22),
               Text(
                 t.proActive,
                 textAlign: TextAlign.center,
                 style: AppTypography.display(
-                  size: 22,
+                  size: 21,
                   color: AppColors.textOnGlass,
                 ),
               ),
@@ -115,112 +91,104 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       );
     }
 
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        const Center(child: CubeLogo(size: 88, glow: true)),
+        const SizedBox(height: 20),
+        Text(
+          t.proTitle,
+          textAlign: TextAlign.center,
+          style: AppTypography.display(size: 26, color: AppColors.textOnGlass),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          t.proBlurb,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textOnGlassDim, height: 1.4),
+        ),
+        const SizedBox(height: 22),
+        GlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            // Stretch, or GlassCard centres each row and the three left edges
+            // come out ragged.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _hero(t),
-              const SizedBox(height: 24),
-              for (final product in const [
-                ProProduct.yearly,
-                ProProduct.monthly,
-                ProProduct.lifetime,
-              ])
-                _PlanCard(
-                  label: _label(t, product),
-                  period: _period(t, product),
-                  // A dash, not an invented number: the store has no price
-                  // until the product is registered there.
-                  price: prices[product] ?? '—',
-                  selected: _selected == product,
-                  onTap: () => setState(() => _selected = product),
-                ),
-              const SizedBox(height: 20),
               _FeatureRow(
-                colour: _iconAmber,
-                icon: Icons.apps_rounded,
                 title: t.proFeatureIconTitle,
                 body: t.proFeatureIconBody,
               ),
+              _divider(),
               _FeatureRow(
-                colour: _iconBlue,
-                icon: Icons.emoji_emotions_rounded,
                 title: t.proFeatureStickersTitle,
                 body: t.proFeatureStickersBody,
               ),
+              _divider(),
               _FeatureRow(
-                colour: _iconPink,
-                icon: Icons.backup_rounded,
                 title: t.proFeatureBackupTitle,
                 body: t.proFeatureBackupBody,
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton(
-                  onPressed: () => ref.read(proProvider.notifier).restore(),
-                  child: Text(
-                    t.proRestore,
-                    style: TextStyle(color: AppColors.textOnGlassDim),
-                  ),
-                ),
               ),
             ],
           ),
         ),
-        _cta(t),
+        const SizedBox(height: 20),
+        _Segmented(
+          labels: {
+            for (final p in ProProduct.values) p: _label(t, p),
+          },
+          selected: _selected,
+          onSelect: (p) => setState(() => _selected = p),
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Text(
+            // A dash, not an invented number: the store has no price until the
+            // product is registered there.
+            '${prices[_selected] ?? '—'}  ${_period(t, _selected)}',
+            style: AppTypography.mono(
+              size: 13,
+              color: AppColors.textOnGlassDim,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton(
+            onPressed: _buy,
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColors.brandPrimary, width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(26),
+              ),
+            ),
+            child: Text(
+              _selected == ProProduct.lifetime ? t.proBuyOnce : t.proSubscribe,
+              style: AppTypography.heading(
+                size: 16,
+                color: AppColors.brandPrimary,
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: TextButton(
+            onPressed: () => ref.read(proProvider.notifier).restore(),
+            child: Text(
+              t.proRestore,
+              style: TextStyle(color: AppColors.textOnGlassDim),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _hero(AppLocalizations t) => Column(
-        children: [
-          const SizedBox(height: 8),
-          const CubeLogo(size: 104, glow: true),
-          const SizedBox(height: 20),
-          Text(
-            t.proTitle,
-            textAlign: TextAlign.center,
-            style: AppTypography.display(
-              size: 30,
-              color: AppColors.textOnGlass,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            t.proBlurb,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              height: 1.35,
-            ),
-          ),
-        ],
-      );
-
-  Widget _cta(AppLocalizations t) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 54,
-          child: FilledButton(
-            onPressed: _buy,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.textOnGlass,
-              foregroundColor: _proGradient[1],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(27),
-              ),
-            ),
-            child: Text(
-              _selected == ProProduct.lifetime
-                  ? t.proBuyOnce
-                  : t.proSubscribe,
-              style: AppTypography.heading(size: 16, color: _proGradient[1]),
-            ),
-          ),
-        ),
+  Widget _divider() => Divider(
+        height: 1,
+        thickness: 1,
+        color: AppColors.glassBorder,
       );
 
   String _label(AppLocalizations t, ProProduct product) => switch (product) {
@@ -236,135 +204,90 @@ class _ProScreenState extends ConsumerState<ProScreen> {
       };
 }
 
-/// One buyable plan, and whether it is the chosen one.
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({
-    required this.label,
-    required this.period,
-    required this.price,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String period;
-  final String price;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: AppColors.ink(selected ? 0.18 : 0.08),
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.check_circle_rounded
-                      : Icons.circle_outlined,
-                  color: selected
-                      ? AppColors.textOnGlass
-                      : AppColors.textOnGlassFaint,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: AppTypography.heading(
-                      size: 16,
-                      color: AppColors.textOnGlass,
-                    ),
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      price,
-                      style: AppTypography.heading(
-                        size: 15,
-                        color: AppColors.textOnGlass,
-                      ),
-                    ),
-                    Text(
-                      period,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textOnGlassDim,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One line of what Pro includes.
+/// One thing Pro adds, as a line of text — no icon tile.
 class _FeatureRow extends StatelessWidget {
-  const _FeatureRow({
-    required this.colour,
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
+  const _FeatureRow({required this.title, required this.body});
 
-  final Color colour;
-  final IconData icon;
   final String title;
   final String body;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Row(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: colour,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 22, color: AppColors.textOnGlass),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTypography.heading(
-                    size: 16,
-                    color: AppColors.textOnGlass,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    height: 1.35,
-                  ),
-                ),
-              ],
+          Text(
+            title,
+            style: AppTypography.heading(
+              size: 15,
+              color: AppColors.textOnGlass,
             ),
           ),
+          const SizedBox(height: 3),
+          Text(
+            body,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textOnGlassDim,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which plan, as one control rather than three cards.
+class _Segmented extends StatelessWidget {
+  const _Segmented({
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final Map<ProProduct, String> labels;
+  final ProProduct selected;
+  final ValueChanged<ProProduct> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.ink(0.07),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          for (final entry in labels.entries)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onSelect(entry.key),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: entry.key == selected
+                        ? AppColors.brandPrimary
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    entry.value,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.heading(
+                      size: 13,
+                      color: entry.key == selected
+                          ? AppColors.bgDeep
+                          : AppColors.textOnGlassDim,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

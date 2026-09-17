@@ -1449,7 +1449,7 @@
     "placeholders": { "host": { "type": "String" } }
   },
   "proTitle": "cubechat Pro",
-  "proBlurb": "The mesh, the encryption and delivery stay free for everyone. Pro pays for what the server costs to run.",
+  "proBlurb": "Three things beyond what is already free.",
   "proMonthly": "Monthly",
   "proYearly": "Yearly",
   "proLifetime": "Lifetime",
@@ -1462,9 +1462,9 @@
   "proBuyOnce": "Buy",
   "proUnavailable": "Purchases are not available yet",
   "proFeatureIconTitle": "App icon in your theme",
-  "proFeatureIconBody": "The cube on your home screen takes the colour of the palette you chose.",
+  "proFeatureIconBody": "The cube takes the colour of your palette.",
   "proFeatureStickersTitle": "More sticker packs",
-  "proFeatureStickersBody": "New packs beyond the cats everyone has, and your own imported ones.",
+  "proFeatureStickersBody": "Beyond the cats everyone has.",
   "proFeatureBackupTitle": "Scheduled backups",
-  "proFeatureBackupBody": "Encrypted backups made daily or weekly, without having to remember."
+  "proFeatureBackupBody": "Daily or weekly, encrypted."
 }

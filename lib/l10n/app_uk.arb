@@ -1102,7 +1102,7 @@
   "logServerConnected": "Підключено до {host}",
   "logServerLost": "Втрачено зв’язок з {host}",
   "proTitle": "cubechat Pro",
-  "proBlurb": "Мережа, шифрування та доставка залишаються безкоштовними для всіх. Pro оплачує те, що коштує грошей на сервері.",
+  "proBlurb": "Три речі понад те, що й так безкоштовне.",
   "proMonthly": "Щомісяця",
   "proYearly": "Щороку",
   "proLifetime": "Назавжди",
@@ -1115,9 +1115,9 @@
   "proBuyOnce": "Придбати",
   "proUnavailable": "Покупки поки недоступні",
   "proFeatureIconTitle": "Іконка застосунку в тон темі",
-  "proFeatureIconBody": "Кубик на екрані додому набуває кольору обраної палітри.",
+  "proFeatureIconBody": "Кубик набуває кольору палітри.",
   "proFeatureStickersTitle": "Більше стикерпаків",
-  "proFeatureStickersBody": "Нові набори понад котів, які є у всіх, та імпорт власних.",
-  "proFeatureBackupTitle": "Резервні копії за розкладом",
-  "proFeatureBackupBody": "Зашифровані копії щодня або щотижня, без потреби пам’ятати."
+  "proFeatureStickersBody": "Понад котів, які є у всіх.",
+  "proFeatureBackupTitle": "Копії за розкладом",
+  "proFeatureBackupBody": "Щодня або щотижня, зашифровано."
 }
