@@ -3081,4 +3081,23 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get proFeatureBackupBody => 'Щодня або щотижня, зашифровано.';
+
+  @override
+  String get proFeatureSaveTitle => 'Тег одразу під час збереження';
+
+  @override
+  String get proFeatureSaveBody =>
+      'Питаємо тоді, коли ви ще пам’ятаєте навіщо.';
+
+  @override
+  String get chatSaveAction => 'Зберегти';
+
+  @override
+  String get savedAdded => 'Збережено в нотатках';
+
+  @override
+  String get savedTagAsk => 'Збережено. Додати тег?';
+
+  @override
+  String get savedTagAdd => 'Додати тег';
 }

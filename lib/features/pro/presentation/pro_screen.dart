@@ -129,6 +129,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 title: t.proFeatureBackupTitle,
                 body: t.proFeatureBackupBody,
               ),
+              _divider(),
+              _FeatureRow(
+                title: t.proFeatureSaveTitle,
+                body: t.proFeatureSaveBody,
+              ),
             ],
           ),
         ),
@@ -143,9 +148,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
         const SizedBox(height: 12),
         Center(
           child: Text(
-            // A dash, not an invented number: the store has no price until the
-            // product is registered there.
-            '${prices[_selected] ?? '—'}  ${_period(t, _selected)}',
+            // The store's price when it has one, and the list price until the
+            // products are registered there. See [ProProduct.listPrice] for
+            // why the store's answer is the one that is true.
+            '${prices[_selected] ?? _selected.listPrice}  '
+            '${_period(t, _selected)}',
             style: AppTypography.mono(
               size: 13,
               color: AppColors.textOnGlassDim,

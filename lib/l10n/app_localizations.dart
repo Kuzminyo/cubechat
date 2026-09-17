@@ -5347,6 +5347,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Daily or weekly, encrypted.'**
   String get proFeatureBackupBody;
+
+  /// No description provided for @proFeatureSaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag as you save'**
+  String get proFeatureSaveTitle;
+
+  /// No description provided for @proFeatureSaveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked at the moment you keep it.'**
+  String get proFeatureSaveBody;
+
+  /// No description provided for @chatSaveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get chatSaveAction;
+
+  /// No description provided for @savedAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to notes'**
+  String get savedAdded;
+
+  /// No description provided for @savedTagAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. Add a tag?'**
+  String get savedTagAsk;
+
+  /// No description provided for @savedTagAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a tag'**
+  String get savedTagAdd;
 }
 
 class _AppLocalizationsDelegate

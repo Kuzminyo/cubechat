@@ -3048,4 +3048,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get proFeatureBackupBody => 'Daily or weekly, encrypted.';
+
+  @override
+  String get proFeatureSaveTitle => 'Tag as you save';
+
+  @override
+  String get proFeatureSaveBody => 'Asked at the moment you keep it.';
+
+  @override
+  String get chatSaveAction => 'Save';
+
+  @override
+  String get savedAdded => 'Saved to notes';
+
+  @override
+  String get savedTagAsk => 'Saved. Add a tag?';
+
+  @override
+  String get savedTagAdd => 'Add a tag';
 }

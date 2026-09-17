@@ -272,6 +272,9 @@ class BackupService {
 
   Future<dynamic> _openBox(String name) {
     return switch (name) {
+      // Match MessageStore: opening these as dynamic fails after a chat opens.
+      HiveBoxes.messageRecords ||
+      HiveBoxes.chatSummaries ||
       HiveBoxes.knownPeers ||
       HiveBoxes.channels =>
         hiveCipherProvider.openEncryptedBox<Map<dynamic, dynamic>>(name),

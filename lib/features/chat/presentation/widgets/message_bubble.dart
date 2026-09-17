@@ -20,6 +20,7 @@ import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/floating_glass.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../channels/data/channel_controller.dart';
 import '../../../channels/models/channel.dart' show channelForCommunity;
@@ -52,6 +53,7 @@ import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../map/presentation/map_sharing_consent.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
+import '../../../pro/data/pro_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
 import '../../../stickers/data/sticker_library.dart';
@@ -772,6 +774,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.shortcut_rounded,
             label: t.chatForwardAction,
           ),
+        // Not inside Saved itself: filing a note into the pile it is already
+        // in does nothing but duplicate it.
+        if (!isSavedChat(widget.chatId))
+          SpotlightAction(
+            id: 'save',
+            icon: Icons.bookmark_add_outlined,
+            label: t.chatSaveAction,
+          ),
         if (_canEdit)
           SpotlightAction(
             id: 'edit',
@@ -884,11 +894,50 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ref
           .read(messageSelectionProvider(widget.chatId).notifier)
           .start(widget.message.id);
+    } else if (picked == 'save') {
+      await _saveToSaved();
     } else if (picked == 'tag') {
       await _tagSavedMessage();
     } else if (picked == 'delete') {
       await _promptDelete();
     }
+  }
+
+  /// Keep a copy of this message in Saved.
+  ///
+  /// Nothing is sent: Saved is a chat with no peer and no session, so this is a
+  /// local copy and the bytes of a picture or a file are copied in rather than
+  /// referenced — the original can be deleted afterwards and the note survives.
+  ///
+  /// **Free for everyone. The tag question is the Pro half.** Tagging a note
+  /// by hand inside Saved has always been free and stays that way; what Pro
+  /// buys is being asked at the moment of saving, which is the only moment you
+  /// still remember why you kept it.
+  Future<void> _saveToSaved() async {
+    final t = AppLocalizations.of(context);
+    final id = await ref
+        .read(savedMessagesControllerProvider)
+        .saveCopyOf(widget.message);
+
+    if (!mounted || id == null) return;
+
+    if (!ref.read(proProvider).isActive) {
+      showGlassToast(context, t.savedAdded, tone: ToastTone.success);
+      return;
+    }
+
+    // Cancel means "keep it, untagged" — the note is already saved, which is
+    // why the title says so rather than asking whether to save at all.
+    final wantsTag = await confirmAction(
+      context,
+      title: t.savedTagAsk,
+      confirmLabel: t.savedTagAdd,
+      destructive: false,
+    );
+    if (!wantsTag || !mounted) return;
+    final emoji = await showEmojiPicker(context);
+    if (emoji == null) return;
+    await ref.read(savedTagsProvider.notifier).setTag(id, emoji);
   }
 
   /// Put an emoji tag on this saved note, or clear the one it has.

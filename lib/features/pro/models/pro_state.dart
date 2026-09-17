@@ -5,13 +5,24 @@ enum ProSource { none, subscription, lifetime }
 
 /// What can be bought. The ids are what both stores are configured with.
 enum ProProduct {
-  monthly('pro.monthly'),
-  yearly('pro.yearly'),
-  lifetime('pro.lifetime');
+  monthly('pro.monthly', r'$2'),
+  yearly('pro.yearly', r'$20'),
+  lifetime('pro.lifetime', r'$100');
 
-  const ProProduct(this.storeId);
+  const ProProduct(this.storeId, this.listPrice);
 
   final String storeId;
+
+  /// What we intend to charge, shown only while the store has nothing to say.
+  ///
+  /// The store's own price always wins, and it is the one that is true: it
+  /// arrives in the buyer's currency, with their tax and any regional
+  /// adjustment already applied, so somebody in Kyiv sees hryvnia rather than
+  /// this. These exist so a build made before the products are registered
+  /// reads as a price list instead of three dashes — and they must be kept in
+  /// step with what is actually registered in Play Console and App Store
+  /// Connect.
+  final String listPrice;
 
   ProSource get source =>
       this == ProProduct.lifetime ? ProSource.lifetime : ProSource.subscription;

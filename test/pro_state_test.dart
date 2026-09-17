@@ -50,5 +50,14 @@ void main() {
       expect(ProProduct.yearly.storeId, 'pro.yearly');
       expect(ProProduct.lifetime.storeId, 'pro.lifetime');
     });
+
+    test('list prices match what the stores are to be configured with', () {
+      // These are shown only until the products exist in the stores, and they
+      // have to be kept in step with what is registered there — a screen
+      // quoting a price nobody will be charged is worse than a dash.
+      expect(ProProduct.monthly.listPrice, r'$2');
+      expect(ProProduct.yearly.listPrice, r'$20');
+      expect(ProProduct.lifetime.listPrice, r'$100');
+    });
   });
 }

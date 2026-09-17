@@ -1466,5 +1466,11 @@
   "proFeatureStickersTitle": "More sticker packs",
   "proFeatureStickersBody": "Beyond the cats everyone has.",
   "proFeatureBackupTitle": "Scheduled backups",
-  "proFeatureBackupBody": "Daily or weekly, encrypted."
+  "proFeatureBackupBody": "Daily or weekly, encrypted.",
+  "proFeatureSaveTitle": "Tag as you save",
+  "proFeatureSaveBody": "Asked at the moment you keep it.",
+  "chatSaveAction": "Save",
+  "savedAdded": "Saved to notes",
+  "savedTagAsk": "Saved. Add a tag?",
+  "savedTagAdd": "Add a tag"
 }

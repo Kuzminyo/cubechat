@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -46,7 +47,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       );
       if (!mounted || path == null) return;
       showGlassToast(context, t.backupSaved, tone: ToastTone.success);
-    } catch (_) {
+    } catch (error) {
+      // Error type only: backups can contain identity keys and private data.
+      DebugLog.instance.log('BACKUP', 'operation failed: ${error.runtimeType}');
       if (!mounted) return;
       showGlassToast(context, t.backupFailed, tone: ToastTone.danger);
     } finally {
@@ -106,7 +109,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     } on FormatException {
       if (!mounted) return;
       showGlassToast(context, t.backupInvalid, tone: ToastTone.danger);
-    } catch (_) {
+    } catch (error) {
+      // Error type only: backups can contain identity keys and private data.
+      DebugLog.instance.log('BACKUP', 'operation failed: ${error.runtimeType}');
       if (!mounted) return;
       showGlassToast(context, t.backupFailed, tone: ToastTone.danger);
     } finally {
@@ -228,7 +233,8 @@ class _BackupActionCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
+            Icon(Icons.chevron_right_rounded,
+                color: AppColors.textOnGlassFaint),
           ],
         ),
       );
@@ -292,7 +298,9 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _obscure = !_obscure),
                 icon: Icon(
-                  _obscure ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                  _obscure
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
                 ),
               ),
             ),

@@ -1119,5 +1119,11 @@
   "proFeatureStickersTitle": "Більше стикерпаків",
   "proFeatureStickersBody": "Понад котів, які є у всіх.",
   "proFeatureBackupTitle": "Копії за розкладом",
-  "proFeatureBackupBody": "Щодня або щотижня, зашифровано."
+  "proFeatureBackupBody": "Щодня або щотижня, зашифровано.",
+  "proFeatureSaveTitle": "Тег одразу під час збереження",
+  "proFeatureSaveBody": "Питаємо тоді, коли ви ще пам’ятаєте навіщо.",
+  "chatSaveAction": "Зберегти",
+  "savedAdded": "Збережено в нотатках",
+  "savedTagAsk": "Збережено. Додати тег?",
+  "savedTagAdd": "Додати тег"
 }
