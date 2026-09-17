@@ -1125,5 +1125,6 @@
   "chatSaveAction": "Зберегти",
   "savedAdded": "Збережено в нотатках",
   "savedTagAsk": "Збережено. Додати тег?",
-  "savedTagAdd": "Додати тег"
+  "savedTagAdd": "Додати тег",
+  "chatSharedWallpaperFailed": "Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч."
 }

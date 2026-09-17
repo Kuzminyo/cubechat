@@ -938,7 +938,24 @@ enum MediaKind {
   /// Same forward-compatibility story as [file]: an older build throws on the
   /// tag, drops the manifest, then drops the chunks for want of one, and falls
   /// back to the identity gradient rather than showing something wrong.
-  avatar(0x60);
+  avatar(0x60),
+
+  /// A custom photo backdrop for one conversation, carried by [ImageChunk]
+  /// like a photo but filed as that chat's wallpaper instead of appearing in
+  /// it.
+  ///
+  /// The lightweight presets travel as a [ConversationWallpaperPayload]
+  /// control frame, and a photo deliberately does not: one authenticated
+  /// packet holding a picture is a large frame to push down a link somebody is
+  /// reading on. This is the same shape as [avatar] for the same reason, and
+  /// it fails the same way — an older build throws on the tag, drops the
+  /// manifest, then drops the chunks for want of one, and the conversation
+  /// keeps whatever backdrop it already had.
+  ///
+  /// **Dim does not travel.** It exists so text stays legible, and how dark a
+  /// picture has to be for that is a fact about the reader's screen and eyes,
+  /// not about the sender's taste. The receiver keeps its own.
+  wallpaper(0x70);
 
   const MediaKind(this.tag);
   final int tag;

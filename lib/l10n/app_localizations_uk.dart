@@ -3100,4 +3100,8 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get savedTagAdd => 'Додати тег';
+
+  @override
+  String get chatSharedWallpaperFailed =>
+      'Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.';
 }

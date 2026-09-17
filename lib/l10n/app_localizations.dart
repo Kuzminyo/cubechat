@@ -5383,6 +5383,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add a tag'**
   String get savedTagAdd;
+
+  /// No description provided for @chatSharedWallpaperFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallpaper set here. It will reach them when they are in range.'**
+  String get chatSharedWallpaperFailed;
 }
 
 class _AppLocalizationsDelegate

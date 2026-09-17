@@ -1472,5 +1472,6 @@
   "chatSaveAction": "Save",
   "savedAdded": "Saved to notes",
   "savedTagAsk": "Saved. Add a tag?",
-  "savedTagAdd": "Add a tag"
+  "savedTagAdd": "Add a tag",
+  "chatSharedWallpaperFailed": "Wallpaper set here. It will reach them when they are in range."
 }

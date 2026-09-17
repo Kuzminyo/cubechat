@@ -3066,4 +3066,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get savedTagAdd => 'Add a tag';
+
+  @override
+  String get chatSharedWallpaperFailed =>
+      'Wallpaper set here. It will reach them when they are in range.';
 }
