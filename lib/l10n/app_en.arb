@@ -1481,5 +1481,7 @@
   "chatTranslateAction": "Translate",
   "chatTranslateFailed": "That one cannot be translated on this phone.",
   "proFeatureTranslateTitle": "Translation",
-  "proFeatureTranslateBody": "Done on the device. The text is never sent."
+  "proFeatureTranslateBody": "Done on the device. The text is never sent.",
+  "proFeatureLastSeenTitle": "Their times while yours are off",
+  "proFeatureLastSeenBody": "Their own choice to hide still stands."
 }

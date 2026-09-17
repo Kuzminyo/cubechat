@@ -168,6 +168,11 @@ class _ProScreenState extends ConsumerState<ProScreen> {
                 title: t.proFeatureTranslateTitle,
                 body: t.proFeatureTranslateBody,
               ),
+              _divider(),
+              _FeatureRow(
+                title: t.proFeatureLastSeenTitle,
+                body: t.proFeatureLastSeenBody,
+              ),
             ],
           ),
         ),

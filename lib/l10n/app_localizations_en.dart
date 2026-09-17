@@ -3097,4 +3097,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get proFeatureTranslateBody =>
       'Done on the device. The text is never sent.';
+
+  @override
+  String get proFeatureLastSeenTitle => 'Their times while yours are off';
+
+  @override
+  String get proFeatureLastSeenBody => 'Their own choice to hide still stands.';
 }

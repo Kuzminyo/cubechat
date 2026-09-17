@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../peers/data/presence_controller.dart';
+import '../../pro/data/pro_controller.dart';
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/utils/time_format.dart';
@@ -326,7 +327,9 @@ class _PeekHeader extends ConsumerWidget {
         online: isOnline,
         // The roster's copy once the beacon has expired — see
         // [KnownPeer.hidesLastSeen].
-        hideTimes: !shared ||
+        // Pro lifts our own half of the trade and not theirs — see the same
+        // line in `chat_screen.dart`.
+        hideTimes: (!shared && !ref.watch(proProvider).isActive) ||
             (beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false),
         lastPresent: known?.lastPresenceAt,
       );

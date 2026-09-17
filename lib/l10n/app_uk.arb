@@ -1134,5 +1134,7 @@
   "chatTranslateAction": "Перекласти",
   "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні.",
   "proFeatureTranslateTitle": "Переклад",
-  "proFeatureTranslateBody": "Просто на пристрої. Текст нікуди не надсилається."
+  "proFeatureTranslateBody": "Просто на пристрої. Текст нікуди не надсилається.",
+  "proFeatureLastSeenTitle": "Їхній час, коли ваш вимкнено",
+  "proFeatureLastSeenBody": "Їхнє власне приховування лишається чинним."
 }

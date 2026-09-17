@@ -5437,6 +5437,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Done on the device. The text is never sent.'**
   String get proFeatureTranslateBody;
+
+  /// No description provided for @proFeatureLastSeenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Their times while yours are off'**
+  String get proFeatureLastSeenTitle;
+
+  /// No description provided for @proFeatureLastSeenBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Their own choice to hide still stands.'**
+  String get proFeatureLastSeenBody;
 }
 
 class _AppLocalizationsDelegate

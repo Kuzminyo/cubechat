@@ -3132,4 +3132,11 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get proFeatureTranslateBody =>
       'Просто на пристрої. Текст нікуди не надсилається.';
+
+  @override
+  String get proFeatureLastSeenTitle => 'Їхній час, коли ваш вимкнено';
+
+  @override
+  String get proFeatureLastSeenBody =>
+      'Їхнє власне приховування лишається чинним.';
 }
