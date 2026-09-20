@@ -37,6 +37,7 @@ List<Widget> recentCallSlivers({
   required BuildContext context,
   required WidgetRef ref,
   required bool missedOnly,
+  Widget Function(Widget child)? animate,
   required ValueChanged<bool> onMissedOnly,
   required Widget Function(String label, bool selected, VoidCallback onTap)
       chip,
@@ -47,17 +48,20 @@ List<Widget> recentCallSlivers({
   final calls = missedOnly
       ? recentCalls(ref.read(messagesControllerProvider), missedOnly: true)
       : all;
+  final wrap = animate ?? (Widget child) => child;
   return [
     SliverToBoxAdapter(
-      child: SizedBox(
-        height: 44,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          children: [
-            chip(t.callsFilterAll, !missedOnly, () => onMissedOnly(false)),
-            chip(t.callsFilterMissed, missedOnly, () => onMissedOnly(true)),
-          ],
+      child: wrap(
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              chip(t.callsFilterAll, !missedOnly, () => onMissedOnly(false)),
+              chip(t.callsFilterMissed, missedOnly, () => onMissedOnly(true)),
+            ],
+          ),
         ),
       ),
     ),
@@ -65,9 +69,11 @@ List<Widget> recentCallSlivers({
     if (calls.isEmpty)
       SliverFillRemaining(
         hasScrollBody: false,
-        child: empty(
-          all.isEmpty ? t.callsEmptyTitle : t.callsMissedEmpty,
-          t.callsEmptyHint,
+        child: wrap(
+          empty(
+            all.isEmpty ? t.callsEmptyTitle : t.callsMissedEmpty,
+            t.callsEmptyHint,
+          ),
         ),
       )
     else
@@ -76,7 +82,7 @@ List<Widget> recentCallSlivers({
         sliver: SliverList.separated(
           itemCount: calls.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => _CallRow(call: calls[index]),
+          itemBuilder: (context, index) => wrap(_CallRow(call: calls[index])),
         ),
       ),
   ];
@@ -92,8 +98,14 @@ class _CallRow extends ConsumerWidget {
     final t = AppLocalizations.of(context);
     final name = _nameFor(ref, call.peerId);
     final (icon, label) = switch (call.kind) {
-      RecentCallKind.incoming => (Icons.call_received_rounded, t.previewCallIncoming),
-      RecentCallKind.outgoing => (Icons.call_made_rounded, t.previewCallOutgoing),
+      RecentCallKind.incoming => (
+          Icons.call_received_rounded,
+          t.previewCallIncoming
+        ),
+      RecentCallKind.outgoing => (
+          Icons.call_made_rounded,
+          t.previewCallOutgoing
+        ),
       RecentCallKind.missed => (Icons.call_missed_rounded, t.previewCallMissed),
       RecentCallKind.unanswered => (Icons.call_made_rounded, t.callNoAnswer),
     };

@@ -1100,5 +1100,13 @@
   "logAppStarted": "Застосунок запущено",
   "logInternetOn": "Зв’язок через інтернет увімкнено",
   "logServerConnected": "Підключено до {host}",
-  "logServerLost": "Втрачено зв’язок з {host}"
+  "logServerLost": "Втрачено зв’язок з {host}",
+  "chatSaveAction": "Зберегти",
+  "savedTagAsk": "Збережено. Додати тег?",
+  "savedTagAdd": "Додати тег",
+  "chatSharedWallpaperFailed": "Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.",
+  "chatTranscribeAction": "Розпізнати голос",
+  "chatTranscribeFailed": "Цей телефон не може розпізнати це повідомлення.",
+  "chatTranslateAction": "Перекласти",
+  "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні."
 }

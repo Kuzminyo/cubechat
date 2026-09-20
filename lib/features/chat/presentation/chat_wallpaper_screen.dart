@@ -27,20 +27,14 @@ class ChatWallpaperScreen extends ConsumerWidget {
 
   Future<void> _pickImage(BuildContext context, WidgetRef ref) async {
     final t = AppLocalizations.of(context);
-    final scope = await _askApplyScope(context, allowShared: false);
+    // Shared photo wallpapers travel as a manifest and image chunks under
+    // MediaKind.wallpaper — the same path a picture takes. Rooms are still
+    // local-only: a room has no single peer to chunk to.
+    final scope = await _askApplyScope(
+      context,
+      allowShared: !chatId.startsWith('#'),
+    );
     if (!context.mounted || scope == null) return;
-    if (scope == _WallpaperApplyScope.shared) {
-      showGlassToast(
-        context,
-        _wallpaperText(
-          context,
-          uk: 'Фото-шпалери поки можна ставити тільки локально',
-          en: 'Photo wallpapers are local-only for now',
-        ),
-        tone: ToastTone.neutral,
-      );
-      return;
-    }
     final result = await showGlassSheet<MediaPickerResult>(
       context: context,
       useRootNavigator: true,
@@ -76,12 +70,23 @@ class ChatWallpaperScreen extends ConsumerWidget {
           .read(conversationSettingsControllerProvider.notifier)
           .forChat(chatId)
           .wallpaper;
+      final chosen = ChatWallpaper(imagePath: file.path, dim: current.dim);
+      if (scope == _WallpaperApplyScope.shared) {
+        // Applies here and chunks it over; the send half can fail without the
+        // local half failing with it.
+        final sent =
+            await ref.read(messagingServiceProvider).sendSharedWallpaper(
+                  chatId,
+                  chosen,
+                );
+        if (!sent && context.mounted) {
+          showGlassToast(context, t.chatSharedWallpaperFailed);
+        }
+        return;
+      }
       await ref
           .read(conversationSettingsControllerProvider.notifier)
-          .setWallpaper(
-            chatId,
-            ChatWallpaper(imagePath: file.path, dim: current.dim),
-          );
+          .setWallpaper(chatId, chosen);
     } catch (e) {
       if (context.mounted) {
         showGlassToast(context, '$e', tone: ToastTone.danger);

@@ -116,6 +116,10 @@
 	<!-- Voice messages and the sound on a round video message -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cubechat needs the microphone for voice calls, voice messages and round video messages you send in chats.</string>
+	<!-- Voice notes turned into text. On-device only: the recording never
+	     leaves this phone, and a locale with no local model simply fails. -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Cubechat transcribes voice messages on this device, so you can read one when you cannot listen. The recording is never sent anywhere.</string>
 	<!-- In-app gallery: pick photos to send, and save received photos -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cubechat needs access to your photos so you can pick images to send in chats.</string>

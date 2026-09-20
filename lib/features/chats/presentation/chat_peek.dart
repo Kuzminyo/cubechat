@@ -18,7 +18,6 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../peers/presentation/peer_status.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
-import '../../profile/data/privacy_settings_controller.dart';
 import '../data/pinned_chats_controller.dart';
 import '../data/read_markers_controller.dart';
 import '../data/saved_messages.dart';
@@ -316,9 +315,6 @@ class _PeekHeader extends ConsumerWidget {
       final beacon = ref.watch(
         presenceControllerProvider.select((all) => all[chat.id]),
       );
-      final shared = ref.watch(
-        privacySettingsProvider.select((p) => p.shareLastSeen),
-      );
       status = peerStatusLine(
         context,
         blocked: blocked,
@@ -326,8 +322,8 @@ class _PeekHeader extends ConsumerWidget {
         online: isOnline,
         // The roster's copy once the beacon has expired — see
         // [KnownPeer.hidesLastSeen].
-        hideTimes: !shared ||
-            (beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false),
+        // Theirs only — see the same line in `chat_screen.dart`.
+        hideTimes: beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false,
         lastPresent: known?.lastPresenceAt,
       );
     } else {

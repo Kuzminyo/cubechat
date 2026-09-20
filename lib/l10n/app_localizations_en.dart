@@ -2991,4 +2991,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String logServerLost(String host) {
     return 'Lost connection to $host';
   }
+
+  @override
+  String get chatSaveAction => 'Save';
+
+  @override
+  String get savedTagAsk => 'Saved. Add a tag?';
+
+  @override
+  String get savedTagAdd => 'Add a tag';
+
+  @override
+  String get chatSharedWallpaperFailed =>
+      'Wallpaper set here. It will reach them when they are in range.';
+
+  @override
+  String get chatTranscribeAction => 'Transcribe';
+
+  @override
+  String get chatTranscribeFailed => 'This phone cannot transcribe that one.';
+
+  @override
+  String get chatTranslateAction => 'Translate';
+
+  @override
+  String get chatTranslateFailed =>
+      'That one cannot be translated on this phone.';
 }

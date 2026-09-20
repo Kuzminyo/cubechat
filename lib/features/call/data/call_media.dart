@@ -5,6 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../../core/util/debug_log.dart';
 import 'call_candidate_wait.dart';
+import '../domain/call_network_quality.dart';
 
 enum CallMediaEvent { connected, disconnected, failed }
 
@@ -54,6 +55,13 @@ class WebRtcCallMedia implements CallMedia {
   Future<String>? _opening;
   Future<void>? _closing;
   bool _closed = false;
+  final _quality = CallNetworkQuality();
+  Timer? _qualityTimer;
+  Future<void>? _qualityWork;
+  int? _appliedBitrate;
+  int _qualityTicks = 0;
+  bool _qualityErrorLogged = false;
+  final Map<String, num> _remoteReports = {};
   final _gathered = Completer<void>();
   final _relayReady = Completer<void>();
 
@@ -113,6 +121,7 @@ class WebRtcCallMedia implements CallMedia {
       if (_closed) return;
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
+          _startQualityMonitor();
           _events.add(CallMediaEvent.connected);
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
           _events.add(CallMediaEvent.disconnected);
@@ -122,11 +131,26 @@ class WebRtcCallMedia implements CallMedia {
           break;
       }
     };
+    // Configure communication before capture activates the native audio
+    // session. Bluetooth must open as a bidirectional voice route.
+    if (Platform.isAndroid) {
+      await Helper.setAndroidAudioConfiguration(
+        AndroidAudioConfiguration.communication,
+      );
+    } else if (Platform.isIOS) {
+      await _configureAppleAudio();
+    }
+    _checkOpen();
     final local = _local = await navigator.mediaDevices.getUserMedia({
       'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true
+        // flutter_webrtc 0.12's native parser ignores top-level browser
+        // constraints. Supply its optional list so AGC/NS/AEC actually reach
+        // the audio source, including a quiet Bluetooth headset microphone.
+        'optional': [
+          {'googEchoCancellation': true},
+          {'googNoiseSuppression': true},
+          {'googAutoGainControl': true},
+        ],
       },
       'video': false,
     });
@@ -136,19 +160,7 @@ class WebRtcCallMedia implements CallMedia {
         await Helper.setMicrophoneMute(true, track);
       }
     }
-    if (Platform.isAndroid) {
-      await Helper.setAndroidAudioConfiguration(
-          AndroidAudioConfiguration.communication);
-    } else if (Platform.isIOS) {
-      await Helper.setAppleAudioConfiguration(AppleAudioConfiguration(
-        appleAudioCategory: AppleAudioCategory.playAndRecord,
-        appleAudioMode: AppleAudioMode.voiceChat,
-        appleAudioCategoryOptions: {AppleAudioCategoryOption.allowBluetooth},
-      ));
-    }
-    _checkOpen();
-    // Earpiece, stated rather than assumed - see [setSpeaker].
-    await Helper.setSpeakerphoneOn(false);
+    await setSpeaker(false);
     for (final track in local.getAudioTracks()) {
       await peer.addTrack(track, local);
       _checkOpen();
@@ -215,7 +227,111 @@ class WebRtcCallMedia implements CallMedia {
   /// so the button and the sound agree from the first second. Off still
   /// prefers a headset over the earpiece when one is connected.
   @override
-  Future<void> setSpeaker(bool speaker) => Helper.setSpeakerphoneOn(speaker);
+  Future<void> setSpeaker(bool speaker) async {
+    _checkOpen();
+    if (Platform.isIOS) {
+      // The plugin's setSpeakerphoneOn helper re-enables A2DP. Keep the
+      // bidirectional HFP voice category and change only the output override.
+      await _configureAppleAudio();
+      if (!_closed)
+        await Helper.selectAudioOutput(speaker ? 'Speaker' : 'none');
+    } else {
+      await Helper.setSpeakerphoneOn(speaker);
+    }
+  }
+
+  Future<void> _configureAppleAudio() =>
+      Helper.setAppleAudioConfiguration(AppleAudioConfiguration(
+        appleAudioCategory: AppleAudioCategory.playAndRecord,
+        appleAudioMode: AppleAudioMode.voiceChat,
+        appleAudioCategoryOptions: {AppleAudioCategoryOption.allowBluetooth},
+      ));
+
+  void _startQualityMonitor() {
+    if (_qualityTimer != null || _closed) return;
+    void poll() {
+      if (_closed || _qualityWork != null) return;
+      _qualityWork = _sampleQuality().whenComplete(() => _qualityWork = null);
+    }
+
+    _qualityTimer = Timer.periodic(const Duration(seconds: 3), (_) => poll());
+    poll();
+  }
+
+  Future<void> _sampleQuality() async {
+    final peer = _peer;
+    if (_closed || peer == null) return;
+    try {
+      final reports = await peer.getStats().timeout(const Duration(seconds: 2));
+      if (_closed) return;
+      var freshReport = false;
+      double? loss;
+      double? rtt;
+      for (final report in reports) {
+        final values = report.values;
+        // Remote inbound describes how the OTHER phone receives OUR audio.
+        // Local inbound loss is the opposite direction and cannot be fixed by
+        // reducing our encoder's bandwidth.
+        if (report.type != 'remote-inbound-rtp' ||
+            (values['kind'] ?? values['mediaType']) != 'audio') continue;
+        final counter =
+            values['reportsReceived'] ?? values['roundTripTimeMeasurements'];
+        final marker = counter is num ? counter : report.timestamp;
+        if (_remoteReports[report.id] == marker) continue;
+        _remoteReports[report.id] = marker;
+        freshReport = true;
+        final fraction = values['fractionLost'];
+        final roundTrip = values['roundTripTime'];
+        if (fraction is num) loss = fraction.toDouble();
+        if (roundTrip is num) rtt = roundTrip.toDouble();
+      }
+      // RTCP often arrives less frequently than getStats is polled. Count
+      // actual feedback, not polling gaps, toward sustained recovery.
+      if (freshReport) _quality.sample(loss: loss, rtt: rtt);
+      final target = _quality.bitrate;
+      final changed = _appliedBitrate != target;
+      if (changed) {
+        // Fetch fresh parameters: a cached addTrack sender can precede SDP
+        // negotiation and have no negotiated encodings yet.
+        final senders =
+            await peer.getSenders().timeout(const Duration(seconds: 2));
+        if (_closed) return;
+        var applied = false;
+        for (final sender in senders) {
+          if (sender.track?.kind != 'audio') continue;
+          final parameters = sender.parameters;
+          final encodings = parameters.encodings;
+          if (encodings == null || encodings.isEmpty) continue;
+          for (final encoding in encodings) {
+            encoding.maxBitrate = target;
+          }
+          if (!await sender
+              .setParameters(parameters)
+              .timeout(const Duration(seconds: 2))) {
+            throw StateError('audio sender refused bitrate');
+          }
+          if (_closed) return;
+          applied = true;
+        }
+        if (applied) _appliedBitrate = target;
+      }
+      // One line every 15 seconds, plus real policy changes. Never log SDP,
+      // addresses or captured speech; just the measurements needed to debug.
+      if (++_qualityTicks % 5 == 0 || changed && _appliedBitrate == target) {
+        _log('audio quality: cap ${_appliedBitrate ?? 0} bps, '
+            'loss ${loss == null ? "unknown" : (loss * 100).toStringAsFixed(1)}%, '
+            'rtt ${rtt == null ? "unknown" : (rtt * 1000).round()} ms');
+      }
+      _qualityErrorLogged = false;
+    } catch (e) {
+      if (!_closed && !_qualityErrorLogged) {
+        _log('audio quality update unavailable: $e');
+        _qualityErrorLogged = true;
+      }
+      // A platform that cannot set a cap retains WebRTC's own congestion
+      // control. Monitoring must never tear down an otherwise usable call.
+    }
+  }
 
   @override
   Future<List<CallAudioRoute>> routes() async {
@@ -300,6 +416,8 @@ class WebRtcCallMedia implements CallMedia {
 
   Future<void> _close() async {
     _closed = true;
+    _qualityTimer?.cancel();
+    _qualityTimer = null;
     if (!_gathered.isCompleted) _gathered.complete();
     // Native camera/audio creation cannot be disposed underneath its pending
     // future. The controller prevents a new call until this teardown ends.
@@ -307,6 +425,7 @@ class WebRtcCallMedia implements CallMedia {
       await _opening;
     } catch (_) {/* Cancelled setup still needs cleanup. */}
     try {
+      await _qualityWork;
       await _peer?.close();
       await _peer?.dispose();
     } finally {

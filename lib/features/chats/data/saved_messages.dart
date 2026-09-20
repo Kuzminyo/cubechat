@@ -49,15 +49,15 @@ class SavedMessagesController {
   /// A photo kept as a note. Nothing is sent, so nothing is downscaled either:
   /// the encoder exists to fit a picture through Bluetooth, and there is no
   /// Bluetooth on this path.
-  Future<void> saveImage(
+  Future<String?> saveImage(
     Uint8List bytes, {
     String mime = 'image/jpeg',
     String? caption,
   }) async {
-    if (bytes.isEmpty) return;
+    if (bytes.isEmpty) return null;
     final file = await _store('.jpg');
     await file.writeAsBytes(bytes, flush: true);
-    await _append(
+    return _append(
       kind: MessageKind.image,
       text: caption ?? mime,
       imagePath: file.path,
@@ -66,7 +66,7 @@ class SavedMessagesController {
   }
 
   /// A file kept as a note, copied in so clearing the source changes nothing.
-  Future<void> saveFile(
+  Future<String?> saveFile(
     File source, {
     required String fileName,
     required String mime,
@@ -75,7 +75,7 @@ class SavedMessagesController {
     final dot = safe.lastIndexOf('.');
     final copy = await _store(dot < 0 ? '' : safe.substring(dot));
     await source.copy(copy.path);
-    await _append(
+    return _append(
       kind: MessageKind.file,
       text: mime,
       filePath: copy.path,
@@ -85,14 +85,14 @@ class SavedMessagesController {
   }
 
   /// A voice note to yourself.
-  Future<void> saveVoice(
+  Future<String?> saveVoice(
     File source, {
     required int durationMs,
     String mime = 'audio/aac',
   }) async {
     final copy = await _store('.m4a');
     await source.copy(copy.path);
-    await _append(
+    return _append(
       kind: MessageKind.audio,
       text: mime,
       audioPath: copy.path,
@@ -101,7 +101,10 @@ class SavedMessagesController {
     );
   }
 
-  Future<void> _append({
+  /// Returns the id of the note it wrote, so a caller can tag what it just
+  /// saved. Tagging at the moment of saving needs the id, and there is no way
+  /// back to it from here once the append has happened.
+  Future<String> _append({
     required MessageKind kind,
     required String text,
     String? imagePath,
@@ -113,10 +116,11 @@ class SavedMessagesController {
     String? fileName,
     int? fileBytes,
   }) async {
+    final id = _uuid.v4();
     await _ref.read(messagesControllerProvider.notifier).append(
           savedChatId,
           Message(
-            id: _uuid.v4(),
+            id: id,
             chatId: savedChatId,
             text: text,
             sentAt: DateTime.now(),
@@ -133,15 +137,56 @@ class SavedMessagesController {
             fileBytes: fileBytes,
           ),
         );
+    return id;
   }
 
-  Future<void> saveText(String text) async {
+  /// Keep a copy of a message from a conversation.
+  ///
+  /// A copy, not a reference: the bytes of a picture, a file or a voice note
+  /// are written into the notes folder, so deleting the conversation — or the
+  /// message, or the chat's media — leaves the note intact. That is the whole
+  /// point of keeping it.
+  ///
+  /// Null when there was nothing to keep. Falls back to the text for any kind
+  /// whose file is missing, which is what a message whose media was cleared
+  /// still has.
+  Future<String?> saveCopyOf(Message message) async {
+    final image = message.imagePath;
+    if (image != null && await File(image).exists()) {
+      return saveImage(
+        await File(image).readAsBytes(),
+        mime: message.imageMime ?? 'image/jpeg',
+        caption: message.text.trim().isEmpty ? null : message.text,
+      );
+    }
+    final audio = message.audioPath;
+    if (audio != null && await File(audio).exists()) {
+      return saveVoice(
+        File(audio),
+        durationMs: message.audioDurationMs ?? 0,
+        mime: message.audioMime ?? 'audio/aac',
+      );
+    }
+    final file = message.filePath;
+    if (file != null && await File(file).exists()) {
+      return saveFile(
+        File(file),
+        fileName: message.fileName ?? 'file',
+        mime: message.text,
+      );
+    }
+    return saveText(message.text);
+  }
+
+  /// Null when there was nothing to save — an empty note is not a note.
+  Future<String?> saveText(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return null;
+    final id = _uuid.v4();
     await _ref.read(messagesControllerProvider.notifier).append(
           savedChatId,
           Message(
-            id: _uuid.v4(),
+            id: id,
             chatId: savedChatId,
             text: trimmed,
             sentAt: DateTime.now(),
@@ -152,6 +197,7 @@ class SavedMessagesController {
             status: MessageStatus.read,
           ),
         );
+    return id;
   }
 }
 

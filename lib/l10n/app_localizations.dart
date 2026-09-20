@@ -5233,6 +5233,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Lost connection to {host}'**
   String logServerLost(String host);
+
+  /// No description provided for @chatSaveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get chatSaveAction;
+
+  /// No description provided for @savedTagAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. Add a tag?'**
+  String get savedTagAsk;
+
+  /// No description provided for @savedTagAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a tag'**
+  String get savedTagAdd;
+
+  /// No description provided for @chatSharedWallpaperFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallpaper set here. It will reach them when they are in range.'**
+  String get chatSharedWallpaperFailed;
+
+  /// No description provided for @chatTranscribeAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcribe'**
+  String get chatTranscribeAction;
+
+  /// No description provided for @chatTranscribeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone cannot transcribe that one.'**
+  String get chatTranscribeFailed;
+
+  /// No description provided for @chatTranslateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate'**
+  String get chatTranslateAction;
+
+  /// No description provided for @chatTranslateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That one cannot be translated on this phone.'**
+  String get chatTranslateFailed;
 }
 
 class _AppLocalizationsDelegate

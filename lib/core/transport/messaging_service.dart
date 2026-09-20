@@ -3639,18 +3639,25 @@ class MessagingService {
     return ChatWallpaper(presetIndex: clamped, dim: payload.dim);
   }
 
-  /// Share a lightweight built-in wallpaper preset with a peer or channel.
+  /// Share a wallpaper with a peer or channel.
   ///
-  /// Custom photo wallpapers are intentionally not sent here: this path is a
-  /// single small control frame. Photos need the chunked media path so they do
-  /// not turn a cosmetic setting into a huge packet that can stall BLE and hot
-  /// devices while the user is scrolling.
+  /// Two paths behind one entry, chosen by what the wallpaper is. A built-in
+  /// preset is four bytes and goes as a single small control frame. A photo
+  /// goes down the chunked media path instead — turning a cosmetic setting
+  /// into one huge packet is how a backdrop stalls BLE and warms a phone while
+  /// somebody is scrolling.
   Future<bool> sendSharedWallpaper(
     String chatId,
     ChatWallpaper wallpaper,
   ) async {
     if (wallpaper.imagePath != null) {
-      throw StateError('shared photo wallpapers are not chunked yet');
+      // A photo is not a control frame. It goes down the same manifest and
+      // chunk path a picture uses, filed under MediaKind.wallpaper — see
+      // [_sendWallpaperChunked].
+      if (chatId.startsWith('#')) {
+        throw StateError('photo wallpapers are 1:1 only for now');
+      }
+      return _sendWallpaperChunked(chatId, wallpaper);
     }
     final body = _wallpaperPayload(wallpaper).encode();
     final settings = _ref.read(conversationSettingsControllerProvider.notifier);
@@ -3973,12 +3980,16 @@ class MessagingService {
     final peerPub = _resolvePeerPub(chatId);
     if (peerPub == null) return false;
     try {
-      await _sendControlToPeer(
+      final delivery = await _deliverControlToPeer(
         canonicalId: chatId,
         peerPub: peerPub,
         type: InnerPayloadType.mediaRequest,
         innerBody: mediaId,
       );
+      if (delivery.isNotSent) {
+        DebugLog.instance.log('FILE', 'media re-request has no route; keeping retry available');
+        return false;
+      }
       DebugLog.instance.log('FILE', 'asked $chatId for media $wireIdHex again');
       return true;
     } catch (e) {
@@ -6422,6 +6433,12 @@ class MessagingService {
       case FrameType.peerAnnouncement:
         await _handlePeerAnnouncementFrame(peerId, frame);
 
+      case FrameType.proBadge:
+        // Nothing here claims Pro, so nothing here believes a claim either.
+        // The tag stays reserved so the branch that does can use it without
+        // meeting a build that gave it away to something else.
+        DebugLog.instance.log('MESH', 'ignoring pro badge from $peerId');
+
       case FrameType.fragment:
         // Fragments are reassembled in _handleInboundBytes before dispatch, so
         // one reaching here means a slice leaked past reassembly — drop it.
@@ -7270,10 +7287,12 @@ class MessagingService {
           'IMG', 'drop image chunk from $peerId: no signed manifest for $key');
       return;
     }
-    // An avatar rides in [ImageChunk] bodies too — the manifest is the only
-    // thing that says which of the two this is.
+    // An avatar and a wallpaper ride in [ImageChunk] bodies too — the manifest
+    // is the only thing that says which of the three this is.
     final kind = pending.manifest.kind;
-    if ((kind != MediaKind.image && kind != MediaKind.avatar) ||
+    if ((kind != MediaKind.image &&
+            kind != MediaKind.avatar &&
+            kind != MediaKind.wallpaper) ||
         pending.manifest.total != chunk.total ||
         pending.manifest.mime != chunk.mime) {
       DebugLog.instance.log('IMG',
@@ -7534,7 +7553,8 @@ class MessagingService {
       _ref.read(fileTransferControllerProvider.notifier).register(
             FileTransferTask(
               id: key,
-              chatId: peerId,
+              // Re-requests need the author, not the relay/mesh hop.
+              chatId: senderPub == null ? peerId : _hexOf(senderPub),
               fileName: manifest.name ?? 'file',
               filePath: '',
               mime: manifest.mime,
@@ -7725,6 +7745,35 @@ class MessagingService {
             return;
           }
           await _ingestAvatarBytes(_hexOf(senderPub), bytes);
+          return;
+
+        case MediaKind.wallpaper:
+          // Not a message either: it is what this conversation is drawn on.
+          //
+          // Written to disk like any received picture and then handed to the
+          // same setting the user's own choice writes, so there is one notion
+          // of "this chat's backdrop" rather than a second one that arrived
+          // over the air. The dim is left alone deliberately — see
+          // [MediaKind.wallpaper]; it is a fact about this screen.
+          final wallpaperPath = await ImageReassembler.persistToDisk(
+            imageId: manifest.mediaId,
+            bytes: bytes,
+            mime: manifest.mime,
+          );
+          final settings =
+              _ref.read(conversationSettingsControllerProvider.notifier);
+          await settings.loaded;
+          await settings.setWallpaper(
+            peerId,
+            settings.forChat(peerId).wallpaper.copyWith(
+                  imagePath: wallpaperPath,
+                  presetIndex: null,
+                ),
+          );
+          DebugLog.instance.log(
+            'CHAT',
+            'wallpaper from $peerId: ${bytes.length}B in place',
+          );
           return;
 
         case MediaKind.file:
@@ -8408,6 +8457,93 @@ class MessagingService {
     );
   }
 
+  /// Ship a custom photo wallpaper the way a photo travels, not the way a
+  /// preset does.
+  ///
+  /// The preset path is one small authenticated frame because a preset is four
+  /// bytes. A picture down that path would be a single frame big enough to
+  /// stall a link somebody is reading a conversation on, which is why
+  /// [MediaKind.wallpaper] exists: same manifest, same chunks, same SHA-256
+  /// commitment as any photo, with only the kind saying where the assembled
+  /// bytes belong.
+  ///
+  /// Applied here first and sent second. The wallpaper is this device's
+  /// setting whether or not the other phone is in range, and a chat that
+  /// refused to change its own backdrop because a peer was offline would be
+  /// obeying the wrong half of the feature.
+  Future<bool> _sendWallpaperChunked(
+    String chatId,
+    ChatWallpaper wallpaper,
+  ) async {
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    await settings.setWallpaper(chatId, wallpaper);
+
+    final file = File(wallpaper.imagePath!);
+    if (!await file.exists()) return false;
+    final bytes = await file.readAsBytes();
+
+    final peerPub = _resolvePeerPub(chatId);
+    if (peerPub == null) return false;
+
+    const mime = 'image/jpeg';
+    final mediaId = ImageChunk.newImageId();
+    final session = _findSessionByPubkeyHex(chatId);
+    final direct = session?.peerId == null ? null : _clients[session!.peerId];
+    final relayOnly = !_hasAnyLink;
+    final chunkData = _mediaChunkData(
+      direct,
+      relayOnly: relayOnly,
+      ceiling: ImageChunk.maxDataBytes,
+    );
+    final total = (bytes.length + chunkData - 1) ~/ chunkData;
+    if (total < 1 || total > ImageChunk.maxChunks) {
+      DebugLog.instance.log(
+        'CHAT',
+        'wallpaper not sent to $chatId: $total chunks is too many',
+      );
+      return false;
+    }
+
+    final manifest = MediaManifest(
+      mediaId: mediaId,
+      kind: MediaKind.wallpaper,
+      total: total,
+      mime: mime,
+      sha256: Uint8List.fromList((await Sha256().hash(bytes)).bytes),
+    );
+    await _sendControlToPeer(
+      canonicalId: chatId,
+      peerPub: peerPub,
+      type: InnerPayloadType.mediaManifest,
+      innerBody: manifest.encode(),
+    );
+    for (var i = 0; i < total; i++) {
+      final start = i * chunkData;
+      final end = (start + chunkData).clamp(0, bytes.length);
+      await _sendControlToPeer(
+        canonicalId: chatId,
+        peerPub: peerPub,
+        type: InnerPayloadType.imageChunk,
+        innerBody: ImageChunk(
+          imageId: mediaId,
+          seq: i,
+          total: total,
+          mime: mime,
+          data: Uint8List.fromList(bytes.sublist(start, end)),
+        ).encode(),
+      );
+      // Same pacing as every other chunked media path — see [sendImage].
+      if (i + 1 < total && !relayOnly) {
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+      }
+    }
+    DebugLog.instance.log(
+      'CHAT',
+      'wallpaper sent to $chatId: ${bytes.length}B in $total chunks',
+    );
+    return true;
+  }
+
   /// Ship a full-size avatar as a signed manifest followed by image chunks.
   ///
   /// Deliberately the *same* machinery a photo uses — [ImageChunk] bodies, the
@@ -8716,14 +8852,22 @@ class MessagingService {
       }
       if (task.completedUnits >= task.totalUnits) continue;
       if (was.asks >= _maxStallAsks) continue;
-      _stalledMedia[task.id] = (seen: task.completedUnits, asks: was.asks + 1);
+      final attempted = (seen: task.completedUnits, asks: was.asks + 1);
+      _stalledMedia[task.id] = attempted;
       DebugLog.instance.log(
         'FILE',
         'stalled at ${task.completedUnits}/${task.totalUnits} '
             '"${task.fileName}" — asking ${task.chatId} again '
             '(${was.asks + 1} of $_maxStallAsks)',
       );
-      unawaited(requestMediaAgain(task.chatId, task.id));
+      unawaited(requestMediaAgain(task.chatId, task.id).then((sent) {
+        // Two timer ticks without internet used to spend the entire recovery
+        // budget. Reserve while sending, but spend only when something left
+        // the phone; do not overwrite progress observed during the await.
+        if (!sent && !_disposed && _stalledMedia[task.id] == attempted) {
+          _stalledMedia[task.id] = was;
+        }
+      }));
     }
     // Anything that finished or vanished stops being watched.
     _stalledMedia.removeWhere((id, _) {
@@ -9245,6 +9389,7 @@ class MessagingService {
         InnerPayloadType.textReply ||
         InnerPayloadType.imageChunk ||
         InnerPayloadType.audioChunk ||
+        InnerPayloadType.fileChunk ||
         InnerPayloadType.mediaManifest =>
           true,
         _ => false,

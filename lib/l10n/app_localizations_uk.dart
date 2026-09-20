@@ -3024,4 +3024,31 @@ class AppLocalizationsUk extends AppLocalizations {
   String logServerLost(String host) {
     return 'Втрачено зв’язок з $host';
   }
+
+  @override
+  String get chatSaveAction => 'Зберегти';
+
+  @override
+  String get savedTagAsk => 'Збережено. Додати тег?';
+
+  @override
+  String get savedTagAdd => 'Додати тег';
+
+  @override
+  String get chatSharedWallpaperFailed =>
+      'Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.';
+
+  @override
+  String get chatTranscribeAction => 'Розпізнати голос';
+
+  @override
+  String get chatTranscribeFailed =>
+      'Цей телефон не може розпізнати це повідомлення.';
+
+  @override
+  String get chatTranslateAction => 'Перекласти';
+
+  @override
+  String get chatTranslateFailed =>
+      'Це повідомлення не вдається перекласти на цьому телефоні.';
 }

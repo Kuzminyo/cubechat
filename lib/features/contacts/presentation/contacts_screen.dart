@@ -52,10 +52,12 @@ List<Chat> contactChatsFromHistory(
   final deleted = deletedChatIds.toSet();
   final removed = removedContactIds.toSet();
   final contacts = chats
-      .where((chat) =>
-          !chat.isChannel &&
-          !removed.contains(chat.id) &&
-          (ids.contains(chat.id) || deleted.contains(chat.id)))
+      .where(
+        (chat) =>
+            !chat.isChannel &&
+            !removed.contains(chat.id) &&
+            (ids.contains(chat.id) || deleted.contains(chat.id)),
+      )
       .toList();
   contacts.sort((a, b) {
     final byName = a.peerName.toLowerCase().compareTo(
@@ -93,7 +95,54 @@ class ContactsScreen extends ConsumerStatefulWidget {
   ConsumerState<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _ContactsScreenState extends ConsumerState<ContactsScreen> {
+class _ContactsScreenState extends ConsumerState<ContactsScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _slide = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  );
+  final _searchController = TextEditingController();
+  double _slideFrom = 1;
+  bool _hasSwitchedSection = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) _slide.value = 1;
+  }
+
+  @override
+  void dispose() {
+    _slide.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _selectSection(int index) {
+    final calls = index == 1;
+    if (_calls == calls) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _slideFrom = (calls ? 1.0 : -1.0) *
+          (Directionality.of(context) == TextDirection.rtl ? -1 : 1);
+      _calls = calls;
+      _hasSwitchedSection = true;
+    });
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _slide.value = 1;
+    } else {
+      _slide.forward(from: 0);
+    }
+  }
+
+  // Match chat folders: animate only incoming, visible boxes. Keeping the
+  // viewport mounted avoids duplicate list layout and preserves its scroll.
+  Widget _slideContent(Widget child) => _SectionSlide(
+        animation: _slide,
+        from: _slideFrom,
+        child: child,
+      );
   String _query = '';
 
   /// The calls half instead of the people - Telegram keeps its recent calls
@@ -158,7 +207,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       // so it gets the megaphone rather than a place in the
                       // list. Same dialog the Chats menu opens.
                       IconButton(
-                        onPressed: () => unawaited(openNewChannelScreen(context)),
+                        onPressed: () =>
+                            unawaited(openNewChannelScreen(context)),
                         icon: const Icon(Icons.campaign_rounded),
                         color: AppColors.brandPrimary,
                         iconSize: 26,
@@ -178,10 +228,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                   _SectionSwitch(
                     labels: [t.contactsTabContacts, t.contactsTabCalls],
                     selected: _calls ? 1 : 0,
-                    onSelect: (i) {
-                      FocusManager.instance.primaryFocus?.unfocus();
-                      setState(() => _calls = i == 1);
-                    },
+                    onSelect: _selectSection,
                   ),
                 ],
               ),
@@ -192,6 +239,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               context: context,
               ref: ref,
               missedOnly: _missedOnly,
+              animate: _slideContent,
               onMissedOnly: (value) => setState(() => _missedOnly = value),
               chip: (label, selected, onTap) => _TagChip(
                 label: label,
@@ -205,100 +253,116 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               ),
             )
           else ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _ContactsSearchField(
-                hint: t.contactsSearchHint,
-                onChanged: (value) => setState(() => _query = value),
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 12)),
-          // Above the list rather than behind a menu: this screen is the
-          // answer to "who do I know", so the way to add someone belongs in
-          // plain sight — and it stays put while the list below it filters.
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: FloatingGlass(
-                blur: false,
-                borderRadius: 18,
-                onTap: () => context.push('/contact'),
-                child: _AddContactRow(label: t.chatsMenuAddContact),
-              ),
-            ),
-          ),
-          // The labels in use, as a row of filters. Only when there are any:
-          // an empty bar is a control that explains nothing and costs a line.
-          if (inUse.isNotEmpty)
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: 44,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    _TagChip(
-                      label: AppLocalizations.of(context).contactTagAll,
-                      selected: _tag == null,
-                      onTap: () => setState(() => _tag = null),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _slideContent(
+                  _ContactsSearchField(
+                    hint: t.contactsSearchHint,
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                  ),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            // Above the list rather than behind a menu: this screen is the
+            // answer to "who do I know", so the way to add someone belongs in
+            // plain sight — and it stays put while the list below it filters.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: _slideContent(
+                  FloatingGlass(
+                    blur: false,
+                    borderRadius: 18,
+                    onTap: () => context.push('/contact'),
+                    child: _AddContactRow(label: t.chatsMenuAddContact),
+                  ),
+                ),
+              ),
+            ),
+            // The labels in use, as a row of filters. Only when there are any:
+            // an empty bar is a control that explains nothing and costs a line.
+            if (inUse.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _slideContent(
+                  SizedBox(
+                    height: 44,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        _TagChip(
+                          label: AppLocalizations.of(context).contactTagAll,
+                          selected: _tag == null,
+                          onTap: () => setState(() => _tag = null),
+                        ),
+                        for (final tag in inUse)
+                          _TagChip(
+                            label: tag,
+                            selected: _tag == tag,
+                            onTap: () => setState(
+                              () => _tag = _tag == tag ? null : tag,
+                            ),
+                          ),
+                      ],
                     ),
-                    for (final tag in inUse)
-                      _TagChip(
-                        label: tag,
-                        selected: _tag == tag,
-                        onTap: () => setState(
-                          () => _tag = _tag == tag ? null : tag,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          if (contacts.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _ContactsEmptyState(
-                title:
-                    all.isEmpty ? t.contactsEmptyTitle : t.contactsSearchEmpty,
-                hint: all.isEmpty ? t.contactsEmptyHint : t.contactsSearchHint,
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
-              sliver: AppearOnce(
-                builder: (context, animate) => SliverList.separated(
-                  itemCount: contacts.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final contact = contacts[index];
-                    return AppearAnimation(
-                      enabled: animate,
-                      delay: AppearAnimation.stagger(index),
-                      child: FloatingGlass(
-                        blur: false,
-                        borderRadius: 18,
-                        onTap: () =>
-                            context.push(routeForContactProfile(contact)),
-                        // Deleting somebody lived one screen in, at the bottom
-                        // of their profile, behind a panel that has to be
-                        // opened first — which is three steps away from the
-                        // list people look at when they want somebody gone.
-                        onLongPressAt: (at) => unawaited(
-                          _showContactMenu(context, ref, contact, at),
+            if (contacts.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _slideContent(
+                  _ContactsEmptyState(
+                    title: all.isEmpty
+                        ? t.contactsEmptyTitle
+                        : t.contactsSearchEmpty,
+                    hint: all.isEmpty
+                        ? t.contactsEmptyHint
+                        : t.contactsSearchHint,
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                sliver: AppearOnce(
+                  builder: (context, animate) => SliverList.separated(
+                    itemCount: contacts.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final contact = contacts[index];
+                      return _slideContent(
+                        AppearAnimation(
+                          enabled: animate &&
+                              !_hasSwitchedSection &&
+                              !MediaQuery.disableAnimationsOf(context),
+                          delay: AppearAnimation.stagger(index),
+                          child: FloatingGlass(
+                            blur: false,
+                            borderRadius: 18,
+                            onTap: () =>
+                                context.push(routeForContactProfile(contact)),
+                            // Deleting somebody lived one screen in, at the bottom
+                            // of their profile, behind a panel that has to be
+                            // opened first — which is three steps away from the
+                            // list people look at when they want somebody gone.
+                            onLongPressAt: (at) => unawaited(
+                              _showContactMenu(context, ref, contact, at),
+                            ),
+                            child: _ContactTile(
+                              contact: contact,
+                              tag: tags[contact.peerId],
+                            ),
+                          ),
                         ),
-                        child: _ContactTile(
-                          contact: contact,
-                          tag: tags[contact.peerId],
-                        ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
           ],
         ],
       ),
@@ -320,53 +384,106 @@ class _SectionSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
     return FloatingGlass(
       blur: false,
       borderRadius: 14,
       padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          for (var i = 0; i < labels.length; i++)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelect(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  // 44 tall with the label: the smallest target the
-                  // accessibility audit (and a thumb) accepts.
-                  constraints: const BoxConstraints(minHeight: 44),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: i == selected
-                        ? AppColors.brandPrimary.withValues(alpha: 0.22)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: i == selected
-                          ? AppColors.brandPrimary.withValues(alpha: 0.55)
-                          : Colors.transparent,
-                    ),
-                  ),
-                  child: Text(
-                    labels[i],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: i == selected
-                          ? AppColors.textOnGlass
-                          : AppColors.textOnGlassDim,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Stack(
+          children: [
+            AnimatedPositionedDirectional(
+              duration: duration,
+              curve: Curves.easeOutCubic,
+              start: constraints.maxWidth * selected / labels.length,
+              width: constraints.maxWidth / labels.length,
+              top: 0,
+              bottom: 0,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.brandPrimary.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.brandPrimary.withValues(alpha: 0.55),
                   ),
                 ),
               ),
             ),
-        ],
+            Row(
+              children: [
+                for (var i = 0; i < labels.length; i++)
+                  Expanded(
+                    child: Semantics(
+                      selected: i == selected,
+                      button: true,
+                      child: InkWell(
+                        onTap: () => onSelect(i),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 44),
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          alignment: Alignment.center,
+                          child: AnimatedDefaultTextStyle(
+                            duration: duration,
+                            curve: Curves.easeOutCubic,
+                            style: TextStyle(
+                              color: i == selected
+                                  ? AppColors.textOnGlass
+                                  : AppColors.textOnGlassDim,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            child: Text(
+                              labels[i],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _SectionSlide extends StatelessWidget {
+  const _SectionSlide({
+    required this.animation,
+    required this.from,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final double from;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final travel = MediaQuery.sizeOf(context).width * 0.22;
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, inner) {
+        final t = reducedMotion
+            ? 1.0
+            : Curves.easeOutCubic.transform(animation.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset((1 - t) * from * travel, 0),
+            child: inner,
+          ),
+        );
+      },
     );
   }
 }
@@ -389,7 +506,11 @@ Future<void> _showContactMenu(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.person_outline_rounded, size: 19, color: AppColors.textOnGlass),
+            Icon(
+              Icons.person_outline_rounded,
+              size: 19,
+              color: AppColors.textOnGlass,
+            ),
             const SizedBox(width: 12),
             Text(
               t.contactProfileOpen,
@@ -404,8 +525,11 @@ Future<void> _showContactMenu(
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.person_remove_rounded,
-                size: 19, color: AppColors.danger),
+            const Icon(
+              Icons.person_remove_rounded,
+              size: 19,
+              color: AppColors.danger,
+            ),
             const SizedBox(width: 12),
             Text(
               t.contactProfileDelete,
@@ -520,11 +644,13 @@ class _AddContactRow extends StatelessWidget {
 class _ContactsSearchField extends StatelessWidget {
   const _ContactsSearchField({
     required this.hint,
+    required this.controller,
     required this.onChanged,
   });
 
   final String hint;
   final ValueChanged<String> onChanged;
+  final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -533,6 +659,7 @@ class _ContactsSearchField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       borderRadius: 14,
       child: TextField(
+        controller: controller,
         onChanged: onChanged,
         textCapitalization: TextCapitalization.words,
         cursorColor: AppColors.brandPrimary,

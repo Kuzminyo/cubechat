@@ -241,7 +241,11 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     final tick = ref.watch(
       voicePlaybackControllerProvider.select(
         (s) => s.isCurrent(widget.message.id)
-            ? (playing: s.playing, position: s.position, duration: s.duration)
+            ? (
+                playing: s.playing,
+                moved: s.position > Duration.zero,
+                duration: s.duration
+              )
             : null,
       ),
     );
@@ -249,21 +253,14 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     // Unpacked before anything reads them. A `bool ready` cannot carry the
     // record's promotion to the lines below it, and repeating `tick != null`
     // at each one to satisfy that is noise around three fields.
-    final position = tick?.position ?? Duration.zero;
-    final length = tick?.duration ?? Duration.zero;
-    final started = tick?.playing ?? false;
+    final moved = tick?.moved ?? false;
+
     // Read, not watched: the widget needs the texture, and what decides when to
     // repaint came from the select above.
     final player = current
         ? ref.read(voicePlaybackControllerProvider.notifier).video
         : null;
     final ready = player != null && player.value.isInitialized;
-    final playing = ready && started;
-    final total = ready ? length : Duration.zero;
-    final left = ready ? total - position : Duration.zero;
-    final progress = ready && total.inMilliseconds > 0
-        ? position.inMilliseconds / total.inMilliseconds
-        : 0.0;
 
     // **Tapped, it grows to most of the screen, the way Telegram's does.**
     //
@@ -295,11 +292,8 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
         child: _disc(
           ready: ready,
           current: current,
-          playing: playing,
           player: player,
-          progress: progress,
-          left: left,
-          total: total,
+          moved: moved,
         ),
       ),
     );
@@ -308,18 +302,24 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   Widget _disc({
     required bool ready,
     required bool current,
-    required bool playing,
     required VideoPlayerController? player,
-    required double progress,
-    required Duration left,
-    required Duration total,
+    required bool moved,
   }) {
     return SizedBox.expand(
-      child: CustomPaint(
-        // The ring is the only chrome. No card, no border, no play button: a
-        // circle is a circle, and the one thing worth drawing round it is how
-        // much of it is left.
-        foregroundPainter: _RingPainter(progress: playing ? progress : 0),
+      // Position ticks used to recreate the entire clipped video subtree.
+      // The regression test sends 15 ticks and keeps that subtree intact;
+      // only the ring and whole-second countdown subscribe to position.
+      child: Consumer(
+        builder: (context, ref, child) {
+          final progress = ref.watch(voicePlaybackControllerProvider.select(
+            (s) =>
+                s.isCurrent(widget.message.id) && s.playing ? s.progress : 0.0,
+          ));
+          return CustomPaint(
+            foregroundPainter: _RingPainter(progress: ready ? progress : 0),
+            child: child,
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.all(3),
           child: ClipOval(
@@ -332,7 +332,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
                 // the picture does not blink out while the decoder opens - and
                 // not a frame longer: a circle plays at 60 fps, and an image
                 // hidden under the video is still drawn on every one of them.
-                if (!ready || progress <= 0)
+                if (!ready || !moved)
                   _frame(
                     current
                         ? VideoBubble.circleExpanded(
@@ -391,12 +391,25 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
                   right: 0,
                   bottom: 10,
                   child: Center(
-                    child: _Chip(
-                      label: ready
-                          ? _clock(playing ? left : total)
-                          : _poster?.length != null
-                              ? _clock(_poster!.length!)
-                              : _size(widget.message.fileBytes),
+                    child: Consumer(
+                      builder: (context, ref, _) {
+                        final seconds = ref.watch(
+                          voicePlaybackControllerProvider.select((s) =>
+                              s.isCurrent(widget.message.id)
+                                  ? (s.playing
+                                          ? s.duration - s.position
+                                          : s.duration)
+                                      .inSeconds
+                                  : 0),
+                        );
+                        return _Chip(
+                          label: ready
+                              ? _clock(Duration(seconds: seconds))
+                              : _poster?.length != null
+                                  ? _clock(_poster!.length!)
+                                  : _size(widget.message.fileBytes),
+                        );
+                      },
                     ),
                   ),
                 ),

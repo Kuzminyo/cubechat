@@ -14,9 +14,50 @@ import 'platform_info.dart';
 ///
 /// The reported symptom: "захожу в приложение, играет трек по наушникам, и в
 /// одном наушнике пропадает звук на несколько секунд". That is a Bluetooth
-/// route change, and it has a specific cause — see [recordConfig].
+/// route change, and it has a specific cause — see [voiceRecord].
 class AudioSession {
   const AudioSession._();
+
+  /// Voice-note capture, separate from WebRTC's bidirectional call session.
+  ///
+  /// record_android 1.5.1's PCMReader attaches platform AGC/NS to this
+  /// AudioRecord session. Use the mic source and those effects once, without
+  /// a communication preset or another software processing pass. A voice note
+  /// has no remote playback reference, so echo cancellation stays off.
+  /// record_ios 1.2.0 uses AVAudioRecorder for AAC files and ignores these
+  /// effects (only its PCM stream uses AVAudioEngine voice processing).
+  static RecordConfig get voiceRecord => RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        numChannels: 1,
+        // More bandwidth and encoder headroom than 22.05 kHz / 24 kbps.
+        //
+        // **64 kbps, and it is the ceiling worth paying for.** AAC-LC on mono
+        // speech is transparent enough here that the next step up buys
+        // nothing a listener would name, while every step costs airtime: this
+        // is about 480 KB a minute before container overhead, four times the
+        // original payload, and a voice note crosses BLE at roughly 14 KB/s.
+        //
+        // Opus would sound better again at half this rate, and it is why
+        // Telegram sounds the way it does. It is not available here: the
+        // recorder writes Opus into OGG on Android and CAF on iOS, and neither
+        // platform's player opens the other's container — an Android note
+        // would simply not play on an iPhone. Carrying our own codec on both
+        // sides is the price of that, and it is a different piece of work.
+        //
+        // Mono either way, for the same transfer budget.
+        sampleRate: 32000,
+        bitRate: 64000,
+        autoGain: PlatformInfo.isAndroid,
+        noiseSuppress: PlatformInfo.isAndroid,
+        echoCancel: false,
+        androidConfig: const AndroidRecordConfig(
+          audioSource: AndroidAudioSource.mic,
+          // Match the iOS voice-note policy: do not start headset SCO just
+          // because earbuds are connected. Calls manage their own HFP route.
+          manageBluetooth: false,
+        ),
+        iosConfig: iosRecord,
+      );
 
   /// Category options for recording a voice note.
   ///

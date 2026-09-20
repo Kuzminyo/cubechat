@@ -242,11 +242,13 @@ void main() {
   test('an unreachable relay ends the call before any invite leaves', () async {
     turn = () async => throw const TurnUnavailable('unreachable');
     await call.dial('peer');
-    expect(sent, isEmpty, reason: 'nobody is rung for a call that cannot connect');
+    expect(sent, isEmpty,
+        reason: 'nobody is rung for a call that cannot connect');
     expect(call.error, 'turn');
     expect(call.active, isFalse);
     expect(media.config, isNull,
-        reason: 'no connection was attempted without the relay, not even a direct one');
+        reason:
+            'no connection was attempted without the relay, not even a direct one');
   });
 
   test('the direct-connection setting reaches the connection, and only it does',
@@ -286,7 +288,8 @@ void main() {
       expect(outcomes, isEmpty);
     });
 
-    test('ringing that lands while the invite is still publishing survives '
+    test(
+        'ringing that lands while the invite is still publishing survives '
         'the publish finishing unconfirmed', () async {
       final publish = Completer<ControlDelivery>();
       deliveries[CallSignalKind.invite] = () => publish.future;
@@ -300,7 +303,8 @@ void main() {
       expect(outcomes, isEmpty);
     });
 
-    test('an accept that lands while the invite is still publishing survives '
+    test(
+        'an accept that lands while the invite is still publishing survives '
         'the publish then failing outright', () async {
       final publish = Completer<ControlDelivery>();
       deliveries[CallSignalKind.invite] = () => publish.future;
@@ -352,7 +356,8 @@ void main() {
   });
 
   group('the accept has the same race', () {
-    test('an accept still publishing when the media connects survives the '
+    test(
+        'an accept still publishing when the media connects survives the '
         'publish failing', () async {
       final publish = Completer<ControlDelivery>();
       deliveries[CallSignalKind.accept] = () => publish.future;
@@ -368,7 +373,8 @@ void main() {
       expect(outcomes, isEmpty);
     });
 
-    test('an unconfirmed accept waits inside the connecting deadline', () async {
+    test('an unconfirmed accept waits inside the connecting deadline',
+        () async {
       deliveries[CallSignalKind.accept] = () async => unconfirmed;
       receive(inviteFor(id(3)));
       await call.answer();
@@ -377,7 +383,8 @@ void main() {
       expect(outcomes, isEmpty);
     });
 
-    test('an accept that left nothing ends the call instead of thirty seconds '
+    test(
+        'an accept that left nothing ends the call instead of thirty seconds '
         'of connecting to nobody', () async {
       deliveries[CallSignalKind.accept] = () async => ControlDelivery.notSent;
       receive(inviteFor(id(3)));
@@ -410,7 +417,8 @@ void main() {
       expect(call.error, 'unavailable');
     });
 
-    test('an unconfirmed invite nobody acknowledges ends at the eight-second '
+    test(
+        'an unconfirmed invite nobody acknowledges ends at the eight-second '
         'deadline, and the other phone is told to stop', () {
       fakeAsync((async) {
         // Built inside the fake zone: a future made outside it completes on
@@ -485,8 +493,10 @@ void main() {
       expect(sent, isEmpty);
     });
 
-    test('cancelling while the invite is publishing, then their ringing and '
-        'accept arriving, tells them to stop once and starts nothing', () async {
+    test(
+        'cancelling while the invite is publishing, then their ringing and '
+        'accept arriving, tells them to stop once and starts nothing',
+        () async {
       final publish = Completer<ControlDelivery>();
       deliveries[CallSignalKind.invite] = () => publish.future;
       await call.dial('peer');
@@ -525,7 +535,8 @@ void main() {
     test('the app closing hangs up and tells the other phone', () async {
       await call.dial('peer');
       call.noteLifecycle(AppLifecycleState.paused);
-      expect(call.phase, CallPhase.dialing, reason: 'backgrounded is not closed');
+      expect(call.phase, CallPhase.dialing,
+          reason: 'backgrounded is not closed');
       call.noteLifecycle(AppLifecycleState.detached);
       expect(outcomes.single.source, CallEndSource.lifecycle);
       expect(sent.last.kind, CallSignalKind.hangup);
@@ -629,7 +640,8 @@ void main() {
 
     test('stops when the caller gives up', () async {
       receive(inviteFor(id(10)));
-      receive(CallSignal.hangup(callId: id(10), reason: CallEndReason.noAnswer));
+      receive(
+          CallSignal.hangup(callId: id(10), reason: CallEndReason.noAnswer));
       await Future<void>.delayed(Duration.zero);
       expect(events, ['ring incoming', 'ring stop']);
     });
@@ -654,7 +666,8 @@ void main() {
       receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
       await Future<void>.delayed(Duration.zero);
       expect(call.phase, CallPhase.talking);
-      receive(CallSignal.hangup(callId: dialledId(), reason: CallEndReason.hungUp));
+      receive(
+          CallSignal.hangup(callId: dialledId(), reason: CallEndReason.hungUp));
       await Future<void>.delayed(const Duration(milliseconds: 10));
       call.dismiss();
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -687,22 +700,26 @@ void main() {
     test('the caller giving up takes it down', () async {
       onScreen = false;
       receive(inviteFor(id(21)));
-      receive(CallSignal.hangup(callId: id(21), reason: CallEndReason.noAnswer));
+      receive(
+          CallSignal.hangup(callId: id(21), reason: CallEndReason.noAnswer));
       await Future<void>.delayed(Duration.zero);
       expect(events, ['screen show peer', 'screen dismiss']);
     });
 
-    test('Answer there answers, and the screen is gone before the microphone '
+    test(
+        'Answer there answers, and the screen is gone before the microphone '
         'opens', () async {
       onScreen = false;
       media.connectOnAccept = false;
       receive(inviteFor(id(22)));
       await Future<void>.delayed(Duration.zero);
-      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(22))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.answer, key: keyOf(id(22))));
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(call.phase, CallPhase.connecting);
       expect(sent.last.kind, CallSignalKind.accept);
-      expect(events.take(3), ['screen show peer', 'screen answered', 'microphone']);
+      expect(events.take(3),
+          ['screen show peer', 'screen answered', 'microphone']);
       call.hangUp();
     });
 
@@ -710,23 +727,27 @@ void main() {
       onScreen = false;
       receive(inviteFor(id(23)));
       await Future<void>.delayed(Duration.zero);
-      surface.pressed.add((kind: IncomingCallActionKind.decline, key: keyOf(id(23))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.decline, key: keyOf(id(23))));
       expect(outcomes.single.cause, CallEndCause.declined);
       expect(sent.last.kind, CallSignalKind.decline);
     });
 
-    test('a button for a call that already stopped ringing does nothing', () async {
+    test('a button for a call that already stopped ringing does nothing',
+        () async {
       onScreen = false;
       receive(inviteFor(id(24)));
       receive(CallSignal.hangup(callId: id(24), reason: CallEndReason.hungUp));
       sent.clear();
-      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(24))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.answer, key: keyOf(id(24))));
       await Future<void>.delayed(Duration.zero);
       expect(sent, isEmpty);
       expect(events, isNot(contains('microphone')));
     });
 
-    test('opening the app while it rings moves the ring into the app, and '
+    test(
+        'opening the app while it rings moves the ring into the app, and '
         'leaving moves it back', () async {
       onScreen = false;
       receive(inviteFor(id(25)));
@@ -782,14 +803,16 @@ void main() {
       media.connectOnAccept = false;
       receive(inviteFor(id(31)));
       await Future<void>.delayed(Duration.zero);
-      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(call.phase, CallPhase.connecting);
       expect(events, ['screen show peer', 'screen answered', 'microphone'],
           reason: 'not dismissed: CallKit owns the audio of an answered call');
 
       // CallKit echoes the answer back; answering twice must not happen.
-      surface.pressed.add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.answer, key: keyOf(id(31))));
       await Future<void>.delayed(Duration.zero);
       expect(sent.where((s) => s.kind == CallSignalKind.accept), hasLength(1));
 
@@ -801,7 +824,8 @@ void main() {
     test('the red button declines while it rings', () async {
       receive(inviteFor(id(32)));
       await Future<void>.delayed(Duration.zero);
-      surface.pressed.add((kind: IncomingCallActionKind.end, key: keyOf(id(32))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.end, key: keyOf(id(32))));
       expect(outcomes.single.cause, CallEndCause.declined);
       expect(sent.last.kind, CallSignalKind.decline);
     });
@@ -811,14 +835,16 @@ void main() {
       receive(inviteFor(id(33)));
       await call.answer();
       expect(call.phase, CallPhase.talking);
-      surface.pressed.add((kind: IncomingCallActionKind.end, key: keyOf(id(33))));
+      surface.pressed
+          .add((kind: IncomingCallActionKind.end, key: keyOf(id(33))));
       expect(outcomes.single.cause, CallEndCause.hungUp);
       expect(sent.last.kind, CallSignalKind.hangup);
     });
 
     test('the caller giving up ends the CallKit call', () async {
       receive(inviteFor(id(34)));
-      receive(CallSignal.hangup(callId: id(34), reason: CallEndReason.noAnswer));
+      receive(
+          CallSignal.hangup(callId: id(34), reason: CallEndReason.noAnswer));
       await Future<void>.delayed(Duration.zero);
       expect(events, ['screen show peer', 'screen dismiss']);
     });
@@ -837,7 +863,8 @@ void main() {
       call.hangUp();
     });
 
-    test('a Bluetooth headset is chosen by name, and the speaker switch goes '
+    test(
+        'a Bluetooth headset is chosen by name, and the speaker switch goes '
         'off', () async {
       const headset = CallAudioRoute(
         id: 'bluetooth',
@@ -845,8 +872,10 @@ void main() {
         kind: CallAudioRouteKind.bluetooth,
       );
       media.available = const [
-        CallAudioRoute(id: 'earpiece', label: '', kind: CallAudioRouteKind.earpiece),
-        CallAudioRoute(id: 'speaker', label: '', kind: CallAudioRouteKind.speaker),
+        CallAudioRoute(
+            id: 'earpiece', label: '', kind: CallAudioRouteKind.earpiece),
+        CallAudioRoute(
+            id: 'speaker', label: '', kind: CallAudioRouteKind.speaker),
         headset,
       ];
       await call.dial('peer');
@@ -863,7 +892,28 @@ void main() {
       call.hangUp();
     });
 
-    test('a placed call is in the shade from dialling, restarted when it '
+    test('reconnecting preserves the explicitly selected headset', () async {
+      const headset = CallAudioRoute(
+        id: 'bluetooth',
+        label: 'Headset',
+        kind: CallAudioRouteKind.bluetooth,
+      );
+      media.available = const [headset];
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      await call.selectAudioRoute(headset);
+      media.selected = null;
+      media.speaker.clear();
+      media.controller.add(CallMediaEvent.disconnected);
+      media.controller.add(CallMediaEvent.connected);
+      await Future<void>.delayed(Duration.zero);
+      expect(media.selected, headset);
+      expect(media.speaker, isEmpty);
+      call.hangUp();
+    });
+    test(
+        'a placed call is in the shade from dialling, restarted when it '
         'connects, and gone when it ends', () async {
       await call.dial('peer');
       await Future<void>.delayed(Duration.zero);
@@ -900,7 +950,8 @@ void main() {
       receive(inviteFor(id(50)));
       await Future<void>.delayed(Duration.zero);
       await call.toggleMute();
-      expect(call.micMuted, isTrue, reason: 'kept before there is a microphone');
+      expect(call.micMuted, isTrue,
+          reason: 'kept before there is a microphone');
       expect(media.muted, isEmpty);
       await call.answer();
       await Future<void>.delayed(Duration.zero);
@@ -928,9 +979,8 @@ void main() {
       await call.dial('peer');
       receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
       await Future<void>.delayed(Duration.zero);
-      final key = dialledId()
-          .map((b) => b.toRadixString(16).padLeft(2, '0'))
-          .join();
+      final key =
+          dialledId().map((b) => b.toRadixString(16).padLeft(2, '0')).join();
       surface.pressed.add((kind: IncomingCallActionKind.mute, key: key));
       await Future<void>.delayed(Duration.zero);
       expect(call.micMuted, isTrue);

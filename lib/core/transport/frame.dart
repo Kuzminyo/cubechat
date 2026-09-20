@@ -44,6 +44,14 @@ enum FrameType {
   /// for transport frames. See [PeerAnnouncement].
   peerAnnouncement(0x20),
 
+  /// Reserved. Nothing in this build sends or reads one.
+  ///
+  /// It carries "this device is running Pro" on the branch that sells a
+  /// subscription, and the byte is held here so the two cannot diverge: a tag
+  /// given away to something else in the meantime would be a collision that
+  /// compiles, passes every test, and breaks phones already in the field.
+  proBadge(0x21),
+
   /// One slice of a frame too large for the link's negotiated MTU. Carries
   /// `[fragId:4][index:1][count:1][slice…]`; the receiver reassembles the
   /// original frame bytes *before* normal dispatch, so dedup/replay/relay never

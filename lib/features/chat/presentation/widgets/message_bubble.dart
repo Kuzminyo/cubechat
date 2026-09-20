@@ -20,6 +20,7 @@ import '../../../../core/transport/shared_contact.dart';
 import '../../../../core/transport/shared_location.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/floating_glass.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/widgets/glass_toast.dart';
 import '../../../channels/data/channel_controller.dart';
 import '../../../channels/models/channel.dart' show channelForCommunity;
@@ -52,6 +53,8 @@ import '../../../map/data/map_friends_controller.dart';
 import '../../../map/data/map_presence_controller.dart';
 import '../../../map/presentation/map_sharing_consent.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
+import '../../data/translation_controller.dart';
+import '../../data/voice_transcription_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
 import '../../../stickers/data/sticker_library.dart';
@@ -772,6 +775,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.shortcut_rounded,
             label: t.chatForwardAction,
           ),
+        // Not inside Saved itself: filing a note into the pile it is already
+        // in does nothing but duplicate it.
+        if (!isSavedChat(widget.chatId))
+          SpotlightAction(
+            id: 'save',
+            icon: Icons.bookmark_add_outlined,
+            label: t.chatSaveAction,
+          ),
+        // Pro only, and shown rather than locked: a free user never meets an
+        // entry that exists to tell them no. The Pro screen is where it is
+        // described.
+        if (widget.message.kind == MessageKind.audio &&
+            widget.message.audioPath != null &&
+            ref.read(voiceTranscriptionProvider)[widget.message.id] == null)
+          SpotlightAction(
+            id: 'transcribe',
+            icon: Icons.record_voice_over_rounded,
+            label: t.chatTranscribeAction,
+          ),
+        if (widget.message.kind == MessageKind.text &&
+            widget.message.text.trim().isNotEmpty &&
+            ref.read(translationProvider)[widget.message.id] == null)
+          SpotlightAction(
+            id: 'translate',
+            icon: Icons.translate_rounded,
+            label: t.chatTranslateAction,
+          ),
         if (_canEdit)
           SpotlightAction(
             id: 'edit',
@@ -884,11 +914,94 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       ref
           .read(messageSelectionProvider(widget.chatId).notifier)
           .start(widget.message.id);
+    } else if (picked == 'save') {
+      await _saveToSaved();
+    } else if (picked == 'transcribe') {
+      await _transcribeVoice();
+    } else if (picked == 'translate') {
+      await _translateMessage();
     } else if (picked == 'tag') {
       await _tagSavedMessage();
     } else if (picked == 'delete') {
       await _promptDelete();
     }
+  }
+
+  /// Read a message written in a language you do not have.
+  ///
+  /// Translated on the device: the text never reaches a server. The model for a
+  /// language pair is fetched from Google once, which says which languages this
+  /// phone wants and nothing else — no message and no fragment of one — and
+  /// after that the work is offline.
+  ///
+  /// Into the language the interface is in, which is the one the reader has
+  /// already said they read. A message already in it is left alone rather than
+  /// answered with a copy of itself.
+  Future<void> _translateMessage() async {
+    final t = AppLocalizations.of(context);
+    final target = Localizations.localeOf(context).languageCode;
+    final text = await ref.read(translationProvider.notifier).translate(
+          messageId: widget.message.id,
+          text: widget.message.text,
+          target: target,
+        );
+    if (!mounted || text != null) return;
+    showGlassToast(context, t.chatTranslateFailed);
+  }
+
+  /// Read a voice note instead of listening to it.
+  ///
+  /// The recording never leaves the phone — both platforms recognise speech
+  /// locally, and the native side refuses rather than falling back to a cloud
+  /// recogniser. Posting the decrypted contents of a private message to
+  /// somebody's API is the one thing this app exists not to do.
+  ///
+  /// A null means this device cannot: Android below 13, a language with no
+  /// local model, a recogniser switched off. The voice note is untouched, so
+  /// the honest thing to say is that there is no text, not that something
+  /// broke.
+  Future<void> _transcribeVoice() async {
+    final t = AppLocalizations.of(context);
+    final path = widget.message.audioPath;
+    if (path == null) return;
+    final text =
+        await ref.read(voiceTranscriptionProvider.notifier).transcribe(
+              messageId: widget.message.id,
+              audioPath: path,
+              localeId: Localizations.localeOf(context).toLanguageTag(),
+            );
+    if (!mounted || text != null) return;
+    showGlassToast(context, t.chatTranscribeFailed);
+  }
+
+  /// Keep a copy of this message in Saved.
+  ///
+  /// Nothing is sent: Saved is a chat with no peer and no session, so this is a
+  /// local copy and the bytes of a picture or a file are copied in rather than
+  /// referenced — the original can be deleted afterwards and the note survives.
+  ///
+  /// Asked for a tag right away, because the moment of saving is the only one
+  /// where you still remember why you kept it.
+  Future<void> _saveToSaved() async {
+    final t = AppLocalizations.of(context);
+    final id = await ref
+        .read(savedMessagesControllerProvider)
+        .saveCopyOf(widget.message);
+
+    if (!mounted || id == null) return;
+
+    // Cancel means "keep it, untagged" — the note is already saved, which is
+    // why the title says so rather than asking whether to save at all.
+    final wantsTag = await confirmAction(
+      context,
+      title: t.savedTagAsk,
+      confirmLabel: t.savedTagAdd,
+      destructive: false,
+    );
+    if (!wantsTag || !mounted) return;
+    final emoji = await showEmojiPicker(context);
+    if (emoji == null) return;
+    await ref.read(savedTagsProvider.notifier).setTag(id, emoji);
   }
 
   /// Put an emoji tag on this saved note, or clear the one it has.
@@ -1537,22 +1650,46 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // and said as little about itself. Beside the bubble rather
                   // than over it: the waveform is the thing being read, and a
                   // disc in the middle of it would cover exactly that.
-                  Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
-                        child: VoiceBubble(
-                            message: message, chatId: widget.chatId),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: VoiceBubble(
+                                message: message, chatId: widget.chatId),
+                          ),
+                          if (message.isMine &&
+                              message.status == MessageStatus.sending) ...[
+                            const SizedBox(width: 8),
+                            _SendProgressRing(
+                              messageId: message.id,
+                              diameter: 26,
+                              onSurface: true,
+                            ),
+                          ],
+                        ],
                       ),
-                      if (message.isMine &&
-                          message.status == MessageStatus.sending) ...[
-                        const SizedBox(width: 8),
-                        _SendProgressRing(
-                          messageId: message.id,
-                          diameter: 26,
-                          onSurface: true,
+                      // Under the waveform, not instead of it: the recording is
+                      // still the message, and the text is a way to read one
+                      // when you cannot listen.
+                      if (ref.watch(
+                            voiceTranscriptionProvider
+                                .select((t) => t[message.id]),
+                          ) case final String transcript)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            transcript,
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.35,
+                              color: AppColors.textOnGlassDim,
+                            ),
+                          ),
                         ),
-                      ],
                     ],
                   )
                 else if (playableVideo)
@@ -1702,6 +1839,25 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       3 => 32,
                       _ => null,
                     },
+                  ),
+                // Under the message, never instead of it. What they wrote is
+                // still what they wrote; this is a reading of it, and a
+                // translation that replaced the original would hide the one
+                // thing a reader can check.
+                if (ref.watch(
+                      translationProvider.select((t) => t[message.id]),
+                    ) case final String translated)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      translated,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.textOnGlassDim,
+                      ),
+                    ),
                   ),
                 if (!metaOnMedia) ...[
                   if (!media) const SizedBox(height: 4),
