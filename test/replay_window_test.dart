@@ -25,6 +25,7 @@ void main() {
         InnerPayloadType.textReply,
         InnerPayloadType.imageChunk,
         InnerPayloadType.audioChunk,
+        InnerPayloadType.fileChunk,
         InnerPayloadType.mediaManifest,
       ]) {
         expect(
@@ -80,7 +81,7 @@ void main() {
       final survives = InnerPayloadType.values
           .where(MessagingService.survivesReplayWindow)
           .length;
-      expect(survives, 5);
+      expect(survives, 6);
     });
   });
 }

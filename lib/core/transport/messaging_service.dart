@@ -3983,12 +3983,16 @@ class MessagingService {
     final peerPub = _resolvePeerPub(chatId);
     if (peerPub == null) return false;
     try {
-      await _sendControlToPeer(
+      final delivery = await _deliverControlToPeer(
         canonicalId: chatId,
         peerPub: peerPub,
         type: InnerPayloadType.mediaRequest,
         innerBody: mediaId,
       );
+      if (delivery.isNotSent) {
+        DebugLog.instance.log('FILE', 'media re-request has no route; keeping retry available');
+        return false;
+      }
       DebugLog.instance.log('FILE', 'asked $chatId for media $wireIdHex again');
       return true;
     } catch (e) {
@@ -7549,7 +7553,8 @@ class MessagingService {
       _ref.read(fileTransferControllerProvider.notifier).register(
             FileTransferTask(
               id: key,
-              chatId: peerId,
+              // Re-requests need the author, not the relay/mesh hop.
+              chatId: senderPub == null ? peerId : _hexOf(senderPub),
               fileName: manifest.name ?? 'file',
               filePath: '',
               mime: manifest.mime,
@@ -8879,14 +8884,22 @@ class MessagingService {
       }
       if (task.completedUnits >= task.totalUnits) continue;
       if (was.asks >= _maxStallAsks) continue;
-      _stalledMedia[task.id] = (seen: task.completedUnits, asks: was.asks + 1);
+      final attempted = (seen: task.completedUnits, asks: was.asks + 1);
+      _stalledMedia[task.id] = attempted;
       DebugLog.instance.log(
         'FILE',
         'stalled at ${task.completedUnits}/${task.totalUnits} '
             '"${task.fileName}" — asking ${task.chatId} again '
             '(${was.asks + 1} of $_maxStallAsks)',
       );
-      unawaited(requestMediaAgain(task.chatId, task.id));
+      unawaited(requestMediaAgain(task.chatId, task.id).then((sent) {
+        // Two timer ticks without internet used to spend the entire recovery
+        // budget. Reserve while sending, but spend only when something left
+        // the phone; do not overwrite progress observed during the await.
+        if (!sent && !_disposed && _stalledMedia[task.id] == attempted) {
+          _stalledMedia[task.id] = was;
+        }
+      }));
     }
     // Anything that finished or vanished stops being watched.
     _stalledMedia.removeWhere((id, _) {
@@ -9408,6 +9421,7 @@ class MessagingService {
         InnerPayloadType.textReply ||
         InnerPayloadType.imageChunk ||
         InnerPayloadType.audioChunk ||
+        InnerPayloadType.fileChunk ||
         InnerPayloadType.mediaManifest =>
           true,
         _ => false,
