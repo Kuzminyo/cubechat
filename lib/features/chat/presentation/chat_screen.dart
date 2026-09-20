@@ -47,7 +47,6 @@ import '../../peers/data/known_peers_controller.dart';
 import '../../peers/data/peripheral_controller.dart';
 import '../../peers/data/peer_discovery_controller.dart';
 import '../../peers/data/presence_controller.dart';
-import '../../pro/data/pro_controller.dart';
 import '../../peers/data/peer_activity.dart';
 import '../../peers/data/typing_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
@@ -433,7 +432,6 @@ class ChatScreen extends ConsumerWidget {
     // over Bluetooth — and then the header says plainly that they are offline
     // and nothing more, which is the honest answer.
     final lastPresent = known?.lastPresenceAt;
-    final presenceShared = ref.watch(privacySettingsProvider).shareLastSeen;
     final beacon = ref.watch(
       presenceControllerProvider.select((b) => b[canonicalId]),
     );
@@ -450,13 +448,13 @@ class ChatScreen extends ConsumerWidget {
     // Theirs is read off the beacon while there is one and off the roster once
     // it has expired — see [KnownPeer.hidesLastSeen] for what forgetting it
     // with the beacon did.
-    // Pro buys out of the first half and not the second. Giving up your own
-    // times to see everybody else's is the trade this app made by default;
-    // paying lifts it for *you*, and cannot lift it for them. Somebody who
-    // switched their own times off stays switched off here no matter who is
-    // looking — that is their setting, not a feature to unlock.
-    final hideTimes = (!presenceShared && !ref.watch(proProvider).isActive) ||
-        (beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false);
+    // Only theirs. Hiding your own times used to hide everybody else's with
+    // them; it no longer does, so this device can go quiet without going
+    // blind. Somebody who switched their own times off stays switched off
+    // here no matter who is looking — that is their setting, and the half of
+    // the old trade that was never ours to spend.
+    final hideTimes =
+        beacon?.hidesLastSeen ?? known?.hidesLastSeen ?? false;
     // Watched, not read, so the line updates when a notice lands. The TTL is
     // what makes it go away again — see [TypingController].
     ref.watch(typingControllerProvider.select((all) => all[canonicalId]));

@@ -5234,143 +5234,11 @@ abstract class AppLocalizations {
   /// **'Lost connection to {host}'**
   String logServerLost(String host);
 
-  /// No description provided for @proTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'cubechat Pro'**
-  String get proTitle;
-
-  /// No description provided for @proBlurb.
-  ///
-  /// In en, this message translates to:
-  /// **'Three things beyond what is already free.'**
-  String get proBlurb;
-
-  /// No description provided for @proMonthly.
-  ///
-  /// In en, this message translates to:
-  /// **'Monthly'**
-  String get proMonthly;
-
-  /// No description provided for @proYearly.
-  ///
-  /// In en, this message translates to:
-  /// **'Yearly'**
-  String get proYearly;
-
-  /// No description provided for @proLifetime.
-  ///
-  /// In en, this message translates to:
-  /// **'Lifetime'**
-  String get proLifetime;
-
-  /// No description provided for @proRestore.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore purchases'**
-  String get proRestore;
-
-  /// No description provided for @proActive.
-  ///
-  /// In en, this message translates to:
-  /// **'Pro is active on this device'**
-  String get proActive;
-
-  /// No description provided for @proPerMonth.
-  ///
-  /// In en, this message translates to:
-  /// **'per month'**
-  String get proPerMonth;
-
-  /// No description provided for @proPerYear.
-  ///
-  /// In en, this message translates to:
-  /// **'per year'**
-  String get proPerYear;
-
-  /// No description provided for @proOnce.
-  ///
-  /// In en, this message translates to:
-  /// **'one-off payment'**
-  String get proOnce;
-
-  /// No description provided for @proSubscribe.
-  ///
-  /// In en, this message translates to:
-  /// **'Subscribe'**
-  String get proSubscribe;
-
-  /// No description provided for @proBuyOnce.
-  ///
-  /// In en, this message translates to:
-  /// **'Buy'**
-  String get proBuyOnce;
-
-  /// No description provided for @proUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Purchases are not available yet'**
-  String get proUnavailable;
-
-  /// No description provided for @proFeatureIconTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'App icon in your theme'**
-  String get proFeatureIconTitle;
-
-  /// No description provided for @proFeatureIconBody.
-  ///
-  /// In en, this message translates to:
-  /// **'The cube takes the colour of your palette.'**
-  String get proFeatureIconBody;
-
-  /// No description provided for @proFeatureStickersTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'More sticker packs'**
-  String get proFeatureStickersTitle;
-
-  /// No description provided for @proFeatureStickersBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Beyond the cats everyone has.'**
-  String get proFeatureStickersBody;
-
-  /// No description provided for @proFeatureBackupTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Scheduled backups'**
-  String get proFeatureBackupTitle;
-
-  /// No description provided for @proFeatureBackupBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Daily or weekly, encrypted.'**
-  String get proFeatureBackupBody;
-
-  /// No description provided for @proFeatureSaveTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Tag as you save'**
-  String get proFeatureSaveTitle;
-
-  /// No description provided for @proFeatureSaveBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Asked at the moment you keep it.'**
-  String get proFeatureSaveBody;
-
   /// No description provided for @chatSaveAction.
   ///
   /// In en, this message translates to:
   /// **'Save'**
   String get chatSaveAction;
-
-  /// No description provided for @savedAdded.
-  ///
-  /// In en, this message translates to:
-  /// **'Saved to notes'**
-  String get savedAdded;
 
   /// No description provided for @savedTagAsk.
   ///
@@ -5402,18 +5270,6 @@ abstract class AppLocalizations {
   /// **'This phone cannot transcribe that one.'**
   String get chatTranscribeFailed;
 
-  /// No description provided for @proFeatureVoiceTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice notes as text'**
-  String get proFeatureVoiceTitle;
-
-  /// No description provided for @proFeatureVoiceBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Recognised on this phone, never sent anywhere.'**
-  String get proFeatureVoiceBody;
-
   /// No description provided for @chatTranslateAction.
   ///
   /// In en, this message translates to:
@@ -5425,66 +5281,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'That one cannot be translated on this phone.'**
   String get chatTranslateFailed;
-
-  /// No description provided for @proFeatureTranslateTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Translation'**
-  String get proFeatureTranslateTitle;
-
-  /// No description provided for @proFeatureTranslateBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Done on the device. The text is never sent.'**
-  String get proFeatureTranslateBody;
-
-  /// No description provided for @proFeatureLastSeenTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Their times while yours are off'**
-  String get proFeatureLastSeenTitle;
-
-  /// No description provided for @proFeatureLastSeenBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Their own choice to hide still stands.'**
-  String get proFeatureLastSeenBody;
-
-  /// No description provided for @cubesTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Cubes'**
-  String get cubesTitle;
-
-  /// No description provided for @cubesBalance.
-  ///
-  /// In en, this message translates to:
-  /// **'cubes'**
-  String get cubesBalance;
-
-  /// No description provided for @cubesBackupFirstTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Make a backup first'**
-  String get cubesBackupFirstTitle;
-
-  /// No description provided for @cubesBackupFirstBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Cubes belong to this device\'s key. Reinstalling makes a new one, and the cubes do not come with it. A backup is how the key survives.'**
-  String get cubesBackupFirstBody;
-
-  /// No description provided for @cubesBackupFirstAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Make a backup'**
-  String get cubesBackupFirstAction;
-
-  /// No description provided for @cubesEntry.
-  ///
-  /// In en, this message translates to:
-  /// **'Cubes'**
-  String get cubesEntry;
 }
 
 class _AppLocalizationsDelegate

@@ -55,7 +55,6 @@ import '../../../map/presentation/map_sharing_consent.dart';
 import '../../../profile/data/privacy_settings_controller.dart';
 import '../../data/translation_controller.dart';
 import '../../data/voice_transcription_controller.dart';
-import '../../../pro/data/pro_controller.dart';
 import '../../../chats/data/saved_messages.dart';
 import '../../../chats/data/saved_tags_controller.dart';
 import '../../../stickers/data/sticker_library.dart';
@@ -789,17 +788,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         // described.
         if (widget.message.kind == MessageKind.audio &&
             widget.message.audioPath != null &&
-            ref.read(proProvider).isActive &&
             ref.read(voiceTranscriptionProvider)[widget.message.id] == null)
           SpotlightAction(
             id: 'transcribe',
             icon: Icons.record_voice_over_rounded,
             label: t.chatTranscribeAction,
           ),
-        // Same rule as transcription: Pro only, and absent rather than locked.
         if (widget.message.kind == MessageKind.text &&
             widget.message.text.trim().isNotEmpty &&
-            ref.read(proProvider).isActive &&
             ref.read(translationProvider)[widget.message.id] == null)
           SpotlightAction(
             id: 'translate',
@@ -984,10 +980,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// local copy and the bytes of a picture or a file are copied in rather than
   /// referenced — the original can be deleted afterwards and the note survives.
   ///
-  /// **Free for everyone. The tag question is the Pro half.** Tagging a note
-  /// by hand inside Saved has always been free and stays that way; what Pro
-  /// buys is being asked at the moment of saving, which is the only moment you
-  /// still remember why you kept it.
+  /// Asked for a tag right away, because the moment of saving is the only one
+  /// where you still remember why you kept it.
   Future<void> _saveToSaved() async {
     final t = AppLocalizations.of(context);
     final id = await ref
@@ -995,11 +989,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         .saveCopyOf(widget.message);
 
     if (!mounted || id == null) return;
-
-    if (!ref.read(proProvider).isActive) {
-      showGlassToast(context, t.savedAdded, tone: ToastTone.success);
-      return;
-    }
 
     // Cancel means "keep it, untagged" — the note is already saved, which is
     // why the title says so rather than asking whether to save at all.

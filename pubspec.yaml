@@ -26,9 +26,6 @@ dependencies:
   # Storage
   shared_preferences: ^2.3.2
 
-  # Pro subscription (stage 1). StoreKit 2 on iOS, Play Billing on Android;
-  # the receipt stays on the device and no server is told about it.
-  in_app_purchase: ^3.2.0
 
   # On-device translation. The model is downloaded once and the text is
   # translated locally after that — message contents never reach a server,

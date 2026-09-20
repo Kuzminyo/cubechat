@@ -16,7 +16,6 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
-import '../data/backup_made_controller.dart';
 import '../data/backup_service.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
@@ -71,10 +70,6 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         await staging.delete(recursive: true);
       }
       if (!mounted) return;
-      // Marked here and not a line earlier: the bytes existing is not a backup,
-      // the file landing somewhere is. A cancelled save dialog leaves this
-      // device exactly as un-backed-up as it was.
-      unawaited(ref.read(backupMadeProvider.notifier).mark(DateTime.now()));
       showGlassToast(context, t.backupSaved, tone: ToastTone.success);
     } catch (error) {
       // Error type only: backups can contain identity keys and private data.

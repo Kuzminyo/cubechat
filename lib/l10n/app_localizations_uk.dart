@@ -3026,74 +3026,7 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
-  String get proTitle => 'cubechat Pro';
-
-  @override
-  String get proBlurb => 'Три речі понад те, що й так безкоштовне.';
-
-  @override
-  String get proMonthly => 'Щомісяця';
-
-  @override
-  String get proYearly => 'Щороку';
-
-  @override
-  String get proLifetime => 'Назавжди';
-
-  @override
-  String get proRestore => 'Відновити покупки';
-
-  @override
-  String get proActive => 'Pro активний на цьому пристрої';
-
-  @override
-  String get proPerMonth => 'на місяць';
-
-  @override
-  String get proPerYear => 'на рік';
-
-  @override
-  String get proOnce => 'разовий платіж';
-
-  @override
-  String get proSubscribe => 'Підписатися';
-
-  @override
-  String get proBuyOnce => 'Придбати';
-
-  @override
-  String get proUnavailable => 'Покупки поки недоступні';
-
-  @override
-  String get proFeatureIconTitle => 'Іконка застосунку в тон темі';
-
-  @override
-  String get proFeatureIconBody => 'Кубик набуває кольору палітри.';
-
-  @override
-  String get proFeatureStickersTitle => 'Більше стикерпаків';
-
-  @override
-  String get proFeatureStickersBody => 'Понад котів, які є у всіх.';
-
-  @override
-  String get proFeatureBackupTitle => 'Копії за розкладом';
-
-  @override
-  String get proFeatureBackupBody => 'Щодня або щотижня, зашифровано.';
-
-  @override
-  String get proFeatureSaveTitle => 'Тег одразу під час збереження';
-
-  @override
-  String get proFeatureSaveBody =>
-      'Питаємо тоді, коли ви ще пам’ятаєте навіщо.';
-
-  @override
   String get chatSaveAction => 'Зберегти';
-
-  @override
-  String get savedAdded => 'Збережено в нотатках';
 
   @override
   String get savedTagAsk => 'Збережено. Додати тег?';
@@ -3113,49 +3046,9 @@ class AppLocalizationsUk extends AppLocalizations {
       'Цей телефон не може розпізнати це повідомлення.';
 
   @override
-  String get proFeatureVoiceTitle => 'Голосові як текст';
-
-  @override
-  String get proFeatureVoiceBody =>
-      'Розпізнається на цьому телефоні, нікуди не надсилається.';
-
-  @override
   String get chatTranslateAction => 'Перекласти';
 
   @override
   String get chatTranslateFailed =>
       'Це повідомлення не вдається перекласти на цьому телефоні.';
-
-  @override
-  String get proFeatureTranslateTitle => 'Переклад';
-
-  @override
-  String get proFeatureTranslateBody =>
-      'Просто на пристрої. Текст нікуди не надсилається.';
-
-  @override
-  String get proFeatureLastSeenTitle => 'Їхній час, коли ваш вимкнено';
-
-  @override
-  String get proFeatureLastSeenBody =>
-      'Їхнє власне приховування лишається чинним.';
-
-  @override
-  String get cubesTitle => 'Кубики';
-
-  @override
-  String get cubesBalance => 'кубиків';
-
-  @override
-  String get cubesBackupFirstTitle => 'Спершу зробіть резервну копію';
-
-  @override
-  String get cubesBackupFirstBody =>
-      'Кубики належать ключу цього пристрою. Перевстановлення створює новий ключ, і кубики з ним не переходять. Резервна копія — це те, як ключ виживає.';
-
-  @override
-  String get cubesBackupFirstAction => 'Зробити копію';
-
-  @override
-  String get cubesEntry => 'Кубики';
 }

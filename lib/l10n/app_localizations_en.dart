@@ -2993,73 +2993,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get proTitle => 'cubechat Pro';
-
-  @override
-  String get proBlurb => 'Three things beyond what is already free.';
-
-  @override
-  String get proMonthly => 'Monthly';
-
-  @override
-  String get proYearly => 'Yearly';
-
-  @override
-  String get proLifetime => 'Lifetime';
-
-  @override
-  String get proRestore => 'Restore purchases';
-
-  @override
-  String get proActive => 'Pro is active on this device';
-
-  @override
-  String get proPerMonth => 'per month';
-
-  @override
-  String get proPerYear => 'per year';
-
-  @override
-  String get proOnce => 'one-off payment';
-
-  @override
-  String get proSubscribe => 'Subscribe';
-
-  @override
-  String get proBuyOnce => 'Buy';
-
-  @override
-  String get proUnavailable => 'Purchases are not available yet';
-
-  @override
-  String get proFeatureIconTitle => 'App icon in your theme';
-
-  @override
-  String get proFeatureIconBody => 'The cube takes the colour of your palette.';
-
-  @override
-  String get proFeatureStickersTitle => 'More sticker packs';
-
-  @override
-  String get proFeatureStickersBody => 'Beyond the cats everyone has.';
-
-  @override
-  String get proFeatureBackupTitle => 'Scheduled backups';
-
-  @override
-  String get proFeatureBackupBody => 'Daily or weekly, encrypted.';
-
-  @override
-  String get proFeatureSaveTitle => 'Tag as you save';
-
-  @override
-  String get proFeatureSaveBody => 'Asked at the moment you keep it.';
-
-  @override
   String get chatSaveAction => 'Save';
-
-  @override
-  String get savedAdded => 'Saved to notes';
 
   @override
   String get savedTagAsk => 'Saved. Add a tag?';
@@ -3078,48 +3012,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTranscribeFailed => 'This phone cannot transcribe that one.';
 
   @override
-  String get proFeatureVoiceTitle => 'Voice notes as text';
-
-  @override
-  String get proFeatureVoiceBody =>
-      'Recognised on this phone, never sent anywhere.';
-
-  @override
   String get chatTranslateAction => 'Translate';
 
   @override
   String get chatTranslateFailed =>
       'That one cannot be translated on this phone.';
-
-  @override
-  String get proFeatureTranslateTitle => 'Translation';
-
-  @override
-  String get proFeatureTranslateBody =>
-      'Done on the device. The text is never sent.';
-
-  @override
-  String get proFeatureLastSeenTitle => 'Their times while yours are off';
-
-  @override
-  String get proFeatureLastSeenBody => 'Their own choice to hide still stands.';
-
-  @override
-  String get cubesTitle => 'Cubes';
-
-  @override
-  String get cubesBalance => 'cubes';
-
-  @override
-  String get cubesBackupFirstTitle => 'Make a backup first';
-
-  @override
-  String get cubesBackupFirstBody =>
-      'Cubes belong to this device\'s key. Reinstalling makes a new one, and the cubes do not come with it. A backup is how the key survives.';
-
-  @override
-  String get cubesBackupFirstAction => 'Make a backup';
-
-  @override
-  String get cubesEntry => 'Cubes';
 }
