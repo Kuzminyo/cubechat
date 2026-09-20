@@ -30,10 +30,23 @@ class AudioSession {
         encoder: AudioEncoder.aacLc,
         numChannels: 1,
         // More bandwidth and encoder headroom than 22.05 kHz / 24 kbps.
-        // 48 kbps costs about 360 KB/minute before container overhead, twice
-        // the old payload; keep mono for the BLE transfer budget.
+        //
+        // **64 kbps, and it is the ceiling worth paying for.** AAC-LC on mono
+        // speech is transparent enough here that the next step up buys
+        // nothing a listener would name, while every step costs airtime: this
+        // is about 480 KB a minute before container overhead, four times the
+        // original payload, and a voice note crosses BLE at roughly 14 KB/s.
+        //
+        // Opus would sound better again at half this rate, and it is why
+        // Telegram sounds the way it does. It is not available here: the
+        // recorder writes Opus into OGG on Android and CAF on iOS, and neither
+        // platform's player opens the other's container — an Android note
+        // would simply not play on an iPhone. Carrying our own codec on both
+        // sides is the price of that, and it is a different piece of work.
+        //
+        // Mono either way, for the same transfer budget.
         sampleRate: 32000,
-        bitRate: 48000,
+        bitRate: 64000,
         autoGain: PlatformInfo.isAndroid,
         noiseSuppress: PlatformInfo.isAndroid,
         echoCancel: false,

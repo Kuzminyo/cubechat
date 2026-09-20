@@ -65,7 +65,10 @@ void main() {
       expect(config.encoder, AudioEncoder.aacLc);
       expect(config.numChannels, 1);
       expect(config.sampleRate, 32000);
-      expect(config.bitRate * 60 ~/ 8, 360000);
+      // A minute of note, in bytes before container overhead. Pinned as the
+      // cost rather than as the number, because the cost is what the BLE
+      // budget is spent on: 480 KB a minute at roughly 14 KB/s on the radio.
+      expect(config.bitRate * 60 ~/ 8, 480000);
     }
   });
 }
