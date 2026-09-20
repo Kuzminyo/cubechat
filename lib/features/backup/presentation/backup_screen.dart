@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../../core/util/share_anchor.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/util/debug_log.dart';
@@ -37,17 +39,38 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     if (password == null || !mounted) return;
     setState(() => _busy = true);
     try {
-      final bytes =
-          await ref.read(backupServiceProvider).create(password: password);
       final day = DateTime.now().toIso8601String().substring(0, 10);
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: t.backupSaveTitle,
-        fileName: 'cubechat-$day.cchatbackup',
-        type: FileType.custom,
-        allowedExtensions: const ['cchatbackup'],
-        bytes: bytes,
-      );
-      if (!mounted || path == null) return;
+      final name = 'cubechat-$day.cchatbackup';
+      final temporary = await getTemporaryDirectory();
+      final staging = await temporary.createTemp('cubechat-backup-');
+      try {
+        final archive = File('${staging.path}/$name');
+        await ref
+            .read(backupServiceProvider)
+            .createFile(archive, password: password);
+        if (!mounted) return;
+        if (Platform.isAndroid || Platform.isIOS) {
+          // FilePicker.saveFile requires the entire archive as bytes on mobile.
+          // Share a file URL instead, keeping large videos out of the Dart heap.
+          final result = await Share.shareXFiles(
+            [XFile(archive.path, mimeType: 'application/octet-stream')],
+            sharePositionOrigin: shareAnchorFor(context),
+          );
+          if (result.status != ShareResultStatus.success) return;
+        } else {
+          final path = await FilePicker.platform.saveFile(
+            dialogTitle: t.backupSaveTitle,
+            fileName: name,
+            type: FileType.custom,
+            allowedExtensions: const ['cchatbackup'],
+          );
+          if (path == null) return;
+          await archive.copy(path);
+        }
+      } finally {
+        await staging.delete(recursive: true);
+      }
+      if (!mounted) return;
       // Marked here and not a line earlier: the bytes existing is not a backup,
       // the file landing somewhere is. A cancelled save dialog leaves this
       // device exactly as un-backed-up as it was.
@@ -79,15 +102,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     // rather than being half-applied.
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.any,
-      withData: true,
+      withData: false,
     );
     final file = picked?.files.singleOrNull;
     if (file == null || !mounted) return;
-    Uint8List? bytes = file.bytes;
-    if (bytes == null && file.path != null) {
-      bytes = await File(file.path!).readAsBytes();
-    }
-    if (bytes == null || !mounted) return;
+    if (file.path == null) return;
 
     final password = await showDialog<String>(
       context: context,
@@ -105,8 +124,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
     setState(() => _busy = true);
     try {
-      await ref.read(backupServiceProvider).restore(
-            bytes,
+      await ref.read(backupServiceProvider).restoreFile(
+            File(file.path!),
             password: password,
           );
       if (!mounted) return;

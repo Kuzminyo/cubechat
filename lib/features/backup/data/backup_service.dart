@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/util/media_storage.dart';
@@ -35,6 +36,8 @@ import '../../profile/data/discovery_settings_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
 import 'backup_codec.dart';
+import 'backup_file_codec.dart';
+import '../../map/data/shared_map_locations_provider.dart';
 
 class BackupService {
   BackupService(this._ref, {BackupCodec? codec})
@@ -46,6 +49,15 @@ class BackupService {
   final BackupCodec _codec;
 
   Future<Uint8List> create({required String password}) async {
+    final payload = await _snapshot();
+    payload['media'] = await _collectMedia();
+    return _codec.encrypt(payload, password: password);
+  }
+
+  Future<Map<String, Object?>> _snapshot() async {
+    if (_ref.exists(mapPresenceStoreProvider)) {
+      await _ref.read(mapPresenceStoreProvider.notifier).flush();
+    }
     final identity = await _ref.read(identityProvider.future);
     final boxes = <String, Object?>{};
     for (final name in HiveBoxes.all) {
@@ -63,9 +75,8 @@ class BackupService {
         'ed25519': base64Url.encode(identity.signPrivateKey),
       },
       'boxes': boxes,
-      'media': await _collectMedia(),
     };
-    return _codec.encrypt(payload, password: password);
+    return payload;
   }
 
   /// Directories whose contents a conversation refers to but does not contain.
@@ -81,82 +92,196 @@ class BackupService {
     'cubechat-sent',
     'cubechat-audio',
     'cubechat-stickers',
+    'cubechat-inbox',
+    'cubechat-outbox',
+    'cubechat-circles',
+    'cubechat-saved',
+    'cubechat-wallpaper',
   ];
 
-  /// Every media file, keyed by `directory/filename`.
-  ///
-  /// Stored by name rather than by absolute path on purpose: the documents
-  /// directory has a different absolute path on the phone this is restored
-  /// onto — iOS changes it between installs of the *same* app — so an absolute
-  /// path is the one thing here guaranteed not to survive the trip.
-  Future<Map<String, Object?>> _collectMedia() async {
-    // Newest first, across all four directories at once, so the budget below
-    // keeps the pictures somebody would actually miss.
-    final files = <File>[];
+  /// Keep the legacy phone-transfer format within its existing memory budget.
+  /// Exceeding it is an explicit error; only createFile supports unbounded media.
+  static const int _maxMediaTotalBytes = 48 * 1024 * 1024;
+
+  Future<Map<String, File>> _mediaFiles() async {
+    final files = <String, File>{};
     for (final name in _mediaDirs) {
-      final Directory dir;
-      try {
-        dir = await mediaDirectory(name);
-      } catch (_) {
-        continue;
-      }
-      if (!dir.existsSync()) continue;
-      for (final entity in dir.listSync()) {
-        if (entity is File) files.add(entity);
+      final dir = await mediaDirectory(name);
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is File) {
+          final base = entity.uri.pathSegments.last;
+          _validateMediaKey('$name/$base');
+          files['$name/$base'] = entity;
+        } else {
+          // Never report a complete backup while quietly omitting a new layout.
+          throw FileSystemException('unsupported media entry', entity.path);
+        }
       }
     }
-    files.sort((a, b) {
-      try {
-        return b.statSync().modified.compareTo(a.statSync().modified);
-      } catch (_) {
-        return 0;
-      }
-    });
+    return files;
+  }
 
-    final out = <String, Object?>{};
-    var budget = _maxMediaTotalBytes;
-    for (final entity in files) {
-      try {
-        final size = entity.lengthSync();
-        // A backup that refuses to be made is worse than one missing a video:
-        // anything implausible for a chat attachment is skipped rather than
-        // allowed to push the whole payload out of memory.
-        if (size > _maxMediaBytes) continue;
-        if (size > budget) continue;
-        final bytes = await entity.readAsBytes();
-        budget -= bytes.length;
-        final base = entity.path.split(Platform.pathSeparator).last;
-        // The directory name is recoverable from the file's own parent, so a
-        // file found in one directory is filed back into that one.
-        final dirName =
-            entity.parent.path.split(Platform.pathSeparator).last;
-        out['$dirName/$base'] = base64Url.encode(bytes);
-      } catch (_) {
-        // A file being written as the backup is read, or one the OS has
-        // taken away. Skipped, not fatal.
+  Future<Map<String, Object?>> _collectMedia() async {
+    final files = await _mediaFiles();
+    var total = 0;
+    for (final file in files.values) {
+      total += await file.length();
+      if (total > _maxMediaTotalBytes) {
+        throw StateError(
+            'Use a file backup: media exceeds the phone transfer budget');
       }
+    }
+    final out = <String, Object?>{};
+    var remaining = _maxMediaTotalBytes;
+    for (final entry in files.entries) {
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in entry.value.openRead()) {
+        remaining -= chunk.length;
+        if (remaining < 0)
+          throw StateError('Media grew beyond the transfer budget');
+        bytes.add(chunk);
+      }
+      out[entry.key] = base64Url.encode(bytes.takeBytes());
     }
     return out;
   }
 
-  /// Per file. Photos are capped by the picker long before this; the limit is
-  /// here for the pathological case, not the ordinary one.
-  static const int _maxMediaBytes = 16 * 1024 * 1024;
+  /// Media is streamed directly into authenticated records, never base64 or a
+  /// whole-gallery buffer. Metadata retains the v1 typed Hive representation.
+  Future<void> createFile(File destination, {required String password}) async {
+    final payload = await _snapshot();
+    final files = await _mediaFiles();
+    Stream<List<int>> archive() async* {
+      final metadata = utf8.encode(jsonEncode(payload));
+      if (metadata.length > _maxMetadataBytes) {
+        throw StateError('Backup metadata exceeds the supported size');
+      }
+      yield BackupFileCodec.uint32(metadata.length);
+      yield metadata;
+      for (final entry in files.entries) {
+        final before = await entry.value.stat();
+        final header =
+            utf8.encode(jsonEncode({'key': entry.key, 'size': before.size}));
+        yield BackupFileCodec.uint32(header.length);
+        yield header;
+        var copied = 0;
+        await for (final chunk in entry.value.openRead()) {
+          copied += chunk.length;
+          yield chunk;
+        }
+        final after = await entry.value.stat();
+        if (copied != before.size ||
+            after.size != before.size ||
+            after.modified != before.modified) {
+          throw FileSystemException(
+              'Media changed during backup', entry.value.path);
+        }
+      }
+      yield BackupFileCodec.uint32(0);
+    }
 
-  /// And a ceiling for the lot, which the first version of this did not have.
-  ///
-  /// Without one, a phone with a few hundred photographs produced a payload of
-  /// several hundred megabytes: base64 adds a third, the whole thing is a
-  /// single JSON string held in memory, and it is then encrypted into a second
-  /// buffer beside it. The phone-to-phone transfer refuses anything over
-  /// [PhoneTransferService.maxTransferBytes], so the receiver died partway
-  /// through a transfer the sender had spent a minute building — which is what
-  /// "the QR transfer does not work" was.
-  ///
-  /// Forty-eight megabytes of files is roughly sixty-four once encoded, which
-  /// leaves the encrypted payload comfortably inside the transfer cap and the
-  /// two buffers inside what a mid-range phone will hand out at once.
-  static const int _maxMediaTotalBytes = 48 * 1024 * 1024;
+    try {
+      await BackupFileCodec()
+          .encrypt(archive(), destination, password: password);
+    } catch (_) {
+      if (await destination.exists()) await destination.delete();
+      rethrow;
+    }
+  }
+
+  static const _maxMetadataBytes = 128 * 1024 * 1024;
+
+  /// Authenticate the entire archive in private temporary storage before any
+  /// local files, boxes, or identity are replaced. Legacy JSON still imports.
+  Future<void> restoreFile(File source, {required String password}) async {
+    final probe = await source.open();
+    final prefix = await probe.read(8);
+    await probe.close();
+    if (!listEquals(prefix, BackupFileCodec.magic)) {
+      if (await source.length() > 128 * 1024 * 1024) {
+        throw const FormatException('legacy backup exceeds memory limit');
+      }
+      return restore(await source.readAsBytes(), password: password);
+    }
+    final temporary = await getTemporaryDirectory();
+    final staging = await temporary.createTemp('cubechat-restore-');
+    final clear = File('${staging.path}/archive');
+    try {
+      await BackupFileCodec().decrypt(source, clear, password: password);
+      final input = await clear.open();
+      late Map<String, dynamic> payload;
+      final media = <(String, int, int)>[];
+      try {
+        Future<int> length() async => ByteData.sublistView(
+              await BackupFileCodec.readExactly(input, 4),
+            ).getUint32(0);
+        final metadataSize = await length();
+        if (metadataSize > _maxMetadataBytes)
+          throw const FormatException('oversized metadata');
+        final decoded = jsonDecode(utf8
+            .decode(await BackupFileCodec.readExactly(input, metadataSize)));
+        if (decoded is! Map<String, dynamic>)
+          throw const FormatException('invalid metadata');
+        payload = decoded;
+        _validatePayload(payload);
+        final seen = <String>{};
+        final total = await input.length();
+        while (true) {
+          final headerSize = await length();
+          if (headerSize == 0) break;
+          if (headerSize > 4096)
+            throw const FormatException('oversized file header');
+          final header = jsonDecode(utf8
+              .decode(await BackupFileCodec.readExactly(input, headerSize)));
+          if (header is! Map<String, dynamic> ||
+              header['key'] is! String ||
+              header['size'] is! int) {
+            throw const FormatException('invalid file header');
+          }
+          final key = header['key'] as String;
+          final size = header['size'] as int;
+          _validateMediaKey(key);
+          final start = await input.position();
+          if (!seen.add(key) || size < 0 || size > total - start) {
+            throw const FormatException('invalid file range');
+          }
+          media.add((key, start, size));
+          await input.setPosition(start + size);
+        }
+        if (await input.position() != total)
+          throw const FormatException('trailing archive data');
+      } finally {
+        await input.close();
+      }
+      for (final (key, start, size) in media) {
+        final parts = key.split('/');
+        final dir = await mediaDirectory(parts.first);
+        final target = File('${dir.path}/${parts.last}');
+        final sink = target.openWrite();
+        try {
+          await sink.addStream(clear.openRead(start, start + size));
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+      }
+      MediaPaths.forgetAll();
+      await _applyPayload(payload);
+    } finally {
+      await staging.delete(recursive: true);
+    }
+  }
+
+  static void _validateMediaKey(String key) {
+    final parts = key.split('/');
+    if (parts.length != 2 ||
+        !_mediaDirs.contains(parts.first) ||
+        parts.last.isEmpty ||
+        parts.last.contains('..') ||
+        parts.last.contains(RegExp(r'[\\:\x00-\x1f]'))) {
+      throw const FormatException('invalid media path');
+    }
+  }
 
   /// Put the files back where the records expect them.
   ///
@@ -206,6 +331,10 @@ class BackupService {
     required String password,
   }) async {
     final payload = await _codec.decrypt(encrypted, password: password);
+    await _applyPayload(payload);
+  }
+
+  Future<void> _applyPayload(Map<String, dynamic> payload) async {
     final prepared = _validatePayload(payload);
     // The files the records point at. Before the boxes go in, because a
     // half-restored phone that has the conversation and not the photograph is
@@ -395,6 +524,7 @@ class BackupService {
     _ref.invalidate(fileTransferControllerProvider);
     _ref.invalidate(conversationSettingsControllerProvider);
     _ref.invalidate(presenceControllerProvider);
+    _ref.invalidate(mapPresenceStoreProvider);
     _ref.invalidate(nicknameControllerProvider);
     _ref.invalidate(avatarProvider);
     _ref.invalidate(backgroundModeProvider);

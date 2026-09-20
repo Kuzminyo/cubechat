@@ -80,10 +80,11 @@ class MapPresenceStore extends Notifier<Map<String, SharedMapLocation>> {
   static const _retractionWindow = Duration(minutes: 5);
 
   Box<dynamic>? _box;
+  late Future<void> loaded;
 
   @override
   Map<String, SharedMapLocation> build() {
-    unawaited(_load());
+    loaded = _load();
     return const {};
   }
 
@@ -168,7 +169,14 @@ class MapPresenceStore extends Notifier<Map<String, SharedMapLocation>> {
     unawaited(_clearBox());
   }
 
+  /// Backups must wait for the initial disk merge and any last position write.
+  Future<void> flush() async {
+    await loaded;
+    await _persist();
+  }
+
   Future<void> _persist() async {
+    await loaded;
     final box = _box;
     if (box == null) return;
     try {
