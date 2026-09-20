@@ -14,9 +14,37 @@ import 'platform_info.dart';
 ///
 /// The reported symptom: "захожу в приложение, играет трек по наушникам, и в
 /// одном наушнике пропадает звук на несколько секунд". That is a Bluetooth
-/// route change, and it has a specific cause — see [recordConfig].
+/// route change, and it has a specific cause — see [voiceRecord].
 class AudioSession {
   const AudioSession._();
+
+  /// Voice-note capture, separate from WebRTC's bidirectional call session.
+  ///
+  /// record_android 1.5.1's PCMReader attaches platform AGC/NS to this
+  /// AudioRecord session. Use the mic source and those effects once, without
+  /// a communication preset or another software processing pass. A voice note
+  /// has no remote playback reference, so echo cancellation stays off.
+  /// record_ios 1.2.0 uses AVAudioRecorder for AAC files and ignores these
+  /// effects (only its PCM stream uses AVAudioEngine voice processing).
+  static RecordConfig get voiceRecord => RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        numChannels: 1,
+        // More bandwidth and encoder headroom than 22.05 kHz / 24 kbps.
+        // 48 kbps costs about 360 KB/minute before container overhead, twice
+        // the old payload; keep mono for the BLE transfer budget.
+        sampleRate: 32000,
+        bitRate: 48000,
+        autoGain: PlatformInfo.isAndroid,
+        noiseSuppress: PlatformInfo.isAndroid,
+        echoCancel: false,
+        androidConfig: const AndroidRecordConfig(
+          audioSource: AndroidAudioSource.mic,
+          // Match the iOS voice-note policy: do not start headset SCO just
+          // because earbuds are connected. Calls manage their own HFP route.
+          manageBluetooth: false,
+        ),
+        iosConfig: iosRecord,
+      );
 
   /// Category options for recording a voice note.
   ///

@@ -149,6 +149,7 @@ class CallController extends ChangeNotifier {
   /// Where it goes now, when a route was chosen by name rather than by the
   /// speaker switch.
   CallAudioRouteKind? audioRoute;
+  String? _selectedAudioRouteId;
 
   /// A headset is there to choose, so the speaker button opens a list instead
   /// of flipping between two places.
@@ -434,10 +435,8 @@ class CallController extends ChangeNotifier {
   static String _short(String? peer) =>
       peer == null ? '?' : peer.substring(0, min(8, peer.length));
 
-  static String _hex(Uint8List id) => id
-      .take(4)
-      .map((b) => b.toRadixString(16).padLeft(2, '0'))
-      .join();
+  static String _hex(Uint8List id) =>
+      id.take(4).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   Future<void> _send(CallSignal signal) async {
     final peer = peerId;
@@ -530,6 +529,7 @@ class CallController extends ChangeNotifier {
     micMuted = false;
     speakerOn = false;
     audioRoute = null;
+    _selectedAudioRouteId = null;
     audioRoutes = const [];
     elapsed = Duration.zero;
     final generation = ++_generation;
@@ -545,8 +545,7 @@ class CallController extends ChangeNotifier {
           '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       final direct = allowDirect();
-      final sdp =
-          await media.offer(access.configuration(allowDirect: direct));
+      final sdp = await media.offer(access.configuration(allowDirect: direct));
       _log('offer ready: ${sdp.length} B, ${describeCandidates(sdp)}, '
           '${direct ? 'direct allowed' : 'relay only'} '
           '(${watch.elapsedMilliseconds} ms)');
@@ -573,7 +572,8 @@ class CallController extends ChangeNotifier {
   /// log — and it says nothing about anybody's address.
   static String describeCandidates(String sdp) {
     final counts = <String, int>{};
-    for (final m in RegExp(r' typ (host|srflx|prflx|relay)\b').allMatches(sdp)) {
+    for (final m
+        in RegExp(r' typ (host|srflx|prflx|relay)\b').allMatches(sdp)) {
       counts.update(m.group(1)!, (n) => n + 1, ifAbsent: () => 1);
     }
     return 'relay ${counts['relay'] ?? 0}, srflx ${counts['srflx'] ?? 0}, '
@@ -611,7 +611,17 @@ class CallController extends ChangeNotifier {
         _machine.mediaConnected();
         // The route the button shows, applied now the audio is really on:
         // Android would otherwise start a call on the loudspeaker.
-        unawaited(media.setSpeaker(speakerOn).catchError((Object _) {}));
+        // A reconnect must not replace a headset the user explicitly chose
+        // with the platform's default route (and possibly the phone's mic).
+        final selected = audioRoutes
+            .where((route) => route.id == _selectedAudioRouteId)
+            .firstOrNull;
+        unawaited((selected == null
+                ? media.setSpeaker(speakerOn)
+                : media.selectRoute(selected))
+            .catchError((Object error) {
+          _log('could not restore audio route: $error');
+        }));
         unawaited(refreshAudioRoutes());
       } else if (event == CallMediaEvent.failed) {
         _fail('media');
@@ -633,7 +643,8 @@ class CallController extends ChangeNotifier {
     _log('received ${signal.kind.name} ${_hex(signal.callId)} from '
         '${_short(event.chatId)}${reason == null ? '' : ' (reason ${reason.name})'}');
     if (!allowed(event.chatId)) {
-      _log('ignored: ${_short(event.chatId)} is not a known, unblocked contact');
+      _log(
+          'ignored: ${_short(event.chatId)} is not a known, unblocked contact');
       return;
     }
     if (signal.kind == CallSignalKind.invite) {
@@ -645,7 +656,8 @@ class CallController extends ChangeNotifier {
       // Before the busy reply below: an invite for a call that is already
       // over is not a call to be busy for.
       if (_machine.hasEnded(signal.callId)) {
-        _log('invite ${_hex(signal.callId)} dropped: that call is already over');
+        _log(
+            'invite ${_hex(signal.callId)} dropped: that call is already over');
         return;
       }
       if (active && (peerId != event.chatId || preparing)) {
@@ -676,6 +688,7 @@ class CallController extends ChangeNotifier {
         micMuted = false;
         speakerOn = false;
         audioRoute = null;
+        _selectedAudioRouteId = null;
         audioRoutes = const [];
         elapsed = Duration.zero;
       }
@@ -942,6 +955,7 @@ class CallController extends ChangeNotifier {
       await media.selectRoute(route);
       if (_disposed || !identical(media, _media)) return;
       audioRoute = route.kind;
+      _selectedAudioRouteId = route.id;
       speakerOn = route.kind == CallAudioRouteKind.speaker;
       _log('audio to ${route.kind.name}');
       _changed();
@@ -961,6 +975,7 @@ class CallController extends ChangeNotifier {
       if (!_current(generation)) return;
       speakerOn = next;
       audioRoute = null;
+      _selectedAudioRouteId = null;
       _changed();
     } catch (_) {
       if (_current(generation)) _fail('media');
@@ -1001,8 +1016,7 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
         messaging.sendCallSignal(canonicalId: peer, signal: signal),
     obtainTurn: () => ref.read(turnCredentialsProvider).obtain(),
     microphone: () async =>
-        PlatformInfo.isMobile &&
-        await requestCallMicrophonePermission(),
+        PlatformInfo.isMobile && await requestCallMicrophonePermission(),
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
@@ -1035,9 +1049,9 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     // person is looking at. Null — the engine pre-warmed with no Activity —
     // is not on screen.
     foreground: () => switch (WidgetsBinding.instance.lifecycleState) {
-          AppLifecycleState.resumed || AppLifecycleState.inactive => true,
-          _ => false,
-        },
+      AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+      _ => false,
+    },
     peerName: (peer) =>
         ref.read(knownPeersControllerProvider)[peer]?.displayName ??
         peer.substring(0, 8),
