@@ -84,6 +84,39 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('drag reveals rounded whole page and cancellation restores it',
+      (tester) async {
+    final router = twoScreens();
+    addTearDown(router.dispose);
+    await open(tester, router);
+    final page = find.ancestor(
+      of: find.text('second'),
+      matching: find.byType(Scaffold),
+    );
+    final before = tester.getRect(page);
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    for (var i = 0; i < 6; i++) {
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    final moved = tester.getRect(page);
+    expect(moved.left - before.left, closeTo(120, 1));
+    expect(moved.size, before.size,
+        reason: 'the whole page leaves, without shrinking its content');
+    final clips = tester.widgetList<ClipRRect>(find.ancestor(
+      of: find.text('second'),
+      matching: find.byType(ClipRRect),
+    ));
+    expect(clips.any((clip) =>
+        clip.borderRadius.resolve(TextDirection.ltr).topLeft.x >= 30), isTrue,
+        reason: 'the exposed edge is already rounded during a short swipe');
+    // Release without a fling before the commit point: the same page returns.
+    await tester.pump(const Duration(milliseconds: 300));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(page), before);
+    expect(find.text('second'), findsOneWidget);
+  });
   testWidgets('a drag from the middle of the page goes back', (tester) async {
     final router = twoScreens();
     await open(tester, router);
