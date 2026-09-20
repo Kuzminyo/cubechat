@@ -13,6 +13,7 @@
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		CB1A0001000000000000A1A1 /* CubechatBlePeripheralPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A0002000000000000A1A1 /* CubechatBlePeripheralPlugin.swift */; };
 		CB1A0003000000000000A1A1 /* CubechatAudioTrimPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A0004000000000000A1A1 /* CubechatAudioTrimPlugin.swift */; };
+		CB1A000F000000000000A1A1 /* CubechatTranscribePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A0010000000000000A1A1 /* CubechatTranscribePlugin.swift */; };
 		CB1A0007000000000000A1A1 /* CubechatOpenInPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */; };
 		CB1A0009000000000000A1A1 /* CubechatCpuProbePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */; };
 		CB1A000B000000000000A1A1 /* CubechatPushPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */; };
@@ -57,6 +58,7 @@
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		CB1A0002000000000000A1A1 /* CubechatBlePeripheralPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatBlePeripheralPlugin.swift; sourceTree = "<group>"; };
 		CB1A0004000000000000A1A1 /* CubechatAudioTrimPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatAudioTrimPlugin.swift; sourceTree = "<group>"; };
+		CB1A0010000000000000A1A1 /* CubechatTranscribePlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatTranscribePlugin.swift; sourceTree = "<group>"; };
 		CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatOpenInPlugin.swift; sourceTree = "<group>"; };
 		CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatCpuProbePlugin.swift; sourceTree = "<group>"; };
 		CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CubechatPushPlugin.swift; sourceTree = "<group>"; };
@@ -136,6 +138,7 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				CB1A0002000000000000A1A1 /* CubechatBlePeripheralPlugin.swift */,
 				CB1A0004000000000000A1A1 /* CubechatAudioTrimPlugin.swift */,
+				CB1A0010000000000000A1A1 /* CubechatTranscribePlugin.swift */,
 				CB1A0008000000000000A1A1 /* CubechatOpenInPlugin.swift */,
 				CB1A000A000000000000A1A1 /* CubechatCpuProbePlugin.swift */,
 				CB1A000C000000000000A1A1 /* CubechatPushPlugin.swift */,
@@ -298,6 +301,7 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				CB1A0001000000000000A1A1 /* CubechatBlePeripheralPlugin.swift in Sources */,
 				CB1A0003000000000000A1A1 /* CubechatAudioTrimPlugin.swift in Sources */,
+				CB1A000F000000000000A1A1 /* CubechatTranscribePlugin.swift in Sources */,
 				CB1A0007000000000000A1A1 /* CubechatOpenInPlugin.swift in Sources */,
 				CB1A0009000000000000A1A1 /* CubechatCpuProbePlugin.swift in Sources */,
 				CB1A000B000000000000A1A1 /* CubechatPushPlugin.swift in Sources */,
