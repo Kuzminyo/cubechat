@@ -1,5 +1,5 @@
 # Tracked so local and CI builds compile the same permission handlers.
-platform :ios, '15.0'
+platform :ios, '15.5'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
