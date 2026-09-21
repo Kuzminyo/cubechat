@@ -600,14 +600,33 @@ class MessagingService {
 
   /// Rebuild the Nostr transport whenever the relay settings change, and once
   /// at startup for the persisted value.
+  ///
+  /// Once, not twice: the settings are read off disk before the first pool is
+  /// built, so launch does not stand one up on the defaults only to tear it
+  /// down when the stored list arrives.
+  ///
+  /// No timeout on the wait, deliberately. [RelaySettingsController] catches
+  /// every failure of its read, so `loaded` completes whether the box opened or
+  /// not — a failed read costs the stored list, never the internet. A 3 s
+  /// bound was here first and it was a timer left running in every widget
+  /// test that drew the chat list: forty of them failed on it.
   void _wireNostrFallback() {
-    _ref.listen<RelaySettings>(
-      relaySettingsProvider,
-      (_, next) => _nostrReconfigure =
-          _nostrReconfigure.then((_) => _applyRelaySettings(next)),
-      fireImmediately: true,
-    );
+    unawaited(() async {
+      await _ref.read(relaySettingsProvider.notifier).loaded;
+      if (_disposed) return;
+      _ref.listen<RelaySettings>(
+        relaySettingsProvider,
+        (_, next) => _nostrReconfigure =
+            _nostrReconfigure.then((_) => _applyRelaySettings(next)),
+        fireImmediately: true,
+      );
+    }());
   }
+
+  /// What the running pool was built from. The settings provider hands out a
+  /// fresh object on every write, equal or not; an equal one is not a reason
+  /// to drop eight sockets and open them again.
+  RelaySettings? _appliedRelaySettings;
 
   /// Tear down the current pool and, if the fallback is on, stand up a new one
   /// subscribed to our own Nostr pubkey. Inbound events are unwrapped back into
@@ -615,6 +634,11 @@ class MessagingService {
   /// so a relay-delivered message is indistinguishable downstream (and gets the
   /// same dedup, replay-window and signature checks).
   Future<void> _applyRelaySettings(RelaySettings settings) async {
+    if (settings == _appliedRelaySettings && (_relayClient != null ||
+        !settings.isActive)) {
+      return;
+    }
+    _appliedRelaySettings = settings;
     await _teardownNostr();
     if (!settings.isActive) {
       DebugLog.instance.log('NOSTR', 'internet fallback off');

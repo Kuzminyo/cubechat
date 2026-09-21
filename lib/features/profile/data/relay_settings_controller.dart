@@ -220,10 +220,19 @@ class RelaySettingsController extends Notifier<RelaySettings> {
   static const _addedAppliedKey = 'nostr.relays.addedApplied.v1';
 
   Box<dynamic>? _box;
+  Future<void>? _loading;
+
+  /// Completes once the stored list has replaced [RelaySettings.initial].
+  ///
+  /// The transport waits on this before its first pool. It used to start one
+  /// on the defaults and rebuild it a moment later when the stored list
+  /// landed — a 2026-09-21 log has `internet fallback on` twice at every
+  /// launch and eight sockets opened, torn down and opened again.
+  Future<void> get loaded => _loading ?? Future<void>.value();
 
   @override
   RelaySettings build() {
-    unawaited(_load());
+    unawaited(_loading = _load());
     return RelaySettings.initial;
   }
 
