@@ -204,30 +204,71 @@ isolate on Android/iOS. The supplied log measured 204 ms of UI signature work
 for 54 events in five seconds. This is not a GPU frame measurement: build/raster
 improvement still needs a new device trace. No refresh-rate or blur setting was
 changed in this fix.
+
 ## Separate media inbox (/media)
 
-Build 1094 moves the owned media lane to wss://relay.cubechat.tech/media.
-It must be a second strfry process and LMDB, not only another Caddy path to the
-root process. The app can then stop the media REQ while the phone is on
-cellular data without stopping text at wss://relay.cubechat.tech.
+Build 1094 moved the owned media lane to `wss://relay.cubechat.tech/media`.
+It has to be a second strfry process with its own LMDB, not only another Caddy
+path: a subscription on any socket to one strfry returns every event addressed
+to us in its database, so while `/media` and the root share one, the chunks of
+every photo arrive over the root socket too and "wait for Wi-Fi" holds nothing
+back. Until this server step is done the app behaves exactly as before.
 
-The existing root relay remains the conversation meeting point. Install the
-second instance with the already-built /usr/local/bin/strfry:
+**Order matters.** 1094 shipped "wait for Wi-Fi" switched on and without the
+fix that keeps a held photo's manifest past five minutes; on a separate
+database it would lose media on mobile data. Split the server only once the
+phones run 1095 or later.
 
-    mkdir -p /opt/cubechat-media-relay/strfry-db
-    chown -R cubechat-relay:cubechat-relay /opt/cubechat-media-relay
+### Install
 
-Copy strfry-media.conf to /opt/cubechat-media-relay/strfry.conf,
-cubechat-media-relay.service to /etc/systemd/system/, and replace the single
-relay.cubechat.tech Caddy block with Caddyfile.fragment. Then validate before
-reloading:
+The binary and the `cubechat-relay` user already exist from the root relay.
+From the repository, on your own machine:
 
-    systemctl daemon-reload
-    systemctl enable --now cubechat-media-relay
-    caddy validate --config /etc/caddy/Caddyfile
-    systemctl reload caddy
+```powershell
+scp relay/deploy/strfry-media.conf root@209.38.225.225:/tmp/strfry-media.conf
+scp relay/deploy/cubechat-media-relay.service root@209.38.225.225:/etc/systemd/system/cubechat-media-relay.service
+```
 
-A direct check of https://relay.cubechat.tech/media must return the
-cubechat media NIP-11 document. The app keeps the two public media relays as
-fallbacks, so build 1094 can exchange attachments with older builds while the
-new owned endpoint is deployed.
+On the droplet:
+
+```bash
+mkdir -p /opt/cubechat-media-relay/strfry-db
+install -m 644 /tmp/strfry-media.conf /opt/cubechat-media-relay/strfry.conf
+chown -R cubechat-relay:cubechat-relay /opt/cubechat-media-relay
+systemctl daemon-reload
+systemctl enable --now cubechat-media-relay
+systemctl status cubechat-media-relay --no-pager
+curl -s -H 'Accept: application/nostr+json' http://127.0.0.1:8082
+```
+
+The last line must print the NIP-11 document named `cubechat media`.
+
+### Caddy: replace the block, do not append
+
+`/etc/caddy/Caddyfile` already has a `relay.cubechat.tech { … }` block from
+step 4. A second one validates, and Caddy serves only the first — the failure
+described there. Back up, then replace that one block with the contents of
+`deploy/Caddyfile.fragment`, leaving the push server's blocks alone:
+
+```bash
+cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
+nano /etc/caddy/Caddyfile
+grep -c 'relay.cubechat.tech' /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+```
+
+`grep -c` must say `1`. Then, from your own machine:
+
+```powershell
+curl.exe -s -H "Accept: application/nostr+json" https://relay.cubechat.tech/media
+curl.exe -s -H "Accept: application/nostr+json" https://relay.cubechat.tech
+```
+
+The first names `cubechat media`, the second `cubechat`. If anything is
+wrong, `cp /etc/caddy/Caddyfile.bak /etc/caddy/Caddyfile && systemctl reload
+caddy` puts the old routing back; nothing in the app depends on the split.
+
+The app keeps the two public media relays behind the owned one, so builds
+before 1094 — which do not subscribe to `/media` — still receive attachments
+from newer builds through them.

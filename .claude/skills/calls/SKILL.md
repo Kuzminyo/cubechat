@@ -116,10 +116,12 @@ and the comment there says why.
 Android re-decides the full-screen-intent permission when an APK from outside
 Google Play is installed over itself, and MIUI does the same with its lock-screen
 permission — so it is off after **every sideloaded update**, and no app can grant
-it back to itself. `call_screen_access.dart` remembers the build whenever the
-permission was on; off in a *different* build means an update took it, and the
-chats screen asks once and opens the switch. Off in the same build means the
-person turned it off, and is not asked about.
+it back to itself. Nothing asks about it: builds 1090–1093 put up a sheet on
+the chats screen after each update, and the owner had it removed (2026-09-21) —
+do not bring it back. `call_screen_access.dart` only reads what Android says,
+for the switch in Profile, and reads it again on every return to the app. The
+one install that keeps the permission across updates is one Google Play
+updates.
 
 ## Server side
 

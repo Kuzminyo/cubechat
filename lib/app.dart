@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
@@ -271,8 +271,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       target = channelRoute(chatId);
     } else {
       final known = ref.read(knownPeersControllerProvider)[chatId];
-      final name =
-          (known?.displayName.isNotEmpty ?? false) ? known!.displayName : 'Peer';
+      final name = (known?.displayName.isNotEmpty ?? false)
+          ? known!.displayName
+          : 'Peer';
       target = '/chat/${Uri.encodeComponent(chatId)}'
           '?name=${Uri.encodeQueryComponent(name)}';
     }
@@ -384,6 +385,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
           .read(messagingServiceProvider)
           .announcePresence(online: true, arriving: true),
     );
+    // The same missed transition would leave live location waiting for a
+    // "resumed" that already happened unseen.
+    ref.read(mapPresenceControllerProvider.notifier).resume();
   }
 
   void _announcePresenceDebounced({required bool online}) {
@@ -517,6 +521,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // not have landed.
       _refreshPushRegistration();
       ref.read(backgroundModeProvider.notifier).apply();
+      ref.read(mapPresenceControllerProvider.notifier).resume();
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the
       // user looking straight at the Nearby list. Re-pick it now.
@@ -621,52 +626,52 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         '${AppBlur.panes}',
       ),
       child: MaterialApp.router(
-      onGenerateTitle: (context) => AppLocalizations.of(context).appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
-      locale: locale,
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      routerConfig: _router,
-      // Feeds the app-wide "something is happening" signal that decorative
-      // animations park themselves against. A Listener at the root sees every
-      // pointer event without claiming any of them, so nothing downstream
-      // changes behaviour; `poke` only re-arms a timer.
-      // The voice bar wraps everything the router builds, so it survives a
-      // push into a profile, a search, or another chat — which is the whole
-      // point of playback outliving the bubble that started it.
-      builder: (context, child) => _ClampedTextScale(
-        // Outside the pointer listener and the voice bar: while the app is
-        // locked nothing behind it should be touchable, and the bar is one of
-        // the things being covered.
-        child: AppLockGate(
-        child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) {
-          UiActivity.instance.poke();
-          _noticeTouch();
-        },
-        onPointerMove: (_) => UiActivity.instance.poke(),
-        onPointerSignal: (_) => UiActivity.instance.poke(),
-        child: _TapToDismissKeyboard(
-        child: VoiceMiniPlayer(
-          // The router lives below this builder, so the bar is handed the
-          // one push it needs rather than looking one up it cannot see.
-          onOpenChat: (chatId, _) => _openChat(chatId),
-          child: CallHost(
-            backButtonDispatcher: _router.backButtonDispatcher,
-            child: child ?? const SizedBox.shrink(),
+        onGenerateTitle: (context) => AppLocalizations.of(context).appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark(),
+        locale: locale,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        routerConfig: _router,
+        // Feeds the app-wide "something is happening" signal that decorative
+        // animations park themselves against. A Listener at the root sees every
+        // pointer event without claiming any of them, so nothing downstream
+        // changes behaviour; `poke` only re-arms a timer.
+        // The voice bar wraps everything the router builds, so it survives a
+        // push into a profile, a search, or another chat — which is the whole
+        // point of playback outliving the bubble that started it.
+        builder: (context, child) => _ClampedTextScale(
+          // Outside the pointer listener and the voice bar: while the app is
+          // locked nothing behind it should be touchable, and the bar is one of
+          // the things being covered.
+          child: AppLockGate(
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) {
+                UiActivity.instance.poke();
+                _noticeTouch();
+              },
+              onPointerMove: (_) => UiActivity.instance.poke(),
+              onPointerSignal: (_) => UiActivity.instance.poke(),
+              child: _TapToDismissKeyboard(
+                child: VoiceMiniPlayer(
+                  // The router lives below this builder, so the bar is handed the
+                  // one push it needs rather than looking one up it cannot see.
+                  onOpenChat: (chatId, _) => _openChat(chatId),
+                  child: CallHost(
+                    backButtonDispatcher: _router.backButtonDispatcher,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-      ),
-      ),
-      ),
-      ),
       ),
     );
   }
@@ -760,9 +765,8 @@ class _ClampedTextScale extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final media = MediaQuery.of(context);
     final chosen = ref.watch(uiScaleControllerProvider).factor;
-    final scaler = chosen == null
-        ? media.textScaler
-        : TextScaler.linear(chosen);
+    final scaler =
+        chosen == null ? media.textScaler : TextScaler.linear(chosen);
     final gestures = media.gestureSettings;
     final slop = gestures.touchSlop;
     return MediaQuery(

@@ -91,16 +91,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Xiaomi, Redmi and Poco do not let apps turn this on themselves: turn on “Show on lock screen” under Other permissions.';
 
   @override
-  String get callFullScreenAllow => 'Allow';
-
-  @override
-  String get callFullScreenLater => 'Not now';
-
-  @override
-  String get callFullScreenAfterUpdate =>
-      'Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.';
-
-  @override
   String get circleMessage => 'Video message';
 
   @override
@@ -3106,6 +3096,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTranscribeFailed => 'This phone cannot transcribe that one.';
 
   @override
+  String get chatTranscribing => 'Recognising…';
+
+  @override
   String get chatTranslateAction => 'Translate';
 
   @override
@@ -3117,5 +3110,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get customizeDeferMediaHint =>
-      'On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now.';
+      'On mobile data, texts and calls work as usual, while photos, voice notes, video messages and files wait on the server for Wi-Fi — up to two weeks. A row above the chats shows what is waiting and downloads it now.';
+
+  @override
+  String heldMediaCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count media waiting for Wi-Fi',
+      one: '1 media waiting for Wi-Fi',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get heldMediaDownload => 'Download';
 }

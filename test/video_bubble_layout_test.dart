@@ -170,8 +170,9 @@ void main() {
     addTearDown(tester.view.reset);
 
     await _pump(tester, _clip(name: VideoBubble.circleFileName));
+    // The disc itself: the bubble also holds "→A" beside it now.
     final circle = tester.getRect(
-      find.byType(VideoBubble, skipOffstage: false),
+      find.byKey(const ValueKey('circle-disc'), skipOffstage: false),
     );
     final clock = tester.getRect(find.text('10:11', skipOffstage: false));
 

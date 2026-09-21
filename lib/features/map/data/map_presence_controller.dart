@@ -9,6 +9,7 @@ import '../../../core/ble/background_service.dart';
 import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/shared_location.dart';
+import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/location_service.dart';
 import '../../../core/util/platform_info.dart';
 import '../../chat/models/message.dart';
@@ -155,6 +156,7 @@ class MapPresenceController extends Notifier<int> {
 
   bool get _canLocate => _lostRounds < _lostRoundsBeforeIdle;
   DateTime? _lastSentAt;
+
   /// Where the last beacon that actually went out said we were.
   ///
   /// Coordinates, not a rounded key. This was a string of both values cut to
@@ -197,7 +199,8 @@ class MapPresenceController extends Notifier<int> {
             id,
       ];
       final unblocked = friends.any((id) =>
-          (before?[id]?.isBlocked ?? false) && !(after[id]?.isBlocked ?? false));
+          (before?[id]?.isBlocked ?? false) &&
+          !(after[id]?.isBlocked ?? false));
       if (newlyBlocked.isEmpty && !unblocked) return;
       if (newlyBlocked.isNotEmpty) {
         DebugLog.instance.log(
@@ -257,9 +260,35 @@ class MapPresenceController extends Notifier<int> {
       unawaited(_stopWatching());
       return;
     }
+    // MainApplication pre-warms Flutter before an Activity exists. Android 14+
+    // rejects a location foreground service from that headless state even when
+    // the while-in-use permission is granted. Starting here used to throw on
+    // every cold process launch, then retry work while nobody could see it.
+    // The first resume calls [resume] below; once started, the foreground
+    // service keeps the stream alive when the app leaves the screen again.
+    if (PlatformInfo.isAndroid && !AppLifecycle.instance.hasBeenForeground) {
+      _waitingForForeground = true;
+      return;
+    }
+    _waitingForForeground = false;
     unawaited(_startWatching());
     _timer = Timer.periodic(_tick, (_) => unawaited(_sendUpdate()));
     unawaited(_sendUpdate(force: true));
+  }
+
+  /// Set when [_arm] stood down only because no Activity had come up yet.
+  bool _waitingForForeground = false;
+
+  /// Reconsider work that Android could not legally start while the engine
+  /// was pre-warmed without an Activity.
+  ///
+  /// Only that work. This runs on every return to the app, and re-arming an
+  /// already running share would force a fresh beacon to every map friend
+  /// each time the phone is unlocked — radio traffic for a position that has
+  /// not moved.
+  void resume() {
+    if (!_waitingForForeground) return;
+    _arm();
   }
 
   bool get _shouldShare =>
@@ -443,9 +472,8 @@ class MapPresenceController extends Notifier<int> {
     // metres, and it costs two multiplications instead of a haversine.
     const metresPerDegree = 111320.0;
     final dLat = (fix.latitude - lat) * metresPerDegree;
-    final dLon = (fix.longitude - lon) *
-        metresPerDegree *
-        math.cos(lat * math.pi / 180);
+    final dLon =
+        (fix.longitude - lon) * metresPerDegree * math.cos(lat * math.pi / 180);
     return dLat * dLat + dLon * dLon <= _samePlaceMetres * _samePlaceMetres;
   }
 

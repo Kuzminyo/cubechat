@@ -383,9 +383,11 @@ class FileBubble extends ConsumerWidget {
   Future<bool> _requestAgain(WidgetRef ref) async {
     final wireId = message.wireId;
     if (message.isMine || wireId == null) return false;
-    return ref
-        .read(messagingServiceProvider)
-        .requestMediaAgain(message.chatId, wireId);
+    final messaging = ref.read(messagingServiceProvider);
+    // A tap is consent to spend the data on it, and the copy may simply be
+    // sitting on the media relay behind "wait for Wi-Fi".
+    messaging.resumeMediaInbox();
+    return messaging.requestMediaAgain(message.chatId, wireId);
   }
 
   /// A hint at the kind of thing, from the extension. Only a hint — the

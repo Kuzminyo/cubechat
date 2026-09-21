@@ -25,9 +25,6 @@
 "callFullScreenTitle": "Calls on the lock screen",
 "callFullScreenBody": "Allow an incoming call to show on the locked screen, so it can be answered without unlocking.",
 "callFullScreenXiaomi": "Xiaomi, Redmi and Poco do not let apps turn this on themselves: turn on “Show on lock screen” under Other permissions.",
-"callFullScreenAllow": "Allow",
-"callFullScreenLater": "Not now",
-"callFullScreenAfterUpdate": "Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.",
   "circleMessage": "Video message",
   "@@locale": "en",
   "appName": "Cubechat",
@@ -1508,8 +1505,25 @@
   "chatSharedWallpaperFailed": "Wallpaper set here. It will reach them when they are in range.",
   "chatTranscribeAction": "Transcribe",
   "chatTranscribeFailed": "This phone cannot transcribe that one.",
+  "chatTranscribing": "Recognising…",
+  "@chatTranscribing": {
+    "description": "Under a round video message while its speech is being turned into text on the phone."
+  },
   "chatTranslateAction": "Translate",
   "chatTranslateFailed": "That one cannot be translated on this phone.",
   "customizeDeferMediaTitle": "Wait for Wi-Fi to download media",
-  "customizeDeferMediaHint": "On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now."
+  "customizeDeferMediaHint": "On mobile data, texts and calls work as usual, while photos, voice notes, video messages and files wait on the server for Wi-Fi — up to two weeks. A row above the chats shows what is waiting and downloads it now.",
+  "heldMediaCount": "{count, plural, =1{1 media waiting for Wi-Fi} other{{count} media waiting for Wi-Fi}}",
+  "@heldMediaCount": {
+    "description": "Row above the chat list while 'wait for Wi-Fi' holds photos, voice notes, circles or files on the relay.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "heldMediaDownload": "Download",
+  "@heldMediaDownload": {
+    "description": "Button on the waiting-media row: fetch everything held, over the current mobile connection."
+  }
 }

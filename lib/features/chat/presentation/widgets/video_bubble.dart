@@ -205,19 +205,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     return GestureDetector(
       onTap: () => unawaited(_tap()),
       onLongPress: widget.onLongPress,
-      child: _isCircle
-          ? Stack(
-              children: [
-                _circle(),
-                if (widget.transcriptionButton != null)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: widget.transcriptionButton!,
-                  ),
-              ],
-            )
-          : _rectangle(),
+      child: _isCircle ? _circleWithButton() : _rectangle(),
     );
   }
 
@@ -240,6 +228,38 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
   }
 
   // ---- the round one ------------------------------------------------------
+
+  /// The circle, and "→A" beside it rather than on it.
+  ///
+  /// It sat on the circle's bottom-right edge, half over the picture and
+  /// crowding the duration. Now it is outside, low down, on the side facing
+  /// the middle of the screen: right of somebody else's circle, left of ours
+  /// — where Telegram puts it, from the owner's screenshot. That is also the
+  /// side it flies off towards once tapped (see [TranscriptionButton]).
+  ///
+  /// Not while it plays: a playing circle grows to the width of the screen
+  /// less its margins ([VideoBubble.circleExpanded]), and fifty points of
+  /// button beside that would push the row past the edge. The same number of
+  /// children either way, so the circle keeps its element — and its size
+  /// animation — when the button steps aside.
+  Widget _circleWithButton() {
+    final button = widget.transcriptionButton;
+    if (button == null) return _circle();
+    final playing = ref.watch(
+      voicePlaybackControllerProvider.select(
+        (s) => s.isCurrent(widget.message.id),
+      ),
+    );
+    final Widget side = playing ? const SizedBox.shrink() : button;
+    final Widget gap = SizedBox(width: playing ? 0 : 6);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: widget.message.isMine
+          ? [side, gap, _circle()]
+          : [_circle(), gap, side],
+    );
+  }
 
   Widget _circle() {
     // **Only this bubble's own share of the playback, and nothing when it is
@@ -295,6 +315,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
         ? VideoBubble.circleExpanded(MediaQuery.sizeOf(context).width)
         : VideoBubble.circleIdle;
     return AnimatedContainer(
+      key: const ValueKey('circle-disc'),
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
       width: size,

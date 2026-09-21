@@ -1,5 +1,6 @@
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/shared_location.dart';
+import 'package:cubechat/core/util/app_lifecycle.dart';
 import 'package:cubechat/core/util/location_service.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/map/data/map_friends_controller.dart';
@@ -89,6 +90,11 @@ void main() {
     Map<String, KnownPeer>? peers,
   }) {
     messaging = _Messaging();
+    // On screen, as when somebody is looking at the map. Android will not
+    // start the location service for a process that has not yet been in the
+    // foreground, and the controller now waits for that — see
+    // MapPresenceController._arm.
+    AppLifecycle.instance.isForeground = true;
     final container = ProviderContainer(overrides: [
       privacySettingsProvider.overrideWith(() => _Privacy(sharing)),
       mapFriendsControllerProvider.overrideWith(() => _Friends(friends)),

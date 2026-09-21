@@ -9,9 +9,14 @@ import '../../../core/storage/hive_init.dart';
 
 /// Whether relay media should wait while the phone only has cellular data.
 ///
-/// The default is on: text, calls and control messages still use their normal
-/// relay sockets, while the separate media inbox waits for Wi-Fi or an explicit
-/// tap on a missing attachment.
+/// Text, calls and control messages keep their own relay sockets either way;
+/// only the media inbox waits, for Wi-Fi or for the "download now" row.
+///
+/// **Off by default.** It shipped on in 2026-09-21's build, which would have
+/// held every voice note and circle on mobile data on every phone that never
+/// opened the setting — and a voice note that does not arrive reads as a
+/// broken messenger, not as a saved megabyte. It is the bad-connection mode's
+/// switch, for whoever wants it.
 class MediaDownloadSettingsController extends Notifier<bool> {
   static const _key = 'media.defer_on_mobile';
 
@@ -28,7 +33,7 @@ class MediaDownloadSettingsController extends Notifier<bool> {
   @override
   bool build() {
     unawaited(_loading = _load());
-    return true;
+    return false;
   }
 
   Future<void> _load() async {
@@ -36,7 +41,9 @@ class MediaDownloadSettingsController extends Notifier<bool> {
       final box = await hiveCipherProvider
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
-      state = box.get(_key, defaultValue: true) as bool;
+      // Nothing is stored until the switch is touched, so a phone that ran
+      // the default-on build and never touched it is not held to that default.
+      state = box.get(_key, defaultValue: false) as bool;
     } catch (e) {
       debugPrint('Media download setting load failed: $e');
     }
@@ -55,7 +62,7 @@ class MediaDownloadSettingsController extends Notifier<bool> {
 
   Future<void> reset() async {
     await loaded;
-    state = true;
+    state = false;
     try {
       await _box?.delete(_key);
     } catch (e) {

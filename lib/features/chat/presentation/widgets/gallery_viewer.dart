@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,8 @@ class GalleryViewer extends StatefulWidget {
     required this.isSelected,
     required this.orderOf,
     required this.onToggle,
+    required this.totalCount,
+    this.onLoadMore,
   });
 
   final List<AssetEntity> assets;
@@ -54,6 +57,15 @@ class GalleryViewer extends StatefulWidget {
   /// number the grid draws in its badge.
   final int Function(AssetEntity) orderOf;
   final void Function(AssetEntity) onToggle;
+
+  /// The album count reported by the media store. [assets] is only the pages
+  /// loaded so far, so using its length here made the fourth photo read
+  /// 4/120 on a phone whose roll actually held 6502 items.
+  final int totalCount;
+
+  /// Pull another picker page when the viewer approaches the loaded edge.
+  /// The list is shared with the picker and grows in place.
+  final Future<void> Function()? onLoadMore;
 
   @override
   State<GalleryViewer> createState() => _GalleryViewerState();
@@ -72,6 +84,14 @@ class _GalleryViewerState extends State<GalleryViewer> {
 
   AssetEntity get _current => widget.assets[_index];
 
+  Future<void> _pageChanged(int index) async {
+    setState(() => _index = index);
+    if (widget.onLoadMore == null || index < widget.assets.length - 4) return;
+    final before = widget.assets.length;
+    await widget.onLoadMore!();
+    if (mounted && widget.assets.length != before) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -85,7 +105,7 @@ class _GalleryViewerState extends State<GalleryViewer> {
           PageView.builder(
             controller: _pages,
             itemCount: widget.assets.length,
-            onPageChanged: (i) => setState(() => _index = i),
+            onPageChanged: (i) => unawaited(_pageChanged(i)),
             itemBuilder: (_, i) => _Page(asset: widget.assets[i]),
           ),
           SafeArea(
@@ -95,14 +115,15 @@ class _GalleryViewerState extends State<GalleryViewer> {
                   children: [
                     IconButton(
                       tooltip: t.cancel,
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                     const Spacer(),
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: Text(
-                        '${_index + 1}/${widget.assets.length}',
+                        '${_index + 1}/${widget.totalCount}',
                         style: const TextStyle(color: Colors.white70),
                       ),
                     ),

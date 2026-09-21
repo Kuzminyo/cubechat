@@ -195,8 +195,12 @@ class _TransferCard extends ConsumerWidget {
           _Action(
             tooltip: t.fileTransferRetry,
             icon: Icons.refresh_rounded,
-            onTap: () =>
-                ref.read(messagingServiceProvider).retryFileTransfer(task.id),
+            onTap: () {
+              final messaging = ref.read(messagingServiceProvider);
+              // Pressed by hand, so a transfer held for Wi-Fi may come now.
+              messaging.resumeMediaInbox();
+              messaging.retryFileTransfer(task.id);
+            },
           ),
           _Action(
             tooltip: t.cancel,

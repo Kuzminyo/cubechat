@@ -22,6 +22,7 @@ import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chat/data/message_farewell.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/send_queue.dart';
+import '../../features/chat/data/held_media.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chat/domain/message_preview.dart';
@@ -628,6 +629,8 @@ class MessagingService {
         _connectivitySub = connectivity.onConnectivityChanged.listen((next) {
           if (_disposed) return;
           _connectivity = next;
+          // A tap on "download" was for the network it was made on.
+          _mediaResumedByHand = false;
           _syncMediaSubscriptions();
         });
       } catch (e) {
@@ -652,6 +655,7 @@ class MessagingService {
   }
 
   bool _shouldSubscribeToMedia() {
+    if (_mediaResumedByHand) return true;
     if (!_ref.read(mediaDownloadSettingsProvider)) return true;
     final hasMobile = _connectivity.contains(ConnectivityResult.mobile);
     final hasUnmetered = _connectivity.contains(ConnectivityResult.wifi) ||
@@ -660,7 +664,242 @@ class MessagingService {
   }
 
   void _syncMediaSubscriptions() {
-    _relayClient?.setMediaSubscriptions(_shouldSubscribeToMedia());
+    final client = _relayClient;
+    if (client == null) return;
+    final wasPaused = !client.mediaSubscriptionsEnabled;
+    client.setMediaSubscriptions(_shouldSubscribeToMedia());
+    final nowPaused = !client.mediaSubscriptionsEnabled;
+    if (wasPaused && !nowPaused) _mediaInboxResumed();
+    if (!wasPaused && nowPaused) {
+      // Off Wi-Fi in the middle of a transfer: what is still arriving is now
+      // waiting too, and must not run out its five minutes meanwhile.
+      for (final key in _pendingManifests.keys.toList()) {
+        _holdManifestIfPaused(key);
+      }
+    }
+  }
+
+  /// Set by [resumeMediaInbox]; cleared by the next change of network.
+  bool _mediaResumedByHand = false;
+
+  /// True while photos, voice, circles and files are being held on the media
+  /// relays for a cheaper network.
+  bool get _mediaPaused {
+    final forced = debugMediaPaused;
+    if (forced != null) return forced;
+    final client = _relayClient;
+    return client != null && !client.mediaSubscriptionsEnabled;
+  }
+
+  /// Stands in for the relay pool's pause in tests, which have no sockets.
+  @visibleForTesting
+  bool? debugMediaPaused;
+
+  @visibleForTesting
+  Future<void> debugIngestManifest(
+    Uint8List manifestBytes, {
+    required Uint8List senderPub,
+    required DateTime sentAt,
+  }) =>
+      _ingestMediaManifest(
+        peerId: _nostrPeerId,
+        senderPub: senderPub,
+        wasSigned: true,
+        manifestBytes: manifestBytes,
+        sentAt: sentAt,
+      );
+
+  @visibleForTesting
+  bool debugHasManifest(String mediaIdHex) =>
+      _pendingManifests.containsKey(mediaIdHex);
+
+  /// Pretend a manifest arrived [age] ago, then run the sweep.
+  @visibleForTesting
+  void debugAgeManifestsAndSweep(Duration age) {
+    for (final e in _pendingManifests.values) {
+      e.arrivedAt = e.arrivedAt.subtract(age);
+    }
+    _gcMediaBuffers();
+  }
+
+  @visibleForTesting
+  void debugMediaInboxResumed() => _mediaInboxResumed();
+
+  @visibleForTesting
+  Future<void> debugSaveHeldManifests() async {
+    _heldManifestsWrite?.cancel();
+    await _writeHeldManifests();
+  }
+
+  @visibleForTesting
+  Future<void> debugRestoreHeldManifests() => _restoreHeldManifests();
+
+  /// "Download now": fetch what the media relays are holding, on this network.
+  ///
+  /// Only ever from a tap. It used to be inside [requestMediaAgain], which the
+  /// stall watchdog also calls — and a transfer held back on purpose looks
+  /// exactly like a stalled one, so the watchdog switched the pause off by
+  /// itself a minute after every file arrived on mobile data, and asked the
+  /// sender to upload the whole file a second time while it was at it.
+  void resumeMediaInbox() {
+    if (!_mediaPaused) return;
+    _mediaResumedByHand = true;
+    _syncMediaSubscriptions();
+  }
+
+  /// Media that arrived while the pause was on: its manifest came over the
+  /// conversation relays at once, its chunks are still on the media relays.
+  ///
+  /// This is the part the pause was missing and it lost media. A manifest
+  /// waits [_manifestTtl] — five minutes — for its chunks and is then thrown
+  /// away; the media relays deliver the same manifest event again on resume,
+  /// but the relay pool has already seen that event id and drops it. So a
+  /// photo that waited longer than five minutes for Wi-Fi arrived as chunks
+  /// with no manifest and was discarded ("signed manifest missing"). Held
+  /// manifests are exempt from the five minutes while the pause lasts, are
+  /// written to disk so a restart does not lose them either, and start their
+  /// five minutes over when the media inbox opens.
+  static const Duration _heldManifestMaxAge = Duration(days: 14);
+  static const int _maxHeldManifests = 400;
+  static const String _heldManifestsKey = 'media.held_manifests';
+  Timer? _heldManifestsWrite;
+  bool _heldManifestsRestored = false;
+
+  void _holdManifestIfPaused(String key) {
+    final entry = _pendingManifests[key];
+    if (entry == null || !_mediaPaused) return;
+    entry.held = true;
+    final held = [
+      for (final e in _pendingManifests.entries)
+        if (e.value.held) e,
+    ]..sort((a, b) => a.value.sentAt.compareTo(b.value.sentAt));
+    for (var i = 0; i < held.length - _maxHeldManifests; i++) {
+      _pendingManifests.remove(held[i].key);
+    }
+    _heldManifestsChanged();
+  }
+
+  void _mediaInboxResumed() {
+    // Every incoming file starts its stall count over: progress frozen during
+    // the pause would otherwise read as a stall on the first check after it.
+    _stalledMedia.clear();
+    final now = DateTime.now();
+    for (final entry in _pendingManifests.values) {
+      if (entry.held) entry.arrivedAt = now;
+    }
+    _publishHeldMedia();
+    DebugLog.instance.log(
+      'FILE',
+      'media inbox open — ${_pendingManifests.values.where((e) => e.held).length} '
+          'held transfer(s) can finish',
+    );
+  }
+
+  /// Count per chat, for the "waiting for Wi-Fi" row; empty while nothing is
+  /// held back.
+  void _publishHeldMedia() {
+    final counts = <String, int>{};
+    if (_mediaPaused) {
+      for (final e in _pendingManifests.values) {
+        if (!e.held) continue;
+        final chat = e.channel?.name ??
+            (e.senderPub != null ? _hexOf(e.senderPub!) : e.peerId);
+        counts[chat] = (counts[chat] ?? 0) + 1;
+      }
+    }
+    try {
+      _ref.read(heldMediaProvider.notifier).state = counts;
+    } catch (_) {
+      // Disposed container at teardown.
+    }
+  }
+
+  void _heldManifestsChanged() {
+    _publishHeldMedia();
+    _heldManifestsWrite?.cancel();
+    _heldManifestsWrite =
+        Timer(const Duration(seconds: 2), () => unawaited(_writeHeldManifests()));
+  }
+
+  Future<void> _writeHeldManifests() async {
+    final rows = <Map<String, Object?>>[
+      for (final e in _pendingManifests.values)
+        if (e.held)
+          {
+            'm': base64Encode(e.manifest.encode()),
+            'p': e.peerId,
+            's': e.senderPub == null ? null : _hexOf(e.senderPub!),
+            't': e.sentAt.millisecondsSinceEpoch,
+            'c': e.channel?.name,
+            'an': e.authorName,
+            'ai': e.authorId,
+          },
+    ];
+    try {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      if (rows.isEmpty) {
+        await box.delete(_heldManifestsKey);
+      } else {
+        await box.put(_heldManifestsKey, jsonEncode(rows));
+      }
+    } catch (e) {
+      DebugLog.instance.log('FILE', 'held manifests not saved: $e');
+    }
+  }
+
+  /// Put back what was held when the app last stopped.
+  Future<void> _restoreHeldManifests() async {
+    final List<dynamic> rows;
+    try {
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      final raw = box.get(_heldManifestsKey) as String?;
+      if (raw == null) return;
+      rows = jsonDecode(raw) as List<dynamic>;
+    } catch (e) {
+      DebugLog.instance.log('FILE', 'held manifests not read: $e');
+      return;
+    }
+    final now = DateTime.now();
+    var restored = 0;
+    for (final row in rows) {
+      if (_disposed) return;
+      try {
+        final map = row as Map<String, dynamic>;
+        final manifest =
+            MediaManifest.decode(base64Decode(map['m'] as String));
+        final sentAt =
+            DateTime.fromMillisecondsSinceEpoch(map['t'] as int);
+        if (now.difference(sentAt) > _heldManifestMaxAge) continue;
+        final key = _hexOf(manifest.mediaId);
+        if (_pendingManifests.containsKey(key)) continue;
+        final senderHex = map['s'] as String?;
+        final channelName = map['c'] as String?;
+        final channel = channelName == null
+            ? null
+            : _ref.read(channelControllerProvider.notifier).byName(channelName);
+        if (channelName != null && channel == null) continue;
+        if (manifest.isForwardSecret) await _deriveAndStoreMediaKey(manifest);
+        _pendingManifests[key] = _ManifestEntry(
+          manifest: manifest,
+          arrivedAt: now,
+          sentAt: sentAt,
+          peerId: map['p'] as String,
+          senderPub: senderHex == null ? null : _hexDecodeBytes(senderHex),
+          channel: channel,
+          authorName: map['an'] as String?,
+          authorId: map['ai'] as String?,
+        )..held = true;
+        restored++;
+      } catch (e) {
+        DebugLog.instance.log('FILE', 'held manifest skipped: $e');
+      }
+    }
+    if (restored > 0) {
+      DebugLog.instance.log('FILE', 'restored $restored held media manifest(s)');
+      _heldManifestsChanged();
+    }
   }
 
   /// What the running pool was built from. The settings provider hands out a
@@ -725,6 +964,10 @@ class MessagingService {
       final transport = NostrTransport(signer: signer, relay: client);
       _relayClient = client;
       _nostr = transport;
+      if (!_heldManifestsRestored) {
+        _heldManifestsRestored = true;
+        unawaited(_restoreHeldManifests());
+      }
       _nostrSub = transport.inboundFramesTimed().listen(
         // Timed as one block, on purpose. Everything a frame off the relay
         // costs is inside here — opening the X3DH or SealedBox body,
@@ -4077,10 +4320,6 @@ class MessagingService {
     final peerPub = _resolvePeerPub(chatId);
     if (peerPub == null) return false;
     try {
-      // A deliberate tap is consent to fetch the retained media backlog on
-      // this connection. The setting takes effect again on the next network
-      // change; enabling the REQ now also fetches any other waiting attachment.
-      _relayClient?.setMediaSubscriptions(true);
       final delivery = await _deliverControlToPeer(
         canonicalId: chatId,
         peerPub: peerPub,
@@ -7367,6 +7606,8 @@ class MessagingService {
       authorName: authorName,
       authorId: authorId,
     );
+    // A room's photos ride the media lane too, so they wait with the rest.
+    _holdManifestIfPaused(_hexOf(manifest.mediaId));
   }
 
   /// Drop one image chunk into the reassembly buffer. Once the last chunk
@@ -7465,6 +7706,7 @@ class MessagingService {
       await done.file.delete().catchError((_) => done.file);
       return;
     }
+    if (entry.held) _heldManifestsChanged();
     await _emitFile(
       peerId: entry.peerId,
       senderPub: entry.senderPub,
@@ -7652,6 +7894,7 @@ class MessagingService {
       peerId: peerId,
       senderPub: senderPub,
     );
+    _holdManifestIfPaused(key);
 
     if (manifest.kind == MediaKind.file && await _wantsFile(key)) {
       final now = DateTime.now();
@@ -7774,6 +8017,7 @@ class MessagingService {
           .log('CRYPTO', 'drop assembled media $key: signed manifest missing');
       return;
     }
+    if (pending.held) _heldManifestsChanged();
     await _verifyAndEmit(
       peerId: pending.peerId,
       senderPub: pending.senderPub,
@@ -8030,8 +8274,20 @@ class MessagingService {
   }
 
   void _gcMediaBuffers() {
-    final cutoff = DateTime.now().subtract(_manifestTtl);
-    _pendingManifests.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
+    final now = DateTime.now();
+    final cutoff = now.subtract(_manifestTtl);
+    final paused = _mediaPaused;
+    var heldGone = false;
+    _pendingManifests.removeWhere((_, e) {
+      // A held manifest is waiting for a network, not for chunks that got
+      // lost; while the pause lasts only the relays' own retention ends it.
+      final expired = e.held && paused
+          ? now.difference(e.sentAt) > _heldManifestMaxAge
+          : e.arrivedAt.isBefore(cutoff);
+      if (expired && e.held) heldGone = true;
+      return expired;
+    });
+    if (heldGone) _heldManifestsChanged();
     _orphanedMedia.removeWhere((_, e) => e.arrivedAt.isBefore(cutoff));
     // Drop FS chunks whose whole buffer went stale (manifest never showed).
     _pendingFsChunks.removeWhere(
@@ -8046,7 +8302,10 @@ class MessagingService {
   void _evictOldestManifest() {
     String? oldestKey;
     DateTime? oldestAt;
+    final paused = _mediaPaused;
     for (final e in _pendingManifests.entries) {
+      // Never one held for Wi-Fi: its chunks are not late, they are parked.
+      if (paused && e.value.held) continue;
       if (oldestAt == null || e.value.arrivedAt.isBefore(oldestAt)) {
         oldestAt = e.value.arrivedAt;
         oldestKey = e.key;
@@ -8943,6 +9202,9 @@ class MessagingService {
   /// a chunk that arrives but is refused. Unchanged across a whole
   /// [_stallCheck] with pieces still missing is a transfer that has stopped.
   void _checkStalledMedia() {
+    // Held for Wi-Fi is not stalled. Asking again would make the sender upload
+    // the whole file a second time for chunks already sitting on the relay.
+    if (_mediaPaused) return;
     final tasks = _ref.read(fileTransferControllerProvider);
     for (final task in tasks.values) {
       if (task.direction != FileTransferDirection.incoming) continue;
@@ -11601,6 +11863,10 @@ class MessagingService {
     await _persistRelayBuffer();
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+    if (_heldManifestsWrite?.isActive ?? false) {
+      _heldManifestsWrite!.cancel();
+      await _writeHeldManifests();
+    }
     await _teardownNostr();
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {
@@ -11666,7 +11932,14 @@ class _ManifestEntry {
     this.authorId,
   });
   final MediaManifest manifest;
-  final DateTime arrivedAt;
+
+  /// Not final: a manifest held for Wi-Fi starts its wait over when the media
+  /// inbox opens — see [MessagingService._mediaInboxResumed].
+  DateTime arrivedAt;
+
+  /// Arrived while the media inbox was paused; kept past the usual five
+  /// minutes and on disk until its chunks land.
+  bool held = false;
 
   /// When the sender says they sent it — their signed timestamp, not the
   /// moment the last chunk landed. A photo over Bluetooth finishes arriving

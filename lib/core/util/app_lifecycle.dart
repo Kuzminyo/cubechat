@@ -17,6 +17,14 @@ class AppLifecycle {
   /// pre-warmed headless in MainApplication, so until an Activity resumes we
   /// are NOT in the foreground.
   bool _observed = false;
+  bool _hasBeenForeground = false;
+
+  /// Whether an Activity has reached resumed at least once in this process.
+  ///
+  /// Unlike [isForeground], this does not consult WidgetsBinding and is safe
+  /// for headless startup and plain controller tests. Location uses it only to
+  /// avoid its first foreground-service promotion before Android allows one.
+  bool get hasBeenForeground => _hasBeenForeground;
 
   /// True while the app is on screen.
   ///
@@ -39,6 +47,7 @@ class AppLifecycle {
 
   set isForeground(bool value) {
     _observed = value;
+    if (value) _hasBeenForeground = true;
     _tellTheDoorbell(value);
   }
 

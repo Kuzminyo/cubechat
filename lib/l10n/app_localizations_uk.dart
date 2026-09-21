@@ -91,16 +91,6 @@ class AppLocalizationsUk extends AppLocalizations {
       'Xiaomi, Redmi і Poco не дають застосункам вмикати це самим: увімкніть «Показувати на екрані блокування» в розділі «Інші дозволи».';
 
   @override
-  String get callFullScreenAllow => 'Дозволити';
-
-  @override
-  String get callFullScreenLater => 'Не зараз';
-
-  @override
-  String get callFullScreenAfterUpdate =>
-      'Android вимикає цей дозвіл після кожного оновлення застосунку, встановленого не з Google Play, тому після оновлення ми питаємо знову.';
-
-  @override
   String get circleMessage => 'Відеоповідомлення';
 
   @override
@@ -3142,6 +3132,9 @@ class AppLocalizationsUk extends AppLocalizations {
       'Цей телефон не може розпізнати це повідомлення.';
 
   @override
+  String get chatTranscribing => 'Розпізнаю…';
+
+  @override
   String get chatTranslateAction => 'Перекласти';
 
   @override
@@ -3153,5 +3146,21 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get customizeDeferMediaHint =>
-      'Через мобільний інтернет повідомлення надходять як завжди, а фото, відео й файли чекають. Торкніться файла, щоб завантажити всі очікувані медіа зараз.';
+      'Через мобільний інтернет повідомлення й дзвінки працюють як завжди, а фото, голосові, кружки й файли чекають Wi-Fi на сервері — до двох тижнів. Рядок над чатами показує, що чекає, і завантажує це одразу.';
+
+  @override
+  String heldMediaCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count медіа чекають Wi-Fi',
+      many: '$count медіа чекають Wi-Fi',
+      few: '$count медіа чекають Wi-Fi',
+      one: '1 медіа чекає Wi-Fi',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get heldMediaDownload => 'Завантажити';
 }

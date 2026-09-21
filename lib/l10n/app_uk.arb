@@ -25,9 +25,6 @@
 "callFullScreenTitle": "Дзвінки на екрані блокування",
 "callFullScreenBody": "Дозвольте показувати вхідний дзвінок на заблокованому екрані, щоб відповідати без розблокування.",
 "callFullScreenXiaomi": "Xiaomi, Redmi і Poco не дають застосункам вмикати це самим: увімкніть «Показувати на екрані блокування» в розділі «Інші дозволи».",
-"callFullScreenAllow": "Дозволити",
-"callFullScreenLater": "Не зараз",
-"callFullScreenAfterUpdate": "Android вимикає цей дозвіл після кожного оновлення застосунку, встановленого не з Google Play, тому після оновлення ми питаємо знову.",
   "circleMessage": "Відеоповідомлення",
     "@@locale":  "uk",
     "appName":  "Cubechat",
@@ -1133,8 +1130,11 @@
   "chatSharedWallpaperFailed": "Шпалери встановлено тут. Співрозмовник отримає їх, коли буде поруч.",
   "chatTranscribeAction": "Розпізнати голос",
   "chatTranscribeFailed": "Цей телефон не може розпізнати це повідомлення.",
+  "chatTranscribing": "Розпізнаю…",
   "chatTranslateAction": "Перекласти",
   "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні.",
   "customizeDeferMediaTitle": "Чекати Wi-Fi для завантаження медіа",
-  "customizeDeferMediaHint": "Через мобільний інтернет повідомлення надходять як завжди, а фото, відео й файли чекають. Торкніться файла, щоб завантажити всі очікувані медіа зараз."
+  "customizeDeferMediaHint": "Через мобільний інтернет повідомлення й дзвінки працюють як завжди, а фото, голосові, кружки й файли чекають Wi-Fi на сервері — до двох тижнів. Рядок над чатами показує, що чекає, і завантажує це одразу.",
+  "heldMediaCount": "{count, plural, =1{1 медіа чекає Wi-Fi} few{{count} медіа чекають Wi-Fi} many{{count} медіа чекають Wi-Fi} other{{count} медіа чекають Wi-Fi}}",
+  "heldMediaDownload": "Завантажити"
 }

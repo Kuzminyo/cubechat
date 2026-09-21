@@ -992,11 +992,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     }
   }
 
-  Widget _transcriptionButton() => TranscriptionButton(
+  Widget _transcriptionButton({bool circle = false, String? transcript}) =>
+      TranscriptionButton(
         loading: _transcribing,
         onPressed: MediaPaths.existsOrNull(widget.message.voiceNotePath)
             ? _transcribeVoice
             : null,
+        circle: circle,
+        // Beside a circle it leaves once tapped and stays gone while the text
+        // is there; a failure brings it back to be tried again.
+        hidden: circle && (_transcribing || transcript != null),
+        flyLeft: widget.message.isMine,
       );
 
   /// Keep a copy of this message in Saved.
@@ -1727,8 +1733,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       VideoBubble(
                         message: message,
                         chatId: widget.chatId,
-                        transcriptionButton:
-                            circle ? _transcriptionButton() : null,
+                        transcriptionButton: circle
+                            ? _transcriptionButton(
+                                circle: true,
+                                transcript: transcript,
+                              )
+                            : null,
                       ),
                       if (metaOnMedia)
                         Positioned(
@@ -1854,6 +1864,34 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       3 => 32,
                       _ => null,
                     },
+                  ),
+                // The circle's button has flown off by now, so the wait is
+                // shown where the text is about to land. A voice note keeps
+                // its spinner in the button, which stays.
+                if (circle && _transcribing && transcript == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.6,
+                            color: AppColors.textOnGlassDim,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppLocalizations.of(context).chatTranscribing,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textOnGlassDim,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 if (message.isVoiceNote &&
                     (transcript != null || _transcriptionFailed))

@@ -864,6 +864,40 @@ void main() {
     });
 
     test(
+        'the caller can put the ringing on the speaker before anybody '
+        'answers, and it stays there once they do', () async {
+      await call.dial('peer');
+      receive(CallSignal.ringing(dialledId()));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.ringing);
+      expect(call.canUseSpeaker, isTrue);
+
+      await call.toggleSpeaker();
+      expect(call.speakerOn, isTrue);
+      expect(media.speaker.last, isTrue,
+          reason: 'the ringback follows the call route on Android');
+
+      // The fake connects as the answer is applied.
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.talking);
+      expect(call.speakerOn, isTrue);
+      expect(media.speaker.last, isTrue,
+          reason: 'connecting re-applies the route the button shows');
+      call.hangUp();
+    });
+
+    test('not while a call only rings here', () async {
+      receive(inviteFor(id(22)));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.incoming);
+      expect(call.canUseSpeaker, isFalse);
+      await call.toggleSpeaker();
+      expect(call.speakerOn, isFalse);
+      call.decline();
+    });
+
+    test(
         'a Bluetooth headset is chosen by name, and the speaker switch goes '
         'off', () async {
       const headset = CallAudioRoute(

@@ -90,22 +90,42 @@ void main() {
       final button = find.byType(TranscriptionButton);
       expect(button, findsOneWidget);
       final rect = tester.getRect(button);
-      expect(rect.size, const Size(44, 44));
       expect(tester.takeException(), isNull);
       final media =
           tester.getRect(find.byType(circle ? VideoBubble : VoiceBubble));
       expect(rect.right, lessThanOrEqualTo(media.right));
       if (circle) {
-        expect(media.size, const Size(200, 200));
+        expect(rect.size, const Size(44, 44));
+        // Beside the 200-point circle, not on it: ours, so on its left, low
+        // down, with six points between.
+        expect(media.size, const Size(250, 200));
+        expect(rect.left, media.left);
         expect(rect.bottom, media.bottom);
-        expect((rect.center - media.center).distance, greaterThan(100));
       } else {
+        // A slot as tall as the play button, and on its centre line.
+        expect(rect.size, const Size(36, 36));
+        final play = tester.getRect(find.byIcon(Icons.play_arrow_rounded));
+        expect((rect.center.dy - play.center.dy).abs(), lessThan(0.5));
         expect(rect.left, greaterThan(media.center.dx));
       }
       await tester.tap(button);
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      await tester.tap(button);
+      if (circle) {
+        // Gone: slid out to the left of our circle and faded.
+        await tester.pump(const Duration(milliseconds: 500));
+        final opacity = tester.widget<AnimatedOpacity>(find.descendant(
+          of: button,
+          matching: find.byType(AnimatedOpacity),
+        ));
+        expect(opacity.opacity, 0);
+        final drawn = tester.getRect(
+          find.descendant(of: button, matching: find.byType(Tooltip)),
+        );
+        expect(drawn.left, lessThan(rect.left - 40));
+      } else {
+        await tester.tap(button);
+      }
       expect(controller.calls, 1);
       expect(controller.path, path);
       controller.pending.complete('Recognized words');

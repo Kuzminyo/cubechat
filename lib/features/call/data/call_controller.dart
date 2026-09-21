@@ -601,6 +601,12 @@ class CallController extends ChangeNotifier {
     if (micMuted) {
       unawaited(media.setMuted(true).catchError((Object _) {}));
     }
+    // Put on the speaker before there was audio to put there.
+    if (speakerOn) {
+      unawaited(media.setSpeaker(true).catchError((Object error) {
+        _log('could not start on the speaker: $error');
+      }));
+    }
     _mediaEvents = media.events.listen((event) {
       if (!_current(generation)) return;
       _log('media ${event.name}');
@@ -948,9 +954,7 @@ class CallController extends ChangeNotifier {
 
   Future<void> selectAudioRoute(CallAudioRoute route) async {
     final media = _media;
-    if (media == null || !_machine.isLive || phase == CallPhase.incoming) {
-      return;
-    }
+    if (media == null || !_machine.isLive || !canUseSpeaker) return;
     try {
       await media.selectRoute(route);
       if (_disposed || !identical(media, _media)) return;
@@ -964,14 +968,36 @@ class CallController extends ChangeNotifier {
     }
   }
 
+  /// Whether the speaker switch means anything yet: from the moment this
+  /// phone places a call, as a dialler's does, so the ringing can go on the
+  /// loudspeaker — "когда только звонок начинается, сразу на динамик, и
+  /// гудки на динамик" was the ask. Android's ringback is a `ToneGenerator`
+  /// on the voice-call stream (`CallRinger.kt`), which follows the call's
+  /// route, so moving the call to the speaker moves the tones with it. Not
+  /// while a call only rings here: that is the phone's ringtone, not ours.
+  bool get canUseSpeaker =>
+      phase == CallPhase.dialing ||
+      phase == CallPhase.ringing ||
+      phase == CallPhase.connecting ||
+      phase == CallPhase.talking;
+
   Future<void> toggleSpeaker() async {
-    if (_media == null || _changingSpeaker) return;
-    if (phase != CallPhase.talking && phase != CallPhase.connecting) return;
+    if (_changingSpeaker || !canUseSpeaker) return;
+    final next = !speakerOn;
+    final media = _media;
+    if (media == null) {
+      // Still opening the microphone: remembered, and applied as the audio
+      // comes up — in [_prepare], and again once connected.
+      speakerOn = next;
+      audioRoute = null;
+      _selectedAudioRouteId = null;
+      _changed();
+      return;
+    }
     _changingSpeaker = true;
     final generation = _generation;
-    final next = !speakerOn;
     try {
-      await _media!.setSpeaker(next);
+      await media.setSpeaker(next);
       if (!_current(generation)) return;
       speakerOn = next;
       audioRoute = null;

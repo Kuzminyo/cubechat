@@ -6,7 +6,6 @@ import '../../../core/theme/colors.dart';
 import '../../../core/util/motion.dart';
 import '../../../core/widgets/bar_glass.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../../core/util/platform_info.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import '../data/call_controller.dart';
 import '../data/call_media.dart';
@@ -129,7 +128,8 @@ class _CallHostState extends ConsumerState<CallHost>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     ref.read(callControllerProvider).noteLifecycle(state);
-    // Back from the system settings the call screen sent somebody to.
+    // Back from the system settings the Profile switch sent somebody to: the
+    // only way that answer changes is out there, so it is read again here.
     if (state == AppLifecycleState.resumed) {
       unawaited(ref.read(callScreenAccessProvider.notifier).refresh());
     }
@@ -227,8 +227,8 @@ class _CallHostState extends ConsumerState<CallHost>
       );
     }
     final screen = _leaving;
-    final onScreen =
-        screen != null && (expanded || _sheet.status != AnimationStatus.dismissed);
+    final onScreen = screen != null &&
+        (expanded || _sheet.status != AnimationStatus.dismissed);
 
     final media = MediaQuery.of(context);
     return Stack(children: [
@@ -509,14 +509,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final talking = call.phase == CallPhase.talking;
-    final connecting = call.phase == CallPhase.connecting;
     final incoming = call.phase == CallPhase.incoming && !call.preparing;
-    final access = ref.watch(callScreenAccessProvider);
-    // Not over an incoming call: the answer button is what that screen is for.
-    final askForScreen = PlatformInfo.isAndroid &&
-        !access.complete &&
-        !incoming &&
-        !ref.watch(callScreenAccessDismissedProvider);
     final status = call.preparing
         ? t.callPreparing
         : switch (call.phase) {
@@ -535,7 +528,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 _ => t.callEnded,
               },
           };
-    if (_routesOpen && !(talking || connecting)) _routesOpen = false;
+    if (_routesOpen && !call.canUseSpeaker) _routesOpen = false;
 
     final route = _route;
     final routeName = switch (route) {
@@ -564,7 +557,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           () => unawaited(call.toggleMute()),
           selected: call.micMuted,
         ),
-      if (talking || connecting)
+      // From the moment this phone dials, not only once the other side
+      // answers: the ringing can go on the loudspeaker too.
+      if (call.canUseSpeaker)
         _control(
           routeIcon(route),
           call.hasHeadsetRoute ? routeName : t.callSpeaker,
@@ -679,19 +674,6 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         ),
                         Column(
                           children: [
-                            if (askForScreen) ...[
-                              _ScreenAccessBanner(
-                                access: access,
-                                onAllow: () => unawaited(ref
-                                    .read(callScreenAccessProvider.notifier)
-                                    .openSettings()),
-                                onLater: () => ref
-                                    .read(callScreenAccessDismissedProvider
-                                        .notifier)
-                                    .state = true,
-                              ),
-                              const SizedBox(height: 24),
-                            ],
                             Row(
                               children: [
                                 for (final control in controls)
@@ -737,8 +719,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     bool selected = false,
     Color? tone,
   }) {
-    final background = tone ??
-        (selected ? AppColors.brandPrimary : AppColors.glassFillStrong);
+    final background =
+        tone ?? (selected ? AppColors.brandPrimary : AppColors.glassFillStrong);
     final foreground = tone != null
         ? Colors.white
         : selected
@@ -873,74 +855,6 @@ class _RoutePicker extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Why the next call to this phone may arrive as a banner, and the button that
-/// fixes it. Shown on the call screen because that is where somebody has just
-/// learned what a call looks like here.
-class _ScreenAccessBanner extends StatelessWidget {
-  const _ScreenAccessBanner({
-    required this.access,
-    required this.onAllow,
-    required this.onLater,
-  });
-
-  final CallScreenAccess access;
-  final VoidCallback onAllow;
-  final VoidCallback onLater;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      decoration: BoxDecoration(
-        color: AppColors.glassFillStrong,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.fullscreen_rounded, color: AppColors.brandPrimary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  t.callFullScreenTitle,
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            access.xiaomi
-                ? '${t.callFullScreenBody} ${t.callFullScreenXiaomi}'
-                : t.callFullScreenBody,
-            style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(onPressed: onLater, child: Text(t.callFullScreenLater)),
-              TextButton(
-                onPressed: onAllow,
-                child: Text(
-                  t.callFullScreenAllow,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

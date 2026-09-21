@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -537,6 +538,8 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         builder: (_) => GalleryViewer(
           assets: _assets,
           initialIndex: index,
+          totalCount: _total,
+          onLoadMore: _loadMore,
           isSelected: (asset) => _selectedOrder.containsKey(asset.id),
           orderOf: (asset) => _orderOf(asset) + 1,
           onToggle: _toggle,
@@ -1110,25 +1113,87 @@ int _decodeWidthFor(BuildContext context) {
   return cell.clamp(80, 240).round();
 }
 
+/// Thumbnails already asked for, by asset id, newest last.
+///
+/// A cell scrolled out past the cache extent is disposed, and scrolling back
+/// used to ask the media store for the same 240 px picture again — a platform
+/// call, a JPEG encode on the other side and a decode on this one, for a tile
+/// that had been on screen a second earlier. Holding the bytes also keeps the
+/// same [Uint8List] instance, which is what lets [Image.memory] find its
+/// decoded frame in the image cache instead of decoding again. A few hundred
+/// thumbnails of 240 px is a few megabytes.
+final Map<String, Future<Uint8List?>> _thumbCache = {};
+const int _thumbCacheSize = 360;
+
+Future<Uint8List?>? _cachedThumb(String id) {
+  final hit = _thumbCache.remove(id);
+  if (hit != null) _thumbCache[id] = hit;
+  return hit;
+}
+
+Future<Uint8List?> _fetchThumb(AssetEntity asset) {
+  final future = asset.thumbnailDataWithSize(const ThumbnailSize.square(240));
+  _thumbCache[asset.id] = future;
+  while (_thumbCache.length > _thumbCacheSize) {
+    _thumbCache.remove(_thumbCache.keys.first);
+  }
+  return future;
+}
+
 class _ThumbState extends State<_Thumb> {
   /// Started once and held, rather than created in build(): selecting a photo
   /// setStates the whole sheet, and a future built inline would re-decode every
   /// visible thumbnail on each tap.
-  late Future<Uint8List?> _thumb =
-      widget.asset.thumbnailDataWithSize(const ThumbnailSize.square(240));
+  Future<Uint8List?>? _thumb;
+
+  bool _recheckScheduled = false;
 
   @override
   void didUpdateWidget(covariant _Thumb old) {
     super.didUpdateWidget(old);
     if (old.asset.id != widget.asset.id) {
-      _thumb =
-          widget.asset.thumbnailDataWithSize(const ThumbnailSize.square(240));
+      _thumb = null;
     }
+  }
+
+  /// Look again next frame, until the fling that deferred this cell is over.
+  ///
+  /// Deferring in build() alone left a hole: nothing rebuilds a cell when the
+  /// scroll slows, so a tile passed over during a fling stayed an empty
+  /// square once the grid came to rest. The same loop
+  /// `ScrollAwareImageProvider` runs for network images.
+  void _recheckAfterFling() {
+    if (_recheckScheduled) return;
+    _recheckScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _recheckScheduled = false;
+      if (!mounted || _thumb != null) return;
+      if (Scrollable.recommendDeferredLoadingForContext(context)) {
+        _recheckAfterFling();
+        return;
+      }
+      setState(() {});
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final selected = widget.order >= 0;
+    // Flutter knows when this cell is racing through the viewport during a
+    // fling. Starting a platform thumbnail request then makes the media store
+    // decode a picture that is gone before it arrives; a long fling can queue
+    // dozens of those. Not measured on its own yet — it is the standard answer
+    // for a grid of 6,500 pictures, and the Diagnostics panel is what should
+    // confirm it. A thumbnail already fetched costs nothing and is shown at
+    // once; a new one waits until the scroll slows.
+    _thumb ??= _cachedThumb(widget.asset.id);
+    if (_thumb == null) {
+      if (Scrollable.recommendDeferredLoadingForContext(context)) {
+        _recheckAfterFling();
+      } else {
+        _thumb = _fetchThumb(widget.asset);
+      }
+    }
     return GestureDetector(
       onTap: widget.onTap,
       child: Stack(

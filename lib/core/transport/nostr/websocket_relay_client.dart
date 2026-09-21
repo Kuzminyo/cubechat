@@ -84,7 +84,12 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
         _onWatermark = onWatermark,
-        _mediaWatermark = mediaSinceSeconds,
+        // Seeded from the pool's own mark the first time. With nothing
+        // stored the media relays were asked with no `since` at all — the
+        // first launch of the build that split the lanes would have pulled
+        // every event the two public media relays still hold for us, weeks of
+        // old chunks, on whatever network the phone happened to be on.
+        _mediaWatermark = mediaSinceSeconds ?? sinceSeconds,
         _onMediaWatermark = onMediaWatermark,
         _onSeenIds = onSeenIds,
         _publishAckTimeout = publishAckTimeout ?? defaultPublishAckTimeout {
@@ -220,7 +225,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     );
   }
 
-  @visibleForTesting
+  /// False while the media-only relays are held back on a metered network.
   bool get mediaSubscriptionsEnabled => _mediaSubscriptionsEnabled;
 
   bool _shouldSubscribe(String url) =>

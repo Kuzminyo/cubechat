@@ -254,24 +254,6 @@ abstract class AppLocalizations {
   /// **'Xiaomi, Redmi and Poco do not let apps turn this on themselves: turn on “Show on lock screen” under Other permissions.'**
   String get callFullScreenXiaomi;
 
-  /// No description provided for @callFullScreenAllow.
-  ///
-  /// In en, this message translates to:
-  /// **'Allow'**
-  String get callFullScreenAllow;
-
-  /// No description provided for @callFullScreenLater.
-  ///
-  /// In en, this message translates to:
-  /// **'Not now'**
-  String get callFullScreenLater;
-
-  /// No description provided for @callFullScreenAfterUpdate.
-  ///
-  /// In en, this message translates to:
-  /// **'Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.'**
-  String get callFullScreenAfterUpdate;
-
   /// No description provided for @circleMessage.
   ///
   /// In en, this message translates to:
@@ -5426,6 +5408,12 @@ abstract class AppLocalizations {
   /// **'This phone cannot transcribe that one.'**
   String get chatTranscribeFailed;
 
+  /// Under a round video message while its speech is being turned into text on the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'Recognising…'**
+  String get chatTranscribing;
+
   /// No description provided for @chatTranslateAction.
   ///
   /// In en, this message translates to:
@@ -5447,8 +5435,20 @@ abstract class AppLocalizations {
   /// No description provided for @customizeDeferMediaHint.
   ///
   /// In en, this message translates to:
-  /// **'On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now.'**
+  /// **'On mobile data, texts and calls work as usual, while photos, voice notes, video messages and files wait on the server for Wi-Fi — up to two weeks. A row above the chats shows what is waiting and downloads it now.'**
   String get customizeDeferMediaHint;
+
+  /// Row above the chat list while 'wait for Wi-Fi' holds photos, voice notes, circles or files on the relay.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 media waiting for Wi-Fi} other{{count} media waiting for Wi-Fi}}'**
+  String heldMediaCount(int count);
+
+  /// Button on the waiting-media row: fetch everything held, over the current mobile connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get heldMediaDownload;
 }
 
 class _AppLocalizationsDelegate

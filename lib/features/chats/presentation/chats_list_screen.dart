@@ -20,8 +20,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
-import '../../../core/widgets/glass_sheet.dart';
-import '../../call/data/call_screen_access.dart';
+import '../../chat/presentation/widgets/held_media_entry.dart';
 import '../../chat/presentation/widgets/send_queue_sheet.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -314,8 +313,7 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
     // Map beacons are not conversation, so they must not be what a tile says
     // the conversation last was. New ones never reach history at all; this
     // skips the ones an older build already filed there.
-    final last =
-        msgs != null ? lastVisibleMessage(msgs) : summary?.last;
+    final last = msgs != null ? lastVisibleMessage(msgs) : summary?.last;
     final unread = msgs != null
         ? unreadMessageCount(msgs, readMarkers[peer.pubkeyHex])
         : summary?.unreadAfter(readMarkers[peer.pubkeyHex]) ?? 0;
@@ -677,76 +675,6 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
   int? _publishedStops;
   int? _publishedIndex;
 
-  bool _askedCallScreen = false;
-
-  /// The one question: turn it back on, or not now. Either way it is not
-  /// asked again until an update takes it away again.
-  Future<void> _askCallScreenBack(CallScreenAccess access) async {
-    final t = AppLocalizations.of(context);
-    final notifier = ref.read(callScreenAccessProvider.notifier);
-    final allow = await showGlassSheet<bool>(
-      context: context,
-      builder: (sheet) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.fullscreen_rounded,
-                    color: AppColors.brandPrimary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      t.callFullScreenTitle,
-                      style: AppTypography.heading(
-                        size: 18,
-                        color: AppColors.textOnGlass,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                [
-                  t.callFullScreenBody,
-                  if (access.xiaomi) t.callFullScreenXiaomi,
-                  t.callFullScreenAfterUpdate,
-                ].join(' '),
-                style: AppTypography.supporting,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(sheet).pop(false),
-                      child: Text(t.callFullScreenLater),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(sheet).pop(true),
-                      child: Text(t.callFullScreenAllow),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await notifier.acknowledgeAsked();
-    if (allow == true) await notifier.openSettings();
-  }
-
   void _goToStop(List<_FolderStop> stops, int to) {
     if (to < 0 || to >= stops.length) return;
     final stop = stops[to];
@@ -1033,16 +961,6 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
     _shownStop = currentStop;
 
     final selection = ref.watch(chatSelectionProvider);
-    // Calls over the lock screen, lost to an update or never asked about. Here
-    // because this is the screen every launch lands on; once per run, and the
-    // controller remembers the answer beyond that.
-    ref.listen<CallScreenAccess>(callScreenAccessProvider, (_, next) {
-      if (!next.worthAsking || _askedCallScreen) return;
-      _askedCallScreen = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_askCallScreenBack(next));
-      });
-    });
     // Outside build, so nothing is started while the tree is being built.
     ref.listen<Set<String>>(chatSelectionProvider, (previous, next) {
       final wasSelecting = previous?.isNotEmpty ?? false;
@@ -1283,6 +1201,8 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                 // Nothing at all when nothing is waiting.
                 if (query.isEmpty)
                   const SliverToBoxAdapter(child: SendQueueEntry()),
+                if (query.isEmpty)
+                  const SliverToBoxAdapter(child: HeldMediaEntry()),
                 if (query.isEmpty && folder == null && userFolder == null)
                   const SliverToBoxAdapter(child: _ArchiveEntry()),
                 if (filtered.isEmpty)
@@ -3360,7 +3280,8 @@ void _holdDeletes(
       for (final chat in chats) {
         pending.undo(chat.id);
       }
-      DebugLog.instance.log('CHAT', 'delete undone for ${chats.length} chat(s)');
+      DebugLog.instance
+          .log('CHAT', 'delete undone for ${chats.length} chat(s)');
     },
     onExpire: () {
       for (final chat in chats) {
