@@ -38,6 +38,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     required List<String> relayUrls,
     NostrEventSigner? authSigner,
     Future<bool> Function(NostrEvent)? verifyInbound,
+    List<String> conversationRelayUrls = const <String>[],
     List<String> mediaRelayUrls = const <String>[],
     List<String> locationRelayUrls = const <String>[],
     WebSocketChannel Function(Uri)? connect,
@@ -53,11 +54,21 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         _urls = List.unmodifiable(
           <String>{
             ...relayUrls,
+            ...conversationRelayUrls,
             ...mediaRelayUrls,
             ...locationRelayUrls,
           }.toList(),
         ),
+        // Conversation had no lane of its own, and a lane that is not
+        // configured means "every open relay" — so every text, receipt and
+        // presence beacon was written to all eight sockets, media and map
+        // included. A field log from 2026-09-16 had 192 beacons in 19 minutes
+        // each written eight times, and all 54 `rate limited` refusals in it
+        // came from `nostr.oxtr.dev`: a media relay, refusing traffic it was
+        // never meant to carry. Empty still means the old behaviour.
         _lanes = Map.unmodifiable(<RelayLane, Set<String>>{
+          if (conversationRelayUrls.isNotEmpty)
+            RelayLane.conversation: conversationRelayUrls.toSet(),
           RelayLane.media: mediaRelayUrls.toSet(),
           RelayLane.location: locationRelayUrls.toSet(),
         }),
@@ -247,10 +258,19 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     final preferred = wanted.isEmpty
         ? const <_RelayConnection>[]
         : open.where((c) => wanted.contains(c.url)).toList();
-    final targets = preferred.isNotEmpty ? preferred : open;
-    if (targets.isEmpty) {
+    final inLane = preferred.isNotEmpty ? preferred : open;
+    if (inLane.isEmpty) {
       throw StateError('no relay connected (${_urls.length} configured)');
     }
+    // Leave out a relay that has just told us to slow down, while another in
+    // the lane can carry this. Writing to it again is what it asked us not to
+    // do, and it answers by refusing — the same 2026-09-16 log had one relay
+    // refuse 54 times in 19 minutes, each refusal a write the radio paid for.
+    // Never at the price of the event: if every relay here is pausing, it
+    // goes to all of them anyway.
+    final now = DateTime.now();
+    final willing = inLane.where((c) => !_isPausing(c.url, now)).toList();
+    final targets = willing.isNotEmpty ? willing : inLane;
     final id = event.id;
     final payload = NostrRelayProtocol.event(event);
     var receipt = await _publishTo(targets, id, payload);
@@ -339,6 +359,41 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// Route an `OK` back to whoever is waiting on that event id.
   void _onOk(String eventId, bool accepted, String message) {
     _pending[eventId]?.record(accepted: accepted, message: message);
+  }
+
+  /// How long a relay that refused us for rate is left alone. A little over
+  /// two presence heartbeats — see `MessagingService.presenceHeartbeat` — so
+  /// the rounds it would have refused are the rounds it does not get.
+  static const Duration rateLimitPause = Duration(seconds: 60);
+
+  final Map<String, DateTime> _pausedUntil = <String, DateTime>{};
+
+  bool _isPausing(String url, DateTime now) {
+    final until = _pausedUntil[url];
+    if (until == null) return false;
+    if (now.isBefore(until)) return true;
+    _pausedUntil.remove(url);
+    return false;
+  }
+
+  /// A refusal that means "too often", as NIP-01 spells it (`rate-limited:`)
+  /// and as relays actually word it (`rate limited`).
+  @visibleForTesting
+  static bool isRateLimit(String message) {
+    final m = message.toLowerCase();
+    return m.contains('rate-limited') || m.contains('rate limited');
+  }
+
+  void _noteRateLimited(String url) {
+    final already = _isPausing(url, DateTime.now());
+    _pausedUntil[url] = DateTime.now().add(rateLimitPause);
+    if (!already) {
+      DebugLog.instance.log(
+        'NOSTR',
+        '$url asked us to slow down — leaving it out for '
+            '${rateLimitPause.inSeconds} s while the others carry it',
+      );
+    }
   }
 
   @override
@@ -764,6 +819,9 @@ class _RelayConnection {
         }
         if (!accepted) {
           DebugLog.instance.log('NOSTR', '$url rejected publish: $message');
+          if (WebSocketNostrRelayClient.isRateLimit(message)) {
+            _pool._noteRateLimited(url);
+          }
         }
         _pool._onOk(eventId, accepted, message);
       case RelayAuth(:final challenge):

@@ -420,6 +420,138 @@ void main() {
       // Waiting for it is what made a file pay the slowest relay's round trip
       // on every one of its chunks.
     });
+
+    Future<void> allUp(WebSocketNostrRelayClient client, int n) => _until(
+          () =>
+              client.states.values
+                  .where((s) => s == RelayState.connected)
+                  .length ==
+              n,
+          reason: '$n relays connected',
+        );
+
+    test('a conversation event goes to the conversation lane, not everywhere',
+        () async {
+      // A field log from 2026-09-16: 192 presence beacons in 19 minutes, each
+      // written to all eight relays — media and map included — because
+      // conversation had no lane and no lane means every open socket.
+      final talk = await _FakeRelayServer.start();
+      final meet = await _FakeRelayServer.start();
+      final media = await _FakeRelayServer.start();
+      final map = await _FakeRelayServer.start();
+      for (final r in [talk, meet, media, map]) {
+        addTearDown(r.stop);
+      }
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [talk.url],
+        conversationRelayUrls: [talk.url, meet.url],
+        mediaRelayUrls: [meet.url, media.url],
+        locationRelayUrls: [map.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await allUp(client, 4);
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+
+      expect(receipt.sentTo, 2);
+      expect(talk.received, hasLength(1));
+      expect(meet.received, hasLength(1));
+      expect(media.received, isEmpty, reason: 'a text is not a media chunk');
+      expect(map.received, isEmpty, reason: 'nor a map beacon');
+    });
+
+    test('with no conversation lane it still reaches every relay', () async {
+      // The old shape, kept for anything that builds a pool without lanes.
+      final a = await _FakeRelayServer.start();
+      final b = await _FakeRelayServer.start();
+      addTearDown(a.stop);
+      addTearDown(b.stop);
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [a.url],
+        mediaRelayUrls: [b.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await allUp(client, 2);
+
+      final receipt = await NostrTransport(signer: signer, relay: client)
+          .sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+      expect(receipt.sentTo, 2);
+    });
+
+    test('a relay that says "too often" is left out while others carry it',
+        () async {
+      final busy = await _FakeRelayServer.start();
+      final calm = await _FakeRelayServer.start();
+      addTearDown(busy.stop);
+      addTearDown(calm.stop);
+      busy.okAnswer = false; // 'rate-limited: you are noting too much'
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [busy.url, calm.url],
+        conversationRelayUrls: [busy.url, calm.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await allUp(client, 2);
+      final transport = NostrTransport(signer: signer, relay: client);
+
+      await transport.sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+      // The refusal can land after the first acceptance settled the publish.
+      await _until(() => busy.received.isNotEmpty, reason: 'first write');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      await transport.sendFrame(recipientNpubHex: 'cd' * 32, frameBytes: frame);
+      await transport.sendFrame(recipientNpubHex: 'ef' * 32, frameBytes: frame);
+
+      expect(busy.received, hasLength(1),
+          reason: 'it asked us to slow down; the next writes are its to skip');
+      expect(calm.received, hasLength(3));
+    });
+
+    test('a pause never costs the event: alone, the busy relay still gets it',
+        () async {
+      final busy = await _FakeRelayServer.start();
+      addTearDown(busy.stop);
+      busy.okAnswer = false;
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [busy.url],
+        conversationRelayUrls: [busy.url],
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+      final transport = NostrTransport(signer: signer, relay: client);
+
+      await transport.sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await transport.sendFrame(recipientNpubHex: 'cd' * 32, frameBytes: frame);
+
+      expect(busy.received, hasLength(2));
+    });
+
+    test('both ways relays word it count as a rate limit', () {
+      expect(
+        WebSocketNostrRelayClient.isRateLimit(
+          'rate-limited: you are noting too much',
+        ),
+        isTrue,
+      );
+      expect(WebSocketNostrRelayClient.isRateLimit('rate limited'), isTrue);
+      expect(
+        WebSocketNostrRelayClient.isRateLimit('blocked: not on the whitelist'),
+        isFalse,
+      );
+    });
   });
 
   test('publishes a signed frame event the relay receives', () async {

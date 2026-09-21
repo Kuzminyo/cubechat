@@ -99,6 +99,18 @@ class RelaySettings {
   /// what any relay sees is a ciphertext, a recipient tag and a time. Moving
   /// the lane to our own machine means we see that instead of a stranger, not
   /// as well as — one fewer observer, and the one that is left is us.
+  /// The one relay every build with lanes listens on, whatever its settings.
+  ///
+  /// Conversation traffic goes to the conversation relays — which are the
+  /// user's to edit — and to this. Without it, two people who had each edited
+  /// their list to relays the other does not use would stop hearing each
+  /// other: until conversation had a lane of its own everything was written to
+  /// every relay, media and map included, and those lists are fixed, so that
+  /// overlap was carrying them by accident. This keeps it on purpose, at one
+  /// write instead of five. It is ours, first in [defaultMediaUrls], so the
+  /// limits it applies are ours to set.
+  static const meetingPointUrl = 'wss://relay.cubechat.tech';
+
   static const defaultMediaUrls = <String>[
     'wss://relay.cubechat.tech',
     'wss://relay.snort.social',

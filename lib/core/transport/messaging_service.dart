@@ -635,6 +635,13 @@ class MessagingService {
       final seen = await _relayWatermark.loadSeenIds();
       final client = WebSocketNostrRelayClient(
         relayUrls: settings.urls,
+        // Where a text, a receipt and a presence beacon go: this person's own
+        // relays, and the one every phone listens on. See
+        // [RelaySettings.meetingPointUrl] for why the second is not optional.
+        conversationRelayUrls: <String>{
+          ...settings.urls,
+          RelaySettings.meetingPointUrl,
+        }.toList(),
         authSigner: signer,
         // Subscribed to like any other — see [RelayLane]. Only *publishing* is
         // split, so a chunk or a beacon never lands somewhere the recipient is

@@ -39,6 +39,32 @@ void main() {
               'same problem between two things nobody is reading');
     });
 
+    test('the meeting point is ours, and everyone listens on it', () {
+      // Conversation goes to the user's own relays and to this one. It is the
+      // single deliberate exception to "no relay serves two lanes", and it
+      // holds only while both of these do:
+      //
+      //  * it is in the fixed media list, which no setting can edit — so every
+      //    phone subscribes to it and two people with different hand-edited
+      //    relay lists still hear each other;
+      //  * it is our own relay, whose limits we set. The rule above is about
+      //    public relays that throttle a whole connection for a burst; ours
+      //    does not have to.
+      //
+      // Before conversation had a lane it was written to all three media
+      // relays. One, ours, is the overlap that is left.
+      expect(
+        RelaySettings.defaultMediaUrls,
+        contains(RelaySettings.meetingPointUrl),
+      );
+      expect(Uri.parse(RelaySettings.meetingPointUrl).host,
+          endsWith('cubechat.tech'));
+      expect(RelaySettings.defaultUrls,
+          isNot(contains(RelaySettings.meetingPointUrl)),
+          reason: 'a default list that already held it would make it look '
+              'like an ordinary conversation relay, and it is not one');
+    });
+
     test('each lane has more than one relay', () {
       // A lane of one is a lane that goes away when that operator does.
       expect(RelaySettings.defaultMediaUrls.length, greaterThan(1));
@@ -68,6 +94,7 @@ void main() {
       // recipient does not read never arrives. This is the line that stops
       // that, and it is the one most likely to be "tidied" away.
       expect(pool, contains('...mediaRelayUrls'));
+      expect(pool, contains('...conversationRelayUrls'));
       expect(pool, contains('...locationRelayUrls'));
     });
 
