@@ -21,8 +21,11 @@ powershell -ExecutionPolicy Bypass -File tool/build_apk.ps1    # Windows
 ```
 
 Flags are the same idea on both — `--clean` / `-Clean`, `--skip-pub-get` /
-`-SkipPubGet`, `--bundle` / `-Bundle` for the AAB Play requires. The bash one
-adds `--arm64`, which is a third the size and what testers are actually handed.
+`-SkipPubGet`, `--bundle` / `-Bundle` for the AAB Play requires, and `--arm64` /
+`-Arm64`, which is a third the size and what testers are actually handed. The
+universal APK also carries x86_64, which is emulators only: on build 1091 that
+was ~60 MB of the 184 MB unpacked, loaded by no phone. An arm64 build is named
+`...-arm64.apk`, so the two cannot be mistaken for each other.
 
 ### On Windows, `flutter build apk` is genuinely broken and the error lies
 

@@ -53,6 +53,13 @@
     Skip `flutter pub get`. Only safe when nothing has touched pubspec.yaml or
     regenerated the plugin list since the last run.
 
+.PARAMETER Arm64
+    arm64 only, like `tool/build_apk.sh --arm64` - what testers are handed.
+    Every phone of the last decade is arm64. The universal APK also carries
+    32-bit ARM and x86_64, which is emulators only: measured on build 1091 at
+    184 MB unpacked, x86_64 alone was ~60 MB of it (Flutter, WebRTC, ML Kit's
+    translator, the app itself) that no phone ever loads.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tool\build_apk.ps1
 
@@ -63,7 +70,8 @@
 param(
     [switch]$Bundle,
     [switch]$Clean,
-    [switch]$SkipPubGet
+    [switch]$SkipPubGet,
+    [switch]$Arm64
 )
 
 $ErrorActionPreference = 'Stop'
@@ -241,10 +249,23 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 # not: the two artifacts were never the same size and nobody had a reason to
 # look. Measured when `material_symbols_icons` arrived and the APK jumped from
 # 93.4 MB to 108.3 for fifty glyphs.
+# Built up rather than assigned from an `if`: PowerShell unrolls a
+# one-element array coming out of an expression into a plain string, and
+# splatting a string hands Gradle its characters one by one ("Task '-' not
+# found").
+$platformArgs = @()
+if ($Arm64) {
+    # Both, because each drops half: target-platform stops Flutter building its
+    # own libraries for the other ABIs, and cubechat.arm64Only (see
+    # android/app/build.gradle.kts) filters out the plugins' prebuilt ones.
+    $platformArgs += '-Ptarget-platform=android-arm64'
+    $platformArgs += '-Pcubechat.arm64Only=true'
+}
 & (Join-Path $root 'android\gradlew.bat') -p (Join-Path $root 'android') `
     '-Pkotlin.incremental=false' `
     '-Pkotlin.compiler.execution.strategy=in-process' `
     '-Ptree-shake-icons=true' `
+    @platformArgs `
     $task --console=plain
 if ($LASTEXITCODE -ne 0) { throw "Gradle failed ($LASTEXITCODE)." }
 $sw.Stop()
@@ -265,7 +286,8 @@ if (-not (Test-Path $artifact)) { throw "Gradle reported success but $artifact i
 # skipped. Give every build a name that says what it is.
 $ext = if ($Bundle) { 'aab' } else { 'apk' }
 $tag = $stamp -replace '^\d{4}-\d{2}-\d{2}-', ''
-$named = Join-Path $root "build\cubechat-$versionName-$versionCode-$tag.$ext"
+$abiTag = if ($Arm64) { '-arm64' } else { '' }
+$named = Join-Path $root "build\cubechat-$versionName-$versionCode-$tag$abiTag.$ext"
 Copy-Item $artifact $named -Force
 
 # --- Verify the stamp actually shipped ---------------------------------------

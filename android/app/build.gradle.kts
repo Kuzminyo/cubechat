@@ -134,6 +134,27 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+
+            // An arm64-only APK for testers (tool/build_apk.ps1 -Arm64).
+            // Flutter's `target-platform` drops only Flutter's own libraries
+            // for the other ABIs; the plugins' prebuilt ones - ML Kit, WebRTC,
+            // libopus - stayed, measured on 1091 as eight armeabi-v7a and eight
+            // x86_64 libraries in an "arm64" APK. Worse than the size: a 32-bit
+            // phone would install it on the strength of those and crash on
+            // launch without libflutter.so.
+            //
+            // On the build type, not defaultConfig: the Flutter Gradle plugin
+            // puts its own three ABIs on every build type when it is applied,
+            // and filters on both levels are a union - a defaultConfig filter
+            // changed nothing. This block runs after the plugin, so replacing
+            // the build type's set wins. Only when asked for, because CI splits
+            // per ABI and AGP refuses abiFilters alongside splits.
+            if (project.findProperty("cubechat.arm64Only") == "true") {
+                ndk {
+                    abiFilters.clear()
+                    abiFilters += "arm64-v8a"
+                }
+            }
         }
     }
 }
