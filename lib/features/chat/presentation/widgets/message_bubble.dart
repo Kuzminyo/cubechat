@@ -3424,9 +3424,16 @@ class _BubbleMeta extends StatelessWidget {
         ),
         if (message.isMine) ...[
           const SizedBox(width: 4),
+          // Two different waits, which used to share one clock: a message on
+          // its way right now, and one that found no road at all and is held
+          // until Bluetooth or the internet comes back. The second can last
+          // hours, and "always show whether it is waiting for a connection or
+          // delivered" was asked for in so many words.
           Icon(
             switch (message.status) {
-              MessageStatus.sending => Icons.schedule_rounded,
+              MessageStatus.sending => message.route == MessageRoute.queued
+                  ? Icons.cloud_off_rounded
+                  : Icons.schedule_rounded,
               MessageStatus.delivered => Icons.done_rounded,
               MessageStatus.read => Icons.done_all_rounded,
               MessageStatus.failed => Icons.error_outline_rounded,
@@ -3438,7 +3445,9 @@ class _BubbleMeta extends StatelessWidget {
               _ => _ink(0.85),
             },
             semanticLabel: switch (message.status) {
-              MessageStatus.sending => t.chatSending,
+              MessageStatus.sending => message.route == MessageRoute.queued
+                  ? t.chatWaitingForConnection
+                  : t.chatSending,
               MessageStatus.delivered => t.chatDelivered,
               MessageStatus.read => t.chatRead,
               MessageStatus.failed => '!',

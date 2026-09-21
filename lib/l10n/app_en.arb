@@ -328,6 +328,21 @@
   "chatDelivered": "Delivered",
   "chatRead": "Read",
   "chatSending": "Sending",
+  "chatWaitingForConnection": "Waiting for a connection",
+  "sendQueueCount": "{count, plural, =1{1 message waiting for a connection} other{{count} messages waiting for a connection}}",
+  "@sendQueueCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sendQueueTitle": "Waiting to send",
+  "sendQueueHint": "These go by themselves the moment there is a road — Bluetooth nearby or the internet. Nothing needs pressing.",
+  "sendQueueRetry": "Try now",
+  "sendQueueCancel": "Cancel sending",
+  "sendQueueCancelled": "Not sent — taken back",
+  "sendQueueTooLate": "Too late to take back: it has already left",
   "chatEncryptedNotice": "Messages are end-to-end encrypted with the Noise Protocol.",
   "chatSessionHandshaking": "Establishing secure channel…",
   "chatSessionEstablished": "Secured · Noise XX",

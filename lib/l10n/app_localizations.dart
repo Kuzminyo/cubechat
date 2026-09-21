@@ -1196,6 +1196,54 @@ abstract class AppLocalizations {
   /// **'Sending'**
   String get chatSending;
 
+  /// No description provided for @chatWaitingForConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a connection'**
+  String get chatWaitingForConnection;
+
+  /// No description provided for @sendQueueCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 message waiting for a connection} other{{count} messages waiting for a connection}}'**
+  String sendQueueCount(int count);
+
+  /// No description provided for @sendQueueTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to send'**
+  String get sendQueueTitle;
+
+  /// No description provided for @sendQueueHint.
+  ///
+  /// In en, this message translates to:
+  /// **'These go by themselves the moment there is a road — Bluetooth nearby or the internet. Nothing needs pressing.'**
+  String get sendQueueHint;
+
+  /// No description provided for @sendQueueRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try now'**
+  String get sendQueueRetry;
+
+  /// No description provided for @sendQueueCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel sending'**
+  String get sendQueueCancel;
+
+  /// No description provided for @sendQueueCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent — taken back'**
+  String get sendQueueCancelled;
+
+  /// No description provided for @sendQueueTooLate.
+  ///
+  /// In en, this message translates to:
+  /// **'Too late to take back: it has already left'**
+  String get sendQueueTooLate;
+
   /// No description provided for @chatEncryptedNotice.
   ///
   /// In en, this message translates to:

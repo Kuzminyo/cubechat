@@ -622,6 +622,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSending => 'Sending';
 
   @override
+  String get chatWaitingForConnection => 'Waiting for a connection';
+
+  @override
+  String sendQueueCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages waiting for a connection',
+      one: '1 message waiting for a connection',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sendQueueTitle => 'Waiting to send';
+
+  @override
+  String get sendQueueHint =>
+      'These go by themselves the moment there is a road — Bluetooth nearby or the internet. Nothing needs pressing.';
+
+  @override
+  String get sendQueueRetry => 'Try now';
+
+  @override
+  String get sendQueueCancel => 'Cancel sending';
+
+  @override
+  String get sendQueueCancelled => 'Not sent — taken back';
+
+  @override
+  String get sendQueueTooLate => 'Too late to take back: it has already left';
+
+  @override
   String get chatEncryptedNotice =>
       'Messages are end-to-end encrypted with the Noise Protocol.';
 

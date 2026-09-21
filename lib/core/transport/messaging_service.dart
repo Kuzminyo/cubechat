@@ -8977,6 +8977,47 @@ class MessagingService {
     }
   }
 
+  /// The queue's "send now": every road, at once, whatever the backoff had
+  /// grown to — relays woken and the queued frames offered to them, the same
+  /// flush a relay coming up would run. A Bluetooth peer in range already
+  /// drains what is held for it on its own handshake.
+  void retryQueuedNow() {
+    if (_disposed) return;
+    wakeRelays(force: true);
+    unawaited(_flushOutboxOverRelay());
+  }
+
+  /// Take back one of our messages that has not left yet.
+  ///
+  /// A queued message is held twice: the frame for the relays ([_outbox]) and
+  /// the same frame for Bluetooth store-and-forward ([_store]). Deleting only
+  /// the bubble — which is what "delete for me" did — left both, and the
+  /// message the sender had just thrown away was delivered the next time a
+  /// road opened. Both are keyed by the message's wireId, the hex of its
+  /// transport msgId, so this works after a restart too, when [_outbox] is
+  /// empty and only the persisted store still holds it.
+  ///
+  /// True when it was caught in time and is gone from the conversation; false
+  /// when nothing was holding it, which means it has already been handed over
+  /// and cancelling is no longer something this phone can do.
+  bool cancelQueued({required String chatId, required Message message}) {
+    if (_disposed) return false;
+    final wireId = message.wireId;
+    if (wireId == null) return false;
+    final held = _outbox.remove(wireId);
+    final stored = _store.discardMsgId(wireId);
+    if (held == null && !stored) return false;
+    _scheduleRelayPersist();
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    messages.deleteLocal(chatId, message.id);
+    final canonical = held?.canonicalId;
+    if (canonical != null && canonical != chatId) {
+      messages.deleteLocal(canonical, message.id);
+    }
+    DebugLog.instance.log('MESH', 'queued message cancelled before it left');
+    return true;
+  }
+
   Future<bool> _ensureRelayAwakeForSend({
     Duration timeout = const Duration(milliseconds: 1500),
   }) async {

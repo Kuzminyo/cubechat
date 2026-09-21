@@ -167,6 +167,28 @@ class StoreForwardCache {
     _count = 0;
   }
 
+  /// Let go of our frame with this msgId, wherever it is filed — a message
+  /// cancelled while it was still waiting for a road.
+  ///
+  /// By msgId alone because the id may have been filed under more than one
+  /// destination hash across an epoch boundary, and our own origin is the only
+  /// origin a cancel can come from. True when anything was dropped, which is
+  /// what tells the caller the cancel was in time.
+  bool discardMsgId(String msgIdHex) {
+    var dropped = false;
+    for (final list in _byDest.values) {
+      final before = list.length;
+      list.removeWhere((f) => f.dedupKey.endsWith('/$msgIdHex'));
+      final removed = before - list.length;
+      if (removed > 0) {
+        dropped = true;
+        _count -= removed;
+      }
+    }
+    _byDest.removeWhere((_, list) => list.isEmpty);
+    return dropped;
+  }
+
   /// Flattens the buffer into serialisable rows for on-disk persistence.
   /// `dest` is the hex destination hash, `frame` the raw wire bytes, `at`
   /// the store time in epoch-ms, `dedup` the origin/msgId key.

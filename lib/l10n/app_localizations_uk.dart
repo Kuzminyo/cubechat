@@ -625,6 +625,41 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatSending => 'Надсилається';
 
   @override
+  String get chatWaitingForConnection => 'Чекає на зв’язок';
+
+  @override
+  String sendQueueCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count повідомлення чекають на зв’язок',
+      many: '$count повідомлень чекають на зв’язок',
+      few: '$count повідомлення чекають на зв’язок',
+      one: '1 повідомлення чекає на зв’язок',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sendQueueTitle => 'Чекають на відправку';
+
+  @override
+  String get sendQueueHint =>
+      'Вони підуть самі, щойно з’явиться дорога — Bluetooth поруч або інтернет. Нічого натискати не треба.';
+
+  @override
+  String get sendQueueRetry => 'Спробувати зараз';
+
+  @override
+  String get sendQueueCancel => 'Скасувати відправку';
+
+  @override
+  String get sendQueueCancelled => 'Не надіслано — скасовано';
+
+  @override
+  String get sendQueueTooLate => 'Скасувати вже не можна: повідомлення пішло';
+
+  @override
   String get chatEncryptedNotice =>
       'Повідомлення зашифровано наскрізно за протоколом Noise.';
 

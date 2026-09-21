@@ -22,6 +22,7 @@ import '../../../core/util/frame_stats.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../call/data/call_screen_access.dart';
+import '../../chat/presentation/widgets/send_queue_sheet.dart';
 import '../../../core/transport/chat_session_manager.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/appear_animation.dart';
@@ -1277,6 +1278,11 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen>
                 // somewhere nobody asked for. Hidden while searching or filtered
                 // to a folder: it is a door out of *this* list, and in those
                 // states this list is not the whole list anyway.
+                // What is still waiting for a road, above everything else and
+                // in every folder: it is about the whole app, not this list.
+                // Nothing at all when nothing is waiting.
+                if (query.isEmpty)
+                  const SliverToBoxAdapter(child: SendQueueEntry()),
                 if (query.isEmpty && folder == null && userFolder == null)
                   const SliverToBoxAdapter(child: _ArchiveEntry()),
                 if (filtered.isEmpty)
