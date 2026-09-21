@@ -37,6 +37,7 @@ class _FakeRelayServer {
 
   /// Sockets accepted so far.
   int connections = 0;
+  int activeConnections = 0;
 
   /// Sockets numbered below this take every write and answer nothing — the
   /// socket that died without closing, which is what a suspended iPhone leaves
@@ -58,6 +59,7 @@ class _FakeRelayServer {
       }
       final ws = await WebSocketTransformer.upgrade(req);
       final socketNo = relay.connections++;
+      relay.activeConnections++;
       final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
       String? authenticatedKey;
       if (relay.requireAuth) ws.add(jsonEncode(['AUTH', challenge]));
@@ -132,7 +134,8 @@ class _FakeRelayServer {
             }
             ws.add(jsonEncode(['EOSE', subId]));
         }
-      });
+      }, onDone: () => relay.activeConnections--,);
+
     });
     return relay;
   }
@@ -156,6 +159,21 @@ Future<void> _until(bool Function() check, {String? reason}) async {
 }
 
 void main() {
+  test('wake during connection keeps one socket', () async {
+    final relay = await _FakeRelayServer.start();
+    addTearDown(relay.stop);
+    final client = WebSocketNostrRelayClient(relayUrls: [relay.url]);
+    addTearDown(client.dispose);
+    client.start();
+    client.wake();
+    client.wake();
+    await _until(() => client.isConnected);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(relay.connections, 1);
+    await client.dispose();
+    await _until(() => relay.activeConnections == 0, reason: 'all sockets closed');
+  });
+
   // A deterministic identity seed → a real, verifiable BIP-340 signer, so
   // inbound events pass the client's signature gate the same way they will in
   // production.

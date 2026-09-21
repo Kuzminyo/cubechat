@@ -692,11 +692,16 @@ class _RelayConnection {
   /// relays every 2 s indefinitely, filling the log and holding the radio awake,
   /// while `publish` could pick a socket that had never connected.
   Future<void> open() async {
-    if (_closed) return;
+    // A resume can wake the pool before its initial upgrade completes. The
+    // 2026-09-21 regression test opened three sockets for start + two wakes;
+    // overwriting _channel left two subscriptions outside dispose's reach.
+    // A channel already owns the attempt, even before it is connected.
+    if (_closed || _channel != null) return;
     _retryTimer?.cancel();
     _pool._setState(url, RelayState.connecting);
+    WebSocketChannel? channel;
     try {
-      final channel = _connectOrThrow();
+      channel = _connectOrThrow();
       _channel = channel;
       _sub = channel.stream.listen(
         _onMessage,
@@ -704,8 +709,15 @@ class _RelayConnection {
         onDone: () => _onDown('closed by relay'),
         cancelOnError: false,
       );
-      await channel.ready;
-      if (_closed) return;
+      // Bounded, because the guard above makes a pending upgrade the only
+      // attempt there is: a TCP connect into a black hole hangs for the OS's
+      // own timeout, a minute or two, and a wake() on resume could do nothing
+      // for all of it. Past this it is a failure like any other, and retried.
+      await channel.ready.timeout(_connectTimeout);
+      // Each attempt answers only for its own socket. A handshake that lands
+      // after its socket was torn down and replaced used to report the
+      // replacement connected — or, failing late, tear the replacement down.
+      if (_closed || !identical(channel, _channel)) return;
       // Writable is not subscribed: kind 1059 reads may require NIP-42 AUTH.
       // A CLOSED response below records that distinction and AUTH retries REQ.
       _connected = true;
@@ -714,9 +726,15 @@ class _RelayConnection {
       DebugLog.instance.log('NOSTR', 'connected $url');
       sendReqIfOpen();
     } catch (e) {
+      if (!identical(channel, _channel)) return;
       _onDown('connect failed: $e');
     }
   }
+
+  /// Longest an upgrade may take before it counts as failed. Generous next to
+  /// a real handshake — a slow relay answers in a second or two — and short
+  /// next to the OS giving up on a connect that will never complete.
+  static const Duration _connectTimeout = Duration(seconds: 15);
 
   WebSocketChannel _connectOrThrow() => _pool._connect(Uri.parse(url));
 
