@@ -97,6 +97,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callFullScreenLater => 'Not now';
 
   @override
+  String get callFullScreenAfterUpdate =>
+      'Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.';
+
+  @override
   String get circleMessage => 'Video message';
 
   @override

@@ -27,6 +27,7 @@
 "callFullScreenXiaomi": "Xiaomi, Redmi and Poco do not let apps turn this on themselves: turn on “Show on lock screen” under Other permissions.",
 "callFullScreenAllow": "Allow",
 "callFullScreenLater": "Not now",
+"callFullScreenAfterUpdate": "Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.",
   "circleMessage": "Video message",
   "@@locale": "en",
   "appName": "Cubechat",

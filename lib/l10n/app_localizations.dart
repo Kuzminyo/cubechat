@@ -266,6 +266,12 @@ abstract class AppLocalizations {
   /// **'Not now'**
   String get callFullScreenLater;
 
+  /// No description provided for @callFullScreenAfterUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Android turns this off every time an app installed outside Google Play is updated, so it is asked again after an update.'**
+  String get callFullScreenAfterUpdate;
+
   /// No description provided for @circleMessage.
   ///
   /// In en, this message translates to:

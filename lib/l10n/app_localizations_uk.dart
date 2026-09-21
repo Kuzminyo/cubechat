@@ -97,6 +97,10 @@ class AppLocalizationsUk extends AppLocalizations {
   String get callFullScreenLater => 'Не зараз';
 
   @override
+  String get callFullScreenAfterUpdate =>
+      'Android вимикає цей дозвіл після кожного оновлення застосунку, встановленого не з Google Play, тому після оновлення ми питаємо знову.';
+
+  @override
   String get circleMessage => 'Відеоповідомлення';
 
   @override

@@ -27,6 +27,7 @@
 "callFullScreenXiaomi": "Xiaomi, Redmi і Poco не дають застосункам вмикати це самим: увімкніть «Показувати на екрані блокування» в розділі «Інші дозволи».",
 "callFullScreenAllow": "Дозволити",
 "callFullScreenLater": "Не зараз",
+"callFullScreenAfterUpdate": "Android вимикає цей дозвіл після кожного оновлення застосунку, встановленого не з Google Play, тому після оновлення ми питаємо знову.",
   "circleMessage": "Відеоповідомлення",
     "@@locale":  "uk",
     "appName":  "Cubechat",
