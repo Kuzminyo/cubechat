@@ -19,6 +19,7 @@ import android.speech.SpeechRecognizer
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -91,7 +92,7 @@ class CubechatTranscribePlugin(
         // Decoding is real work and must not run on the main thread; the
         // recogniser afterwards must run on it.
         worker.execute {
-            val pcm = decodeToPcm(File(path))
+            val pcm = decodeToPcm(File(path))?.let { conditionForRecognizer(it) }
             main.post {
                 if (pcm == null) {
                     busy = false
@@ -111,9 +112,10 @@ class CubechatTranscribePlugin(
      * saying "16-bit PCM" over compressed frames is simply a lie the recogniser
      * believes.
      *
-     * The file's own sample rate and channel count are carried through rather
-     * than resampled to 16 kHz: the extras exist to say what the audio is, and
-     * a hand-rolled resampler would be a worse answer than telling the truth.
+     * The file's own sample rate and channel count come out of here as they
+     * are; [conditionForRecognizer] then brings them to what the recogniser
+     * actually hears, because saying "48 kHz" truthfully turned out not to be
+     * enough (recognizer_7 on every note, 2026-09-21).
      */
     private fun decodeToPcm(source: File): Pcm? {
         val extractor = MediaExtractor()
@@ -206,6 +208,105 @@ class CubechatTranscribePlugin(
             try { codec?.release() } catch (e: Exception) {}
             try { extractor.release() } catch (e: Exception) {}
             if (!completed) pcmFile?.delete()
+        }
+    }
+
+    /**
+     * Mono, 16 kHz, at a level the recogniser can hear — whatever the note was.
+     *
+     * The decode above tells the recogniser the file's own rate, and that was
+     * meant to be enough. It was not: once notes became 48 kHz Opus (1090),
+     * every "→A" on an Android phone that had the language model came back
+     * `recognizer_7`, ERROR_NO_MATCH — the recogniser ran to the end and heard
+     * no words. 16 kHz is `EXTRA_AUDIO_SOURCE_SAMPLING_RATE`'s default, and
+     * what the on-device recognisers are built for. And the microphone, since
+     * 1089, records the way Telegram's does — no automatic gain — so a quiet
+     * speaker reaches this well below where a recogniser listens for speech.
+     *
+     * So: channels averaged to one, the rate brought to 16 kHz by averaging
+     * each output sample's span of input (a box filter — crude, and ample for
+     * speech, which has nothing above 8 kHz worth keeping), then the whole of
+     * it raised until its loudest moment sits at 70% of full scale, by at most
+     * eight times. Streamed through files both ways, so a long note costs no
+     * more memory than a short one.
+     */
+    private fun conditionForRecognizer(pcm: Pcm): Pcm? {
+        val target = 16_000
+        val channels = pcm.channels.coerceAtLeast(1)
+        val resampled = File.createTempFile("transcribe16k", ".pcm", context.cacheDir)
+        var peak = 0
+        try {
+            val step = pcm.sampleRate.toDouble() / target
+            FileInputStream(pcm.file).buffered(1 shl 16).use { input ->
+                FileOutputStream(resampled).buffered(1 shl 16).use { output ->
+                    fun emit(value: Int) {
+                        val v = value.coerceIn(-32768, 32767)
+                        if (kotlin.math.abs(v) > peak) peak = kotlin.math.abs(v)
+                        output.write(v and 0xff)
+                        output.write((v shr 8) and 0xff)
+                    }
+                    val frameBytes = 2 * channels
+                    val frame = ByteArray(frameBytes)
+                    var index = 0L
+                    var boundary = step
+                    var sum = 0L
+                    var count = 0
+                    var last = 0
+                    while (true) {
+                        var read = 0
+                        while (read < frameBytes) {
+                            val n = input.read(frame, read, frameBytes - read)
+                            if (n < 0) break
+                            read += n
+                        }
+                        if (read < frameBytes) break
+                        var mixed = 0
+                        for (c in 0 until channels) {
+                            val lo = frame[2 * c].toInt() and 0xff
+                            val hi = frame[2 * c + 1].toInt()
+                            mixed += (hi shl 8) or lo
+                        }
+                        last = mixed / channels
+                        sum += last
+                        count++
+                        index++
+                        // Every output sample whose span this input sample
+                        // closed. Below 16 kHz a span can be empty, and the
+                        // last value is held rather than inventing one.
+                        while (index >= boundary) {
+                            emit(if (count > 0) (sum / count).toInt() else last)
+                            sum = 0
+                            count = 0
+                            boundary += step
+                        }
+                    }
+                    if (count > 0) emit((sum / count).toInt())
+                }
+            }
+            pcm.file.delete()
+            if (peak == 0) return Pcm(resampled, target, 1)
+            val gain = (0.7 * 32767 / peak).coerceAtMost(8.0)
+            if (gain <= 1.05) return Pcm(resampled, target, 1)
+            val louder = File.createTempFile("transcribe16kn", ".pcm", context.cacheDir)
+            FileInputStream(resampled).buffered(1 shl 16).use { input ->
+                FileOutputStream(louder).buffered(1 shl 16).use { output ->
+                    while (true) {
+                        val lo = input.read()
+                        val hi = input.read()
+                        if (lo < 0 || hi < 0) break
+                        val sample = (hi.toByte().toInt() shl 8) or lo
+                        val v = (sample * gain).toInt().coerceIn(-32768, 32767)
+                        output.write(v and 0xff)
+                        output.write((v shr 8) and 0xff)
+                    }
+                }
+            }
+            resampled.delete()
+            return Pcm(louder, target, 1)
+        } catch (e: Exception) {
+            resampled.delete()
+            pcm.file.delete()
+            return null
         }
     }
 

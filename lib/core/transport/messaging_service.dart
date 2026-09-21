@@ -10294,7 +10294,10 @@ class MessagingService {
           // of: a contact met over Bluetooth may have no relay address at all.
           relayOnly: false,
         );
-        if (n > 0) sent++;
+        if (n > 0) {
+          sent++;
+          _toldOnlineAt[peer.pubkeyHex] = DateTime.now();
+        }
       } catch (e) {
         DebugLog.instance
             .log('PRESENCE', 'hello to ${_short(peer.pubkeyHex)}: $e');
@@ -10310,6 +10313,139 @@ class MessagingService {
   /// [presenceHeartbeat] so the heartbeat is never throttled, and far above the
   /// millisecond-scale bursts a lifecycle flap produces.
   static const Duration _presenceMinInterval = Duration(seconds: 20);
+
+  // ---- who a beacon is for -------------------------------------------------
+  //
+  // **The heartbeat goes to the people who are here, not to everybody.** A
+  // field log from 2026-09-21: 21 minutes with the app open, ~85% of
+  // everything sent was "online" beacons — every 25 s to all twelve contacts,
+  // each a signed, sealed, Schnorr-signed relay event to four relays, though
+  // most of those twelve had their app shut and would only ever read the
+  // beacons as history. The owner's call ("делай").
+  //
+  // Now:
+  //   * the arrival beacon (opening the app) still goes to everybody — it is
+  //     the one that says the answer changed;
+  //   * the 25 s heartbeat goes to contacts whose last word was "online" in
+  //     the last [_presenceActiveWindow], plus anybody on a live Bluetooth
+  //     session;
+  //   * somebody who opens their app is answered at once ([_answerArrival]),
+  //     so they see us without waiting for a round that no longer includes
+  //     them — and from then on the heartbeat does;
+  //   * every [_presenceFullRound] one round goes to everybody anyway, so two
+  //     phones that lost each other's beacons, or a contact on an older build
+  //     that does not answer, are found again;
+  //   * the goodbye goes to whoever is still showing us online — told so
+  //     within [PeerPresence.ttl] — since everybody else has already let the
+  //     beacon lapse.
+
+  /// How long a contact's last "online" keeps them in the heartbeat. Longer
+  /// than [PeerPresence.ttl] so a few lost beacons do not drop somebody who is
+  /// still in the app; short enough that a phone that died without a goodbye
+  /// stops being written to.
+  static const Duration _presenceActiveWindow = Duration(minutes: 10);
+
+  /// How often a heartbeat round goes to every contact regardless.
+  static const Duration _presenceFullRound = Duration(minutes: 5);
+
+  /// Whether this round goes to every contact: an arrival always, a heartbeat
+  /// once every [_presenceFullRound], a goodbye never — it goes to whoever
+  /// still shows us online.
+  @visibleForTesting
+  static bool presenceIsFullRound({
+    required bool online,
+    required bool arriving,
+    required DateTime? lastFullRound,
+    required DateTime now,
+  }) {
+    if (!online) return false;
+    if (arriving) return true;
+    return lastFullRound == null ||
+        now.difference(lastFullRound) >= _presenceFullRound;
+  }
+
+  /// Whether one contact is in this round — see "who a beacon is for".
+  @visibleForTesting
+  static bool presenceRoundWants({
+    required bool online,
+    required bool fullRound,
+    required DateTime now,
+    ({bool online, DateTime at})? heard,
+    DateTime? toldOnlineAt,
+  }) {
+    if (!online) {
+      // Only whoever still shows us online needs the goodbye.
+      return toldOnlineAt != null &&
+          now.difference(toldOnlineAt) <
+              PeerPresence.ttl + const Duration(seconds: 5);
+    }
+    if (fullRound) return true;
+    return heard != null &&
+        heard.online &&
+        now.difference(heard.at) < _presenceActiveWindow;
+  }
+
+  /// The last beacon each contact sent us, by their clock: memory only, like
+  /// [PresenceController], and for the same reason.
+  final Map<String, ({bool online, DateTime at})> _heardPresence = {};
+
+  /// When each contact was last told "online" by us.
+  final Map<String, DateTime> _toldOnlineAt = {};
+
+  DateTime? _lastFullPresenceRound;
+
+  /// Answered arrivals, so a flurry of beacons from one phone is answered once.
+  final Map<String, DateTime> _answeredArrivalAt = {};
+
+  /// Somebody just opened their app: tell them we are here, now.
+  ///
+  /// Without it the new heartbeat would leave them waiting up to
+  /// [_presenceFullRound] to see us, because they were not "online" when the
+  /// last round went out. One beacon, to one person, only on the transition
+  /// from away to here — so two phones answering each other stop after one
+  /// exchange: the answer they get back is not a transition any more.
+  Future<void> _answerArrival(String peerHex) async {
+    if (_disposed || _nostr == null) return;
+    if (!AppLifecycle.instance.isForeground) return;
+    final now = DateTime.now();
+    final told = _toldOnlineAt[peerHex];
+    if (told != null && now.difference(told) < _presenceMinInterval) return;
+    final answered = _answeredArrivalAt[peerHex];
+    if (answered != null && now.difference(answered) < _presenceMinInterval) {
+      return;
+    }
+    _answeredArrivalAt[peerHex] = now;
+    final peer = _ref.read(knownPeersControllerProvider)[peerHex];
+    if (peer == null || peer.isBlocked) return;
+    final Uint8List peerPub;
+    try {
+      peerPub = _hexDecodeBytes(peerHex);
+    } catch (_) {
+      return;
+    }
+    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    try {
+      final direct =
+          _findSessionByPubkeyHex(peerHex)?.isEstablished ?? false;
+      final n = await _sendControlToPeer(
+        canonicalId: peerHex,
+        peerPub: peerPub,
+        type: InnerPayloadType.presence,
+        innerBody: PresenceBeacon(
+          online: true,
+          hideLastSeen: !settings.sharesLastSeenWith(peerHex),
+        ).encode(),
+        relayOnly: !direct,
+      );
+      if (n > 0) {
+        _toldOnlineAt[peerHex] = DateTime.now();
+        DebugLog.instance
+            .log('PRESENCE', 'answered ${_short(peerHex)} arriving');
+      }
+    } catch (e) {
+      DebugLog.instance.log('PRESENCE', 'answer to ${_short(peerHex)}: $e');
+    }
+  }
 
   bool? _lastPresenceOnline;
   bool? _lastPresenceHidden;
@@ -10402,10 +10538,32 @@ class MessagingService {
     // beacon to them is one write on a link that is up anyway, and a cap there
     // only decides who, sitting in the same room, sees this phone go dark. The
     // cap is for relay events, which is what it was ever about.
+    //
+    // Which relay contacts this round is for — see "who a beacon is for"
+    // above [_answerArrival].
+    final heartbeat = online && !arriving;
+    final fullRound = presenceIsFullRound(
+      online: online,
+      arriving: arriving,
+      lastFullRound: _lastFullPresenceRound,
+      now: now,
+    );
+    bool wanted(KnownPeer p) => presenceRoundWants(
+          online: online,
+          fullRound: fullRound,
+          now: now,
+          heard: _heardPresence[p.pubkeyHex],
+          toldOnlineAt: _toldOnlineAt[p.pubkeyHex],
+        );
+
     final targets = [
       ...peers.where(direct),
-      ...peers.where((p) => !direct(p)).take(_presenceFanoutCap),
+      ...peers
+          .where((p) => !direct(p) && wanted(p))
+          .take(_presenceFanoutCap),
     ];
+    if (heartbeat && fullRound) _lastFullPresenceRound = now;
+    if (online && arriving) _lastFullPresenceRound = now;
     for (var i = 0; i < targets.length; i++) {
       // "In the app", said by an app that has since left, is the one thing a
       // beacon must not say — and the goodbye is queued behind this round.
@@ -10437,7 +10595,14 @@ class MessagingService {
           // so does the heartbeat to somebody on a live session, see [direct].
           relayOnly: online && !arriving && !direct(peer),
         );
-        if (n > 0) sent++;
+        if (n > 0) {
+          sent++;
+          if (online) {
+            _toldOnlineAt[peer.pubkeyHex] = now;
+          } else {
+            _toldOnlineAt.remove(peer.pubkeyHex);
+          }
+        }
       } catch (e) {
         DebugLog.instance
             .log('PRESENCE', 'beacon to ${peer.pubkeyHex.substring(0, 8)}: $e');
@@ -11025,13 +11190,21 @@ class MessagingService {
     // somebody was doing at a moment that has gone; it is history, and the
     // only thing left to do with it is the last-seen mark below.
     final fresh = now.difference(stamp) < PeerPresence.ttl;
+    // Who our heartbeat is for — see [_answerArrival].
+    final heard = _heardPresence[canonical];
+    if (heard == null || !heard.at.isAfter(stamp)) {
+      _heardPresence[canonical] = (online: beacon.online, at: stamp);
+    }
     if (fresh) {
-      _ref.read(presenceControllerProvider.notifier).record(
-            canonical,
-            online: beacon.online,
-            hidesLastSeen: beacon.hideLastSeen,
-            at: stamp,
-          );
+      final presence = _ref.read(presenceControllerProvider.notifier);
+      final wasHere = presence.freshFor(canonical)?.online ?? false;
+      presence.record(
+        canonical,
+        online: beacon.online,
+        hidesLastSeen: beacon.hideLastSeen,
+        at: stamp,
+      );
+      if (beacon.online && !wasHere) unawaited(_answerArrival(canonical));
     }
     // Both kinds of beacon are evidence of life *now* — a goodbye most of all,
     // since it is the last thing they did before closing the app. Refreshing
