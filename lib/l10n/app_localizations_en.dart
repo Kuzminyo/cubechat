@@ -1607,6 +1607,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mediaDiscardConfirm => 'Discard';
 
   @override
+  String get mediaPhotosAccessOff => 'Photo access is off';
+
+  @override
+  String get mediaPhotosAccessOffHint =>
+      'CubeChat can currently see videos only. Allow photo access in system settings to show your pictures.';
+
+  @override
+  String get mediaVideosOnly => 'Only videos are visible — allow photo access';
+
+  @override
+  String get mediaOpenSettings => 'Open settings';
+
+  @override
+  String get mediaTakePhoto => 'Take a photo';
+
+  @override
   String get contactProfileAutoDelete => 'Auto-delete chat';
 
   @override
@@ -3095,4 +3111,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get chatTranslateFailed =>
       'That one cannot be translated on this phone.';
+
+  @override
+  String get customizeDeferMediaTitle => 'Wait for Wi-Fi to download media';
+
+  @override
+  String get customizeDeferMediaHint =>
+      'On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now.';
 }

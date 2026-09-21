@@ -2906,6 +2906,36 @@ abstract class AppLocalizations {
   /// **'Discard'**
   String get mediaDiscardConfirm;
 
+  /// No description provided for @mediaPhotosAccessOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo access is off'**
+  String get mediaPhotosAccessOff;
+
+  /// No description provided for @mediaPhotosAccessOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'CubeChat can currently see videos only. Allow photo access in system settings to show your pictures.'**
+  String get mediaPhotosAccessOffHint;
+
+  /// No description provided for @mediaVideosOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only videos are visible — allow photo access'**
+  String get mediaVideosOnly;
+
+  /// No description provided for @mediaOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get mediaOpenSettings;
+
+  /// No description provided for @mediaTakePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get mediaTakePhoto;
+
   /// No description provided for @contactProfileAutoDelete.
   ///
   /// In en, this message translates to:
@@ -5407,6 +5437,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'That one cannot be translated on this phone.'**
   String get chatTranslateFailed;
+
+  /// No description provided for @customizeDeferMediaTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait for Wi-Fi to download media'**
+  String get customizeDeferMediaTitle;
+
+  /// No description provided for @customizeDeferMediaHint.
+  ///
+  /// In en, this message translates to:
+  /// **'On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now.'**
+  String get customizeDeferMediaHint;
 }
 
 class _AppLocalizationsDelegate

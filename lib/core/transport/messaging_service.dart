@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -40,6 +41,7 @@ import '../../features/peers/data/sending_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
+import '../../features/profile/data/media_download_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
 import '../ble/ble_constants.dart';
@@ -582,6 +584,8 @@ class MessagingService {
   NostrTransport? _nostr;
   StreamSubscription<InboundFrame>? _nostrSub;
   StreamSubscription<Map<String, RelayState>>? _relayStateSub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  List<ConnectivityResult> _connectivity = const <ConnectivityResult>[];
 
   /// Last seen relay connectivity, so [nudgeFileQueue] fires on the edge rather
   /// than on every state message a flapping relay emits.
@@ -613,8 +617,31 @@ class MessagingService {
   /// test that drew the chat list: forty of them failed on it.
   void _wireNostrFallback() {
     unawaited(() async {
-      await _ref.read(relaySettingsProvider.notifier).loaded;
+      await Future.wait<void>([
+        _ref.read(relaySettingsProvider.notifier).loaded,
+        _ref.read(mediaDownloadSettingsProvider.notifier).loaded,
+      ]);
       if (_disposed) return;
+      try {
+        final connectivity = Connectivity();
+        _connectivity = await connectivity.checkConnectivity();
+        _connectivitySub = connectivity.onConnectivityChanged.listen((next) {
+          if (_disposed) return;
+          _connectivity = next;
+          _syncMediaSubscriptions();
+        });
+      } catch (e) {
+        DebugLog.instance.log('NOSTR', 'network type unavailable: $e');
+      }
+      if (_disposed) {
+        await _connectivitySub?.cancel();
+        _connectivitySub = null;
+        return;
+      }
+      _ref.listen<bool>(
+        mediaDownloadSettingsProvider,
+        (_, __) => _syncMediaSubscriptions(),
+      );
       _ref.listen<RelaySettings>(
         relaySettingsProvider,
         (_, next) => _nostrReconfigure =
@@ -622,6 +649,18 @@ class MessagingService {
         fireImmediately: true,
       );
     }());
+  }
+
+  bool _shouldSubscribeToMedia() {
+    if (!_ref.read(mediaDownloadSettingsProvider)) return true;
+    final hasMobile = _connectivity.contains(ConnectivityResult.mobile);
+    final hasUnmetered = _connectivity.contains(ConnectivityResult.wifi) ||
+        _connectivity.contains(ConnectivityResult.ethernet);
+    return !hasMobile || hasUnmetered;
+  }
+
+  void _syncMediaSubscriptions() {
+    _relayClient?.setMediaSubscriptions(_shouldSubscribeToMedia());
   }
 
   /// What the running pool was built from. The settings provider hands out a
@@ -635,8 +674,8 @@ class MessagingService {
   /// so a relay-delivered message is indistinguishable downstream (and gets the
   /// same dedup, replay-window and signature checks).
   Future<void> _applyRelaySettings(RelaySettings settings) async {
-    if (settings == _appliedRelaySettings && (_relayClient != null ||
-        !settings.isActive)) {
+    if (settings == _appliedRelaySettings &&
+        (_relayClient != null || !settings.isActive)) {
       return;
     }
     _appliedRelaySettings = settings;
@@ -652,6 +691,7 @@ class MessagingService {
       // entire off-mesh history (dedup then drops it, but we'd pay for the
       // download and the decrypt every time).
       final since = await _relayWatermark.load();
+      final mediaSince = await _relayWatermark.loadMedia();
       // And which events those were, not only how far they reached. The REQ
       // asks for ten minutes before the watermark on purpose — see
       // `_sinceSlack` — and everything in that overlap used to be decrypted,
@@ -673,8 +713,12 @@ class MessagingService {
         // not listening.
         mediaRelayUrls: RelaySettings.defaultMediaUrls,
         locationRelayUrls: RelaySettings.defaultLocationUrls,
+        subscribeToMedia: _shouldSubscribeToMedia(),
         sinceSeconds: since,
         onWatermark: (seconds) => unawaited(_relayWatermark.save(seconds)),
+        mediaSinceSeconds: mediaSince,
+        onMediaWatermark: (seconds) =>
+            unawaited(_relayWatermark.saveMedia(seconds)),
         seenIds: seen,
         onSeenIds: (ids) => unawaited(_relayWatermark.saveSeenIds(ids)),
       );
@@ -682,28 +726,28 @@ class MessagingService {
       _relayClient = client;
       _nostr = transport;
       _nostrSub = transport.inboundFramesTimed().listen(
-            // Timed as one block, on purpose. Everything a frame off the relay
-            // costs is inside here — opening the X3DH or SealedBox body,
-            // verifying the payload signature, and whatever the payload then
-            // does — and all of it is Dart on the UI isolate. Splitting it
-            // finer can come later; what is wanted first is whether this or
-            // `nostr-verify` is where the seconds go.
-            (frame) {
-              unawaited(CostMeter.instance.measure(
-                'relay-frame',
-                () => _handleInboundBytes(
-                  _nostrPeerId,
-                  frame.bytes,
-                  // When they said it, not when it reached us. A relay holds
-                  // events for whoever subscribes next — see [InboundFrame].
-                  sentAt: frame.sentAt,
-                ),
-              ));
-              _noteRelayFrameForDoorbell();
-            },
-            onError: (Object e) =>
-                DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
-          );
+        // Timed as one block, on purpose. Everything a frame off the relay
+        // costs is inside here — opening the X3DH or SealedBox body,
+        // verifying the payload signature, and whatever the payload then
+        // does — and all of it is Dart on the UI isolate. Splitting it
+        // finer can come later; what is wanted first is whether this or
+        // `nostr-verify` is where the seconds go.
+        (frame) {
+          unawaited(CostMeter.instance.measure(
+            'relay-frame',
+            () => _handleInboundBytes(
+              _nostrPeerId,
+              frame.bytes,
+              // When they said it, not when it reached us. A relay holds
+              // events for whoever subscribes next — see [InboundFrame].
+              sentAt: frame.sentAt,
+            ),
+          ));
+          _noteRelayFrameForDoorbell();
+        },
+        onError: (Object e) =>
+            DebugLog.instance.log('NOSTR', 'inbound stream error: $e'),
+      );
       _relayStateSub = client.stateChanges.listen((states) {
         // A socket state can land after the service is gone: the relay pool
         // lives on its own timers, and disposal cannot un-schedule a callback
@@ -873,8 +917,8 @@ class MessagingService {
     // messages queued for hours with no line in the log to say the internet
     // fallback was simply switched off on that device.
     if (transport == null) {
-      DebugLog.instance.log(
-          'NOSTR', 'internet fallback is off — $canonicalId stays queued');
+      DebugLog.instance
+          .log('NOSTR', 'internet fallback is off — $canonicalId stays queued');
       return RelayPublishOutcome.unavailable;
     }
     // If the relay pool is merely asleep/backing off, wake it and wait briefly
@@ -2439,9 +2483,8 @@ class MessagingService {
     // moment anything knows where the batch begins and ends. Grouping used to
     // re-derive that from timestamps afterwards, and two batches a minute apart
     // are indistinguishable from one long one that way — see [Message.albumId].
-    final albumId = images.length > 1
-        ? 'a${DateTime.now().microsecondsSinceEpoch}'
-        : null;
+    final albumId =
+        images.length > 1 ? 'a${DateTime.now().microsecondsSinceEpoch}' : null;
     final pending = <PendingImageSend>[];
     for (var i = 0; i < images.length; i++) {
       pending.add(prepareImage(
@@ -2535,9 +2578,8 @@ class MessagingService {
     // Folded here rather than at the microphone: the recorder collects a
     // reading per frame and how many bars are worth drawing is a wire
     // question, not a recording one.
-    final bars = levels == null || levels.isEmpty
-        ? null
-        : VoiceLevels.resample(levels);
+    final bars =
+        levels == null || levels.isEmpty ? null : VoiceLevels.resample(levels);
     final msg = Message(
       id: 'm${DateTime.now().microsecondsSinceEpoch}',
       chatId: canonicalId,
@@ -2979,7 +3021,7 @@ class MessagingService {
           DebugLog.instance.log(
             'RECEIPT',
             'sent ${slice.length} read ack(s) to ${_short(canonicalId)} '
-            '(fanout $fanout)',
+                '(fanout $fanout)',
           );
         } else {
           // Stop the whole sweep at the first slice that finds no route, and
@@ -3596,8 +3638,8 @@ class MessagingService {
     // holds nobody. Announcing the seat first is what makes the offer landable
     // — the same order [sendChannelAdminOnly] uses, and for the same reason.
     await announceChannelSeat(channel.name);
-    final stored =
-        _ref.read(messagesControllerProvider)[channel.name] ?? const <Message>[];
+    final stored = _ref.read(messagesControllerProvider)[channel.name] ??
+        const <Message>[];
     final posts = <ChannelHistoryPost>[];
     final photos = <Message>[];
     for (final message in stored.reversed) {
@@ -4035,6 +4077,10 @@ class MessagingService {
     final peerPub = _resolvePeerPub(chatId);
     if (peerPub == null) return false;
     try {
+      // A deliberate tap is consent to fetch the retained media backlog on
+      // this connection. The setting takes effect again on the next network
+      // change; enabling the REQ now also fetches any other waiting attachment.
+      _relayClient?.setMediaSubscriptions(true);
       final delivery = await _deliverControlToPeer(
         canonicalId: chatId,
         peerPub: peerPub,
@@ -4042,7 +4088,8 @@ class MessagingService {
         innerBody: mediaId,
       );
       if (delivery.isNotSent) {
-        DebugLog.instance.log('FILE', 'media re-request has no route; keeping retry available');
+        DebugLog.instance.log(
+            'FILE', 'media re-request has no route; keeping retry available');
         return false;
       }
       DebugLog.instance.log('FILE', 'asked $chatId for media $wireIdHex again');
@@ -4897,7 +4944,8 @@ class MessagingService {
   /// saying where the finished bytes belong — so nothing here needed inventing
   /// except somewhere to put the result. Sized for the conservative MTU, like
   /// every broadcast: there is no single link to negotiate against.
-  Future<void> _sendChannelAvatarChunked(Channel channel, Uint8List jpeg) async {
+  Future<void> _sendChannelAvatarChunked(
+      Channel channel, Uint8List jpeg) async {
     const mime = 'image/jpeg';
     final avatarId = ImageChunk.newImageId();
     final relayOnly = !_hasAnyLink;
@@ -5339,7 +5387,9 @@ class MessagingService {
     await _ref.read(pinnedControllerProvider.notifier).forget(name);
     await _ref.read(readMarkersControllerProvider.notifier).forget(name);
     await _ref.read(channelRosterControllerProvider.notifier).forget(name);
-    await _ref.read(channelDescriptionsControllerProvider.notifier).forget(name);
+    await _ref
+        .read(channelDescriptionsControllerProvider.notifier)
+        .forget(name);
     await _ref.read(channelAvatarsControllerProvider.notifier).forget(name);
     // Last, because everything above is keyed on the room still being one.
     await _ref.read(channelControllerProvider.notifier).leave(name);
@@ -6022,7 +6072,8 @@ class MessagingService {
             // without talking: the lower fingerprint takes it. Same answer on
             // both, whichever claim arrives first.
             final mine = await roster.selfMemberId();
-            final weGuessedToo = roster.holdsProvisionalSeat(channel.name, mine);
+            final weGuessedToo =
+                roster.holdsProvisionalSeat(channel.name, mine);
             if (weGuessedToo && mine.compareTo(reactorId) < 0) {
               // Ours by the tie-break. Say so once, so they can stand down —
               // once, because two phones re-announcing at each other is how a
@@ -6209,9 +6260,9 @@ class MessagingService {
     DebugLog.instance.log(
       'RECEIPT',
       'read ack from ${_short(canonical)}: ${ids.length} id(s), '
-      '${outcome.marked} marked'
-      '${outcome.alreadyRead > 0 ? ', ${outcome.alreadyRead} already read' : ''}'
-      '${outcome.unknown > 0 ? ', ${outcome.unknown} UNKNOWN' : ''}',
+          '${outcome.marked} marked'
+          '${outcome.alreadyRead > 0 ? ', ${outcome.alreadyRead} already read' : ''}'
+          '${outcome.unknown > 0 ? ', ${outcome.unknown} UNKNOWN' : ''}',
     );
   }
 
@@ -6406,6 +6457,7 @@ class MessagingService {
     String peerId,
     Frame frame, {
     required bool fromCentral,
+
     /// When the sender stamped this, for the payloads that are a claim about a
     /// moment. Null on a radio link, where arrival *is* the moment: a
     /// Bluetooth frame was written to the air by somebody in range, seconds
@@ -6735,8 +6787,7 @@ class MessagingService {
           );
           if (!_plausibleClock(verified.timestampMs, peerId)) return;
           stale = _pastReplayWindow(verified.timestampMs, peerId);
-          signedAt =
-              DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
+          signedAt = DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
           innerBytes = verified.inner;
           verifiedSenderEdPub = verified.senderEdPub;
           DebugLog.instance.log(
@@ -6783,8 +6834,7 @@ class MessagingService {
           );
           if (!_plausibleClock(verified.timestampMs, peerId)) return;
           stale = _pastReplayWindow(verified.timestampMs, peerId);
-          signedAt =
-              DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
+          signedAt = DateTime.fromMillisecondsSinceEpoch(verified.timestampMs);
           innerBytes = verified.inner;
           verifiedSenderEdPub = expectedEd;
           DebugLog.instance
@@ -7741,6 +7791,7 @@ class MessagingService {
     required Uint8List? senderPub,
     required MediaManifest manifest,
     required Uint8List bytes,
+
     /// When the sender signed the manifest. Null only from a path that has no
     /// manifest of its own to read it from, where the moment of assembly is
     /// the best available answer.
@@ -7774,8 +7825,7 @@ class MessagingService {
           final room = channel;
           if (room != null) {
             final author = authorId;
-            final roster =
-                _ref.read(channelRosterControllerProvider.notifier);
+            final roster = _ref.read(channelRosterControllerProvider.notifier);
             if (author == null || !roster.isAdmin(room.name, author)) {
               DebugLog.instance.log(
                 'CHAN',
@@ -8035,8 +8085,8 @@ class MessagingService {
         innerBody:
             AlbumHint(mediaIds: [for (final p in pending) p.imageId]).encode(),
       );
-      DebugLog.instance.log(
-          'PHOTO', 'album hint: ${pending.length} photos to ${first.canonicalId}');
+      DebugLog.instance.log('PHOTO',
+          'album hint: ${pending.length} photos to ${first.canonicalId}');
     } catch (e) {
       DebugLog.instance
           .log('PHOTO', 'album hint did not go out (photos unaffected): $e');
@@ -8201,8 +8251,7 @@ class MessagingService {
         canonicalId: canonicalId,
         peerPub: peerPub,
         type: InnerPayloadType.voiceLevels,
-        innerBody:
-            VoiceLevels(mediaId: mediaId, levels: bars).encode(),
+        innerBody: VoiceLevels(mediaId: mediaId, levels: bars).encode(),
       );
     } catch (e) {
       DebugLog.instance
@@ -9098,7 +9147,8 @@ class MessagingService {
           );
           reminted++;
         } catch (e) {
-          DebugLog.instance.log('MESH', 'could not mint a queued text again: $e');
+          DebugLog.instance
+              .log('MESH', 'could not mint a queued text again: $e');
         }
         if (_disposed) return;
         // One at a time, at the relays' pace — a phone back after a day
@@ -9898,8 +9948,7 @@ class MessagingService {
       // discarded as a repeat. Nothing then goes out until the heartbeat
       // seventy seconds on, which is exactly the "you have to leave the app
       // and come back for it to work" this feature kept being accused of.
-      if (await _fanOutPresence(
-          online: online, now: now, arriving: arriving)) {
+      if (await _fanOutPresence(online: online, now: now, arriving: arriving)) {
         _lastPresenceOnline = online;
         _lastPresenceHidden = hidden;
         _lastPresenceAt = now;
@@ -9985,14 +10034,13 @@ class MessagingService {
         );
         if (n > 0) sent++;
       } catch (e) {
-        DebugLog.instance.log(
-            'PRESENCE', 'hello to ${_short(peer.pubkeyHex)}: $e');
+        DebugLog.instance
+            .log('PRESENCE', 'hello to ${_short(peer.pubkeyHex)}: $e');
       }
       await Future<void>.delayed(relayFanoutPacing);
     }
     if (sent > 0) {
-      DebugLog.instance
-          .log('PRESENCE', 'said hello to $sent new contact(s)');
+      DebugLog.instance.log('PRESENCE', 'said hello to $sent new contact(s)');
     }
   }
 
@@ -10113,7 +10161,8 @@ class MessagingService {
       // to everybody.
       final hiddenHere = !settings.sharesLastSeenWith(peer.pubkeyHex);
       if (hiddenHere && hiddenBody == null) {
-        hiddenBody = PresenceBeacon(online: online, hideLastSeen: true).encode();
+        hiddenBody =
+            PresenceBeacon(online: online, hideLastSeen: true).encode();
       }
       try {
         final n = await _sendControlToPeer(
@@ -10568,7 +10617,8 @@ class MessagingService {
           _ref.read(channelAvatarsControllerProvider.notifier).forChannel(room);
       final description =
           _ref.read(channelDescriptionsControllerProvider)[room];
-      final channel = _ref.read(channelControllerProvider.notifier).byName(room);
+      final channel =
+          _ref.read(channelControllerProvider.notifier).byName(room);
       final offersHistory = channel?.shareHistory ?? false;
       if (picture == null &&
           (description == null || description.isEmpty) &&
@@ -10708,8 +10758,7 @@ class MessagingService {
     // header said they were online — for a fresh 150 seconds every time the
     // relay reconnected.
     final now = DateTime.now();
-    final stamp =
-        (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
+    final stamp = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
     // Past believing before it is even recorded. A backlog beacon says what
     // somebody was doing at a moment that has gone; it is history, and the
     // only thing left to do with it is the last-seen mark below.
@@ -11550,6 +11599,8 @@ class MessagingService {
     _relayPersistTimer?.cancel();
     _relayPersistTimer = null;
     await _persistRelayBuffer();
+    await _connectivitySub?.cancel();
+    _connectivitySub = null;
     await _teardownNostr();
     await _peripheralEventsSub?.cancel();
     for (final t in _handshakeTimers.values) {

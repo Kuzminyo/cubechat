@@ -588,6 +588,11 @@
     "mediaDiscardTitle":  "Відхилити вибір?",
     "mediaDiscardMessage":  "Закрити галерею та скасувати вибрані фото?",
     "mediaDiscardConfirm":  "Відхилити",
+    "mediaPhotosAccessOff":  "Доступ до фото вимкнено",
+    "mediaPhotosAccessOffHint":  "Зараз CubeChat бачить лише відео. Дозвольте доступ до фото в системних налаштуваннях, щоб показати зображення.",
+    "mediaVideosOnly":  "Видно лише відео — дозвольте доступ до фото",
+    "mediaOpenSettings":  "Відкрити налаштування",
+    "mediaTakePhoto":  "Зробити фото",
     "contactProfileAutoDelete":  "Автоочищення чату",
     "contactProfileAutoDeleteTitle":  "Автовидалення повідомлень",
     "contactProfileAutoDeleteOff":  "Вимкнено",
@@ -1129,5 +1134,7 @@
   "chatTranscribeAction": "Розпізнати голос",
   "chatTranscribeFailed": "Цей телефон не може розпізнати це повідомлення.",
   "chatTranslateAction": "Перекласти",
-  "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні."
+  "chatTranslateFailed": "Це повідомлення не вдається перекласти на цьому телефоні.",
+  "customizeDeferMediaTitle": "Чекати Wi-Fi для завантаження медіа",
+  "customizeDeferMediaHint": "Через мобільний інтернет повідомлення надходять як завжди, а фото, відео й файли чекають. Торкніться файла, щоб завантажити всі очікувані медіа зараз."
 }

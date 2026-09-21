@@ -1616,6 +1616,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get mediaDiscardConfirm => 'Відхилити';
 
   @override
+  String get mediaPhotosAccessOff => 'Доступ до фото вимкнено';
+
+  @override
+  String get mediaPhotosAccessOffHint =>
+      'Зараз CubeChat бачить лише відео. Дозвольте доступ до фото в системних налаштуваннях, щоб показати зображення.';
+
+  @override
+  String get mediaVideosOnly => 'Видно лише відео — дозвольте доступ до фото';
+
+  @override
+  String get mediaOpenSettings => 'Відкрити налаштування';
+
+  @override
+  String get mediaTakePhoto => 'Зробити фото';
+
+  @override
   String get contactProfileAutoDelete => 'Автоочищення чату';
 
   @override
@@ -3131,4 +3147,11 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get chatTranslateFailed =>
       'Це повідомлення не вдається перекласти на цьому телефоні.';
+
+  @override
+  String get customizeDeferMediaTitle => 'Чекати Wi-Fi для завантаження медіа';
+
+  @override
+  String get customizeDeferMediaHint =>
+      'Через мобільний інтернет повідомлення надходять як завжди, а фото, відео й файли чекають. Торкніться файла, щоб завантажити всі очікувані медіа зараз.';
 }

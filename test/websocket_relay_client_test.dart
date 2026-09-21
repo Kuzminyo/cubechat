@@ -63,79 +63,84 @@ class _FakeRelayServer {
       final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
       String? authenticatedKey;
       if (relay.requireAuth) ws.add(jsonEncode(['AUTH', challenge]));
-      ws.listen((data) async {
-        if (socketNo < relay._deafBelow) return;
-        final msg = jsonDecode(data as String) as List<dynamic>;
-        switch (msg[0]) {
-          case 'AUTH':
-            final event =
-                NostrEvent.fromJson((msg[1] as Map).cast<String, dynamic>());
-            relay.authentications.add(event);
-            Uint8List unhex(String value) => Uint8List.fromList([
-                  for (var i = 0; i < value.length; i += 2)
-                    int.parse(value.substring(i, i + 2), radix: 16),
-                ]);
-            final valid = !relay.rejectAuth &&
-                event.kind == 22242 &&
-                event.content.isEmpty &&
-                event.tags.any(
-                  (t) =>
-                      t.length == 2 && t[0] == 'challenge' && t[1] == challenge,
-                ) &&
-                event.tags.any(
-                  (t) => t.length == 2 && t[0] == 'relay' && t[1] == relay.url,
-                ) &&
-                await event.hasValidId() &&
-                await Secp256k1.verify(
-                  publicKey: unhex(event.pubkey),
-                  message: unhex(event.id!),
-                  signature: unhex(event.sig!),
-                );
-            if (valid) authenticatedKey = event.pubkey;
-            ws.add(
-              jsonEncode([
-                'OK',
-                event.id,
-                valid,
-                valid ? '' : 'restricted: invalid authentication',
-              ]),
-            );
-          case 'EVENT':
-            final ev = (msg[1] as Map).cast<String, dynamic>();
-            relay.received.add(ev);
-            final answer = relay.okAnswer;
-            if (answer != null) {
+      ws.listen(
+        (data) async {
+          if (socketNo < relay._deafBelow) return;
+          final msg = jsonDecode(data as String) as List<dynamic>;
+          switch (msg[0]) {
+            case 'AUTH':
+              final event =
+                  NostrEvent.fromJson((msg[1] as Map).cast<String, dynamic>());
+              relay.authentications.add(event);
+              Uint8List unhex(String value) => Uint8List.fromList([
+                    for (var i = 0; i < value.length; i += 2)
+                      int.parse(value.substring(i, i + 2), radix: 16),
+                  ]);
+              final valid = !relay.rejectAuth &&
+                  event.kind == 22242 &&
+                  event.content.isEmpty &&
+                  event.tags.any(
+                    (t) =>
+                        t.length == 2 &&
+                        t[0] == 'challenge' &&
+                        t[1] == challenge,
+                  ) &&
+                  event.tags.any(
+                    (t) =>
+                        t.length == 2 && t[0] == 'relay' && t[1] == relay.url,
+                  ) &&
+                  await event.hasValidId() &&
+                  await Secp256k1.verify(
+                    publicKey: unhex(event.pubkey),
+                    message: unhex(event.id!),
+                    signature: unhex(event.sig!),
+                  );
+              if (valid) authenticatedKey = event.pubkey;
               ws.add(
                 jsonEncode([
                   'OK',
-                  ev['id'],
-                  answer,
-                  answer ? '' : relay.refusalMessage,
+                  event.id,
+                  valid,
+                  valid ? '' : 'restricted: invalid authentication',
                 ]),
               );
-            }
-          case 'REQ':
-            final subId = msg[1] as String;
-            relay.reqs.add(data);
-            final filter = (msg[2] as Map).cast<String, dynamic>();
-            if (relay.requireAuth &&
-                (filter['#p'] as List?)?.contains(authenticatedKey) != true) {
-              ws.add(
-                jsonEncode([
-                  'CLOSED',
-                  subId,
-                  'auth-required: requested filter requires authentication',
-                ]),
-              );
-              break;
-            }
-            for (final ev in relay._toReplay) {
-              ws.add(jsonEncode(['EVENT', subId, ev]));
-            }
-            ws.add(jsonEncode(['EOSE', subId]));
-        }
-      }, onDone: () => relay.activeConnections--,);
-
+            case 'EVENT':
+              final ev = (msg[1] as Map).cast<String, dynamic>();
+              relay.received.add(ev);
+              final answer = relay.okAnswer;
+              if (answer != null) {
+                ws.add(
+                  jsonEncode([
+                    'OK',
+                    ev['id'],
+                    answer,
+                    answer ? '' : relay.refusalMessage,
+                  ]),
+                );
+              }
+            case 'REQ':
+              final subId = msg[1] as String;
+              relay.reqs.add(data);
+              final filter = (msg[2] as Map).cast<String, dynamic>();
+              if (relay.requireAuth &&
+                  (filter['#p'] as List?)?.contains(authenticatedKey) != true) {
+                ws.add(
+                  jsonEncode([
+                    'CLOSED',
+                    subId,
+                    'auth-required: requested filter requires authentication',
+                  ]),
+                );
+                break;
+              }
+              for (final ev in relay._toReplay) {
+                ws.add(jsonEncode(['EVENT', subId, ev]));
+              }
+              ws.add(jsonEncode(['EOSE', subId]));
+          }
+        },
+        onDone: () => relay.activeConnections--,
+      );
     });
     return relay;
   }
@@ -171,7 +176,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(relay.connections, 1);
     await client.dispose();
-    await _until(() => relay.activeConnections == 0, reason: 'all sockets closed');
+    await _until(() => relay.activeConnections == 0,
+        reason: 'all sockets closed');
   });
 
   // A deterministic identity seed → a real, verifiable BIP-340 signer, so
@@ -447,6 +453,41 @@ void main() {
               n,
           reason: '$n relays connected',
         );
+
+    test('media inbox can pause without closing its upload socket', () async {
+      final talk = await _FakeRelayServer.start();
+      final media = await _FakeRelayServer.start();
+      addTearDown(talk.stop);
+      addTearDown(media.stop);
+
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [talk.url],
+        conversationRelayUrls: [talk.url],
+        mediaRelayUrls: [media.url],
+        subscribeToMedia: false,
+        sinceSeconds: 50000,
+        mediaSinceSeconds: 12345,
+        publishAckTimeout: ackTimeout,
+      );
+      addTearDown(client.dispose);
+      final inbound =
+          client.subscribe(recipientPubkeyHex: signer.npubHex).listen((_) {});
+      addTearDown(inbound.cancel);
+      client.start();
+      await allUp(client, 2);
+      await _until(() => talk.reqs.isNotEmpty, reason: 'text inbox REQ');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(media.reqs, isEmpty);
+      expect(media.connections, 1, reason: 'upload socket stays connected');
+
+      client.setMediaSubscriptions(true);
+      await _until(() => media.reqs.isNotEmpty, reason: 'media inbox REQ');
+      final request = jsonDecode(media.reqs.single) as List<dynamic>;
+      final filter = (request[2] as Map).cast<String, dynamic>();
+      expect(filter['since'], 11745);
+      expect(client.mediaSubscriptionsEnabled, isTrue);
+    });
 
     test('a conversation event goes to the conversation lane, not everywhere',
         () async {

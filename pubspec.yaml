@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.0+1093
+version: 1.0.0+1094
 
 environment:
   sdk: ^3.6.0
@@ -148,6 +148,7 @@ dependencies:
   ffi: ^2.2.0
   opus_flutter_android: ^3.0.1
   opus_flutter_ios: ^3.0.1
+  connectivity_plus: 6.1.5
 
 # CameraX must mirror the encoded front-camera clip as well as its preview.
 # The small native patch is documented in third_party/camera_android_camerax.

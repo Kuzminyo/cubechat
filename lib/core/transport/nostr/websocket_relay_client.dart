@@ -41,15 +41,24 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     List<String> conversationRelayUrls = const <String>[],
     List<String> mediaRelayUrls = const <String>[],
     List<String> locationRelayUrls = const <String>[],
+    bool subscribeToMedia = true,
     WebSocketChannel Function(Uri)? connect,
     int? sinceSeconds,
     void Function(int seconds)? onWatermark,
+    int? mediaSinceSeconds,
+    void Function(int seconds)? onMediaWatermark,
     Iterable<String>? seenIds,
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
     Duration? probeTimeout,
   })  : _authSigner = authSigner,
         _probeTimeout = probeTimeout ?? defaultProbeTimeout,
+        _mediaSubscriptionsEnabled = subscribeToMedia,
+        _mediaOnlyUrls = mediaRelayUrls.toSet().difference(<String>{
+          ...relayUrls,
+          ...conversationRelayUrls,
+          ...locationRelayUrls,
+        }),
         _verifyInbound = verifyInbound ?? _verifyOffThread,
         _urls = List.unmodifiable(
           <String>{
@@ -75,6 +84,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
         _onWatermark = onWatermark,
+        _mediaWatermark = mediaSinceSeconds,
+        _onMediaWatermark = onMediaWatermark,
         _onSeenIds = onSeenIds,
         _publishAckTimeout = publishAckTimeout ?? defaultPublishAckTimeout {
     for (final url in _urls) {
@@ -113,8 +124,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         debugLabel: 'nostr-verify',
       );
 
-  /// Relays kept for a lane, and subscribed to like any other. See [RelayLane].
+  /// Relays kept for a lane. See [RelayLane].
   final Map<RelayLane, Set<String>> _lanes;
+
+  /// Media-only sockets stay available for outbound uploads, but their inbox
+  /// subscription can be paused on cellular data. Shared sockets are excluded
+  /// so a media preference can never silence text or location traffic.
+  final Set<String> _mediaOnlyUrls;
+  bool _mediaSubscriptionsEnabled;
 
   final WebSocketChannel Function(Uri) _connect;
 
@@ -125,6 +142,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// [_onWatermark] so it can be persisted again.
   int? _watermark;
   final void Function(int seconds)? _onWatermark;
+  int? _mediaWatermark;
+  final void Function(int seconds)? _onMediaWatermark;
 
   final _conns = <String, _RelayConnection>{};
   final _states = <String, RelayState>{};
@@ -178,6 +197,34 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       unawaited(conn.open());
     }
   }
+
+  /// Enable or pause inbox subscriptions on relays used only for media.
+  ///
+  /// Connections remain open because sending a photo over cellular must still
+  /// work. Pausing only sends CLOSE for our inbox REQ; enabling sends it again,
+  /// which lets the relay deliver the retained backlog.
+  void setMediaSubscriptions(bool enabled) {
+    if (_disposed || _mediaSubscriptionsEnabled == enabled) return;
+    _mediaSubscriptionsEnabled = enabled;
+    for (final entry in _conns.entries) {
+      if (!_mediaOnlyUrls.contains(entry.key)) continue;
+      if (enabled) {
+        entry.value.sendReqIfOpen();
+      } else {
+        entry.value.closeSubscriptionIfOpen();
+      }
+    }
+    DebugLog.instance.log(
+      'NOSTR',
+      enabled ? 'media inbox resumed' : 'media inbox paused on cellular data',
+    );
+  }
+
+  @visibleForTesting
+  bool get mediaSubscriptionsEnabled => _mediaSubscriptionsEnabled;
+
+  bool _shouldSubscribe(String url) =>
+      _mediaSubscriptionsEnabled || !_mediaOnlyUrls.contains(url);
 
   /// Reconnect every relay that is down, right now.
   ///
@@ -408,7 +455,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     _subscribedTo = recipientPubkeyHex;
     final controller = _inbound ??= StreamController<NostrEvent>.broadcast();
     for (final c in _conns.values) {
-      c.sendReqIfOpen();
+      if (_shouldSubscribe(c.url)) c.sendReqIfOpen();
     }
     return controller.stream;
   }
@@ -471,6 +518,9 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         // must never reserve an id and suppress the authentic copy behind it.
         _remember(id);
         _advanceWatermark(event.createdAt);
+        if (_mediaOnlyUrls.contains(url)) {
+          _advanceMediaWatermark(event.createdAt);
+        }
         final c = _inbound;
         if (c != null && !c.isClosed) c.add(event);
       } catch (e) {
@@ -493,12 +543,19 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     _onWatermark?.call(createdAt);
   }
 
-  /// The `since` to put on a REQ — null until we've accepted an event, which is
-  /// the first-run case where we do want the relay's full backlog.
-  int? get _reqSince {
-    final w = _watermark;
-    if (w == null) return null;
-    final since = w - _sinceSlack.inSeconds;
+  void _advanceMediaWatermark(int createdAt) {
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (createdAt > nowSeconds) return;
+    if (_mediaWatermark != null && createdAt <= _mediaWatermark!) return;
+    _mediaWatermark = createdAt;
+    _onMediaWatermark?.call(createdAt);
+  }
+
+  int? _reqSinceFor(String url) {
+    final watermark =
+        _mediaOnlyUrls.contains(url) ? _mediaWatermark : _watermark;
+    if (watermark == null) return null;
+    final since = watermark - _sinceSlack.inSeconds;
     return since <= 0 ? null : since;
   }
 
@@ -742,14 +799,21 @@ class _RelayConnection {
   /// subscription target after the socket was already up.
   void sendReqIfOpen() {
     final target = _pool._subscriptionTarget;
-    if (target == null || _channel == null) return;
+    if (target == null || _channel == null || !_pool._shouldSubscribe(url)) {
+      return;
+    }
     send(
       NostrRelayProtocol.req(
         _subId,
         recipientPubkeyHex: target,
-        since: _pool._reqSince,
+        since: _pool._reqSinceFor(url),
       ),
     );
+  }
+
+  void closeSubscriptionIfOpen() {
+    if (_channel == null) return;
+    send(NostrRelayProtocol.close(_subId));
   }
 
   /// Write [payload]; returns false if the socket rejected it (and schedules a

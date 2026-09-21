@@ -39,30 +39,23 @@ void main() {
               'same problem between two things nobody is reading');
     });
 
-    test('the meeting point is ours, and everyone listens on it', () {
-      // Conversation goes to the user's own relays and to this one. It is the
-      // single deliberate exception to "no relay serves two lanes", and it
-      // holds only while both of these do:
-      //
-      //  * it is in the fixed media list, which no setting can edit — so every
-      //    phone subscribes to it and two people with different hand-edited
-      //    relay lists still hear each other;
-      //  * it is our own relay, whose limits we set. The rule above is about
-      //    public relays that throttle a whole connection for a burst; ours
-      //    does not have to.
-      //
-      // Before conversation had a lane it was written to all three media
-      // relays. One, ours, is the overlap that is left.
+    test('text meeting point and owned media inbox use separate sockets', () {
+      final meeting = Uri.parse(RelaySettings.meetingPointUrl);
+      final ownedMedia = Uri.parse(RelaySettings.defaultMediaUrls.first);
+
+      expect(meeting.host, endsWith('cubechat.tech'));
+      expect(ownedMedia.host, meeting.host);
+      expect(meeting.path, isEmpty);
+      expect(ownedMedia.path, '/media');
       expect(
         RelaySettings.defaultMediaUrls,
-        contains(RelaySettings.meetingPointUrl),
+        isNot(contains(RelaySettings.meetingPointUrl)),
+        reason: 'pausing media must never pause the text meeting point',
       );
-      expect(Uri.parse(RelaySettings.meetingPointUrl).host,
-          endsWith('cubechat.tech'));
-      expect(RelaySettings.defaultUrls,
-          isNot(contains(RelaySettings.meetingPointUrl)),
-          reason: 'a default list that already held it would make it look '
-              'like an ordinary conversation relay, and it is not one');
+      expect(
+        RelaySettings.defaultUrls,
+        isNot(contains(RelaySettings.meetingPointUrl)),
+      );
     });
 
     test('each lane has more than one relay', () {
@@ -81,7 +74,7 @@ void main() {
     });
   });
 
-  group('the split is publish-only', () {
+  group('lane subscriptions', () {
     late final String pool;
 
     setUpAll(() {
@@ -89,10 +82,7 @@ void main() {
           .readAsStringSync();
     });
 
-    test('lane relays join the pool, so they are subscribed to', () {
-      // Nostr is publish-here-subscribe-here: a chunk written to a relay the
-      // recipient does not read never arrives. This is the line that stops
-      // that, and it is the one most likely to be "tidied" away.
+    test('lane relays join the pool so uploads always have a socket', () {
       expect(pool, contains('...mediaRelayUrls'));
       expect(pool, contains('...conversationRelayUrls'));
       expect(pool, contains('...locationRelayUrls'));

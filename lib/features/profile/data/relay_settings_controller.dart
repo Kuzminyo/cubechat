@@ -112,7 +112,9 @@ class RelaySettings {
   static const meetingPointUrl = 'wss://relay.cubechat.tech';
 
   static const defaultMediaUrls = <String>[
-    'wss://relay.cubechat.tech',
+    // Separate database and socket: pausing this subscription must never pause
+    // text messages on the meeting-point relay at the host root.
+    'wss://relay.cubechat.tech/media',
     'wss://relay.snort.social',
     'wss://nostr.oxtr.dev',
   ];
@@ -238,8 +240,8 @@ class RelaySettingsController extends Notifier<RelaySettings> {
 
   Future<void> _load() async {
     try {
-      final box =
-          await hiveCipherProvider.openEncryptedBox<dynamic>(HiveBoxes.settings);
+      final box = await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
       _box = box;
       // `?? true` is the new-install default; a stored `false` is somebody's
       // decision and outranks it.

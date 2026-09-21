@@ -14,6 +14,7 @@ import '../../storage/hive_init.dart';
 /// along with everything else.
 class RelayWatermarkStore {
   static const key = 'nostr.since';
+  static const mediaKey = 'nostr.media_since';
 
   /// Event ids already accepted, so a replay costs a set lookup.
   ///
@@ -65,6 +66,29 @@ class RelayWatermarkStore {
       await box.put(key, seconds);
     } catch (e) {
       debugPrint('Relay watermark persist failed: $e');
+    }
+  }
+
+  Future<int?> loadMedia() async {
+    try {
+      final box = _box ??= await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      return box.get(mediaKey) as int?;
+    } catch (e) {
+      debugPrint('Relay media watermark load failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> saveMedia(int seconds) async {
+    try {
+      final box = _box ??= await hiveCipherProvider
+          .openEncryptedBox<dynamic>(HiveBoxes.settings);
+      final current = box.get(mediaKey) as int?;
+      if (current != null && seconds <= current) return;
+      await box.put(mediaKey, seconds);
+    } catch (e) {
+      debugPrint('Relay media watermark persist failed: $e');
     }
   }
 

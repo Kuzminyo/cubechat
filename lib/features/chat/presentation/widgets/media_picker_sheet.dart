@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -24,6 +25,13 @@ import 'gallery_viewer.dart';
 sealed class MediaPickerResult {
   const MediaPickerResult();
 }
+
+@visibleForTesting
+bool galleryNeedsPhotoPermissionNotice(
+  bool isAndroid,
+  PermissionStatus? photos,
+) =>
+    isAndroid && photos != null && !photos.isGranted && !photos.isLimited;
 
 /// The user tapped the camera tile; the caller should open the capture screen.
 class MediaPickerCamera extends MediaPickerResult {
@@ -126,6 +134,11 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   bool _allowPop = false;
   bool _confirmingDiscard = false;
   PermissionState? _perm;
+
+  /// READ_MEDIA_IMAGES on its own, Android only. photo_manager's [_perm] says
+  /// `limited` both for "the user picked some" and for "video allowed, photos
+  /// refused", and the way out of each is different.
+  PermissionStatus? _photosGrant;
   bool _loading = true;
 
   /// Newest first. photo_manager applies no ordering of its own — `orders`
@@ -255,9 +268,23 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
       //
       // Harmless everywhere else: on iOS and on Android 12 and below this is
       // one library permission, already held, and the call returns at once.
+      //
+      // Both halves, asked together, and that is the fix for the mirror image
+      // of the fault above: "only videos in the gallery, no photos". Asking for
+      // video on its own put up a dialog of its own, and the photo_manager
+      // request right after it put up a second; a "Don't allow" on that second
+      // one left video granted and photos refused. photo_manager reports that
+      // pair as `limited` — its getAuthValue folds Authorized and Denied into
+      // Limited — so the sheet drew the grid, the store handed back the videos
+      // it was allowed to, and nothing said why the photos were gone. One
+      // request for both is one dialog, and it is asked again whenever either
+      // half is still open to asking.
       if (PlatformInfo.isAndroid) {
+        final photos = await Permission.photos.status;
         final videos = await Permission.videos.status;
-        if (videos.isDenied) await Permission.videos.request();
+        if (photos.isDenied || videos.isDenied) {
+          await [Permission.photos, Permission.videos].request();
+        }
       }
       final perm = await PhotoManager.requestPermissionExtend(
         requestOption: const PermissionRequestOption(
@@ -268,6 +295,9 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         ),
       );
       _perm = perm;
+      if (PlatformInfo.isAndroid) {
+        _photosGrant = await Permission.photos.status;
+      }
       if (!perm.hasAccess) {
         if (mounted) setState(() => _loading = false);
         return;
@@ -370,10 +400,14 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         final grant = PlatformInfo.isAndroid
             ? (await Permission.videos.status).name
             : 'n/a';
+        final images = PlatformInfo.isAndroid
+            ? (await Permission.photos.status).name
+            : 'n/a';
         DebugLog.instance.log(
           'GALLERY',
           'page 1: ${page.length} of $_total, $videos video — access '
-              '${_perm?.name ?? "unknown"}, READ_MEDIA_VIDEO $grant',
+              '${_perm?.name ?? "unknown"}, READ_MEDIA_VIDEO $grant, '
+              'READ_MEDIA_IMAGES $images',
         );
       }
       if (page.isNotEmpty && mounted) {
@@ -594,6 +628,11 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   }
 
   Widget _body() {
+    final t = AppLocalizations.of(context);
+    final photosUnavailable = galleryNeedsPhotoPermissionNotice(
+      PlatformInfo.isAndroid,
+      _photosGrant,
+    );
     if (_loading) {
       return Center(
         child: CircularProgressIndicator(color: AppColors.brandPrimary),
@@ -607,6 +646,16 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         action: 'Open settings',
         onAction: PhotoManager.openSetting,
         secondaryAction: 'Take a photo',
+        onSecondaryAction: () => _close(const MediaPickerCamera()),
+      );
+    }
+    if (photosUnavailable && _assets.isEmpty) {
+      return _message(
+        t.mediaPhotosAccessOff,
+        t.mediaPhotosAccessOffHint,
+        action: t.mediaOpenSettings,
+        onAction: PhotoManager.openSetting,
+        secondaryAction: t.mediaTakePhoto,
         onSecondaryAction: () => _close(const MediaPickerCamera()),
       );
     }
@@ -662,7 +711,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
     }
     // itemCount is assets + 1: the first cell is always the camera tile, so the
     // camera is reachable even when the gallery is empty.
-    return NotificationListener<ScrollNotification>(
+    final grid = NotificationListener<ScrollNotification>(
       onNotification: _onGalleryScroll,
       // A handle you can drag, because a phone holds years of photographs and
       // a flick moves three rows. Interactive rather than the decorative kind:
@@ -682,53 +731,96 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         // proportional size would otherwise be a few pixels.
         minThumbLength: 48,
         child: GridView.builder(
-        controller: _scroll,
-        primary: false,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        // Half a screen of thumbnails held ready, not a whole extra one. Every
-        // cached tile is a live decoded bitmap, so this number is memory and
-        // decode work as much as it is smoothness — and 900 was buying a
-        // screenful nobody was about to reach on a phone that could least
-        // afford it.
-        cacheExtent: 400,
-        padding: EdgeInsets.fromLTRB(
-          8,
-          0,
-          8,
-          120 + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          mainAxisSpacing: 3,
-          crossAxisSpacing: 3,
-        ),
-        itemCount: _assets.length + 1,
-        itemBuilder: (_, i) {
-          if (i == 0) {
-            return _CameraTile(
-              onTap: () => _close(const MediaPickerCamera()),
+          controller: _scroll,
+          primary: false,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          // Half a screen of thumbnails held ready, not a whole extra one. Every
+          // cached tile is a live decoded bitmap, so this number is memory and
+          // decode work as much as it is smoothness — and 900 was buying a
+          // screenful nobody was about to reach on a phone that could least
+          // afford it.
+          cacheExtent: 400,
+          padding: EdgeInsets.fromLTRB(
+            8,
+            0,
+            8,
+            120 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 3,
+            crossAxisSpacing: 3,
+          ),
+          itemCount: _assets.length + 1,
+          itemBuilder: (_, i) {
+            if (i == 0) {
+              return _CameraTile(
+                onTap: () => _close(const MediaPickerCamera()),
+              );
+            }
+            final asset = _assets[i - 1];
+            return _Thumb(
+              // Keyed by asset id so the element (and its decoded thumbnail) follows
+              // its photo instead of its grid slot as pages are appended.
+              key: ValueKey<String>(asset.id),
+              asset: asset,
+              order: _orderOf(asset),
+              // Tap the photo or its round control to select it; the small
+              // control in the opposite corner opens it full screen. The
+              // caption/send bar below is the only confirmation surface.
+              onTap: () => _toggle(asset),
+              onPreview: () => _openViewer(i - 1),
+              onToggle: () => _toggle(asset),
             );
-          }
-          final asset = _assets[i - 1];
-          return _Thumb(
-            // Keyed by asset id so the element (and its decoded thumbnail) follows
-            // its photo instead of its grid slot as pages are appended.
-            key: ValueKey<String>(asset.id),
-            asset: asset,
-            order: _orderOf(asset),
-            // Tap the photo or its round control to select it; the small
-            // control in the opposite corner opens it full screen. The
-            // caption/send bar below is the only confirmation surface.
-            onTap: () => _toggle(asset),
-            onPreview: () => _openViewer(i - 1),
-            onToggle: () => _toggle(asset),
-          );
-        },
+          },
         ),
       ),
+    );
+    if (!photosUnavailable) return grid;
+    return Column(
+      children: [
+        Material(
+          color: AppColors.brandPrimary.withValues(alpha: 0.12),
+          child: InkWell(
+            onTap: PhotoManager.openSetting,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.photo_library_outlined,
+                    color: AppColors.brandPrimary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      t.mediaVideosOnly,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    t.mediaOpenSettings,
+                    style: TextStyle(
+                      color: AppColors.brandPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: grid),
+      ],
     );
   }
 
@@ -958,7 +1050,8 @@ class _CameraTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.photo_camera_rounded, color: AppColors.brandPrimary, size: 26),
+            Icon(Icons.photo_camera_rounded,
+                color: AppColors.brandPrimary, size: 26),
             const SizedBox(height: 6),
             Text(
               'Camera',
@@ -1079,7 +1172,8 @@ class _ThumbState extends State<_Thumb> {
                   borderRadius: BorderRadius.circular(5),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

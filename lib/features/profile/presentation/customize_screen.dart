@@ -20,6 +20,7 @@ import '../../chats/data/archive_visibility_controller.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/audio_focus_controller.dart';
+import '../data/media_download_settings_controller.dart';
 import '../data/media_quality_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
@@ -89,6 +90,8 @@ class CustomizeScreen extends ConsumerWidget {
             // Beside the circle's sound: both are about what a message you
             // send costs, not about how the app looks.
             const _MediaQualityCard(),
+            const SizedBox(height: 12),
+            const _MediaDownloadCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
@@ -989,6 +992,61 @@ class _MediaQualityCard extends ConsumerWidget {
               color: AppColors.textOnGlassDim,
               fontSize: 12,
               height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Keeps large retained relay events off a metered link until the user asks.
+class _MediaDownloadCard extends ConsumerWidget {
+  const _MediaDownloadCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final deferOnMobile = ref.watch(mediaDownloadSettingsProvider);
+    return GlassCard(
+      child: Row(
+        children: [
+          Icon(
+            Icons.signal_cellular_alt_rounded,
+            size: 22,
+            color: AppColors.textOnGlass,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.customizeDeferMediaTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  t.customizeDeferMediaHint,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: deferOnMobile,
+            activeThumbColor: AppColors.brandPrimary,
+            onChanged: (next) => unawaited(
+              ref.read(mediaDownloadSettingsProvider.notifier).set(next),
             ),
           ),
         ],

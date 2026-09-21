@@ -822,6 +822,11 @@
   "mediaDiscardTitle": "Discard selection?",
   "mediaDiscardMessage": "Close the gallery and discard the selected photos?",
   "mediaDiscardConfirm": "Discard",
+  "mediaPhotosAccessOff": "Photo access is off",
+  "mediaPhotosAccessOffHint": "CubeChat can currently see videos only. Allow photo access in system settings to show your pictures.",
+  "mediaVideosOnly": "Only videos are visible — allow photo access",
+  "mediaOpenSettings": "Open settings",
+  "mediaTakePhoto": "Take a photo",
   "contactProfileAutoDelete": "Auto-delete chat",
   "contactProfileAutoDeleteTitle": "Auto-delete messages",
   "contactProfileAutoDeleteOff": "Off",
@@ -1504,5 +1509,7 @@
   "chatTranscribeAction": "Transcribe",
   "chatTranscribeFailed": "This phone cannot transcribe that one.",
   "chatTranslateAction": "Translate",
-  "chatTranslateFailed": "That one cannot be translated on this phone."
+  "chatTranslateFailed": "That one cannot be translated on this phone.",
+  "customizeDeferMediaTitle": "Wait for Wi-Fi to download media",
+  "customizeDeferMediaHint": "On mobile data, messages arrive normally but photos, videos and files wait. Tap a waiting file to download all pending media now."
 }

@@ -204,3 +204,30 @@ isolate on Android/iOS. The supplied log measured 204 ms of UI signature work
 for 54 events in five seconds. This is not a GPU frame measurement: build/raster
 improvement still needs a new device trace. No refresh-rate or blur setting was
 changed in this fix.
+## Separate media inbox (/media)
+
+Build 1094 moves the owned media lane to wss://relay.cubechat.tech/media.
+It must be a second strfry process and LMDB, not only another Caddy path to the
+root process. The app can then stop the media REQ while the phone is on
+cellular data without stopping text at wss://relay.cubechat.tech.
+
+The existing root relay remains the conversation meeting point. Install the
+second instance with the already-built /usr/local/bin/strfry:
+
+    mkdir -p /opt/cubechat-media-relay/strfry-db
+    chown -R cubechat-relay:cubechat-relay /opt/cubechat-media-relay
+
+Copy strfry-media.conf to /opt/cubechat-media-relay/strfry.conf,
+cubechat-media-relay.service to /etc/systemd/system/, and replace the single
+relay.cubechat.tech Caddy block with Caddyfile.fragment. Then validate before
+reloading:
+
+    systemctl daemon-reload
+    systemctl enable --now cubechat-media-relay
+    caddy validate --config /etc/caddy/Caddyfile
+    systemctl reload caddy
+
+A direct check of https://relay.cubechat.tech/media must return the
+cubechat media NIP-11 document. The app keeps the two public media relays as
+fallbacks, so build 1094 can exchange attachments with older builds while the
+new owned endpoint is deployed.
