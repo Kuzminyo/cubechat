@@ -21,6 +21,71 @@ void main() {
 
   const anchor = Rect.fromLTWH(300, 48, 40, 40);
 
+  group('save as', () {
+    // The backup's "Save to Files". Only a path goes over the channel — the
+    // archive can be hundreds of megabytes, and the API this replaced wanted
+    // all of it as bytes in the Dart heap.
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+
+    test('sends the path and the name, never the bytes', () async {
+      MethodCall? seen;
+      messenger.setMockMethodCallHandler(OpenIn.channel, (call) async {
+        seen = call;
+        return 'saved';
+      });
+
+      final outcome = await OpenIn.saveAs(
+        '/data/cache/cubechat-backup-1/cubechat-2026-09-21.cchatbackup',
+        name: 'cubechat-2026-09-21.cchatbackup',
+      );
+
+      expect(outcome, SaveAsOutcome.saved);
+      expect(seen?.method, 'saveAs');
+      expect((seen!.arguments as Map).cast<String, dynamic>(), {
+        'path': '/data/cache/cubechat-backup-1/cubechat-2026-09-21.cchatbackup',
+        'name': 'cubechat-2026-09-21.cchatbackup',
+      });
+    });
+
+    test('backing out of the picker is a cancel, not a failure', () async {
+      messenger.setMockMethodCallHandler(
+        OpenIn.channel,
+        (_) async => 'cancelled',
+      );
+      expect(
+        await OpenIn.saveAs('/tmp/a.cchatbackup', name: 'a.cchatbackup'),
+        SaveAsOutcome.cancelled,
+      );
+    });
+
+    test('a copy that did not complete says so', () async {
+      messenger.setMockMethodCallHandler(OpenIn.channel, (_) async => 'failed');
+      expect(
+        await OpenIn.saveAs('/tmp/a.cchatbackup', name: 'a.cchatbackup'),
+        SaveAsOutcome.failed,
+      );
+    });
+
+    test('a build without the screen answers null, so the sheet takes over',
+        () async {
+      // No handler: MissingPluginException. The caller falls back to sending,
+      // which is still a way to keep the backup.
+      expect(
+        await OpenIn.saveAs('/tmp/a.cchatbackup', name: 'a.cchatbackup'),
+        isNull,
+      );
+    });
+
+    test('works the same on iOS', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      messenger.setMockMethodCallHandler(OpenIn.channel, (_) async => 'saved');
+      expect(
+        await OpenIn.saveAs('/tmp/a.cchatbackup', name: 'a.cchatbackup'),
+        SaveAsOutcome.saved,
+      );
+    });
+  });
+
   group('on iOS', () {
     setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
 

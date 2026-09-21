@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../../core/util/open_in.dart';
+import '../../../core/util/platform_info.dart';
 import '../../../core/util/share_anchor.dart';
 
 import '../../../core/theme/colors.dart';
@@ -14,6 +16,7 @@ import '../../../core/util/debug_log.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import '../data/backup_service.dart';
@@ -48,14 +51,23 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             .read(backupServiceProvider)
             .createFile(archive, password: password);
         if (!mounted) return;
-        if (Platform.isAndroid || Platform.isIOS) {
-          // FilePicker.saveFile requires the entire archive as bytes on mobile.
-          // Share a file URL instead, keeping large videos out of the Dart heap.
-          final result = await Share.shareXFiles(
-            [XFile(archive.path, mimeType: 'application/octet-stream')],
-            sharePositionOrigin: shareAnchorFor(context),
-          );
-          if (result.status != ShareResultStatus.success) return;
+        if (PlatformInfo.isMobile) {
+          // Two different acts, and the phone path had lost one of them.
+          //
+          // FilePicker.saveFile wants the whole archive as bytes on a phone,
+          // and with photos and video in the backup that is hundreds of
+          // megabytes in the Dart heap — so it was swapped for the share
+          // sheet. But the sheet only *sends*: it gives the file to an app,
+          // and there was no longer any way to put it in a folder on the
+          // phone. Reported as "не открывает, куда сохранить, а отправить
+          // открывает". Both are offered now, and saving goes through the
+          // system's own save screen with only a path crossing the channel.
+          final where = await _askWhere();
+          if (where == null || !mounted) return;
+          final kept = where == _Destination.files
+              ? await _saveToFiles(archive, name)
+              : await _sendToApp(archive);
+          if (!kept) return;
         } else {
           final path = await FilePicker.platform.saveFile(
             dialogTitle: t.backupSaveTitle,
@@ -79,6 +91,72 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<_Destination?> _askWhere() {
+    final t = AppLocalizations.of(context);
+    return showGlassSheet<_Destination>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+                child: Text(
+                  t.backupWhereTitle,
+                  style: AppTypography.heading(
+                    size: 18,
+                    color: AppColors.textOnGlass,
+                  ),
+                ),
+              ),
+              _DestinationRow(
+                icon: Icons.folder_rounded,
+                title: t.backupSaveToFiles,
+                subtitle: t.backupSaveToFilesHint,
+                onTap: () => Navigator.of(sheet).pop(_Destination.files),
+              ),
+              const SizedBox(height: 10),
+              _DestinationRow(
+                icon: Icons.ios_share_rounded,
+                title: t.backupSendToApp,
+                subtitle: t.backupSendToAppHint,
+                onTap: () => Navigator.of(sheet).pop(_Destination.app),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Whether the copy ended up somewhere. A cancel is not a failure; a phone
+  /// without the save screen (an old install's channel) falls back to the
+  /// sheet rather than leaving the tap doing nothing.
+  Future<bool> _saveToFiles(File archive, String name) async {
+    final outcome = await OpenIn.saveAs(archive.path, name: name);
+    switch (outcome) {
+      case SaveAsOutcome.saved:
+        return true;
+      case SaveAsOutcome.cancelled:
+        return false;
+      case SaveAsOutcome.failed:
+        throw StateError('save-as failed');
+      case null:
+        return _sendToApp(archive);
+    }
+  }
+
+  Future<bool> _sendToApp(File archive) async {
+    final result = await Share.shareXFiles(
+      [XFile(archive.path, mimeType: 'application/octet-stream')],
+      sharePositionOrigin: shareAnchorFor(context),
+    );
+    return result.status == ShareResultStatus.success;
   }
 
   Future<void> _restore() async {
@@ -348,6 +426,46 @@ class _BackupPasswordDialogState extends State<_BackupPasswordDialog> {
           child: Text(widget.confirm ? t.backupCreate : t.backupRestore),
         ),
       ],
+    );
+  }
+}
+
+enum _Destination { files, app }
+
+class _DestinationRow extends StatelessWidget {
+  const _DestinationRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.brandPrimary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTypography.rowTitle),
+                const SizedBox(height: 2),
+                Text(subtitle, style: AppTypography.supporting),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -59,6 +59,36 @@ class OpenIn {
     }
   }
 
+  /// Put a copy of [path] wherever the user picks, through the system's own
+  /// "save as" screen — Files on iOS, the document picker on Android — named
+  /// [name] unless they rename it.
+  ///
+  /// Only a path crosses the channel; the platform copies the file itself. A
+  /// backup with video in it runs to hundreds of megabytes, and the API this
+  /// replaces wanted all of it as bytes in the Dart heap.
+  ///
+  /// Null when there is no such screen here — an old build, a desktop — so
+  /// the caller can fall back to the share sheet.
+  static Future<SaveAsOutcome?> saveAs(String path, {required String name}) async {
+    if (!isSupported) return null;
+    try {
+      final answer = await channel.invokeMethod<String>('saveAs', {
+        'path': path,
+        'name': name,
+      });
+      return switch (answer) {
+        'saved' => SaveAsOutcome.saved,
+        'cancelled' => SaveAsOutcome.cancelled,
+        _ => SaveAsOutcome.failed,
+      };
+    } on MissingPluginException {
+      return null;
+    } catch (e) {
+      DebugLog.instance.log('SHARE', 'save-as failed: ${e.runtimeType}');
+      return SaveAsOutcome.failed;
+    }
+  }
+
   /// Offer [path] to the apps that can open it. Returns whether the menu was
   /// actually shown.
   ///
@@ -88,3 +118,6 @@ class OpenIn {
     }
   }
 }
+
+/// How a [OpenIn.saveAs] ended.
+enum SaveAsOutcome { saved, cancelled, failed }

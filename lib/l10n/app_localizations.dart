@@ -3842,6 +3842,36 @@ abstract class AppLocalizations {
   /// **'Encrypted backup saved'**
   String get backupSaved;
 
+  /// No description provided for @backupWhereTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where should the backup go?'**
+  String get backupWhereTitle;
+
+  /// No description provided for @backupSaveToFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to Files'**
+  String get backupSaveToFiles;
+
+  /// No description provided for @backupSaveToFilesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A folder on this phone, a memory card or a cloud drive'**
+  String get backupSaveToFilesHint;
+
+  /// No description provided for @backupSendToApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to an app'**
+  String get backupSendToApp;
+
+  /// No description provided for @backupSendToAppHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram, mail, a messenger — whatever takes files'**
+  String get backupSendToAppHint;
+
   /// No description provided for @backupFailed.
   ///
   /// In en, this message translates to:

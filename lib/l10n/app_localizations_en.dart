@@ -2193,6 +2193,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backupSaved => 'Encrypted backup saved';
 
   @override
+  String get backupWhereTitle => 'Where should the backup go?';
+
+  @override
+  String get backupSaveToFiles => 'Save to Files';
+
+  @override
+  String get backupSaveToFilesHint =>
+      'A folder on this phone, a memory card or a cloud drive';
+
+  @override
+  String get backupSendToApp => 'Send to an app';
+
+  @override
+  String get backupSendToAppHint =>
+      'Telegram, mail, a messenger — whatever takes files';
+
+  @override
   String get backupFailed => 'Could not complete the backup operation';
 
   @override

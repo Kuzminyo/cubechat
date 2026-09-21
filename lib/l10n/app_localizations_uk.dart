@@ -2212,6 +2212,23 @@ class AppLocalizationsUk extends AppLocalizations {
   String get backupSaved => 'Зашифровану копію збережено';
 
   @override
+  String get backupWhereTitle => 'Куди покласти копію?';
+
+  @override
+  String get backupSaveToFiles => 'Зберегти у Файли';
+
+  @override
+  String get backupSaveToFilesHint =>
+      'Папка на телефоні, картка пам’яті чи хмарний диск';
+
+  @override
+  String get backupSendToApp => 'Надіслати в застосунок';
+
+  @override
+  String get backupSendToAppHint =>
+      'Telegram, пошта, месенджер — усе, що приймає файли';
+
+  @override
   String get backupFailed => 'Не вдалося завершити операцію з резервною копією';
 
   @override

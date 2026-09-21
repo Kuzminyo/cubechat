@@ -15,8 +15,13 @@ import UIKit
 /// Returns false rather than an error when no installed app claims the file's
 /// type — the menu would come up empty, so the Dart side falls back to the
 /// share sheet instead of leaving a tap that does nothing.
-final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDelegate {
+final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDelegate,
+  UIDocumentPickerDelegate
+{
   private let channel: FlutterMethodChannel
+
+  /// Who is waiting on the Files export sheet — see [saveAs].
+  private var pendingSave: FlutterResult?
 
   /// Held for as long as the menu is up. `UIDocumentInteractionController` is
   /// not retained by the presentation, so a local would be deallocated on the
@@ -35,6 +40,10 @@ final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDeleg
   }
 
   private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "saveAs" {
+      saveAs(call.arguments as? [String: Any], result: result)
+      return
+    }
     guard call.method == "openIn" else {
       result(FlutterMethodNotImplemented)
       return
@@ -84,6 +93,52 @@ final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDeleg
     return bounds.contains(candidate)
       ? candidate
       : CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+  }
+
+  /// Put a copy of a file in Files — On My iPhone, iCloud Drive, a USB stick.
+  ///
+  /// The backup reached this through FilePicker.saveFile until the backup
+  /// grew its photos and video; that call wants the whole file as bytes, so it
+  /// was swapped for the share sheet, and "save it somewhere" quietly became
+  /// "send it to an app". The export picker takes a file URL instead and copies
+  /// it itself, so nothing about the archive's size touches the Dart heap.
+  ///
+  /// Answers "saved", "cancelled" or "failed".
+  private func saveAs(_ args: [String: Any]?, result: @escaping FlutterResult) {
+    guard pendingSave == nil else {
+      result(FlutterError(code: "busy", message: "a save is already open", details: nil))
+      return
+    }
+    guard
+      let path = args?["path"] as? String,
+      FileManager.default.fileExists(atPath: path),
+      let top = Self.topViewController()
+    else {
+      result("failed")
+      return
+    }
+    let picker = UIDocumentPickerViewController(
+      forExporting: [URL(fileURLWithPath: path)],
+      asCopy: true
+    )
+    picker.delegate = self
+    pendingSave = result
+    top.present(picker, animated: true)
+  }
+
+  // MARK: - UIDocumentPickerDelegate
+
+  func documentPicker(
+    _ controller: UIDocumentPickerViewController,
+    didPickDocumentsAt urls: [URL]
+  ) {
+    pendingSave?(urls.isEmpty ? "cancelled" : "saved")
+    pendingSave = nil
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    pendingSave?("cancelled")
+    pendingSave = nil
   }
 
   // MARK: - UIDocumentInteractionControllerDelegate

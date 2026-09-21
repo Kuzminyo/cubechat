@@ -4,6 +4,8 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
@@ -30,6 +32,8 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
     private var pendingBluetoothResult: MethodChannel.Result? = null
+
+    private class PendingSave(val source: File, val result: MethodChannel.Result)
 
     /**
      * The push plugin lives on the Application's engine (it has to answer
@@ -110,6 +114,11 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openIn" -> result.success(handOffFile(call.argument<String>("path")))
+                "saveAs" -> saveAs(
+                    call.argument<String>("path"),
+                    call.argument<String>("name"),
+                    result,
+                )
                 "openInText" -> result.success(
                     handOffText(
                         call.argument<String>("text"),
@@ -238,6 +247,73 @@ class MainActivity : FlutterActivity() {
 
 
     /**
+     * Put a copy of a file wherever the user picks — Downloads, a folder, a
+     * USB stick, Drive — through the system's own "save as" screen.
+     *
+     * The backup used to reach this through FilePicker.saveFile, which on a
+     * phone wants the whole file handed over as bytes. With photos and video
+     * in the backup that is hundreds of megabytes in the Dart heap, so the
+     * phone path was switched to the share sheet — and saving a copy to the
+     * phone itself stopped being possible: the sheet sends to apps, it does
+     * not put a file in a folder. Reported as "не открывает, куда сохранить".
+     *
+     * Here only a path crosses the channel. The copy is a stream from the
+     * staged file into whatever the picker returned, on a thread of its own,
+     * so the size of the archive costs disk and time but never memory.
+     *
+     * Answers "saved", "cancelled" or "failed".
+     */
+    private fun saveAs(path: String?, name: String?, result: MethodChannel.Result) {
+        if (pendingSave != null) {
+            result.error("busy", "a save is already open", null)
+            return
+        }
+        val source = path?.let(::File)
+        if (source == null || !source.exists()) {
+            result.success("failed")
+            return
+        }
+        try {
+            val create = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                // A made-up extension has no MIME type of its own; octet-stream
+                // is what every document provider accepts without renaming it.
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_TITLE, name ?: source.name)
+            }
+            pendingSave = PendingSave(source, result)
+            @Suppress("DEPRECATION")
+            startActivityForResult(create, REQUEST_SAVE_AS)
+        } catch (_: Exception) {
+            pendingSave = null
+            result.success("failed")
+        }
+    }
+
+    private fun finishSave(resultCode: Int, data: Intent?) {
+        val pending = pendingSave ?: return
+        pendingSave = null
+        val target = data?.data
+        if (resultCode != Activity.RESULT_OK || target == null) {
+            pending.result.success("cancelled")
+            return
+        }
+        Thread {
+            val outcome = try {
+                contentResolver.openOutputStream(target, "w")?.use { out ->
+                    pending.source.inputStream().use { input -> input.copyTo(out, 1 shl 16) }
+                    "saved"
+                } ?: "failed"
+            } catch (_: Exception) {
+                "failed"
+            }
+            // The main looper rather than this Activity's: the copy can outlast
+            // the Activity that started it, and the reply belongs to the engine.
+            Handler(Looper.getMainLooper()).post { pending.result.success(outcome) }
+        }.start()
+    }
+
+    /**
      * Puts the `open_file` method channel back after an Activity has come and
      * gone.
      *
@@ -330,6 +406,10 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_SAVE_AS) {
+            finishSave(resultCode, data)
+            return
+        }
         if (requestCode != REQUEST_ENABLE_BLUETOOTH) return
 
         val pending = pendingBluetoothResult ?: return
@@ -349,5 +429,18 @@ class MainActivity : FlutterActivity() {
         const val BLUETOOTH_POWER_CHANNEL = "cubechat/bluetooth_power"
         const val OPEN_IN_CHANNEL = "cubechat/open_in"
         const val REQUEST_ENABLE_BLUETOOTH = 4242
+        const val REQUEST_SAVE_AS = 4243
+
+        /**
+         * A "save as" waiting on the system's create-document screen.
+         *
+         * Held here rather than on the instance: the picker is another app's
+         * screen, and this Activity can be recreated behind it — a rotation,
+         * or memory pressure. The engine and its channel outlive that (see
+         * MainApplication), so the answer can still be delivered; what must
+         * not be lost is who is waiting for it, or the backup screen would sit
+         * busy for the rest of the run.
+         */
+        private var pendingSave: PendingSave? = null
     }
 }
