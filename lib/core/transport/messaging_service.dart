@@ -20,6 +20,7 @@ import '../../features/channels/models/channel.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chat/data/message_farewell.dart';
 import '../../features/chat/data/messages_controller.dart';
+import '../../features/chat/data/send_queue.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chat/domain/message_preview.dart';
@@ -1366,6 +1367,18 @@ class MessagingService {
     /// the far side still resolves the quote by id.
     String? replyPreview,
     bool transient = false,
+
+    /// Mint a fresh frame for a message already in the conversation, under
+    /// the msgId it already has, instead of writing a new one.
+    ///
+    /// A held frame carries the signed timestamp it was made with, and a
+    /// receiver refuses one older than [_replayMaxAgeMs] — so a message that
+    /// waited more than an hour for a road was handed over, accepted by the
+    /// relay, shown as delivered, and dropped on arrival. Signing it again is
+    /// what makes it deliverable; keeping the msgId is what makes it safe:
+    /// if the old copy got through after all, the far side already has that
+    /// wireId and files nothing twice. See [_remintQueued].
+    Message? resendOf,
   }) async {
     final manager = _ref.read(chatSessionManagerProvider.notifier);
 
@@ -1410,18 +1423,22 @@ class MessagingService {
     // Mint the transport msgId up front so the local Message can record it as
     // its wireId — the stable handle a read receipt / reaction from the peer
     // will reference back.
-    final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
-    final msg = Message(
-      id: 'm${DateTime.now().microsecondsSinceEpoch}',
-      chatId: canonicalId,
-      text: text,
-      sentAt: DateTime.now(),
-      isMine: true,
-      status: MessageStatus.sending,
-      wireId: TransportEnvelope.hashHex(msgId),
-      replyToWireId: replyTarget != null ? replyToWireId : null,
-      replyPreview: replyTarget != null ? replyPreview : null,
-    );
+    final resendId = resendOf?.wireId;
+    final msgId = resendId != null
+        ? _hexDecodeBytes(resendId)
+        : TransportEnvelope.newMsgId(initialTtl: _meshTtl);
+    final msg = resendOf ??
+        Message(
+          id: 'm${DateTime.now().microsecondsSinceEpoch}',
+          chatId: canonicalId,
+          text: text,
+          sentAt: DateTime.now(),
+          isMine: true,
+          status: MessageStatus.sending,
+          wireId: TransportEnvelope.hashHex(msgId),
+          replyToWireId: replyTarget != null ? replyToWireId : null,
+          replyPreview: replyTarget != null ? replyPreview : null,
+        );
     // Whether a transient send actually left the phone.
     //
     // A filed message records its own fate — the store gets `delivered` or
@@ -1437,7 +1454,9 @@ class MessagingService {
     // expensive thing this app can leave running.
     var transientDelivered = false;
     final messages = _ref.read(messagesControllerProvider.notifier);
-    if (!transient) {
+    // A resend is already in the conversation; filing it again would be a
+    // second bubble for one message.
+    if (!transient && resendOf == null) {
       messages.append(canonicalId, msg);
       // Also append under the transport id if the caller passed one (so an
       // open ChatScreen routed via /chat/<bleId> sees the outgoing message
@@ -3035,6 +3054,11 @@ class MessagingService {
   /// Nothing carried is lost — it stays queued for the next attempt or for the
   /// next Bluetooth handshake, whichever comes first.
   Future<void> _flushOutboxOverRelay() async {
+    if (_disposed) return;
+    // First, and before the empty check: after a restart [_outbox] is empty
+    // while the conversation still shows messages waiting, and those are
+    // exactly the ones this has to find. See [_remintQueued].
+    await _remintQueued();
     if (_disposed || _outbox.isEmpty) return;
     if (_flushingOutbox) return;
     _flushingOutbox = true;
@@ -9018,6 +9042,110 @@ class MessagingService {
     return true;
   }
 
+  /// How long a held frame is worth sending as it is.
+  ///
+  /// A receiver refuses a signed frame older than [_replayMaxAgeMs], an hour.
+  /// Forty-five minutes leaves the difference for a clock running slow on one
+  /// side and a relay taking its time; past it the frame is minted again.
+  static const Duration _queuedFrameShelfLife = Duration(minutes: 45);
+
+  bool _reminting = false;
+
+  /// Make sure every text of ours that is waiting has a frame worth sending.
+  ///
+  /// Two ways a waiting message ended up without one. The relay half of the
+  /// queue lives in memory, so after a restart a message could only ever
+  /// leave by Bluetooth — never by the internet, however long the phone was
+  /// online. And a frame that waited past the replay window was sent anyway:
+  /// the relay took it, the bubble said delivered, and the far side dropped it.
+  ///
+  /// So for each waiting text: if its frame is missing or past
+  /// [_queuedFrameShelfLife], the old frame is let go from both halves and
+  /// [sendText] mints a fresh one under the same msgId — delivered at once if
+  /// there is a road now, queued with a new clock if not. Texts only: a photo
+  /// or a file goes by the transfer queue, which re-sends by itself, and a
+  /// room's posts go by broadcast.
+  ///
+  /// [onlyFor] narrows it to one peer — the one whose Bluetooth handshake has
+  /// just come up.
+  Future<void> _remintQueued({String? onlyFor}) async {
+    if (_disposed || _reminting) return;
+    _reminting = true;
+    try {
+      final now = DateTime.now();
+      final waiting = queuedMessages(_ref.read(messagesControllerProvider));
+      var reminted = 0;
+      for (final item in waiting) {
+        final m = item.message;
+        final wireId = m.wireId;
+        if (wireId == null || m.kind != MessageKind.text) continue;
+        if (item.chatId.startsWith('#') || m.chatId.startsWith('#')) continue;
+        if (onlyFor != null && m.chatId != onlyFor) continue;
+        final held = _outbox[wireId];
+        if (held != null &&
+            now.difference(held.mintedAt) < _queuedFrameShelfLife) {
+          continue;
+        }
+        _outbox.remove(wireId);
+        _store.discardMsgId(wireId);
+        try {
+          await sendText(
+            m.chatId,
+            m.text,
+            replyToWireId: m.replyToWireId,
+            replyPreview: m.replyPreview,
+            resendOf: m,
+          );
+          reminted++;
+        } catch (e) {
+          DebugLog.instance.log('MESH', 'could not mint a queued text again: $e');
+        }
+        if (_disposed) return;
+        // One at a time, at the relays' pace — a phone back after a day
+        // offline can have dozens waiting.
+        await Future<void>.delayed(relayFanoutPacing);
+      }
+      if (reminted > 0) {
+        _scheduleRelayPersist();
+        DebugLog.instance.log(
+          'MESH',
+          'minted $reminted waiting message(s) again, signed now',
+        );
+      }
+    } finally {
+      _reminting = false;
+    }
+  }
+
+  /// Test seams for the queue. What a waiting frame looks like to a test:
+  /// whether it is held for the relays, and when it was signed.
+  @visibleForTesting
+  DateTime? debugQueuedMintedAt(String wireId) => _outbox[wireId]?.mintedAt;
+
+  @visibleForTesting
+  Uint8List? debugQueuedFrame(String wireId) => _outbox[wireId]?.frameBytes;
+
+  /// What a restart does to the relay half of the queue.
+  @visibleForTesting
+  void debugForgetQueue() => _outbox.clear();
+
+  /// Age a held frame, as an hour offline would.
+  @visibleForTesting
+  void debugAgeQueued(String wireId, Duration by) {
+    final held = _outbox[wireId];
+    if (held == null) return;
+    _outbox[wireId] = _OutboxRef(
+      canonicalId: held.canonicalId,
+      chatId: held.chatId,
+      messageId: held.messageId,
+      frameBytes: held.frameBytes,
+      mintedAt: held.mintedAt.subtract(by),
+    );
+  }
+
+  @visibleForTesting
+  Future<void> debugRemintQueued() => _remintQueued();
+
   Future<bool> _ensureRelayAwakeForSend({
     Duration timeout = const Duration(milliseconds: 1500),
   }) async {
@@ -11118,6 +11246,11 @@ class MessagingService {
   Future<void> _flushStoreForwardFor(ChatSession session) async {
     final pub = session.remoteStaticPublicKey;
     if (pub == null) return;
+    // Our own mail for this peer first, freshly signed: with the session up
+    // it goes straight over it. What the store held for them may be past the
+    // replay window, or gone with a restart's lost relay half.
+    final peerHex = session.remotePubkeyHex;
+    if (peerHex != null) await _remintQueued(onlyFor: peerHex);
     final List<Uint8List> hashes;
     try {
       // Every id this peer may have been addressed under while we held their
@@ -11447,10 +11580,16 @@ class _OutboxRef {
     required this.chatId,
     required this.messageId,
     required this.frameBytes,
-  });
+    DateTime? mintedAt,
+  }) : mintedAt = mintedAt ?? DateTime.now();
   final String canonicalId;
   final String chatId;
   final String messageId;
+
+  /// When [frameBytes] was signed — the age a receiver's replay window judges
+  /// it by. Past [MessagingService._queuedFrameShelfLife] it is minted again
+  /// rather than sent.
+  final DateTime mintedAt;
 
   /// The frame exactly as it would have gone out, kept so a relay coming up
   /// can carry it without the message being composed again.

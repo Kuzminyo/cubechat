@@ -50,6 +50,7 @@ class _Messaging extends Fake implements MessagingService {
     String? replyToWireId,
     String? replyPreview,
     bool transient = false,
+    Message? resendOf,
   }) async {
     sent.add((chatId, SharedLocation.tryParse(text)!));
     return Message(
