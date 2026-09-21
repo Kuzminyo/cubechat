@@ -9,17 +9,21 @@ void main() {
     AudioSession.takesFocus = false;
   });
 
-  test('Android voice notes request native speech effects without call routing',
+  test('Android voice notes are the plain microphone, without call routing',
       () {
+    // The platform noise suppressor gated quiet speech — "иногда микрофон
+    // вообще не улавливает тихий звук" — and Telegram, the recording people
+    // compare this with, attaches none of these effects. See
+    // [AudioSession.voiceRecord].
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     final config = AudioSession.voiceRecord;
     // Check the values that cross the plugin boundary, not just Dart fields.
     final map = config.toMap();
-    expect(map['autoGain'], isTrue);
-    expect(map['noiseSuppress'], isTrue);
+    expect(map['autoGain'], isFalse);
+    expect(map['noiseSuppress'], isFalse);
     expect(map['echoCancel'], isFalse);
     final android = map['androidConfig'] as Map<String, dynamic>;
-    expect(android['audioSource'], 'mic');
+    expect(android['audioSource'], 'defaultSource');
     expect(android['useLegacy'], isFalse);
     expect(android['manageBluetooth'], isFalse);
     expect(android['audioManagerMode'], 'modeNormal');
@@ -64,7 +68,7 @@ void main() {
       final config = AudioSession.voiceRecord;
       expect(config.encoder, AudioEncoder.aacLc);
       expect(config.numChannels, 1);
-      expect(config.sampleRate, 32000);
+      expect(config.sampleRate, 48000);
       // A minute of note, in bytes before container overhead. Pinned as the
       // cost rather than as the number, because the cost is what the BLE
       // budget is spent on: 480 KB a minute at roughly 14 KB/s on the radio.

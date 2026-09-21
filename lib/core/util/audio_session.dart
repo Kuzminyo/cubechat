@@ -20,12 +20,22 @@ class AudioSession {
 
   /// Voice-note capture, separate from WebRTC's bidirectional call session.
   ///
-  /// record_android 1.5.1's PCMReader attaches platform AGC/NS to this
-  /// AudioRecord session. Use the mic source and those effects once, without
-  /// a communication preset or another software processing pass. A voice note
-  /// has no remote playback reference, so echo cancellation stays off.
-  /// record_ios 1.2.0 uses AVAudioRecorder for AAC files and ignores these
-  /// effects (only its PCM stream uses AVAudioEngine voice processing).
+  /// **The plain microphone, the way Telegram records one.** Read from their
+  /// source on 2026-09-21 rather than remembered: Android's `MediaController`
+  /// opens `AudioRecord(MediaRecorder.AudioSource.DEFAULT, 48000, mono, 16-bit)`
+  /// and attaches no AutomaticGainControl, NoiseSuppressor or echo canceller
+  /// anywhere; iOS's `ManagedAudioRecorder` is a `RemoteIO` unit at 48 kHz —
+  /// not the voice-processing one — in the session's `.default` mode.
+  ///
+  /// This is a revert. Build 1085 switched the platform AGC and noise
+  /// suppression on for Android, on the reasoning that the platform would do
+  /// the work once. What came back from the field was "плохо слышно, а иногда
+  /// микрофон вообще не улавливает тихий звук": a phone's built-in noise
+  /// suppressor is tuned for calls, treats quiet speech as the noise floor and
+  /// gates it, and the AGC chasing it pumps the level about. A voice note is
+  /// held close to the mouth; it does not need rescuing from a noisy line.
+  /// record_ios uses AVAudioRecorder for AAC files, which never applied the
+  /// effects anyway, so iOS only gains the sample rate.
   static RecordConfig get voiceRecord => RecordConfig(
         encoder: AudioEncoder.aacLc,
         numChannels: 1,
@@ -45,13 +55,19 @@ class AudioSession {
         // sides is the price of that, and it is a different piece of work.
         //
         // Mono either way, for the same transfer budget.
-        sampleRate: 32000,
+        //
+        // 48 kHz, Telegram's rate on both platforms. The cost is set by the
+        // bit rate, not by this, so the payload per minute does not move.
+        sampleRate: 48000,
         bitRate: 64000,
-        autoGain: PlatformInfo.isAndroid,
-        noiseSuppress: PlatformInfo.isAndroid,
+        autoGain: false,
+        noiseSuppress: false,
         echoCancel: false,
         androidConfig: const AndroidRecordConfig(
-          audioSource: AndroidAudioSource.mic,
+          // DEFAULT rather than MIC, to match Telegram exactly. AOSP's audio
+          // policy maps one to the other; an OEM that tunes them differently
+          // tunes DEFAULT for this.
+          audioSource: AndroidAudioSource.defaultSource,
           // Match the iOS voice-note policy: do not start headset SCO just
           // because earbuds are connected. Calls manage their own HFP route.
           manageBluetooth: false,

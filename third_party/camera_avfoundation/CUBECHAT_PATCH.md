@@ -1,5 +1,21 @@
 # CubeChat patches to camera_avfoundation
 
+## Audio session mode for round messages (2026-09-21)
+
+`DefaultCamera.useVideoRecordingMode` puts the shared `AVAudioSession` in
+`.videoRecording` when the camera sets up its microphone, and back to
+`.default` in `close()` — only if it is still ours, so a call's `.voiceChat`
+is never undone.
+
+Upstream sets the category (`upgradeAudioSessionCategory`) and never the mode,
+so a round message recorded in whatever mode the session was left in: usually
+`.default`, the bottom microphone with no tuning for filming. Telegram's video
+messages use `.videoRecording` (their `ManagedAudioSession`, `.record(video:
+true)`), which on a phone with several microphones takes the one closest to
+the active camera — next to the face, for a selfie disc. Reported as quiet
+round messages. Voice notes are not affected: they record through `record`,
+and the mode is handed back before one can start.
+
 ## Field of view (2026-09-10)
 
 `.veryHigh` picks a 4:3 capture format near 1080 on the short side before

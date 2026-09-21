@@ -464,6 +464,8 @@ final class DefaultCamera: NSObject, Camera {
           requestedCategory: .playAndRecord,
           options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay]
         )
+        // CubeChat: the microphone meant for filming. See CUBECHAT_PATCH.md.
+        DefaultCamera.useVideoRecordingMode(true)
       }
 
       if !Thread.isMainThread {
@@ -487,6 +489,28 @@ final class DefaultCamera: NSObject, Camera {
     } catch let error as NSError {
       reportErrorMessage(error.description)
     }
+  }
+
+  /// CubeChat: `.videoRecording` while the camera holds the microphone.
+  ///
+  /// The plugin sets the session's category and never its mode, so a round
+  /// message was recorded in whatever mode the session happened to be in —
+  /// `.default` normally, which is the bottom microphone with no tuning for
+  /// video. Telegram's video messages ask for `.videoRecording`, read from
+  /// their `ManagedAudioSession` on 2026-09-21: on a phone with more than one
+  /// microphone it uses the one closest to the active camera, which for a
+  /// selfie disc is the one next to the face. Reported here as "плохо
+  /// слышно" in round messages.
+  ///
+  /// Only valid alongside `.playAndRecord` or `.record`, which the call above
+  /// has just made sure of; a refusal leaves the old mode, never an error.
+  static func useVideoRecordingMode(_ on: Bool) {
+    let session = AVAudioSession.sharedInstance()
+    let wanted: AVAudioSession.Mode = on ? .videoRecording : .default
+    guard session.mode != wanted else { return }
+    // Only undo our own: a call that has since set `.voiceChat` keeps it.
+    if !on && session.mode != .videoRecording { return }
+    try? session.setMode(wanted)
   }
 
   // This function, although slightly modified, is also in video_player_avfoundation (in ObjC).
@@ -1583,6 +1607,11 @@ final class DefaultCamera: NSObject, Camera {
 
   func close() {
     stop()
+    // CubeChat: hand the session back in the mode everything else records in,
+    // so a voice note after a round message is not taken on the camera's mic.
+    if isAudioSetup {
+      DefaultCamera.useVideoRecordingMode(false)
+    }
     for input in videoCaptureSession.inputs {
       videoCaptureSession.removeInput(input)
     }
