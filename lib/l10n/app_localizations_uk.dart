@@ -3002,6 +3002,30 @@ class AppLocalizationsUk extends AppLocalizations {
       'Ваша музика грає далі, тихіше поки триває відеоповідомлення.';
 
   @override
+  String get customizeMediaQualityTitle => 'Якість фото під час надсилання';
+
+  @override
+  String get customizeMediaQualityEconomy => 'Економ';
+
+  @override
+  String get customizeMediaQualityStandard => 'Звичайна';
+
+  @override
+  String get customizeMediaQualityHigh => 'Висока';
+
+  @override
+  String get customizeMediaQualityEconomyHint =>
+      'До 96 КБ на фото, 800 px. Для однієї поділки зв\'язку чи переповненої Bluetooth-мережі: удвічі швидше, але м\'якша картинка.';
+
+  @override
+  String get customizeMediaQualityStandardHint =>
+      'До 192 КБ на фото, 1280 px. Так, щоб пройшло навіть лише через Bluetooth. Відео та «Оригінал» завжди йдуть як є.';
+
+  @override
+  String get customizeMediaQualityHighHint =>
+      'До 768 КБ на фото, 2048 px. Можна наближати; надсилається вчетверо довше, тож краще через Wi-Fi.';
+
+  @override
   String get previewReacted => 'на ваше повідомлення';
 
   @override

@@ -5174,6 +5174,48 @@ abstract class AppLocalizations {
   /// **'Your music keeps playing underneath, quieter while a video message is on.'**
   String get customizeCircleAudioOff;
 
+  /// Customise: title of the card that chooses how hard an outgoing photo is compressed.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo quality when sending'**
+  String get customizeMediaQualityTitle;
+
+  /// Photo quality segment: smallest file, for a poor connection. Keep short.
+  ///
+  /// In en, this message translates to:
+  /// **'Economy'**
+  String get customizeMediaQualityEconomy;
+
+  /// Photo quality segment: the default. Keep short.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get customizeMediaQualityStandard;
+
+  /// Photo quality segment: largest file, for Wi-Fi. Keep short.
+  ///
+  /// In en, this message translates to:
+  /// **'High'**
+  String get customizeMediaQualityHigh;
+
+  /// Hint under the photo quality control when Economy is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to 96 KB a photo, 800 px. For one bar of signal or a crowded Bluetooth mesh: half the wait, a softer picture.'**
+  String get customizeMediaQualityEconomyHint;
+
+  /// Hint under the photo quality control when Standard is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to 192 KB a photo, 1280 px. Sized so it still goes through over Bluetooth alone. Videos and \"Original\" are always sent as they are.'**
+  String get customizeMediaQualityStandardHint;
+
+  /// Hint under the photo quality control when High is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to 768 KB a photo, 2048 px. Sharp enough to zoom; four times as long to send, so best on Wi-Fi.'**
+  String get customizeMediaQualityHighHint;
+
   /// No description provided for @previewReacted.
   ///
   /// In en, this message translates to:

@@ -19,28 +19,74 @@ import '../transport/mtu_budget.dart';
 /// dimension *and* quality down together until the encoded bytes come in under
 /// budget, and hand back the smallest rung if even that overshoots — a tiny
 /// image beats a failed send.
-Future<Uint8List?> encodeBytesForMesh(Uint8List src) =>
-    compute(_encodeBytesForMesh, src);
+Future<Uint8List?> encodeBytesForMesh(
+  Uint8List src, {
+  MediaQuality quality = MediaQuality.standard,
+}) =>
+    compute(_encodeBytesForMesh, (src, quality));
 
-Uint8List? _encodeBytesForMesh(Uint8List src) {
+/// How hard a photo is squeezed — chosen by the person sending it, see
+/// `MediaQualityController`.
+///
+/// [standard] is the one budget every build used before there was a choice,
+/// sized for the worst Bluetooth link ([kMaxOutgoingImageBytes]). [economy] is
+/// for a single bar: half the bytes, a smaller picture. [high] is for Wi-Fi or
+/// a good line: four times the bytes, so four times the airtime, and a picture
+/// that survives zooming — the trade the name says.
+///
+/// [high]'s 768 KiB still clears the 8192-chunk cap on the narrowest link
+/// `bleMediaChunkData` can be handed (20 bytes effective: 644 bytes a chunk,
+/// ~1220 chunks), and the receiver buffers up to 4 MiB of a transfer, so no
+/// build that can show a photo is sent one it cannot rejoin.
+enum MediaQuality {
+  economy(maxBytes: 96 * 1024, largestSide: 800),
+  standard(maxBytes: kMaxOutgoingImageBytes, largestSide: 1280),
+  high(maxBytes: 768 * 1024, largestSide: 2048);
+
+  const MediaQuality({required this.maxBytes, required this.largestSide});
+
+  final int maxBytes;
+
+  /// The first rung's width; the picker asks the gallery for at least this.
+  final int largestSide;
+
+  /// Width and JPEG quality, tried in order until the bytes fit [maxBytes].
+  List<({int size, int quality})> get rungs => switch (this) {
+        MediaQuality.economy => const [
+            (size: 800, quality: 60),
+            (size: 640, quality: 55),
+            (size: 480, quality: 50),
+            (size: 320, quality: 45),
+          ],
+        MediaQuality.standard => const [
+            (size: 1280, quality: 70),
+            (size: 1024, quality: 65),
+            (size: 800, quality: 60),
+            (size: 640, quality: 55),
+            (size: 480, quality: 50),
+            (size: 320, quality: 45),
+          ],
+        MediaQuality.high => const [
+            (size: 2048, quality: 82),
+            (size: 1600, quality: 78),
+            (size: 1280, quality: 72),
+            (size: 1024, quality: 65),
+            (size: 800, quality: 60),
+          ],
+      };
+}
+
+Uint8List? _encodeBytesForMesh((Uint8List, MediaQuality) job) {
+  final (src, quality) = job;
   final decoded = img.decodeImage(src);
   if (decoded == null) {
     // Undecodable, but if it already fits it may still be a valid JPEG the
     // decoder simply doesn't support re-reading — send it as-is over failing.
-    return src.length <= kMaxOutgoingImageBytes ? src : null;
+    return src.length <= quality.maxBytes ? src : null;
   }
 
-  const rungs = <({int size, int quality})>[
-    (size: 1280, quality: 70),
-    (size: 1024, quality: 65),
-    (size: 800, quality: 60),
-    (size: 640, quality: 55),
-    (size: 480, quality: 50),
-    (size: 320, quality: 45),
-  ];
-
   Uint8List? smallest;
-  for (final rung in rungs) {
+  for (final rung in quality.rungs) {
     // Only ever downscale — upsizing a small source wastes bytes for no detail.
     final resized = decoded.width > rung.size
         ? img.copyResize(decoded, width: rung.size)
@@ -48,7 +94,7 @@ Uint8List? _encodeBytesForMesh(Uint8List src) {
     final bytes =
         Uint8List.fromList(img.encodeJpg(resized, quality: rung.quality));
     smallest = bytes;
-    if (bytes.length <= kMaxOutgoingImageBytes) return bytes;
+    if (bytes.length <= quality.maxBytes) return bytes;
   }
   return smallest;
 }

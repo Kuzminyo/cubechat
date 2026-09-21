@@ -9,6 +9,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/glass_tier.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/typography.dart';
+import '../../../core/util/image_encode.dart' show MediaQuality;
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/hue_strip.dart';
@@ -19,6 +20,7 @@ import '../../chats/data/archive_visibility_controller.dart';
 import '../../chats/data/swipe_action_controller.dart';
 import '../../chats/presentation/widgets/swipe_action_row.dart';
 import '../data/audio_focus_controller.dart';
+import '../data/media_quality_controller.dart';
 import '../data/nav_bar_controller.dart';
 import '../data/ui_scale_controller.dart';
 
@@ -83,6 +85,10 @@ class CustomizeScreen extends ConsumerWidget {
             const _QuickReactionCard(),
             const SizedBox(height: 12),
             const _CircleAudioCard(),
+            const SizedBox(height: 12),
+            // Beside the circle's sound: both are about what a message you
+            // send costs, not about how the app looks.
+            const _MediaQualityCard(),
             const SizedBox(height: 12),
             _NavBarCard(layout: layout),
           ],
@@ -914,6 +920,76 @@ class _CircleAudioCard extends ConsumerWidget {
             activeColor: AppColors.brandPrimary,
             onChanged: (next) =>
                 unawaited(ref.read(audioFocusProvider.notifier).set(next)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// How hard a photo is squeezed before it leaves — see
+/// [MediaQualityController].
+///
+/// Built like the glass card: three segments across the card's full width,
+/// each label shrunk rather than wrapped, and the hint under the control
+/// changing with the choice so it always says what *this* setting costs.
+class _MediaQualityCard extends ConsumerWidget {
+  const _MediaQualityCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(mediaQualityProvider);
+    final notifier = ref.read(mediaQualityProvider.notifier);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.customizeMediaQualityTitle,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<MediaQuality>(
+            expandedInsets: EdgeInsets.zero,
+            style: SegmentedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+            ),
+            segments: [
+              ButtonSegment(
+                value: MediaQuality.economy,
+                label: _GlassCard._tierLabel(t.customizeMediaQualityEconomy),
+              ),
+              ButtonSegment(
+                value: MediaQuality.standard,
+                label: _GlassCard._tierLabel(t.customizeMediaQualityStandard),
+              ),
+              ButtonSegment(
+                value: MediaQuality.high,
+                label: _GlassCard._tierLabel(t.customizeMediaQualityHigh),
+              ),
+            ],
+            selected: {current},
+            showSelectedIcon: false,
+            onSelectionChanged: (picked) =>
+                unawaited(notifier.set(picked.first)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            switch (current) {
+              MediaQuality.economy => t.customizeMediaQualityEconomyHint,
+              MediaQuality.standard => t.customizeMediaQualityStandardHint,
+              MediaQuality.high => t.customizeMediaQualityHighHint,
+            },
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 12,
+              height: 1.35,
+            ),
           ),
         ],
       ),

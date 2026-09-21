@@ -2967,6 +2967,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your music keeps playing underneath, quieter while a video message is on.';
 
   @override
+  String get customizeMediaQualityTitle => 'Photo quality when sending';
+
+  @override
+  String get customizeMediaQualityEconomy => 'Economy';
+
+  @override
+  String get customizeMediaQualityStandard => 'Standard';
+
+  @override
+  String get customizeMediaQualityHigh => 'High';
+
+  @override
+  String get customizeMediaQualityEconomyHint =>
+      'Up to 96 KB a photo, 800 px. For one bar of signal or a crowded Bluetooth mesh: half the wait, a softer picture.';
+
+  @override
+  String get customizeMediaQualityStandardHint =>
+      'Up to 192 KB a photo, 1280 px. Sized so it still goes through over Bluetooth alone. Videos and \"Original\" are always sent as they are.';
+
+  @override
+  String get customizeMediaQualityHighHint =>
+      'Up to 768 KB a photo, 2048 px. Sharp enough to zoom; four times as long to send, so best on Wi-Fi.';
+
+  @override
   String get previewReacted => 'to your message';
 
   @override

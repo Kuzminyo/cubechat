@@ -1433,6 +1433,34 @@
   "@customizeCircleAudioOff": {
     "description": "Hint under the circle audio switch when it is off."
   },
+  "customizeMediaQualityTitle": "Photo quality when sending",
+  "@customizeMediaQualityTitle": {
+    "description": "Customise: title of the card that chooses how hard an outgoing photo is compressed."
+  },
+  "customizeMediaQualityEconomy": "Economy",
+  "@customizeMediaQualityEconomy": {
+    "description": "Photo quality segment: smallest file, for a poor connection. Keep short."
+  },
+  "customizeMediaQualityStandard": "Standard",
+  "@customizeMediaQualityStandard": {
+    "description": "Photo quality segment: the default. Keep short."
+  },
+  "customizeMediaQualityHigh": "High",
+  "@customizeMediaQualityHigh": {
+    "description": "Photo quality segment: largest file, for Wi-Fi. Keep short."
+  },
+  "customizeMediaQualityEconomyHint": "Up to 96 KB a photo, 800 px. For one bar of signal or a crowded Bluetooth mesh: half the wait, a softer picture.",
+  "@customizeMediaQualityEconomyHint": {
+    "description": "Hint under the photo quality control when Economy is chosen."
+  },
+  "customizeMediaQualityStandardHint": "Up to 192 KB a photo, 1280 px. Sized so it still goes through over Bluetooth alone. Videos and \"Original\" are always sent as they are.",
+  "@customizeMediaQualityStandardHint": {
+    "description": "Hint under the photo quality control when Standard is chosen."
+  },
+  "customizeMediaQualityHighHint": "Up to 768 KB a photo, 2048 px. Sharp enough to zoom; four times as long to send, so best on Wi-Fi.",
+  "@customizeMediaQualityHighHint": {
+    "description": "Hint under the photo quality control when High is chosen."
+  },
   "previewReacted": "to your message",
   "previewLocation": "Location",
   "previewMapInvite": "Map invitation",

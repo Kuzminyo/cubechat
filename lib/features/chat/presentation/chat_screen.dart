@@ -70,6 +70,7 @@ import 'widgets/floating_day_chip.dart';
 import 'widgets/auto_delete_picker.dart';
 import '../data/pinned_controller.dart';
 import '../../profile/data/circle_lens_controller.dart';
+import '../../profile/data/media_quality_controller.dart';
 import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
 import '../data/translation_controller.dart';
@@ -4782,11 +4783,17 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
         assets.where((a) => a.type != AssetType.video).toList(growable: false);
     if (stills.isEmpty) return;
 
+    // The thumbnail is the encoder's source, so it has to be at least as wide
+    // as the first rung the chosen quality tries — 1600 was that for every
+    // photo until "high" asked for 2048.
+    final quality = await ref.read(mediaQualityProvider.notifier).resolved();
+    if (!mounted) return;
+    final side = quality == MediaQuality.high ? 2560 : 1600;
     final loaded = <Uint8List>[];
     final previewAssets = <AssetEntity>[];
     for (final asset in stills) {
       final bytes = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(1600, 1600),
+        ThumbnailSize(side, side),
         quality: 90,
       );
       if (bytes == null) continue;
@@ -4861,10 +4868,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       );
     }
 
+    final quality = await ref.read(mediaQualityProvider.notifier).resolved();
+    if (!mounted) return;
     final encoded = <Uint8List>[];
     try {
       for (final source in sources) {
-        final wire = await encodeBytesForMesh(source);
+        final wire = await encodeBytesForMesh(source, quality: quality);
         // A picture that will not fit is skipped rather than failing the batch:
         // four good photos out of five is a better answer than none.
         if (wire != null) encoded.add(wire);
@@ -5034,7 +5043,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     bool viewOnce = false,
   }) async {
     try {
-      final wire = await encodeBytesForMesh(bytes);
+      final quality = await ref.read(mediaQualityProvider.notifier).resolved();
+      final wire = await encodeBytesForMesh(bytes, quality: quality);
       if (!mounted) return;
       if (wire == null) {
         showGlassToast(context, 'Image too large to send',
