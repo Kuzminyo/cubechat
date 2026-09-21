@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/audio/playable_voice.dart';
+
 /// Turning a voice note into text, on the device and nowhere else.
 ///
 /// **No server, and that is not an optimisation.** A cloud transcriber would
@@ -39,8 +41,10 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
     if (cached != null) return cached;
     if (!_running.add(messageId)) return null;
     try {
+      // iOS's recogniser opens no Ogg; an Opus note is transcribed from the
+      // WAV it plays as.
       final text = await channel.invokeMethod<String>('transcribe', {
-        'path': audioPath,
+        'path': await PlayableVoice.pathFor(audioPath),
         if (localeId != null) 'locale': localeId,
       });
       final trimmed = text?.trim();

@@ -90,7 +90,10 @@ class SavedMessagesController {
     required int durationMs,
     String mime = 'audio/aac',
   }) async {
-    final copy = await _store('.m4a');
+    // Opus notes are Ogg; the extension says so to anything that opens one.
+    final copy = await _store(
+      mime.toLowerCase().startsWith('audio/ogg') ? '.opus' : '.m4a',
+    );
     await source.copy(copy.path);
     return _append(
       kind: MessageKind.audio,

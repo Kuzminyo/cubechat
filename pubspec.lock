@@ -368,7 +368,7 @@ packages:
     source: hosted
     version: "1.3.3"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -1003,6 +1003,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.7.0"
+  opus_flutter_android:
+    dependency: "direct main"
+    description:
+      name: opus_flutter_android
+      sha256: "9e5b71f5d959e1ee3b5faf7e1e893aabe7955d3a234c83f02462d801a5218497"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
+  opus_flutter_ios:
+    dependency: "direct main"
+    description:
+      name: opus_flutter_ios
+      sha256: c999bbe8b8f1a4073fb62de6cc04ecd3ab3acdefa6b8d78b03c0dac9c81ef0fa
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
+  opus_flutter_platform_interface:
+    dependency: transitive
+    description:
+      name: opus_flutter_platform_interface
+      sha256: "41180b74f1dacc131270d49815fd4eb46bd7cc5ad57aac84eab748d08de59138"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
+  opus_flutter_windows:
+    dependency: "direct dev"
+    description:
+      name: opus_flutter_windows
+      sha256: "6a26862dd331c9c4b5e4c805efe3dd4e4a049e4a18bee230d994c25d72928a3b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
   package_config:
     dependency: transitive
     description:

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../audio/ogg_opus.dart';
 import 'debug_log.dart';
 
 /// Cuts a section out of a recorded voice note.
@@ -63,6 +64,9 @@ class AudioTrimmer {
     if (start <= 0 && end >= fullDurationMs - 50) return null;
 
     final dest = _destinationFor(sourcePath);
+    if (_isOggOpus(sourcePath)) {
+      return _trimOggOpus(sourcePath, dest, start, end, fullDurationMs);
+    }
     try {
       final result = await _channel.invokeMethod<String>('trim', {
         'source': sourcePath,
@@ -90,6 +94,40 @@ class AudioTrimmer {
       return null;
     } catch (e) {
       DebugLog.instance.log('VOICE', 'trim failed: $e');
+      return null;
+    }
+  }
+
+  /// Opus notes are Ogg, which no platform muxer here will cut — and which
+  /// does not need one. Every packet says how long it is, so a trim is picking
+  /// packets and rewriting two numbers; see [OggOpusStream.trim].
+  static bool _isOggOpus(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.opus') || lower.endsWith('.ogg');
+  }
+
+  Future<String?> _trimOggOpus(
+    String sourcePath,
+    String dest,
+    int startMs,
+    int endMs,
+    int fullDurationMs,
+  ) async {
+    try {
+      final stream = OggOpusStream.decode(await File(sourcePath).readAsBytes());
+      final cut = stream.trim(
+        Duration(milliseconds: startMs),
+        Duration(milliseconds: endMs),
+      );
+      if (cut.packets.isEmpty) return null;
+      await File(dest).writeAsBytes(cut.encode(), flush: true);
+      DebugLog.instance.log(
+        'VOICE',
+        'trimmed ${fullDurationMs}ms -> ${endMs - startMs}ms (opus)',
+      );
+      return dest;
+    } catch (e) {
+      DebugLog.instance.log('VOICE', 'opus trim failed: $e');
       return null;
     }
   }

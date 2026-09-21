@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/audio/playable_voice.dart';
 import '../../../core/util/audio_session.dart';
 import 'messages_controller.dart';
 
@@ -369,7 +370,10 @@ class VoicePlaybackController extends Notifier<VoicePlayback> {
       speed: state.speed,
     );
     await player.setPlaybackRate(state.speed);
-    await player.play(DeviceFileSource(path));
+    // An Opus note plays as the WAV decoded from it; see [PlayableVoice].
+    final playable = await PlayableVoice.pathFor(path);
+    if (_disposed || generation != _generation) return;
+    await player.play(DeviceFileSource(playable));
   }
 
   /// Play/pause whatever is already loaded.

@@ -75,6 +75,27 @@ class AudioSession {
         iosConfig: iosRecord,
       );
 
+  /// The same microphone as [voiceRecord], delivered as raw 48 kHz PCM for
+  /// the Opus encoder rather than written to a file by the platform.
+  ///
+  /// Every choice above carries over — plain source, no AGC, no noise
+  /// suppression — and one more matters here: with echo cancellation off,
+  /// record_ios builds its stream on a plain `AVAudioEngine` input rather than
+  /// the voice-processing unit, so the samples are the microphone's own.
+  static RecordConfig get voiceStream {
+    final file = voiceRecord;
+    return RecordConfig(
+      encoder: AudioEncoder.pcm16bits,
+      numChannels: 1,
+      sampleRate: 48000,
+      autoGain: false,
+      noiseSuppress: false,
+      echoCancel: false,
+      androidConfig: file.androidConfig,
+      iosConfig: file.iosConfig,
+    );
+  }
+
   /// Category options for recording a voice note.
   ///
   /// `record` defaults to `[defaultToSpeaker, allowBluetooth,

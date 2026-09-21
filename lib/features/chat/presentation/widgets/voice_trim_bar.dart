@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../core/audio/playable_voice.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import 'chat_input.dart';
@@ -14,10 +15,14 @@ class PendingVoice {
     required this.path,
     required this.durationMs,
     required this.envelope,
+    this.mime = 'audio/aac',
   });
 
   final String path;
   final int durationMs;
+
+  /// What the recorder wrote: Opus, or AAC when the codec was not there.
+  final String mime;
 
   /// Loudness per sample across the whole recording, 0..1.
   final List<double> envelope;
@@ -106,7 +111,9 @@ class _VoiceTrimBarState extends State<VoiceTrimBar> {
       if (mounted) setState(() => _playing = false);
       return;
     }
-    await _player.play(DeviceFileSource(widget.pending.path));
+    await _player.play(
+      DeviceFileSource(await PlayableVoice.pathFor(widget.pending.path)),
+    );
     await _player.seek(Duration(milliseconds: _startMs));
     if (mounted) setState(() => _playing = true);
   }

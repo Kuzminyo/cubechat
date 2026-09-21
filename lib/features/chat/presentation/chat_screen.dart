@@ -4149,6 +4149,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
           path: result.path,
           durationMs: result.durationMs,
           envelope: result.envelope,
+          mime: result.mime,
         );
       });
       return;
@@ -4158,6 +4159,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       path: result.path,
       durationMs: result.durationMs,
       envelope: result.envelope,
+      mime: result.mime,
     );
   }
 
@@ -4178,6 +4180,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     required String path,
     required int durationMs,
     List<double> envelope = const <double>[],
+    String mime = 'audio/aac',
   }) async {
     try {
       // Notes to yourself have no other end, so nothing goes on the wire —
@@ -4186,7 +4189,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       if (isSavedChat(widget.canonicalId)) {
         await ref
             .read(savedMessagesControllerProvider)
-            .saveVoice(File(path), durationMs: durationMs);
+            .saveVoice(File(path), durationMs: durationMs, mime: mime);
         return;
       }
       final bytes = await File(path).readAsBytes();
@@ -4197,7 +4200,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
         await ref.read(messagingServiceProvider).sendChannelAudio(
               widget.canonicalId,
               bytes: bytes,
-              mime: 'audio/aac',
+              mime: mime,
               durationMs: durationMs,
               cachedPath: path,
             );
@@ -4206,7 +4209,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       await ref.read(messagingServiceProvider).sendAudio(
             widget.peerId,
             bytes: bytes,
-            mime: 'audio/aac',
+            mime: mime,
             durationMs: durationMs,
             cachedPath: path,
             // What the microphone heard, so the bubble on both phones can draw
@@ -4236,6 +4239,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     final durationMs = cut ? endMs - startMs : pending.durationMs;
     await _sendVoice(
       path: path,
+      mime: pending.mime,
       durationMs: durationMs,
       // The envelope was captured over the whole recording, so a cut clip has
       // to be given the slice of it that survived — sending the lot would draw
