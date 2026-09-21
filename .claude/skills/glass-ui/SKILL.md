@@ -11,8 +11,15 @@ so tab branches stay mounted. `lib/core/widgets/` holds the shared primitives �
 look there before writing a new one:
 
 `aurora_background` · `bar_glass` · `floating_glass` · `glass_card` · `glass_sheet`
-· `glass_toast` · `context_popup` · `pill_button` · `identity_avatar` · `cube_logo`
-· `appear_animation` · `unread_badge` · `confirm_dialog` · `triple_tap_detector`
+· `glass_toast` · `undo_toast` · `context_popup` · `pill_button` · `identity_avatar`
+· `cube_logo` · `appear_animation` · `unread_badge` · `confirm_dialog`
+· `triple_tap_detector` · `hue_strip` · `circle_video_icon` · `view_once_icon`
+
+**Editing anything in `lib/features/chat/`? Read `lib/features/chat/README.md`
+first.** It holds the module's three load-bearing rules — the transcript is
+addressed by index (never filter the source list), bubbles are keyed by message
+id, and a received message is stamped on arrival rather than on send — plus a
+list of things already tried there and rejected.
 
 ## There is no AppBar
 
@@ -41,33 +48,32 @@ than a grey one with pink buttons.
 Read colours through `AppColors`. A hardcoded `Colors.white` or a literal hex is
 a surface that will not follow the theme.
 
-## Blur is the GPU budget
+## Blur: how it is wired now
 
-`AppBlur.sigma` in `lib/core/theme/glass.dart` is **14**, and it is a measured
-number, not a taste call. On a mid-range Android scrolling a chat:
+All of it lives in `lib/core/theme/glass.dart` and `glass_tier.dart`.
 
-```
-build  (CPU / Dart)   avg 1.2   p90  1.7 ms
-raster (GPU)          avg 6.3   p90 11.7 ms
-```
+- **`AppBlur.sigma` is 14. Do not lower it.** The panes are filled at 52–66%
+  opacity, so past about a dozen pixels a gaussian of a mostly-hidden backdrop
+  is indistinguishable, and a drop to 9 was shipped and reverted. If one surface
+  needs a different radius, give that surface its own constant and say why.
+- **`GlassTier`** — `auto`, `full`, `light` — decides whether panes filter at
+  all. `auto` measures the GPU once and remembers; the choice is stable, made at
+  startup or by a tap in Customize, **never per frame**.
+- **A conversation's islands share one backdrop read.** Header, pinned bar and
+  composer sit inside a `BackdropGroup` the chat screen sets up
+  (`AppBlur.groupedPanes`), so three panes cost one read of what is behind them.
+  Panes elsewhere, and `FloatingGlass`, still filter on their own. The islands
+  keep blurring through a route slide on purpose — turning it off flickers,
+  reported twice.
+- **The nav bar no longer blurs.**
 
-Three `BackdropFilter`s are permanently on screen in a conversation — nav bar,
-header, composer — and each re-runs the gaussian on every frame the content
-behind it moves. Two earlier rounds of optimisation went entirely into the 1.2 ms
-column and the phone was exactly as warm afterwards.
-
-14 rather than 30 because the panes are filled at 52–66% opacity; past roughly a
-dozen pixels of radius, a gaussian of a mostly-hidden backdrop stops being
-distinguishable. It went to 9 for an hour on 2026-08-17 and came back — not
-because 9 was wrong, but because it shipped alongside a refresh-rate change that
-made the app barely usable, and reverting one unverified change while leaving
-another on top of it is not a revert.
-
-**If a surface needs a different radius, give that surface its own constant and
-say why.** Raising this one returns the cost everywhere at once.
-
-Group `BackdropFilter`s where you can — ungrouped ones each snapshot the backdrop
-separately.
+**Do not treat the blur as the expensive thing.** That sentence was retired on
+2026-09-04: on a phone with a healthy frame budget the whole gaussian is worth a
+couple of points of one core. What the raster thread actually spends its time on
+is full-screen gradients and the translucent fills over them, so the lever is
+drawing less area. `test/layer_budget_test.dart` counts the passes that render to
+a texture of their own per screen and fails if they grow. The measurements are
+in the `perf-triage` skill.
 
 ## Animation parks when nothing is happening
 

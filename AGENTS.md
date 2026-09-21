@@ -12,6 +12,21 @@ lives in its own repository, Kuzminyo/landing_cubechat — it is not in this tre
 is Riverpod `Notifier` controllers. `README.md` documents the protocol and the
 threat model in full.
 
+Beyond the app:
+
+- `push/` — Node ≥20 server on the droplet: iOS wake-up pushes (APNs, VoIP for
+  calls) and short-lived TURN logins. `node --test` inside it; deployment in
+  `push/deploy/README.md`.
+- `relay/` — config for our own Nostr relay (strfry), which carries the media lane.
+- `third_party/camera_*` — **vendored, patched** camera plugins wired as path
+  dependencies. Change them there and record it in their `CUBECHAT_PATCH.md`;
+  an upgrade means reapplying the patch. Never add `camera_android` — see the
+  comment in `pubspec.yaml`.
+- `docs/legal/` — privacy policy, terms and store disclosures, each claim checked
+  against the code. A change to what leaves the phone — a new server call, a new
+  field in a push, a new relay — changes these too.
+- `docs/superpowers/` — design specs and plans; calls started there.
+
 ## Commands
 
 `flutter` is on PATH via `~/.bashrc`.
@@ -47,6 +62,7 @@ before building.
 - **`flutter-testing`** — running or writing tests, goldens, Hive and Riverpod harnesses.
 - **`glass-ui`** — screens, widgets, colours, blur, animation.
 - **`perf-triage`** — heat, battery, lag: which instrument answers which question.
+- **`calls`** — voice calls: `callSignal`, the state machine, TURN, CallKit and Android's incoming-call surface.
 
 ## Two rules that cost the most when broken
 

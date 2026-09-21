@@ -34,16 +34,24 @@ one before assigning a byte.
 
 | Namespace | Source of truth | Taken |
 |---|---|---|
-| `FrameType` | `lib/core/transport/frame.dart` | `noiseHandshake1..3` 0x01–0x03, `noiseIk1` 0x04, `noiseIk2` 0x05, `transport` 0x10, `peerAnnouncement` 0x20, `fragment` 0x40, `reset` 0xFE |
+| `FrameType` | `lib/core/transport/frame.dart` | `noiseHandshake1..3` 0x01–0x03, `noiseIk1` 0x04, `noiseIk2` 0x05, `transport` 0x10, `peerAnnouncement` 0x20, `proBadge` 0x21, `fragment` 0x40, `reset` 0xFE |
 | envelope cipher tag | `messaging_service.dart`, the `_cipher*` constants | SealedBox 0x01, X3DH 0x02, channel 0x03, forward-secret media 0x04 |
-| `InnerPayloadType` | `lib/core/transport/inner_payload.dart` | text 0x10, imageChunk 0x20, audioChunk 0x30, receipt 0x40, mediaManifest 0x50, reaction 0x60, channelInvite 0x70, edit 0x80, delete 0x90, and more below 0xFF — read the enum, do not trust this row |
+| `InnerPayloadType` | `lib/core/transport/inner_payload.dart` | 34 types on 2026-09-21. The round values 0x10–0xD0 are the originals; everything since has been packed into 0xE0–0xE7 and 0xF0–0xFC, newest `callSignal` 0xE7. **Print what is free — never pick from this row** |
 | per-payload version byte | e.g. `MediaManifest.versionV1 .. versionV8ViewOnceCaptionFs` | one per field combination; `viewOnceVersionOffset` adds 0x04 |
 
-Confirm with the file, not with this table:
+`proBadge` 0x21 is **reserved, not free**: nothing in this build sends or reads
+it, and it is held so the branch that sells a subscription cannot collide with
+it. An unused-looking enum value is not an unused byte.
+
+The high end of `InnerPayloadType` is nearly full. This prints what is left
+(`python3` off Windows):
 
 ```bash
-grep -nE "0x[0-9A-Fa-f]{2}\)" lib/core/transport/inner_payload.dart | head -40
+python -c "import re;s=open('lib/core/transport/inner_payload.dart',encoding='utf-8').read();b=re.search(r'enum InnerPayloadType \{(.*?)const InnerPayloadType',s,re.S).group(1);u={int(x,16) for x in re.findall(r'\((0x[0-9A-Fa-f]+)\)',b)};print(len(u),'used; free from 0xE0:',' '.join('0x%02X'%i for i in range(0xE0,0x100) if i not in u))"
 ```
+
+On 2026-09-21 it printed `0xE8`–`0xEF` and `0xFD`–`0xFF`. Before spending one,
+ask whether the thing needs a type at all — see the next section.
 
 ## Do not add an InnerPayloadType for a small payload
 
@@ -54,7 +62,12 @@ build shows a harmless unknown-payload line instead of dropping the message.
 Existing kinds: `cubechat:loc:v1:` (`shared_location.dart`),
 `cubechat:contact:v1:` (`shared_contact.dart`), `cubechat:sticker:v1`
 (`Message.stickerMarker`), `cubechat:q1:channel:` (`qr/data/channel_qr_payload.dart`),
-`cubechat:c1:` (`contact_card.dart`), `cubechat:t1:` (`phone_transfer_socket_service.dart`).
+`cubechat:c1:` (`contact_card.dart`), `cubechat:t1:` (`phone_transfer_socket_service.dart`),
+`cubechat:call:v1:` (`features/call/domain/call_record.dart`).
+
+The last one never travels: each side writes its own call record **locally**,
+because both ends already know how the call ended. A marker can need a place in
+the chat without ever needing a byte on the wire.
 
 Adding a kind means teaching `lib/features/chat/domain/message_preview.dart`
 about it too — that file is what stops a raw `cubechat:loc:v1:NTAuMDQx…` from
@@ -65,7 +78,9 @@ transfer mechanism, a new chunk stream, a new signed control message.
 
 ## Adding a payload type, in order
 
-1. Pick an unused byte in the right namespace, verified against the enum.
+1. Pick an unused byte in the right namespace — printed by the script above for
+   `InnerPayloadType`, read from the enum for the others. Reserved values such
+   as `proBadge` count as taken.
 2. Encode/decode with an explicit length check and a `FormatException` on bad
    input — every existing decoder does; a decoder that trusts its input is a
    remote crash.
