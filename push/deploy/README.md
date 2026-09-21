@@ -223,3 +223,41 @@ reaches it over loopback, so it is not exposed.
 ```bash
 ufw allow OpenSSH && ufw allow 80,443/tcp && ufw --force enable
 ```
+
+## Updates, reboots and disk
+
+Ubuntu's `unattended-upgrades` installs security updates daily, as it always
+did. Since 2026-09-21 it also reboots on its own when an update needs it, and
+keeps the apt cache down. All of that is one file, so deleting it undoes it:
+`/etc/apt/apt.conf.d/52cubechat-reboot`.
+
+```
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "01:00";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+APT::Periodic::AutocleanInterval "7";
+```
+
+01:00 UTC is 04:00 in Kyiv in summer and 03:00 in winter. It reboots only when
+`/var/run/reboot-required` exists, which is every few weeks, not every night.
+It is safe because every service here — `caddy`, `cubechat-relay`,
+`cubechat-media-relay`, `cubechat-push`, `coturn` — is `enabled` and comes
+back by itself. During the minute it is down, messages keep going through the
+public relays, and a call in progress drops.
+
+It was switched on because a kernel had been waiting 23 days for a reboot
+nobody did. Check what is pending with `cat /var/run/reboot-required.pkgs`, and
+whether a reboot is already booked with:
+
+```bash
+busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager ScheduledShutdown
+```
+
+The disk needed nothing else on the day this was written (36% of 24 GB used):
+the journal is already capped at 100 MB and 3 days, strfry expires relay
+events after 14 days itself, logs rotate, and old kernels go with the next
+upgrade. `/opt/strfry-src` (~630 MB) is only the build tree for
+`/usr/local/bin/strfry` — nothing running uses it — and is kept on purpose,
+because building strfry on this droplet is slow and memory-hungry (see
+`relay/README.md`).
