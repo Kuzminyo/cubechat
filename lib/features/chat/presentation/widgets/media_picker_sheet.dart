@@ -187,6 +187,21 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         ),
       );
 
+  /// Newest *taken* first, photos and videos, and nothing else — see
+  /// [_albums]. MediaStore's own numbers: 1 is an image and 3 a video. No
+  /// duration or size condition, so none of the null-column traps above
+  /// apply; `date_added` breaks ties and orders anything with no date taken.
+  static PMFilter _takenFirst() => CustomFilter.sql(
+        where: '${CustomColumns.android.mediaType} IN (1, 3)',
+        orderBy: [
+          OrderByItem.desc(CustomColumns.android.dateTaken),
+          OrderByItem.desc(CustomColumns.android.createDate),
+        ],
+      );
+
+  /// Whether the album in hand is ordered by [_takenFirst].
+  bool _byDateTaken = false;
+
   /// The same ordering with nothing else on it.
   ///
   /// What the fallback uses when the filtered query comes back empty. Without
@@ -318,6 +333,20 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
         _album = album;
         _total = await album.assetCountAsync;
         await _loadMore();
+        // A media store that lists the album by date taken but will not page
+        // it that way would leave the grid empty: page again the old way.
+        if (_byDateTaken && _assets.isEmpty && _total > 0) {
+          DebugLog.instance
+              .log('GALLERY', 'date-taken order gave no page — falling back');
+          final fallback = await _albums(byDateTaken: false);
+          if (fallback.isNotEmpty) {
+            _album = fallback.first;
+            _total = await fallback.first.assetCountAsync;
+            _page = 0;
+            _hasMore = true;
+            await _loadMore();
+          }
+        }
       }
     } catch (e) {
       // Never silent again.
@@ -346,7 +375,36 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
   /// tried, and if it yields nothing the plain query runs instead: a gallery
   /// with the videos possibly missing beats a gallery with everything missing,
   /// and the log says which of the two this phone got.
-  Future<List<AssetPathEntity>> _albums() async {
+  Future<List<AssetPathEntity>> _albums({bool byDateTaken = true}) async {
+    // **In the order the phone's own gallery shows, which is by when a picture
+    // was taken.** The order below sorts by `date_added` — when the file
+    // entered the media store — and a picture restored from Samsung's bin,
+    // saved from a chat or copied in from elsewhere is *added* today however
+    // old it is. So eleven photos from the spring opened the grid, above what
+    // was taken this evening; the owner compared screenshots of both galleries
+    // and read them as deleted photos showing up. OrderOptionType offers only
+    // the added and modified dates, hence the SQL filter, and hence Android
+    // only: iOS sorts by creation date, which is already when it was taken.
+    // Tried first and backed out of on any failure, like the filter under it —
+    // this path has broken quietly before.
+    if (byDateTaken && PlatformInfo.isAndroid) {
+      try {
+        final taken = await PhotoManager.getAssetPathList(
+          type: RequestType.common,
+          onlyAll: true,
+          filterOption: _takenFirst(),
+        );
+        if (taken.isNotEmpty) {
+          _byDateTaken = true;
+          return taken;
+        }
+        DebugLog.instance
+            .log('GALLERY', 'date-taken album list is empty — falling back');
+      } catch (e) {
+        DebugLog.instance.log('GALLERY', 'date-taken album list failed: $e');
+      }
+    }
+    _byDateTaken = false;
     try {
       final filtered = await PhotoManager.getAssetPathList(
         type: RequestType.common,
