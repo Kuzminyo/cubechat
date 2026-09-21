@@ -72,6 +72,8 @@ import '../data/pinned_controller.dart';
 import '../../profile/data/circle_lens_controller.dart';
 import '../data/circle_recorder.dart';
 import '../data/voice_recorder_controller.dart';
+import '../data/translation_controller.dart';
+import '../data/voice_transcription_controller.dart';
 import '../domain/message_search.dart';
 import '../models/message.dart';
 import '../domain/command_processor.dart';
@@ -2085,6 +2087,36 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
   }
 
+  /// The words a message carries, if any: what was typed, or what a voice note
+  /// or a round message was transcribed to — the "→A" button has to have been
+  /// pressed first, and then its text is as translatable as anyone's.
+  String? _translatableText(Message m) {
+    if (m.kind == MessageKind.text) {
+      final text = m.text.trim();
+      return text.isEmpty ? null : text;
+    }
+    if (m.isVoiceNote) return ref.read(voiceTranscriptionProvider)[m.id];
+    return null;
+  }
+
+  /// Translate the one ticked message into the language the interface is in,
+  /// on the device — see [TranslationController]. The reading appears under
+  /// the message, the way the long-press menu's translation does.
+  Future<void> _translateSelection(Message m) async {
+    final text = _translatableText(m);
+    if (text == null) return;
+    final t = AppLocalizations.of(context);
+    final target = Localizations.localeOf(context).languageCode;
+    ref.read(messageSelectionProvider(widget.chatId).notifier).clear();
+    final translated = await ref.read(translationProvider.notifier).translate(
+          messageId: m.id,
+          text: text,
+          target: target,
+        );
+    if (!mounted || translated != null) return;
+    showGlassToast(context, t.chatTranslateFailed);
+  }
+
   /// Delete everything ticked.
   ///
   /// "For everyone" is offered only when *every* ticked message qualifies —
@@ -2231,6 +2263,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     final selectedForBar = _selectedMessages(selection);
     final singleSelected =
         selectedForBar.length == 1 ? selectedForBar.first : null;
+    // The bar's "translate" depends on words that can arrive while it is up —
+    // a transcript finishing after its note was ticked — and goes once the
+    // translation lands, so it listens for both, for the one ticked message.
+    if (singleSelected != null) {
+      ref.watch(
+        voiceTranscriptionProvider.select((t) => t[singleSelected.id]),
+      );
+      ref.watch(translationProvider.select((t) => t[singleSelected.id]));
+    }
     final copyingRestricted = ref.watch(
           conversationSettingsControllerProvider
               .select((all) => all[widget.chatId]?.copyingRestricted),
@@ -2450,6 +2491,14 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                           : () => _editSelection(singleSelected),
                       onForward: () => unawaited(_forwardSelection(selection)),
                       onDelete: () => unawaited(_deleteSelection(selection)),
+                      onTranslate: singleSelected == null ||
+                              _translatableText(singleSelected) == null ||
+                              ref.read(translationProvider)[
+                                      singleSelected.id] !=
+                                  null
+                          ? null
+                          : () =>
+                              unawaited(_translateSelection(singleSelected)),
                     )
                   : searchOpen
                       ? _ChatSearchBar(
@@ -2993,6 +3042,7 @@ class _ChatSelectionBar extends StatelessWidget {
     required this.onEdit,
     required this.onForward,
     required this.onDelete,
+    this.onTranslate,
   });
 
   final List<Message> selected;
@@ -3006,6 +3056,12 @@ class _ChatSelectionBar extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onForward;
   final VoidCallback onDelete;
+
+  /// One message with words in it — typed, or a voice note already turned
+  /// into text. Null hides the button rather than dimming it: unlike copy and
+  /// forward it is not one of the commonest actions, and a translate glyph
+  /// greyed out over a photo only asks a question.
+  final VoidCallback? onTranslate;
 
   @override
   Widget build(BuildContext context) {
@@ -3039,6 +3095,12 @@ class _ChatSelectionBar extends StatelessWidget {
           icon: Icons.edit_rounded,
           label: t.chatEditAction,
           onPressed: onEdit,
+        ),
+      if (onTranslate != null)
+        _SelectionActionButton(
+          icon: Icons.translate_rounded,
+          label: t.chatTranslateAction,
+          onPressed: onTranslate,
         ),
       _SelectionActionButton(
         icon: Icons.shortcut_rounded,

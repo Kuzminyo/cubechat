@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -29,14 +30,12 @@ import java.util.concurrent.Executors
  * `createOnDeviceSpeechRecognizer`, which cannot.
  *
  * **Android 13 or newer.** Feeding a *file* to the recogniser needs
- * `EXTRA_AUDIO_SOURCE`, which arrived in API 33, and on-device recognition
- * needs the same release. Below that this returns null and the voice note is
+ * `EXTRA_AUDIO_SOURCE`, which arrived in API 33. Below that the voice note is
  * simply not transcribable — which is the honest answer rather than a silent
  * trip over the network.
  *
- * Every failure path returns null rather than an error, the same way
- * [CubechatAudioTrimPlugin] does: a phone that cannot do this loses the
- * transcript, not the message.
+ * Unsupported devices and native errors return a code to Dart diagnostics;
+ * the controller keeps the message and presents an unavailable transcript.
  */
 class CubechatTranscribePlugin(
     private val context: Context,
@@ -45,6 +44,11 @@ class CubechatTranscribePlugin(
 
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
+    private var busy = false
+
+    // A stalled recognizer must release its file and native session. This is a
+    // wall-clock ceiling, not an assumption about when speech ends.
+    private val recognitionTimeoutMs = 90_000L
 
     /** What the decode produced: a raw PCM file and the format it is in. */
     private data class Pcm(val file: File, val sampleRate: Int, val channels: Int)
@@ -64,19 +68,30 @@ class CubechatTranscribePlugin(
             result.success(null)
             return
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            !SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-        ) {
-            result.success(null)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            result.error("android_version", "File recognition needs Android 13", null)
             return
         }
+        val available = try {
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+        } catch (_: Exception) { false }
+        if (!available) {
+            result.error("local_recognizer_unavailable", "No on-device recognizer", null)
+            return
+        }
+        if (busy) {
+            result.error("busy", "A transcription is already running", null)
+            return
+        }
+        busy = true
         // Decoding is real work and must not run on the main thread; the
         // recogniser afterwards must run on it.
         worker.execute {
             val pcm = decodeToPcm(File(path))
             main.post {
                 if (pcm == null) {
-                    result.success(null)
+                    busy = false
+                    result.error("decode_failed", "Audio could not be decoded", null)
                 } else {
                     start(pcm, locale, result)
                 }
@@ -100,6 +115,8 @@ class CubechatTranscribePlugin(
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         var out: FileOutputStream? = null
+        var pcmFile: File? = null
+        var completed = false
         try {
             extractor.setDataSource(source.path)
             var track = -1
@@ -115,21 +132,23 @@ class CubechatTranscribePlugin(
             if (track < 0 || format == null) return null
             extractor.selectTrack(track)
 
-            val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-            val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
 
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
             codec.start()
 
-            val pcmFile = File.createTempFile("transcribe", ".pcm", source.parentFile)
+            pcmFile = File.createTempFile("transcribe", ".pcm", context.cacheDir)
             out = FileOutputStream(pcmFile)
             val info = MediaCodec.BufferInfo()
             var sawInputEnd = false
             var sawOutputEnd = false
 
+            val deadline = SystemClock.elapsedRealtime() + recognitionTimeoutMs
             while (!sawOutputEnd) {
+                if (SystemClock.elapsedRealtime() >= deadline) return null
                 if (!sawInputEnd) {
                     val inIndex = codec.dequeueInputBuffer(10_000)
                     if (inIndex >= 0) {
@@ -150,6 +169,14 @@ class CubechatTranscribePlugin(
                     }
                 }
                 val outIndex = codec.dequeueOutputBuffer(info, 10_000)
+                if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    val decoded = codec.outputFormat
+                    sampleRate = decoded.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    channels = decoded.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    if (decoded.containsKey(MediaFormat.KEY_PCM_ENCODING) &&
+                        decoded.getInteger(MediaFormat.KEY_PCM_ENCODING) !=
+                        android.media.AudioFormat.ENCODING_PCM_16BIT) return null
+                }
                 if (outIndex >= 0) {
                     val buffer = codec.getOutputBuffer(outIndex)
                     if (buffer != null && info.size > 0) {
@@ -165,13 +192,16 @@ class CubechatTranscribePlugin(
                 }
             }
             out.flush()
+            completed = true
             return Pcm(pcmFile, sampleRate, channels)
         } catch (e: Exception) {
             return null
         } finally {
             try { out?.close() } catch (e: Exception) {}
-            try { codec?.stop(); codec?.release() } catch (e: Exception) {}
+            try { codec?.stop() } catch (e: Exception) {}
+            try { codec?.release() } catch (e: Exception) {}
             try { extractor.release() } catch (e: Exception) {}
+            if (!completed) pcmFile?.delete()
         }
     }
 
@@ -184,30 +214,39 @@ class CubechatTranscribePlugin(
             SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         } catch (e: Exception) {
             pcm.file.delete()
-            result.success(null)
+            busy = false
+            result.error("unavailable", "On-device speech recognition unavailable", null)
             return
         }
 
         // FlutterResult may be answered exactly once; a second call is a crash
         // rather than a warning, and these callbacks can fire more than once.
         var answered = false
-        fun answer(text: String?) {
+        var descriptor: ParcelFileDescriptor? = null
+        var timeout: Runnable? = null
+        fun answer(text: String?, code: String? = null) {
             if (answered) return
             answered = true
-            recognizer.destroy()
+            busy = false
+            timeout?.let { main.removeCallbacks(it) }
+            try { recognizer.destroy() } catch (_: Exception) {}
+            // startListening queues work on Android's handler. Closing in its
+            // finally block races service binding and Binder descriptor copying.
+            // Retain the source until completion/error/timeout instead.
+            try { descriptor?.close() } catch (_: Exception) {}
             pcm.file.delete()
-            result.success(text)
+            if (code == null) result.success(text)
+            else result.error(code, "On-device transcription failed", null)
         }
 
-        val descriptor = try {
-            ParcelFileDescriptor.open(
-                pcm.file,
-                ParcelFileDescriptor.MODE_READ_ONLY,
-            )
-        } catch (e: Exception) {
-            answer(null)
+        descriptor = try {
+            ParcelFileDescriptor.open(pcm.file, ParcelFileDescriptor.MODE_READ_ONLY)
+        } catch (_: Exception) {
+            answer(null, "source_unavailable")
             return
         }
+        timeout = Runnable { answer(null, "timeout") }
+        main.postDelayed(timeout, recognitionTimeoutMs)
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
@@ -239,7 +278,7 @@ class CubechatTranscribePlugin(
                 answer(if (text.isNullOrBlank()) null else text)
             }
 
-            override fun onError(error: Int) = answer(null)
+            override fun onError(error: Int) = answer(null, "recognizer_$error")
 
             override fun onReadyForSpeech(params: Bundle?) = Unit
             override fun onBeginningOfSpeech() = Unit
@@ -256,13 +295,7 @@ class CubechatTranscribePlugin(
             // the microphone.
             recognizer.startListening(intent)
         } catch (e: Exception) {
-            answer(null)
-        } finally {
-            try {
-                descriptor.close()
-            } catch (e: Exception) {
-                // The recogniser holds its own dup of the descriptor.
-            }
+            answer(null, "start_failed")
         }
     }
 }

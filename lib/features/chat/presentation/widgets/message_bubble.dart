@@ -74,6 +74,7 @@ import 'mention_text.dart';
 import 'everyone_dialog.dart';
 import 'pin_scope.dart';
 import 'voice_bubble.dart';
+import 'transcription_button.dart';
 
 /// How far a bubble follows a leftward drag before it stops moving, and how far
 /// it has to travel for the release to mean "reply".
@@ -783,11 +784,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             icon: Icons.bookmark_add_outlined,
             label: t.chatSaveAction,
           ),
-        // Pro only, and shown rather than locked: a free user never meets an
-        // entry that exists to tell them no. The Pro screen is where it is
-        // described.
-        if (widget.message.kind == MessageKind.audio &&
-            widget.message.audioPath != null &&
+        // Keep the same access as the existing on-device transcription action.
+        if (widget.message.isVoiceNote &&
+            MediaPaths.existsOrNull(widget.message.voiceNotePath) &&
+            !_transcribing &&
             ref.read(voiceTranscriptionProvider)[widget.message.id] == null)
           SpotlightAction(
             id: 'transcribe',
@@ -949,6 +949,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     showGlassToast(context, t.chatTranslateFailed);
   }
 
+  /// A transcription in flight from this bubble, and whether the last one came
+  /// back empty — the "→A" button spins on the first, and the second puts an
+  /// honest line under the note instead of a toast that is gone in two seconds.
+  bool _transcribing = false;
+  bool _transcriptionFailed = false;
+
   /// Read a voice note instead of listening to it.
   ///
   /// The recording never leaves the phone — both platforms recognise speech
@@ -961,18 +967,37 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
   /// the honest thing to say is that there is no text, not that something
   /// broke.
   Future<void> _transcribeVoice() async {
-    final t = AppLocalizations.of(context);
-    final path = widget.message.audioPath;
-    if (path == null) return;
-    final text =
-        await ref.read(voiceTranscriptionProvider.notifier).transcribe(
-              messageId: widget.message.id,
-              audioPath: path,
-              localeId: Localizations.localeOf(context).toLanguageTag(),
-            );
-    if (!mounted || text != null) return;
-    showGlassToast(context, t.chatTranscribeFailed);
+    final path = widget.message.voiceNotePath;
+    final controller = ref.read(voiceTranscriptionProvider.notifier);
+    if (_transcribing ||
+        controller.isRunning(widget.message.id) ||
+        !MediaPaths.existsOrNull(path)) {
+      return;
+    }
+    setState(() {
+      _transcribing = true;
+      _transcriptionFailed = false;
+    });
+    try {
+      final text = await controller.transcribe(
+        messageId: widget.message.id,
+        audioPath: path!,
+        localeId: Localizations.localeOf(context).toLanguageTag(),
+      );
+      if (mounted) setState(() => _transcriptionFailed = text == null);
+    } catch (_) {
+      if (mounted) setState(() => _transcriptionFailed = true);
+    } finally {
+      if (mounted) setState(() => _transcribing = false);
+    }
   }
+
+  Widget _transcriptionButton() => TranscriptionButton(
+        loading: _transcribing,
+        onPressed: MediaPaths.existsOrNull(widget.message.voiceNotePath)
+            ? _transcribeVoice
+            : null,
+      );
 
   /// Keep a copy of this message in Saved.
   ///
@@ -1320,6 +1345,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
 
   @override
   Widget build(BuildContext context) {
+    final transcript = ref.watch(
+      voiceTranscriptionProvider.select((texts) => texts[widget.message.id]),
+    );
     final message = widget.message;
     final mine = message.isMine;
     final copyingRestricted = ref
@@ -1659,7 +1687,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         children: [
                           Flexible(
                             child: VoiceBubble(
-                                message: message, chatId: widget.chatId),
+                              message: message,
+                              chatId: widget.chatId,
+                              transcriptionButton: _transcriptionButton(),
+                            ),
                           ),
                           if (message.isMine &&
                               message.status == MessageStatus.sending) ...[
@@ -1672,24 +1703,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           ],
                         ],
                       ),
-                      // Under the waveform, not instead of it: the recording is
-                      // still the message, and the text is a way to read one
-                      // when you cannot listen.
-                      if (ref.watch(
-                            voiceTranscriptionProvider
-                                .select((t) => t[message.id]),
-                          ) case final String transcript)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            transcript,
-                            style: TextStyle(
-                              fontSize: 13,
-                              height: 1.35,
-                              color: AppColors.textOnGlassDim,
-                            ),
-                          ),
-                        ),
                     ],
                   )
                 else if (playableVideo)
@@ -1714,6 +1727,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       VideoBubble(
                         message: message,
                         chatId: widget.chatId,
+                        transcriptionButton:
+                            circle ? _transcriptionButton() : null,
                       ),
                       if (metaOnMedia)
                         Positioned(
@@ -1839,6 +1854,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       3 => 32,
                       _ => null,
                     },
+                  ),
+                if (message.isVoiceNote &&
+                    (transcript != null || _transcriptionFailed))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      transcript ?? AppLocalizations.of(context).chatTranscribeFailed,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: AppColors.textOnGlassDim,
+                      ),
+                    ),
                   ),
                 // Under the message, never instead of it. What they wrote is
                 // still what they wrote; this is a reading of it, and a

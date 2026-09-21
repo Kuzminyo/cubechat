@@ -219,6 +219,10 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Android 11+ requires speech-service visibility for local recognition. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
         <!-- open_filex resolves ACTION_VIEW before launching it. Android 11+
              hides handlers that are not declared here, which made valid
              received files look as if no app could open them. -->

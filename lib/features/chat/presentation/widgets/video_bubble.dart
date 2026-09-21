@@ -25,9 +25,11 @@ class VideoBubble extends ConsumerStatefulWidget {
     required this.message,
     this.onLongPress,
     this.chatId,
+    this.transcriptionButton,
   });
 
   final Message message;
+  final Widget? transcriptionButton;
   final String? chatId;
   final VoidCallback? onLongPress;
 
@@ -203,7 +205,19 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     return GestureDetector(
       onTap: () => unawaited(_tap()),
       onLongPress: widget.onLongPress,
-      child: _isCircle ? _circle() : _rectangle(),
+      child: _isCircle
+          ? Stack(
+              children: [
+                _circle(),
+                if (widget.transcriptionButton != null)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: widget.transcriptionButton!,
+                  ),
+              ],
+            )
+          : _rectangle(),
     );
   }
 

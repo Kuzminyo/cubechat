@@ -22,9 +22,11 @@ class VoiceBubble extends ConsumerStatefulWidget {
     this.chatId,
     this.chatTitle,
     this.showHeader = false,
+    this.transcriptionButton,
   });
 
   final Message message;
+  final Widget? transcriptionButton;
 
   /// The bucket this bubble is rendered in — a peer's pubkey hex or a
   /// `#channel`.
@@ -127,7 +129,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
         );
 
     final player = SizedBox(
-      width: 200,
+      width: widget.transcriptionButton == null ? 200 : 248,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -221,6 +223,10 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
               ],
             ),
           ),
+          if (widget.transcriptionButton != null) ...[
+            const SizedBox(width: 4),
+            widget.transcriptionButton!,
+          ],
         ],
       ),
     );

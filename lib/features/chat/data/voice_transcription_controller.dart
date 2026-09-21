@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/audio/playable_voice.dart';
+import '../../../core/util/debug_log.dart';
 
 /// Turning a voice note into text, on the device and nowhere else.
 ///
@@ -20,12 +21,17 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
 
   /// Message ids currently being worked on, so a second tap does not start a
   /// second run over the same file.
-  final Set<String> _running = <String>{};
+  final Map<String, Future<String?>> _running = {};
+  final Set<String> _forgotten = {};
+  bool _disposed = false;
 
   @override
-  Map<String, String> build() => const <String, String>{};
+  Map<String, String> build() {
+    ref.onDispose(() => _disposed = true);
+    return const <String, String>{};
+  }
 
-  bool isRunning(String messageId) => _running.contains(messageId);
+  bool isRunning(String messageId) => _running.containsKey(messageId);
 
   /// Transcribe [audioPath] and remember the result under [messageId].
   ///
@@ -36,10 +42,24 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
     required String messageId,
     required String audioPath,
     String? localeId,
-  }) async {
+  }) {
     final cached = state[messageId];
-    if (cached != null) return cached;
-    if (!_running.add(messageId)) return null;
+    if (cached != null) return Future.value(cached);
+    return _running[messageId] ??= _transcribe(
+      messageId: messageId,
+      audioPath: audioPath,
+      localeId: localeId,
+    ).whenComplete(() {
+      _running.remove(messageId);
+      _forgotten.remove(messageId);
+    });
+  }
+
+  Future<String?> _transcribe({
+    required String messageId,
+    required String audioPath,
+    String? localeId,
+  }) async {
     try {
       // iOS's recogniser opens no Ogg; an Opus note is transcribed from the
       // WAV it plays as.
@@ -48,22 +68,26 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
         if (localeId != null) 'locale': localeId,
       });
       final trimmed = text?.trim();
-      if (trimmed == null || trimmed.isEmpty) return null;
+      if (_disposed || _forgotten.contains(messageId)) return null;
+      if (trimmed == null || trimmed.isEmpty) {
+        DebugLog.instance.log('TRANSCRIBE', 'no local transcript');
+        return null;
+      }
       state = {...state, messageId: trimmed};
       return trimmed;
     } on PlatformException catch (e) {
-      debugPrint('transcribe failed: ${e.code} ${e.message}');
+      // Error codes only: paths and recognised private speech stay out of logs.
+      DebugLog.instance.log('TRANSCRIBE', 'native error ${e.code}');
       return null;
     } on MissingPluginException {
       // A desktop or web build, where there is no recogniser at all.
       return null;
-    } finally {
-      _running.remove(messageId);
     }
   }
 
   /// Drop a transcript — used when its message is deleted.
   void forget(String messageId) {
+    if (_running.containsKey(messageId)) _forgotten.add(messageId);
     if (!state.containsKey(messageId)) return;
     final next = {...state}..remove(messageId);
     state = next;

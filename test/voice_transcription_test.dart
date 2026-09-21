@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cubechat/features/chat/data/voice_transcription_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -104,5 +105,34 @@ void main() {
       await controller.transcribe(messageId: 'm1', audioPath: '/tmp/a.m4a'),
       isNull,
     );
+  });
+
+  test('simultaneous taps share the same native transcription', () async {
+    final pending = Completer<String>();
+    answerWith((_) => pending.future);
+    final controller = container.read(voiceTranscriptionProvider.notifier);
+    final first =
+        controller.transcribe(messageId: 'm1', audioPath: '/tmp/a.m4a');
+    final second =
+        controller.transcribe(messageId: 'm1', audioPath: '/tmp/a.m4a');
+    expect(controller.isRunning('m1'), isTrue);
+    pending.complete('one result');
+    expect(await first, 'one result');
+    expect(await second, 'one result');
+    expect(calls, hasLength(1));
+    expect(controller.isRunning('m1'), isFalse);
+  });
+
+  test('deleting during transcription cannot restore its private text',
+      () async {
+    final pending = Completer<String>();
+    answerWith((_) => pending.future);
+    final controller = container.read(voiceTranscriptionProvider.notifier);
+    final result =
+        controller.transcribe(messageId: 'm1', audioPath: '/tmp/a.m4a');
+    controller.forget('m1');
+    pending.complete('deleted');
+    expect(await result, isNull);
+    expect(container.read(voiceTranscriptionProvider), isEmpty);
   });
 }
