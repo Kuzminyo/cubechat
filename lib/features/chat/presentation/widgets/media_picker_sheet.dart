@@ -411,10 +411,24 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
               'READ_MEDIA_IMAGES $images',
         );
       }
-      if (page.isNotEmpty && mounted) {
-        setState(() => _assets.addAll(page));
+      // Not what the phone's own gallery has put in its bin. Some galleries
+      // keep a deleted picture as a file in a hidden folder of their own
+      // (".trashBin", ".Trash", ".recycle") or rename it ".trashed-…" rather
+      // than removing it, and the media store goes on listing it — so a photo
+      // deleted on the phone was still here to pick. Anything under a folder
+      // or name starting with a dot is hidden on every gallery, so it is
+      // hidden here too.
+      final shown = page.where((a) => !_inTrash(a)).toList(growable: false);
+      if (shown.length != page.length) {
+        DebugLog.instance.log(
+          'GALLERY',
+          'page $_page: skipped ${page.length - shown.length} hidden/trashed',
+        );
+      }
+      if (shown.isNotEmpty && mounted) {
+        setState(() => _assets.addAll(shown));
       } else {
-        _assets.addAll(page);
+        _assets.addAll(shown);
       }
     } catch (e) {
       // Also named. A page that throws stops the grid where it is, and "the
@@ -1125,6 +1139,23 @@ int _decodeWidthFor(BuildContext context) {
 final Map<String, Future<Uint8List?>> _thumbCache = {};
 const int _thumbCacheSize = 360;
 
+/// In a gallery's bin rather than in the gallery: a hidden folder anywhere in
+/// its path, or a hidden name. Android only reports the path — iOS's library
+/// has its own "Recently Deleted" that is never listed to apps.
+bool _inTrash(AssetEntity asset) {
+  final folder = asset.relativePath ?? '';
+  final name = asset.title ?? '';
+  if (name.startsWith('.')) return true;
+  for (final part in folder.split('/')) {
+    if (part.startsWith('.')) return true;
+    final lower = part.toLowerCase();
+    if (lower == 'trash' || lower == 'trashbin' || lower == 'recycle bin') {
+      return true;
+    }
+  }
+  return false;
+}
+
 Future<Uint8List?>? _cachedThumb(String id) {
   final hit = _thumbCache.remove(id);
   if (hit != null) _thumbCache[id] = hit;
@@ -1137,6 +1168,21 @@ Future<Uint8List?> _fetchThumb(AssetEntity asset) {
   while (_thumbCache.length > _thumbCacheSize) {
     _thumbCache.remove(_thumbCache.keys.first);
   }
+  // Only a picture is worth keeping. A photo taken seconds ago can have no
+  // thumbnail yet, and a request can simply fail; kept, that miss was served
+  // from memory for the rest of the process, so the tile stayed a blank
+  // square until the app was killed — "иногда помогает полный перезаход".
+  unawaited(
+    future.then<void>((bytes) {
+      if (bytes == null && identical(_thumbCache[asset.id], future)) {
+        _thumbCache.remove(asset.id);
+      }
+    }, onError: (Object _) {
+      if (identical(_thumbCache[asset.id], future)) {
+        _thumbCache.remove(asset.id);
+      }
+    }),
+  );
   return future;
 }
 

@@ -4,6 +4,7 @@ import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/drafts_controller.dart';
+import '../../features/chat/data/transcription_language.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chat/data/reaction_emoji_controller.dart';
@@ -130,6 +131,7 @@ Future<void> emergencyWipe(WidgetRef ref) async {
   await ref.read(circleLensProvider.notifier).reset();
   await ref.read(audioFocusProvider.notifier).reset();
   await ref.read(mediaQualityProvider.notifier).reset();
+  await ref.read(transcriptionLanguageProvider.notifier).reset();
   await ref.read(mediaDownloadSettingsProvider.notifier).reset();
   // Back to relay-only: a wiped phone that still offered its IP address to
   // whoever it called next would be a setting surviving the one action whose

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/audio/playable_voice.dart';
 import '../../../core/util/debug_log.dart';
+import 'transcription_language.dart';
 
 /// Turning a voice note into text, on the device and nowhere else.
 ///
@@ -24,6 +25,13 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
   final Map<String, Future<String?>> _running = {};
   final Set<String> _forgotten = {};
   bool _disposed = false;
+
+  /// Why the last attempt on a message produced nothing, as the platform's
+  /// code: `language_not_supported`, `model_downloading`, or another.
+  final Map<String, String> _failures = {};
+
+  /// The code the last failed attempt on [messageId] ended with, or null.
+  String? failureOf(String messageId) => _failures[messageId];
 
   @override
   Map<String, String> build() {
@@ -60,12 +68,19 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
     required String audioPath,
     String? localeId,
   }) async {
+    _failures.remove(messageId);
     try {
+      // Which languages to hear it in — see [TranscriptionLanguage]. The
+      // app's own language is only a last candidate now, not the answer.
+      final choice =
+          await ref.read(transcriptionLanguageProvider.notifier).resolved();
+      final wanted = transcriptionCandidates(choice, appLocale: localeId);
       // iOS's recogniser opens no Ogg; an Opus note is transcribed from the
       // WAV it plays as.
       final text = await channel.invokeMethod<String>('transcribe', {
         'path': await PlayableVoice.pathFor(audioPath),
-        if (localeId != null) 'locale': localeId,
+        if (wanted.isNotEmpty) 'locale': wanted.first,
+        if (wanted.length > 1) 'fallbacks': wanted.sublist(1),
       });
       final trimmed = text?.trim();
       if (_disposed || _forgotten.contains(messageId)) return null;
@@ -76,8 +91,11 @@ class VoiceTranscriptionController extends Notifier<Map<String, String>> {
       state = {...state, messageId: trimmed};
       return trimmed;
     } on PlatformException catch (e) {
-      // Error codes only: paths and recognised private speech stay out of logs.
-      DebugLog.instance.log('TRANSCRIBE', 'native error ${e.code}');
+      // Error codes, and which languages were wanted and installed — never
+      // paths or recognised private speech.
+      final details = e.details is String ? ' (${e.details})' : '';
+      DebugLog.instance.log('TRANSCRIBE', 'native error ${e.code}$details');
+      _failures[messageId] = e.code;
       return null;
     } on MissingPluginException {
       // A desktop or web build, where there is no recogniser at all.

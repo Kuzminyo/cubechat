@@ -85,6 +85,14 @@ const Duration kAlbumWindow = Duration(seconds: 90);
 /// ([Message.albumId], `AlbumHint`), and that answer wins outright above.
 const Duration kAlbumOpeningGap = Duration(seconds: 20);
 
+/// From here on, a batch says so and the gap rules above stand down.
+///
+/// Our own batches have carried [Message.albumId] since 2026-08-18 and
+/// received ones the sender's `AlbumHint` since 2026-08-22; a few days' margin
+/// for phones that updated late. Photos older than this still group by the
+/// gaps, which is the only way the history from before the marks can.
+final DateTime kBatchesMarkedSince = DateTime(2026, 8, 26);
+
 /// Fold consecutive photos from one sender into albums.
 ///
 /// [messages] must be in conversation order, oldest first. The album is
@@ -203,6 +211,18 @@ bool _joins(List<Message> run, Message next) {
   final a = previous.albumId;
   final b = next.albumId;
   if (a != null || b != null) return a == b;
+
+  // Unmarked and recent means sent on its own. Every build since
+  // [kBatchesMarkedSince] marks a batch — our own with an albumId as the
+  // bubbles are minted, a received one with the sender's AlbumHint — so the
+  // gap below is only still right for history older than that. Applied to
+  // new photos it glued separate sends together: five pictures sent one at a
+  // time, each through its own trip to the gallery, 12 to 36 seconds apart,
+  // came out as an album ("фотки приклеиваются к последнему").
+  if (!previous.sentAt.isBefore(kBatchesMarkedSince) ||
+      !next.sentAt.isBefore(kBatchesMarkedSince)) {
+    return false;
+  }
 
   final gap = next.sentAt.difference(previous.sentAt).abs();
   if (gap > kAlbumWindow) return false;

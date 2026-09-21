@@ -5414,6 +5414,36 @@ abstract class AppLocalizations {
   /// **'Recognising…'**
   String get chatTranscribing;
 
+  /// Under a voice note when the on-device recogniser had to fetch its language model first.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone is downloading the language for this. Try again in a minute.'**
+  String get chatTranscribeDownloading;
+
+  /// Under a voice note when no wanted language has an on-device model.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has no speech model for that language. Pick the voice-to-text language in Customize.'**
+  String get chatTranscribeNoLanguage;
+
+  /// Customize: which language voice notes are heard in when turned into text.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice-to-text language'**
+  String get customizeTranscribeLanguageTitle;
+
+  /// Segment: use the phone's own languages. Keep short.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get customizeTranscribeLanguageAuto;
+
+  /// Hint under the voice-to-text language control.
+  ///
+  /// In en, this message translates to:
+  /// **'What the notes are spoken in, which need not be the app\'s language. Auto tries the phone\'s languages. A missing language is downloaded by the phone itself; the voice never leaves it.'**
+  String get customizeTranscribeLanguageHint;
+
   /// No description provided for @chatTranslateAction.
   ///
   /// In en, this message translates to:

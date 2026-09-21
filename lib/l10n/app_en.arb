@@ -1506,6 +1506,26 @@
   "chatTranscribeAction": "Transcribe",
   "chatTranscribeFailed": "This phone cannot transcribe that one.",
   "chatTranscribing": "Recognising…",
+  "chatTranscribeDownloading": "The phone is downloading the language for this. Try again in a minute.",
+  "@chatTranscribeDownloading": {
+    "description": "Under a voice note when the on-device recogniser had to fetch its language model first."
+  },
+  "chatTranscribeNoLanguage": "This phone has no speech model for that language. Pick the voice-to-text language in Customize.",
+  "@chatTranscribeNoLanguage": {
+    "description": "Under a voice note when no wanted language has an on-device model."
+  },
+  "customizeTranscribeLanguageTitle": "Voice-to-text language",
+  "@customizeTranscribeLanguageTitle": {
+    "description": "Customize: which language voice notes are heard in when turned into text."
+  },
+  "customizeTranscribeLanguageAuto": "Auto",
+  "@customizeTranscribeLanguageAuto": {
+    "description": "Segment: use the phone's own languages. Keep short."
+  },
+  "customizeTranscribeLanguageHint": "What the notes are spoken in, which need not be the app's language. Auto tries the phone's languages. A missing language is downloaded by the phone itself; the voice never leaves it.",
+  "@customizeTranscribeLanguageHint": {
+    "description": "Hint under the voice-to-text language control."
+  },
   "@chatTranscribing": {
     "description": "Under a round video message while its speech is being turned into text on the phone."
   },

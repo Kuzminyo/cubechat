@@ -12,12 +12,15 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.speech.RecognitionListener
+import android.speech.RecognitionSupport
+import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -64,6 +67,7 @@ class CubechatTranscribePlugin(
         }
         val path = call.argument<String>("path")
         val locale = call.argument<String>("locale")
+        val fallbacks = call.argument<List<String>>("fallbacks") ?: emptyList()
         if (path == null || !File(path).exists()) {
             result.success(null)
             return
@@ -93,7 +97,7 @@ class CubechatTranscribePlugin(
                     busy = false
                     result.error("decode_failed", "Audio could not be decoded", null)
                 } else {
-                    start(pcm, locale, result)
+                    start(pcm, listOfNotNull(locale) + fallbacks, result)
                 }
             }
         }
@@ -208,8 +212,11 @@ class CubechatTranscribePlugin(
     /**
      * The recogniser is bound to the main looper: every call has to be made
      * there, and every callback arrives there.
+     *
+     * Only reached on Android 13+ — [onCall] answers below that.
      */
-    private fun start(pcm: Pcm, locale: String?, result: MethodChannel.Result) {
+    @android.annotation.TargetApi(Build.VERSION_CODES.TIRAMISU)
+    private fun start(pcm: Pcm, wanted: List<String>, result: MethodChannel.Result) {
         val recognizer = try {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         } catch (e: Exception) {
@@ -224,7 +231,7 @@ class CubechatTranscribePlugin(
         var answered = false
         var descriptor: ParcelFileDescriptor? = null
         var timeout: Runnable? = null
-        fun answer(text: String?, code: String? = null) {
+        fun answer(text: String?, code: String? = null, details: String? = null) {
             if (answered) return
             answered = true
             busy = false
@@ -236,7 +243,7 @@ class CubechatTranscribePlugin(
             try { descriptor?.close() } catch (_: Exception) {}
             pcm.file.delete()
             if (code == null) result.success(text)
-            else result.error(code, "On-device transcription failed", null)
+            else result.error(code, "On-device transcription failed", details)
         }
 
         descriptor = try {
@@ -248,12 +255,12 @@ class CubechatTranscribePlugin(
         timeout = Runnable { answer(null, "timeout") }
         main.postDelayed(timeout, recognitionTimeoutMs)
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        fun intentFor(language: String?) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
-            if (locale != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale)
+            if (language != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, descriptor)
             // What the descriptor actually holds, read off the file rather
             // than assumed. These extras are a description, and a wrong one is
@@ -289,13 +296,85 @@ class CubechatTranscribePlugin(
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
         })
 
-        try {
-            // `startListening`, not `recognize` — there is no such method. With
-            // EXTRA_AUDIO_SOURCE set, listening reads the descriptor instead of
-            // the microphone.
-            recognizer.startListening(intent)
-        } catch (e: Exception) {
-            answer(null, "start_failed")
+        fun listen(language: String?) {
+            if (answered) return
+            try {
+                // `startListening`, not `recognize` — there is no such method.
+                // With EXTRA_AUDIO_SOURCE set, listening reads the descriptor
+                // instead of the microphone.
+                recognizer.startListening(intentFor(language))
+            } catch (e: Exception) {
+                answer(null, "start_failed")
+            }
         }
+
+        // **Which language to listen in, from what this phone actually has.**
+        //
+        // The app's own language went straight in as EXTRA_LANGUAGE, and a
+        // phone whose on-device recogniser has no model for it answers error
+        // 12, ERROR_LANGUAGE_NOT_SUPPORTED — every note, every time. Reported
+        // as "не може розпізнати" from a phone set to Ukrainian, with the notes
+        // spoken in Russian. So the recogniser is asked first which languages
+        // it holds, and the first of the wanted ones it has is used. A wanted
+        // language it could hold but has not downloaded is fetched for next
+        // time. Nothing leaves the phone either way: the model comes from the
+        // system's own recognition service, the audio goes nowhere.
+        val first = wanted.firstOrNull()
+        try {
+            recognizer.checkRecognitionSupport(
+                intentFor(first),
+                context.mainExecutor,
+                object : RecognitionSupportCallback {
+                    override fun onSupportResult(support: RecognitionSupport) {
+                        if (answered) return
+                        val installed = support.installedOnDeviceLanguages
+                        val summary = "wanted=${wanted.joinToString(",")};" +
+                            "installed=${installed.joinToString(",")}"
+                        val pick = pickLanguage(wanted, installed)
+                        if (pick != null) {
+                            listen(pick)
+                            return
+                        }
+                        val pending = support.pendingOnDeviceLanguages
+                        val fetch = pickLanguage(
+                            wanted,
+                            support.supportedOnDeviceLanguages + pending,
+                        )
+                        if (fetch == null) {
+                            answer(null, "language_not_supported", summary)
+                            return
+                        }
+                        if (pickLanguage(listOf(fetch), pending) == null) {
+                            try {
+                                recognizer.triggerModelDownload(intentFor(fetch))
+                            } catch (_: Exception) {
+                            }
+                        }
+                        answer(null, "model_downloading", "$summary;fetching=$fetch")
+                    }
+
+                    // A recogniser that cannot say what it has: try what was
+                    // asked for, as before.
+                    override fun onError(error: Int) = listen(first)
+                },
+            )
+        } catch (e: Exception) {
+            listen(first)
+        }
+    }
+
+    /**
+     * The first of [wanted] that [available] holds: the exact tag if it is
+     * there ("ru-RU"), otherwise the same language in any region ("uk" wants
+     * "uk-UA").
+     */
+    private fun pickLanguage(wanted: List<String>, available: List<String>): String? {
+        for (tag in wanted) {
+            available.firstOrNull { it.equals(tag, ignoreCase = true) }?.let { return it }
+            val language = Locale.forLanguageTag(tag).language
+            available.firstOrNull { Locale.forLanguageTag(it).language == language }
+                ?.let { return it }
+        }
+        return null
     }
 }

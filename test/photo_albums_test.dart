@@ -48,6 +48,43 @@ void main() {
     expect(albums.isFolded('c'), isTrue);
   });
 
+  group('since batches have been marked', () {
+    // 2026-09-21, the report: five photos, each sent through its own trip to
+    // the gallery, 12 to 36 seconds apart, drawn as an album.
+    final today = DateTime(2026, 9, 21, 20, 31, 2);
+    Message sent(String id, int second, {String? albumId}) => Message(
+          id: id,
+          chatId: 'peer',
+          text: 'image/jpeg',
+          sentAt: today.add(Duration(seconds: second)),
+          isMine: true,
+          kind: MessageKind.image,
+          imagePath: '/tmp/$id.jpg',
+          albumId: albumId,
+        );
+
+    test('photos sent one at a time stay single, however close', () {
+      final albums = groupPhotoAlbums([
+        sent('a', 0),
+        sent('b', 21),
+        sent('c', 57),
+        sent('d', 74),
+        sent('e', 86),
+      ]);
+      expect(albums.isEmpty, isTrue);
+    });
+
+    test('a batch still groups by what it says it is', () {
+      final albums = groupPhotoAlbums([
+        sent('a', 0, albumId: 'x'),
+        sent('b', 1, albumId: 'x'),
+        sent('c', 2),
+      ]);
+      expect(albums.albumAt('a')?.map((m) => m.id), ['a', 'b']);
+      expect(albums.isFolded('c'), isFalse);
+    });
+  });
+
   test('a tenth photo opens a second album', () {
     final albums = groupPhotoAlbums([
       for (var i = 0; i < 11; i++) photo('p$i', second: i),

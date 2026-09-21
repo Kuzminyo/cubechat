@@ -128,7 +128,9 @@ void main() {
 
     test('two photos sent seconds apart still do', () {
       // The control. Without it the test above passes for the wrong reason —
-      // a grouping rule that never groups anything.
+      // a grouping rule that never groups anything. Marked as one batch, the
+      // way every build since 2026-08-26 marks one: unmarked recent photos
+      // are single sends and no longer group by time (photo_albums_test).
       Message photo(String id) => Message(
             id: id,
             chatId: chat,
@@ -138,6 +140,7 @@ void main() {
             kind: MessageKind.image,
             imagePath: '/data/photo-$id.jpg',
             wireId: 'w$id',
+            albumId: 'batch',
           );
       final albums = groupPhotoAlbums([photo('a'), photo('b')]);
       expect(albums.isEmpty, isFalse);

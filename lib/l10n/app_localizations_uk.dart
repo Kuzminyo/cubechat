@@ -3135,6 +3135,24 @@ class AppLocalizationsUk extends AppLocalizations {
   String get chatTranscribing => 'Розпізнаю…';
 
   @override
+  String get chatTranscribeDownloading =>
+      'Телефон завантажує мовну модель для цього. Спробуйте за хвилину.';
+
+  @override
+  String get chatTranscribeNoLanguage =>
+      'На цьому телефоні немає моделі для цієї мови. Оберіть мову розпізнавання в Кастомізації.';
+
+  @override
+  String get customizeTranscribeLanguageTitle => 'Мова розпізнавання голосових';
+
+  @override
+  String get customizeTranscribeLanguageAuto => 'Авто';
+
+  @override
+  String get customizeTranscribeLanguageHint =>
+      'Мова, якою говорять у голосових, — не обов\'язково мова застосунку. «Авто» пробує мови телефону. Якщо моделі немає, телефон завантажить її сам; голос нікуди не йде.';
+
+  @override
   String get chatTranslateAction => 'Перекласти';
 
   @override

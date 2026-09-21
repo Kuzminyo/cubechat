@@ -9,9 +9,10 @@ import Speech
 /// do. A locale with no local model is therefore a failure here rather than a
 /// quiet trip over the network.
 ///
-/// Every failure path returns nil rather than an error, the same way
-/// `CubechatAudioTrimPlugin` does: a phone that cannot transcribe loses the
-/// transcript, not the voice note.
+/// Failure paths return nil, the same way `CubechatAudioTrimPlugin` does — a
+/// phone that cannot transcribe loses the transcript, not the voice note —
+/// except "no model for any wanted language", which is an error so the app can
+/// say which setting to change rather than just that it failed.
 final class CubechatTranscribePlugin {
   private let channel: FlutterMethodChannel
 
@@ -38,29 +39,40 @@ final class CubechatTranscribePlugin {
       result(nil)
       return
     }
-    let localeId = args["locale"] as? String
+    // The chosen language first, then the others worth trying — the phone's
+    // own languages and the app's. The first one this iPhone can recognise on
+    // the device is used: a note in Russian on a phone set to Ukrainian should
+    // not fail for want of a Ukrainian model.
+    var wanted: [String] = []
+    if let localeId = args["locale"] as? String { wanted.append(localeId) }
+    wanted.append(contentsOf: (args["fallbacks"] as? [String]) ?? [])
+    if wanted.isEmpty { wanted.append(Locale.current.identifier) }
 
     SFSpeechRecognizer.requestAuthorization { status in
       guard status == .authorized else {
         DispatchQueue.main.async { result(nil) }
         return
       }
-      self.recognise(path: path, localeId: localeId, result: result)
+      self.recognise(path: path, wanted: wanted, result: result)
     }
   }
 
   private func recognise(
     path: String,
-    localeId: String?,
+    wanted: [String],
     result: @escaping FlutterResult
   ) {
-    let locale = localeId.map(Locale.init(identifier:)) ?? Locale.current
-    guard
-      let recogniser = SFSpeechRecognizer(locale: locale),
-      recogniser.isAvailable,
-      recogniser.supportsOnDeviceRecognition
-    else {
-      DispatchQueue.main.async { result(nil) }
+    let recogniser = wanted.lazy
+      .compactMap { SFSpeechRecognizer(locale: Locale(identifier: $0)) }
+      .first { $0.isAvailable && $0.supportsOnDeviceRecognition }
+    guard let recogniser = recogniser else {
+      DispatchQueue.main.async {
+        result(FlutterError(
+          code: "language_not_supported",
+          message: "No on-device model for the wanted languages",
+          details: "wanted=\(wanted.joined(separator: ","))"
+        ))
+      }
       return
     }
 

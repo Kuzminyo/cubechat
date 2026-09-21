@@ -1485,6 +1485,38 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           : null,
     );
 
+    final footer = inBubble(
+      _BubbleFooter(
+        reactions: reacted
+            ? _ReactionsRow(
+                reactions: message.reactions,
+                onTap: _canReact ? _toggleReaction : null,
+              )
+            : null,
+        meta: meta,
+      ),
+    );
+
+    // **The clock in the bottom-right corner, as every messenger has it.**
+    // "Перемести час отправки в правий угол смс, а не в лівий" — it sat at the
+    // left because the bubble's column starts its rows at the left, and the
+    // column is only as wide as its widest row, so there was no "right" to
+    // push it to. A Row or an Align that reached for the right edge would
+    // stretch every bubble to the full width. Instead the footer keeps its
+    // place in the column invisibly — the bubble stays as wide and as tall as
+    // it needs — and the drawn one is laid over that place, against the
+    // right. Not under a channel post's comments link, which comes after it,
+    // and not on a bare message (a sticker, a lone emoji, a circle): there is
+    // no bubble to have a corner, its column can be as wide as a reply quote
+    // above it, and the clock belongs by the picture — at the right of ours
+    // already, and against the left of theirs (bare_bubble_alignment_test).
+    final footerAtEnd = !metaOnMedia && !_showsComments && !bare;
+    // A voice note's length joins that line on the left, as in Telegram, which
+    // leaves its waveform alone on the play button's centre line.
+    final voiceClock = message.kind == MessageKind.audio && footerAtEnd
+        ? VoiceNoteClock(message: message)
+        : null;
+
     final bubble = RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1542,7 +1574,10 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                             ? null
                             : Border.all(color: AppColors.glass(0.16)),
                       ),
-            child: Column(
+            child: _FooterAtEnd(
+              footer: footerAtEnd ? footer : null,
+              leading: voiceClock,
+              child: Column(
               // Left inside a bubble, right when there is no bubble and the
               // message is ours.
               //
@@ -1696,6 +1731,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                               message: message,
                               chatId: widget.chatId,
                               transcriptionButton: _transcriptionButton(),
+                              clockInFooter: voiceClock != null,
                             ),
                           ),
                           if (message.isMine &&
@@ -1898,7 +1934,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
-                      transcript ?? AppLocalizations.of(context).chatTranscribeFailed,
+                      transcript ??
+                          switch (ref
+                              .read(voiceTranscriptionProvider.notifier)
+                              .failureOf(message.id)) {
+                            // Said as what to do, not just that it failed:
+                            // both have a way out.
+                            'model_downloading' => AppLocalizations.of(context)
+                                .chatTranscribeDownloading,
+                            'language_not_supported' =>
+                              AppLocalizations.of(context)
+                                  .chatTranscribeNoLanguage,
+                            _ => AppLocalizations.of(context)
+                                .chatTranscribeFailed,
+                          },
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.35,
@@ -1935,17 +1984,33 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   // down by a whole row, and left the bubble's own bottom line
                   // carrying nothing but four characters of time. One line, the
                   // reaction where it was put and the clock where it always is.
-                  inBubble(
-                    _BubbleFooter(
-                      reactions: reacted
-                          ? _ReactionsRow(
-                              reactions: message.reactions,
-                              onTap: _canReact ? _toggleReaction : null,
-                            )
-                          : null,
-                      meta: meta,
-                    ),
-                  ),
+                  //
+                  // Held here invisibly when the footer is drawn at the right
+                  // (below), so the bubble is still as wide and as tall as
+                  // the footer needs.
+                  if (footerAtEnd)
+                    Visibility(
+                      visible: false,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      // With room for a voice note's length beside it, so
+                      // many reactions push the bubble wider rather than run
+                      // over the length.
+                      child: voiceClock == null
+                          ? footer
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                voiceClock,
+                                const SizedBox(width: 12),
+                                footer,
+                              ],
+                            ),
+                    )
+                  else
+                    footer,
                 ],
                 // The way into what everybody said about this post.
                 //
@@ -1964,6 +2029,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   ),
                 ],
               ],
+            ),
             ),
           ),
         ),
@@ -2586,6 +2652,43 @@ class _SwipeReplyHint extends StatelessWidget {
 /// chips wraps inside its own half instead of pushing the time out of the
 /// bubble. With nothing to show on the left it collapses to exactly what it
 /// used to be — the meta, right-aligned.
+/// The bubble's column, with its footer drawn against the right edge.
+///
+/// [child] already holds an invisible copy of [footer] as its last row, which
+/// is what sizes the bubble; this lays the visible one over that row, at the
+/// right. With no [footer] it is just the column.
+class _FooterAtEnd extends StatelessWidget {
+  const _FooterAtEnd({required this.child, this.footer, this.leading});
+
+  final Widget child;
+  final Widget? footer;
+
+  /// Drawn at the left end of the same line — a voice note's length.
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final footer = this.footer;
+    if (footer == null) return child;
+    final leading = this.leading;
+    return Stack(
+      children: [
+        child,
+        if (leading != null) Positioned(left: 0, bottom: 0, child: leading),
+        // Pinned to both sides and aligned right inside, not given `right`
+        // alone: a lone `right` lays the child out with unbounded width, and
+        // the footer's reactions are a Flexible, which cannot live in that.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Align(alignment: Alignment.bottomRight, child: footer),
+        ),
+      ],
+    );
+  }
+}
+
 class _BubbleFooter extends StatelessWidget {
   const _BubbleFooter({required this.meta, this.reactions});
 

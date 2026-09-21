@@ -15,6 +15,7 @@ import '../../../core/widgets/glass_toast.dart';
 import '../../../core/widgets/hue_strip.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../chat/data/reaction_emoji_controller.dart';
+import '../../chat/data/transcription_language.dart';
 import '../../chat/presentation/widgets/emoji_picker_sheet.dart';
 import '../../chats/data/archive_visibility_controller.dart';
 import '../../chats/data/swipe_action_controller.dart';
@@ -90,6 +91,8 @@ class CustomizeScreen extends ConsumerWidget {
             // Beside the circle's sound: both are about what a message you
             // send costs, not about how the app looks.
             const _MediaQualityCard(),
+            const SizedBox(height: 12),
+            const _TranscribeLanguageCard(),
             const SizedBox(height: 12),
             const _MediaDownloadCard(),
             const SizedBox(height: 12),
@@ -1047,6 +1050,75 @@ class _MediaDownloadCard extends ConsumerWidget {
             activeThumbColor: AppColors.brandPrimary,
             onChanged: (next) => unawaited(
               ref.read(mediaDownloadSettingsProvider.notifier).set(next),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which language "→A" hears voice notes in — see [TranscriptionLanguage].
+///
+/// The languages are written as themselves ("Рус", "Укр", "Eng") in every
+/// interface language: somebody choosing what they speak recognises its own
+/// name faster than a translation of it.
+class _TranscribeLanguageCard extends ConsumerWidget {
+  const _TranscribeLanguageCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final current = ref.watch(transcriptionLanguageProvider);
+    final notifier = ref.read(transcriptionLanguageProvider.notifier);
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.customizeTranscribeLanguageTitle,
+            style: TextStyle(
+              color: AppColors.textOnGlass,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<TranscriptionLanguage>(
+            expandedInsets: EdgeInsets.zero,
+            style: SegmentedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+            ),
+            segments: [
+              ButtonSegment(
+                value: TranscriptionLanguage.auto,
+                label: _GlassCard._tierLabel(t.customizeTranscribeLanguageAuto),
+              ),
+              ButtonSegment(
+                value: TranscriptionLanguage.russian,
+                label: _GlassCard._tierLabel('Рус'),
+              ),
+              ButtonSegment(
+                value: TranscriptionLanguage.ukrainian,
+                label: _GlassCard._tierLabel('Укр'),
+              ),
+              ButtonSegment(
+                value: TranscriptionLanguage.english,
+                label: _GlassCard._tierLabel('Eng'),
+              ),
+            ],
+            selected: {current},
+            showSelectedIcon: false,
+            onSelectionChanged: (picked) =>
+                unawaited(notifier.set(picked.first)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            t.customizeTranscribeLanguageHint,
+            style: TextStyle(
+              color: AppColors.textOnGlassDim,
+              fontSize: 12,
+              height: 1.35,
             ),
           ),
         ],

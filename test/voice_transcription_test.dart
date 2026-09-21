@@ -1,8 +1,17 @@
 import 'dart:async';
+import 'package:cubechat/features/chat/data/transcription_language.dart';
 import 'package:cubechat/features/chat/data/voice_transcription_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// A language already chosen, with no settings box behind it.
+class _Language extends TranscriptionLanguageController {
+  _Language(this.choice);
+  final TranscriptionLanguage choice;
+  @override
+  TranscriptionLanguage build() => choice;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +32,13 @@ void main() {
 
   setUp(() {
     calls.clear();
-    container = ProviderContainer();
+    // One chosen language, so what reaches the platform does not depend on
+    // the machine the test runs on (see transcription_language_test).
+    container = ProviderContainer(overrides: [
+      transcriptionLanguageProvider.overrideWith(
+        () => _Language(TranscriptionLanguage.ukrainian),
+      ),
+    ]);
   });
 
   tearDown(() {

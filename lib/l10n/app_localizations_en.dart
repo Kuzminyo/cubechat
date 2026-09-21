@@ -3099,6 +3099,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTranscribing => 'Recognising…';
 
   @override
+  String get chatTranscribeDownloading =>
+      'The phone is downloading the language for this. Try again in a minute.';
+
+  @override
+  String get chatTranscribeNoLanguage =>
+      'This phone has no speech model for that language. Pick the voice-to-text language in Customize.';
+
+  @override
+  String get customizeTranscribeLanguageTitle => 'Voice-to-text language';
+
+  @override
+  String get customizeTranscribeLanguageAuto => 'Auto';
+
+  @override
+  String get customizeTranscribeLanguageHint =>
+      'What the notes are spoken in, which need not be the app\'s language. Auto tries the phone\'s languages. A missing language is downloaded by the phone itself; the voice never leaves it.';
+
+  @override
   String get chatTranslateAction => 'Translate';
 
   @override

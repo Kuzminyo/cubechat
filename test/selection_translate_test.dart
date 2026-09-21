@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cubechat/app.dart';
 import 'package:cubechat/features/chat/data/message_selection.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
+import 'package:cubechat/features/chat/data/transcription_language.dart';
 import 'package:cubechat/features/chat/data/translation_controller.dart';
 import 'package:cubechat/features/chat/data/voice_transcription_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
@@ -18,6 +19,11 @@ import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/hive_settle.dart';
+
+class _Ukrainian extends TranscriptionLanguageController {
+  @override
+  TranscriptionLanguage build() => TranscriptionLanguage.ukrainian;
+}
 
 class _FakeTranslator implements Translator {
   @override
@@ -81,7 +87,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [translatorProvider.overrideWithValue(_FakeTranslator())],
+        overrides: [
+          translatorProvider.overrideWithValue(_FakeTranslator()),
+          // Chosen already, so the transcription below does not wait on a
+          // settings box opened in the test's fake-async zone.
+          transcriptionLanguageProvider.overrideWith(_Ukrainian.new),
+        ],
         child: const CubechatApp(),
       ),
     );
