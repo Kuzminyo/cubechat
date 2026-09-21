@@ -10335,9 +10335,14 @@ class MessagingService {
   //   * every [_presenceFullRound] one round goes to everybody anyway, so two
   //     phones that lost each other's beacons, or a contact on an older build
   //     that does not answer, are found again;
-  //   * the goodbye goes to whoever is still showing us online — told so
-  //     within [PeerPresence.ttl] — since everybody else has already let the
-  //     beacon lapse.
+  //   * the goodbye goes to everybody who was told "online" since the last
+  //     goodbye — not only to those whose dot is still lit.
+  //     **1097 sent it only to those told within 60 s, and that was wrong**:
+  //     what "last seen" shows a contact who was offline while we were in the
+  //     app is the moment of the newest beacon that reached them, and the
+  //     goodbye is the only one that carries the moment we left. Without it
+  //     they read the last full round, up to five minutes early. Reported as
+  //     "will it show the exact time I was there?" — it would not have.
 
   /// How long a contact's last "online" keeps them in the heartbeat. Longer
   /// than [PeerPresence.ttl] so a few lost beacons do not drop somebody who is
@@ -10374,10 +10379,10 @@ class MessagingService {
     DateTime? toldOnlineAt,
   }) {
     if (!online) {
-      // Only whoever still shows us online needs the goodbye.
-      return toldOnlineAt != null &&
-          now.difference(toldOnlineAt) <
-              PeerPresence.ttl + const Duration(seconds: 5);
+      // Everybody we told "online" and have not said goodbye to since. Age is
+      // no reason to skip one: their dot has long lapsed, but their "last
+      // seen" is still whatever the newest beacon said.
+      return toldOnlineAt != null;
     }
     if (fullRound) return true;
     return heard != null &&

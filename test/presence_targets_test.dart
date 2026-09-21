@@ -83,18 +83,20 @@ void main() {
   });
 
   group('the goodbye', () {
-    test('goes to whoever we told we were here within the window', () {
+    test('goes to whoever we told we were here, however long ago', () {
+      // Their dot lapsed minutes ago, but their "last seen" is the newest
+      // beacon they hold — the goodbye is the one that says when we left.
       expect(
         wants(online: false, told: now.subtract(const Duration(seconds: 40))),
         isTrue,
       );
+      expect(
+        wants(online: false, told: now.subtract(const Duration(minutes: 4))),
+        isTrue,
+      );
     });
 
-    test('not to somebody whose beacon from us has lapsed anyway', () {
-      expect(
-        wants(online: false, told: now.subtract(const Duration(minutes: 3))),
-        isFalse,
-      );
+    test('not to somebody who was never told we were here', () {
       expect(wants(online: false), isFalse);
     });
   });
