@@ -59,11 +59,19 @@ class MlKitTranslator implements Translator {
       // left the download — and the tap that asked for it — waiting for a
       // network that might not come all day. A tap on "translate" is the
       // consent to fetch the language, on whatever connection there is.
-      await _models.downloadModel(source.name, isWifiRequired: false);
-      await _models.downloadModel(target.name, isWifiRequired: false);
+      //
+      // **The model is named by its code — "ru" — not by the enum's name.**
+      // This passed `source.name`, which is "russian", and ML Kit's model
+      // builder answers a name it does not recognise with an exception thrown
+      // on its own background thread, where nothing can catch it: every tap
+      // on "translate" closed the app. Found by the exit recorder on its
+      // first day (2026-09-22): "Model name expected to be matching
+      // [a-z]{2,3}_[a-z]{2,3}".
+      await _models.downloadModel(source.bcpCode, isWifiRequired: false);
+      await _models.downloadModel(target.bcpCode, isWifiRequired: false);
       translator = OnDeviceTranslator(
-        sourceLanguage: TranslateLanguage.values.byName(source.name),
-        targetLanguage: TranslateLanguage.values.byName(target.name),
+        sourceLanguage: source,
+        targetLanguage: target,
       );
       return await translator.translateText(text);
     } catch (e) {
