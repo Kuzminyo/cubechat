@@ -3179,4 +3179,161 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get heldMediaDownload => 'Download';
+
+  @override
+  String get airdropTab => 'AirDrop';
+
+  @override
+  String get nearbyTabFiles => 'Files';
+
+  @override
+  String get airdropReceiveHint => 'Who can send you files';
+
+  @override
+  String get airdropReceiveContacts => 'Contacts';
+
+  @override
+  String get airdropReceiveEveryone => 'Everyone 10 min';
+
+  @override
+  String airdropEveryoneLeft(String time) {
+    return 'Everyone · $time';
+  }
+
+  @override
+  String get airdropSendFiles => 'Send files';
+
+  @override
+  String airdropRequestBody(String what, String size) {
+    return 'wants to send $what · $size';
+  }
+
+  @override
+  String airdropWhatPhotos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: '1 photo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String airdropWhatVideos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count videos',
+      one: '1 video',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String airdropWhatFiles(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '1 file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get airdropAccept => 'Accept';
+
+  @override
+  String get airdropDecline => 'Decline';
+
+  @override
+  String get airdropWaiting => 'Waiting for an answer…';
+
+  @override
+  String get airdropAccepted => 'Accepted';
+
+  @override
+  String get airdropUnheard =>
+      'Not received — maybe an old version of CubeChat';
+
+  @override
+  String get airdropSending => 'Sending';
+
+  @override
+  String get airdropReceiving => 'Receiving';
+
+  @override
+  String get airdropInterrupted => 'Interrupted';
+
+  @override
+  String get airdropRetry => 'Retry';
+
+  @override
+  String get airdropOutcomeSent => 'Sent';
+
+  @override
+  String get airdropOutcomeReceived => 'Received';
+
+  @override
+  String get airdropOutcomeDeclined => 'Declined';
+
+  @override
+  String get airdropOutcomeCancelled => 'Cancelled';
+
+  @override
+  String get airdropOutcomePartial => 'Partly';
+
+  @override
+  String get airdropReasonNoSpace => 'not enough space';
+
+  @override
+  String get airdropReasonContactsOnly => 'contacts only';
+
+  @override
+  String get airdropReasonBusy => 'busy';
+
+  @override
+  String get airdropReasonTimeout => 'no answer';
+
+  @override
+  String get airdropFileDeleted => 'deleted';
+
+  @override
+  String get airdropHistory => 'History';
+
+  @override
+  String get airdropClearHistory => 'Clear history';
+
+  @override
+  String get airdropEmpty => 'Files you send or receive nearby will be here';
+
+  @override
+  String get airdropPickPerson => 'Send to';
+
+  @override
+  String get airdropNobody =>
+      'Nobody is connected nearby. Open Nearby and tap a person first.';
+
+  @override
+  String get airdropNoDirect => 'No Bluetooth connection with this person';
+
+  @override
+  String get airdropSlowWarning => 'This can take a long time over Bluetooth';
+
+  @override
+  String airdropTooLarge(String name, int limit) {
+    return '$name is larger than $limit MB';
+  }
+
+  @override
+  String airdropFromLabel(String name) {
+    return 'AirDrop · $name';
+  }
+
+  @override
+  String get airdropWrite => 'Message';
+
+  @override
+  String get airdropAction => 'AirDrop';
 }

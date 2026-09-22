@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show DeviceGestureSettings;
 import 'package:flutter/material.dart';
+import 'features/airdrop/data/airdrop_controller.dart';
 import 'features/call/data/call_microphone_permission.dart';
 import 'features/call/presentation/call_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -604,6 +605,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // resume above, since a headless start would be blocked.)
     ref.watch(backgroundModeProvider);
     ref.watch(mapPresenceControllerProvider);
+    // Built at startup so an offer is answered whatever tab is open.
+    // Listened, not watched: its state changes with every transfer, and the
+    // whole app has no business rebuilding for that.
+    ref.listen(airdropControllerProvider, (_, __) {});
     // Keyed on the palette revision. AppColors' fields are mutated in place
     // (see ThemeController for why), so widgets already built are holding the
     // old colours — changing the key throws the tree away and builds it again.

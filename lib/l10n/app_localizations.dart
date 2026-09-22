@@ -5545,6 +5545,252 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Download'**
   String get heldMediaDownload;
+
+  /// No description provided for @airdropTab.
+  ///
+  /// In en, this message translates to:
+  /// **'AirDrop'**
+  String get airdropTab;
+
+  /// No description provided for @nearbyTabFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get nearbyTabFiles;
+
+  /// No description provided for @airdropReceiveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Who can send you files'**
+  String get airdropReceiveHint;
+
+  /// No description provided for @airdropReceiveContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get airdropReceiveContacts;
+
+  /// No description provided for @airdropReceiveEveryone.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone 10 min'**
+  String get airdropReceiveEveryone;
+
+  /// No description provided for @airdropEveryoneLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone · {time}'**
+  String airdropEveryoneLeft(String time);
+
+  /// No description provided for @airdropSendFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Send files'**
+  String get airdropSendFiles;
+
+  /// No description provided for @airdropRequestBody.
+  ///
+  /// In en, this message translates to:
+  /// **'wants to send {what} · {size}'**
+  String airdropRequestBody(String what, String size);
+
+  /// No description provided for @airdropWhatPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo} other{{count} photos}}'**
+  String airdropWhatPhotos(int count);
+
+  /// No description provided for @airdropWhatVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 video} other{{count} videos}}'**
+  String airdropWhatVideos(int count);
+
+  /// No description provided for @airdropWhatFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file} other{{count} files}}'**
+  String airdropWhatFiles(int count);
+
+  /// No description provided for @airdropAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get airdropAccept;
+
+  /// No description provided for @airdropDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get airdropDecline;
+
+  /// No description provided for @airdropWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for an answer…'**
+  String get airdropWaiting;
+
+  /// No description provided for @airdropAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepted'**
+  String get airdropAccepted;
+
+  /// No description provided for @airdropUnheard.
+  ///
+  /// In en, this message translates to:
+  /// **'Not received — maybe an old version of CubeChat'**
+  String get airdropUnheard;
+
+  /// No description provided for @airdropSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending'**
+  String get airdropSending;
+
+  /// No description provided for @airdropReceiving.
+  ///
+  /// In en, this message translates to:
+  /// **'Receiving'**
+  String get airdropReceiving;
+
+  /// No description provided for @airdropInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get airdropInterrupted;
+
+  /// No description provided for @airdropRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get airdropRetry;
+
+  /// No description provided for @airdropOutcomeSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get airdropOutcomeSent;
+
+  /// No description provided for @airdropOutcomeReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Received'**
+  String get airdropOutcomeReceived;
+
+  /// No description provided for @airdropOutcomeDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined'**
+  String get airdropOutcomeDeclined;
+
+  /// No description provided for @airdropOutcomeCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get airdropOutcomeCancelled;
+
+  /// No description provided for @airdropOutcomePartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Partly'**
+  String get airdropOutcomePartial;
+
+  /// No description provided for @airdropReasonNoSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'not enough space'**
+  String get airdropReasonNoSpace;
+
+  /// No description provided for @airdropReasonContactsOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'contacts only'**
+  String get airdropReasonContactsOnly;
+
+  /// No description provided for @airdropReasonBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'busy'**
+  String get airdropReasonBusy;
+
+  /// No description provided for @airdropReasonTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'no answer'**
+  String get airdropReasonTimeout;
+
+  /// No description provided for @airdropFileDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'deleted'**
+  String get airdropFileDeleted;
+
+  /// No description provided for @airdropHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get airdropHistory;
+
+  /// No description provided for @airdropClearHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear history'**
+  String get airdropClearHistory;
+
+  /// No description provided for @airdropEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Files you send or receive nearby will be here'**
+  String get airdropEmpty;
+
+  /// No description provided for @airdropPickPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to'**
+  String get airdropPickPerson;
+
+  /// No description provided for @airdropNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is connected nearby. Open Nearby and tap a person first.'**
+  String get airdropNobody;
+
+  /// No description provided for @airdropNoDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'No Bluetooth connection with this person'**
+  String get airdropNoDirect;
+
+  /// No description provided for @airdropSlowWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This can take a long time over Bluetooth'**
+  String get airdropSlowWarning;
+
+  /// No description provided for @airdropTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is larger than {limit} MB'**
+  String airdropTooLarge(String name, int limit);
+
+  /// No description provided for @airdropFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'AirDrop · {name}'**
+  String airdropFromLabel(String name);
+
+  /// No description provided for @airdropWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get airdropWrite;
+
+  /// No description provided for @airdropAction.
+  ///
+  /// In en, this message translates to:
+  /// **'AirDrop'**
+  String get airdropAction;
 }
 
 class _AppLocalizationsDelegate

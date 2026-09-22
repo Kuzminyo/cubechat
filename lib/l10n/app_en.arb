@@ -1568,5 +1568,83 @@
   "heldMediaDownload": "Download",
   "@heldMediaDownload": {
     "description": "Button on the waiting-media row: fetch everything held, over the current mobile connection."
-  }
+  },
+  "airdropTab": "AirDrop",
+  "nearbyTabFiles": "Files",
+  "airdropReceiveHint": "Who can send you files",
+  "airdropReceiveContacts": "Contacts",
+  "airdropReceiveEveryone": "Everyone 10 min",
+  "airdropEveryoneLeft": "Everyone · {time}",
+  "@airdropEveryoneLeft": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "airdropSendFiles": "Send files",
+  "airdropRequestBody": "wants to send {what} · {size}",
+  "@airdropRequestBody": {
+    "placeholders": {
+      "what": {"type": "String"},
+      "size": {"type": "String"}
+    }
+  },
+  "airdropWhatPhotos": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@airdropWhatPhotos": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "airdropWhatVideos": "{count, plural, =1{1 video} other{{count} videos}}",
+  "@airdropWhatVideos": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "airdropWhatFiles": "{count, plural, =1{1 file} other{{count} files}}",
+  "@airdropWhatFiles": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "airdropAccept": "Accept",
+  "airdropDecline": "Decline",
+  "airdropWaiting": "Waiting for an answer…",
+  "airdropAccepted": "Accepted",
+  "airdropUnheard": "Not received — maybe an old version of CubeChat",
+  "airdropSending": "Sending",
+  "airdropReceiving": "Receiving",
+  "airdropInterrupted": "Interrupted",
+  "airdropRetry": "Retry",
+  "airdropOutcomeSent": "Sent",
+  "airdropOutcomeReceived": "Received",
+  "airdropOutcomeDeclined": "Declined",
+  "airdropOutcomeCancelled": "Cancelled",
+  "airdropOutcomePartial": "Partly",
+  "airdropReasonNoSpace": "not enough space",
+  "airdropReasonContactsOnly": "contacts only",
+  "airdropReasonBusy": "busy",
+  "airdropReasonTimeout": "no answer",
+  "airdropFileDeleted": "deleted",
+  "airdropHistory": "History",
+  "airdropClearHistory": "Clear history",
+  "airdropEmpty": "Files you send or receive nearby will be here",
+  "airdropPickPerson": "Send to",
+  "airdropNobody": "Nobody is connected nearby. Open Nearby and tap a person first.",
+  "airdropNoDirect": "No Bluetooth connection with this person",
+  "airdropSlowWarning": "This can take a long time over Bluetooth",
+  "airdropTooLarge": "{name} is larger than {limit} MB",
+  "@airdropTooLarge": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "limit": {"type": "int"}
+    }
+  },
+  "airdropFromLabel": "AirDrop · {name}",
+  "@airdropFromLabel": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "airdropWrite": "Message",
+  "airdropAction": "AirDrop"
 }

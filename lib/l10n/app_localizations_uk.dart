@@ -3217,4 +3217,163 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get heldMediaDownload => 'Завантажити';
+
+  @override
+  String get airdropTab => 'AirDrop';
+
+  @override
+  String get nearbyTabFiles => 'Файли';
+
+  @override
+  String get airdropReceiveHint => 'Хто може надсилати вам файли';
+
+  @override
+  String get airdropReceiveContacts => 'Контакти';
+
+  @override
+  String get airdropReceiveEveryone => 'Усі 10 хв';
+
+  @override
+  String airdropEveryoneLeft(String time) {
+    return 'Усі · $time';
+  }
+
+  @override
+  String get airdropSendFiles => 'Надіслати файли';
+
+  @override
+  String airdropRequestBody(String what, String size) {
+    return 'хоче надіслати $what · $size';
+  }
+
+  @override
+  String airdropWhatPhotos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count фото',
+      one: '1 фото',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String airdropWhatVideos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count відео',
+      one: '1 відео',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String airdropWhatFiles(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count файлу',
+      many: '$count файлів',
+      few: '$count файли',
+      one: '1 файл',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get airdropAccept => 'Прийняти';
+
+  @override
+  String get airdropDecline => 'Відхилити';
+
+  @override
+  String get airdropWaiting => 'Очікуємо відповіді…';
+
+  @override
+  String get airdropAccepted => 'Прийнято';
+
+  @override
+  String get airdropUnheard => 'Не отримав — можливо, стара версія CubeChat';
+
+  @override
+  String get airdropSending => 'Надсилаємо';
+
+  @override
+  String get airdropReceiving => 'Отримуємо';
+
+  @override
+  String get airdropInterrupted => 'Перервано';
+
+  @override
+  String get airdropRetry => 'Повторити';
+
+  @override
+  String get airdropOutcomeSent => 'Надіслано';
+
+  @override
+  String get airdropOutcomeReceived => 'Отримано';
+
+  @override
+  String get airdropOutcomeDeclined => 'Відхилено';
+
+  @override
+  String get airdropOutcomeCancelled => 'Скасовано';
+
+  @override
+  String get airdropOutcomePartial => 'Частково';
+
+  @override
+  String get airdropReasonNoSpace => 'не вистачає місця';
+
+  @override
+  String get airdropReasonContactsOnly => 'лише від контактів';
+
+  @override
+  String get airdropReasonBusy => 'зайнято';
+
+  @override
+  String get airdropReasonTimeout => 'немає відповіді';
+
+  @override
+  String get airdropFileDeleted => 'видалено';
+
+  @override
+  String get airdropHistory => 'Історія';
+
+  @override
+  String get airdropClearHistory => 'Очистити історію';
+
+  @override
+  String get airdropEmpty =>
+      'Тут будуть файли, які ви надсилаєте й отримуєте поруч';
+
+  @override
+  String get airdropPickPerson => 'Надіслати кому';
+
+  @override
+  String get airdropNobody =>
+      'Поруч ніхто не підключений. Спершу відкрийте «Поблизу» і торкніться людини.';
+
+  @override
+  String get airdropNoDirect => 'Немає зв’язку Bluetooth з цією людиною';
+
+  @override
+  String get airdropSlowWarning => 'Через Bluetooth це може тривати довго';
+
+  @override
+  String airdropTooLarge(String name, int limit) {
+    return '$name більший за $limit МБ';
+  }
+
+  @override
+  String airdropFromLabel(String name) {
+    return 'AirDrop · $name';
+  }
+
+  @override
+  String get airdropWrite => 'Написати';
+
+  @override
+  String get airdropAction => 'AirDrop';
 }
