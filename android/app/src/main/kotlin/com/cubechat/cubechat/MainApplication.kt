@@ -85,6 +85,7 @@ class MainApplication : Application() {
         )
         VideoFramePlugin(messenger)
         ExitRecorder.register(applicationContext, messenger)
+        SelfUpdater.register(applicationContext, messenger)
         MethodChannel(messenger, "cubechat/background").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {

@@ -122,6 +122,7 @@ reviewers look for in a messenger:
 | `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT` | The transport itself | `README.md` §"Architecture" |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Aggressive OEMs kill the mesh service; this is offered, never forced | `README.md` §"Background delivery on aggressive OEMs" |
 | `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES` | Only for content the user chooses to send | — |
+| `REQUEST_INSTALL_PACKAGES` | Sideloaded builds only: Profile → "Install an update from a file" installs a cubechat APK the user picks, so lock-screen calls (`USE_FULL_SCREEN_INTENT`) survive the update. Refuses any other package; nothing is downloaded. **Play restricts this permission to app stores — remove it from a Play build.** | `SelfUpdater.kt` |
 
 **Location prominent disclosure.** Play requires an in-app disclosure before
 requesting background location. The app's own explanation screen and the iOS

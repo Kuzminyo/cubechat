@@ -44,6 +44,7 @@ import '../../backup/presentation/phone_transfer_card.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
 import '../../../core/util/platform_info.dart';
+import '../../../core/util/self_update.dart';
 import '../../call/data/call_screen_access.dart';
 import '../../../core/widgets/glass_toast.dart';
 import 'dart:async';
@@ -975,6 +976,85 @@ class _SettingSwitch extends StatelessWidget {
   }
 }
 
+/// "Install an update from a file" — the way to update that keeps lock-screen
+/// calls on. See [SelfUpdate] and `SelfUpdater.kt`.
+class _InstallUpdateRow extends StatelessWidget {
+  const _InstallUpdateRow();
+
+  Future<void> _install(BuildContext context) async {
+    final t = AppLocalizations.of(context);
+    final outcome = await SelfUpdate.pickAndInstall(
+      onFailure: (error) {
+        if (context.mounted) showGlassToast(context, t.selfUpdateFailed);
+      },
+    );
+    if (!context.mounted) return;
+    switch (outcome) {
+      case SelfUpdateOutcome.started:
+        showGlassToast(context, t.selfUpdateConfirm);
+      case SelfUpdateOutcome.needsPermission:
+        showGlassToast(context, t.selfUpdateAllow);
+      case SelfUpdateOutcome.notOurs:
+        showGlassToast(context, t.selfUpdateNotOurs);
+      case SelfUpdateOutcome.failed:
+        showGlassToast(context, t.selfUpdateFailed);
+      case SelfUpdateOutcome.cancelled:
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => unawaited(_install(context)),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
+            ),
+            child: Icon(
+              Icons.system_update_rounded,
+              color: AppColors.brandPrimary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.selfUpdateTitle,
+                  style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.selfUpdateHint,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.textOnGlassFaint,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Last seen and read receipts — the two things the app says about *you*
 /// rather than about your messages. Both symmetric; see [PrivacySettings].
 /// Turn the lock on with a new code, or off with the current one.
@@ -1290,6 +1370,10 @@ class _PrivacyCard extends ConsumerWidget {
                 );
               },
             ),
+            const SizedBox(height: 14),
+            // Right under the switch it keeps on: an update installed from
+            // here does not switch lock-screen calls off. See [SelfUpdate].
+            const _InstallUpdateRow(),
             const SizedBox(height: 14),
           ],
           _SettingSwitch(

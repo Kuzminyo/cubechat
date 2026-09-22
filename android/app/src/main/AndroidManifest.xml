@@ -92,6 +92,14 @@
          not a dialler; IncomingCall asks before relying on it and falls back
          to a heads-up with the same two buttons. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Installing our own update, and only that - see SelfUpdater. The
+         installer of an APK decides whether USE_FULL_SCREEN_INTENT survives
+         it (PackageInstaller.SessionParams.setPermissionState, which Android
+         14+ lets any installer set for that one permission), and the phone's
+         own package installer takes it away on every sideloaded update. When
+         cubechat installs its own APK it keeps it granted. Google Play limits
+         this permission to app stores: a Play build has to drop it. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- No SYSTEM_ALERT_WINDOW. 1045 asked for "appear on top" to open the
          call screen on an unlocked phone as well, and that put the screen up
          behind the heads-up: "remove the screen, leave only the shade" was the
@@ -169,6 +177,10 @@
             android:theme="@android:style/Theme.Material.NoActionBar" />
         <receiver
             android:name=".IncomingCallReceiver"
+            android:exported="false" />
+        <!-- Where the package installer reports on our own update. -->
+        <receiver
+            android:name=".SelfUpdateReceiver"
             android:exported="false" />
         <service
             android:name=".CallService"
