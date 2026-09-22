@@ -18,6 +18,10 @@ enum FileTransferStatus {
   canceled,
 }
 
+/// Where a transfer came from. The transfer centre shows both; only a chat
+/// file is ever retried by the file queue.
+enum FileTransferSource { chat, airdrop }
+
 @immutable
 class FileTransferTask {
   const FileTransferTask({
@@ -35,6 +39,8 @@ class FileTransferTask {
     required this.createdAt,
     required this.updatedAt,
     this.error,
+    this.source = FileTransferSource.chat,
+    this.peerName,
   });
 
   final String id;
@@ -51,6 +57,11 @@ class FileTransferTask {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? error;
+  final FileTransferSource source;
+
+  /// The other person's name when the task was made — AirDrop shows it,
+  /// because an AirDrop file has no conversation to be read in.
+  final String? peerName;
 
   double get progress => totalUnits <= 0
       ? (status == FileTransferStatus.completed ? 1 : 0)
@@ -86,11 +97,13 @@ class FileTransferTask {
         createdAt: createdAt,
         updatedAt: updatedAt ?? DateTime.now(),
         error: clearError ? null : error ?? this.error,
+        source: source,
+        peerName: peerName,
       );
 }
 
 class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
-  static const _key = 'file_transfers_v1';
+  static const storageKey = 'file_transfers_v1';
 
   Box<dynamic>? _box;
   Future<void>? _loading;
@@ -115,7 +128,7 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
     try {
       _box = await hiveCipherProvider
           .openEncryptedBox<dynamic>(HiveBoxes.settings);
-      final raw = _box?.get(_key);
+      final raw = _box?.get(storageKey);
       if (raw is! List) return;
       final restored = <String, FileTransferTask>{};
       for (final value in raw) {
@@ -141,6 +154,11 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
   /// the one the transfer centre offers a retry on.
   static FileTransferStatus _statusAfterRestart(FileTransferTask task) {
     if (!task.active) return task.status;
+    // An AirDrop needs the person in reach and their yes; the AirDrop page
+    // offers a retry. Queued would hand it to the chat file queue.
+    if (task.source == FileTransferSource.airdrop) {
+      return FileTransferStatus.failed;
+    }
     return task.direction == FileTransferDirection.outgoing
         ? FileTransferStatus.queued
         : FileTransferStatus.failed;
@@ -268,7 +286,7 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
     await loaded;
     state = const {};
     _persistTimer?.cancel();
-    await _box?.delete(_key);
+    await _box?.delete(storageKey);
   }
 
   void _release(String id) {
@@ -283,7 +301,7 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
 
   Future<void> _persist() async {
     if (_box == null) await loaded;
-    await _box?.put(_key, state.values.map(_encode).toList());
+    await _box?.put(storageKey, state.values.map(_encode).toList());
   }
 
   static Map<String, Object?> _encode(FileTransferTask task) => {
@@ -301,6 +319,8 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
         'createdAt': task.createdAt.toIso8601String(),
         'updatedAt': task.updatedAt.toIso8601String(),
         if (task.error != null) 'error': task.error,
+        if (task.source != FileTransferSource.chat) 'source': task.source.name,
+        if (task.peerName != null) 'peerName': task.peerName,
       };
 
   static FileTransferTask? _decode(Map<dynamic, dynamic> value) {
@@ -322,6 +342,9 @@ class FileTransferController extends Notifier<Map<String, FileTransferTask>> {
         createdAt: DateTime.parse(value['createdAt'] as String),
         updatedAt: DateTime.parse(value['updatedAt'] as String),
         error: value['error'] as String?,
+        source: FileTransferSource.values.asNameMap()[value['source']] ??
+            FileTransferSource.chat,
+        peerName: value['peerName'] as String?,
       );
     } catch (_) {
       return null;

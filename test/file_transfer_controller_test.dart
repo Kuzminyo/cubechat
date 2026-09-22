@@ -159,6 +159,88 @@ void main() {
     expect(value?.messageId, 'message-1');
   });
 
+  test('an AirDrop task keeps its source and sender name across a restart',
+      () async {
+    final controller = container.read(fileTransferControllerProvider.notifier);
+    await controller.loaded;
+    controller.register(
+      FileTransferTask(
+        id: 'air-1',
+        chatId: 'bob',
+        fileName: 'clip.mp4',
+        filePath: 'C:/tmp/clip.mp4',
+        mime: 'video/mp4',
+        bytesTotal: 10,
+        completedUnits: 10,
+        totalUnits: 10,
+        direction: FileTransferDirection.incoming,
+        status: FileTransferStatus.completed,
+        createdAt: DateTime(2026, 9, 22),
+        updatedAt: DateTime(2026, 9, 22),
+        source: FileTransferSource.airdrop,
+        peerName: 'Жека',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+
+    final relaunched = ProviderContainer();
+    addTearDown(relaunched.dispose);
+    final restored = relaunched.read(fileTransferControllerProvider.notifier);
+    await restored.loaded;
+    final value = relaunched.read(fileTransferControllerProvider)['air-1'];
+    expect(value?.source, FileTransferSource.airdrop);
+    expect(value?.peerName, 'Жека');
+  });
+
+  // The file queue retries queued outgoing tasks as chat sends. An AirDrop
+  // needs the person in reach and their yes, so after a restart it is failed —
+  // the AirDrop page offers "retry" — and never quietly re-sent into a chat.
+  test('an outgoing AirDrop is failed after a restart, not queued', () async {
+    final controller = container.read(fileTransferControllerProvider.notifier);
+    await controller.loaded;
+    controller.register(
+      FileTransferTask(
+        id: 'air-2',
+        chatId: 'bob',
+        fileName: 'a.jpg',
+        filePath: 'C:/tmp/a.jpg',
+        mime: 'image/jpeg',
+        bytesTotal: 10,
+        completedUnits: 1,
+        totalUnits: 4,
+        direction: FileTransferDirection.outgoing,
+        status: FileTransferStatus.transferring,
+        createdAt: DateTime(2026, 9, 22),
+        updatedAt: DateTime(2026, 9, 22),
+        source: FileTransferSource.airdrop,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+
+    final relaunched = ProviderContainer();
+    addTearDown(relaunched.dispose);
+    await relaunched.read(fileTransferControllerProvider.notifier).loaded;
+    expect(
+      relaunched.read(fileTransferControllerProvider)['air-2']?.status,
+      FileTransferStatus.failed,
+    );
+  });
+
+  test('a record written before sources existed reads as a chat file',
+      () async {
+    final controller = container.read(fileTransferControllerProvider.notifier);
+    await controller.loaded;
+    controller.register(task(status: FileTransferStatus.completed));
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    final relaunched = ProviderContainer();
+    addTearDown(relaunched.dispose);
+    await relaunched.read(fileTransferControllerProvider.notifier).loaded;
+    expect(
+      relaunched.read(fileTransferControllerProvider)['transfer-1']?.source,
+      FileTransferSource.chat,
+    );
+  });
+
   test('clearFinished retains only active transfers', () async {
     final controller = container.read(fileTransferControllerProvider.notifier);
     await controller.loaded;
