@@ -69,6 +69,7 @@ import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
 import 'call_signal.dart';
+import 'nearby_offer.dart';
 import 'control_delivery.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
@@ -354,6 +355,11 @@ class MessagingService {
   /// Call signalling as it arrives, for whoever is running a call.
   Stream<({String chatId, CallSignal signal})> get callSignals =>
       _callSignals.stream;
+
+  final _nearbyInbound = StreamController<NearbyInbound>.broadcast();
+
+  /// AirDrop offers and answers as they arrive — see `features/airdrop`.
+  Stream<NearbyInbound> get nearbyInbound => _nearbyInbound.stream;
 
   /// Watches an incoming file that has stopped arriving, and asks again.
   ///
@@ -6521,6 +6527,8 @@ class MessagingService {
         case InnerPayloadType.forwardedFrom:
         case InnerPayloadType.conversationClear:
         case InnerPayloadType.callSignal:
+        case InnerPayloadType.nearbyOffer:
+        case InnerPayloadType.nearbyAnswer:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -6535,6 +6543,9 @@ class MessagingService {
           // callSignal joins the list for the same reason as an invite: calls
           // are 1:1 in this first version (see the design spec), so a signal
           // arriving inside a channel frame names no call anyone could answer.
+          //
+          // AirDrop is between two phones in arm's reach; inside a room frame
+          // it names nobody who could answer it.
           break;
       }
     } catch (e) {
@@ -7579,6 +7590,29 @@ class MessagingService {
             );
           } on FormatException catch (e) {
             debugPrint('[CALL] undecodable call signal from $peerId: $e');
+          }
+
+        case InnerPayloadType.nearbyOffer:
+        case InnerPayloadType.nearbyAnswer:
+          // AirDrop. Handed on with whether it came straight from the phone
+          // that wrote it: the controller refuses anything that crossed a
+          // third phone or the internet. This layer only knows the route.
+          if (senderPub == null) break;
+          try {
+            final isOffer = unpacked.type == InnerPayloadType.nearbyOffer;
+            _nearbyInbound.add(
+              NearbyInbound(
+                peerHex: _hexOf(senderPub),
+                direct: incomingRoute == MessageRoute.bluetooth,
+                offer: isOffer ? NearbyOffer.decode(unpacked.body) : null,
+                answer: isOffer ? null : NearbyAnswer.decode(unpacked.body),
+              ),
+            );
+          } on FormatException catch (e) {
+            DebugLog.instance.log(
+              'AIRDROP',
+              'drop ${unpacked.type.name} from $peerId: $e',
+            );
           }
       }
     } catch (e, st) {
@@ -12178,6 +12212,7 @@ class MessagingService {
     }
     _clients.clear();
     await _callSignals.close();
+    await _nearbyInbound.close();
   }
 }
 

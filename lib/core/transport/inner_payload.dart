@@ -294,12 +294,23 @@ enum InnerPayloadType {
   /// One frame of call signalling: an invite, its acknowledgement, an accept,
   /// a decline, a busy or a hangup. See [CallSignal] in `call_signal.dart`.
   ///
-  /// 0xE7 was verified free against this enum before it was taken; the range
-  /// 0xE7-0xEF is still empty after it. An older build drops an unknown inner
-  /// type silently, so the caller does not treat a call as ringing until the
-  /// explicit acknowledgement arrives — otherwise calling an old build would
-  /// ring forever against a phone that never heard anything.
-  callSignal(0xE7);
+  /// 0xE7 was verified free against this enum before it was taken. An older
+  /// build drops an unknown inner type silently, so the caller does not treat
+  /// a call as ringing until the explicit acknowledgement arrives — otherwise
+  /// calling an old build would ring forever against a phone that never heard
+  /// anything.
+  callSignal(0xE7),
+
+  /// AirDrop: somebody in arm's reach offers files. See `NearbyOffer` in
+  /// `nearby_offer.dart` and docs/superpowers/specs/2026-09-22-airdrop-design.md.
+  ///
+  /// 0xE8 and 0xE9 were verified free against this enum on 2026-09-22;
+  /// 0xEA-0xEF are still empty. An old build drops both silently, which the
+  /// sender reads as "no automatic 'seen' within ten seconds" and says so.
+  nearbyOffer(0xE8),
+
+  /// AirDrop: seen, accepted, declined (with a reason) or cancelled.
+  nearbyAnswer(0xE9);
 
   const InnerPayloadType(this.tag);
   final int tag;
